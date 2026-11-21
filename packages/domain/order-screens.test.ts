@@ -13,6 +13,7 @@ import {
   draftRoutes,
   floorStatus,
   freePlaces,
+  groupFull,
   keepPicks,
   lineFixes,
   minutesSince,
@@ -339,6 +340,22 @@ describe("choosing (P6)", () => {
     // A group of up to one, not required, replaces too.
     const one: OptionGroup = { ...extras, max: 1 };
     expect(toggleChoice(one, [egg], "cheese", true)).toEqual([cheese]);
+  });
+
+  it("says the rest wait only while an option is left to switch on", () => {
+    // The burger's extras, both on: there is no other to choose.
+    expect(groupFull(extras, [egg, cheese])).toBe(false);
+    expect(groupFull(saladExtras, [pick("extras", "feta"), egg])).toBe(false);
+    // With bacon a third, at two the bacon waits.
+    expect(groupFull(withBacon, [egg, cheese])).toBe(true);
+    expect(groupFull(withBacon, [egg])).toBe(false);
+    // A pick the group no longer has, or one twice, doesn't count.
+    expect(groupFull(withBacon, [egg, pick("extras", "gone")])).toBe(false);
+    expect(groupFull(withBacon, [egg, egg])).toBe(false);
+    // Another group's picks don't either.
+    expect(groupFull(withBacon, [egg, medium])).toBe(false);
+    // A group of up to one replaces its pick instead.
+    expect(groupFull({ ...withBacon, max: 1 }, [egg])).toBe(false);
   });
 
   it("names the groups still to choose, and the price with what is picked", () => {

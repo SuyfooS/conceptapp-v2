@@ -28,6 +28,7 @@ import {
   quickCount,
   quickPlaces,
   typedAgorot,
+  typedMost,
   unitAgorot,
 } from "./order-taking";
 
@@ -692,6 +693,22 @@ describe("the item's choices in its sheet (P6)", () => {
     expect(read({ required: false, most: 2, least: 2 })).toMatchObject({
       min: 0,
     });
+  });
+
+  it("reads the most as typed, waiting on what it can't take yet", () => {
+    expect(typedMost("2", 4)).toBe(2);
+    expect(typedMost(" 4 ", 4)).toBe(4);
+    // Cleared to type another, or past the options for a moment: it waits.
+    expect(typedMost("", 4)).toBeNull();
+    expect(typedMost("12", 4)).toBeNull();
+    expect(typedMost("0", 4)).toBeNull();
+    expect(typedMost("2.5", 4)).toBeNull();
+    // Once the field is left, the nearest the group takes, or nothing.
+    expect(typedMost("12", 4, true)).toBe(4);
+    expect(typedMost("0", 4, true)).toBe(1);
+    expect(typedMost("", 4, true)).toBeNull();
+    expect(typedMost("2.5", 4, true)).toBeNull();
+    expect(typedMost("3", 0, true)).toBe(1);
   });
 
   it("says every problem in the form's order, each under its own field", () => {

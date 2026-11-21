@@ -861,6 +861,29 @@ test("a manager gives an item a group of choices, and taking an order asks for i
   ).toHaveAttribute("aria-checked", "true");
   await expect(sheet.getByText(o.menu.sheet.rule.one)).toBeVisible();
   await expectCleanPage(page);
+
+  // A save the network drops is said at the form's top, above the choices
+  // the save at the sheet's end was pressed under: its line takes the focus.
+  let dropped = 0;
+  await page.route(
+    (url) => url.pathname === "/orders/menu",
+    async (route) => {
+      if (route.request().method() !== "POST" || dropped > 0) {
+        await route.fallback();
+        return;
+      }
+      dropped += 1;
+      await route.abort();
+    },
+  );
+  await sheet.getByRole("button", { name: o.menu.sheet.save }).click();
+  const refused = sheet.getByRole("alert");
+  await expect(refused).toHaveText(rt("app.orders.menu.failed.failed"));
+  await expect(refused).toBeFocused();
+  await expect(refused).toBeInViewport();
+  expect(dropped).toBe(1);
+  expect((await demoMenuItem("פסטה"))?.version).toBe(before?.version);
+
   await sheet.getByRole("button", { name: o.menu.sheet.save }).click();
   await expect(
     toast(page, rt("app.orders.menu.toast.saved", { name: "פסטה" })),

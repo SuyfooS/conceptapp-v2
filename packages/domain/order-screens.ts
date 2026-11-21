@@ -265,6 +265,29 @@ export function toggleChoice(
   return [...picks];
 }
 
+/**
+ * Whether a group's other options wait until one of its picks is switched
+ * off: at its most, past one (a group of up to one replaces its pick
+ * instead), and with an option still off. A group whose every option may be
+ * picked together never waits, however many are on.
+ */
+export function groupFull(
+  group: OptionGroup,
+  picks: readonly ChoicePick[],
+): boolean {
+  if (group.max <= 1 || group.max >= group.options.length) return false;
+  const mine = new Set(
+    picks
+      .filter(
+        (pick) =>
+          pick.group === group.id &&
+          group.options.some((option) => option.id === pick.option),
+      )
+      .map((pick) => pick.option),
+  );
+  return mine.size >= group.max;
+}
+
 /** The groups that still need a choice before the item is added: fewer than their least. */
 export function missingGroups(
   item: Choosing,

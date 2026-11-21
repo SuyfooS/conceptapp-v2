@@ -90,15 +90,20 @@ export function ChoiceGroup({
       {options.map((option) => {
         const on = picked.includes(option.id);
         const switchId = `${id}-${option.id}`;
+        // What it adds to the price is read with the switch, as it is with
+        // a radio, whose row is its label.
+        const hintId = option.hint ? `${switchId}-hint` : undefined;
         return (
           <FieldRow
             key={option.id}
             label={option.name}
             hint={option.hint}
+            hintId={hintId}
             htmlFor={switchId}
           >
             <Switch
               id={switchId}
+              aria-describedby={hintId}
               checked={on}
               disabled={disabled || (!on && full !== null)}
               onChange={(next) => onPick(option.id, next)}

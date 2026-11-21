@@ -4132,7 +4132,22 @@ test("the waiter mode demo adds a burger through its choices", async ({
   });
   await expect(add).toBeDisabled();
   await sheet.getByRole("radio", { name: "מדיום", exact: true }).check();
-  await sheet.getByRole("switch", { name: "גבינה", exact: true }).click();
+  const cheese = sheet.getByRole("switch", { name: "גבינה", exact: true });
+  await cheese.click();
+  await expect(sheet).toContainText("74.00");
+  // What an extra adds is read with its switch, as with a radio.
+  await expect(cheese).toHaveAccessibleDescription(/6\.00/);
+  // Both extras on: there is no other to choose, so nothing says to take
+  // one off. Off again, the burger is as it was.
+  const egg = sheet.getByRole("switch", { name: "ביצה", exact: true });
+  await egg.click();
+  await expect(egg).toHaveAttribute("aria-checked", "true");
+  await expect(sheet).toContainText("80.00");
+  await expect(
+    sheet.getByText(rt("app.orders.choice.full", { max: 2 })),
+  ).toHaveCount(0);
+  await egg.click();
+  await expect(egg).toHaveAttribute("aria-checked", "false");
   await expect(sheet).toContainText("74.00");
   await expect(add).toBeEnabled();
   await add.click();
@@ -4178,14 +4193,63 @@ test("the waiter mode demo's menu gives an item a group of choices", async ({
     .click();
   const sheet = page.getByRole("dialog");
   await sheet.getByRole("button", { name: m.groups.add }).click();
-  await sheet.getByLabel(m.group.name, { exact: true }).fill("רוטב");
+  const groupName = sheet.getByLabel(m.group.name, { exact: true });
+  await groupName.fill("רוטב");
+  const option = (n: number) =>
+    sheet.getByLabel(rt("app.orders.menu.group.option", { n }), {
+      exact: true,
+    });
+
+  // With no option, the save focuses "הוספת אפשרות", and the problem is
+  // read with it.
   await sheet
-    .getByLabel(rt("app.orders.menu.group.option", { n: 1 }), { exact: true })
-    .fill("עגבניות");
-  await sheet.getByRole("button", { name: m.group.addOption }).click();
+    .getByRole("button", {
+      name: rt("app.orders.menu.group.removeOption", {
+        name: rt("app.orders.menu.group.option", { n: 1 }),
+      }),
+    })
+    .click();
+  const addOption = sheet.getByRole("button", { name: m.group.addOption });
+  await sheet.getByRole("button", { name: m.sheet.save }).click();
+  await expect(addOption).toBeFocused();
+  await expect(addOption).toHaveAccessibleDescription(m.group.empty);
+  await addOption.click();
+  await expect(option(1)).toBeFocused();
+  await option(1).fill("עגבניות");
+  await addOption.click();
+  await option(2).fill("שמנת");
+  await addOption.click();
+  await option(3).fill("פסטו");
+
+  // "עד כמה בוחרים" cleared and typed again takes what is typed.
+  const most = sheet.getByLabel(m.group.most, { exact: true });
+  await most.fill("");
+  await expect(most).toHaveValue("");
+  await most.pressSequentially("2");
+  await expect(most).toHaveValue("2");
+  await expect(
+    sheet.getByText(
+      rt("app.orders.menu.sheet.rule.between", { min: 1, max: 2 }),
+    ),
+  ).toBeVisible();
   await sheet
-    .getByLabel(rt("app.orders.menu.group.option", { n: 2 }), { exact: true })
-    .fill("שמנת");
+    .getByRole("button", {
+      name: rt("app.orders.menu.group.less", { name: "רוטב" }),
+    })
+    .click();
+  await expect(most).toHaveValue("1");
+
+  // Removed, its way back names it, and says it goes with the save.
+  await sheet.getByRole("button", { name: m.group.remove }).click();
+  const restore = sheet.getByRole("button", {
+    name: new RegExp(`^${m.group.restore}.*רוטב`),
+  });
+  await expect(restore).toBeFocused();
+  await expect(restore).toHaveAccessibleDescription(
+    rt("app.orders.menu.group.removed", { name: "רוטב" }),
+  );
+  await restore.click();
+  await expect(groupName).toBeFocused();
   await expectCleanPage(page, "", true);
   await sheet.getByRole("button", { name: m.sheet.save }).click();
   await expect(sheet).toHaveCount(0);

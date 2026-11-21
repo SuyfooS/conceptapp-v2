@@ -89,6 +89,7 @@ export function ItemSheet({
           categories={categories}
           departments={departments}
           failure={failure}
+          saving={saving}
           onSave={onSave}
           onSoldOut={onSoldOut}
           onRemove={onRemove}
@@ -104,6 +105,7 @@ function ItemForm({
   categories,
   departments,
   failure,
+  saving,
   onSave,
   onSoldOut,
   onRemove,
@@ -114,6 +116,8 @@ function ItemForm({
   categories: MenuCategory[];
   departments: MenuDepartment[];
   failure: MenuActionFailure | null;
+  /** A save on its way: once it ends refused, its line takes the focus. */
+  saving: boolean;
   onSave: (change: Required<ItemChange>) => void;
   onSoldOut: (item: MenuItem, on: boolean) => void;
   onRemove: (item: MenuItem) => void;
@@ -131,11 +135,14 @@ function ItemForm({
   // SAME goes where its category goes.
   const [department, setDepartment] = useState(item?.department ?? SAME);
   const failureLine = useRef<HTMLDivElement>(null);
-  // Drawn again with the item as it is now: the line that says so takes the
-  // focus, so it is read before anything is saved again.
+  // Whatever was refused is said at the form's top, above the choices the
+  // save at the sheet's end may have been pressed under: the line takes the
+  // focus, so it is in sight and read before anything is saved again. Each
+  // refusal, the same one twice too, once its save ends; drawn again with
+  // the item as it is now ("changed"), as it comes.
   useEffect(() => {
-    if (failure === "changed") failureLine.current?.focus();
-  }, [failure]);
+    if (failure && !saving) failureLine.current?.focus();
+  }, [failure, saving]);
   const [problem, setProblem] = useState<"name" | "price" | null>(null);
   // The groups of choices as typed, and what stops their save.
   const [groups, setGroups] = useState(() =>

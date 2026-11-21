@@ -2,6 +2,7 @@
 
 import {
   type DraftLine,
+  groupFull,
   keepPicks,
   missingGroups,
   orderedPicks,
@@ -168,12 +169,12 @@ function ChoiceGroups({
           .filter((pick) => pick.group === group.id)
           .map((pick) => pick.option);
         const one = group.min === 1 && group.max === 1;
-        // At its most, past one: the rest wait until one is taken off. A
-        // group of up to one replaces its pick instead.
-        const full =
-          !one && group.max > 1 && mine.length >= group.max
-            ? t("choice.full", { max: group.max })
-            : null;
+        // At its most, with an option still off: the rest wait until one is
+        // taken off. A group of up to one replaces its pick instead, and one
+        // whose every option may be on has nothing to wait for.
+        const full = groupFull(group, kept)
+          ? t("choice.full", { max: group.max })
+          : null;
         return (
           <ChoiceGroup
             key={group.id}
@@ -257,7 +258,8 @@ function ChoiceFooter({
       ) : null}
       {missing.length > 0 ? (
         <p id={missingId} className="px-1 text-ink-2 text-sm">
-          {t("choice.missing", {
+          {/* Said for the action under it: adding a line, or saving one's. */}
+          {t(target.mode === "new" ? "choice.missing" : "choice.missingSave", {
             groups: missing.map((group) => group.name).join(", "),
           })}
         </p>

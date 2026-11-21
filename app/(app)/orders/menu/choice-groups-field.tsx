@@ -10,6 +10,7 @@ import {
   MENU_CAPS,
   MENU_TEXT_MAX,
   newGroupDraft,
+  typedMost,
 } from "@domain/order-taking";
 import { Button } from "@ui/button";
 import { FieldRow } from "@ui/field-row";
@@ -19,7 +20,7 @@ import { Switch } from "@ui/switch";
 import { ltrInputClass, TextField } from "@ui/text-field";
 import { Plus, Trash2, Undo2 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { type RefObject, useEffect, useId, useRef } from "react";
+import { type RefObject, useEffect, useId, useRef, useState } from "react";
 import { ltr, useShekels } from "./menu-parts";
 
 /** The field a problem is said under, by its card and option: what the save focuses. */
@@ -168,19 +169,28 @@ function GroupCard({
   const id = useId();
   const card = `g${index}`;
   const name = draft.name.trim() || t("group.unnamed");
+  // "עד כמה בוחרים" as typed, while it is empty or past the options for a
+  // moment (`typedMost`); null shows the draft's.
+  const [mostTyped, setMostTyped] = useState<string | null>(null);
 
   if (draft.removed) {
+    // The way back names its group, and the line beside it says what goes,
+    // so two removed groups are never two of the same "החזרה".
     return (
       <li className="flex min-h-14 items-center justify-between gap-3 rounded-card bg-elevated px-4 py-2 shadow-card">
-        <span className="text-ink-2">{t("group.removed", { name })}</span>
+        <span id={`${id}-removed`} className="text-ink-2">
+          {t("group.removed", { name })}
+        </span>
         <Button
           ref={field(`${card}:restore`)}
           variant="ghost"
           className="-me-2 shrink-0 px-3"
+          aria-describedby={`${id}-removed`}
           onClick={() => onChange({ ...draft, removed: false }, `${card}:name`)}
         >
           <Undo2 aria-hidden="true" className="rtl:-scale-x-100" />
           {t("group.restore")}
+          <span className="sr-only">{t("group.restoreFor", { name })}</span>
         </Button>
       </li>
     );
@@ -221,6 +231,15 @@ function GroupCard({
         return t("group.optionsFull");
     }
   };
+  // A problem of the whole card is said under its options, and read with
+  // the field the save focuses for it (`problemField`).
+  const cardProblemId = (problem: GroupDraftProblem) =>
+    `${id}-${problem.problem}`;
+  const describedBy = (key: string) =>
+    cardProblems
+      .filter((problem) => problemField(problem) === key)
+      .map(cardProblemId)
+      .join(" ") || undefined;
 
   return (
     <li className="flex flex-col gap-3 rounded-card bg-elevated p-4 shadow-card">
@@ -232,6 +251,7 @@ function GroupCard({
         maxLength={MENU_TEXT_MAX.group}
         autoComplete="off"
         error={nameProblem ? t("group.nameMissing") : undefined}
+        aria-describedby={describedBy(`${card}:name`)}
         onChange={(event) => onChange({ ...draft, name: event.target.value })}
       />
       <div className="-mx-4">
@@ -250,10 +270,17 @@ function GroupCard({
           <FieldRow label={t("group.most")} htmlFor={`${id}-most`}>
             <Stepper
               id={`${id}-most`}
-              value={String(most)}
+              value={mostTyped ?? String(most)}
               onValueChange={(value) => {
-                const next = Number(value);
-                if (Number.isInteger(next)) onChange({ ...draft, most: next });
+                const next = typedMost(value, draft.options.length);
+                setMostTyped(next === null ? value : null);
+                if (next !== null) onChange({ ...draft, most: next });
+              }}
+              onBlur={() => {
+                if (mostTyped === null) return;
+                const next = typedMost(mostTyped, draft.options.length, true);
+                setMostTyped(null);
+                if (next !== null) onChange({ ...draft, most: next });
               }}
               min={1}
               max={draft.options.length}
@@ -277,6 +304,8 @@ function GroupCard({
           const priceWrong = mine.some(
             (problem) => problem.problem === "priceUnclear",
           );
+          // The extras past the cap: said for the card, marked on its first price.
+          const overCap = describedBy(`${card}:o${place}:price`);
           const label = t("group.option", { n: place + 1 });
           const setOption = (patch: Partial<typeof option>) =>
             onChange({
@@ -311,6 +340,8 @@ function GroupCard({
                   label={t("group.price")}
                   hint={place === 0 ? t("group.priceHint") : undefined}
                   error={priceWrong ? t("priceUnclear") : undefined}
+                  aria-describedby={overCap}
+                  aria-invalid={priceWrong || overCap ? true : undefined}
                   dir="ltr"
                   inputMode="decimal"
                   autoComplete="off"
@@ -340,7 +371,11 @@ function GroupCard({
         })}
       </ol>
       {cardProblems.map((problem) => (
-        <p key={problem.problem} className="px-1 text-danger text-sm">
+        <p
+          key={problem.problem}
+          id={cardProblemId(problem)}
+          className="px-1 text-danger text-sm"
+        >
           {words(problem)}
         </p>
       ))}
@@ -350,6 +385,7 @@ function GroupCard({
             ref={field(`${card}:add`)}
             variant="ghost"
             className="-ms-2 px-3"
+            aria-describedby={describedBy(`${card}:add`)}
             onClick={() =>
               onChange(
                 {

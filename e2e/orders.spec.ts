@@ -1341,9 +1341,10 @@ test("a doneness gone from the menu meanwhile: the send says so, and the line as
     });
     await choicesOf(page, "המבורגר").click();
     const sheet = choiceSheet(page, "המבורגר");
+    // Said for its save: nothing is added from a line.
     await expect(
       sheet.getByText(
-        rt("app.orders.choice.missing", { groups: "מידת עשייה" }),
+        rt("app.orders.choice.missingSave", { groups: "מידת עשייה" }),
       ),
     ).toBeVisible();
     await choose(sheet, "מדיום וול");

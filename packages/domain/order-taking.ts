@@ -609,6 +609,27 @@ export const draftMost = (group: Pick<GroupDraft, "most" | "options">) =>
   );
 
 /**
+ * "עד כמה בוחרים" as typed into its field, for a group of `options`: a whole
+ * number from one to the options is the most at once. Anything else (empty,
+ * or past the options, for a moment while someone types) is null, and the
+ * field keeps what was typed until it loses the focus; `settled`, a whole
+ * number then takes the nearest the group allows, and anything else stays
+ * null, so the most stays as it was.
+ */
+export function typedMost(
+  typed: string,
+  options: number,
+  settled = false,
+): number | null {
+  const text = typed.trim();
+  const most = Number(text);
+  if (text === "" || !Number.isInteger(most)) return null;
+  const top = Math.max(1, options);
+  if (most >= 1 && most <= top) return most;
+  return settled ? Math.min(Math.max(1, most), top) : null;
+}
+
+/**
  * The groups a save sends, from their cards: names trimmed, a blank price
  * none, a group required picking at least one (a saved least above one kept,
  * up to its most) and its most from one to its options. Removed cards go.

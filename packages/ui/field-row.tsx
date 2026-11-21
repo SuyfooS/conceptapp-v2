@@ -24,6 +24,11 @@ export type FieldRowProps = {
   /** A line under the label, for what the setting does. */
   hint?: ReactNode;
   /**
+   * The hint's id, for the control's `aria-describedby`, so it is read with
+   * the control: what a choice adds to the price, say.
+   */
+  hintId?: string;
+  /**
    * The id of the input in the row. Leave it out for a control that names
    * itself, such as a menu: the label is then a plain line.
    */
@@ -41,6 +46,7 @@ export type FieldRowProps = {
 export function FieldRow({
   label,
   hint,
+  hintId,
   htmlFor,
   children,
   className,
@@ -64,7 +70,9 @@ export function FieldRow({
       {hint ? (
         <div className="flex min-w-0 flex-1 flex-col py-1.5">
           {name}
-          <p className="text-ink-2 text-sm">{hint}</p>
+          <p id={hintId} className="text-ink-2 text-sm">
+            {hint}
+          </p>
         </div>
       ) : (
         name
