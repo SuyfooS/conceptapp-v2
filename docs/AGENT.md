@@ -385,9 +385,12 @@ The design rework is under way in day sessions with Orel, toward `docs/design/ta
   demo's groups and words only): the menu editor's choices, the choice sheet, choices in
   the draft, on the tickets and the till. P7 (offline) is built, and so is P8a
   (`20261124000100_order_taking_stations.sql`): a tablet locked as the kitchen's screen or
-  the till, on the clock station's registry (`docs/order-taking-setup.md`). P8b onward (the
-  ready push, "the screen isn't connected") is built by day, a phase per PR; a nightly run
-  doesn't start a phase.
+  the till, on the clock station's registry (`docs/order-taking-setup.md`). P8b is built
+  too (`20261125000100_order_taking_notifications.sql`): the group `orders`, "מוכן" to the
+  round's sender (its push about 11 seconds on, sent by the app, read instead when the
+  open mode shows it), "המסך לא מחובר" from the minute job, quiet hours let through during
+  a shift (decision 8), and the badge on the order and "ההזמנות שלי". P9 (a first real
+  place) waits for Orel and a real business; a nightly run doesn't start a phase.
 - **Not in the pilot, do not start:** reservations, storefront, the public page.
 
 ## Where things live

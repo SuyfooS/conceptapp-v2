@@ -17,6 +17,10 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t("metaTitle") };
 }
 
+// "מוכן" is pressed here, and its action sends the sender's push itself
+// about 11 seconds later (P8b): its Server Actions get the time.
+export const maxDuration = 30;
+
 // Preparing on a phone (waiter mode P4): the tickets of the departments the
 // person prepares for. Reading it marks what reached their departments as
 // seen, so only this screen and the mode's sync read it, never Home. For

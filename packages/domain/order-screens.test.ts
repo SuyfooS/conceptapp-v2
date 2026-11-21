@@ -37,6 +37,7 @@ import {
   roundLinesOf,
   roundOf,
   samePicks,
+  screenOff,
   sendTarget,
   staleChoiceLines,
   ticketAge,
@@ -740,6 +741,73 @@ describe("a ticket", () => {
     }
     // A ticket whose one line was cancelled: no badge, and still "sent".
     expect(ticketStage({ status: "new", kitchenSeenAt: null })).toBe("sent");
+  });
+
+  it("says its prep screen isn't connected once a running one hasn't fetched it in 2 minutes (P8b)", () => {
+    const kitchen = {
+      status: "new" as const,
+      kitchenSeenAt: null,
+      lines: 2,
+      department: KITCHEN,
+      held: false,
+    };
+    const screen = (sentMinutesAgo: number, screens = [KITCHEN]) => ({
+      sentAt: minutesAgo(sentMinutesAgo),
+      screens,
+      now: NOW,
+    });
+    expect(screenOff(kitchen, screen(1.99))).toBe(false);
+    expect(screenOff(kitchen, screen(2))).toBe(true);
+    expect(ticketBadge(kitchen, screen(2))).toBe("screenOff");
+    expect(ticketBadge(kitchen, screen(1.99))).toBe("sent");
+    // Fetched, ready or with nothing live: as before.
+    expect(
+      ticketBadge({ ...kitchen, kitchenSeenAt: minutesAgo(1) }, screen(5)),
+    ).toBe("onScreen");
+    expect(ticketBadge({ ...kitchen, status: "ready" }, screen(5))).toBe(
+      "ready",
+    );
+    expect(ticketBadge({ ...kitchen, lines: 0 }, screen(5))).toBe("none");
+    // No running screen for its department: never.
+    expect(ticketBadge(kitchen, screen(5, [BAR]))).toBe("sent");
+    expect(ticketBadge(kitchen, screen(5, []))).toBe("sent");
+    // An every-department screen counts for each (order_mode lists them all).
+    expect(
+      ticketBadge({ ...kitchen, department: BAR }, screen(5, [KITCHEN, BAR])),
+    ).toBe("screenOff");
+    // Without what says so, or its department: the stage alone.
+    expect(ticketBadge(kitchen)).toBe("sent");
+    expect(
+      ticketBadge({ status: "new", kitchenSeenAt: null, lines: 2 }, screen(5)),
+    ).toBe("sent");
+  });
+
+  it("counts a called block's 2 minutes from its call, and never without it", () => {
+    const called = {
+      status: "new" as const,
+      kitchenSeenAt: null,
+      lines: 1,
+      department: KITCHEN,
+      held: true,
+    };
+    const sentLongAgo = {
+      sentAt: minutesAgo(30),
+      screens: [KITCHEN],
+      now: NOW,
+    };
+    expect(screenOff({ ...called, firedAt: minutesAgo(1) }, sentLongAgo)).toBe(
+      false,
+    );
+    expect(screenOff({ ...called, firedAt: minutesAgo(2) }, sentLongAgo)).toBe(
+      true,
+    );
+    // One's own rounds don't say when it was called.
+    expect(screenOff(called, sentLongAgo)).toBe(false);
+    expect(screenOff({ ...called, firedAt: null }, sentLongAgo)).toBe(false);
+    // Still held: waiting to be called.
+    expect(ticketBadge({ ...called, status: "held" }, sentLongAgo)).toBe(
+      "held",
+    );
   });
 
   it("is calm, late from the late mark, and overdue from twice it", () => {

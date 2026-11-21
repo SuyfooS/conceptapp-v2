@@ -800,7 +800,8 @@ export const favouritesSchema = z.object({
  * whether they take orders, run them, and the clock's refusal for a taker
  * off a shift; the live departments they prepare for that an item goes to;
  * their own tickets of today ready and being made; what waits in those
- * departments; how many items are sold out. Counts only.
+ * departments; how many items are sold out; and the live departments a
+ * running prep screen shows (P8b). Counts and ids only.
  */
 export type OrderMode = {
   version: number;
@@ -813,9 +814,16 @@ export type OrderMode = {
   making: number;
   waiting: { department: string; count: number }[];
   soldOut: number;
+  /**
+   * The live departments a running prep screen shows, its own or every
+   * one's: a ticket of one that no screen fetched in 2 minutes says "המסך
+   * לא מחובר" (P8b).
+   */
+  screens: string[];
 };
 
-// Strict, so a person or a price that reached it fails to parse.
+// Strict, so a person or a price that reached it fails to parse. `screens`
+// is none until P8b's migration reaches the project.
 export const orderModeSchema = z
   .strictObject({
     version,
@@ -828,6 +836,7 @@ export const orderModeSchema = z
     making: count,
     waiting: z.array(z.strictObject({ department: uuid, count })),
     soldOut: count,
+    screens: z.array(uuid).default([]),
   })
   .transform(
     (mode): OrderMode => ({

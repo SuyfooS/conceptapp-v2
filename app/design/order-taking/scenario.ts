@@ -65,6 +65,11 @@ export type DemoData = {
   refusals: Record<string, SendRefusal>;
   /** One of Shiran's tickets turns ready this long after opening (`?state=readyNow`). */
   readyIn: number | null;
+  /**
+   * The departments a running prep screen shows (P8b): none, but the
+   * kitchen's in `?state=screenOff`.
+   */
+  screens: string[];
 };
 
 /** The evening at 20:42, as the demo opens without a state. */
@@ -83,6 +88,7 @@ const service = (): DemoData => ({
   lost: null,
   refusals: {},
   readyIn: null,
+  screens: [],
 });
 
 /**
@@ -119,7 +125,9 @@ const TABLE_6 = "place:table-6";
  * gone from the menu while table 6's draft holds one; `asking` table 6's
  * round that hasn't gone for 12 minutes, which asks (P7); `offline` no
  * connection, table 6's round waiting for one; `lost` the notice of table
- * 6's round taken off the phone as the account signed out.
+ * 6's round taken off the phone as the account signed out; `screenOff` a
+ * kitchen screen running that never fetched table 4's starters, six minutes
+ * on (P8b).
  */
 export function scenario(state: string | null): DemoData {
   const base = service();
@@ -251,6 +259,22 @@ export function scenario(state: string | null): DemoData {
     }
     case "fixed":
       return { ...base, orders: fixedEvening(base.orders) };
+    case "screenOff":
+      return {
+        ...base,
+        screens: ["kitchen"],
+        orders: base.orders.map((order) => ({
+          ...order,
+          rounds: order.rounds.map((round) => ({
+            ...round,
+            tickets: round.tickets.map((ticket) =>
+              ticket.id === "t-4a-kitchen"
+                ? { ...ticket, seen: false }
+                : ticket,
+            ),
+          })),
+        })),
+      };
     case "reopenTaken":
       return { ...base, orders: [...base.orders, demoTableThreeAgain()] };
     case "choices":

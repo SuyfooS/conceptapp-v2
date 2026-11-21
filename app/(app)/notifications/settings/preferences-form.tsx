@@ -97,6 +97,7 @@ export function PreferencesForm({
   preferences,
   groups,
   always = false,
+  shift = false,
   device,
   save,
   now,
@@ -106,6 +107,8 @@ export function PreferencesForm({
   groups: readonly NotificationGroup[];
   /** Lines about pay reach this person's phone whatever they switch off (`alwaysOnPhone`). */
   always?: boolean;
+  /** Ready orders reach the phone in quiet hours during a shift (`shiftSkipsQuiet`). */
+  shift?: boolean;
   device?: ReactNode;
   save: SavePreferences;
   /** ISO timestamp of the moment the screen is read, for "quiet now". */
@@ -209,6 +212,7 @@ export function PreferencesForm({
           <QuietSection
             quiet={shown.quiet}
             until={quietUntil ? timeIn(quietUntil, shown.timeZone) : null}
+            shift={shift}
             onSwitch={(on) => setQuiet(on ? lastQuiet.current : null)}
             onChange={setQuiet}
           />
@@ -287,11 +291,13 @@ function GroupRow({
 /**
  * Quiet hours: off until switched on, then the hours last chosen here, or
  * 22:00 to 07:00. Each time saves once it is whole and isn't the other one;
- * "quiet now" says until when, while it is.
+ * "quiet now" says until when, while it is. Where ready orders get through
+ * during a shift, one more line says so, whether they are on or not.
  */
 function QuietSection({
   quiet,
   until,
+  shift,
   onSwitch,
   onChange,
   className,
@@ -299,6 +305,8 @@ function QuietSection({
   quiet: QuietHours | null;
   /** "HH:MM" quiet hours end at, while it is quiet now. */
   until: string | null;
+  /** Ready orders reach the phone in quiet hours during a shift. */
+  shift: boolean;
   onSwitch: (on: boolean) => void;
   onChange: (hours: QuietHours) => void;
   className?: string;
@@ -322,6 +330,9 @@ function QuietSection({
         </p>
       ) : null}
       <p className="px-1 text-ink-2 text-sm">{t("quiet.note")}</p>
+      {shift ? (
+        <p className="px-1 text-ink-2 text-sm">{t("quiet.shift")}</p>
+      ) : null}
     </PageSection>
   );
 }

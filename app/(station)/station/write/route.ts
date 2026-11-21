@@ -7,6 +7,7 @@ import {
   stationUndoCloseOrder,
 } from "@db/order-stations";
 import { hasSessionCookie } from "@db/supabase/server";
+import { ORDER_READY_PUSH_WAIT_MS } from "@domain/notifications";
 import {
   STATION_WRITE_MAX,
   type StationWrite,
@@ -17,6 +18,11 @@ import {
 } from "@domain/order-stations";
 import { deviceStation } from "@/app/(app)/clock/station/station";
 import { sameOriginRequest } from "@/app/origin";
+import { pushSoon } from "@/app/push/server";
+
+// A kitchen's "מוכן" sends the sender's push itself about 11 seconds later
+// (P8b): the route gets the time.
+export const maxDuration = 30;
 
 /** Never kept by a cache on the way. */
 function answer(body: StationWriteAnswer, status = 200): Response {
@@ -85,7 +91,9 @@ function written(token: string, body: StationWrite): Promise<StationWritten> {
  * own kind (a till marks nothing ready: 409 `notOrders`). The same gates as
  * the reads: the station's own page only, nobody signed in on the device, a
  * running station. Outside the proxy's matcher. The database decides each
- * write as it decides a person's.
+ * write as it decides a person's. A ticket made ready tells its sender
+ * (P8b), whose push goes 10 seconds late unless an open mode read it first:
+ * sent from here once it is due.
  */
 export async function POST(request: Request): Promise<Response> {
   if (!(await sameOriginRequest(request))) return refused("notStation");
@@ -104,7 +112,11 @@ export async function POST(request: Request): Promise<Response> {
   if (held.station.shows !== writeKind(body)) return refused("notOrders");
   try {
     const result = await written(held.token, body);
-    return result.ok ? answer({ ok: true }) : refused(result.failure);
+    if (!result.ok) return refused(result.failure);
+    if (body.do === "ready" && body.ready) {
+      pushSoon({ waitMs: ORDER_READY_PUSH_WAIT_MS });
+    }
+    return answer({ ok: true });
   } catch (error) {
     console.error("a station's write failed", (error as Error).message);
     return refused("failed");

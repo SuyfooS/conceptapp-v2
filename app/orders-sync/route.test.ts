@@ -6,7 +6,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // and one's own rounds only when it found something new; 204 when nothing
 // asked moved; 404 while the module is off; 409 for a taker off a shift; the
 // order read whole only when the orders moved; the smallest version answered;
-// nothing kept on the way.
+// nothing kept on the way. One's own rounds that came back read their ready
+// tickets' lines (P8b), never while viewing, and a failure there still
+// answers.
 
 vi.mock("server-only", () => ({}));
 
@@ -23,6 +25,7 @@ const mocks = vi.hoisted(() => ({
   getMyOrders: vi.fn(),
   getOrderDetail: vi.fn(),
   getMenu: vi.fn(),
+  readOrderReady: vi.fn(),
   order: [] as string[],
 }));
 vi.mock("@/app/origin", () => ({ sameOriginRequest: mocks.sameOrigin }));
@@ -33,6 +36,7 @@ vi.mock("@db/orders", () => ({
   getOrderFloor: mocks.getOrderFloor,
   getMyOrders: mocks.getMyOrders,
   getOrderDetail: mocks.getOrderDetail,
+  readOrderReady: mocks.readOrderReady,
 }));
 
 const { GET } = await import("./route");
@@ -87,6 +91,7 @@ beforeEach(() => {
   });
   mocks.getMyOrders.mockResolvedValue(mine(10));
   mocks.getMenu.mockResolvedValue("same");
+  mocks.readOrderReady.mockResolvedValue(0);
 });
 
 describe("the mode's sync", () => {
@@ -172,5 +177,85 @@ describe("the mode's sync", () => {
     mocks.getMenu.mockClear();
     await ask("f=1");
     expect(mocks.getMenu).not.toHaveBeenCalled();
+  });
+});
+
+describe("the ready lines a sync shows (P8b)", () => {
+  const READY = "60000000-0000-4000-a000-000000000001";
+  const GONE = "60000000-0000-4000-a000-000000000002";
+  const MAKING = "60000000-0000-4000-a000-000000000003";
+  const KITCHEN = "70000000-0000-4000-a000-000000000001";
+  const ticket = (id: string, status: string, lines: number) => ({
+    id,
+    department: KITCHEN,
+    status,
+    held: false,
+    kitchenSeenAt: T,
+    readyAt: status === "ready" ? T : null,
+    servedAt: null,
+    lines,
+    items: [],
+  });
+  const withReady = (version: number) => ({
+    ...mine(version),
+    rounds: [
+      {
+        id: "60000000-0000-4000-a000-000000000010",
+        order: ORDER,
+        placeName: "4",
+        takeaway: null,
+        orderStatus: "open",
+        sentAt: T,
+        tickets: [
+          ticket(READY, "ready", 2),
+          // Every line taken back: nothing to serve.
+          ticket(GONE, "ready", 0),
+          ticket(MAKING, "new", 1),
+        ],
+      },
+    ],
+  });
+
+  it("reads the person's own ready tickets' lines when their rounds came back", async () => {
+    mocks.getMyOrders.mockResolvedValue(withReady(10));
+    const answer = await ask("v=5&y=1");
+    expect(answer.status).toBe(200);
+    expect(mocks.readOrderReady).toHaveBeenCalledWith(PERSON, BUSINESS, [
+      READY,
+    ]);
+  });
+
+  it("reads none while viewing, nor when their rounds weren't asked or didn't move", async () => {
+    mocks.getMyOrders.mockResolvedValue(withReady(10));
+    mocks.getOwnPlace.mockResolvedValue({
+      userId: PERSON,
+      viewing: true,
+      place: null,
+    });
+    expect((await ask("v=5&y=1")).status).toBe(200);
+    mocks.getOwnPlace.mockResolvedValue({
+      userId: PERSON,
+      viewing: false,
+      place: null,
+    });
+    await ask("v=5&f=1");
+    mocks.getMyOrders.mockResolvedValue("same");
+    mocks.getOrderFloor.mockResolvedValue("same");
+    expect((await ask("v=10&f=1&y=1")).status).toBe(204);
+    expect(mocks.readOrderReady).not.toHaveBeenCalled();
+  });
+
+  it("still answers when reading them failed, logging the code alone", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.getMyOrders.mockResolvedValue(withReady(10));
+    mocks.readOrderReady.mockRejectedValue(
+      Object.assign(new Error("secret detail"), { code: "XX000" }),
+    );
+    const answer = await ask("v=5&y=1");
+    expect(answer.status).toBe(200);
+    expect((await answer.json()).mine.version).toBe(10);
+    expect(log).toHaveBeenCalledWith("reading the ready lines failed", "XX000");
+    expect(JSON.stringify(log.mock.calls)).not.toContain("secret detail");
+    log.mockRestore();
   });
 });

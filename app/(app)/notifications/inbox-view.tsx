@@ -32,6 +32,7 @@ import type { ReactNode } from "react";
 import { type AppWording, translator } from "../wording";
 import { GROUP_ICONS } from "./group-icons";
 import { InboxOpen, InboxRow, ReadAllButton } from "./inbox-row";
+import { orderNoticeWords } from "./order-notice-words";
 import { outOfRangeTitle } from "./range-words";
 import { roleChangeWords } from "./role-change-words";
 import { NotificationSettingsLink } from "./settings-link";
@@ -42,6 +43,11 @@ export type InboxPaths = {
   home: string;
   /** Prefixes where a line leads on the demo, where lines are plain links. */
   base: string;
+  /**
+   * On the demo, where a line leads that `base` alone doesn't reach (an
+   * order's, into the order twin), or null to prefix it as the rest.
+   */
+  lead?: (href: `/${string}`) => string | null;
 };
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
@@ -711,6 +717,18 @@ export function InboxView({
           ],
         };
       }
+      // A ticket the reader sent (waiter mode P8b): its place in the
+      // business's words and its department, then how many items wait, what
+      // to do about the screen, or that it no longer waits.
+      case "order.ready":
+      case "order.unseen": {
+        const said = orderNoticeWords(line, settled, wording);
+        return {
+          title: said.title,
+          shift: null,
+          notes: said.note ? [said.note] : [],
+        };
+      }
       case "push.test":
         return {
           title: t("kinds.push.test.title"),
@@ -747,6 +765,10 @@ export function InboxView({
       };
     });
 
+  /** Where a line leads: in the app, or on the demo under its prefix. */
+  const hrefOf = (entry: NotificationEntry) =>
+    paths.lead?.(entry.href) ?? `${paths.base}${entry.href}`;
+
   const unreadMark = (entry: NotificationEntry) =>
     entry.read ? null : <span className="sr-only">{t("inbox.unread")}</span>;
   const unreadDot = (entry: NotificationEntry) =>
@@ -774,7 +796,7 @@ export function InboxView({
           <InboxRow
             key={entry.id}
             id={entry.id}
-            href={`${paths.base}${entry.href}`}
+            href={hrefOf(entry)}
             open={open}
             leading={leading}
             title={title}
@@ -839,7 +861,7 @@ export function InboxView({
               <td className={td}>
                 <InboxOpen
                   id={entry.id}
-                  href={`${paths.base}${entry.href}`}
+                  href={hrefOf(entry)}
                   open={open}
                   className="group flex min-h-11 w-full flex-col justify-center gap-0.5 rounded-control text-start focus-visible:outline-2 focus-visible:outline-accent"
                 >

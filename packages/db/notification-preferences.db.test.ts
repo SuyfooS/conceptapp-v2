@@ -4,8 +4,10 @@ import {
   NOTIFICATION_GROUPS,
   NOTIFICATION_KIND_KEYS,
   notificationGroupOf,
+  ORDER_NOTICE_RULES,
   type QuietHours,
   quietEnd,
+  SHIFT_GROUPS,
 } from "@domain/notifications";
 import postgres from "postgres";
 import { afterAll, describe, expect, it } from "vitest";
@@ -16,7 +18,9 @@ import { afterAll, describe, expect, it } from "vitest";
  * (private.notification_group, which decides what a group switched off keeps
  * off the phone, against @domain/notifications), the groups themselves, the
  * defaults, and when quiet hours end (private.quiet_end against quietEnd),
- * across midnight and Israel's clock changes. pgTAP can't read TypeScript, so
+ * across midnight and Israel's clock changes; and, since waiter mode P8b,
+ * the groups a shift lets through quiet hours (private.shift_groups) and the
+ * order lines' times (private.order_notice_rules). pgTAP can't read TypeScript, so
  * this asks SQL. Needs the local database (`pnpm db:start`); run with
  * `pnpm test:db`.
  */
@@ -135,5 +139,41 @@ describe("quiet hours", () => {
         private.quiet_end(null::time, null::time, ${ZONE}::text, now()) as none,
         private.quiet_end('07:00'::time, '07:00'::time, ${ZONE}::text, now()) as same`;
     expect(row).toEqual({ none: null, same: null });
+  });
+});
+
+// Waiter mode P8b: the groups a shift lets through quiet hours (decision 8),
+// and the order lines' own times.
+describe("the lines about orders", () => {
+  it("let the same groups through quiet hours during a shift", async () => {
+    const [row] = await sql<{ groups: unknown }[]>`
+      select to_jsonb(private.shift_groups()) as groups`;
+    expect(row?.groups).toEqual([...SHIFT_GROUPS]);
+  });
+
+  it("keep the same times in the database as in the app", async () => {
+    const [row] = await sql<
+      {
+        ready_delay: number;
+        unseen_after: number;
+        unseen_window: number;
+        push_for: number;
+        kept: number;
+      }[]
+    >`
+      select
+        extract(epoch from r.ready_delay)::integer as ready_delay,
+        extract(epoch from r.unseen_after)::integer as unseen_after,
+        extract(epoch from r.unseen_window)::integer as unseen_window,
+        extract(epoch from r.push_for)::integer as push_for,
+        extract(epoch from r.kept)::integer as kept
+      from private.order_notice_rules() r`;
+    expect({ ...row }).toEqual({
+      ready_delay: ORDER_NOTICE_RULES.readyPushDelaySeconds,
+      unseen_after: ORDER_NOTICE_RULES.unseenAfterMinutes * 60,
+      unseen_window: ORDER_NOTICE_RULES.unseenWindowMinutes * 60,
+      push_for: ORDER_NOTICE_RULES.pushForMinutes * 60,
+      kept: ORDER_NOTICE_RULES.keptDays * 24 * 60 * 60,
+    });
   });
 });

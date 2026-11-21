@@ -269,8 +269,16 @@ export function Rounds({
                             status,
                             kitchenSeenAt: ticket.kitchenSeenAt,
                             lines: liveCount,
+                            department: ticket.department,
+                            held: ticket.held,
+                            firedAt: ticket.firedAt,
                           }}
                           department={name}
+                          screen={{
+                            sentAt: round.sentAt,
+                            screens: frame.screens,
+                            now,
+                          }}
                         />
                       </div>
                       <ul className="flex flex-col divide-y divide-line">

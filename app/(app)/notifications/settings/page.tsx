@@ -1,7 +1,11 @@
 import { getNotificationPreferences } from "@db/notification-preferences";
 import { pushAllowed } from "@db/push/devices";
 import { pushConfig } from "@db/push/env";
-import { alwaysOnPhone, groupsFor } from "@domain/notifications";
+import {
+  alwaysOnPhone,
+  groupsFor,
+  shiftSkipsQuiet,
+} from "@domain/notifications";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { currentWording } from "../../current-wording";
@@ -42,11 +46,13 @@ export default async function NotificationSettingsPage() {
   const allowed = await pushAllowed(member.userId);
   const preferences =
     allowed === false ? null : await getNotificationPreferences();
+  const groups = groupsFor(membership.role, enabled, membership.perms);
   return (
     <NotificationSettingsView
       preferences={preferences}
-      groups={groupsFor(membership.role, enabled, membership.perms)}
+      groups={groups}
       always={alwaysOnPhone(membership.role, enabled).length > 0}
+      shift={shiftSkipsQuiet(groups, enabled)}
       device={
         push && allowed === true ? (
           <PushSwitch publicKey={push.publicKey} demo={false} />

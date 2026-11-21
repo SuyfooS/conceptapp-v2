@@ -1,5 +1,6 @@
 "use client";
 
+import type { TicketScreen } from "@domain/order-screens";
 import type { MyOrders } from "@domain/orders";
 import { Button } from "@ui/button";
 import { Card } from "@ui/card";
@@ -64,6 +65,14 @@ export function MineView({ mine }: { mine: MyOrders | null }) {
         department: department(ticket.department),
       })),
   );
+  // What says whether a ticket's prep screen is not connected (P8b). One's
+  // own rounds don't say when a held block was called, so a called block
+  // never says so here.
+  const screenOf = (s: Sent): TicketScreen => ({
+    sentAt: s.round.sentAt,
+    screens: frame.screens,
+    now,
+  });
   const ready = sent.filter((s) => s.ticket.status === "ready");
   const making = sent.filter(
     (s) => s.ticket.status === "new" || s.ticket.status === "held",
@@ -169,7 +178,11 @@ export function MineView({ mine }: { mine: MyOrders | null }) {
         >
           {t("mine.cardTitle", { place: s.place, department: s.department })}
         </Link>
-        <TicketBadgeView ticket={s.ticket} department={s.department} />
+        <TicketBadgeView
+          ticket={s.ticket}
+          department={s.department}
+          screen={screenOf(s)}
+        />
       </div>
       <p className="-mt-2 text-ink-2 text-sm">
         {t.rich("mine.sentAt", {
@@ -257,6 +270,7 @@ export function MineView({ mine }: { mine: MyOrders | null }) {
                     <TicketBadgeView
                       ticket={s.ticket}
                       department={s.department}
+                      screen={screenOf(s)}
                     />
                   ),
                   serve: serveButton(s),

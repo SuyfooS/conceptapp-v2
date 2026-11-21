@@ -3,6 +3,7 @@ import type {
   NotificationRow,
   NotificationShift,
 } from "@domain/notifications";
+import { orderDemoDepartments } from "../../order-taking/data";
 import { byId, demoShiftPatterns, teamMembers } from "../data";
 
 // Shiran's notifications in the demo restaurant on Tuesday 3 November 2026 at
@@ -197,5 +198,111 @@ export const demoEarlier: NotificationRow[] = [
     createdAt: "2026-10-22T09:00:00.000Z",
     readAt: "2026-10-22T10:00:00.000Z",
     resolvedAt: null,
+  },
+];
+
+// ---------------------------------------------------------------------------
+// The lines about orders (waiter mode P8b), on the order twin's evening of
+// Thursday 19 November 2026 at 20:42: Shiran runs orders and is on the
+// clock, and sent tables 4 and 11 (app/design/order-taking/data.ts).
+
+/** The moment the order lines are read: the order twin's evening. */
+export const demoOrderInboxNow = "2026-11-19T18:42:00.000Z";
+
+const ORDER_IDS = {
+  order4: "b0000000-0000-4000-8000-0000000000a4",
+  order11: "b0000000-0000-4000-8000-0000000000b1",
+  table4: "b0000000-0000-4000-8000-0000000000c4",
+  table11: "b0000000-0000-4000-8000-0000000000d1",
+  kitchen: "b0000000-0000-4000-8000-0000000000e1",
+  bar: "b0000000-0000-4000-8000-0000000000e2",
+} as const;
+
+const departmentName = (key: string) =>
+  orderDemoDepartments.find((d) => d.key === key)?.name ?? null;
+
+const orderLine = (n: number) => `a0000000-0000-4000-8000-0000000000f${n}`;
+
+/**
+ * Where an order line leads in the order twin: table 4 with its kitchen
+ * screen not connected, table 11 as the evening runs, and one's own orders.
+ */
+export function orderTwinLead(href: `/${string}`): string | null {
+  const base = "/design/order-taking";
+  if (href === `/orders/place/${ORDER_IDS.table4}`) {
+    return `${base}/floor/order?place=table-4&state=screenOff`;
+  }
+  if (href === `/orders/place/${ORDER_IDS.table11}`) {
+    return `${base}/floor/order?place=table-11&state=service`;
+  }
+  if (href.startsWith("/orders")) return `${base}/mine?state=service`;
+  return null;
+}
+
+/**
+ * Unread: no kitchen screen fetched table 4's starters (from the app), and
+ * table 11's desserts are ready (Noa marked them).
+ */
+export const demoOrderUnread: NotificationRow[] = [
+  {
+    id: orderLine(1),
+    kind: "order.unseen",
+    params: {
+      order: ORDER_IDS.order4,
+      ticket: "b0000000-0000-4000-8000-0000000000f1",
+      place: ORDER_IDS.table4,
+      placeName: "4",
+      takeaway: null,
+      department: ORDER_IDS.kitchen,
+      departmentName: departmentName("kitchen"),
+      count: 2,
+    },
+    actorId: null,
+    createdAt: "2026-11-19T18:38:00.000Z",
+    readAt: null,
+    resolvedAt: null,
+  },
+  {
+    id: orderLine(2),
+    kind: "order.ready",
+    params: {
+      order: ORDER_IDS.order11,
+      ticket: "b0000000-0000-4000-8000-0000000000f2",
+      place: ORDER_IDS.table11,
+      placeName: "11",
+      takeaway: null,
+      department: ORDER_IDS.kitchen,
+      departmentName: departmentName("kitchen"),
+      count: 2,
+    },
+    actorId: PEOPLE.noa,
+    createdAt: "2026-11-19T18:40:00.000Z",
+    readAt: null,
+    resolvedAt: null,
+  },
+];
+
+/**
+ * Read and settled: table 4's beers, marked ready on the bar's screen (so by
+ * nobody) and served since.
+ */
+export const demoOrderEarlier: NotificationRow[] = [
+  {
+    id: orderLine(3),
+    kind: "order.ready",
+    params: {
+      order: ORDER_IDS.order4,
+      ticket: "b0000000-0000-4000-8000-0000000000f3",
+      place: ORDER_IDS.table4,
+      placeName: "4",
+      takeaway: null,
+      department: ORDER_IDS.bar,
+      departmentName: departmentName("bar"),
+      count: 2,
+    },
+    actorId: null,
+    createdAt: "2026-11-19T18:37:00.000Z",
+    readAt: "2026-11-19T18:39:00.000Z",
+    resolvedAt: "2026-11-19T18:39:00.000Z",
   },
 ];

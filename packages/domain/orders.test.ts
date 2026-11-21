@@ -496,6 +496,20 @@ describe("the mode's reads (P4)", () => {
     ).toBe(false);
   });
 
+  it("read the departments a running prep screen shows, none before P8b's migration", () => {
+    expect(orderModeSchema.parse(mode).screens).toEqual([]);
+    expect(
+      orderModeSchema.parse({ ...mode, screens: [OTHER] }).screens,
+    ).toEqual([OTHER]);
+    expect(
+      orderModeSchema.safeParse({ ...mode, screens: ["kitchen"] }).success,
+    ).toBe(false);
+    // Still strict.
+    expect(
+      orderModeSchema.safeParse({ ...mode, screens: [], stations: 1 }).success,
+    ).toBe(false);
+  });
+
   const ticket = {
     id: ID,
     department: OTHER,

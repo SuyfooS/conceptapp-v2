@@ -25,8 +25,10 @@ const mocks = vi.hoisted(() => ({
   closeOrder: vi.fn(),
   reopenOrder: vi.fn(),
   undoCloseOrder: vi.fn(),
+  pushSoon: vi.fn(),
 }));
 vi.mock("./orders-access", () => ({ ordersAccess: mocks.ordersAccess }));
+vi.mock("../../push/server", () => ({ pushSoon: mocks.pushSoon }));
 vi.mock("@db/orders", () => ({
   serveOrderTicket: mocks.serveOrderTicket,
   setOrderTicketReady: mocks.setOrderTicketReady,
@@ -191,6 +193,27 @@ describe("the mode's writes", () => {
       ok: false,
       failure: "window",
     });
+  });
+
+  it("send the sender's push themselves once a ready ticket's is due, and only then (P8b)", async () => {
+    asking();
+    await setReadyAction(PLACE, TICKET, true);
+    expect(mocks.pushSoon).toHaveBeenCalledTimes(1);
+    expect(mocks.pushSoon).toHaveBeenCalledWith({ waitMs: 11_000 });
+    mocks.pushSoon.mockClear();
+    // Put back: nothing to tell.
+    await setReadyAction(PLACE, TICKET, false);
+    // Refused: nothing was written.
+    mocks.setOrderTicketReady.mockResolvedValue({
+      ok: false,
+      failure: "notYours",
+      items: [],
+      order: null,
+    });
+    await setReadyAction(PLACE, TICKET, true);
+    asking(true);
+    await setReadyAction(PLACE, TICKET, true);
+    expect(mocks.pushSoon).not.toHaveBeenCalled();
   });
 });
 

@@ -64,6 +64,10 @@ const SECTIONS = [
       { key: "open", href: `${BASE}/floor/order?place=table-4&state=service` },
       { key: "fixed", href: `${BASE}/floor/order?place=table-4&state=fixed` },
       {
+        key: "orderScreenOff",
+        href: `${BASE}/floor/order?place=table-4&state=screenOff`,
+      },
+      {
         key: "tillItem",
         href: `${BASE}/floor/till?order=order-4&state=service`,
       },
@@ -89,6 +93,7 @@ const SECTIONS = [
       },
       { key: "mine", href: `${BASE}/mine?state=service` },
       { key: "mineEmpty", href: `${BASE}/mine?state=nothingSent` },
+      { key: "mineScreenOff", href: `${BASE}/mine?state=screenOff` },
       { key: "manageLine", href: "/design/shell/manage/order_taking" },
     ],
   },

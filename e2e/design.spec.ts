@@ -249,6 +249,10 @@ const PAGES = [
   "/design/shell/notifications/settings",
   "/design/shell/notifications/settings?state=quiet",
   "/design/shell/notifications/settings?state=demo",
+  // Waiter mode P8b: the lines about orders, and their group with the line
+  // about quiet hours during a shift.
+  "/design/shell/notifications/orders",
+  "/design/shell/notifications/settings?state=orders",
   "/design/chat",
   "/design/chat?state=empty",
   "/design/chat?state=demo",
@@ -349,6 +353,9 @@ const PAGES = [
   "/design/shell/manage/order_taking",
   "/design/order-taking/mine",
   "/design/order-taking/mine?state=nothingSent",
+  // P8b: a kitchen screen running that never fetched table 4's starters.
+  "/design/order-taking/floor/order?place=table-4&state=screenOff",
+  "/design/order-taking/mine?state=screenOff",
   "/design/order-taking/prep",
   "/design/order-taking/prep?state=nothingOpen",
   "/design/order-taking/prep?state=kitchen",
@@ -4019,6 +4026,58 @@ const orderUndo = (page: Page, text: string) =>
     .getByRole("status")
     .filter({ hasText: text })
     .getByRole("button", { name: rt("app.orders.toast.undo"), exact: true });
+
+// Waiter mode P8b's lines, in the restaurant's words: a ready order and a
+// screen not connected, from Noa and from the app on a computer, and the
+// screen not connected leading into the order twin, which says so too.
+test("the inbox twin says an order is ready and a kitchen screen isn't connected", async ({
+  page,
+}, testInfo) => {
+  const order = he.app.notifications.kinds.order;
+  const kitchen = "מטבח";
+  const ready = rt("app.notifications.kinds.order.ready.title", {
+    place: rt("app.orders.place.numbered", { name: "11" }),
+    department: kitchen,
+  });
+  const unseen = rt("app.notifications.kinds.order.unseen.title", {
+    place: rt("app.orders.place.numbered", { name: "4" }),
+    department: kitchen,
+  });
+  await page.goto("/design/shell/notifications/orders");
+  await expect(
+    page.getByText(ready).filter({ visible: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText(order.unseen.body).filter({ visible: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText(order.ready.settledNote).filter({ visible: true }).first(),
+  ).toBeVisible();
+  if (testInfo.project.name === "desktop") {
+    await expect(
+      page.getByRole("row").filter({ hasText: ready }).getByRole("rowheader"),
+    ).toHaveText(/נועה/);
+    await expect(
+      page.getByRole("row").filter({ hasText: unseen }).getByRole("rowheader"),
+    ).toHaveText(he.app.notifications.who.app);
+  }
+  await page
+    .getByRole("link", { name: new RegExp(asIs(unseen)) })
+    .filter({ visible: true })
+    .first()
+    .click();
+  await expect(page).toHaveURL(
+    /\/design\/order-taking\/floor\/order\?place=table-4/,
+  );
+  await expect(
+    page
+      .getByText(
+        rt("app.orders.ticketState.screenOff", { department: kitchen }),
+      )
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
+});
 
 // Waiter mode's twin (S0, #191) as a waiter times it on a phone: a free
 // table opens on its items, two taps add two, one sends them, and the

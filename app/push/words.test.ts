@@ -603,3 +603,69 @@ describe("the running week's words on the phone", () => {
     ).not.toContain("אורי");
   });
 });
+
+// What the lines about orders say on a phone (waiter mode P8b): the place in
+// the business's words and the department, how many items, never a price;
+// the group's words alone without details.
+describe("the order lines' words on the phone", () => {
+  const order = he.app.notifications.kinds.order;
+  const where = { placeName: "4", takeaway: null };
+  const ready = {
+    kind: "order.ready",
+    where,
+    department: "מטבח",
+    count: 2,
+  } as const;
+
+  it("says where and which department, and how many to serve", () => {
+    expect(say(ready)).toEqual({
+      title: "מקום 4 · מטבח: מוכן",
+      body: "שני פריטים להגשה",
+    });
+    expect(say({ ...ready, count: 1 }).body).toBe("פריט אחד להגשה");
+    expect(
+      say({
+        ...ready,
+        kind: "order.unseen",
+        where: { placeName: "בר", takeaway: null },
+      }),
+    ).toEqual({
+      title: "בר: המסך לא מחובר · מטבח",
+      body: order.unseen.body,
+    });
+  });
+
+  it("says a takeaway by its number, and plainly what lost its place or department", () => {
+    expect(
+      say({ ...ready, where: { placeName: null, takeaway: 12 } }).title,
+    ).toBe("הזמנה 12 · מטבח: מוכן");
+    expect(
+      say({ ...ready, where: { placeName: null, takeaway: null } }).title,
+    ).toBe(order.ready.titlePlain);
+    expect(say({ ...ready, department: null }).title).toBe(
+      order.ready.titlePlain,
+    );
+    expect(
+      say({ ...ready, kind: "order.unseen", department: null }).title,
+    ).toBe(order.unseen.titlePlain);
+  });
+
+  it("says once settled that it no longer waits", () => {
+    expect(say(ready, true).body).toBe(order.ready.settledNote);
+    expect(say({ ...ready, kind: "order.unseen" }, true).body).toBe(
+      order.unseen.settledNote,
+    );
+  });
+
+  it("says the group's words alone without details", () => {
+    const notice = pushNotice(
+      { ...entry(ready), group: "orders" },
+      baseWording,
+      "Asia/Jerusalem",
+      { previews: false },
+    );
+    expect(notice.title).toBe(he.app.notifications.push.notice.hidden.orders);
+    expect(notice.body).toBeUndefined();
+    expect(JSON.stringify(notice)).not.toContain("מטבח");
+  });
+});

@@ -6,8 +6,10 @@ import {
   getOrderPrep,
   type OffShift,
   type OrderRead,
+  readOrderReady,
 } from "@db/orders";
 import { getOwnPlace } from "@db/session";
+import type { MyOrders } from "@domain/orders";
 import {
   type OrdersSyncAnswer,
   readOrdersSyncQuery,
@@ -32,6 +34,20 @@ function answered<T>(read: OrderRead<T> | null): T | undefined {
     : read;
 }
 
+/** One's own tickets ready to serve, a line of them still live. */
+const readyOf = (mine: MyOrders): string[] =>
+  mine.rounds.flatMap((round) =>
+    round.tickets
+      .filter((ticket) => ticket.status === "ready" && ticket.lines > 0)
+      .map((ticket) => ticket.id),
+  );
+
+/** The code of an error, never its message. */
+const codeOf = (error: unknown) =>
+  error && typeof error === "object" && "code" in error
+    ? String((error as { code: unknown }).code)
+    : "without a code";
+
 /**
  * What changed in waiter mode for the signed-in person (P4), for the mode's
  * screens, which ask every 15 seconds while visible, at once when they come
@@ -53,6 +69,9 @@ function answered<T>(read: OrderRead<T> | null): T | undefined {
  * another site. Else 200 with each read that moved and the smallest version
  * among them (`syncedVersion`), so a write landing between two reads is read
  * again, never missed. Every answer is `no-store`.
+ *
+ * One's own rounds that came back with a ticket ready read its "מוכן" line
+ * (P8b, `readOrderReady`): a ready ticket shown to its sender needs no push.
  *
  * Outside the proxy's matcher (tooling/proxy.test.ts), as /chat-sync is: a
  * poll costs one invocation, and an expired session is renewed here. Nothing
@@ -95,6 +114,16 @@ export async function GET(request: Request): Promise<Response> {
     const prepRead = answered(prep);
     const floorRead = answered(floor);
     const mineRead = answered(mine);
+    // A ready ticket shown to its sender reads its line, so no push follows
+    // (§9; P8b). Never while viewing as someone, and the sync answers
+    // whatever this does.
+    if (mineRead && !own.viewing) {
+      try {
+        await readOrderReady(own.userId, business, readyOf(mineRead));
+      } catch (error) {
+        console.error("reading the ready lines failed", codeOf(error));
+      }
+    }
     const versioned = [prepRead, floorRead, mineRead];
     const moved =
       query.version === null || versioned.some((read) => read !== undefined);
@@ -132,11 +161,7 @@ export async function GET(request: Request): Promise<Response> {
     if (answer.version === null) answer.version = query.version;
     return Response.json(answer, { status: 200, headers: NO_STORE });
   } catch (error) {
-    const code =
-      error && typeof error === "object" && "code" in error
-        ? String((error as { code: unknown }).code)
-        : "without a code";
-    console.error("orders sync failed", code);
+    console.error("orders sync failed", codeOf(error));
     return status(500);
   }
 }

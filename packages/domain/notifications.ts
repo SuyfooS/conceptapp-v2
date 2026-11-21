@@ -50,6 +50,9 @@ export const NOTIFICATION_GROUPS = [
   "lists",
   "chat",
   "documents",
+  // A ticket one sent turned ready, or no prep screen fetched it (waiter
+  // mode P8b).
+  "orders",
 ] as const;
 
 export type NotificationGroup = (typeof NOTIFICATION_GROUPS)[number];
@@ -91,8 +94,10 @@ type KindInfo = {
    * "week" the builder of the week `params.startsOn` names
    * (`/schedule/build?week=<params.startsOn>`, the running-week plan's R4),
    * "area" the screen of the area `params.area` names (`AREA_HREF`) while
-   * the reader still reaches it (`params.to`), and `href` is where it leads
-   * otherwise.
+   * the reader still reaches it (`params.to`), "order" the order a ticket
+   * is of, at its place `/orders/place/<params.place>` or the takeaway
+   * `/orders/takeaway/<params.order>` (waiter mode P8b), and `href` is where
+   * it leads otherwise.
    */
   to?:
     | "list"
@@ -101,7 +106,8 @@ type KindInfo = {
     | "document"
     | "person"
     | "week"
-    | "area";
+    | "area"
+    | "order";
   /**
    * Shown in the bell and the inbox, and counted there: all but a chat's own
    * lines, which the Chat tab counts instead (as chats with unread messages).
@@ -567,6 +573,36 @@ export const NOTIFICATION_KINDS = {
     staffOnly: true,
     appOnly: true,
   },
+  // A ticket turned ready (waiter mode P8b; `private.notify_order_ready` in
+  // supabase/migrations/20261125000100_order_taking_notifications.sql): to
+  // its round's sender alone, unless they marked it themselves, with its
+  // place, department and how many items, never a price. A kitchen's screen
+  // that marked it is nobody, so the line has no actor. Its push waits 10
+  // seconds: a mode open on the sender's phone shows it first and reads the
+  // line (/orders-sync). Served, put back or cancelled settles it.
+  "order.ready": {
+    group: "orders",
+    module: "order_taking",
+    minRole: "worker",
+    needsAction: true,
+    href: "/orders/mine",
+    to: "order",
+    staffOnly: true,
+  },
+  // No running prep screen of its department fetched a ticket 2 minutes after
+  // it was sent or called (P8b, the minute job): once per ticket, to its
+  // sender and to whoever runs orders and is on the clock, its push at once.
+  // Fetched, ready, served or cancelled settles it.
+  "order.unseen": {
+    group: "orders",
+    module: "order_taking",
+    minRole: "worker",
+    needsAction: true,
+    href: "/orders/mine",
+    to: "order",
+    staffOnly: true,
+    byApp: true,
+  },
   // "Send a test notification", from the phone switch: to the person alone.
   "push.test": {
     group: null,
@@ -671,6 +707,22 @@ export function linkFor(
     if (change.success) {
       const { area, to } = change.data;
       if (heldPart(area, to).level !== "none") return AREA_HREF[area];
+    }
+  }
+  if (info.to === "order") {
+    // The order at its place, or the takeaway itself; a place the line
+    // names by no real id leads to one's own orders.
+    const where = z
+      .object({ order: z.string(), place: z.string().nullable().optional() })
+      .safeParse(params);
+    if (where.success) {
+      const order = where.data.order;
+      const place = where.data.place ?? null;
+      if (place !== null) {
+        if (isUuid(place)) return `/orders/place/${place.toLowerCase()}`;
+      } else if (isUuid(order)) {
+        return `/orders/takeaway/${order.toLowerCase()}`;
+      }
     }
   }
   return info.href;
@@ -994,10 +1046,45 @@ export function phoneTime(
   kind: string,
   preferences: Pick<NotificationPreferences, "pushOff" | "quiet" | "timeZone">,
   at: Date,
+  /**
+   * The person is on the clock in the line's business, with its time clock
+   * on: a shift's group goes at once (`SHIFT_GROUPS`).
+   */
+  onShift = false,
 ): Date | null {
   if (!reachesPhone(kind, preferences)) return null;
   if (kind === "push.test") return at;
+  if (onShift && inShiftGroup(kind)) return at;
   return quietEnd(preferences.quiet, preferences.timeZone, at) ?? at;
+}
+
+/**
+ * The groups that reach the phone in quiet hours while the person is on a
+ * shift (waiter mode's decision 8, as Orel accepted it): a dish ready at
+ * 23:00 is no use at 07:00. The group's switch still keeps them off. The
+ * same as `private.shift_groups` (packages/db/notification-preferences.db.test.ts
+ * compares them); a shift is `private.on_the_clock`, with the time clock on.
+ */
+export const SHIFT_GROUPS: readonly NotificationGroup[] = ["orders"];
+
+function inShiftGroup(kind: string): boolean {
+  const group = notificationGroupOf(kind);
+  return group !== null && SHIFT_GROUPS.includes(group);
+}
+
+/**
+ * Whether a settings screen says a shift lets some of these groups through
+ * quiet hours: one of them is a shift's, and the business keeps the time
+ * clock, without which there is no shift to know of.
+ */
+export function shiftSkipsQuiet(
+  groups: readonly NotificationGroup[],
+  enabled: readonly ModuleKey[],
+): boolean {
+  return (
+    enabled.includes("time_clock") &&
+    groups.some((group) => SHIFT_GROUPS.includes(group))
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1037,6 +1124,44 @@ export const REMINDER_RULES = {
    */
   earliestAt: "08:00",
 } as const;
+
+// ---------------------------------------------------------------------------
+// The lines about orders (waiter mode P8b,
+// supabase/migrations/20261125000100_order_taking_notifications.sql).
+
+/**
+ * Their own times, the same as `private.order_notice_rules` in the database
+ * (packages/db/notification-preferences.db.test.ts compares them).
+ */
+export const ORDER_NOTICE_RULES = {
+  /**
+   * A ready line's push waits this long, so a mode open on the sender's
+   * phone shows it first and reads it (/orders-sync).
+   */
+  readyPushDelaySeconds: 10,
+  /**
+   * A ticket no running prep screen fetched this long after it was sent or
+   * called says "המסך לא מחובר", on its line and on the order's screen.
+   */
+  unseenAfterMinutes: 2,
+  /**
+   * And only within this long of that, so a minute job that missed its runs
+   * never tells late.
+   */
+  unseenWindowMinutes: 10,
+  /** A push held (quiet hours off a shift) goes no more after this long. */
+  pushForMinutes: 30,
+  /** The lines are deleted this long after they were written. */
+  keptDays: 2,
+} as const;
+
+/**
+ * How long the app waits after "מוכן" before it sends what is due itself
+ * (`pushSoon`), so the ready line's push is due by then and goes without
+ * waiting for the minute job.
+ */
+export const ORDER_READY_PUSH_WAIT_MS =
+  (ORDER_NOTICE_RULES.readyPushDelaySeconds + 1) * 1000;
 
 const quietHours = z
   .object({ from: timeOfDay, to: timeOfDay })
@@ -1479,6 +1604,19 @@ export type NotificationLine =
       area: AccessArea;
       change: AreaChange;
     }
+  | {
+      /**
+       * A ticket of the reader's turned ready (`order.ready`), or no prep
+       * screen fetched it (`order.unseen`): where its order is, its
+       * department and how many of its items, each null when the line lost
+       * it. Never a price.
+       */
+      kind: "order.ready" | "order.unseen";
+      /** The place's name, or the takeaway's number. */
+      where: { placeName: string | null; takeaway: number | null };
+      department: string | null;
+      count: number;
+    }
   | { kind: "push.test" }
   | { kind: "other" };
 
@@ -1593,6 +1731,17 @@ const schemas = {
     area: z.enum(ACCESS_AREAS),
     from: z.record(z.string(), z.boolean()),
     to: z.record(z.string(), z.boolean()),
+  }),
+  // What a line about a ticket holds (`private.order_notice_facts`): its
+  // order and ticket, the place's name or the takeaway's number, the
+  // department's name and how many items, each but the ids read leniently.
+  orderNotice: z.object({
+    order: uuid,
+    ticket: uuid,
+    placeName: z.string().min(1).nullable().catch(null),
+    takeaway: z.int().min(1).nullable().catch(null),
+    departmentName: z.string().min(1).nullable().catch(null),
+    count: z.int().min(0).catch(0),
   }),
 };
 
@@ -1905,6 +2054,18 @@ function lineOf(
           ? { kind: "base", base: params.role }
           : { kind: "named", name: params.name ?? null };
       return { kind, role, area, change };
+    }
+    case "order.ready":
+    case "order.unseen": {
+      const params = read(schemas.orderNotice);
+      return params
+        ? {
+            kind,
+            where: { placeName: params.placeName, takeaway: params.takeaway },
+            department: params.departmentName,
+            count: params.count,
+          }
+        : other;
     }
     case "access.pay_granted":
     case "push.test":

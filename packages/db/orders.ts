@@ -1,4 +1,5 @@
 import "server-only";
+import { isUuid } from "@domain/activity";
 import {
   type CompReason,
   type Favourites,
@@ -498,6 +499,39 @@ export async function setOrderTicketReady(
     ...atTime(at),
   });
   return error ? refusal(error, "marking a ticket ready") : done;
+}
+
+/** The most tickets one call reads the lines of, as the database caps it. */
+export const READ_READY_MOST = 200;
+
+/**
+ * Ready tickets shown to their sender (waiter mode P8b): /orders-sync gave
+ * the signed-in person their own rounds with these in them, so their ready
+ * lines are read and no push follows (`public.read_order_ready`, with the
+ * secret key for `actorId`; callers never call it while viewing as someone).
+ * How many lines it marked: none for no ticket, and before the migration
+ * reaches the project.
+ */
+export async function readOrderReady(
+  actorId: string,
+  businessId: string,
+  tickets: readonly string[],
+): Promise<number> {
+  const ids = [...new Set(tickets.filter((ticket) => isUuid(ticket)))].slice(
+    0,
+    READ_READY_MOST,
+  );
+  if (ids.length === 0) return 0;
+  const { data, error } = await createAdminClient().rpc("read_order_ready", {
+    actor: actorId,
+    business: businessId,
+    tickets: ids,
+  });
+  if (error) {
+    if (isMissingFunction(error)) return 0;
+    throw error;
+  }
+  return typeof data === "number" ? data : 0;
 }
 
 const labelSchema = z

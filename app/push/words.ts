@@ -15,6 +15,7 @@ import type { PushNotice } from "@domain/push";
 import { timeIn } from "@domain/shabbat";
 import { addMonths } from "@domain/time-clock-format";
 import { dayMonthYear } from "@domain/wages";
+import { orderNoticeWords } from "@/app/(app)/notifications/order-notice-words";
 import { roleChangeWords } from "@/app/(app)/notifications/role-change-words";
 import { type AppWording, translator } from "@/app/(app)/wording";
 import { defaultLocale, direction } from "@/i18n/config";
@@ -511,6 +512,13 @@ export function pushWords(
           entry.actor.kind === "team" ? t("kinds.role.changed.byTeam") : null,
         ),
       };
+    }
+    // A ticket the reader sent (waiter mode P8b): its place in the
+    // business's words, its department and how many items, never a price.
+    case "order.ready":
+    case "order.unseen": {
+      const said = orderNoticeWords(line, settled, wording);
+      return { title: said.title, ...body(said.note) };
     }
     case "push.test":
       return {

@@ -1,3 +1,4 @@
+import { ORDER_NOTICE_RULES } from "./notifications";
 import {
   type ChoicePick,
   checkPicks,
@@ -585,6 +586,50 @@ export function placeTitleKind(name: string): "numbered" | "named" {
 export type TicketStage = "held" | "sent" | "onScreen" | "ready" | "served";
 
 /**
+ * What says whether a ticket's prep screen is not connected (waiter mode
+ * P8b): when its round was sent, the departments a running prep screen
+ * shows (`order_mode`'s `screens`), and the server's clock.
+ */
+export type TicketScreen = {
+  sentAt: string;
+  screens: readonly string[];
+  /** The server's clock, in milliseconds. */
+  now: number;
+};
+
+/**
+ * Whether a ticket says "המסך לא מחובר" (§3.2 step 5): new and not yet on a
+ * screen, with a line still live, a running prep screen shows its
+ * department, and none fetched it `unseenAfterMinutes` after it was sent,
+ * or called for a held block. A called block read without when it was
+ * called (one's own rounds don't say) never says so: its 2 minutes are not
+ * known.
+ */
+export function screenOff(
+  ticket: {
+    status: TicketStatus;
+    kitchenSeenAt: string | null;
+    lines: number;
+    department: string;
+    held: boolean;
+    firedAt?: string | null;
+  },
+  screen: TicketScreen,
+): boolean {
+  if (ticket.status !== "new" || ticket.kitchenSeenAt !== null) return false;
+  if (ticket.lines === 0 || !screen.screens.includes(ticket.department)) {
+    return false;
+  }
+  const since = ticket.firedAt ?? (ticket.held ? null : screen.sentAt);
+  if (since === null) return false;
+  const at = Date.parse(since);
+  return (
+    Number.isFinite(at) &&
+    screen.now - at >= ORDER_NOTICE_RULES.unseenAfterMinutes * 60_000
+  );
+}
+
+/**
  * Where a ticket is, whatever is left of its lines: "held" waiting to be
  * called, "sent" and then "onScreen" once its department had it on a
  * screen, "ready", "served". Its badge and a line's sheet name it alike, so
@@ -608,15 +653,37 @@ export function ticketStage(ticket: {
 
 /**
  * A ticket's state for whoever sent it, in words as well as colour: its
- * stage (`ticketStage`), or "none" when no line of it is live.
+ * stage (`ticketStage`), "screenOff" in place of "sent" when its prep
+ * screen is not connected (`screenOff`, given what says so), or "none"
+ * when no line of it is live.
  */
-export function ticketBadge(ticket: {
-  status: TicketStatus;
-  kitchenSeenAt: string | null;
-  /** Its live lines. */
-  lines: number;
-}): TicketStage | "none" {
+export function ticketBadge(
+  ticket: {
+    status: TicketStatus;
+    kitchenSeenAt: string | null;
+    /** Its live lines. */
+    lines: number;
+    department?: string;
+    held?: boolean;
+    firedAt?: string | null;
+  },
+  screen?: TicketScreen,
+): TicketStage | "screenOff" | "none" {
   if (ticket.lines === 0) return "none";
+  if (
+    screen &&
+    ticket.department !== undefined &&
+    screenOff(
+      {
+        ...ticket,
+        department: ticket.department,
+        held: ticket.held ?? false,
+      },
+      screen,
+    )
+  ) {
+    return "screenOff";
+  }
   return ticketStage(ticket);
 }
 

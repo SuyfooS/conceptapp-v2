@@ -6,6 +6,7 @@ import {
   FileText,
   ListChecks,
   MessageCircle,
+  NotebookPen,
   Repeat,
   Users,
 } from "lucide-react";
@@ -21,4 +22,6 @@ export const GROUP_ICONS: Record<NotificationGroup, ReactNode> = {
   lists: <ListChecks />,
   chat: <MessageCircle />,
   documents: <FileText />,
+  // Taking orders' own mark (its manifest's "pad"), for any kind of business.
+  orders: <NotebookPen />,
 };
