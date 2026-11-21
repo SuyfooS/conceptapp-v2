@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   orderStationFailureOf,
+  orderStationItemFailureOf,
   orderStationRefusalOf,
 } from "./order-station-failures";
 
@@ -68,5 +69,35 @@ describe("a station's write refused", () => {
     ).toBe("failed");
     expect(error).toHaveBeenCalledWith("a station's write failed", "boom");
     error.mockRestore();
+  });
+});
+
+describe("a kitchen's sold-out mark refused", () => {
+  it("says the item's words: removed or none, and no longer this screen's", () => {
+    const of = (code: string, message: string, hint: string | null = null) =>
+      orderStationItemFailureOf(
+        { code, message, hint },
+        "a station's sold out",
+      );
+    expect(of("P0002", "Unknown item")).toBe("itemGone");
+    expect(of("55000", "A removed item is restored first", "archived")).toBe(
+      "itemGone",
+    );
+    expect(of("42501", "The screen's department's items only")).toBe("notHere");
+  });
+
+  it("says the station's own refusals first, and the rest as any write", () => {
+    const of = (code: string, message: string, hint: string | null = null) =>
+      orderStationItemFailureOf(
+        { code, message, hint },
+        "a station's sold out",
+      );
+    expect(of("42501", "This station was stopped", "stopped")).toBe("stopped");
+    expect(of("42501", "Taking orders is off for this business", "off")).toBe(
+      "off",
+    );
+    expect(of("42501", "Not a station")).toBe("notStation");
+    expect(of("22023", "Sold out or not")).toBe("invalid");
+    expect(of("PGRST202", "Could not find the function")).toBe("notYet");
   });
 });

@@ -43,20 +43,24 @@
 -- Errors, which @db/order-station-failures reads: 42501 'Not a station' for a
 -- secret that is no station's, with hint 'stopped' for a stopped one,
 -- 'shows' for a station of another kind and 'off' while taking orders is
--- off; P0002 'Unknown order' or 'Unknown item' for anything not the
--- station's (another business's, another department's, or none, word for
--- word alike); 22023 hint 'shows' for a kind no lock makes, 'route' for a
--- department that isn't live; 28000 a pairing missing or expired; 54000 ten
--- running; and P3's 55000 hints ('closed', 'held', 'served', 'window',
--- 'day', 'not_closed', 'archived') and 23505 hint 'taken'.
+-- off; P0002 'Unknown order' for an order or a ticket not the station's
+-- (another business's, another department's, or none, word for word alike)
+-- and 'Unknown item' for an item of another business or none, while an item
+-- of another department is 42501 with no hint; 22023 hint 'shows' for a kind
+-- no lock makes, 'route' for a department that isn't live; 28000 a pairing
+-- missing or expired; 54000 ten running; and P3's 55000 hints ('closed',
+-- 'held', 'served', 'window', 'day', 'not_closed', 'archived') and 23505
+-- hint 'taken'.
 --
 -- Replaced, each its newest body with only the lines named: from
 -- 20261108000200_qr_clock.sql public.station_by_token (two keys more: what
 -- it shows and its department), public.issue_station_code (a kitchen's or a
 -- till's secret makes no clock code, which would vouch for punches) and
 -- public.set_clock_station_stopped (an order station is stopped by whoever
--- runs orders, logged as order.station.stop and restart; the clock's as
--- before); from 20261120000300_order_taking_orders.sql
+-- runs orders or edits the clock, taking orders on or off, and started again
+-- only by whoever runs orders while it is on; logged as order.station.stop
+-- and restart; the clock's as before); from
+-- 20261120000300_order_taking_orders.sql
 -- public.set_order_ticket_ready (back to new clears ready_station),
 -- public.serve_order_ticket (not served clears served_station) and
 -- public.reopen_order (clears closed_station and reopened_station); from
@@ -535,9 +539,12 @@ end;
 $$;
 
 -- 20261108000200_qr_clock.sql's: the clock's station as before, by whoever
--- edits the clock; a kitchen's screen or a till by whoever runs orders,
--- while taking orders is on (42501 hint 'off'), logged as order.station.stop
--- and restart with what it shows.
+-- edits the clock; a kitchen's screen or a till stopped by whoever runs
+-- orders or edits the clock of its business, taking orders on or off, so a
+-- device left as one never outlives taking orders switched off, nor keeps
+-- one of the ten; started again only by whoever runs orders, while taking
+-- orders is on (42501 hint 'off'). Logged as order.station.stop and restart
+-- with what it shows.
 create or replace function public.set_clock_station_stopped(
   actor uuid,
   station uuid,
@@ -562,6 +569,12 @@ begin
 
     if not private.can_edit_clock(s.business_id, actor) then
       raise exception 'Managers and owners only' using errcode = '42501';
+    end if;
+  elsif stopped then
+    if not private.runs_orders(s.business_id, actor)
+      and not private.can_edit_clock(s.business_id, actor)
+    then
+      raise exception 'Those who run orders or edit the clock only' using errcode = '42501';
     end if;
   else
     if not private.order_taking_on(s.business_id) then

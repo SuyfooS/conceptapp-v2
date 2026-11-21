@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  arrivedLate,
   freshTickets,
   lateNews,
   nextStationPoll,
@@ -17,6 +18,7 @@ import {
   stationTillSchema,
   stationWriteAnswer,
   stationWriteBody,
+  stillDismissed,
   stillToMake,
   writeKind,
 } from "./order-stations";
@@ -338,6 +340,41 @@ describe("what the kitchen's screen tells", () => {
     expect(stationGone({ ...ticket(6, { status: "held" }), lines: [] })).toBe(
       false,
     );
+  });
+
+  it("tells a ticket with a line to make again: struck whole before, or a line restored", () => {
+    const struck = { ...ticket(4), lines: [line(40, "cancelled")] };
+    const two = ticket(5, {}, [line(50), line(51, "cancelled")]);
+    const news = stationNews(
+      [struck, two],
+      [
+        { ...struck, lines: [line(40)] },
+        { ...two, lines: [line(50), line(51)] },
+      ],
+    );
+    expect(news).toEqual({ arrived: [ID(4), ID(5)], struck: [] });
+    // Nothing restored, nothing told.
+    expect(stationNews([struck, two], [struck, two])).toEqual({
+      arrived: [],
+      struck: [],
+    });
+  });
+
+  it("keeps a ticket taken off only while it is still struck whole", () => {
+    const struck = { ...ticket(4), lines: [line(40, "cancelled")] };
+    const restored = { ...struck, lines: [line(40)] };
+    expect(stillDismissed([ID(4)], [struck, ticket(5)])).toEqual([ID(4)]);
+    expect(stillDismissed([ID(4)], [restored, ticket(5)])).toEqual([]);
+    // Gone from the read, it is forgotten too.
+    expect(stillDismissed([ID(4)], [ticket(5)])).toEqual([]);
+  });
+
+  it("counts a ticket that arrives late already as reminded: its chime is its one sound", () => {
+    const now = Date.parse(at(20));
+    const tickets = [ticket(1), ticket(2, { sentAt: at(10) }), ticket(3)];
+    // 1 waits 20 minutes, 2 only 10; 3 was there before, late or not.
+    expect(arrivedLate(tickets, [ID(1), ID(2)], now, 15)).toEqual([ID(1)]);
+    expect(arrivedLate(tickets, [], now, 15)).toEqual([]);
   });
 
   it("reminds of a ticket waiting too long once, not again once reminded", () => {

@@ -7,7 +7,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // orders, and isn't the clock's for a clock editor until it is stopped; one
 // that is another business's gives way to this business's clock station,
 // as the prep screen's lock does. Then the device is remembered and the
-// session ended here, last.
+// session ended here, last. The clock editor stops that kitchen's screen or
+// till from the lock (`stopDeviceStationAction`), with its way back only for
+// whoever runs orders.
 
 vi.mock("server-only", () => ({}));
 
@@ -25,6 +27,8 @@ const mocks = vi.hoisted(() => ({
   rememberStation: vi.fn(),
   endSessionHere: vi.fn(),
   lockStation: vi.fn(),
+  setStationStopped: vi.fn(),
+  refresh: vi.fn(),
 }));
 vi.mock("../clock", () => ({ clockAccess: mocks.clockAccess }));
 vi.mock("../../modules", () => ({
@@ -38,12 +42,20 @@ vi.mock("./station", () => ({
 vi.mock("../../../(auth)/end-session", () => ({
   endSessionHere: mocks.endSessionHere,
 }));
-vi.mock("@db/clock-stations", () => ({ lockStation: mocks.lockStation }));
+vi.mock("@db/clock-stations", () => ({
+  lockStation: mocks.lockStation,
+  setStationStopped: mocks.setStationStopped,
+}));
+vi.mock("next/cache", () => ({ refresh: mocks.refresh }));
 
-const { lockDeviceAction } = await import("./actions");
+const { lockDeviceAction, stopDeviceStationAction } = await import("./actions");
 
 /** This device holds the secret of a running station of `businessId`. */
-function device(businessId: string, shows: "clock_code" | "prep" | "till") {
+function device(
+  businessId: string,
+  shows: "clock_code" | "prep" | "till",
+  stopped = false,
+) {
   mocks.deviceStation.mockResolvedValue({
     token: TOKEN,
     station: {
@@ -53,7 +65,7 @@ function device(businessId: string, shows: "clock_code" | "prep" | "till") {
       businessName: "Demo",
       accent: "#0a84ff",
       timeZone: "Asia/Jerusalem",
-      stopped: false,
+      stopped,
       shows,
       departmentId: null,
     },
@@ -61,13 +73,13 @@ function device(businessId: string, shows: "clock_code" | "prep" | "till") {
 }
 
 /** Signed in as someone who edits business `businessId`'s clock. */
-function editsClock(businessId: string) {
+function editsClock(businessId: string, viewOnly = false) {
   mocks.clockAccess.mockResolvedValue({
     userId: USER,
     businessId,
     role: "manager",
     perms: ["clock.edit"],
-    viewOnly: false,
+    viewOnly,
   });
 }
 
@@ -88,6 +100,7 @@ beforeEach(() => {
     ok: true,
     value: { token: "new-token", stationId: "station-2" },
   });
+  mocks.setStationStopped.mockResolvedValue({ ok: true, value: undefined });
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
@@ -113,6 +126,8 @@ describe("the clock's lock on a kitchen's screen or a till", () => {
     });
     expect(mocks.lockStation).not.toHaveBeenCalled();
     expect(calls).toEqual([]);
+    // Read again, so the screen offers the stop beside the lock.
+    expect(mocks.refresh).toHaveBeenCalled();
   });
 
   it("makes another business's one this business's clock station", async () => {
@@ -155,5 +170,79 @@ describe("the clock's lock on the clock's own station", () => {
       to: STATION_PATH,
     });
     expect(mocks.lockStation).toHaveBeenCalledWith(USER, A, "Door");
+  });
+});
+
+describe("the clock's lock stopping the kitchen's screen or the till it is", () => {
+  it("stops the business's own one for a clock editor, taking orders on or off", async () => {
+    device(A, "prep");
+    editsClock(A);
+    expect(await stopDeviceStationAction()).toEqual({ ok: true, undo: null });
+    expect(mocks.setStationStopped).toHaveBeenCalledWith(
+      USER,
+      "station-1",
+      true,
+    );
+    expect(mocks.refresh).toHaveBeenCalled();
+  });
+
+  it("offers its way back only to whoever runs orders there, with taking orders on", async () => {
+    device(A, "till");
+    editsClock(A);
+    mocks.orderLockerBusiness.mockResolvedValue(A);
+    expect(await stopDeviceStationAction()).toEqual({
+      ok: true,
+      undo: "station-1",
+    });
+  });
+
+  it("says what the database refused", async () => {
+    device(A, "prep");
+    editsClock(A);
+    mocks.setStationStopped.mockResolvedValue({
+      ok: false,
+      failure: "noAccess",
+    });
+    expect(await stopDeviceStationAction()).toEqual({
+      ok: false,
+      failure: "noAccess",
+    });
+  });
+
+  it("stops nothing that isn't the business's own kitchen's screen or till", async () => {
+    device(B, "prep");
+    editsClock(A);
+    expect(await stopDeviceStationAction()).toEqual({
+      ok: false,
+      failure: "gone",
+    });
+    device(A, "clock_code");
+    expect(await stopDeviceStationAction()).toEqual({
+      ok: false,
+      failure: "gone",
+    });
+    mocks.deviceStation.mockResolvedValue(null);
+    expect(await stopDeviceStationAction()).toEqual({
+      ok: false,
+      failure: "gone",
+    });
+    // Stopped meanwhile: stopped already.
+    device(A, "prep", true);
+    expect(await stopDeviceStationAction()).toEqual({ ok: true, undo: null });
+    expect(mocks.setStationStopped).not.toHaveBeenCalled();
+  });
+
+  it("refuses anyone who edits no clock, and a view", async () => {
+    device(A, "prep");
+    expect(await stopDeviceStationAction()).toEqual({
+      ok: false,
+      failure: "noAccess",
+    });
+    editsClock(A, true);
+    expect(await stopDeviceStationAction()).toEqual({
+      ok: false,
+      failure: "viewOnly",
+    });
+    expect(mocks.setStationStopped).not.toHaveBeenCalled();
   });
 });

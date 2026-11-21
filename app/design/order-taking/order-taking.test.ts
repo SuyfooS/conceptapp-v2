@@ -950,7 +950,14 @@ describe("the twin's stations", () => {
         { do: "available", item: "lemonade", available: false },
         { department: "kitchen", now: at },
       ).answer,
-    ).toEqual({ ok: false, failure: "noAccess" });
+    ).toEqual({ ok: false, failure: "notHere" });
+    expect(
+      stationWrite(
+        evening,
+        { do: "available", item: "no-such-item", available: false },
+        { department: "kitchen", now: at },
+      ).answer,
+    ).toEqual({ ok: false, failure: "itemGone" });
   });
 
   it("close, take the close back and open again, as the till", () => {

@@ -47,3 +47,27 @@ export function orderStationFailureOf(
   const failure = orderFailureOf(error, what);
   return isStationWriteFailure(failure) ? failure : "failed";
 }
+
+/**
+ * Why a kitchen's sold-out mark was refused (station_set_item_available),
+ * in an item's words, not an order's: the station's own refusals first; an
+ * item removed meanwhile, or none of the business's (55000 'archived', P0002
+ * 'Unknown item'), is `itemGone`; one that no longer goes to the screen's
+ * department (42501 with no hint) is `notHere`; anything else as any
+ * station's write.
+ */
+export function orderStationItemFailureOf(
+  error: DatabaseRefusal,
+  what: string,
+): StationWriteFailure {
+  const refusal = orderStationRefusalOf(error);
+  if (refusal) return refusal;
+  if (
+    error.code === "P0002" ||
+    (error.code === "55000" && error.hint === "archived")
+  ) {
+    return "itemGone";
+  }
+  if (error.code === "42501" && !error.hint) return "notHere";
+  return orderStationFailureOf(error, what);
+}

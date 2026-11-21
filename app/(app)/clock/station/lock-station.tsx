@@ -6,11 +6,13 @@ import {
   lockOpen,
   MAX_STATIONS,
   STATION_NAME_MAX,
+  type StationStopFailure,
 } from "@domain/clock-station";
 import { orderStationName } from "@domain/order-stations";
 import { Button } from "@ui/button";
 import { ChoiceList, ChoiceRow } from "@ui/choice-row";
 import { Sheet } from "@ui/sheet";
+import { StatusToast } from "@ui/status-toast";
 import { TextField } from "@ui/text-field";
 import { Lock } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -26,7 +28,13 @@ import {
   type LockKind,
   type LockOffer,
   lockInputOf,
+  type StopOther,
 } from "./station-types";
+
+/** As long as the stop's toast keeps a "ביטול"; the database allows two minutes. */
+const UNDO_SHOWN_MS = 10_000;
+
+type Toast = { text: string; stamp: string; undo?: () => void };
 
 /** A failure in the clock's words: its lock never meets a department, and the clock off reads as no access. */
 const clockKey = (
@@ -50,7 +58,10 @@ const orderKey = (failure: LockFailure): Exclude<LockFailure, "managerOnly"> =>
  * station already keeps its name. Once locked, the device opens the station
  * as a whole new page, as signing out does. With ten stations running and
  * this device none of them, a line says why there is no button; a device
- * that is a station of another kind says what it is, to stop it first.
+ * that is a station of another kind says what it is, to stop it first, and
+ * the clock's lock offers that stop on the business's kitchen's screen or
+ * till (`stopOther`, taking orders on or off), with "ביטול" for whoever may
+ * start it again; once stopped, the screen is read again and the lock opens.
  * Waiter mode's records on the device go as it locks, everyone's (P7): with
  * an order that hasn't gone, one more line says how many and where. Not on
  * /design's twins (`clearsDevice`), whose lock locks nothing: the device's
@@ -67,6 +78,7 @@ export function LockStation({
   clearsDevice = true,
   kind = "clock",
   departments = [],
+  stopOther,
 }: {
   offer: LockOffer;
   lock: LockAction;
@@ -83,9 +95,12 @@ export function LockStation({
   kind?: LockKind;
   /** A kitchen's screen's departments to choose from: the live ones, in order. */
   departments?: readonly { id: string; name: string }[];
+  /** The clock's lock's stop of the device's kitchen's screen or till (`offer.other`). */
+  stopOther?: StopOther;
 }) {
   const tc = useTranslations("app.clock.station.lock");
   const ts = useTranslations("app.orders.stations.lock");
+  const tf = useTranslations("app.orders.stations.failure");
   const to = useTranslations("app.orders.outbox");
   const { placeTitle } = usePlaceWords();
   const group = useId();
@@ -96,7 +111,14 @@ export function LockStation({
   const [department, setDepartment] = useState(departments[0]?.id ?? "");
   const [failure, setFailure] = useState<LockFailure | null>(null);
   const [pending, start] = useTransition();
+  const [stopping, startStop] = useTransition();
+  const [, startRestart] = useTransition();
+  const [stopFailure, setStopFailure] = useState<StationStopFailure | null>(
+    null,
+  );
+  const [toast, setToast] = useState<Toast | null>(null);
   const clock = kind === "clock";
+  const stopper = clock ? stopOther : undefined;
 
   const offered = (() => {
     if (clock) {
@@ -113,17 +135,98 @@ export function LockStation({
   })();
   const name = typed ?? offered;
 
+  /** The device's kitchen's screen or till stopped, so the lock opens once the screen is read again. */
+  function stopIt(stop: StopOther, stopped: string) {
+    setStopFailure(null);
+    startStop(async () => {
+      try {
+        const result = await stop.stop();
+        if (!result.ok) {
+          setStopFailure(result.failure);
+          return;
+        }
+        const undo = result.undo;
+        setToast({
+          text: tc("stoppedOther", { name: stopped }),
+          stamp: `stop-${Date.now()}`,
+          ...(undo ? { undo: () => restartIt(stop, undo, stopped) } : {}),
+        });
+      } catch {
+        setStopFailure("failed");
+      }
+    });
+  }
+
+  /** The toast's "ביטול"; when it can't, the toast says why. */
+  function restartIt(stop: StopOther, stationId: string, stopped: string) {
+    startRestart(async () => {
+      let text: string;
+      try {
+        const result = await stop.restart(stationId);
+        text = result.ok
+          ? tc("restartedOther", { name: stopped })
+          : tf(result.failure);
+      } catch {
+        text = tf("failed");
+      }
+      setToast({ text, stamp: `restart-${Date.now()}` });
+    });
+  }
+
+  // Kept across the stop, by its key: the page read again opens the lock in
+  // its place.
+  const stopToast = stopper ? (
+    <StatusToast
+      key="stop-toast"
+      message={toast?.text ?? null}
+      stamp={toast?.stamp}
+      duration={toast?.undo ? UNDO_SHOWN_MS : 4000}
+      action={
+        toast?.undo
+          ? {
+              label: tc("undo"),
+              onClick: () => {
+                const undo = toast.undo;
+                setToast(null);
+                undo?.();
+              },
+            }
+          : null
+      }
+      // The stop's button went with the stop: on to "ביטול".
+      focusAction={toast?.undo !== undefined}
+    />
+  ) : null;
+
   if (!lockOpen(offer)) {
+    const other = offer.other;
     return (
-      <p className="text-ink-2 text-sm">
-        {offer.other
-          ? clock
-            ? tc("other", { name: offer.other.name })
-            : ts("other", { name: offer.other.name })
-          : clock
-            ? tc("full", { count: MAX_STATIONS })
-            : ts("full", { count: MAX_STATIONS })}
-      </p>
+      <>
+        <p className="text-ink-2 text-sm">
+          {other
+            ? clock
+              ? tc("other", { name: other.name })
+              : ts("other", { name: other.name })
+            : clock
+              ? tc("full", { count: MAX_STATIONS })
+              : ts("full", { count: MAX_STATIONS })}
+        </p>
+        {other && stopper ? (
+          <Button
+            variant="secondary"
+            loading={stopping}
+            onClick={() => stopIt(stopper, other.name)}
+          >
+            {tc("stopOther", { name: other.name })}
+          </Button>
+        ) : null}
+        {stopFailure ? (
+          <p role="alert" className="font-medium text-danger">
+            {tf(stopFailure)}
+          </p>
+        ) : null}
+        {stopToast}
+      </>
     );
   }
 
@@ -262,6 +365,7 @@ export function LockStation({
           </Button>
         </form>
       </Sheet>
+      {stopToast}
     </>
   );
 }

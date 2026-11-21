@@ -2,11 +2,14 @@
 
 import { minutesSince } from "@domain/order-screens";
 import {
+  arrivedLate,
   freshTickets,
   lateNews,
   type StationMenuItem,
+  stationGone,
   stationNews,
   stationSince,
+  stillDismissed,
   stillToMake,
 } from "@domain/order-stations";
 import type { PrepTicket } from "@domain/orders";
@@ -54,11 +57,15 @@ export type StationFacts = {
  * reads nothing until it is pressed, after every reload too, so no ticket is
  * marked "על המסך" on a screen that can't chime; the press also asks for
  * full screen where the device has it. From then: one chime for each new
- * ticket or block called, which flashes in the business's colour (an edge
- * for half a minute with reduced motion), one reminder for a ticket waiting
- * past the business's time, the double chime for a line taken back or
- * cancelled, struck and kept; the screen stays awake. "מוכן" bumps a ticket
- * to "מוכנים לאחרונה" with "ביטול"; "מה נגמר" marks items sold out. With no
+ * ticket or block called, or a cancelled line restored, which flashes in
+ * the business's colour (an edge for half a minute with reduced motion), one
+ * reminder for a ticket waiting past the business's time (none for one that
+ * arrives late already, whose chime is its sound), the double chime for a
+ * line taken back or cancelled, struck and kept; the screen stays awake. A
+ * ticket struck whole and taken off comes back once a line of it is live
+ * again. While taking orders is off, the screen shows, counts and reminds of
+ * none of its last read. "מוכן" bumps a ticket to "מוכנים לאחרונה" with
+ * "ביטול"; "מה נגמר" marks items sold out. With no
  * connection for two asks in a row, a banner across the top; with the sound
  * stopped by the device, a banner that is its button. Phone: one column;
  * tablet: two, three on a landscape one; desktop: four.
@@ -221,7 +228,7 @@ function KitchenScreen({
     setMarked({ version: prep.version, ready: [], back: [] });
   }
   const [busy, setBusy] = useState<string | null>(null);
-  /** Struck whole and taken off this screen by hand. */
+  /** Struck whole and taken off this screen by hand, while still struck whole. */
   const [dismissed, setDismissed] = useState<readonly string[]>([]);
   /** When each ticket arrived, on the server's clock: fresh for a while. */
   const [arrived, setArrived] = useState<ReadonlyMap<string, number>>(
@@ -232,8 +239,10 @@ function KitchenScreen({
   const before = useRef<readonly PrepTicket[] | null>(null);
   const reminded = useRef(new Set<string>());
 
+  // One taken off comes back once a line of it is live again (a cancelled
+  // line restored), at once, before the read's news forgets it.
   const tickets = (prep?.tickets ?? [])
-    .filter((ticket) => !dismissed.includes(ticket.id))
+    .filter((ticket) => !(dismissed.includes(ticket.id) && stationGone(ticket)))
     .map((ticket) =>
       marked.ready.includes(ticket.id)
         ? {
@@ -259,12 +268,18 @@ function KitchenScreen({
 
   // What a read brought: a chime for what arrived, the double chime for a
   // line struck, said to screen readers too. The first read after opening
-  // tells nothing, and what waits too long already then is not reminded of.
+  // tells nothing, and what waits too long already then is not reminded of;
+  // nor is what arrives late already later, whose chime is its one sound.
+  // While refused (taking orders off), the last read stays and tells nothing.
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new read is what tells; the rest is read as it is then
   useEffect(() => {
-    if (!prep) return;
+    if (!prep || poll.refusal !== null) return;
     const was = before.current;
     before.current = prep.tickets;
+    setDismissed((ids) => {
+      const kept = stillDismissed(ids, prep.tickets);
+      return kept.length === ids.length ? ids : kept;
+    });
     if (was === null) {
       for (const id of lateNews(
         prep.tickets,
@@ -278,6 +293,14 @@ function KitchenScreen({
     }
     const told = stationNews(was, prep.tickets);
     const said: string[] = [];
+    for (const id of arrivedLate(
+      prep.tickets,
+      told.arrived,
+      now,
+      prep.lateAfterMinutes,
+    )) {
+      reminded.current.add(id);
+    }
     if (told.arrived.length > 0) {
       sound.chime();
       setArrived((times) => {
@@ -303,10 +326,10 @@ function KitchenScreen({
   }, [prep]);
 
   // One reminder for each ticket that waits past the business's time, as the
-  // clock crosses it.
+  // clock crosses it; none while refused, of a read the screen no longer shows.
   // biome-ignore lint/correctness/useExhaustiveDependencies: the clock and a new read are what remind
   useEffect(() => {
-    if (!prep || before.current === null) return;
+    if (!prep || before.current === null || poll.refusal !== null) return;
     const late = lateNews(
       prep.tickets,
       now,
@@ -401,7 +424,8 @@ function KitchenScreen({
         title={heading}
         headingRef={title}
         subtitle={
-          shown.length > 0
+          // Refused, the screen shows no order: nor counts the last read's.
+          poll.refusal === null && shown.length > 0
             ? oldest
               ? t("prep.status", {
                   count: open.length,
@@ -476,11 +500,13 @@ function KitchenScreen({
           }}
         />
       )}
-      <RecentlyReady
-        tickets={recent}
-        layout="station"
-        onPutBack={(ticket, place) => void putBack(ticket, place)}
-      />
+      {poll.refusal === null ? (
+        <RecentlyReady
+          tickets={recent}
+          layout="station"
+          onPutBack={(ticket, place) => void putBack(ticket, place)}
+        />
+      ) : null}
       <p role="status" aria-live="polite" className="sr-only">
         {news}
       </p>

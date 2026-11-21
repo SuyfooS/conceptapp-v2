@@ -25,6 +25,7 @@ import { isMissingColumn } from "./missing";
 import type { DatabaseRefusal } from "./order-failures";
 import {
   orderStationFailureOf,
+  orderStationItemFailureOf,
   orderStationRefusalOf,
 } from "./order-station-failures";
 import { createAdminClient } from "./supabase/admin";
@@ -185,7 +186,11 @@ export async function stationSetTicketReady(
   return written(error, "a station's ready");
 }
 
-/** A kitchen's screen marks an item sold out, or back (`public.station_set_item_available`). */
+/**
+ * A kitchen's screen marks an item sold out, or back
+ * (`public.station_set_item_available`), refused in an item's words
+ * (`orderStationItemFailureOf`).
+ */
 export async function stationSetItemAvailable(
   token: string,
   itemId: string,
@@ -199,7 +204,12 @@ export async function stationSetItemAvailable(
       is_available: available,
     },
   );
-  return written(error, "a station's sold out");
+  return error
+    ? {
+        ok: false,
+        failure: orderStationItemFailureOf(error, "a station's sold out"),
+      }
+    : { ok: true };
 }
 
 /** The till closes an order (`public.station_close_order`). */

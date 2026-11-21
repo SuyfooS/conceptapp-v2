@@ -2421,9 +2421,13 @@
             "noAccess": "Locking a device on the code is no longer yours to do.",
             "viewOnly": "No device is locked in view mode.",
             "failed": "We couldn't lock the device. You can try again.",
-            "otherStation": "This device is already a prep screen or a till of the business. To lock it on the code, stop that first on the prep screen."
+            "otherStation": "This device is already a prep screen or a till of the business. To lock it on the code, stop that first."
           },
-          "other": "This device is already “{name}”. To lock it on the code, stop that first on the prep screen."
+          "other": "This device is already “{name}”. To lock it on the code, stop that first.",
+          "stopOther": "Stop “{name}”",
+          "stoppedOther": "“{name}” stopped. You can lock the device on the code now.",
+          "restartedOther": "“{name}” runs again.",
+          "undo": "Undo"
         },
         "reminder": {
           "body": "This device is the business's clock station. When you're done, lock it again.",
@@ -6325,6 +6329,10 @@
           "back": "{name}: back on",
           "empty": "No items reach this screen yet.",
           "close": "Close"
+        },
+        "failure": {
+          "itemGone": "This item is no longer on the menu.",
+          "notHere": "This item no longer comes to this screen."
         },
         "off": "Taking orders is off for this business now, so there are no orders on the screen.",
         "departmentGone": "This screen's department was removed. Whoever runs the orders locks it again.",

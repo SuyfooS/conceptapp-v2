@@ -103,6 +103,7 @@ export function SignedInHere({
               kind={orders ? (shows === "till" ? "till" : "prep") : "clock"}
               primary
               label={t("lock")}
+              stopOther={lock.stopOther}
             />
           ) : null}
           <Button asChild size="lg" variant={locks ? "ghost" : "primary"}>

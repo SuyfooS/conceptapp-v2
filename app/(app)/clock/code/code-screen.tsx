@@ -176,6 +176,7 @@ export function CodeScreen({
                 offer={lock.offer}
                 lock={lock.action}
                 clearsDevice={lock.clearsDevice}
+                stopOther={lock.stopOther}
               />
             </div>
           ) : null}

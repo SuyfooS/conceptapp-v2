@@ -2449,8 +2449,11 @@ the clock's rows only, and `getRunningStations` asks for them); the secret is
 still never granted. `station_by_token` says what a station shows and its
 department; `issue_station_code` makes no clock code for a kitchen's or a
 till's secret; `set_clock_station_stopped` stops a kitchen's screen or a till
-for whoever runs orders (`order.station.stop`, `restart`). The demo's reset
-deletes the business, and its stations of every kind go with it. Covered by
+for whoever runs orders or edits the clock, taking orders off too (the
+clock's lock offers it on that device), and starts it again only for whoever
+runs orders, with taking orders on (`order.station.stop`, `restart`). A
+kitchen's "מה נגמר" refused says the item's own words (`itemGone`,
+`notHere`, `orderStationItemFailureOf`). The demo's reset deletes the business, and its stations of every kind go with it. Covered by
 `order-stations.test.ts`, `order-station-failures.test.ts`,
 pgTAP `order_stations.test.sql`, `modules/order_taking/stations.db.test.ts`
 and `e2e/order-stations.spec.ts`.

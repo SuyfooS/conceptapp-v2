@@ -293,7 +293,10 @@ export function writeKind(body: StationWrite): OrderStationKind {
 /**
  * Why a write was refused: the station's refusals, and those of the orders'
  * writes that can come to a station (@db/order-failures' `OrderFailure`,
- * named again here to keep the domain out of @db).
+ * named again here to keep the domain out of @db). A sold-out mark has two
+ * of its own, in an item's words: `itemGone`, the item was removed (or is
+ * none of the business's), and `notHere`, it no longer goes to the screen's
+ * department.
  */
 export const STATION_WRITE_FAILURES = [
   ...ORDER_STATION_REFUSALS,
@@ -308,6 +311,8 @@ export const STATION_WRITE_FAILURES = [
   "day",
   "notClosed",
   "notYet",
+  "itemGone",
+  "notHere",
 ] as const;
 export type StationWriteFailure = (typeof STATION_WRITE_FAILURES)[number];
 
@@ -352,9 +357,27 @@ export function stillToMake<T extends PrepTicket>(tickets: readonly T[]): T[] {
   );
 }
 
+/**
+ * Of the tickets taken off a screen by hand ("הסרה מהמסך"), those that stay
+ * off: still in the read and struck whole. One with a line live again (a
+ * cancelled line restored) is shown again, and no longer kept as taken off.
+ */
+export function stillDismissed(
+  dismissed: readonly string[],
+  tickets: readonly PrepTicket[],
+): string[] {
+  const struck = new Set(
+    tickets.filter(stationGone).map((ticket) => ticket.id),
+  );
+  return dismissed.filter((id) => struck.has(id));
+}
+
 /** What changed between two reads, for the sound and the screen reader. */
 export type StationNews = {
-  /** New tickets, and held blocks called: one chime. */
+  /**
+   * New tickets, held blocks called, and tickets with a line to make again
+   * (a cancelled line restored, on a ticket struck whole or not): one chime.
+   */
   arrived: string[];
   /** Lines live before and taken back or cancelled now, on a ticket still shown: the double chime. */
   struck: { ticket: string; line: string }[];
@@ -362,9 +385,10 @@ export type StationNews = {
 
 /**
  * What a read brought (§4.4): the tickets that arrived (new now, and absent
- * or held before) with a line to make, and the lines struck since on a
- * ticket still shown. The first read after the screen opens (`before`
- * null) tells nothing: what is there already was there.
+ * or held before, or with a line live now that wasn't before) with a line to
+ * make, and the lines struck since on a ticket still shown. The first read
+ * after the screen opens (`before` null) tells nothing: what is there
+ * already was there.
  */
 export function stationNews(
   before: readonly PrepTicket[] | null,
@@ -376,19 +400,24 @@ export function stationNews(
   const struck: { ticket: string; line: string }[] = [];
   for (const ticket of after) {
     const earlier = was.get(ticket.id);
+    const live = new Set(
+      (earlier?.lines ?? [])
+        .filter((line) => line.state === "live")
+        .map((line) => line.id),
+    );
     if (
       ticket.status === "new" &&
       liveTicket(ticket) &&
-      (!earlier || earlier.status === "held")
+      (!earlier ||
+        earlier.status === "held" ||
+        // A cancelled line restored: there is something to make again.
+        ticket.lines.some(
+          (line) => line.state === "live" && !live.has(line.id),
+        ))
     ) {
       arrived.push(ticket.id);
     }
     if (!earlier) continue;
-    const live = new Set(
-      earlier.lines
-        .filter((line) => line.state === "live")
-        .map((line) => line.id),
-    );
     for (const line of ticket.lines) {
       if (live.has(line.id) && line.state !== "live") {
         struck.push({ ticket: ticket.id, line: line.id });
@@ -422,6 +451,27 @@ export function lateNews(
         now - Date.parse(stationSince(ticket)) >= lateAfterMinutes * 60_000,
     )
     .map((ticket) => ticket.id);
+}
+
+/**
+ * Of the tickets a read brought (`arrived`, `stationNews`), those waiting
+ * past `lateAfterMinutes` already (sent while the screen had no connection,
+ * or given back by a close taken back): the arrival's chime is their one
+ * sound and its words their one announcement, so they count as reminded.
+ */
+export function arrivedLate(
+  tickets: readonly PrepTicket[],
+  arrived: readonly string[],
+  now: number,
+  lateAfterMinutes: number,
+): string[] {
+  const came = new Set(arrived);
+  return lateNews(
+    tickets.filter((ticket) => came.has(ticket.id)),
+    now,
+    lateAfterMinutes,
+    new Set(),
+  );
 }
 
 /** How long a ticket that arrived keeps its accent edge. */

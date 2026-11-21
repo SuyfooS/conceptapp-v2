@@ -626,9 +626,10 @@ export function stationWrite(
       const category = data.menu.categories.find(
         (c) => c.id === item?.categoryId,
       );
-      if (!item || !category) return refused("gone");
+      // In an item's words, as the database's are read (@db/order-station-failures).
+      if (!item || !category) return refused("itemGone");
       if (at.department !== null && category.department !== at.department) {
-        return refused("noAccess");
+        return refused("notHere");
       }
       return done(setSoldOut(data, item.id, !body.available));
     }

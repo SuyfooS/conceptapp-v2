@@ -31,7 +31,7 @@ function refused(failure: StationWriteFailure): Response {
   const status =
     failure === "notStation"
       ? 403
-      : failure === "gone"
+      : failure === "gone" || failure === "itemGone"
         ? 404
         : failure === "failed" || failure === "notYet"
           ? 500

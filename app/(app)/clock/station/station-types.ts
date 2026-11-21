@@ -1,4 +1,9 @@
-import type { LockResult, StationShows } from "@domain/clock-station";
+import type {
+  LockResult,
+  StationShows,
+  StationStopFailure,
+  StationStopResult,
+} from "@domain/clock-station";
 
 /**
  * Locking the device the person is on into one of the business's stations:
@@ -24,7 +29,8 @@ export type LockOffer = {
   total?: number;
   /**
    * This device is a running station of another kind: it isn't locked as this
-   * one until that one is stopped.
+   * one until that one is stopped (the clock's lock offers that stop on a
+   * kitchen's screen or a till, `StationLock`'s `stopOther`).
    */
   other?: { name: string; shows: StationShows } | null;
 };
@@ -61,14 +67,37 @@ export function lockInputOf(
 export type LockAction = (input: LockInput) => Promise<LockResult>;
 
 /**
+ * What stopping the kitchen's screen or the till this device is answers:
+ * done, with the station's id when the person may start it again (they run
+ * orders, with taking orders on), for the toast's "ביטול"; or why not.
+ */
+export type DeviceStopResult =
+  | { ok: true; undo: string | null }
+  | { ok: false; failure: StationStopFailure };
+
+/**
+ * The clock's lock on a device that is the business's kitchen's screen or
+ * till (`LockOffer`'s `other`): stopping that one there, so the device can
+ * be locked on the code, also while taking orders is off, when no other
+ * screen reaches it; and starting it again, the toast's "ביטול".
+ */
+export type StopOther = {
+  stop: () => Promise<DeviceStopResult>;
+  restart: (stationId: string) => Promise<StationStopResult>;
+};
+
+/**
  * Locking offered on a screen: what is offered and the action, and whether
  * it clears waiter mode's records on the device (`LockStation`'s
- * `clearsDevice`; false on /design's twins, whose lock locks nothing).
+ * `clearsDevice`; false on /design's twins, whose lock locks nothing). The
+ * clock's lock stops the device's kitchen's screen or till first
+ * (`stopOther`), where it is one.
  */
 export type StationLock = {
   offer: LockOffer;
   action: LockAction;
   clearsDevice?: boolean;
+  stopOther?: StopOther;
 };
 
 /**

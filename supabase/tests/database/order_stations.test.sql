@@ -10,7 +10,8 @@
 -- and today's closed, with no label, no person and no total. Their writes as
 -- a person's are decided, kept as the station's, and a person's write after
 -- one clears the station's column. A kitchen's or a till's secret makes no
--- clock code; an order station is stopped by whoever runs orders. Every
+-- clock code; an order station is stopped by whoever runs orders or edits
+-- the clock, taking orders off too, and started again only with it on. Every
 -- moment is passed in, from 1 December 2026 18:00 UTC (20:00 in the
 -- business). Fixed ids (ea…), numbers (05-007-000xx) and slugs
 -- (order-stations-…), so nothing here meets the seed or another test.
@@ -730,11 +731,11 @@ select is(
 
 select is(
   pg_temp.refusal(format($$select public.set_clock_station_stopped(%L, %L, true, %L)$$,
-    pg_temp.p(6), pg_temp.id('till'), pg_temp.at(900)))
+    pg_temp.p(3), pg_temp.id('till'), pg_temp.at(900)))
   || '|' || pg_temp.refusal(format($$select public.set_clock_station_stopped(%L, %L, true, %L)$$,
     pg_temp.p(3), (select id from public.clock_stations where token_hash = pg_temp.h('door')), pg_temp.at(900))),
   '42501|42501',
-  'a clock editor who doesn''t run orders stops no till; a worker stops no clock station'
+  'a worker who neither runs orders nor edits the clock stops no till, and no clock station'
 );
 select public.set_clock_station_stopped(pg_temp.p(2), pg_temp.id('kitchen'), true, pg_temp.at(910));
 select public.set_clock_station_stopped(pg_temp.p(6),
@@ -762,14 +763,23 @@ select is(
   'true|1',
   'and within its 2 minutes it runs again, logged as order.station.restart'
 );
+-- With taking orders off, a screen left running is still stopped (by a clock
+-- editor who doesn't run orders too, from the clock's lock on that device),
+-- so it never keeps one of the ten; starting it again waits for taking
+-- orders to be on.
 update public.business_modules set enabled = false
 where business_id = pg_temp.a() and module_key = 'order_taking';
 select is(
-  pg_temp.refusal(format($$select public.set_clock_station_stopped(%L, %L, true, %L)$$,
-    pg_temp.p(2), pg_temp.id('till'), pg_temp.at(960)))
-  || '|' || pg_temp.refusal(format($$select public.station_order_till(%L, null, %L)$$, pg_temp.h('till'), pg_temp.at(960))),
-  '42501 off|42501 off',
-  'with taking orders off, its screens are neither stopped nor read'
+  concat_ws('|',
+    pg_temp.refusal(format($$select public.station_order_prep(%L, null, %L)$$, pg_temp.h('kitchen'), pg_temp.at(960))),
+    pg_temp.refusal(format($$select public.set_clock_station_stopped(%L, %L, true, %L)$$,
+      pg_temp.p(6), pg_temp.id('till'), pg_temp.at(960))),
+    pg_temp.refusal(format($$select public.set_clock_station_stopped(%L, %L, false, %L)$$,
+      pg_temp.p(2), pg_temp.id('till'), pg_temp.at(970))),
+    (select (s.stopped_at is not null)::text from public.clock_stations s where s.id = pg_temp.id('till'))
+  ),
+  '42501 off|none|42501 off|true',
+  'with taking orders off its screens read nothing, a clock editor still stops the till, and nobody starts it again'
 );
 update public.business_modules set enabled = true
 where business_id = pg_temp.a() and module_key = 'order_taking';
@@ -807,8 +817,8 @@ select is(
 select is(
   (select count(*)::integer from public.audit_log a
    where a.business_id = pg_temp.a() and a.action like 'order.station.%'),
-  7,
-  'five locks, a stop and a restart, each logged once'
+  8,
+  'five locks, two stops and a restart, each logged once'
 );
 
 ------------------------------------------------------------------------------

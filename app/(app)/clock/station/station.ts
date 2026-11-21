@@ -108,7 +108,8 @@ export async function orderLockerBusiness(): Promise<string | null> {
  * those running are read only for a device that isn't one of them: the name
  * offered and the limit of ten (of every kind together) are a new station's.
  * A device that is the business's kitchen's screen or till says so
- * (`other`), and isn't locked on the code until that one is stopped.
+ * (`other`), and isn't locked on the code until that one is stopped, which
+ * the lock offers (`stopDeviceStationAction`), taking orders on or off.
  */
 export async function currentLockOffer(): Promise<LockOffer | null> {
   const businessId = await lockerBusiness();
