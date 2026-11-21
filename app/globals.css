@@ -542,6 +542,14 @@ body {
   }
 }
 
+/* A ticket that just reached the kitchen's screen: a ring in the business's
+   colour that fades once, over its soft shadow. */
+@keyframes ticket-flash {
+  from {
+    box-shadow: 0 0 0 4px var(--color-accent);
+  }
+}
+
 /* Motion only on state changes, and none at all when the user asks for less. */
 @media (prefers-reduced-motion: reduce) {
   *,

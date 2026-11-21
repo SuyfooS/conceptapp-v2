@@ -12,6 +12,11 @@ import { MineView } from "./mine-view";
 import { OrderView, type OrderWhere } from "./order-view";
 import { useOrdersRead } from "./orders-provider";
 import { PrepView } from "./prep-view";
+import { OrderStations } from "./stations/order-stations";
+import type {
+  OrderStationsActions,
+  OrderStationsData,
+} from "./stations/stations-types";
 import { TillView } from "./till-view";
 
 /*
@@ -128,7 +133,23 @@ export function MineScreen({ mine }: { mine: MyOrders | null }) {
   return <MineView mine={read.mine} />;
 }
 
-export function PrepScreen({ prep }: { prep: OrderPrep | null }) {
+/**
+ * Preparing, and for whoever runs orders the kitchen's and the till's
+ * screens under the tickets (P8a).
+ */
+export function PrepScreen({
+  prep,
+  stations,
+}: {
+  prep: OrderPrep | null;
+  stations: { data: OrderStationsData; actions: OrderStationsActions } | null;
+}) {
   const read = useOrdersRead({ prep }, { prep: true });
-  return <PrepView prep={read.prep} />;
+  return (
+    <PrepView prep={read.prep}>
+      {stations ? (
+        <OrderStations stations={stations.data} actions={stations.actions} />
+      ) : null}
+    </PrepView>
+  );
 }

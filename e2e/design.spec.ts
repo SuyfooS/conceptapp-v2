@@ -9,6 +9,7 @@ import { type MessageTree, mergeWording } from "../packages/domain/wording";
 import { before, buildScreen, HOLD_MS } from "./build-screen";
 import { minimalPdf } from "./pdf";
 import { cameraPhoto } from "./photo";
+import { stubAudio } from "./station-audio";
 import { heT } from "./t";
 import { readWorkbook, unzip } from "./unzip";
 
@@ -351,11 +352,30 @@ const PAGES = [
   "/design/order-taking/prep",
   "/design/order-taking/prep?state=nothingOpen",
   "/design/order-taking/prep?state=kitchen",
+  // The kitchen's and the till's stations (P8a), the real screens on the
+  // twin: the gate, open, a ticket arriving, waiting too long, struck,
+  // "מה נגמר", every department, offline, the sound stopped, nothing open
+  // and stopped; the till, an order chosen, held, closed and offline; the
+  // prep screen with ten devices locked; and Home on the kitchen's screen.
+  // The timed states are checked clean, not waited on.
   "/design/order-taking/station/prep",
   "/design/order-taking/station/prep?state=open",
+  "/design/order-taking/station/prep?state=arrives",
+  "/design/order-taking/station/prep?state=late",
+  "/design/order-taking/station/prep?state=struck",
+  "/design/order-taking/station/prep?state=soldOut",
+  "/design/order-taking/station/prep?state=allDepartments",
   "/design/order-taking/station/prep?state=offline",
+  "/design/order-taking/station/prep?state=soundLocked",
   "/design/order-taking/station/prep?state=nothingOpen",
+  "/design/order-taking/station/prep?state=stopped",
   "/design/order-taking/station/till",
+  "/design/order-taking/station/till?state=chosen",
+  "/design/order-taking/station/till?state=held",
+  "/design/order-taking/station/till?state=closed",
+  "/design/order-taking/station/till?state=offline",
+  "/design/order-taking/prep?state=fullStations",
+  "/design/shell/today/station?state=prep",
   "/design/order-taking/menu",
   "/design/order-taking/menu?state=noMenu",
   "/design/order-taking/menu/import",
@@ -379,11 +399,11 @@ const PAGES = [
 // The chat demo's states that open with a sheet (who confirmed, a message's
 // actions, a picture shown whole, the attach sheet, a document's removal
 // with its reasons), a person's hours on the clock demo open on a shift,
-// and waiter mode's order opens on an item's choices: the sheet hides the
-// page behind it from the accessibility tree. Lists' `?state=photo` opens
-// none.
+// and waiter mode's order opens on an item's choices, and its kitchen's
+// screen on "מה נגמר": the sheet hides the page behind it from the
+// accessibility tree. Lists' `?state=photo` opens none.
 const OPENS_A_SHEET =
-  /^\/design\/(chat\/.*[?&]state=(readers|actions|photo|attach|remove)|shell\/clock\/team\/[^?]+[?&]state=(edit|cancel|cancelled|break|addBreak|openBreak)|order-taking\/floor\/order\?.*[?&]state=choices)\b/;
+  /^\/design\/(chat\/.*[?&]state=(readers|actions|photo|attach|remove)|shell\/clock\/team\/[^?]+[?&]state=(edit|cancel|cancelled|break|addBreak|openBreak)|order-taking\/floor\/order\?.*[?&]state=choices|order-taking\/station\/prep\?(?:.*&)?state=soldOut)\b/;
 
 async function expectCleanPage(
   page: Page,
@@ -4704,23 +4724,291 @@ test("the waiter mode demo makes its tables at once, and its departments count t
 });
 
 // The kitchen's screen opened offline stays offline once the state comes
-// off the address, so the check of every page sees its banner.
+// off the address: after two asks that failed, its banner across the top
+// (P8a), and its quiet line says so.
 test("the waiter mode demo's kitchen screen stays offline", async ({
   page,
 }) => {
-  const o = he.design.orderTaking;
+  const words = he.app.orders.station;
   await page.goto("/design/order-taking/station/prep?state=offline");
   await expect(page).toHaveURL(/\/station\/prep$/);
   // The page's own alert, not the router's announcer.
   await expect(page.getByRole("main").getByRole("alert")).toContainText(
-    o.station.offline,
+    words.offline,
+    { timeout: 20_000 },
   );
+  // The quiet line whole: the banner's title starts with the same words.
   await expect(
-    page.getByText(o.station.offlineBadge, { exact: true }),
+    page.getByText(`${words.offlineShort} · ${words.soundOn}`, {
+      exact: true,
+    }),
   ).toBeVisible();
-  await expect(page.getByText(o.station.online, { exact: true })).toHaveCount(
-    0,
+  await expect(page.getByText(words.online, { exact: true })).toHaveCount(0);
+});
+
+// The kitchen's screen past its button on the twin (P8a) plays its sound,
+// as the button's press leaves it: its quiet line says so and no banner
+// asks for a tap. Only `soundLocked` shows the sound stopped, with the
+// banner that is its button, and pressing it starts the sound.
+test("the waiter mode demo's kitchen screen says its sound plays, but where it stopped", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "phone", "one width is enough");
+  // A stand-in for the device's sound, which runs once tapped.
+  await stubAudio(page);
+  const words = he.app.orders.station;
+  const banner = page.getByRole("button", {
+    name: new RegExp(`^${words.soundLocked}`),
+  });
+  await page.goto("/design/order-taking/station/prep?state=open");
+  await expect(page).toHaveURL(/\/station\/prep$/);
+  await expect(
+    page.getByText(`${words.online} · ${words.soundOn}`, { exact: true }),
+  ).toBeVisible();
+  await expect(banner).toHaveCount(0);
+
+  await page.goto("/design/order-taking/station/prep?state=soundLocked");
+  await expect(page).toHaveURL(/\/station\/prep$/);
+  await expect(banner).toBeVisible();
+  await expect(page.getByText(words.online, { exact: true })).toBeVisible();
+  await banner.click();
+  await expect(banner).toHaveCount(0);
+  await expect(
+    page.getByText(`${words.online} · ${words.soundOn}`, { exact: true }),
+  ).toBeVisible();
+});
+
+// The kitchen's screen on the twin (P8a): it reads nothing until its one
+// button; "מוכן" bumps a ticket with "ביטול" in the toast, then to "מוכנים
+// לאחרונה", from where it goes back to be made.
+test("the waiter mode demo's kitchen screen opens with its button, and bumps a ticket with its undo", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "phone", "the walk is the phone's");
+  const table4 = rt("app.orders.place.numbered", { name: "4" });
+  const kitchen = "מטבח";
+  await page.goto("/design/order-taking/station/prep?state=service");
+  await expect(page).toHaveURL(/\/station\/prep$/);
+  const ticket = page
+    .getByRole("article", {
+      name: rt("app.orders.prep.label", { place: table4, department: kitchen }),
+    })
+    .first();
+  await expect(ticket).toHaveCount(0);
+  await page
+    .getByRole("button", { name: rt("app.orders.station.open") })
+    .click();
+  await expect(ticket).toBeVisible();
+  await ticket
+    .getByRole("button", { name: rt("app.orders.prep.ready") })
+    .click();
+  await expect(
+    page.getByText(
+      rt("app.orders.toast.ready", { place: table4, department: kitchen }),
+    ),
+  ).toBeVisible();
+  await page.getByRole("button", { name: rt("app.orders.toast.undo") }).click();
+  await expect(
+    ticket.getByRole("button", { name: rt("app.orders.prep.ready") }),
+  ).toBeVisible();
+  await ticket
+    .getByRole("button", { name: rt("app.orders.prep.ready") })
+    .click();
+  await expect(
+    page.getByRole("heading", { level: 2, name: rt("app.orders.prep.recent") }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", {
+      name: new RegExp(`^${rt("app.orders.prep.putBack")}`),
+    })
+    .first()
+    .click();
+  await expect(
+    page.getByText(rt("app.orders.toast.putBack", { place: table4 })),
+  ).toBeVisible();
+});
+
+// "מה נגמר" on the kitchen's screen (P8a): a switch marks the hummus sold
+// out at once, and "ביטול" in the sheet puts it back.
+test("the waiter mode demo's kitchen screen marks an item sold out, with its undo", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "phone", "the walk is the phone's");
+  await page.goto("/design/order-taking/station/prep?state=open");
+  await page
+    .getByRole("button", { name: rt("app.orders.station.soldOut.open") })
+    .click();
+  const sheet = page.getByRole("dialog");
+  const hummus = sheet.getByRole("switch", { name: "חומוס" });
+  await expect(hummus).toHaveAttribute("aria-checked", "false");
+  await hummus.click();
+  await expect(hummus).toHaveAttribute("aria-checked", "true");
+  await expect(
+    sheet.getByText(rt("app.orders.station.soldOut.done", { name: "חומוס" })),
+  ).toBeVisible();
+  await sheet
+    .getByRole("button", { name: rt("app.orders.toast.undo") })
+    .click();
+  await expect(hummus).toHaveAttribute("aria-checked", "false");
+});
+
+// The till on the twin (P8a): table 9's close with "ביטול", closed again,
+// and opened again from where it is.
+test("the waiter mode demo's till closes a table with its undo, and opens it again", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "phone", "the walk is the phone's");
+  const table9 = rt("app.orders.place.numbered", { name: "9" });
+  await page.goto("/design/order-taking/station/till?state=chosen");
+  await expect(
+    page.getByRole("heading", {
+      level: 2,
+      name: rt("app.orders.till.title", { place: table9 }),
+    }),
+  ).toBeVisible();
+  const close = page.getByRole("button", {
+    name: rt("app.orders.close.place"),
+  });
+  await close.click();
+  await expect(
+    page.getByText(rt("app.orders.toast.closed", { place: table9 })),
+  ).toBeVisible();
+  await page.getByRole("button", { name: rt("app.orders.toast.undo") }).click();
+  await expect(close).toBeVisible();
+  await close.click();
+  await page
+    .getByRole("button", { name: rt("app.orders.close.reopen") })
+    .click();
+  await expect(
+    page.getByText(rt("app.orders.toast.reopened", { place: table9 })),
+  ).toBeVisible();
+  await expect(close).toBeVisible();
+});
+
+// The till's "ביטול" (P8a) stays while the cashier goes on to the next
+// order, chosen beside it on a tablet: table 9's close is taken back from
+// the toast once table 4 is the one shown.
+test("the waiter mode demo's till keeps a close's undo while the next order is chosen", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "tablet",
+    "the list beside the order is the tablet's",
   );
+  const table = (name: string) => rt("app.orders.place.numbered", { name });
+  const row = (name: string) =>
+    page
+      .getByRole("button", { name: new RegExp(`^${table(name)}`) })
+      .filter({ visible: true })
+      .first();
+  const title = (name: string) =>
+    page.getByRole("heading", {
+      level: 2,
+      name: rt("app.orders.till.title", { place: table(name) }),
+    });
+  const close = page.getByRole("button", {
+    name: rt("app.orders.close.place"),
+  });
+  await page.goto("/design/order-taking/station/till?state=chosen");
+  await expect(title("9")).toBeVisible();
+  await close.click();
+  const closed = page
+    .getByRole("status")
+    .filter({ hasText: rt("app.orders.toast.closed", { place: table("9") }) });
+  await expect(closed).toBeVisible();
+  await row("4").click();
+  await expect(title("4")).toBeVisible();
+  await closed
+    .getByRole("button", { name: rt("app.orders.toast.undo") })
+    .click();
+  await row("9").click();
+  await expect(title("9")).toBeVisible();
+  await expect(close).toBeEnabled();
+  await expect(
+    page.getByRole("button", { name: rt("app.orders.close.reopen") }),
+  ).toHaveCount(0);
+});
+
+// On a phone the order chosen takes the list's place (P8a): one chosen at
+// the foot of the till's list opens at the top, its way back and its title
+// in sight.
+test("the waiter mode demo's till opens an order chosen low in its list at the top", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "phone",
+    "the order alone is the phone's",
+  );
+  await page.goto("/design/order-taking/station/till");
+  const last = page
+    .getByRole("main")
+    .getByRole("button")
+    .filter({ visible: true })
+    .last();
+  await expect(last).toBeVisible();
+  await page.evaluate(() =>
+    window.scrollTo(0, document.documentElement.scrollHeight),
+  );
+  await last.click();
+  await expect(
+    page.getByRole("heading", {
+      level: 2,
+      name: new RegExp(`^${rt("app.orders.till.title", { place: "" }).trim()}`),
+    }),
+  ).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  await expect(
+    page.getByRole("button", { name: rt("app.orders.station.till.back") }),
+  ).toBeInViewport();
+});
+
+// The kitchen's gate (P8a) stands in the middle of the screen, with the
+// foot under it at the bottom: on a phone, a tablet and a desktop alike.
+test("the waiter mode demo's kitchen gate is centred on the screen", async ({
+  page,
+}) => {
+  await page.goto("/design/order-taking/station/prep");
+  const open = page.getByRole("button", {
+    name: rt("app.orders.station.open"),
+  });
+  await expect(open).toBeVisible();
+  const title = page
+    .getByRole("heading", { level: 1 })
+    .filter({ visible: true })
+    .first();
+  const top = (await title.boundingBox())?.y ?? 0;
+  const button = await open.boundingBox();
+  const bottom = (button?.y ?? 0) + (button?.height ?? 0);
+  const height = page.viewportSize()?.height ?? 0;
+  expect(Math.abs((top + bottom) / 2 - height / 2)).toBeLessThan(height * 0.15);
+});
+
+// The prep screen's lock on the twin (P8a): the kitchen's sheet, with its
+// department and the name it offers, goes to the kitchen's twin.
+test("the waiter mode demo's prep screen locks the device as the kitchen's screen", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "phone", "the walk is the phone's");
+  await page.goto("/design/order-taking/prep?state=service");
+  await page
+    .getByRole("button", { name: rt("app.orders.stations.prep.lock") })
+    .click();
+  const sheet = page.getByRole("dialog", {
+    name: rt("app.orders.stations.lock.prep.title"),
+  });
+  await expect(sheet.getByRole("radio", { name: "מטבח" })).toBeChecked();
+  await expect(
+    sheet.getByLabel(rt("app.orders.stations.lock.name")),
+  ).toHaveValue(
+    rt("app.orders.stations.lock.numbered", { name: "מטבח", n: 2 }),
+  );
+  await sheet
+    .getByRole("button", { name: he.app.clock.station.lock.submit })
+    .click();
+  await expect(page).toHaveURL(/\/design\/order-taking\/station\/prep$/);
+  await expect(
+    page.getByRole("button", { name: rt("app.orders.station.open") }),
+  ).toBeVisible();
 });
 
 // The desktop's table of what Shiran still has to serve reads each line as

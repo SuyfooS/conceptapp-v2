@@ -12,7 +12,9 @@ import { type NextRequest, NextResponse } from "next/server";
  * Everything else is public; chat's sync (/chat-sync) and the orders' sync
  * and send (/orders-sync, /orders-send) stay out on purpose: each renews the
  * session itself and answers a signed-out caller 401.
- * The clock station (/station) is public too, and in the matcher only.
+ * The station (/station) is public too, and in the matcher only, but for its
+ * poll and its writes (/station/tickets, /station/write), which refuse any
+ * session themselves.
  */
 const HOME = "/home";
 export const PRIVATE = [
@@ -83,10 +85,14 @@ export const config = {
     "/chat-files/:path*",
     "/document-files/:path*",
     "/admin/:path*",
-    // Public, and refreshed all the same: a session left on a clock station
-    // is renewed here and counted as one, never read as nobody (PRIVATE
-    // leaves it out, so a device with nobody signed in reaches it).
-    "/station/:path*",
+    // Public, and refreshed all the same: a session left on a station is
+    // renewed here and counted as one, never read as nobody (PRIVATE leaves
+    // it out, so a device with nobody signed in reaches it). Not the
+    // kitchen's and the till's poll and writes (waiter mode P8a): each ask,
+    // every five seconds, would run the proxy too; they refuse any session
+    // themselves.
+    "/station",
+    "/station/((?!tickets$|write$).*)",
     "/sign-in",
     "/enter",
   ],

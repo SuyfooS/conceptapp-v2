@@ -8,9 +8,10 @@ export type WakeLockState = "pending" | "on" | "off";
 /**
  * Keeps the screen on while `enabled`, for a screen others read from, such as
  * the clock's code. The browser lets the lock go when the page is hidden, so
- * it is asked for again when the page shows. Many devices have no lock or
- * refuse it (an iPhone home-screen app, a headless browser): the state says
- * so, and the screen tells its reader what to do instead.
+ * it is asked for again when the page shows. Some devices have no lock or
+ * refuse it (an iPhone or iPad home-screen app before iOS 18.4, WebKit bug
+ * 254545; a headless browser): the state says so, and the screen tells its
+ * reader what to do instead.
  */
 export function useWakeLock(enabled: boolean): WakeLockState {
   const [state, setState] = useState<WakeLockState>("pending");

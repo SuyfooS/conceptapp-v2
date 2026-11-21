@@ -7,9 +7,12 @@ import { MenuEditRow, MenuItemList, MenuItemRow } from "@ui/menu-item-row";
 import { DraftLineRow, SendOrderButton } from "@ui/order-draft";
 import { PlaceTile } from "@ui/place-tile";
 import { Sheet } from "@ui/sheet";
+import { StationBanner } from "@ui/station-banner";
 import { Stepper } from "@ui/stepper";
 import { OrderLine, TicketCard } from "@ui/ticket-card";
 import { TillList } from "@ui/till-list";
+import { useStationSound } from "@ui/use-station-sound";
+import { Volume2, WifiOff } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useId, useState } from "react";
 import {
@@ -39,8 +42,12 @@ const FLOOR = "/design/order-taking/floor?state=service";
  * P7 adds a place with a round that hasn't gone (`PlaceTile` tone
  * `unsent`), and what the app says outside the mode: the banner above
  * another screen while an order waits, and the notice of one taken off the
- * phone. The words are the twin's and the app's; the dishes and people
- * only stand in.
+ * phone. P8a adds the kitchen's screen: the banner with no connection and
+ * the one that is a button once the sound stops (`StationBanner`), a ticket
+ * that just arrived (`TicketCard fresh`) and one with every line cancelled
+ * (`gone`), and the three sounds (`useStationSound`) after the tap that
+ * turns them on. The words are the twin's and the app's; the dishes and
+ * people only stand in.
  */
 export function GalleryOrderTaking() {
   const t = useTranslations("design.orderParts");
@@ -69,6 +76,8 @@ export function GalleryOrderTaking() {
   const [choicesOpen, setChoicesOpen] = useState(false);
   const [burgers, setBurgers] = useState("2");
   const qtyId = useId();
+  const sound = useStationSound();
+  const st = useTranslations("app.orders.station");
   const extrasFull = extras.length >= 2;
   const donenessGroup = (
     <ChoiceGroup
@@ -532,6 +541,86 @@ export function GalleryOrderTaking() {
           }}
         />
       </MenuItemList>
+
+      <h3 className="font-semibold text-base">{t("station")}</h3>
+      <p className="text-ink-2 text-sm">{t("stationText")}</p>
+      <div className="flex flex-col gap-3">
+        <StationBanner tone="danger" icon={<WifiOff />} title={st("offline")} />
+        <StationBanner
+          tone="warning"
+          icon={<Volume2 />}
+          title={st("soundLocked")}
+          body={st("soundLockedBody")}
+          onClick={sound.unlock}
+        />
+      </div>
+      <div className="grid gap-4 md:grid-cols-2 md:items-start">
+        <TicketCard
+          title={table("6")}
+          label={o("ticket.label", { place: table("6"), department: kitchen })}
+          from={o("ticket.from", { name: t("waiter"), department: kitchen })}
+          age={{ text: o("age.ago", { count: 0 }), tone: "calm" }}
+          large
+          fresh
+          ready={{ label: o("ticket.ready"), onClick: () => {} }}
+        >
+          <OrderLine
+            large
+            title={o.rich("line.qtyName", { qty: 2, name: t("hummus"), ltr })}
+          />
+        </TicketCard>
+        <TicketCard
+          title={table("9")}
+          label={o("ticket.label", { place: table("9"), department: kitchen })}
+          from={o("ticket.from", { name: t("waiter"), department: kitchen })}
+          age={{ text: o("age.ago", { count: 7 }), tone: "calm" }}
+          large
+          gone={st("gone")}
+          ready={{
+            label: st("dismiss"),
+            ariaLabel: st("dismissLabel", { place: table("9") }),
+            onClick: () => {},
+          }}
+        >
+          <OrderLine
+            large
+            title={o.rich("line.qtyName", { qty: 1, name: t("salad"), ltr })}
+            takenBack={a("line.cancelled")}
+          />
+        </TicketCard>
+      </div>
+      <div className="flex flex-col gap-3">
+        <p role="status" className="text-ink-2 text-sm">
+          {t(`sound.${sound.state}`)}
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <Button variant="primary" onClick={sound.unlock}>
+            <Volume2 aria-hidden="true" />
+            {t("sound.unlock")}
+          </Button>
+          <Button
+            variant="secondary"
+            disabled={sound.state !== "on"}
+            onClick={sound.chime}
+          >
+            {t("sound.chime")}
+          </Button>
+          <Button
+            variant="secondary"
+            disabled={sound.state !== "on"}
+            onClick={sound.reminder}
+          >
+            {t("sound.reminder")}
+          </Button>
+          <Button
+            variant="secondary"
+            disabled={sound.state !== "on"}
+            onClick={sound.doubleChime}
+          >
+            {t("sound.double")}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

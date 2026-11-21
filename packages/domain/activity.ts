@@ -144,8 +144,10 @@ export type ActivityLookups = {
   /** The business's departments, removed ones too, by id: their names. */
   departments: ReadonlyMap<string, string>;
   /**
-   * The business's clock stations, stopped ones too, by id: their names, as
-   * the reader may read them (whoever edits the clock, with the clock on).
+   * The business's stations, stopped ones too, by id: their names, as the
+   * reader may read them (the clock's for whoever edits the clock, with the
+   * clock on; the kitchen's screens and the till for whoever runs orders,
+   * with taking orders on).
    */
   stations: ReadonlyMap<string, string>;
 };
@@ -716,7 +718,32 @@ export type ActivityLine =
       reason: OrderCancelReason | null;
       lines: ActivityOrderLine[];
     }
+  | {
+      /**
+       * Whoever runs orders left the device they were on as the kitchen's
+       * screen or the till (waiter mode P8a), by the name they gave it; a
+       * kitchen's screen of one department (`department` its name, null
+       * when the reader can't tell) or of every one (`every`).
+       */
+      action: "order.station.add";
+      name: string;
+      shows: OrderStationShows;
+      department: string | null;
+      every: boolean;
+    }
+  | {
+      /**
+       * A kitchen's screen or a till stopped, or started again in the two
+       * minutes after; its name where the reader may read it, else null.
+       */
+      action: "order.station.stop" | "order.station.restart";
+      name: string | null;
+      shows: OrderStationShows;
+    }
   | { action: "other" };
+
+/** What a station of the orders shows: the kitchen's tickets, or the till. */
+export type OrderStationShows = "prep" | "till";
 
 /** The fixes of a line the log keeps (waiter mode P3). */
 export const ORDER_LINE_ACTIONS = [
@@ -1165,6 +1192,19 @@ const schemas = {
     where: orderWhere,
     reason: z.enum(ORDER_CANCEL_REASONS).nullable().catch(null),
     lines: z.array(z.object(orderLineFields)).catch([]),
+  }),
+  // 20261124000100_order_taking_stations.sql: the add keeps the name, what
+  // it shows and the kitchen's department; a stop or restart the station
+  // and what it shows.
+  "order.station.add": z.object({
+    station: id,
+    name: z.string(),
+    shows: z.enum(["prep", "till"]),
+    department: id.nullable().catch(null),
+  }),
+  "order.station.stop": z.object({
+    station: id,
+    shows: z.enum(["prep", "till"]),
   }),
 };
 
@@ -1941,6 +1981,28 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
         })),
       };
     }
+    case "order.station.add": {
+      const details = read(schemas["order.station.add"]);
+      if (!details?.name.trim()) return other;
+      return {
+        action: row.action,
+        name: details.name.trim(),
+        shows: details.shows,
+        department: departmentOf(details.department),
+        every: details.shows === "prep" && details.department === null,
+      };
+    }
+    case "order.station.stop":
+    case "order.station.restart": {
+      const details = read(schemas["order.station.stop"]);
+      return details
+        ? {
+            action: row.action,
+            name: lookups.stations.get(details.station.toLowerCase()) ?? null,
+            shows: details.shows,
+          }
+        : other;
+    }
     case "schedule.publish": {
       const details = read(schemas["schedule.publish"]);
       return details
@@ -2012,7 +2074,9 @@ export function activityRefs(rows: readonly ActivityRow[]) {
     }
     if (
       row.action === "clock.station.stop" ||
-      row.action === "clock.station.restart"
+      row.action === "clock.station.restart" ||
+      row.action === "order.station.stop" ||
+      row.action === "order.station.restart"
     ) {
       add(stations, details.data.station);
     }

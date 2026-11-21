@@ -1,16 +1,24 @@
 import type { DraftLine } from "@domain/order-screens";
-import { checkPicks } from "@domain/order-taking";
 import type {
-  FloorOrder,
-  MyOrders,
-  OrderDetail,
-  OrderFloor,
-  OrderPrep,
-  OrderStatus,
-  PrepLine,
-  ReadyTicket,
-  SentRound,
-  TicketStatus,
+  StationDepartment,
+  StationMenu,
+  StationPrep,
+  StationTill,
+  StationTillOrder,
+} from "@domain/order-stations";
+import { checkPicks } from "@domain/order-taking";
+import {
+  type FloorOrder,
+  type MyOrders,
+  type OrderDetail,
+  type OrderFloor,
+  type OrderPrep,
+  type OrderStatus,
+  orderTill,
+  type PrepLine,
+  type ReadyTicket,
+  type SentRound,
+  type TicketStatus,
 } from "@domain/orders";
 import type { OrdersFrame } from "../../(app)/orders/orders-types";
 import {
@@ -39,7 +47,8 @@ import type { DemoData, TwinViewer } from "./scenario";
  * screens draw it as the app does. Pure, so it is tested
  * (order-taking.test.ts). The twin's ids are words ("table-4"), which the
  * screens never read as more than keys. P5 adds the fixes: lines cancelled
- * and on the house, orders moved, opened again and cancelled whole.
+ * and on the house, orders moved, opened again and cancelled whole. P8a adds
+ * the kitchen's screen and the till, as their stations read them.
  */
 
 const iso = (at: number) => new Date(at).toISOString();
@@ -477,4 +486,143 @@ export function twinFrame(viewer: TwinViewer): OrdersFrame {
     default:
       return base;
   }
+}
+
+/** The twin's departments, as a station names them. */
+const stationDepartments = (): StationDepartment[] =>
+  orderDemoDepartments.map((d) => ({
+    id: d.key,
+    name: d.name,
+    archived: false,
+  }));
+
+/**
+ * A kitchen's screen's tickets (P8a), as `public.station_order_prep` gives
+ * them: of `department`, or of every one for null, with the departments by
+ * name and the business's late mark. No price.
+ */
+export function twinStationPrep(
+  data: DemoData,
+  department: string | null,
+  now: number,
+  version = 1,
+): StationPrep {
+  const departments = department
+    ? [department]
+    : orderDemoDepartments.map((d) => d.key);
+  return {
+    version,
+    now: iso(now),
+    lateAfterMinutes: 15,
+    department,
+    departmentGone: false,
+    departments: stationDepartments(),
+    tickets: twinPrep(data, departments, now, version).tickets,
+  };
+}
+
+/**
+ * What a kitchen's screen marks sold out (P8a), as
+ * `public.station_order_menu` gives it: the items that go to `department`
+ * (every one's for null), with their category and whether they are
+ * available. No price.
+ */
+export function twinStationMenu(
+  data: DemoData,
+  department: string | null,
+  version = 1,
+): StationMenu {
+  return {
+    version,
+    items: data.menu.categories
+      .filter((c) => department === null || c.department === department)
+      .flatMap((c) =>
+        data.menu.items
+          .filter((item) => item.categoryId === c.id)
+          .map((item) => ({
+            id: item.id,
+            name: item.name,
+            category: { id: c.id, name: c.name },
+            available: !data.soldOut.includes(item.id),
+          })),
+      ),
+  };
+}
+
+/** An order as the till reads it (P8a): no label, no person, no total. */
+function twinTillOrder(
+  data: DemoData,
+  order: Order,
+  now: number,
+): StationTillOrder | null {
+  const detail = twinDetail(data, order.id, now);
+  if (!detail) return null;
+  const till = orderTill(detail);
+  const tickets = order.rounds.flatMap((round) => round.tickets).filter(live);
+  const cancelled = detail.status === "cancelled";
+  return {
+    id: detail.id,
+    status: detail.status,
+    place: detail.place,
+    takeaway: detail.takeaway?.number ?? null,
+    openedAt: detail.openedAt,
+    reopenedAt: detail.reopenedAt,
+    closedAt: detail.closedAt,
+    cancelledAt: detail.cancelledAt,
+    cancelReason: detail.cancelReason,
+    closedHere: order.closedBy === "station" && detail.status === "closed",
+    held: tickets.filter((ticket) => statusOf(ticket) === "held").length,
+    ready: tickets.filter((ticket) => statusOf(ticket) === "ready").length,
+    unserved:
+      detail.status === "open"
+        ? orderDemoDepartments
+            .map((d) => d.key)
+            .filter((key) =>
+              tickets.some(
+                (ticket) =>
+                  ticket.department === key &&
+                  (statusOf(ticket) === "new" || statusOf(ticket) === "ready"),
+              ),
+            )
+        : [],
+    byItem: cancelled ? [] : till.byItem,
+    byRound: cancelled
+      ? []
+      : till.byRound.map((round) => ({
+          id: round.id,
+          sentAt: round.sentAt,
+          lines: round.lines,
+        })),
+  };
+}
+
+/**
+ * The till's orders (P8a), as `public.station_order_till` gives them: every
+ * open one, oldest first, and this evening's closed and cancelled ones, the
+ * newest first.
+ */
+export function twinStationTill(
+  data: DemoData,
+  now: number,
+  version = 1,
+): StationTill {
+  const of = (orders: readonly Order[]) =>
+    orders.flatMap((order) => {
+      const read = twinTillOrder(data, order, now);
+      return read ? [read] : [];
+    });
+  return {
+    version,
+    now: iso(now),
+    day: DAY,
+    departments: stationDepartments(),
+    orders: of([...data.orders].sort((a, b) => a.openedAt - b.openedAt)),
+    closed: of(
+      [...data.closed].sort(
+        (a, b) =>
+          (b.cancelled?.at ?? b.closedAt ?? 0) -
+          (a.cancelled?.at ?? a.closedAt ?? 0),
+      ),
+    ),
+  };
 }

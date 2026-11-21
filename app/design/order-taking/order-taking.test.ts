@@ -9,6 +9,11 @@ import {
   waitingGroups,
 } from "@domain/order-screens";
 import {
+  stationMenuSchema,
+  stationPrepSchema,
+  stationTillSchema,
+} from "@domain/order-stations";
+import {
   choiceRule,
   itemSaveInput,
   type OptionGroup,
@@ -35,6 +40,7 @@ import {
   restoreLine,
   saveCategories,
   sendRound,
+  stationWrite,
   uncompLine,
   undoCloseOrder,
   withoutPending,
@@ -69,6 +75,9 @@ import {
   twinOrderAt,
   twinPrep,
   twinSentRound,
+  twinStationMenu,
+  twinStationPrep,
+  twinStationTill,
 } from "./real-orders";
 import { scenario } from "./scenario";
 
@@ -839,5 +848,155 @@ describe("the twin's fixes (P5)", () => {
       cancelReason: "guest",
       takeaway: { number: 2 },
     });
+  });
+});
+
+// The kitchen's screen and the till on the twin (waiter mode P8a): read as
+// their stations read the database, and written as it decides a station's
+// writes, each kept as the station's.
+describe("the twin's stations", () => {
+  const evening = scenario(null);
+  const at = DEMO_START + MINUTE;
+  const ids = (prep: { tickets: { id: string }[] }) =>
+    prep.tickets.map((ticket) => ticket.id);
+
+  it("read as the database's, shaped alike with the twin's ids", () => {
+    const prep = twinStationPrep(evening, "kitchen", at);
+    expect(Object.keys(prep).sort()).toEqual(
+      Object.keys(stationPrepSchema.shape).sort(),
+    );
+    expect(prep.tickets.every((t) => t.department === "kitchen")).toBe(true);
+    expect(ids(prep)).toContain("t-4a-held");
+    const every = twinStationPrep(evening, null, at);
+    expect(ids(every)).toContain("t-7a-bar");
+    expect(every.department).toBeNull();
+    const menu = twinStationMenu(evening, "kitchen");
+    expect(Object.keys(menu).sort()).toEqual(
+      Object.keys(stationMenuSchema.shape).sort(),
+    );
+    expect(menu.items.find((i) => i.id === "fish")?.available).toBe(false);
+    expect(menu.items.some((i) => i.id === "lemonade")).toBe(false);
+    const till = twinStationTill(evening, at);
+    expect(Object.keys(till).sort()).toEqual(
+      Object.keys(stationTillSchema.shape).sort(),
+    );
+    const table4 = till.orders.find((o) => o.id === "order-4");
+    expect(table4).toMatchObject({ held: 1, closedHere: false });
+    // No person, no label: a round has its time and lines only.
+    expect(Object.keys(table4?.byRound[0] ?? {}).sort()).toEqual([
+      "id",
+      "lines",
+      "sentAt",
+    ]);
+    expect(till.closed.find((o) => o.id === "order-takeaway-2")).toMatchObject({
+      status: "cancelled",
+      byItem: [],
+      byRound: [],
+    });
+  });
+
+  it("make a ticket ready and put it back, of their own department only, within 5 minutes", () => {
+    const where = { department: "kitchen", now: at };
+    const ready = stationWrite(
+      evening,
+      { do: "ready", ticket: "t-4a-kitchen", ready: true },
+      where,
+    );
+    expect(ready.answer).toEqual({ ok: true });
+    const t4 = ready.data.orders
+      .flatMap((o) => o.rounds.flatMap((r) => r.tickets))
+      .find((t) => t.id === "t-4a-kitchen");
+    expect(t4).toMatchObject({ state: "ready", readyBy: null, readyAt: at });
+    expect(
+      stationWrite(
+        ready.data,
+        { do: "ready", ticket: "t-4a-kitchen", ready: false },
+        { ...where, now: at + 6 * MINUTE },
+      ).answer,
+    ).toEqual({ ok: false, failure: "window" });
+    expect(
+      stationWrite(
+        ready.data,
+        { do: "ready", ticket: "t-4a-kitchen", ready: false },
+        where,
+      ).answer,
+    ).toEqual({ ok: true });
+    expect(
+      stationWrite(
+        evening,
+        { do: "ready", ticket: "t-4a-held", ready: true },
+        where,
+      ).answer,
+    ).toEqual({ ok: false, failure: "held" });
+    expect(
+      stationWrite(
+        evening,
+        { do: "ready", ticket: "t-7a-bar", ready: false },
+        where,
+      ).answer,
+    ).toEqual({ ok: false, failure: "gone" });
+  });
+
+  it("mark an item sold out of their own department only", () => {
+    const out = stationWrite(
+      evening,
+      { do: "available", item: "hummus", available: false },
+      { department: "kitchen", now: at },
+    );
+    expect(out.data.soldOut).toContain("hummus");
+    expect(
+      stationWrite(
+        evening,
+        { do: "available", item: "lemonade", available: false },
+        { department: "kitchen", now: at },
+      ).answer,
+    ).toEqual({ ok: false, failure: "notHere" });
+    expect(
+      stationWrite(
+        evening,
+        { do: "available", item: "no-such-item", available: false },
+        { department: "kitchen", now: at },
+      ).answer,
+    ).toEqual({ ok: false, failure: "itemGone" });
+  });
+
+  it("close, take the close back and open again, as the till", () => {
+    const till = { department: null, now: at };
+    expect(
+      stationWrite(evening, { do: "close", order: "order-4" }, till).answer,
+    ).toEqual({ ok: false, failure: "held" });
+    const closed = stationWrite(
+      evening,
+      { do: "close", order: "order-9" },
+      till,
+    );
+    expect(closed.answer).toEqual({ ok: true });
+    expect(
+      twinStationTill(closed.data, at).closed.find((o) => o.id === "order-9"),
+    ).toMatchObject({ status: "closed", closedHere: true });
+    const back = stationWrite(
+      closed.data,
+      { do: "undoClose", order: "order-9" },
+      till,
+    );
+    expect(back.answer).toEqual({ ok: true });
+    expect(back.data.orders.some((o) => o.id === "order-9")).toBe(true);
+    expect(
+      stationWrite(
+        closed.data,
+        { do: "undoClose", order: "order-9" },
+        { ...till, now: at + 3 * MINUTE },
+      ).answer,
+    ).toEqual({ ok: false, failure: "window" });
+    const again = stationWrite(
+      closed.data,
+      { do: "reopen", order: "order-9" },
+      till,
+    );
+    expect(again.data.orders.some((o) => o.id === "order-9")).toBe(true);
+    expect(
+      stationWrite(evening, { do: "reopen", order: "order-takeaway-2" }, till)
+        .answer,
+    ).toEqual({ ok: false, failure: "notClosed" });
   });
 });

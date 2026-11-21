@@ -1423,6 +1423,36 @@ export function ActivityView({
           ],
           changes: [],
         };
+      // The kitchen's screens and the till (waiter mode P8a), listed and
+      // stopped on the prep screen.
+      case "order.station.add":
+        return plain(
+          line.shows === "till"
+            ? t("actions.order.stationAddTill", { name: line.name })
+            : line.every
+              ? t("actions.order.stationAdd", {
+                  name: line.name,
+                  department: t("actions.order.allDepartments"),
+                })
+              : line.department
+                ? t("actions.order.stationAdd", {
+                    name: line.name,
+                    department: line.department,
+                  })
+                : t("actions.order.stationAddPlain", { name: line.name }),
+        );
+      case "order.station.stop":
+        return plain(
+          line.name
+            ? t("actions.order.stationStop", { name: line.name })
+            : t("actions.order.stationStopPlain"),
+        );
+      case "order.station.restart":
+        return plain(
+          line.name
+            ? t("actions.order.stationRestart", { name: line.name })
+            : t("actions.order.stationRestartPlain"),
+        );
       case "other":
         return plain(t("actions.other"));
       default: {

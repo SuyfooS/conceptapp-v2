@@ -54,7 +54,10 @@ async function answerOf(response: Response) {
 }
 
 /** This device is the business's station, running or stopped. */
-function station(stopped = false) {
+function station(
+  stopped = false,
+  shows: "clock_code" | "prep" | "till" = "clock_code",
+) {
   mocks.deviceStation.mockResolvedValue({
     token: TOKEN,
     station: {
@@ -65,6 +68,8 @@ function station(stopped = false) {
       accent: "#0a84ff",
       timeZone: "Asia/Jerusalem",
       stopped,
+      shows,
+      departmentId: null,
     },
   });
 }
@@ -132,6 +137,17 @@ describe("the station's code route", () => {
       status: 409,
       body: { ok: false, failure: "stopped" },
     });
+    expect(mocks.issueStationCode).not.toHaveBeenCalled();
+  });
+
+  it("refuses a kitchen's screen or a till before the database is asked", async () => {
+    for (const shows of ["prep", "till"] as const) {
+      station(false, shows);
+      expect(await answerOf(await ask()), shows).toEqual({
+        status: 403,
+        body: { ok: false, failure: "notStation" },
+      });
+    }
     expect(mocks.issueStationCode).not.toHaveBeenCalled();
   });
 
