@@ -60,7 +60,8 @@ const stillSent = (shown: LineShown) =>
  * cancelled line is struck with its reason, one on the house marked so. A
  * round still on its way says so: being sent, and only once an attempt
  * failed or the phone is offline that it goes when there is a connection.
- * No sum of money.
+ * While a write of the order whole is on its way, every button of what was
+ * sent waits for it. No sum of money.
  */
 export function Rounds({
   order,
@@ -70,6 +71,7 @@ export function Rounds({
   served,
   fixed,
   held,
+  waits,
   onServe,
   onFire,
   onTakeBack,
@@ -86,6 +88,12 @@ export function Rounds({
   fixed: Readonly<Record<string, LineShown>>;
   /** Lines whose fix waits for its "ביטול": their way back is on the toast. */
   held: readonly string[];
+  /**
+   * A write of the order whole on its way (a close, a move, their "ביטול"):
+   * nothing sent is taken back, fixed, served or fired meanwhile, as it would
+   * land after it, refused, its refusal in the place of the close's "ביטול".
+   */
+  waits: boolean;
   onServe: (ticket: OrderTicket) => void;
   onFire: (ticket: OrderTicket) => void;
   onTakeBack: (line: OrderLine) => void;
@@ -263,6 +271,7 @@ export function Rounds({
                                       <Button
                                         variant="ghost"
                                         className="shrink-0 px-3 text-base"
+                                        disabled={waits}
                                         onClick={() => onTakeBack(line)}
                                       >
                                         <Undo2 aria-hidden="true" />
@@ -280,6 +289,7 @@ export function Rounds({
                                           name: line.name,
                                         })}
                                         icon={<Ellipsis />}
+                                        disabled={waits}
                                         onClick={(event) =>
                                           onFix(
                                             {
@@ -306,7 +316,7 @@ export function Rounds({
                         <Button
                           variant="secondary"
                           className="self-start"
-                          disabled={frame.viewing}
+                          disabled={frame.viewing || waits}
                           onClick={() => onFire(ticket)}
                         >
                           <Flame aria-hidden="true" />
@@ -316,7 +326,7 @@ export function Rounds({
                         <Button
                           variant="secondary"
                           className="self-start"
-                          disabled={frame.viewing}
+                          disabled={frame.viewing || waits}
                           onClick={() => onServe(ticket)}
                         >
                           <Check aria-hidden="true" />

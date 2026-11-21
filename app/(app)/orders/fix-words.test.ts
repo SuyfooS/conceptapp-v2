@@ -58,11 +58,21 @@ const MEETS: Record<FixWrite, OrdersActionFailure[]> = {
     "off",
     "viewOnly",
   ],
-  order: ["closed", "noAccess", "gone", "off", "viewOnly"],
-  move: ["taken", "takeaway", "place", "closed", "gone", "viewOnly", "clock"],
-  close: ["held", "closed", "gone", "viewOnly", "clock"],
-  reopen: ["day", "notClosed", "taken", "gone", "viewOnly", "clock"],
+  order: ["closed", "noAccess", "gone", "off", "viewOnly", "sending"],
+  move: [
+    "taken",
+    "takeaway",
+    "place",
+    "closed",
+    "gone",
+    "viewOnly",
+    "clock",
+    "sending",
+  ],
+  close: ["held", "closed", "gone", "viewOnly", "clock", "sending"],
+  reopen: ["day", "notClosed", "taken", "gone", "viewOnly", "clock", "sending"],
   undoClose: [
+    "sending",
     "window",
     "day",
     "notClosed",
@@ -110,6 +120,18 @@ describe("a refused fix", () => {
       he.app.orders.failed.window,
     );
     expect(fixFailureWords(t, "held", "close")).toBe(he.app.orders.close.held);
+    // A write of the order whole waits for a round on its way, and says so.
+    for (const what of [
+      "close",
+      "move",
+      "undoClose",
+      "reopen",
+      "order",
+    ] as const) {
+      expect(fixFailureWords(t, "sending", what)).toBe(
+        he.app.orders.order.actions.waitSend,
+      );
+    }
     // A line ready: who cancels it, and who puts it back, each in its words.
     expect(fixFailureWords(t, "managersOnly", "line")).toBe(
       he.app.orders.failed.managersOnly,

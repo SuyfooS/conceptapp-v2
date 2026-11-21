@@ -109,16 +109,18 @@ export function storeDraftChanged(
 /**
  * An order moved (P5): the draft waiting at its old place goes with it,
  * after what the new place's draft holds, each line once; and on the move's
- * "ביטול" the lines that went (`only`) go back. From what both hold now.
+ * "ביטול" everything but what that place held before (`staying`) goes back:
+ * the lines that went, those added there meanwhile and those a refused round
+ * put back there, all the order's. From what both hold now.
  */
 export function storeDraftMoved(
   store: SendStore,
   from: string,
   to: string,
-  only?: readonly string[],
+  staying: readonly string[] = [],
 ): SendStore {
   const held = store.drafts[from] ?? [];
-  const moving = only ? held.filter((line) => only.includes(line.id)) : held;
+  const moving = held.filter((line) => !staying.includes(line.id));
   if (moving.length === 0 || from === to) return store;
   const there = store.drafts[to] ?? [];
   const known = new Set(there.map((line) => line.id));
@@ -131,6 +133,23 @@ export function storeDraftMoved(
       [to]: [...there, ...moving.filter((line) => !known.has(line.id))],
     },
   };
+}
+
+/**
+ * Why a draft's last send was refused goes with its lines when its order
+ * moves, or moves back (P5), to say why where they now wait, never at a
+ * place the order left; unless the draft they join has a refusal of its
+ * own. Only when lines moved (`storeDraftMoved` changed the store).
+ */
+export function refusalMoved<R>(
+  refusals: Record<string, R>,
+  from: string,
+  to: string,
+): Record<string, R> {
+  const refusal = refusals[from];
+  if (refusal === undefined || from === to || to in refusals) return refusals;
+  const { [from]: _, ...rest } = refusals;
+  return { ...rest, [to]: refusal };
 }
 
 /**

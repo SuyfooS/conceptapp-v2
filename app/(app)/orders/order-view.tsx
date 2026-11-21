@@ -72,7 +72,11 @@ import {
   useModeHeading,
   useOrderWords,
 } from "./orders-parts";
-import type { OrdersActionResult, SendRefusal } from "./orders-types";
+import type {
+  OrdersActionResult,
+  SendRefusal,
+  WholeWrite,
+} from "./orders-types";
 import { Picker } from "./picker";
 import { type LineShown, Rounds, shownOf } from "./rounds";
 import { sendWaits } from "./send-store";
@@ -184,7 +188,8 @@ function withShown(
  * and a move are written at once and undone by a write (the plan's T2): the
  * move back, and the close taken back whole, what it served back in the
  * kitchen. They wait while a round of this screen is on its way, and the
- * send waits while one of them is.
+ * send, and what fixes, serves or fires what was sent, wait while one of
+ * them is, from whichever screen of the mode it went (`whole`).
  */
 export function OrderView({
   where,
@@ -213,6 +218,8 @@ export function OrderView({
     drafts,
     sender,
     actions,
+    whole,
+    wholeOnWay,
     say,
     tell,
     off,
@@ -270,8 +277,24 @@ export function OrderView({
     setMoving(false);
     setCancelling(false);
   }
-  // A close or a move on its way: the order's other rows wait for it.
+  // A close or a move of this screen on its way (from the press, while a
+  // held fix goes first): the order's other rows wait for it.
   const [busy, setBusy] = useState(false);
+  // A write of the order whole on its way, from this screen or any other of
+  // the mode (the till's close, a toast's "ביטול" over another screen): no
+  // send goes to the order or from this draft, and nothing sent is fixed,
+  // served or fired, as each would land behind it. A sheet open on the order
+  // closes as one starts.
+  const writing = busy || wholeOnWay(known?.id ?? null, key);
+  const [wroteFor, setWroteFor] = useState(writing);
+  if (wroteFor !== writing) {
+    setWroteFor(writing);
+    if (writing) {
+      setSheet(null);
+      setMoving(false);
+      setCancelling(false);
+    }
+  }
   const titleRef = useRef<HTMLHeadingElement>(null);
   const draftHeading = useRef<HTMLHeadingElement>(null);
   const roundsHeading = useRef<HTMLHeadingElement>(null);
@@ -346,7 +369,10 @@ export function OrderView({
       case "uncomp":
         return actions.compLine(value.line, null, false);
       default:
-        return actions.cancelOrder(value.order, value.reason);
+        // The order whole: on its way for every screen, as a close is.
+        return whole({ order: value.order, drafts: [key] }, () =>
+          actions.cancelOrder(value.order, value.reason),
+        );
     }
   }
 
@@ -394,10 +420,12 @@ export function OrderView({
   // the tab read again). What is added meanwhile waits, and is that order's.
   const busySending = sending || sendWaits(key, pending.length);
   // Nor does a send go while the whole order's cancel waits, or while a
-  // close or a move is on its way, as they wait for a round on its way: the
-  // close would serve it before the kitchen saw it, and the move would leave
-  // it refused at the old place, its lines in a draft no screen shows.
-  const sendLocked = frame.viewing || cancelHeld || busy;
+  // write of the order whole is on its way, from whichever screen, as they
+  // wait for a round on its way: a close would serve it before the kitchen
+  // saw it, a move would leave it refused at the old place, its lines in a
+  // draft no screen shows, and one to a place the close's or the move's
+  // "ביטול" is bringing the order back to would open a second order there.
+  const sendLocked = frame.viewing || cancelHeld || writing;
   const newTakeaway = where.kind === "takeaway" && where.order === null;
   const onWayKeys = newTakeaway ? pending.map((p) => p.key).join(" ") : "";
   useEffect(() => {
@@ -512,6 +540,7 @@ export function OrderView({
   }
 
   async function serve(ticket: OrderTicket) {
+    if (writing) return;
     setServed((was) => [...was, ticket.id]);
     // A fix held on the order goes first, as it was made first: a serve that
     // landed before it would leave a taker's cancel too late for its ticket.
@@ -540,7 +569,7 @@ export function OrderView({
   }
 
   async function fire(ticket: OrderTicket) {
-    if (!known) return;
+    if (!known || writing) return;
     // A fix held on the order goes first, as for a serve.
     await fix.commit();
     const result = await actions.fire(known.id).catch(() => null);
@@ -556,13 +585,16 @@ export function OrderView({
   /**
    * Holds a fix for its "ביטול": the lines show as it leaves them at once,
    * and the toast offers the way back for 8 seconds (stopping while it is
-   * reached). A fix held before goes now.
+   * reached). A fix held before goes now. None is held while a write of the
+   * order whole is on its way: it would go after it, refused once the close
+   * served its line, and its refusal would take the close's "ביטול" away.
    */
   function holdFix(
     value: HeldFix,
     shown: Record<string, LineShown>,
     text: string,
   ) {
+    if (writing) return;
     fix.hold(value);
     const lines = linesOf(value);
     for (const id of lines) heldLines.current.add(id);
@@ -665,95 +697,127 @@ export function OrderView({
     );
   }
 
-  /** A write to the order whole, at once: a held line fix goes first. */
+  /**
+   * A write to the order whole, at once: a held line fix goes first, and
+   * it is on its way for every screen of the mode (`whole`).
+   */
   async function orderWrite(
+    on: WholeWrite,
     write: () => Promise<OrdersActionResult>,
   ): Promise<OrdersActionResult | null> {
     setBusy(true);
     await fix.commit();
-    const result = await write().catch(() => null);
+    const result = await whole(on, write).catch(() => null);
     setBusy(false);
     mode.syncNow();
     return result;
   }
 
   async function close() {
-    if (!known || frame.viewing) return;
+    if (!known || frame.viewing || writing) return;
     const id = known.id;
-    const result = await orderWrite(() => actions.close(id));
+    // Its "ביטול" opens the order again at this place: no send goes from
+    // its draft meanwhile, on this screen or another.
+    const on: WholeWrite = { order: id, drafts: [key] };
+    const result = await orderWrite(on, () => actions.close(id));
     if (!result?.ok) {
       say(fixFailureWords(t, result ? result.failure : "failed", "close"));
       return;
     }
     // The section goes with the order: the way back takes the focus. It
     // takes the close back whole: the order opens again and what the close
-    // served goes back to the kitchen as it was (`undo_close_order`).
-    say(t("toast.closed", { place: title }), {
-      undo: () =>
-        void actions
-          .undoClose(id)
-          .catch(() => null)
-          .then((back) => {
-            if (!back?.ok) {
-              say(
-                fixFailureWords(t, back ? back.failure : "failed", "undoClose"),
-              );
-            }
-            mode.syncNow();
-          }),
-      focus: true,
-      after: () => titleRef.current,
-    });
+    // served goes back to the kitchen as it was (`undo_close_order`). While
+    // a round sent here since is on its way, it waits for it, and is offered
+    // again.
+    const offer = (text: string) =>
+      say(text, {
+        undo: undoClose,
+        focus: true,
+        after: () => titleRef.current,
+      });
+    function undoClose() {
+      void whole(on, () => actions.undoClose(id))
+        .catch(() => null)
+        .then((back) => {
+          mode.syncNow();
+          if (back && !back.ok && back.failure === "sending") {
+            offer(t("toast.undoWaits"));
+          } else if (!back?.ok) {
+            say(
+              fixFailureWords(t, back ? back.failure : "failed", "undoClose"),
+            );
+          }
+        });
+    }
+    offer(t("toast.closed", { place: title }));
   }
 
   async function moveTo(to: OrderPlace) {
     setMoving(false);
-    if (!known || !place || frame.viewing) return;
+    if (!known || !place || frame.viewing || writing) return;
     const id = known.id;
     const from = place;
     const there = placeTitle({ placeName: to.name, takeaway: null });
     const back = placeTitle({ placeName: from.name, takeaway: null });
-    const result = await orderWrite(() => actions.move(id, to.id));
+    const fromKey = draftKey({ place: from.id });
+    const toKey = draftKey({ place: to.id });
+    const result = await orderWrite(
+      { order: id, drafts: [fromKey, toKey] },
+      () => actions.move(id, to.id),
+    );
     if (!result?.ok) {
       say(
         fixFailureWords(t, result ? result.failure : "failed", "move", there),
       );
       return;
     }
-    // The draft goes with the order (default 7), and back with its undo.
-    const fromKey = draftKey({ place: from.id });
-    const toKey = draftKey({ place: to.id });
-    const went = drafts.get(fromKey).map((line) => line.id);
-    drafts.move(fromKey, toKey);
+    // The draft goes with the order (default 7), and back with its undo:
+    // all the new place's draft holds then but what it held before.
+    const stayed = drafts.move(fromKey, toKey);
     router.replace(paths.place(to.id));
-    say(t("toast.moved", { place: there }), {
-      undo: () =>
-        void actions
-          .move(id, from.id)
-          .catch(() => null)
-          .then((again) => {
-            mode.syncNow();
-            if (!again?.ok) {
-              say(
-                fixFailureWords(
-                  t,
-                  again ? again.failure : "failed",
-                  "move",
-                  back,
-                ),
-              );
-              return;
-            }
-            drafts.move(toKey, fromKey, went);
-            // This screen, hidden meanwhile, takes the focus once on show.
-            if (!onScreen.current) backHere.current = true;
-            router.replace(paths.place(from.id));
-          }),
-      // The row pressed went with the screen: the way back takes the focus,
-      // and after it the title of the place on show.
-      focus: true,
-      after: () => titleOnShow(titleRef.current),
-    });
+    // The row pressed went with the screen: the way back takes the focus,
+    // and after it the title of the place on show.
+    const offer = (text: string) =>
+      say(text, {
+        undo: undoMove,
+        focus: true,
+        after: () => titleOnShow(titleRef.current),
+      });
+    // The way back waits while a round sent at the new place is on its way,
+    // and is offered again: moved back first, it would be refused there, its
+    // lines in a draft no screen shows. Meanwhile nothing is sent at either
+    // place (`whole`).
+    function undoMove() {
+      void whole({ order: id, drafts: [toKey, fromKey] }, () =>
+        actions.move(id, from.id),
+      )
+        .catch(() => null)
+        .then((again) => {
+          mode.syncNow();
+          if (again && !again.ok && again.failure === "sending") {
+            offer(t("toast.undoWaits"));
+            return;
+          }
+          if (!again?.ok) {
+            say(
+              fixFailureWords(
+                t,
+                again ? again.failure : "failed",
+                "move",
+                back,
+              ),
+            );
+            return;
+          }
+          // What went, what was added there since and what a refused round
+          // put back there: all the order's, so all go back with it.
+          drafts.move(toKey, fromKey, stayed);
+          // This screen, hidden meanwhile, takes the focus once on show.
+          if (!onScreen.current) backHere.current = true;
+          router.replace(paths.place(from.id));
+        });
+    }
+    offer(t("toast.moved", { place: there }));
   }
 
   const header = (
@@ -825,11 +889,12 @@ export function OrderView({
   // would serve it before the kitchen saw it, or refuse it, and a move would
   // leave it refused at the old place, its lines in that place's draft. The
   // send waits for a close or a move on its way in turn (`sendLocked`), and
-  // the till's close for a round on its way too.
+  // the till's close for a round on its way too. Each waits as well while a
+  // write of the order whole is on its way, from whichever screen.
   const sendOnWay = pending.length > 0 || busySending;
-  const locked = frame.viewing || cancelHeld || busy || sendOnWay;
+  const locked = frame.viewing || cancelHeld || writing || sendOnWay;
   const waitSend = sendOnWay ? t("order.actions.waitSend") : null;
-  const whole =
+  const wholeRows =
     known && known.status === "open" ? (
       <PageSection title={t("order.actions.title")} headingRef={actionsHeading}>
         <ListGroup>
@@ -950,12 +1015,13 @@ export function OrderView({
         served={served}
         fixed={fixed}
         held={heldNow}
+        waits={writing}
         onServe={(ticket) => void serve(ticket)}
         onFire={(ticket) => void fire(ticket)}
         onTakeBack={takeBack}
         onFix={(target, from) => openFrom(from, () => setSheet(target))}
       />
-      {whole}
+      {wholeRows}
       <Button
         variant="secondary"
         size="lg"

@@ -5866,7 +5866,8 @@
         "orderCancelled": "ההזמנה של {place} בוטלה",
         "moved": "ההזמנה הועברה אל {place}",
         "closed": "ההזמנה של {place} נסגרה",
-        "reopened": "ההזמנה של {place} נפתחה מחדש"
+        "reopened": "ההזמנה של {place} נפתחה מחדש",
+        "undoWaits": "מה שנשלח עכשיו עוד בדרך. מבטלים כשהוא מגיע."
       },
       "till": {
         "metaTitle": "לקופה",

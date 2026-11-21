@@ -4,6 +4,7 @@ import {
   emptySendStore,
   type PendingRound,
   pendingOfDraft,
+  refusalMoved,
   type SendStore,
   sendWaits,
   storeDraftChanged,
@@ -258,12 +259,58 @@ describe("a draft when its order moves (P5)", () => {
     const moved = storeDraftMoved(store, DRAFT, there);
     expect(moved.drafts[DRAFT]).toEqual([]);
     expect(moved.drafts[there]).toEqual([already, waiting]);
-    // Its undo takes back what went, and leaves the new place's own.
-    const back = storeDraftMoved(moved, there, DRAFT, [waiting.id]);
+    // Its undo takes back all but what the new place held before.
+    const back = storeDraftMoved(moved, there, DRAFT, [already.id]);
     expect(back.drafts[DRAFT]).toEqual([waiting]);
     expect(back.drafts[there]).toEqual([already]);
-    // Nothing waiting, or the same place: nothing changes.
+    // Nothing waiting, nothing but the place's own, or the same place:
+    // nothing changes.
     expect(storeDraftMoved(emptySendStore, DRAFT, there)).toBe(emptySendStore);
     expect(storeDraftMoved(store, DRAFT, DRAFT)).toBe(store);
+    expect(storeDraftMoved(store, there, DRAFT, [already.id])).toBe(store);
+  });
+
+  it("takes back on its undo what was added there and what a refused round put back", () => {
+    const there = "place:00000000-0000-4000-8000-0000000000c2";
+    const went = line();
+    const own = line({ quantity: 2 });
+    const store: SendStore = {
+      ...emptySendStore,
+      drafts: { [DRAFT]: [went], [there]: [own] },
+    };
+    // The order moved: what the new place held before stays there on undo.
+    const moved = storeDraftMoved(store, DRAFT, there);
+    const staying = [own.id];
+    // At the new place a round goes with what went and is refused there, its
+    // line back at the front of the draft; and a line is added meanwhile.
+    const roundThere = round(A, [went], there);
+    const added = line();
+    const afterRefusal = storeSettled(
+      storeDraftChanged(storeSent(moved, roundThere), there, (lines) => [
+        ...lines,
+        added,
+      ]),
+      roundThere,
+      refused,
+    );
+    expect(afterRefusal.drafts[there]).toEqual([went, own, added]);
+    // The undo: everything but the place's own goes back with the order.
+    const back = storeDraftMoved(afterRefusal, there, DRAFT, staying);
+    expect(back.drafts[DRAFT]).toEqual([went, added]);
+    expect(back.drafts[there]).toEqual([own]);
+  });
+
+  it("takes the refusal of its last send along, unless the draft it joins has one", () => {
+    const there = "place:00000000-0000-4000-8000-0000000000c2";
+    const soldOut = { failure: "unavailable", items: [HUMMUS] };
+    const moved = refusalMoved({ [there]: soldOut }, there, DRAFT);
+    expect(moved).toEqual({ [DRAFT]: soldOut });
+    // The place it goes to says its own refusal; nothing to take, or the
+    // same place: nothing changes.
+    const both = { [there]: soldOut, [DRAFT]: { failure: "route", items: [] } };
+    expect(refusalMoved(both, there, DRAFT)).toBe(both);
+    const none = { [DRAFT]: soldOut };
+    expect(refusalMoved(none, there, DRAFT)).toBe(none);
+    expect(refusalMoved(none, DRAFT, DRAFT)).toBe(none);
   });
 });

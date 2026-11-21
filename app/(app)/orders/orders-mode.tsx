@@ -14,12 +14,14 @@ import {
 import { modeToast, type ShownToast } from "./mode-toast";
 import type {
   DraftStore,
+  OrdersActionResult,
   OrdersActions,
   OrdersFrame,
   OrdersPaths,
   OrdersSender,
   Say,
   Tell,
+  WholeWrite,
 } from "./orders-types";
 
 /**
@@ -44,6 +46,23 @@ export type OrdersModeValue = {
   drafts: DraftStore;
   sender: OrdersSender;
   actions: OrdersActions;
+  /**
+   * Writes an order whole (P5: a close, a move, the "ביטול" of either, a
+   * reopen) with `write`, kept on its way until it answers, whichever screen
+   * sent it (`wholeOnWay`). It never goes while a round of a draft it names
+   * is on its way, read as the tab has it now: it answers "sending" then, and
+   * nothing was written.
+   */
+  whole: (
+    on: WholeWrite,
+    write: () => Promise<OrdersActionResult>,
+  ) => Promise<OrdersActionResult>;
+  /**
+   * Whether a write of the order whole is on its way for `order` or touching
+   * `draft`: meanwhile no send goes there, and nothing sent is fixed, served
+   * or fired, on any screen of the mode.
+   */
+  wholeOnWay: (order: string | null, draft: string) => boolean;
   say: Say;
   /**
    * News nobody pressed for (a send answered after its screen was left):

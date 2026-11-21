@@ -56,8 +56,16 @@ export type OrdersPaths = {
   till: (order: string) => string;
 };
 
-/** Why an action was refused: the database's reasons, and the server's own. */
-export type OrdersActionFailure = OrderFailure | "viewOnly" | "businessChanged";
+/**
+ * Why an action was refused: the database's reasons, the server's own, and
+ * the mode's "sending" (P5): a write of the order whole never goes while a
+ * round of a draft it names is on its way, and nothing was written.
+ */
+export type OrdersActionFailure =
+  | OrderFailure
+  | "viewOnly"
+  | "businessChanged"
+  | "sending";
 
 export type OrdersActionResult<T = null> =
   | { ok: true; value: T }
@@ -99,6 +107,14 @@ export type OrdersActions = {
   /** The close's "ביטול": open again, and what it served back where it was. */
   undoClose: (order: string) => Promise<OrdersActionResult>;
 };
+
+/**
+ * A write of an order whole (P5: a close, a move, the "ביטול" of either, a
+ * reopen): the order, and the drafts it touches, its place's and the one it
+ * moves to. While it is on its way no send goes to that order or from those
+ * drafts, on any screen of the mode (`OrdersModeValue.wholeOnWay`).
+ */
+export type WholeWrite = { order: string; drafts: readonly string[] };
 
 /** Why a send was refused, as the screens say it. */
 export type SendFailure = OrderFailure | "signedOut" | "viewOnly";
@@ -167,10 +183,14 @@ export type DraftStore = {
    */
   update: (draft: string, change: (lines: DraftLine[]) => DraftLine[]) => void;
   /**
-   * An order moved: its old place's draft joins the new place's (P5), or
-   * only the lines named, for the move's undo.
+   * An order moved: its old place's draft joins the new place's (P5), all
+   * but the lines named in `staying`, and the refusal of its last send goes
+   * with them. Returns the lines the new place's draft held before, which
+   * stay there on the move's undo: everything else it holds then is the
+   * order's (moved with it, added there meanwhile, or back from a refused
+   * round) and goes back with it.
    */
-  move: (from: string, to: string, only?: readonly string[]) => void;
+  move: (from: string, to: string, staying?: readonly string[]) => string[];
   /** How many items each draft holds, for the floor's tiles. */
   counts: Record<string, number>;
 };

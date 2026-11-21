@@ -25,6 +25,7 @@ import {
   useModeHeading,
   useOrderWords,
 } from "./orders-parts";
+import type { OrdersActionResult } from "./orders-types";
 
 /**
  * "לקופה" for an order (waiter mode P5, the design's §3.2 step 10): what the
@@ -110,7 +111,7 @@ function Till({
   const { t, time, person, department } = useOrderWords();
   const heading = useModeHeading();
   const mode = useOrdersMode();
-  const { frame, paths, actions, say } = mode;
+  const { frame, paths, actions, say, whole } = mode;
   const titleRef = useRef<HTMLHeadingElement>(null);
   const [view, setView] = useState(opensOn);
   const [busy, setBusy] = useState(false);
@@ -118,44 +119,74 @@ function Till({
   const open = order.status === "open";
   const closing = closeState(order, frame.departmentOrder);
   const reopen = floor ? reopenState(order, floor) : "ok";
+  const draft = orderDraftKey(order);
   // A round of the order on its way (sent from its screen, waiting on a slow
   // link or offline): the close waits for it and says so, as on the order's
   // screen. Closed first, it would serve that round before the kitchen saw
   // it, or refuse it, its lines back in the draft. A line's fix sent on
   // leaving that screen goes first on its own: the mode's close waits for
   // the writes on their way (`inTurn`).
-  const sendOnWay =
-    open && mode.sender.pending(orderDraftKey(order)).length > 0;
+  const sendOnWay = open && mode.sender.pending(draft).length > 0;
+  // A write of the order whole on its way from another screen (its close or
+  // its move, a toast's "ביטול"): this one waits for it.
+  const writing = busy || mode.wholeOnWay(order.id, draft);
 
+  /**
+   * A write of the order whole, on its way for every screen of the mode
+   * (`whole`): the order's own screen sends nothing to it meanwhile, and it
+   * never goes while a round of the order is on its way.
+   */
   async function write(
-    run: () => ReturnType<typeof actions.close>,
-    what: "close" | "reopen" | "undoClose",
-  ): Promise<boolean> {
+    run: () => Promise<OrdersActionResult>,
+  ): Promise<OrdersActionResult | null> {
     setBusy(true);
-    const result = await run().catch(() => null);
+    const result = await whole({ order: order.id, drafts: [draft] }, run).catch(
+      () => null,
+    );
     setBusy(false);
     mode.syncNow();
-    if (!result?.ok) {
-      say(fixFailureWords(t, result ? result.failure : "failed", what));
-      return false;
-    }
-    return true;
+    return result;
   }
 
-  async function close() {
-    if (!(await write(() => actions.close(order.id), "close"))) return;
-    // The button turns into "פתיחה מחדש": the way back takes the focus. It
-    // takes the close back whole, what it served back in the kitchen as it
-    // was; "פתיחה מחדש" leaves that served.
-    say(t("toast.closed", { place: title }), {
-      undo: () => void write(() => actions.undoClose(order.id), "undoClose"),
+  /** Says why a write was refused; true when it went. */
+  function went(
+    result: OrdersActionResult | null,
+    what: "close" | "reopen" | "undoClose",
+  ): boolean {
+    if (result?.ok) return true;
+    say(fixFailureWords(t, result ? result.failure : "failed", what));
+    return false;
+  }
+
+  // The button turns into "פתיחה מחדש": the way back takes the focus. It
+  // takes the close back whole, what it served back in the kitchen as it
+  // was; "פתיחה מחדש" leaves that served. While a round sent to the place
+  // since is on its way, it waits for it, and is offered again.
+  const offerUndo = (text: string) =>
+    say(text, {
+      undo: () => void undoClose(),
       focus: true,
       after: () => titleRef.current,
     });
+
+  async function close() {
+    if (writing) return;
+    if (!went(await write(() => actions.close(order.id)), "close")) return;
+    offerUndo(t("toast.closed", { place: title }));
+  }
+
+  async function undoClose() {
+    const result = await write(() => actions.undoClose(order.id));
+    if (result && !result.ok && result.failure === "sending") {
+      offerUndo(t("toast.undoWaits"));
+      return;
+    }
+    went(result, "undoClose");
   }
 
   async function reopenNow() {
-    if (!(await write(() => actions.reopen(order.id), "reopen"))) return;
+    if (writing) return;
+    if (!went(await write(() => actions.reopen(order.id)), "reopen")) return;
     say(t("toast.reopened", { place: title }));
     titleRef.current?.focus({ preventScroll: true });
   }
@@ -238,8 +269,8 @@ function Till({
   const action = open ? (
     <Button
       size="lg"
-      disabled={frame.viewing || closing.held || sendOnWay || busy}
-      loading={busy}
+      disabled={frame.viewing || closing.held || sendOnWay || writing}
+      loading={writing}
       onClick={() => void close()}
     >
       <Receipt aria-hidden="true" />
@@ -248,8 +279,8 @@ function Till({
   ) : order.status === "closed" ? (
     <Button
       size="lg"
-      disabled={frame.viewing || reopen !== "ok" || busy}
-      loading={busy}
+      disabled={frame.viewing || reopen !== "ok" || writing}
+      loading={writing}
       onClick={() => void reopenNow()}
     >
       <LockOpen aria-hidden="true" />

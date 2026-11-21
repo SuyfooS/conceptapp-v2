@@ -19,12 +19,15 @@ import {
 } from "../../(app)/orders/orders-mode";
 import { usePlaceWords } from "../../(app)/orders/orders-parts";
 import type {
+  OrdersActionResult,
   OrdersActions,
   OrdersPaths,
   OrdersSender,
   SendOutcome,
+  WholeWrite,
 } from "../../(app)/orders/orders-types";
-import { storeDraftMoved } from "../../(app)/orders/send-store";
+import { refusalMoved, storeDraftMoved } from "../../(app)/orders/send-store";
+import { wholeWaits } from "../../(app)/orders/whole-on-way";
 import {
   cancelLine,
   cancelOrder,
@@ -343,17 +346,23 @@ export function TwinOrdersMode({ children }: { children: ReactNode }) {
             ),
           },
         })),
-      // An order moved: its table's draft goes with it, as the app's.
-      move: (from: string, to: string, only?: readonly string[]) =>
-        update((d) => ({
-          ...d,
-          drafts: storeDraftMoved(
-            { drafts: d.drafts, pending: {} },
-            from,
-            to,
-            only,
-          ).drafts,
-        })),
+      // An order moved: its table's draft goes with it, its refusal too, as
+      // the app's, and what the new table held stays there on its undo.
+      move: (from: string, to: string, staying?: readonly string[]) => {
+        const before = (data.drafts[to] ?? []).map((line) => line.id);
+        update((d) => {
+          const was = { drafts: d.drafts, pending: {} };
+          const moved = storeDraftMoved(was, from, to, staying);
+          return moved === was
+            ? d
+            : {
+                ...d,
+                drafts: moved.drafts,
+                refusals: refusalMoved(d.refusals, from, to),
+              };
+        });
+        return before;
+      },
       counts: Object.fromEntries(
         Object.entries(data.drafts).map(([key, lines]) => [
           key,
@@ -363,6 +372,13 @@ export function TwinOrdersMode({ children }: { children: ReactNode }) {
     },
     sender,
     actions,
+    // The twin's writes land at once, so none is ever on its way; one still
+    // waits for a round its store shows on its way (`?state=pending`).
+    whole: (on: WholeWrite, write: () => Promise<OrdersActionResult>) =>
+      wholeWaits(on, (draft) => (data.pending[draft] ? 1 : 0))
+        ? Promise.resolve({ ok: false as const, failure: "sending" as const })
+        : write(),
+    wholeOnWay: () => false,
     say,
     tell,
     syncNow: () => {},

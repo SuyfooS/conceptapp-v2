@@ -57,12 +57,14 @@ import type {
   SendFailure,
   SendOutcome,
   SendRefusal,
+  WholeWrite,
 } from "./orders-types";
 import { readyMarks } from "./ready-marks";
 import {
   emptySendStore,
   type PendingRound,
   pendingOfDraft,
+  refusalMoved,
   type SendStore,
   storeDraftChanged,
   storeDraftMoved,
@@ -71,6 +73,7 @@ import {
   storeSent,
   storeSettled,
 } from "./send-store";
+import { wholeOnWayFor, wholeWrites } from "./whole-on-way";
 
 /** The reads the mode holds, each the newest it saw. */
 export type OrdersReads = {
@@ -369,6 +372,19 @@ export function OrdersModeProvider({
   const [marks] = useState(readyMarks);
   /** The writes on their way, for a close or a move to wait its turn. */
   const [onWay] = useState(writesOnWay);
+  /**
+   * The writes of an order whole on their way, whichever screen sent them:
+   * a send to them waits on every screen, not only on the one that wrote.
+   * None goes while a round of a draft it names is on its way, read as the
+   * tab has it now (a way back pressed seconds after its screen drew).
+   */
+  const [wholeGoing, setWholeGoing] = useState<readonly WholeWrite[]>([]);
+  const [wholeWriter] = useState(() =>
+    wholeWrites(
+      (draft) => pendingOfDraft(storedRef.current.pending, draft).length,
+      setWholeGoing,
+    ),
+  );
   /** The latest server time heard, which the clock never goes back from. */
   const heardAt = useRef<number | null>(null);
   /** Each round with a send trying it, by its key: never two for one. */
@@ -859,10 +875,25 @@ export function OrdersModeProvider({
     [change],
   );
 
+  // What the new place's draft held before, read as the tab has it now: the
+  // lines its undo leaves there. A refusal goes with the lines it is about.
   const move = useCallback(
-    (from: string, to: string, only?: readonly string[]) =>
-      change((was) => storeDraftMoved(was, from, to, only)),
+    (from: string, to: string, staying?: readonly string[]) => {
+      const was = storedRef.current;
+      const before = (was.drafts[to] ?? []).map((line) => line.id);
+      change((now) => storeDraftMoved(now, from, to, staying));
+      if (storedRef.current !== was) {
+        setRefusals((refusals) => refusalMoved(refusals, from, to));
+      }
+      return before;
+    },
     [change],
+  );
+
+  const wholeOnWay = useCallback(
+    (order: string | null, draft: string) =>
+      wholeOnWayFor(wholeGoing, order, draft),
+    [wholeGoing],
   );
 
   const drafts = useMemo(
@@ -944,12 +975,27 @@ export function OrdersModeProvider({
       drafts,
       sender,
       actions: modeActions,
+      whole: wholeWriter.run,
+      wholeOnWay,
       say,
       tell,
       syncNow,
       newId,
     }),
-    [frame, now, clock, off, drafts, sender, modeActions, say, tell, syncNow],
+    [
+      frame,
+      now,
+      clock,
+      off,
+      drafts,
+      sender,
+      modeActions,
+      wholeWriter,
+      wholeOnWay,
+      say,
+      tell,
+      syncNow,
+    ],
   );
 
   return (

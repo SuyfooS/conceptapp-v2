@@ -31,6 +31,10 @@ what is next, defaults applied.
 - After the third review:
   - The till's close waits while a round of the order is on its way and says so (`order.actions.waitSend`, `orderDraftKey`); the app's close and move go after every write sent before them (`inTurn`), so a line's fix sent on leaving the order's screen lands first. Both unit-tested; "לקופה" stays a link, as the till waits on its own.
   - The send and a refusal's way to send again wait while a close or a move is on its way (`sendLocked`), so the race no longer happens the other way round.
+- After the fourth review:
+  - The move's "ביטול" waits while a round sent at the new place is on its way: the mode's `whole` refuses it ("sending") and the toast offers it again (`toast.undoWaits`); once it goes, everything the new place's draft holds but what it held before goes back, and a refusal goes with its lines (`storeDraftMoved` `staying`, `refusalMoved`, unit-tested).
+  - Writes of an order whole (close, move, both "ביטול"s, reopen, a whole order's cancel once it goes) are kept on their way in the mode's provider (`whole`, `wholeOnWay`, whole-on-way.ts, unit-tested), so the till's close, a move back or an undone close locks the send, a refusal's send again and the till on every screen of that order or place; and none goes while a round of its drafts is on its way.
+  - While one is on its way, the rounds' take-back, "תיקון", "הוגש" and "להוציא" are disabled and nothing is held, and an open sheet closes (`Rounds waits`), so no fix lands after the close and its refusal never takes the close's "ביטול" away.
 
 ## 2026-11-21 · chat · taking orders: send and prepare, on screen (waiter mode P4)
 

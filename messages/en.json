@@ -5866,7 +5866,8 @@
         "orderCancelled": "{place}'s order was cancelled",
         "moved": "The order moved to {place}",
         "closed": "{place}'s order was closed",
-        "reopened": "{place}'s order is open again"
+        "reopened": "{place}'s order is open again",
+        "undoWaits": "What was just sent is still on its way. Undo once it arrives."
       },
       "till": {
         "metaTitle": "For the till",
