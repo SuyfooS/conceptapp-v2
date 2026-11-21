@@ -183,8 +183,6 @@ async function Shell({ children }: { children: ReactNode }) {
           businesses={businesses}
           modes={modeNav}
         >
-          {/* Rounds taken off the phone, said once where the page landed. */}
-          <LostOrdersNotice />
           {takesOrders ? (
             <OrdersOutbox
               userId={member.userId}
@@ -192,6 +190,10 @@ async function Shell({ children }: { children: ReactNode }) {
               viewing={!canWrite(member.viewing)}
             />
           ) : null}
+          {/* Rounds taken off the phone, said once where the page landed.
+              After the outbox, whose live region comes first: a card here is
+              right above the screen's main, which drops its glow under it. */}
+          <LostOrdersNotice />
           {member.viewing ? (
             <ViewAsBanner
               viewing={member.viewing}

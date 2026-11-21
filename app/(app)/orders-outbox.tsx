@@ -3,10 +3,12 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect, useState, useSyncExternalStore } from "react";
+import { keepLostNotice } from "./orders/lost-notice";
 import { usePlaceWords } from "./orders/orders-parts";
 import { appOrdersPaths, draftPath } from "./orders/orders-paths";
 import { EMPTY_OWNER, ordersOutbox } from "./orders/outbox";
-import { keepLostNotice, OutboxBannerView } from "./orders/outbox-notice";
+import { outboxHeld } from "./orders/outbox-banner";
+import { OutboxBannerView } from "./orders/outbox-notice";
 
 /**
  * Waiter mode's outbox in the app's frame (P7), for someone who takes
@@ -15,9 +17,13 @@ import { keepLostNotice, OutboxBannerView } from "./orders/outbox-notice";
  * news comes here while the mode isn't on screen: never a toast (another
  * screen's "ביטול" may be on one), but a banner above the screen while an
  * order of theirs here hasn't gone, with "פתיחה", and each round that lands
- * meanwhile said to screen readers. Rounds taken off the phone keep their
+ * meanwhile said to screen readers (a polite region, not a "status" one: the
+ * screens' own toasts are those). Rounds taken off the phone keep their
  * notice for where the page lands; another person's cookie draws the frame
- * again. Under /orders the mode's own screens say it all.
+ * again. Under /orders the mode's own screens say it all. The region comes
+ * first and the banner last: what follows the banner is the lost notice,
+ * mounted after this, or the screen's `main`, which drops its glow under
+ * a card right above it.
  */
 export function OrdersOutbox({
   userId,
@@ -63,51 +69,27 @@ export function OrdersOutbox({
 
   // What hasn't gone here: rounds waiting or asking, and refusals no screen
   // showed yet, oldest first.
-  const rounds = Object.values(held.store.pending).filter(
-    (round) =>
-      held.asking.has(round.body.key) ||
-      (held.kept.has(round.body.key) &&
-        (!held.online || held.retrying.has(round.body.key))),
-  );
-  const refused = Object.entries(held.refusals).filter(
-    ([, refusal]) => !refusal.seen,
-  );
-  const count = rounds.length + refused.length;
+  const unsent = outboxHeld(held);
+  const count = unsent.waiting + unsent.asking + unsent.refused;
   const inMode = pathname === "/orders" || pathname.startsWith("/orders/");
-  const drafts = new Set([
-    ...rounds.map((round) => round.draft),
-    ...refused.map(([draft]) => draft),
-  ]);
-  const places = [
-    ...new Set([
-      ...rounds.map((round) =>
-        placeTitle(round.where ?? { placeName: null, takeaway: null }),
-      ),
-      ...refused.flatMap(([, refusal]) =>
-        refusal.where ? [placeTitle(refusal.where)] : [],
-      ),
-    ]),
-  ];
-  const [only] = drafts;
+  const places = [...new Set(unsent.wheres.map((where) => placeTitle(where)))];
+  const [only] = unsent.drafts;
 
   return (
     <>
-      <p role="status" className="sr-only">
+      <p aria-live="polite" className="sr-only">
         {said.text ? <span key={said.stamp}>{said.text}</span> : null}
       </p>
       {count > 0 && !inMode && !viewing ? (
         <OutboxBannerView
-          count={count}
           places={places}
-          why={
-            rounds.some((round) => held.asking.has(round.body.key))
-              ? "asks"
-              : rounds.length === 0
-                ? "refused"
-                : "waits"
-          }
+          waiting={unsent.waiting}
+          asking={unsent.asking}
+          refused={unsent.refused}
           href={
-            drafts.size === 1 && only ? draftPath(only) : appOrdersPaths.floor
+            unsent.drafts.length === 1 && only
+              ? draftPath(only)
+              : appOrdersPaths.floor
           }
         />
       ) : null}

@@ -18,3 +18,17 @@ export async function endSessionHere(): Promise<void> {
   const supabase = await createClient();
   await supabase.auth.signOut({ scope: "local" });
 }
+
+/**
+ * Whose session this device has, or null: nobody signed in, or it couldn't
+ * be read (never in the way of signing out).
+ */
+export async function sessionUserHere(): Promise<string | null> {
+  try {
+    const supabase = await createClient();
+    const { data } = await supabase.auth.getClaims();
+    return data?.claims.sub ?? null;
+  } catch {
+    return null;
+  }
+}

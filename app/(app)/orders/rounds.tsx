@@ -122,7 +122,7 @@ const stillSent = (shown: LineShown) =>
  * seconds with "ביטול" and offered only while that fits in the window
  * (default 13); and beside it "תיקון" (P5), which opens the line's sheet
  * while there is a fix the person may make, or one to read why not. A
- * sent with its reason, one on the house marked so. A
+ * cancelled line is struck with its reason, one on the house marked so. A
  * round still on its way says so: being sent, and only once it is kept on
  * the phone and an attempt failed or the phone is offline that it goes when
  * there is a connection; after ten minutes it asks (P7), with "שליחה" and

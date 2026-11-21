@@ -30,12 +30,7 @@ import {
   openOrdersDb,
   type StoreName,
 } from "./orders-db";
-import {
-  forgetTabEntries,
-  ordersClosed,
-  ordersOnPage,
-  setOrdersPerson,
-} from "./orders-storage";
+import { forgetTabEntries, ordersClosed, ordersOnPage } from "./orders-storage";
 import type {
   PendingSend,
   SendFailure,
@@ -1135,7 +1130,6 @@ export function createOutbox(deps: OutboxDeps) {
         session.business === now.business &&
         session.viewing === now.viewing;
       session = now;
-      setOrdersPerson(now.user);
       held.clear();
       if (!same) wakeAll();
       expire(now.user);

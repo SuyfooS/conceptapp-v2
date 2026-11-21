@@ -13,20 +13,20 @@ import { type OrdersDb, openOrdersDb } from "./orders-db";
  * signing out (app/sign-out-form.tsx) and locking a station
  * (app/(app)/clock/station/lock-station.tsx) say what hasn't gone and clear
  * it, without loading the mode: nothing here imports the outbox. Its
- * engine (outbox.ts) tells this page's store and person here, so a store
- * kept in memory where IndexedDB is blocked is cleared too; without one,
- * IndexedDB is opened only where it already holds something. Each also
- * removes P4's leftovers in sessionStorage (`orders:<user>:<business>`), and
- * from then on nothing more is written in this page (`closed`): it is
- * about to open a whole new one.
+ * engine (outbox.ts) tells this page's store here, so a store kept in
+ * memory where IndexedDB is blocked is cleared too; without one, IndexedDB
+ * is opened only where it already holds something. Whose records go is
+ * the server's word (the session signing out), never the page's: a page
+ * where no outbox started knows nobody, and another tab may have changed
+ * the cookie under it. Each also removes P4's leftovers in sessionStorage
+ * (`orders:<user>:<business>`), and from then on nothing more is written
+ * in this page (`closed`): it is about to open a whole new one.
  */
 
 /** P4's entries in sessionStorage, which only go now. */
 export const STORE_PREFIX = "orders:";
 
 let closed = false;
-/** The person this page's outbox is for, or null where none started. */
-let person: string | null = null;
 /** This page's store, when its outbox opened one. */
 let pageDb: (() => Promise<OrdersDb>) | null = null;
 
@@ -37,13 +37,6 @@ export const ordersClosed = () => closed;
 export function ordersOnPage(db: () => Promise<OrdersDb>): void {
   pageDb = db;
 }
-
-/** The outbox's person (`start`), whom signing out asks about. */
-export function setOrdersPerson(user: string | null): void {
-  person = user ? user.toLowerCase() : null;
-}
-
-export const ordersPerson = () => person;
 
 const storeOnPage = (): Promise<OrdersDb | null> =>
   pageDb
@@ -77,6 +70,22 @@ export async function unsentOnDevice(user?: string): Promise<UnsentOnDevice> {
   } catch {
     return NOTHING;
   }
+}
+
+/**
+ * What signing out asks about: the rounds kept here that haven't gone of
+ * the person signed in, as the server says (`who`, asked only when the
+ * phone holds any, whoever's, so a sign-out with nothing waiting costs no
+ * more). Null: nothing to ask, nobody signed in, or storage blocked.
+ */
+export async function unsentToAsk(
+  who: () => Promise<string | null>,
+): Promise<UnsentOnDevice | null> {
+  if ((await unsentOnDevice()).count === 0) return null;
+  const user = await who();
+  if (!user) return null;
+  const unsent = await unsentOnDevice(user);
+  return unsent.count > 0 ? unsent : null;
 }
 
 /** P4's entries in this tab, whoever's: the outbox's first open, and a session's end. */
@@ -160,8 +169,9 @@ async function clearWhere(
 /**
  * Signing out here: the person's rounds, drafts and menus go, in every
  * business, and whatever expired; another person's waiting rounds stay for
- * them. With nobody named (no outbox started in this page), only what
- * expired. Awaited before the page is left, so the clearing isn't lost.
+ * them. The person is the session that ended, as the sign-out answered;
+ * with nobody named (nobody was signed in), only what expired. Awaited
+ * before the page is left, so the clearing isn't lost.
  */
 export function clearOrdersOnSignOut(user: string | null): Promise<void> {
   const who = user?.toLowerCase() ?? null;

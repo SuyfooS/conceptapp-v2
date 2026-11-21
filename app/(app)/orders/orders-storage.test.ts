@@ -170,11 +170,39 @@ describe("what a session's end does on the phone", () => {
     expect(ordersClosed()).toBe(true);
   });
 
-  it("keeps the outbox's person for the sign-out to ask about", async () => {
-    const { ordersPerson, setOrdersPerson } = await load();
-    expect(ordersPerson()).toBeNull();
-    setOrdersPerson(YOAV.toUpperCase());
-    expect(ordersPerson()).toBe(YOAV);
+  it("asks the sign-out about the rounds of whoever the server names, though no outbox started in the page", async () => {
+    // A page where no outbox started (another business, the console): the
+    // server's answer is all there is to go by.
+    const { db, unsentToAsk } = await load();
+    await fill(db);
+    const who = vi.fn(async () => YOAV.toUpperCase());
+    expect(await unsentToAsk(who)).toEqual({
+      count: 2,
+      places: [
+        { placeName: "8", takeaway: null },
+        { placeName: "3", takeaway: null },
+      ],
+    });
+    // The cookie changed under the page: Noa's are asked about, not Yoav's.
+    expect(await unsentToAsk(async () => NOA)).toEqual({
+      count: 2,
+      places: [
+        { placeName: "9", takeaway: null },
+        { placeName: "4", takeaway: null },
+      ],
+    });
+    // Nobody signed in, or nothing of theirs: nothing to ask.
+    expect(await unsentToAsk(async () => null)).toBeNull();
+    expect(
+      await unsentToAsk(async () => "00000000-0000-4000-8000-000000000009"),
+    ).toBeNull();
+  });
+
+  it("asks the server nothing when the phone holds no round that hasn't gone", async () => {
+    const { unsentToAsk } = await load();
+    const who = vi.fn(async () => YOAV);
+    expect(await unsentToAsk(who)).toBeNull();
+    expect(who).not.toHaveBeenCalled();
   });
 
   it("throws nothing with storage blocked or no store kept", async () => {

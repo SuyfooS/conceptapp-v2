@@ -3,7 +3,8 @@
 import { normalizeOtpCode } from "@domain/otp";
 import { normalizeIsraeliMobile } from "@domain/phone";
 import { signedOutPath } from "../(app)/clock/station/station";
-import { endSessionHere } from "./end-session";
+import type { SignedOut } from "../sign-out-form";
+import { endSessionHere, sessionUserHere } from "./end-session";
 import { type SignInError, sendCode, verifyCode } from "./otp";
 
 export type SignInState =
@@ -69,9 +70,15 @@ export async function signIn(
  * clock station's code on a device that is one of a business's running
  * stations (Orel, 20 November 2026), and the door anywhere else, a stopped
  * station included. The session is gone before that is read, so a failed
- * read can't keep anyone signed in.
+ * read can't keep anyone signed in. It also says whose session it ended,
+ * read first, whose waiter-mode records on the phone go with it (P7): the
+ * server's word, since the page's may be stale. With "who" it ends nothing
+ * and says only whose session this is, for SignOutForm's question first;
+ * anyone may ask that of their own session.
  */
-export async function signOut(): Promise<string> {
+export async function signOut(only?: "who"): Promise<SignedOut> {
+  const user = await sessionUserHere();
+  if (only === "who") return { to: null, user };
   await endSessionHere();
-  return await signedOutPath();
+  return { to: await signedOutPath(), user };
 }

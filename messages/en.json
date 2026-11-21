@@ -5982,11 +5982,14 @@
         "banner": {
           "label": "Orders not sent",
           "waits": "{count, plural, one {It goes} other {They go}} once there's a connection, while the app is open.",
+          "waitsSome": "{count, plural, one {One of them goes} other {# of them go}} once there's a connection, while the app is open.",
           "asks": "Open it and choose whether to send it or remove it from the phone.",
           "refused": "What was chosen is back in the draft. Open it and send again.",
+          "refusedSome": "What was chosen is back in the draft in {count, plural, one {one of them} other {# of them}}. {count, plural, one {Open it} other {Open them}} and send again.",
           "open": "Open"
         },
         "lost": {
+          "label": "Orders removed from the phone",
           "signedOut": "The account was signed out on this phone, so {count, plural, one {it was} other {they were}} removed from it. Pass {count, plural, one {it on} other {them on}} by pad or by word of mouth.",
           "notMember": "There's no access to this business any more, so {count, plural, one {it was} other {they were}} removed from the phone. Pass {count, plural, one {it on} other {them on}} by pad or by word of mouth.",
           "seen": "Got it"

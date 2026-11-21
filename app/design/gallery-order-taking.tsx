@@ -175,9 +175,8 @@ export function GalleryOrderTaking() {
       <div className="flex flex-col gap-3">
         <OutboxBannerView
           placement="inline"
-          count={1}
           places={[table("6")]}
-          why="waits"
+          waiting={1}
           href={FLOOR}
         />
         <LostOrdersNoticeView

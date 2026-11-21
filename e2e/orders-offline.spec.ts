@@ -40,8 +40,13 @@ import { signIn } from "./session";
 // again; one waiting more than ten minutes asks first, removed with its
 // undo, then sent; and signing out with one waiting asks once and takes it
 // off the phone. The network goes with `setOffline`, and with `page.route`
-// where the next step needs it (the demo door, a sign-in). The rounds the
-// phone keeps are read from its IndexedDB.
+// where the next step needs it (the demo door, a sign-in). A page that
+// hides sends what waits one last time (keepalive), so the route stays on
+// through every page a waiting round leaves, or the move is made inside the
+// page. The demo person changes with the cookies cleared, as a session
+// that ends without signing out here leaves them (expired): the door opens
+// only signed out, and signing out takes the round off the phone. The
+// rounds the phone keeps are read from its IndexedDB.
 
 test.beforeAll(loadRestaurantWords);
 
@@ -90,7 +95,11 @@ async function outboxRows(page: Page, user?: string): Promise<number> {
   }, user ?? null);
 }
 
-/** Every round the phone keeps, sent `minutes` earlier than it was. */
+/**
+ * Every round the phone keeps, sent `minutes` earlier than it was, and the
+ * page told, as another tab that changed them would tell it: its outbox
+ * reads them again.
+ */
 async function ageRows(page: Page, minutes: number): Promise<void> {
   await page.evaluate(async (by) => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -98,15 +107,21 @@ async function ageRows(page: Page, minutes: number): Promise<void> {
       open.onsuccess = () => resolve(open.result);
       open.onerror = () => reject(open.error);
     });
+    const owners = new Set<string>();
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction("rounds", "readwrite");
       const store = tx.objectStore("rounds");
       const all = store.getAll();
       all.onsuccess = () => {
         for (const row of all.result as {
+          user: string;
+          business: string;
           queuedAt: number;
           askFrom: number;
         }[]) {
+          owners.add(
+            JSON.stringify({ user: row.user, business: row.business }),
+          );
           store.put({
             ...row,
             queuedAt: row.queuedAt - by * 60_000,
@@ -118,6 +133,9 @@ async function ageRows(page: Page, minutes: number): Promise<void> {
       tx.onerror = () => reject(tx.error);
     });
     db.close();
+    const tabs = new BroadcastChannel("conceptapp-orders");
+    for (const owner of owners) tabs.postMessage(JSON.parse(owner));
+    tabs.close();
   }, minutes);
 }
 
@@ -188,7 +206,11 @@ test("switching demo person keeps the order unsent, never sent as the next perso
   const shiran = await userIdOf(SHIRAN);
   expect(await outboxRows(page, shiran)).toBe(1);
 
-  // Uri on the same phone, who takes orders too.
+  // Uri on the same phone, who takes orders too. Shiran's session ends
+  // without her signing out here (the cookies cleared): her round stays
+  // kept, and the last send as her page leaves finds no session (and is
+  // aborted).
+  await page.context().clearCookies();
   await enterAs(page, "owner");
   await page.unroute(SENDS);
   const answers: { status: number; user: string | null }[] = [];
@@ -218,6 +240,7 @@ test("switching demo person keeps the order unsent, never sent as the next perso
   );
 
   // Shiran is back: it goes, as hers.
+  await page.context().clearCookies();
   await enterAs(page, "manager");
   await expect.poll(() => demoRounds("8")).toBe(1);
   expect(await demoRoundSenders("8")).toEqual([SHIRAN]);
@@ -260,11 +283,12 @@ test("an order waiting more than 10 minutes asks first: removed with its undo, t
   await page.route(SENDS, (route) => route.abort("internetdisconnected"));
   await sendLemonade(page, "desktop");
   await expect(shown(page, notSent())).toBeVisible();
+  // Asking already as the page reloads, so its last send passes it by; the
+  // sends stay aborted through the reload all the same, until "שליחה".
   await ageRows(page, 12);
-  await page.unroute(SENDS);
-  await page.reload();
-
   const question = rt("app.orders.outbox.ask", { count: 12 });
+  await expect(shown(page, question)).toBeVisible();
+  await page.reload();
   await expect(shown(page, question)).toBeVisible();
   const synced = page.waitForResponse((r) => r.url().includes("/orders-sync"));
   await toFloor(page);
@@ -288,6 +312,7 @@ test("an order waiting more than 10 minutes asks first: removed with its undo, t
   await expect(shown(page, question)).toBeVisible();
 
   // Sent now, once.
+  await page.unroute(SENDS);
   await button(
     page,
     rt("app.orders.outbox.sendLabel", { place: table("8") }),
@@ -310,7 +335,13 @@ test("signing out with an order waiting asks once and takes it off the phone", a
   await sendLemonade(page, "desktop");
   await expect(shown(page, notSent())).toBeVisible();
 
-  await page.goto("/me");
+  // To the profile by the app's own link: a move inside the page, so no
+  // last send leaves as the order's screen goes.
+  await page
+    .getByRole("link", { name: new RegExp(he.ui.appShell.profile) })
+    .filter({ visible: true })
+    .click();
+  await expect(page).toHaveURL(/\/me$/);
   const signOut = main(page).getByRole("button", { name: he.app.signOut });
   await signOut.click();
   const sheet = page.getByRole("dialog", {

@@ -61,6 +61,7 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type Ref, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { useHeldWrite } from "../use-held-write";
 import { CancelOrderSheet } from "./cancel-order-sheet";
 import { ChoiceSheet } from "./choice-sheet";
@@ -722,7 +723,9 @@ export function OrderView({
   /**
    * "הסרה מהטלפון" (P7): the round that asked goes from the phone, with
    * "ביטול" for 8 seconds; its card goes with the button, so the way back
-   * takes the focus.
+   * takes the focus, and then the rounds' heading, or the screen's title
+   * where it is hidden (a phone's "הוספת פריטים", where the question shows
+   * over the items).
    */
   function removeRound(round: string) {
     const undo = sender.remove(round);
@@ -730,13 +733,21 @@ export function OrderView({
     say(t("toast.roundRemoved", { place: title }), {
       undo,
       focus: true,
-      after: () => roundsHeading.current ?? titleRef.current,
+      after: () =>
+        onView(roundsHeading.current)
+          ? roundsHeading.current
+          : titleRef.current,
     });
   }
 
-  /** "שליחה" (P7): it goes now, and its card says so again. */
+  /**
+   * "שליחה" (P7): it goes now. Its question goes with the button, also over
+   * a phone's items, so the order shows first, as a send does, where its
+   * card says it is on its way, and its heading takes the focus.
+   */
   function sendNow(round: string) {
     sender.answer(round);
+    flushSync(() => setView("order"));
     roundsHeading.current?.focus({ preventScroll: true });
   }
 

@@ -41,6 +41,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { inTurn, writesOnWay } from "./in-turn";
+import { keepLostNotice } from "./lost-notice";
 import { newId } from "./new-id";
 import { OrdersModeContext, useModeToast } from "./orders-mode";
 import { usePlaceWords } from "./orders-parts";
@@ -60,7 +61,6 @@ import {
   pendingSends,
   unsentOf,
 } from "./outbox";
-import { keepLostNotice } from "./outbox-notice";
 import { readyMarks } from "./ready-marks";
 import {
   pendingOfDraft,

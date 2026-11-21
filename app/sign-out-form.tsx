@@ -7,17 +7,30 @@ import { type ReactNode, useRef, useState } from "react";
 import { usePlaceWords } from "./(app)/orders/orders-parts";
 import {
   clearOrdersOnSignOut,
-  ordersPerson,
   type UnsentOnDevice,
-  unsentOnDevice,
+  unsentToAsk,
 } from "./(app)/orders/orders-storage";
 
+/** What signing out answers. */
+export type SignedOut = {
+  /**
+   * Where the device goes next (the sign-in door, or the clock station's
+   * code on a device that is one); null when it was only asked "who".
+   */
+  to: string | null;
+  /**
+   * Whose session it ended (or, asked "who", is), as the server reads it:
+   * their records on the phone go with it. Null where nobody was signed in.
+   */
+  user: string | null;
+};
+
 /**
- * Signs out, and says where the device goes next (the sign-in door, or the
- * clock station's code on a device that is one), or null where nothing is
- * signed in (the design demo's stand-in).
+ * Signs out, and says where the device goes next and whose session it
+ * ended; with "who", ends nothing and says only whose session it is. Null
+ * where nothing is signed in (the design demo's stand-in).
  */
-export type SignOutAction = () => Promise<string | null>;
+export type SignOutAction = (only?: "who") => Promise<SignedOut | null>;
 
 /**
  * A sign-out button's form. Signing out ends with a whole new page where the
@@ -34,6 +47,11 @@ export type SignOutAction = () => Promise<string | null>;
  * waits for that before it goes. An order of theirs that hasn't gone would
  * go with them, and nothing brings it back: the form asks once, naming
  * where, with "יציאה ומחיקה" and "חזרה" (CLAUDE.md's exception to undo).
+ * Whose they are is the server's word, asked of the action ("who") only
+ * when the phone holds any, and answered again as it signs out: never the
+ * page's, which knows nobody where no outbox started, and may be another
+ * tab's person after the cookie changed under it. The sheet keeps what it
+ * asked about while it closes, so its words don't change on the way out.
  */
 export function SignOutForm({
   action,
@@ -50,6 +68,8 @@ export function SignOutForm({
   const form = useRef<HTMLFormElement>(null);
   /** Asked, and "יציאה ומחיקה" pressed: the next submit goes. */
   const sure = useRef(false);
+  const [asking, setAsking] = useState(false);
+  /** What the question names, kept after it closes. */
   const [unsent, setUnsent] = useState<UnsentOnDevice | null>(null);
   const count = unsent?.count ?? 1;
   const places = unsent
@@ -61,28 +81,30 @@ export function SignOutForm({
       <form
         ref={form}
         action={async () => {
-          const person = ordersPerson();
-          if (!sure.current && person) {
-            const found = await unsentOnDevice(person);
-            if (found.count > 0) {
+          if (!sure.current) {
+            const found = await unsentToAsk(
+              async () => (await action("who"))?.user ?? null,
+            );
+            if (found) {
               setUnsent(found);
+              setAsking(true);
               return;
             }
           }
           sure.current = false;
-          const to = await action();
-          if (!to) return;
-          await clearOrdersOnSignOut(person);
-          window.location.replace(to);
+          const out = await action();
+          if (!out?.to) return;
+          await clearOrdersOnSignOut(out.user);
+          window.location.replace(out.to);
         }}
         className={className}
       >
         {children}
       </form>
       <Sheet
-        open={unsent !== null}
+        open={asking}
         onOpenChange={(open) => {
-          if (!open) setUnsent(null);
+          if (!open) setAsking(false);
         }}
         title={t("unsent", { count })}
         subtitle={t("places", { places })}
@@ -100,7 +122,7 @@ export function SignOutForm({
               className="w-full md:w-auto"
               onClick={() => {
                 sure.current = true;
-                setUnsent(null);
+                setAsking(false);
                 form.current?.requestSubmit();
               }}
             >
@@ -110,7 +132,7 @@ export function SignOutForm({
               variant="secondary"
               size="lg"
               className="w-full md:w-auto"
-              onClick={() => setUnsent(null)}
+              onClick={() => setAsking(false)}
             >
               {t("signOut.back")}
             </Button>
