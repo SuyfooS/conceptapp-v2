@@ -34,6 +34,13 @@ what is next, defaults applied.
   - The gate keeps what waits by what it is about ("ready", `sent:<round>`) and tells each in turn, the next once the toast before it has gone, so a round that landed and the ready news no longer drop each other.
   - A ticket marked ready here is news again once a read made after the mark sees it not ready (`readyMarks.seen`): put back and made ready again on another phone, its owner is told.
 - After the re-review of 8731add (each finding confirmed): a serve's "ביטול" is no ready news (`readyNews` leaves out a ticket served before and ready again with the time it was ready at; one served new and marked ready since still is); a toast whose time is up is forgotten (`modeToast.hidden` puts null), and a `StatusToast` drawn again with the same message (its screen shown again from a hidden `<Activity>`) goes on with the time it had left and never takes the focus again, so no finished "מוכן" or stale "ביטול" comes back on returning to the mode; the send's "נשלחה" on its own screen goes through the news gate too, so a take-back's or a serve's "ביטול" said while the round was on its way stays until it goes.
+## 2026-11-21 · nightly run · the wizard's slug field says what it is
+
+- Guessed: Orel left no work, no open question. What merged since the last run (#207 to #209) shares Home, messages and the orders with Orel's open P4 (#210), so the smallest item from "תקלות ידועות" instead: #10, "כתובת הדף" in the new-business wizard, required and leading nowhere.
+- Words only: the field, the summary, the console's business list and the business's subtitle now say "השם באנגלית" (en "English name"), its hint says where it shows (the business's link in the console; the payroll file is saved under its Hebrew `filename*`, the slug only its ASCII fallback, so the hint leaves it out, as the design review found), and its errors talk of a name, not an address. No code, no data. Known issue #10 says the same.
+- Checked: `pnpm check`, `pnpm build`, the design reviewer. No screenshots here (the wizard needs the local stack, no Docker): CI's e2e at 390/820/1440 covers it. The e2e reads the labels from the messages, so it follows.
+- Restore point: branch `backup/before-night-2026-11-21` at `b0293d1` (the tag push was cut off).
+- Next: P4 (#210) with Orel, then `/me` H4 (#82). Defaults applied: none.
 
 ## 2026-11-20 · chat · taking orders: the orders in the database, module off (waiter mode P3)
 
