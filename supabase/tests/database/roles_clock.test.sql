@@ -24,7 +24,7 @@
 -- its moment, so nothing depends on today's date. Fixed ids (96…), so
 -- nothing here depends on the seed.
 begin;
-select plan(15);
+select plan(16);
 
 -- 1 owner, 2 manager, 3 the worker the matrix follows, 4 a colleague whose
 -- hours are confirmed and corrected, 5 the accountant, 6 a worker who never
@@ -767,6 +767,26 @@ select ok(
      ('public', 'clock_stations', 'the clock''s editors read the business''s stations')
    )),
   'the team''s hours, breaks and stations ask clock.edit once per query, by no role'
+);
+
+-- Since waiter mode's stations (20261124000100_order_taking_stations.sql)
+-- share the registry: the clock's editors read the clock's rows only, and
+-- the kitchen's screens and tills are read by those who run orders.
+select ok(
+  (select strpos(p.qual, '''clock_code''') > 0
+     and strpos(p.qual, 'businesses_holding(''clock.edit''') > 0
+     and strpos(p.qual, 'order_taking') = 0
+   from pg_policies p
+   where p.schemaname = 'public' and p.tablename = 'clock_stations'
+     and p.policyname = 'the clock''s editors read the business''s stations')
+  and (select strpos(p.qual, '''prep''') > 0
+     and strpos(p.qual, '''till''') > 0
+     and strpos(p.qual, 'businesses_holding(''order_taking.edit''') > 0
+     and strpos(p.qual, 'clock.edit') = 0
+   from pg_policies p
+   where p.schemaname = 'public' and p.tablename = 'clock_stations'
+     and p.policyname = 'order_taking''s runners read its stations'),
+  'the clock''s editors read only the clock''s stations, and those who run orders the kitchen''s screens and tills'
 );
 
 select is(

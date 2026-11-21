@@ -9,6 +9,7 @@ import { type MessageTree, mergeWording } from "../packages/domain/wording";
 import { before, buildScreen, HOLD_MS } from "./build-screen";
 import { minimalPdf } from "./pdf";
 import { cameraPhoto } from "./photo";
+import { stubAudio } from "./station-audio";
 import { heT } from "./t";
 import { readWorkbook, unzip } from "./unzip";
 
@@ -402,7 +403,7 @@ const PAGES = [
 // screen on "מה נגמר": the sheet hides the page behind it from the
 // accessibility tree. Lists' `?state=photo` opens none.
 const OPENS_A_SHEET =
-  /^\/design\/(chat\/.*[?&]state=(readers|actions|photo|attach|remove)|shell\/clock\/team\/[^?]+[?&]state=(edit|cancel|cancelled|break|addBreak|openBreak)|order-taking\/floor\/order\?.*[?&]state=choices|order-taking\/station\/prep\?.*[?&]state=soldOut)\b/;
+  /^\/design\/(chat\/.*[?&]state=(readers|actions|photo|attach|remove)|shell\/clock\/team\/[^?]+[?&]state=(edit|cancel|cancelled|break|addBreak|openBreak)|order-taking\/floor\/order\?.*[?&]state=choices|order-taking\/station\/prep\?(?:.*&)?state=soldOut)\b/;
 
 async function expectCleanPage(
   page: Page,
@@ -4736,8 +4737,45 @@ test("the waiter mode demo's kitchen screen stays offline", async ({
     words.offline,
     { timeout: 20_000 },
   );
-  await expect(page.getByText(words.offlineShort)).toBeVisible();
+  // The quiet line whole: the banner's title starts with the same words.
+  await expect(
+    page.getByText(`${words.offlineShort} · ${words.soundOn}`, {
+      exact: true,
+    }),
+  ).toBeVisible();
   await expect(page.getByText(words.online, { exact: true })).toHaveCount(0);
+});
+
+// The kitchen's screen past its button on the twin (P8a) plays its sound,
+// as the button's press leaves it: its quiet line says so and no banner
+// asks for a tap. Only `soundLocked` shows the sound stopped, with the
+// banner that is its button, and pressing it starts the sound.
+test("the waiter mode demo's kitchen screen says its sound plays, but where it stopped", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "phone", "one width is enough");
+  // A stand-in for the device's sound, which runs once tapped.
+  await stubAudio(page);
+  const words = he.app.orders.station;
+  const banner = page.getByRole("button", {
+    name: new RegExp(`^${words.soundLocked}`),
+  });
+  await page.goto("/design/order-taking/station/prep?state=open");
+  await expect(page).toHaveURL(/\/station\/prep$/);
+  await expect(
+    page.getByText(`${words.online} · ${words.soundOn}`, { exact: true }),
+  ).toBeVisible();
+  await expect(banner).toHaveCount(0);
+
+  await page.goto("/design/order-taking/station/prep?state=soundLocked");
+  await expect(page).toHaveURL(/\/station\/prep$/);
+  await expect(banner).toBeVisible();
+  await expect(page.getByText(words.online, { exact: true })).toBeVisible();
+  await banner.click();
+  await expect(banner).toHaveCount(0);
+  await expect(
+    page.getByText(`${words.online} · ${words.soundOn}`, { exact: true }),
+  ).toBeVisible();
 });
 
 // The kitchen's screen on the twin (P8a): it reads nothing until its one
@@ -4845,6 +4883,104 @@ test("the waiter mode demo's till closes a table with its undo, and opens it aga
     page.getByText(rt("app.orders.toast.reopened", { place: table9 })),
   ).toBeVisible();
   await expect(close).toBeVisible();
+});
+
+// The till's "ביטול" (P8a) stays while the cashier goes on to the next
+// order, chosen beside it on a tablet: table 9's close is taken back from
+// the toast once table 4 is the one shown.
+test("the waiter mode demo's till keeps a close's undo while the next order is chosen", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "tablet",
+    "the list beside the order is the tablet's",
+  );
+  const table = (name: string) => rt("app.orders.place.numbered", { name });
+  const row = (name: string) =>
+    page
+      .getByRole("button", { name: new RegExp(`^${table(name)}`) })
+      .filter({ visible: true })
+      .first();
+  const title = (name: string) =>
+    page.getByRole("heading", {
+      level: 2,
+      name: rt("app.orders.till.title", { place: table(name) }),
+    });
+  const close = page.getByRole("button", {
+    name: rt("app.orders.close.place"),
+  });
+  await page.goto("/design/order-taking/station/till?state=chosen");
+  await expect(title("9")).toBeVisible();
+  await close.click();
+  const closed = page
+    .getByRole("status")
+    .filter({ hasText: rt("app.orders.toast.closed", { place: table("9") }) });
+  await expect(closed).toBeVisible();
+  await row("4").click();
+  await expect(title("4")).toBeVisible();
+  await closed
+    .getByRole("button", { name: rt("app.orders.toast.undo") })
+    .click();
+  await row("9").click();
+  await expect(title("9")).toBeVisible();
+  await expect(close).toBeEnabled();
+  await expect(
+    page.getByRole("button", { name: rt("app.orders.close.reopen") }),
+  ).toHaveCount(0);
+});
+
+// On a phone the order chosen takes the list's place (P8a): one chosen at
+// the foot of the till's list opens at the top, its way back and its title
+// in sight.
+test("the waiter mode demo's till opens an order chosen low in its list at the top", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "phone",
+    "the order alone is the phone's",
+  );
+  await page.goto("/design/order-taking/station/till");
+  const last = page
+    .getByRole("main")
+    .getByRole("button")
+    .filter({ visible: true })
+    .last();
+  await expect(last).toBeVisible();
+  await page.evaluate(() =>
+    window.scrollTo(0, document.documentElement.scrollHeight),
+  );
+  await last.click();
+  await expect(
+    page.getByRole("heading", {
+      level: 2,
+      name: new RegExp(`^${rt("app.orders.till.title", { place: "" }).trim()}`),
+    }),
+  ).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  await expect(
+    page.getByRole("button", { name: rt("app.orders.station.till.back") }),
+  ).toBeInViewport();
+});
+
+// The kitchen's gate (P8a) stands in the middle of the screen, with the
+// foot under it at the bottom: on a phone, a tablet and a desktop alike.
+test("the waiter mode demo's kitchen gate is centred on the screen", async ({
+  page,
+}) => {
+  await page.goto("/design/order-taking/station/prep");
+  const open = page.getByRole("button", {
+    name: rt("app.orders.station.open"),
+  });
+  await expect(open).toBeVisible();
+  const title = page
+    .getByRole("heading", { level: 1 })
+    .filter({ visible: true })
+    .first();
+  const top = (await title.boundingBox())?.y ?? 0;
+  const button = await open.boundingBox();
+  const bottom = (button?.y ?? 0) + (button?.height ?? 0);
+  const height = page.viewportSize()?.height ?? 0;
+  expect(Math.abs((top + bottom) / 2 - height / 2)).toBeLessThan(height * 0.15);
 });
 
 // The prep screen's lock on the twin (P8a): the kitchen's sheet, with its

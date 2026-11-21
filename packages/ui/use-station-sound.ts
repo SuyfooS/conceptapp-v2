@@ -4,9 +4,32 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
  * locked: no sound until a tap (none yet, or the device stopped it: a call
- * on an iPad, the tablet asleep). on: it plays. off: this browser has none.
+ * on an iPad, the tablet asleep). starting: tapped, and the device is
+ * starting it (a moment on an iPad), so nothing is asked for yet. on: it
+ * plays. off: this browser has none.
  */
-export type StationSoundState = "locked" | "on" | "off";
+export type StationSoundState = "locked" | "starting" | "on" | "off";
+
+/** How long a tap's start may take before the screen asks for a tap again. */
+export const SOUND_START_MS = 3000;
+
+/** The sound as the device has it: on while its context runs, else stopped. */
+export function soundOf(
+  context: { state: AudioContextState } | null,
+): "on" | "locked" {
+  return context?.state === "running" ? "on" : "locked";
+}
+
+/**
+ * The sound as a tap leaves it, before the device answers: on at once for a
+ * context that runs already (made in that tap, or never stopped), else
+ * starting, never stopped, so no banner asks for the tap just given.
+ */
+export function soundOnTap(context: {
+  state: AudioContextState;
+}): "on" | "starting" {
+  return context.state === "running" ? "on" : "starting";
+}
 
 export type StationSound = {
   state: StationSoundState;
@@ -55,9 +78,10 @@ function tone(
 export function useStationSound(): StationSound {
   const audio = useRef<AudioContext | null>(null);
   const [state, setState] = useState<StationSoundState>("locked");
+  const settle = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const follow = useCallback(() => {
-    setState(audio.current?.state === "running" ? "on" : "locked");
+    setState(soundOf(audio.current));
   }, []);
 
   const play = useCallback(
@@ -101,6 +125,10 @@ export function useStationSound(): StationSound {
         audio.current.onstatechange = follow;
       }
       const context = audio.current;
+      // Said at once, in the tap: a context made in it runs already, and
+      // `onstatechange` never tells of that; one still starting asks for
+      // nothing until the device answers.
+      setState(soundOnTap(context));
       void context
         .resume()
         .then(() => {
@@ -108,6 +136,9 @@ export function useStationSound(): StationSound {
           chime();
         })
         .catch(follow);
+      // A start the device never answers asks for the tap again.
+      if (settle.current) clearTimeout(settle.current);
+      settle.current = setTimeout(follow, SOUND_START_MS);
     } catch {
       setState("off");
     }
@@ -133,6 +164,7 @@ export function useStationSound(): StationSound {
 
   useEffect(
     () => () => {
+      if (settle.current) clearTimeout(settle.current);
       void audio.current?.close();
       audio.current = null;
     },

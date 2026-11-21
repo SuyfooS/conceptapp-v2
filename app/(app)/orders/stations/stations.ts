@@ -48,7 +48,11 @@ export async function orderStationsOffer(
   const count = total.ok ? { total: total.count } : {};
   const offerFor = (shows: "prep" | "till") => {
     if (device?.shows === shows) {
-      return { current: { name: device.name }, running: [] };
+      // A kitchen's screen locked again keeps the department it shows.
+      return {
+        current: { name: device.name, department: device.departmentId },
+        running: [],
+      };
     }
     return {
       current: null,

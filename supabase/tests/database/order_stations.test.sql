@@ -3,7 +3,8 @@
 -- with the clock's stations: what each shows, a kitchen's screen's
 -- department, ten running of every kind together; locked by whoever runs
 -- orders; read by the clock's editors (the clock's rows) and by those who run
--- orders (the others), never the secret. By its secret, a kitchen's screen
+-- orders (the others), a view as them alike, never the secret; their locks
+-- and stops logged for those who run orders. By its secret, a kitchen's screen
 -- reads its department's tickets (or every one's) with no price, marking the
 -- new ones seen, and what it marks sold out; the till reads the open orders
 -- and today's closed, with no label, no person and no total. Their writes as
@@ -14,16 +15,16 @@
 -- business). Fixed ids (ea…), numbers (05-007-000xx) and slugs
 -- (order-stations-…), so nothing here meets the seed or another test.
 begin;
-select plan(46);
+select plan(55);
 
 -- A: 1 owner; 2 a manager on the floor; 3 a worker in the kitchen; 4 a
 -- worker at the bar; 5 a worker on the floor, who takes orders; 6 a worker
 -- who edits the clock and doesn't run orders; 7 the accountant. B: 11, its
--- owner.
+-- owner. 8 is on the ConceptApp team, viewing A as a manager.
 insert into auth.users (id, aud, role, phone)
 select ('ea000000-0000-4000-a000-' || lpad(n::text, 12, '0'))::uuid,
   'authenticated', 'authenticated', '9725007000' || lpad(n::text, 2, '0')
-from unnest('{1,2,3,4,5,6,7,11}'::int[]) as n;
+from unnest('{1,2,3,4,5,6,7,8,11}'::int[]) as n;
 
 create function pg_temp.p(n integer) returns uuid language sql as $$
   select ('ea000000-0000-4000-a000-' || lpad(n::text, 12, '0'))::uuid
@@ -235,6 +236,15 @@ select throws_ok(
     values (%L, 'Screen', %L, 'menu')$$, pg_temp.a(), pg_temp.h('screen')),
   '23514', null, 'and a station shows one of three things'
 );
+-- The department's key is checked at commit, which a test never reaches:
+-- checked now, then left for commit again.
+set constraints public.clock_stations_department_id_business_id_fkey immediate;
+select throws_ok(
+  format($$insert into public.clock_stations (business_id, name, token_hash, shows, department_id)
+    values (%L, 'Kitchen B', %L, 'prep', %L)$$, pg_temp.a(), pg_temp.h('kitchen-b'), pg_temp.d(11)),
+  '23503', null, 'a kitchen''s screen never shows another business''s department'
+);
+set constraints public.clock_stations_department_id_business_id_fkey deferred;
 
 ------------------------------------------------------------------------------
 -- Locking
@@ -367,6 +377,25 @@ select is(
     || '|' || (pg_temp.got('worker') ->> 'all'),
   '8:0|8:5|0',
   'the clock''s editors read the clock''s stations, those who run orders the kitchen''s screens and the till too, a worker none'
+);
+insert into public.platform_staff (user_id, role) values (pg_temp.p(8), 'onboarder');
+insert into public.view_sessions (staff_id, business_id, role)
+values (pg_temp.p(8), pg_temp.a(), 'manager');
+select pg_temp.sign_in(pg_temp.p(8));
+insert into got values ('view', (select jsonb_build_object(
+  'clock', count(*) filter (where s.shows = 'clock_code'),
+  'orders', count(*) filter (where s.shows <> 'clock_code'))
+  from public.clock_stations s where s.business_id = pg_temp.a()));
+reset role;
+select pg_temp.sign_in(pg_temp.p(11));
+insert into got values ('other owner', (select jsonb_build_object('all', count(*))
+  from public.clock_stations s where s.business_id = pg_temp.a()));
+reset role;
+select is(
+  (pg_temp.got('view') ->> 'clock') || ':' || (pg_temp.got('view') ->> 'orders')
+    || '|' || (pg_temp.got('other owner') ->> 'all'),
+  '8:5|0',
+  'a view as a manager reads both, as the manager would; another business''s owner none of them'
 );
 update public.business_modules set enabled = false
 where business_id = pg_temp.a() and module_key = 'order_taking';
@@ -507,6 +536,20 @@ select is(
   'new:-:-',
   'a cook''s put back of the station''s ready clears the station too'
 );
+-- Yesterday's hummus made ready: on the screen for its 5 minutes, then off.
+select public.station_set_ticket_ready(pg_temp.h('kitchen'), pg_temp.ticket(3, 0), true, pg_temp.at(215));
+insert into got values ('kitchen at 400', public.station_order_prep(pg_temp.h('kitchen'), null, pg_temp.at(400)));
+insert into got values ('kitchen at 520', public.station_order_prep(pg_temp.h('kitchen'), null, pg_temp.at(520)));
+select is(
+  (select string_agg(x.e ->> 'status', ',')
+   from jsonb_array_elements(pg_temp.got('kitchen at 400') -> 'tickets') as x (e)
+   where x.e ->> 'id' = pg_temp.ticket(3, 0)::text)
+  || '|' || (select count(*)::text
+   from jsonb_array_elements(pg_temp.got('kitchen at 520') -> 'tickets') as x (e)
+   where x.e ->> 'id' = pg_temp.ticket(3, 0)::text),
+  'ready|0',
+  'a ticket made ready stays on the screen for 5 minutes, and then leaves it'
+);
 
 ------------------------------------------------------------------------------
 -- A kitchen's screen marks sold out
@@ -621,6 +664,67 @@ select is(
   'a waiter closes and opens it again after the till did, the station cleared'
 );
 
+-- Table 4's order, a lemonade, cancelled whole; a second till, as another
+-- device locked it. The till closes table 1, and a waiter opens a new order
+-- there.
+select public.send_order_round(pg_temp.p(5), pg_temp.a(), pg_temp.k(4), pg_temp.place(4),
+  jsonb_build_array(pg_temp.li(3, 1)), pg_temp.at(862));
+select public.cancel_order(pg_temp.p(2), pg_temp.order_of(4), 'guest', pg_temp.at(864));
+insert into public.clock_stations (business_id, name, token_hash, shows, created_at)
+values (pg_temp.a(), 'Till 2', pg_temp.h('till2'), 'till', pg_temp.at(864));
+select public.station_close_order(pg_temp.h('till'), pg_temp.order_of(1), pg_temp.at(870));
+select public.send_order_round(pg_temp.p(5), pg_temp.a(), pg_temp.k(5), pg_temp.place(1),
+  jsonb_build_array(pg_temp.li(3, 1)), pg_temp.at(871));
+insert into got values ('till closed', public.station_order_till(pg_temp.h('till'), null, pg_temp.at(872)));
+select is(
+  (select string_agg(coalesce(e -> 'place' ->> 'name', '-') || ':' || (e ->> 'status') || ':' || (e ->> 'closedHere')
+     || ':' || jsonb_array_length(e -> 'byItem')::text || ':' || jsonb_array_length(e -> 'byRound')::text,
+     ',' order by n)
+   from jsonb_array_elements(pg_temp.got('till closed') -> 'closed') with ordinality as x (e, n)),
+  '1:closed:true:2:1,4:cancelled:false:0:0',
+  'the till reads today''s closed and cancelled orders, the newest first, says which it closed, and has nothing to ring up for a cancelled one'
+);
+select is(
+  concat_ws('|',
+    pg_temp.refusal(format($$select public.station_close_order(%L, %L, %L)$$,
+      pg_temp.h('till'), pg_temp.order_of(4), pg_temp.at(873))),
+    pg_temp.refusal(format($$select public.station_reopen_order(%L, %L, %L)$$,
+      pg_temp.h('till'), pg_temp.order_of(1), pg_temp.at(873))),
+    pg_temp.refusal(format($$select public.station_reopen_order(%L, %L, %L)$$,
+      pg_temp.h('till'), pg_temp.order_of(1), pg_temp.at(86400))),
+    pg_temp.refusal(format($$select public.station_undo_close_order(%L, %L, %L)$$,
+      pg_temp.h('till2'), pg_temp.order_of(1), pg_temp.at(873))),
+    pg_temp.refusal(format($$select public.station_reopen_order(%L, %L, %L)$$,
+      pg_temp.h('till'), pg_temp.order_of(11), pg_temp.at(873))),
+    pg_temp.refusal(format($$select public.station_undo_close_order(%L, %L, %L)$$,
+      pg_temp.h('till'), pg_temp.order_of(11), pg_temp.at(873)))
+  ),
+  '55000 closed|23505 taken|55000 day|55000 window|P0002|P0002',
+  'a cancelled order closes no more; a closed one opens again only on its day and while its place is free; only the till that closed it takes the close back; another business''s order is none of the till''s'
+);
+-- Its place free again, the till opens it again; a waiter's close then is
+-- the waiter's to take back.
+select public.cancel_order(pg_temp.p(2), pg_temp.order_of(5), 'mistake', pg_temp.at(874));
+select public.station_reopen_order(pg_temp.h('till'), pg_temp.order_of(1), pg_temp.at(875));
+select public.serve_order_ticket(pg_temp.p(5), pg_temp.ticket(1, 1), false, pg_temp.at(880));
+select public.close_order(pg_temp.p(5), pg_temp.order_of(1), pg_temp.at(885));
+select is(
+  pg_temp.refusal(format($$select public.station_undo_close_order(%L, %L, %L)$$,
+    pg_temp.h('till'), pg_temp.order_of(1), pg_temp.at(886))),
+  '55000 window',
+  'the till takes back no waiter''s close'
+);
+select public.undo_close_order(pg_temp.p(5), pg_temp.order_of(1), pg_temp.at(890));
+select is(
+  (select o.status || ':' || (o.reopened_by = pg_temp.p(5))::text || ':' || coalesce(o.reopened_station::text, '-')
+     || ':' || coalesce(o.closed_station::text, '-')
+   from public.orders o where o.id = pg_temp.order_of(1))
+  || '|' || (select t.status || ':' || coalesce(t.served_by::text, '-') || ':' || coalesce(t.served_station::text, '-')
+     from public.order_tickets t where t.id = pg_temp.ticket(1, 1)),
+  'open:true:-:-|new:-:-',
+  'a waiter''s "ביטול" of their close after the till opened it again takes the till off it, and gives back what the close served'
+);
+
 ------------------------------------------------------------------------------
 -- Stopping a station
 
@@ -669,6 +773,43 @@ select is(
 );
 update public.business_modules set enabled = true
 where business_id = pg_temp.a() and module_key = 'order_taking';
+
+------------------------------------------------------------------------------
+-- Who reads what the screens' locks and stops logged
+
+-- Those who run orders (private.log_perm's (menu|order) arm), as a manager
+-- does by default; a manager lowered from it reads the clock's station's
+-- stop still, and none of the orders' screens'.
+select pg_temp.sign_in(pg_temp.p(2));
+insert into got values ('log', (select jsonb_build_object(
+  'orders', count(*) filter (where a.action like 'order.station.%'),
+  'clock', count(*) filter (where a.action like 'clock.station.%'))
+  from public.audit_log a where a.business_id = pg_temp.a()));
+reset role;
+insert into public.role_permissions (business_id, role, perm, allowed)
+values (pg_temp.a(), 'manager', 'order_taking.edit', false);
+select pg_temp.sign_in(pg_temp.p(2));
+insert into got values ('log lowered', (select jsonb_build_object(
+  'orders', count(*) filter (where a.action like 'order.station.%'),
+  'clock', count(*) filter (where a.action like 'clock.station.%'))
+  from public.audit_log a where a.business_id = pg_temp.a()));
+reset role;
+delete from public.role_permissions
+where business_id = pg_temp.a() and role = 'manager' and perm = 'order_taking.edit';
+select is(
+  (pg_temp.got('log') ->> 'orders') || ':' || (pg_temp.got('log') ->> 'clock')
+    || '|' || (pg_temp.got('log lowered') ->> 'orders') || ':' || (pg_temp.got('log lowered') ->> 'clock'),
+  (select count(*)::text from public.audit_log a
+   where a.business_id = pg_temp.a() and a.action like 'order.station.%')
+    || ':1|0:1',
+  'those who run orders read the screens'' locks and stops in the log; a manager lowered from it reads only the clock''s'
+);
+select is(
+  (select count(*)::integer from public.audit_log a
+   where a.business_id = pg_temp.a() and a.action like 'order.station.%'),
+  7,
+  'five locks, a stop and a restart, each logged once'
+);
 
 ------------------------------------------------------------------------------
 -- Every new key leads an index

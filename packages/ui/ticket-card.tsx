@@ -143,9 +143,16 @@ export type TicketCardProps = {
   /**
    * "מוכן", full width at its foot: one on every ticket, so not in the
    * accent. `loading` while the server hears it (the button says so and
-   * waits).
+   * waits). `ariaLabel` names it with its ticket, where its words alone
+   * would name several buttons alike ("הסרה מהמסך: שולחן 4"); it starts
+   * with `label`, so what is read is what shows.
    */
-  ready?: { label: string; onClick: () => void; loading?: boolean } | null;
+  ready?: {
+    label: string;
+    onClick: () => void;
+    loading?: boolean;
+    ariaLabel?: string;
+  } | null;
   /** The ticket's lines, each an `OrderLine`. */
   children: ReactNode;
 };
@@ -221,6 +228,7 @@ export function TicketCard({
           variant="secondary"
           onClick={ready.onClick}
           loading={ready.loading}
+          aria-label={ready.ariaLabel}
           className={cn("w-full", large && "min-h-16 text-lg")}
         >
           <Check aria-hidden="true" />

@@ -11,9 +11,10 @@ export type LockOffer = {
   /**
    * This device is already one of the business's running stations of this
    * kind: locking it again keeps that one, with its name, rather than making
-   * another.
+   * another. A kitchen's screen keeps its department too (null for every
+   * one), which the sheet sends as it is, with no choice to make.
    */
-  current: { name: string } | null;
+  current: { name: string; department?: string | null } | null;
   /**
    * The names of the stations running, for the name a new one is offered and
    * the limit of ten; empty with `current`, where neither applies.
@@ -30,6 +31,31 @@ export type LockOffer = {
 
 /** What locking takes: the name, and a kitchen's screen's department (null for every one). */
 export type LockInput = { name: string; department?: string | null };
+
+/** What the device is locked as: the clock's code, a kitchen's screen, or the till. */
+export type LockKind = "clock" | "prep" | "till";
+
+/**
+ * What the lock's sheet sends: the name, and for a kitchen's screen its
+ * department. On a device that is that screen already (`offer.current`,
+ * where the sheet offers no choice), the department it shows, so locking it
+ * again keeps it whichever department that is; else the one chosen ("" for
+ * every one, sent as null).
+ */
+export function lockInputOf(
+  kind: LockKind,
+  offer: LockOffer,
+  chosen: string,
+  name: string,
+): LockInput {
+  if (kind !== "prep") return { name };
+  return {
+    name,
+    department: offer.current
+      ? (offer.current.department ?? null)
+      : chosen || null,
+  };
+}
 
 /** Locks the device, signs out on it, and says where it goes. The demo passes a stand-in. */
 export type LockAction = (input: LockInput) => Promise<LockResult>;

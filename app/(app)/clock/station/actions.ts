@@ -24,9 +24,11 @@ const lockInput = z.object({ name: z.string() });
  * business's running stations already stays that one, so locking again never
  * piles stations up: Home's and /station's "lock again" keep the kitchen's
  * screen or the till it is too (waiter mode P8a), for whoever runs orders,
- * and anyone else is refused (`otherStation`), the device locked on the code
- * only once that one is stopped. Then it ends the session here only, as
- * signing out does (`endSessionHere`: its device, its business, its session;
+ * and anyone else in its business is refused (`otherStation`), the device
+ * locked on the code only once that one is stopped; another business's
+ * gives way to this one's clock, as the prep screen's lock does. Then it
+ * ends the session here only, as signing out does (`endSessionHere`: its
+ * device, its business, its session;
  * the person's own phone stays signed in), and answers /station, which the
  * screen opens as a whole new page, so nothing of the person's screens stays
  * on the device.
@@ -48,12 +50,15 @@ export async function lockDeviceAction(input: unknown): Promise<LockResult> {
 
   let token: string;
   const held = device?.station ?? null;
-  if (device && held && !held.stopped && held.shows !== "clock_code") {
+  const orderStation =
+    held !== null && !held.stopped && held.shows !== "clock_code";
+  if (
+    device &&
+    orderStation &&
+    (await orderLockerBusiness()) === held.businessId
+  ) {
     // The kitchen's screen or the till it is, kept for whoever runs orders
     // in its business.
-    if ((await orderLockerBusiness()) !== held.businessId) {
-      return { ok: false, failure: "otherStation" };
-    }
     token = device.token;
   } else {
     const access = await clockAccess();
@@ -64,6 +69,13 @@ export async function lockDeviceAction(input: unknown): Promise<LockResult> {
     const settings = await currentModuleSettings("time_clock");
     if (settings.codeDisplay === "manager") {
       return { ok: false, failure: "managerOnly" };
+    }
+    // The business's own kitchen's screen or till isn't the clock's until
+    // it is stopped (`currentLockOffer`'s `other`); another business's is
+    // none of this one's, and the device becomes this one's station, as it
+    // would from any other business's station.
+    if (orderStation && held.businessId === access.businessId) {
+      return { ok: false, failure: "otherStation" };
     }
     if (device && runsFor(device.station, access.businessId, "clock_code")) {
       token = device.token;

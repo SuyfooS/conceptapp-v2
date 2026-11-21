@@ -24,6 +24,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { OrderFactsContext } from "@/app/(app)/orders/order-facts";
 import { useModeToast } from "@/app/(app)/orders/orders-mode";
 import { ltr, useOrderWords } from "@/app/(app)/orders/orders-parts";
+import type { Say } from "@/app/(app)/orders/orders-types";
 import { TillItemList, TillRoundLists } from "@/app/(app)/orders/till-parts";
 import type { StationFacts } from "./kitchen-station";
 import type { StationBackend } from "./station-backend";
@@ -95,6 +96,9 @@ function TillScreen({
   const { t, placeTitle, time } = useOrderWords();
   const ts = useTranslations("app.orders.station");
   const tPage = useTranslations("station");
+  // The screen's one toast: its "ביטול" stays while the cashier moves to the
+  // next order, or back to the list, as the next steps at a till are.
+  const { say, toast } = useModeToast();
   const [chosen, setChosen] = useState<string | null>(opensOn);
   const till = poll.till;
   const orders = till?.orders ?? [];
@@ -103,6 +107,21 @@ function TillScreen({
   const named = (one: StationTillOrder) =>
     placeTitle({ placeName: one.place?.name ?? null, takeaway: one.takeaway });
   const loading = till === null && poll.refusal === null;
+
+  /**
+   * A close, its "ביטול" or a reopen, as the till's: a refusal says why in
+   * the toast; done, the till reads again. The screen's, not the chosen
+   * order's, so the undo still writes once another order is chosen.
+   */
+  async function write(body: TillWrite): Promise<boolean> {
+    const result = await backend.write(body);
+    if (!result.ok) {
+      say(stationFailureWords(t, ts("checking"), result.failure, body.do));
+      return false;
+    }
+    poll.pollNow();
+    return true;
+  }
 
   const row = (one: StationTillOrder) => {
     const at = (value: string | null) => time(value ?? poll.now);
@@ -198,8 +217,8 @@ function TillScreen({
                   order.place !== null &&
                   orders.some((one) => one.place?.id === order.place?.id)
                 }
-                backend={backend}
-                poll={poll}
+                write={write}
+                say={say}
                 onBack={() => setChosen(null)}
               />
             ) : (
@@ -219,61 +238,68 @@ function TillScreen({
         <p className="text-ink-2 text-sm">{ts("name", { name: facts.name })}</p>
         {foot}
       </div>
+      {toast}
     </PageBody>
   );
 }
+
+/** What the till writes of an order. */
+type TillWrite = { do: "close" | "reopen" | "undoClose"; order: string };
+
+/** Below `md` the order chosen is drawn alone, in the list's place. */
+const ALONE = "(max-width: 767.98px)";
 
 function TillChosen({
   order,
   title,
   taken,
-  backend,
-  poll,
+  write,
+  say,
   onBack,
 }: {
   order: StationTillOrder;
   title: string;
   /** A closed order whose place has another open one: it opens again later. */
   taken: boolean;
-  backend: StationBackend;
-  poll: StationPoll;
+  /** The screen's write, which outlives this order's panel. */
+  write: (body: TillWrite) => Promise<boolean>;
+  /** The screen's toast. */
+  say: Say;
   onBack: () => void;
 }) {
   const { t, time, department } = useOrderWords();
   const ts = useTranslations("app.orders.station");
-  const { say, toast } = useModeToast();
   const heading = useRef<HTMLHeadingElement>(null);
   const [view, setView] = useState<"item" | "round">("item");
   const [busy, setBusy] = useState(false);
   const open = order.status === "open";
 
-  // The order chosen takes the focus, where the phone shows it on its own.
+  // The order chosen takes the focus. On a phone it takes the list's place,
+  // so the page goes back to its top with it: chosen low in a long list, it
+  // would open scrolled past its heading and its way back.
   useEffect(() => {
+    if (window.matchMedia(ALONE).matches) window.scrollTo({ top: 0 });
     heading.current?.focus({ preventScroll: true });
   }, []);
 
-  async function write(
-    body: { do: "close" | "reopen" | "undoClose"; order: string },
-    what: "close" | "reopen" | "undoClose",
-  ): Promise<boolean> {
+  async function written(body: TillWrite): Promise<boolean> {
     setBusy(true);
-    const result = await backend.write(body);
-    setBusy(false);
-    if (!result.ok) {
-      say(stationFailureWords(t, ts("checking"), result.failure, what));
-      return false;
+    try {
+      return await write(body);
+    } finally {
+      setBusy(false);
     }
-    poll.pollNow();
-    return true;
   }
 
   async function close() {
     if (busy) return;
-    if (!(await write({ do: "close", order: order.id }, "close"))) return;
+    if (!(await written({ do: "close", order: order.id }))) return;
     // Its "ביטול" gives the kitchen back what the close served, as the
-    // phone's does, within the close's two minutes.
+    // phone's does, within the close's two minutes: the screen's write, so
+    // it still goes once the cashier has chosen another order or gone back.
+    const undo: TillWrite = { do: "undoClose", order: order.id };
     say(t("toast.closed", { place: title }), {
-      undo: () => void write({ do: "undoClose", order: order.id }, "undoClose"),
+      undo: () => void write(undo),
       focus: true,
       after: () => heading.current,
     });
@@ -281,7 +307,7 @@ function TillChosen({
 
   async function reopen() {
     if (busy) return;
-    if (!(await write({ do: "reopen", order: order.id }, "reopen"))) return;
+    if (!(await written({ do: "reopen", order: order.id }))) return;
     say(t("toast.reopened", { place: title }));
     heading.current?.focus({ preventScroll: true });
   }
@@ -392,7 +418,6 @@ function TillChosen({
           {t("close.reopen")}
         </Button>
       ) : null}
-      {toast}
     </section>
   );
 }

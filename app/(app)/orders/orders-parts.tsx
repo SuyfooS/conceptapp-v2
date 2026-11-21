@@ -292,8 +292,16 @@ export function TicketView({
   busy?: boolean;
   large?: boolean;
   fresh?: boolean;
-  /** Every line taken back or cancelled: these words, and taking it off the screen. */
-  gone?: { label: string; dismiss: string; onDismiss: () => void } | null;
+  /**
+   * Every line taken back or cancelled: these words, and taking it off the
+   * screen, its button named with its place (`dismissLabel`).
+   */
+  gone?: {
+    label: string;
+    dismiss: string;
+    dismissLabel: string;
+    onDismiss: () => void;
+  } | null;
 }) {
   const { t, person } = useOrderWords();
   const { now, lateAfterMinutes } = useOrderFacts();
@@ -315,7 +323,11 @@ export function TicketView({
       gone={gone?.label ?? null}
       ready={
         gone
-          ? { label: gone.dismiss, onClick: gone.onDismiss }
+          ? {
+              label: gone.dismiss,
+              ariaLabel: gone.dismissLabel,
+              onClick: gone.onDismiss,
+            }
           : ready
             ? { label: t("prep.ready"), onClick: ready, loading: busy }
             : null

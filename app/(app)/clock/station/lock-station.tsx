@@ -21,10 +21,12 @@ import {
   type UnsentOnDevice,
   unsentOnDevice,
 } from "../../orders/orders-storage";
-import type { LockAction, LockOffer } from "./station-types";
-
-/** What the device is locked as: the clock's code, a kitchen's screen, or the till. */
-export type LockKind = "clock" | "prep" | "till";
+import {
+  type LockAction,
+  type LockKind,
+  type LockOffer,
+  lockInputOf,
+} from "./station-types";
 
 /** A failure in the clock's words: its lock never meets a department, and the clock off reads as no access. */
 const clockKey = (
@@ -130,9 +132,8 @@ export function LockStation({
     setFailure(null);
     start(async () => {
       try {
-        const result = await lock(
-          kind === "prep" ? { name, department: department || null } : { name },
-        );
+        // Locked again as the screen it is: its own department, unchosen.
+        const result = await lock(lockInputOf(kind, offer, department, name));
         if (result.ok) {
           // A whole new page, as signing out opens: nothing of the person's
           // screens stays in this one, nor anyone's orders kept on the

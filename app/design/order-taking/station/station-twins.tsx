@@ -54,6 +54,9 @@ export function KitchenStationTwin() {
   if (opened === "stopped") {
     return <StoppedStation signInHref={SIGN_IN} shows="prep" />;
   }
+  // Past the gate as if pressed: the sound on, as the press leaves it, but
+  // in `soundLocked`, where it stays the device's, stopped until a tap.
+  const past = opened !== null && opened !== "service";
   return (
     <div {...accent}>
       <KitchenStation
@@ -66,8 +69,8 @@ export function KitchenStationTwin() {
         backend={backend}
         foot={<StationFoot />}
         leave={() => undefined}
-        opened={opened !== null && opened !== "service"}
-        soundLocked={opened === "soundLocked"}
+        opened={past}
+        soundOn={past && opened !== "soundLocked"}
         soldOutOpen={opened === "soldOut"}
       />
     </div>

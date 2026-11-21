@@ -6,7 +6,8 @@ import {
   addOpenDemoEntry,
   cancelDemoLine,
   clearDemoStations,
-  clearTimeEntries,
+  clearTimeEntriesSince,
+  databaseNow,
   demoItemAvailability,
   demoOpenTicket,
   demoOrderStation,
@@ -25,9 +26,11 @@ import {
   SHIRAN,
   send,
   showItems,
+  shown,
   showOrder,
   tile,
   toast,
+  toFloor,
   YOAV,
 } from "./orders-parts";
 import { secondPage, signIn } from "./session";
@@ -44,24 +47,36 @@ import { stubAudio, tones } from "./station-audio";
 // sounds are a stand-in that keeps each tone's frequency
 // (station-audio.ts). The flows run on the phone only (CI minutes); the
 // three widths are checked on the twins (design.spec.ts). Each test leaves
-// no station, the evening's orders and menu as seeded.
+// no station, the evening's orders and menu as seeded, and of Yoav's hours
+// only his own (his seeded month is the payroll specs', which run after
+// these).
 
 test.beforeAll(loadRestaurantWords);
+
+/** When the test began, by the database's clock: what it wrote is newer. */
+let began = new Date(0);
+
+/** The flows run on the phone only. */
+const flows = (project: string) => project === "phone";
 
 test.beforeEach(async ({ page }, testInfo) => {
   void page;
   test.skip(
-    testInfo.project.name !== "phone",
+    !flows(testInfo.project.name),
     "The flows run on the phone; design.spec.ts covers the three widths.",
   );
+  began = await databaseNow();
   await clearDemoStations();
   await resetDemoMenu();
 });
 
-test.afterAll(async () => {
+test.afterEach(async ({ page }, testInfo) => {
+  void page;
+  if (!flows(testInfo.project.name)) return;
   await clearDemoStations();
+  // The menu's reset puts the evening's orders back too.
   await resetDemoMenu();
-  await clearTimeEntries(YOAV.e164);
+  await clearTimeEntriesSince(YOAV.e164, began);
 });
 
 const KITCHEN = "מטבח";
@@ -77,6 +92,42 @@ const ticketOf = (page: Page, place: string) =>
       }),
     })
     .first();
+
+/**
+ * How many records the device keeps in the orders' store, of every kind:
+ * none where there is no store. The store stays once made (locking empties
+ * it, as signing out does, and deletes nothing), so what counts is what is
+ * left in it.
+ */
+async function keptOnDevice(page: Page): Promise<number> {
+  return page.evaluate(async () => {
+    const known = await indexedDB.databases();
+    if (!known.some((db) => db.name === "conceptapp-orders")) return 0;
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const open = indexedDB.open("conceptapp-orders");
+      open.onsuccess = () => resolve(open.result);
+      open.onerror = () => reject(open.error);
+    });
+    try {
+      const stores = Array.from(db.objectStoreNames);
+      if (stores.length === 0) return 0;
+      const tx = db.transaction(stores);
+      const counts = await Promise.all(
+        stores.map(
+          (store) =>
+            new Promise<number>((resolve, reject) => {
+              const request = tx.objectStore(store).count();
+              request.onsuccess = () => resolve(request.result);
+              request.onerror = () => reject(request.error);
+            }),
+        ),
+      );
+      return counts.reduce((sum, count) => sum + count, 0);
+    } finally {
+      db.close();
+    }
+  });
+}
 
 /**
  * Shiran locks the device `page` is on from "הכנה", as the kitchen's screen
@@ -167,6 +218,13 @@ test("a manager locks a tablet as the kitchen; it chimes on a new ticket and מ�
         hasText: rt("app.orders.station.news.new", { place: table("2") }),
       }),
     ).toHaveCount(1);
+    // Read by the screen, so Yoav's order says it is on it, at his next check.
+    await expect(
+      shown(
+        phone,
+        rt("app.orders.ticketState.onScreen", { department: KITCHEN }),
+      ),
+    ).toBeVisible({ timeout: 20_000 });
 
     await two
       .getByRole("button", { name: rt("app.orders.prep.ready") })
@@ -186,16 +244,18 @@ test("a manager locks a tablet as the kitchen; it chimes on a new ticket and מ�
     });
     // Yoav's mode tells him, and the floor says so.
     await expect(toast(phone, ready)).toBeVisible({ timeout: 20_000 });
+    await toFloor(phone);
+    await expect(tile(phone, "2")).toContainText(
+      rt("app.orders.floor.state.ready"),
+    );
 
-    // The station keeps nothing of anyone's: no session, no orders' store.
+    // The station keeps nothing of anyone's: no session, and nothing in the
+    // orders' store, which Shiran's screens made on the device before the
+    // lock emptied it.
     const cookies = await tablet.context().cookies();
     expect(cookies.some((cookie) => cookie.name === "ca_station")).toBe(true);
     expect(cookies.some((cookie) => cookie.name.startsWith("sb-"))).toBe(false);
-    expect(
-      await tablet.evaluate(async () =>
-        (await indexedDB.databases()).map((db) => db.name),
-      ),
-    ).not.toContain("conceptapp-orders");
+    expect(await keptOnDevice(tablet)).toBe(0);
     await expectCleanPage(tablet);
     await tablet.screenshot({ path: testInfo.outputPath("kitchen.png") });
   } finally {
@@ -205,8 +265,9 @@ test("a manager locks a tablet as the kitchen; it chimes on a new ticket and מ�
 
 test("a line cancelled is struck with the double chime, and נגמר from the kitchen reaches the menu", async ({
   page,
-}) => {
-  test.setTimeout(90_000);
+  browser,
+}, testInfo) => {
+  test.setTimeout(150_000);
   await stubAudio(page);
   await lockAs(page, "prep");
   await page
@@ -246,6 +307,29 @@ test("a line cancelled is struck with the double chime, and נגמר from the ki
       available: true,
       station: KITCHEN,
     });
+
+  // Yoav's picker, open on his phone, hears it at its next check: the
+  // hummus "נגמר", greyed, until the kitchen has it again.
+  const phone = await secondPage(browser, testInfo);
+  try {
+    await addOpenDemoEntry(YOAV.e164, 1);
+    await signIn(phone, YOAV);
+    await phone.goto("/orders");
+    await tile(phone, "2").click();
+    await expect(heading(phone, 1, table("2"))).toBeVisible();
+    await showItems(phone, "phone");
+    const picked = button(phone, "חומוס");
+    await expect(picked).toBeEnabled();
+    await hummus.click();
+    await expect(hummus).toHaveAttribute("aria-checked", "true");
+    await expect
+      .poll(() => demoItemAvailability("חומוס"))
+      .toEqual({ available: false, station: KITCHEN });
+    await expect(picked).toBeDisabled({ timeout: 30_000 });
+    await expect(picked).toContainText(rt("app.orders.picker.soldOut"));
+  } finally {
+    await phone.context().close();
+  }
 });
 
 test("a till closes a table with its undo and opens it again, each kept as the till's", async ({
@@ -313,20 +397,29 @@ test("the screens are stopped from the prep screen with an undo", async ({
     .getByRole("button", { name: rt("app.orders.station.open") })
     .click();
   await expect(ticketOf(tablet, "4")).toBeVisible();
+  // And a till another device locked, not opened yet.
+  const TILL = rt("app.orders.stations.lock.defaultTill");
+  await addDemoOrderStation({ name: TILL, shows: "till" });
 
   const phone = await secondPage(browser, testInfo);
   try {
     await enterAs(phone, "manager");
     await phone.goto("/orders/prep");
     const words = he.app.orders.stations;
+    // Both rows: the kitchen's screen open now, the till never opened.
     await expect(phone.getByText(words.showing)).toBeVisible();
-    await phone
-      .getByRole("button", {
-        name: rt("app.orders.stations.stopLabel", { name: KITCHEN }),
-      })
-      .click();
+    await expect(phone.getByText(words.never)).toBeVisible();
+    const stopOf = (name: string) =>
+      phone.getByRole("button", {
+        name: rt("app.orders.stations.stopLabel", { name }),
+      });
+    await expect(stopOf(TILL)).toBeVisible();
+    await stopOf(KITCHEN).click();
     const stopped = rt("app.orders.stations.stopped", { name: KITCHEN });
     await expect(toast(phone, stopped)).toBeVisible();
+    // The pointer on the toast keeps its "ביטול" (10 seconds otherwise)
+    // while the tablet hears of the stop at its next ask.
+    await toast(phone, stopped).hover();
     await expect(
       tablet.getByRole("heading", {
         level: 1,
@@ -341,6 +434,7 @@ test("the screens are stopped from the prep screen with an undo", async ({
     ).toBeVisible({ timeout: 45_000 });
     expect(await demoOrderStations()).toMatchObject([
       { name: KITCHEN, stopped: false },
+      { name: TILL, shows: "till", stopped: false },
     ]);
   } finally {
     await phone.context().close();
@@ -410,6 +504,21 @@ test("the station's routes answer only their own device", async ({
   expect(written).toEqual({
     status: 404,
     body: { ok: false, failure: "gone" },
+  });
+
+  // Someone signed in on the kitchen's device: no ticket beside an account.
+  await page.context().clearCookies();
+  await enterAs(page, "manager");
+  await page
+    .context()
+    .addCookies([{ name: "ca_station", value: kitchen.token, url }]);
+  const signedIn = await page.evaluate(async () => {
+    const response = await fetch("/station/tickets", { cache: "no-store" });
+    return { status: response.status, body: await response.json() };
+  });
+  expect(signedIn).toEqual({
+    status: 409,
+    body: { ok: false, failure: "signedIn" },
   });
 });
 

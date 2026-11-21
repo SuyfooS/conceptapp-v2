@@ -7,6 +7,7 @@ import {
   type StationMenuItem,
   stationNews,
   stationSince,
+  stillToMake,
 } from "@domain/order-stations";
 import type { PrepTicket } from "@domain/orders";
 import { Button } from "@ui/button";
@@ -68,7 +69,7 @@ export function KitchenStation({
   foot,
   leave,
   opened = false,
-  soundLocked = false,
+  soundOn = false,
   soldOutOpen = false,
 }: {
   facts: StationFacts;
@@ -79,14 +80,31 @@ export function KitchenStation({
   leave: () => void;
   /** Past the gate at once: the twin's states. */
   opened?: boolean;
-  /** The twin's: the sound said to be stopped. */
-  soundLocked?: boolean;
+  /**
+   * The twin's, past the gate with no tap on it: the sound drawn as on, as
+   * the gate's press leaves it, and started for real by the first press
+   * anywhere. Left off, the sound is the device's: stopped until a tap (the
+   * twin's `soundLocked`).
+   */
+  soundOn?: boolean;
   /** The twin's: "מה נגמר" open at once. */
   soldOutOpen?: boolean;
 }) {
   const [open, setOpen] = useState(opened);
   const poll = useStationPoll(backend, { enabled: open, leave });
-  const sound = useStationSound();
+  const device = useStationSound();
+  const { unlock } = device;
+  useEffect(() => {
+    if (!soundOn) return;
+    document.addEventListener("pointerdown", unlock, {
+      once: true,
+      capture: true,
+    });
+    return () =>
+      document.removeEventListener("pointerdown", unlock, { capture: true });
+  }, [soundOn, unlock]);
+  const sound: StationSound =
+    soundOn && device.state !== "off" ? { ...device, state: "on" } : device;
   const prep = poll.prep;
   const departments = Object.fromEntries(
     (prep?.departments ?? []).map((d) => [d.id, d.name]),
@@ -108,7 +126,7 @@ export function KitchenStation({
           facts={facts}
           backend={backend}
           poll={poll}
-          sound={soundLocked ? { ...sound, state: "locked" } : sound}
+          sound={sound}
           foot={foot}
           soldOutOpen={soldOutOpen}
         />
@@ -141,9 +159,11 @@ function KitchenGate({
   foot: ReactNode;
 }) {
   const t = useTranslations("app.orders.station");
+  // The column's own auto margins centre it in what the foot leaves: the
+  // foot's would take the free space first, `justify-center` or not.
   return (
-    <PageBody className={cn(pageGlowClass, "min-h-dvh justify-center")}>
-      <div className="mx-auto flex w-full max-w-md flex-col items-center gap-5 text-center">
+    <PageBody className={cn(pageGlowClass, "min-h-dvh")}>
+      <div className="mx-auto my-auto flex w-full max-w-md flex-col items-center gap-5 text-center">
         <span
           aria-hidden="true"
           className="grid size-20 place-items-center rounded-[26px] bg-surface text-accent shadow-card [&_svg]:size-9 [&_svg]:stroke-[1.6]"
@@ -163,7 +183,7 @@ function KitchenGate({
         </Button>
         <p className="text-pretty text-ink-2 text-sm">{t("openHint")}</p>
       </div>
-      <div className="mt-auto flex justify-center pt-2">{foot}</div>
+      <div className="flex justify-center pt-2">{foot}</div>
     </PageBody>
   );
 }
@@ -226,7 +246,9 @@ function KitchenScreen({
           : ticket,
     );
   const shown = toMake(tickets, true);
-  const open = shown.filter((ticket) => ticket.status === "new");
+  // What is still to make: one struck whole stays shown until it is taken
+  // off, but counts for nothing and waits on nothing.
+  const open = stillToMake(shown);
   const recent = recentlyReady(tickets, now);
   const oldest = open[0];
   const fresh = freshTickets(arrived, now);
@@ -447,7 +469,11 @@ function KitchenScreen({
           busy={busy}
           onReady={(ticket, place) => void ready(ticket, place)}
           fresh={fresh}
-          onDismiss={(ticket) => setDismissed((ids) => [...ids, ticket.id])}
+          onDismiss={(ticket) => {
+            setDismissed((ids) => [...ids, ticket.id]);
+            // Its button goes with it: the focus goes to the screen's title.
+            title.current?.focus({ preventScroll: true });
+          }}
         />
       )}
       <RecentlyReady

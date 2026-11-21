@@ -621,16 +621,29 @@ where t.business_id = 'e2000000-0000-4000-b000-000000000001' and t.status = 'rea
 update public.menu_items i
 set available_station = (select s.id from public.clock_stations s where s.token_hash = repeat('e', 64))
 where i.business_id = 'e2000000-0000-4000-b000-000000000001' and not i.available;
+-- What the screen holds before the reset: itself, table 7's drinks it made
+-- ready and the fish it marked sold out, so the reset has something to take.
+create temporary table station_marks (stations integer, tickets integer, items integer)
+  on commit drop;
+insert into station_marks
+select
+  (select count(*)::integer from public.clock_stations s where s.token_hash = repeat('e', 64)),
+  (select count(*)::integer from public.order_tickets t
+   where t.business_id = 'e2000000-0000-4000-b000-000000000001' and t.ready_station is not null),
+  (select count(*)::integer from public.menu_items i
+   where i.business_id = 'e2000000-0000-4000-b000-000000000001' and i.available_station is not null);
 set local role service_role;
 select public.reset_demo_business('e2000000-0000-4000-b000-000000000001');
 reset role;
 select is(
-  (select count(*)::integer from public.clock_stations s where s.token_hash = repeat('e', 64))
-  + (select count(*)::integer from public.order_tickets t
+  (select m.stations::text || ':' || (m.tickets > 0)::text || ':' || (m.items > 0)::text
+   from station_marks m)
+  || '|' || (select count(*)::text from public.clock_stations s where s.token_hash = repeat('e', 64))
+  || ':' || (select count(*)::text from public.order_tickets t
      where t.business_id = 'e2000000-0000-4000-b000-000000000001' and t.ready_station is not null)
-  + (select count(*)::integer from public.menu_items i
+  || ':' || (select count(*)::text from public.menu_items i
      where i.business_id = 'e2000000-0000-4000-b000-000000000001' and i.available_station is not null),
-  0,
+  '1:true:true|0:0:0',
   'a demo restaurant''s reset takes its kitchen''s screen with it, and nothing it marked keeps it'
 );
 

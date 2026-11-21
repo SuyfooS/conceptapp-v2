@@ -341,6 +341,17 @@ export function stationGone(ticket: PrepTicket): boolean {
   return ticket.status === "new" && !liveTicket(ticket);
 }
 
+/**
+ * What a screen still has to make of the tickets it shows, in their order:
+ * the new ones with a line still live. One struck whole stays on the screen
+ * until it is taken off, but is neither counted open nor the oldest waiting.
+ */
+export function stillToMake<T extends PrepTicket>(tickets: readonly T[]): T[] {
+  return tickets.filter(
+    (ticket) => ticket.status === "new" && liveTicket(ticket),
+  );
+}
+
 /** What changed between two reads, for the sound and the screen reader. */
 export type StationNews = {
   /** New tickets, and held blocks called: one chime. */

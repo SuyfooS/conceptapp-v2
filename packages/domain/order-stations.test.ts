@@ -17,6 +17,7 @@ import {
   stationTillSchema,
   stationWriteAnswer,
   stationWriteBody,
+  stillToMake,
   writeKind,
 } from "./order-stations";
 import type { PrepTicket } from "./orders";
@@ -356,6 +357,21 @@ describe("what the kitchen's screen tells", () => {
         new Set(),
       ),
     ).toEqual([]);
+  });
+
+  it("counts only what is still to make: never a ticket struck whole, nor a held block", () => {
+    const struck = {
+      ...ticket(1, { sentAt: at(-14) }),
+      lines: [line(10, "cancelled")],
+    };
+    const live = ticket(2, { sentAt: at(-6) });
+    const held = ticket(3, { status: "held" });
+    // The oldest shown is struck whole: the oldest still to make is table 2.
+    expect(stillToMake([struck, live, held]).map((one) => one.id)).toEqual([
+      ID(2),
+    ]);
+    // With only a struck one left, nothing is open.
+    expect(stillToMake([struck])).toEqual([]);
   });
 
   it("keeps a ticket that arrived fresh for half a minute", () => {

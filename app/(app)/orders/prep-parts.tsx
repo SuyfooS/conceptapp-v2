@@ -114,6 +114,7 @@ export function TicketGrid({
                   ? {
                       label: tStation("gone"),
                       dismiss: tStation("dismiss"),
+                      dismissLabel: tStation("dismissLabel", { place }),
                       onDismiss: () => onDismiss(ticket),
                     }
                   : null

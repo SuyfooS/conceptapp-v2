@@ -576,7 +576,11 @@ export function GalleryOrderTaking() {
           age={{ text: o("age.ago", { count: 7 }), tone: "calm" }}
           large
           gone={st("gone")}
-          ready={{ label: st("dismiss"), onClick: () => {} }}
+          ready={{
+            label: st("dismiss"),
+            ariaLabel: st("dismissLabel", { place: table("9") }),
+            onClick: () => {},
+          }}
         >
           <OrderLine
             large

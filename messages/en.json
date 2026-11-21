@@ -944,6 +944,7 @@
         "reminder": "A reminder's sound",
         "double": "A cancel's sound",
         "locked": "The sound isn't on yet",
+        "starting": "Turning the sound on",
         "on": "The sound is on",
         "off": "This device has no sound"
       }
