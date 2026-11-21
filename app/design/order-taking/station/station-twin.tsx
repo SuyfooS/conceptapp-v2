@@ -133,12 +133,20 @@ export function useTwinStationBackend(
         };
       },
       async write(body) {
-        const { data: rows, now: at } = latest.current;
-        const { answer } = stationWrite(rows, body, { department, now: at });
-        if (answer.ok) {
-          update((d) => stationWrite(d, body, { department, now: at }).data);
+        const { data: rows, now: at, version } = latest.current;
+        const written = stationWrite(rows, body, { department, now: at });
+        if (written.answer.ok && written.data !== rows) {
+          // Read at once by the station's next ask, as the database's would
+          // be, before the store has drawn the screen again: one version on,
+          // as the store's own count goes once it has.
+          latest.current = {
+            data: written.data,
+            now: at,
+            version: version + 1,
+          };
+          update(() => written.data);
         }
-        return answer;
+        return written.answer;
       },
     };
   }, [kind, department, state, update]);
