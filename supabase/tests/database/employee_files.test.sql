@@ -6,7 +6,8 @@
 -- unlogged; a holder who confirmed the duties, logged once a day; a manager
 -- once given the key by role or personally, and no more once removed), and
 -- every refusal returned and logged (a view as any role, someone outside
--- the business, which names no more, the cap of 20 a day and its "many",
+-- the business, which names no more, the cap of 20 a day in each business
+-- and its "many",
 -- none for a stranger's ids, none signed out, none with the module off);
 -- the two numbers revealed one call at a time, at most 30 people an hour,
 -- counted under the holder's lock;
@@ -17,7 +18,7 @@
 -- or another test. The files are written straight into the tables here
 -- (their writes are employee_files_writes.test.sql's), with stand-in bytes.
 begin;
-select plan(76);
+select plan(77);
 
 -- A: 1 its owner, 2 a manager, 3 Noa and 4 Yoav, workers, 5 the accountant,
 -- 6 a worker who left, 12 a manager given the files, 101 to 131 workers. B:
@@ -373,6 +374,22 @@ select is(
   0,
   'and that is not logged'
 );
+-- The cap is per business: Files A's 22 refusals leave B's log its own.
+update public.business_modules set enabled = true
+where business_id = pg_temp.b() and module_key = 'employee_files';
+select pg_temp.sign_in(pg_temp.p(7));
+select public.export_employee_files(pg_temp.b(), 'own');
+reset role;
+select results_eq(
+  $$select a.details ->> 'reason', count(*)::integer from public.audit_log a
+    where a.business_id = pg_temp.b() and a.actor_id = pg_temp.p(7)
+      and a.action = 'employee.view_denied'
+    group by 1$$,
+  $$values ('ack'::text, 1)$$,
+  'a capped caller''s refusal in another business is still logged there'
+);
+update public.business_modules set enabled = false
+where business_id = pg_temp.b() and module_key = 'employee_files';
 
 select pg_temp.sign_in(pg_temp.p(8));
 select is(pg_temp.read(pg_temp.a(), pg_temp.p(3)), 'viewing', 'a view as an owner reads no file');
@@ -559,7 +576,8 @@ select ok(
 reset role;
 select is_empty(
   $$select a.id from public.audit_log a
-    where a.business_id = pg_temp.a() and a.action ~ '^(employee|member)\.'
+    where a.business_id = pg_temp.a()
+      and (a.action ~ '^employee\.' or a.action = 'member.emergency')
       and a.details::text ~ '4821|5677|5678|Noa|Cohen'$$,
   'no row of the file holds a value or a hint'
 );

@@ -32,7 +32,7 @@
 --                 reg 7(ב)), step_ups (a fresh SMS code the server checked,
 --                 for one bank change), phone_changes (from a trigger on
 --                 auth.users), file_denials (the refusals each caller logged
---                 today), file_settings (the switch for real values),
+--                 today in each business), file_settings (the switch for real values),
 --                 audit_guard_runs (the nightly check).
 --   sealed        bytes are 0x01 ‖ IV ‖ tag ‖ AES-256-GCM, made and opened in
 --                 server code alone (@db/crypto): a trigger refuses any other
@@ -336,12 +336,14 @@ create table private.phone_changes (
 
 create index phone_changes_user_idx on private.phone_changes (user_id, changed_at desc);
 
--- How many refused reads each caller logged a row for, per day.
+-- How many refused reads each caller logged a row for, in each business,
+-- per day: what someone does in one business never silences another's log.
 create table private.file_denials (
   actor_id uuid not null,
+  business_id uuid not null,
   day date not null,
   denied integer not null default 0,
-  primary key (actor_id, day)
+  primary key (actor_id, business_id, day)
 );
 
 -- The nightly check of the log's guards: what was missing, or nothing.
@@ -939,7 +941,8 @@ $$;
 -- {person, fields, reason}. Never for nobody signed in, a business that
 -- isn't there, or a person who isn't in it (a stranger can't fill a log
 -- with ids); someone outside the business is told no more than not_member.
--- At most 20 a day per caller, then one row "many", then nothing that day.
+-- At most 20 a day per caller in each business, then one row "many", then
+-- nothing more in that business that day; another business still logs its own.
 create function private.log_file_denial(
   business uuid,
   person uuid,
@@ -975,9 +978,9 @@ begin
     where m.business_id = business and m.user_id = me and m.active
   );
 
-  insert into private.file_denials as d (actor_id, day, denied)
-  values (me, (now() at time zone tz)::date, 1)
-  on conflict (actor_id, day) do update set denied = d.denied + 1
+  insert into private.file_denials as d (actor_id, business_id, day, denied)
+  values (me, business, (now() at time zone tz)::date, 1)
+  on conflict (actor_id, business_id, day) do update set denied = d.denied + 1
   returning d.denied into so_far;
   if so_far > 21 then
     return;

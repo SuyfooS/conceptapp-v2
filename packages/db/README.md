@@ -1702,7 +1702,7 @@ per role: owners always hold it, accountants by `private.accountant_perms`
   holder who confirmed the duties (`employee.view` once a day per person; a
   reveal every call), else `not_member`, `not_holder` or `ack`. A refusal is
   returned, never raised, and logged as `employee.view_denied` (20 a day per
-  caller, then one `many`; none for nobody signed in, the module off, or a
+  caller in each business, then one `many` there; none for nobody signed in, the module off, or a
   person who isn't in the business; someone outside is told `not_member`).
 - **Real values.** `private.file_settings.real_values` stays false until Orel
   opens it on the production project, after the lawyer:

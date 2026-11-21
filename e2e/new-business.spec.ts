@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
+import { MODULE_KEYS } from "../packages/domain/modules";
 import { businessBySlug, invitesBySlug } from "./db";
 import { signIn } from "./session";
 import { heT } from "./t";
@@ -168,7 +169,8 @@ test("an onboarder opens a café from the template, with no staff yet", async ({
     name,
     accent: "#0f766e",
     templateKey: "cafe-bar",
-    modules: 8,
+    // One row per module, on or off.
+    modules: MODULE_KEYS.length,
     audited: 1,
   });
   expect(await invitesBySlug(slug)).toEqual([]);
@@ -270,7 +272,7 @@ test("a platform admin opens a restaurant and invites its staff", async ({
   expect(await businessBySlug(slug)).toMatchObject({
     name,
     templateKey: "restaurant",
-    modules: 8,
+    modules: MODULE_KEYS.length,
     audited: 1,
   });
   expect(await invitesBySlug(slug)).toEqual([
