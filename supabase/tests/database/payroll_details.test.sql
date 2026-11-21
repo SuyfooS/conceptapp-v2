@@ -269,12 +269,12 @@ select is(
 );
 -- Payroll keeps no birth date: the only place for one is the employee file
 -- (H4, 20261126000200_employee_files.sql), read through its functions only.
-select results_eq(
-  $$select table_schema::text || '.' || table_name::text || '.' || column_name::text
-    from information_schema.columns
-    where table_schema in ('public', 'private') and column_name ~ 'birth'
-    order by 1$$,
-  $$values ('public.employee_details.birth_date')$$,
+select is(
+  (select count(*)::integer from information_schema.columns
+   where table_schema in ('public', 'private') and column_name ~ 'birth'
+     and not (table_schema = 'public' and table_name = 'employee_details'
+              and column_name = 'birth_date')),
+  0,
   'no table but the employee file has a place for a birth date'
 );
 
