@@ -6,6 +6,7 @@ export function ChoiceList({
   legend,
   legendClassName,
   error,
+  note,
   className,
   groupClassName,
   children,
@@ -15,16 +16,26 @@ export function ChoiceList({
   legendClassName?: string;
   /** Under the list, in place of nothing: what is wrong with the choice, read out as it appears. */
   error?: ReactNode;
+  /**
+   * Under the list, calm: what the choice allows now ("נבחרו 2"), said as it
+   * changes. Pass null while there is nothing to say, so the line is there
+   * to be read out when there is.
+   */
+  note?: ReactNode;
   className?: string;
   /** The group of rows: `bg-elevated shadow-none` in a sheet, as its other groups. */
   groupClassName?: string;
   children: ReactNode;
 }) {
   const errorId = useId();
+  const noteId = useId();
+  const describedBy = [error ? errorId : null, note ? noteId : null]
+    .filter(Boolean)
+    .join(" ");
   return (
     <fieldset
       className={cn("m-0 flex min-w-0 flex-col border-0 p-0", className)}
-      aria-describedby={error ? errorId : undefined}
+      aria-describedby={describedBy || undefined}
     >
       <legend className={cn("mb-3 px-1 font-bold text-lg", legendClassName)}>
         {legend}
@@ -40,6 +51,15 @@ export function ChoiceList({
       {error ? (
         <p id={errorId} role="alert" className="mt-2 px-1 text-danger text-sm">
           {error}
+        </p>
+      ) : null}
+      {note !== undefined ? (
+        <p
+          id={noteId}
+          aria-live="polite"
+          className={cn("px-1 text-ink-2 text-sm", note ? "mt-2" : "sr-only")}
+        >
+          {note}
         </p>
       ) : null}
     </fieldset>

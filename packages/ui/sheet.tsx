@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 import { Button } from "./button";
+import { cn } from "./cn";
 
 export type SheetProps = {
   open: boolean;
@@ -33,6 +34,11 @@ export type SheetProps = {
    * when it opened, if that is still on screen.
    */
   returnFocus?: () => HTMLElement | null | undefined;
+  /**
+   * Under the body, never scrolling away: the sheet's main action in a long
+   * sheet, so it stays in sight (P6).
+   */
+  footer?: ReactNode;
   children: ReactNode;
 };
 
@@ -62,6 +68,7 @@ export function Sheet({
   action,
   readingLabel,
   returnFocus,
+  footer,
   children,
 }: SheetProps) {
   const anchor = useRef<HTMLSpanElement>(null);
@@ -163,15 +170,29 @@ export function Sheet({
                 aria-label={readingLabel}
                 // biome-ignore lint/a11y/noNoninteractiveTabindex: a scroller with nothing to focus inside must take the keyboard itself to scroll by keys (axe scrollable-region-focusable)
                 tabIndex={0}
-                className="relative min-h-0 overflow-y-auto rounded-b-sheet px-2 pb-3 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+                className={cn(
+                  "relative min-h-0 overflow-y-auto px-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent",
+                  footer ? "pb-2" : "rounded-b-sheet pb-3",
+                )}
               >
                 {children}
               </section>
             ) : (
-              <div className="relative min-h-0 overflow-y-auto rounded-b-sheet px-2 pb-3">
+              <div
+                className={cn(
+                  "relative min-h-0 overflow-y-auto px-2",
+                  footer ? "pb-2" : "rounded-b-sheet pb-3",
+                )}
+              >
                 {children}
               </div>
             )}
+            {footer ? (
+              // In the same glass, a hairline above it as the rows have.
+              <div className="relative flex shrink-0 flex-col gap-2 rounded-b-sheet px-3 pt-2 pb-3 before:absolute before:start-4 before:end-4 before:top-0 before:h-px before:bg-line before:content-['']">
+                {footer}
+              </div>
+            ) : null}
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>

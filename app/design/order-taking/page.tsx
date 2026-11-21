@@ -39,6 +39,14 @@ const SECTIONS = [
       },
       { key: "taken", href: `${BASE}/floor/order?place=table-6&state=taken` },
       {
+        key: "choices",
+        href: `${BASE}/floor/order?place=table-6&state=choices`,
+      },
+      {
+        key: "choicesChanged",
+        href: `${BASE}/floor/order?place=table-6&state=choicesChanged`,
+      },
+      {
         key: "takeaway",
         href: `${BASE}/floor/order?place=takeaway-new&state=service`,
       },

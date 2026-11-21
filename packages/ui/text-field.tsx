@@ -25,18 +25,27 @@ export type TextFieldProps = ComponentProps<"input"> & {
   error?: ReactNode;
 };
 
+/**
+ * A labelled field with its hint or error under it. An `aria-describedby`
+ * passed in is read after them: a problem said elsewhere, for the whole
+ * group the field is in.
+ */
 export function TextField({
   label,
   hint,
   error,
   id,
   className,
+  "aria-describedby": describedBy,
   ...props
 }: TextFieldProps) {
   const autoId = useId();
   const inputId = id ?? autoId;
   const messageId = `${inputId}-message`;
   const message = error ?? hint;
+  const described = [message ? messageId : null, describedBy]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -46,7 +55,7 @@ export function TextField({
       <input
         id={inputId}
         aria-invalid={error ? true : undefined}
-        aria-describedby={message ? messageId : undefined}
+        aria-describedby={described || undefined}
         className={cn(fieldInputClass, className)}
         {...props}
       />

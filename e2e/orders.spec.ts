@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import { createTranslator } from "next-intl";
 import he from "../messages/he.json" with { type: "json" };
 import { type MessageTree, mergeWording } from "../packages/domain/wording";
@@ -9,6 +9,7 @@ import {
   clearTimeEntriesSince,
   databaseNow,
   demoLine,
+  demoLines,
   demoLineTakenBack,
   demoModuleSettings,
   demoOpenOrder,
@@ -20,7 +21,9 @@ import {
   demoTakeawayStatus,
   demoTicketStatus,
   endDemoEntry,
+  resetDemoMenu,
   resetDemoOrders,
+  setDemoItemGroups,
   setDemoModuleSettings,
   setDemoRequirePunchCode,
   templateWording,
@@ -40,7 +43,11 @@ import { heT } from "./t";
 // waiter and given on the house by the manager, the till by item and by
 // round with no total, a close taken back by its "ביטול" (the kitchen's
 // ticket new again), closing and opening again from "נסגרו היום", moving
-// an order and cancelling one whole. The restaurant
+// an order and cancelling one whole. P6's choices: burgers through their
+// sheet, read under each in the kitchen and rung up each at its price; a
+// salad's extras from its line in the draft; a doneness gone from the menu
+// meanwhile, which the send refuses and the line asks to choose again. The
+// restaurant
 // reads its template's words ("שולחן", "מנה", "מצב מלצרות"), read here from
 // the database as it does. Each test puts the orders and the clock back:
 // Yoav's own hours only (his seeded month is the payroll specs', which run
@@ -196,6 +203,56 @@ async function showOrder(page: Page, project: string) {
 }
 
 const send = (page: Page) => button(page, rt("app.orders.send.label")).click();
+
+/** An item's choices sheet, by its name (P6). */
+const choiceSheet = (page: Page, item: string) =>
+  page.getByRole("dialog", { name: item });
+
+/**
+ * An option of the sheet picked by its name: a radio in a group of exactly
+ * one, else a switch. Exact, with what it adds after it: "מדיום" is in
+ * "מדיום רייר".
+ */
+async function choose(sheet: Locator, option: string) {
+  const name = new RegExp(`^${literal(option)}(\\s*\\+.*)?$`);
+  const radio = sheet.getByRole("radio", { name });
+  if ((await radio.count()) > 0) await radio.check();
+  else await sheet.getByRole("switch", { name }).click();
+}
+
+/** An item with a choice to make, added through its sheet (P6). */
+async function chooseAndAdd(page: Page, item: string, options: string[]) {
+  await button(page, item).click();
+  const sheet = choiceSheet(page, item);
+  await expect(sheet).toBeVisible();
+  for (const option of options) await choose(sheet, option);
+  await sheet
+    .getByRole("button", {
+      name: rt("app.orders.choice.add", { count: 1 }),
+      exact: true,
+    })
+    .click();
+  await expect(sheet).toHaveCount(0);
+}
+
+/**
+ * The picker's search: a tablet and a desktop show one category at a time,
+ * "הכי מוזמנים" first, and the seeded orders' items are the only ones there.
+ */
+async function find(page: Page, text: string) {
+  await page
+    .getByLabel(rt("app.orders.picker.search"))
+    .filter({ visible: true })
+    .first()
+    .fill(text);
+}
+
+/** A draft line's "בחירות", by the item's name. */
+const choicesOf = (page: Page, item: string) =>
+  button(
+    page,
+    new RegExp(`^${literal(rt("app.orders.draft.choices"))}.*${literal(item)}`),
+  );
 
 test("the team chooses who takes orders and when, in the console", async ({
   page,
@@ -708,7 +765,8 @@ test("Yoav cancels the beer he sent to his own bar with a reason, the bar sees i
   await page.goto("/orders");
   await tile(page, "9").click();
   await showItems(page, project);
-  await button(page, "בירה מהחבית").click();
+  // The beer has a size to choose since P6.
+  await chooseAndAdd(page, "בירה מהחבית", ["שליש"]);
   await button(page, "לימונדה").click();
   await showOrder(page, project);
   await send(page);
@@ -1059,7 +1117,8 @@ test("Yoav serves a ticket while his cancel of one of its lines waits: the cance
   await page.goto("/orders");
   await tile(page, "9").click();
   await showItems(page, project);
-  await button(page, "בירה מהחבית").click();
+  // The beer has a size to choose since P6.
+  await chooseAndAdd(page, "בירה מהחבית", ["שליש"]);
   await button(page, "לימונדה").click();
   await showOrder(page, project);
   await send(page);
@@ -1099,4 +1158,214 @@ test("Yoav serves a ticket while his cancel of one of its lines waits: the cance
   await expect(shown(page, rt("app.orders.failed.managersOnly"))).toHaveCount(
     0,
   );
+});
+
+test("Shiran adds burgers through their choices, the kitchen reads them under each, and the till rings each at its price", async ({
+  page,
+  browser,
+}, testInfo) => {
+  test.setTimeout(150_000);
+  const project = testInfo.project.name;
+  await enterAs(page, "manager");
+  await addOpenDemoEntry(SHIRAN, 1);
+  await page.goto("/orders");
+  await tile(page, "11").click();
+  await showItems(page, project);
+  await find(page, "המבורגר");
+
+  // A choice to make: its row says so, and opens its sheet, whose "הוספה"
+  // waits and says for what.
+  await expect(button(page, "המבורגר")).toContainText(
+    rt("app.orders.picker.needsChoice"),
+  );
+  await button(page, "המבורגר").click();
+  const sheet = choiceSheet(page, "המבורגר");
+  await expect(sheet).toBeVisible();
+  const add = (count: number) =>
+    sheet.getByRole("button", {
+      name: rt("app.orders.choice.add", { count }),
+      exact: true,
+    });
+  await expect(add(1)).toBeDisabled();
+  await expect(
+    sheet.getByText(rt("app.orders.choice.missing", { groups: "מידת עשייה" })),
+  ).toBeVisible();
+  await expect(sheet.getByText(rt("app.orders.choice.rule.one"))).toBeVisible();
+  await choose(sheet, "מדיום");
+  await choose(sheet, "גבינה");
+  await sheet
+    .getByRole("button", {
+      name: rt("app.orders.draft.more", { name: "המבורגר" }),
+    })
+    .click();
+  // Its price with the cheese, under its name.
+  await expect(sheet).toContainText("74.00");
+  await expect(add(2)).toBeEnabled();
+  await expectCleanPage(page);
+  await add(2).click();
+  await expect(sheet).toHaveCount(0);
+  // Another doneness is a line of its own.
+  await chooseAndAdd(page, "המבורגר", ["וול דאן"]);
+
+  await showOrder(page, project);
+  await expect(shown(page, "מדיום · גבינה")).toBeVisible();
+  await expect(shown(page, "74.00")).toBeVisible();
+  await expect(choicesOf(page, "המבורגר")).toBeVisible();
+  await send(page);
+  await expect.poll(() => demoRounds("11")).toBe(1);
+  expect(await demoLines("11")).toEqual([
+    {
+      name: "המבורגר",
+      choices: ["מדיום", "גבינה"],
+      unitAgorot: 7400,
+      quantity: 2,
+    },
+    { name: "המבורגר", choices: ["וול דאן"], unitAgorot: 6800, quantity: 1 },
+  ]);
+
+  // The kitchen reads the choices under each burger, and no price.
+  const noa = await secondPage(browser, testInfo);
+  await enterAs(noa, "worker");
+  await noa.goto("/orders/prep");
+  const ticket = prepTicket(noa, "11");
+  await expect(ticket.getByText("מדיום · גבינה")).toBeVisible();
+  await expect(ticket.getByText("וול דאן")).toBeVisible();
+  await expect(ticket).not.toContainText("74.00");
+  await noa.context().close();
+
+  // The till: a row for each, at its price, and no total (2 × 74 + 68).
+  await page.bringToFront();
+  await link(page, rt("app.orders.rounds.till")).click();
+  await expect(page).toHaveURL(/\/orders\/till\//);
+  const byItem = page
+    .getByRole("list", { name: rt("app.orders.till.byItem") })
+    .filter({ visible: true });
+  await expect(byItem).toContainText("מדיום · גבינה");
+  await expect(byItem).toContainText("74.00");
+  await expect(byItem).toContainText("וול דאן");
+  await expect(byItem).toContainText("68.00");
+  await expect(main(page)).not.toContainText("216.00");
+  await expectCleanPage(page);
+});
+
+test("a salad's extras are chosen from its line in the draft", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "phone", "one run is enough");
+  await enterAs(page, "manager");
+  await addOpenDemoEntry(SHIRAN, 1);
+  await page.goto("/orders");
+  await tile(page, "12").click();
+  await showItems(page, "phone");
+
+  // Only optional choices: one tap adds it, and says where they change.
+  await expect(button(page, "סלט ירוק")).toContainText(
+    rt("app.orders.picker.optionalChoices"),
+  );
+  await button(page, "סלט ירוק").click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await showOrder(page, "phone");
+  await choicesOf(page, "סלט ירוק").click();
+  const sheet = choiceSheet(page, "סלט ירוק");
+  await expect(sheet).toBeVisible();
+  await choose(sheet, "פטה");
+  await expect(sheet).toContainText("42.00");
+  await sheet
+    .getByRole("button", { name: rt("app.orders.choice.save") })
+    .click();
+  await expect(sheet).toHaveCount(0);
+  await expect(shown(page, "פטה")).toBeVisible();
+  await expect(shown(page, "42.00")).toBeVisible();
+
+  // One tap more is a plain salad of its own: the one with feta stays.
+  await showItems(page, "phone");
+  await button(page, "סלט ירוק").click();
+  await showOrder(page, "phone");
+  await expect(
+    main(page)
+      .getByRole("button", {
+        name: new RegExp(
+          `^${literal(rt("app.orders.draft.choices"))}.*סלט ירוק`,
+        ),
+      })
+      .filter({ visible: true }),
+  ).toHaveCount(2);
+});
+
+test("a doneness gone from the menu meanwhile: the send says so, and the line asks to choose again", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "tablet", "a phone and a desktop do");
+  test.setTimeout(150_000);
+  const project = testInfo.project.name;
+  try {
+    await enterAs(page, "manager");
+    await addOpenDemoEntry(SHIRAN, 1);
+    await page.goto("/orders");
+    await tile(page, "12").click();
+    await showItems(page, project);
+    await find(page, "המבורגר");
+    await chooseAndAdd(page, "המבורגר", ["מדיום"]);
+
+    // Meanwhile the menu's manager takes "מדיום" off the burger.
+    await setDemoItemGroups("המבורגר", [
+      {
+        id: "doneness",
+        name: "מידת עשייה",
+        min: 1,
+        max: 1,
+        options: [
+          { id: "mr", name: "מדיום רייר", priceAgorot: 0 },
+          { id: "mw", name: "מדיום וול", priceAgorot: 0 },
+          { id: "wd", name: "וול דאן", priceAgorot: 0 },
+        ],
+      },
+      {
+        id: "extras",
+        name: "תוספות",
+        min: 0,
+        max: 2,
+        options: [
+          { id: "egg", name: "ביצה", priceAgorot: 600 },
+          { id: "cheese", name: "גבינה", priceAgorot: 600 },
+        ],
+      },
+    ]);
+    await showOrder(page, project);
+    await send(page);
+    await expect(shown(page, rt("app.orders.failed.choices"))).toBeVisible();
+    expect(await demoRounds("12")).toBe(0);
+    // Once the mode reads the menu again, the line says what to do.
+    await expect(shown(page, rt("app.orders.draft.choicesStale"))).toBeVisible({
+      timeout: 20_000,
+    });
+    await choicesOf(page, "המבורגר").click();
+    const sheet = choiceSheet(page, "המבורגר");
+    // Said for its save: nothing is added from a line.
+    await expect(
+      sheet.getByText(
+        rt("app.orders.choice.missingSave", { groups: "מידת עשייה" }),
+      ),
+    ).toBeVisible();
+    await choose(sheet, "מדיום וול");
+    await sheet
+      .getByRole("button", { name: rt("app.orders.choice.save") })
+      .click();
+    await expect(sheet).toHaveCount(0);
+    await expect(shown(page, rt("app.orders.draft.choicesStale"))).toHaveCount(
+      0,
+    );
+    await send(page);
+    await expect.poll(() => demoRounds("12")).toBe(1);
+    expect(await demoLines("12")).toEqual([
+      {
+        name: "המבורגר",
+        choices: ["מדיום וול"],
+        unitAgorot: 6800,
+        quantity: 1,
+      },
+    ]);
+  } finally {
+    await resetDemoMenu();
+  }
 });

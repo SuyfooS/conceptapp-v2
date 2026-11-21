@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   categoriesInput,
   checkPicks,
+  choiceId,
   choiceRule,
+  type GroupDraft,
+  groupDrafts,
+  groupsFromDrafts,
   itemInput,
   itemSaveInput,
   itemsByDepartment,
@@ -16,12 +20,15 @@ import {
   maxUnitAgorot,
   menuSchema,
   menuStatus,
+  newChoiceId,
+  newGroupDraft,
   type OptionGroup,
   optionGroups,
   placesInput,
   quickCount,
   quickPlaces,
   typedAgorot,
+  typedMost,
   unitAgorot,
 } from "./order-taking";
 
@@ -537,5 +544,293 @@ describe("the menu on screen", () => {
     expect(choiceRule(extras)).toBe("upTo");
     expect(choiceRule({ ...extras, max: extras.options.length })).toBe("any");
     expect(choiceRule({ ...extras, min: 1 })).toBe("between");
+  });
+});
+
+describe("the item's choices in its sheet (P6)", () => {
+  const MAINS = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  // A random that counts, so the new ids are known.
+  const counting = () => {
+    let n = 0;
+    return () => {
+      n += 1;
+      return `${String(n).padStart(8, "0")}-aaaa-4aaa-8aaa-aaaaaaaaaaaa`;
+    };
+  };
+  const draft = (fields: Partial<GroupDraft> = {}): GroupDraft => ({
+    ...newGroupDraft(),
+    name: "רוטב",
+    options: [
+      { name: "עגבניות", price: "" },
+      { name: "שמנת", price: "4" },
+    ],
+    ...fields,
+  });
+  const fromDrafts = (drafts: GroupDraft[]) =>
+    groupsFromDrafts(drafts, counting());
+
+  it("sends a change of the choices with the rest of the item as it is", () => {
+    const item: MenuItem = {
+      id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      category: MAINS,
+      name: "המבורגר",
+      description: null,
+      priceAgorot: 6800,
+      department: null,
+      route: null,
+      available: true,
+      optionGroups: [doneness, extras],
+      version: 3,
+    };
+    expect(itemSaveInput(item, { optionGroups: [size] }).optionGroups).toEqual([
+      size,
+    ]);
+    expect(itemSaveInput(item, { optionGroups: [] }).optionGroups).toEqual([]);
+    expect(itemSaveInput(item, { name: "x" }).optionGroups).toEqual([
+      doneness,
+      extras,
+    ]);
+  });
+
+  it("makes new ids that fit, never one taken", () => {
+    const id = newChoiceId([], counting(), "g");
+    expect(id).toBe("g00000001");
+    expect(choiceId.safeParse(id).success).toBe(true);
+    expect(newChoiceId(["o00000001"], counting(), "o")).toBe("o00000002");
+    // One that keeps coming back taken: counting up still finds one.
+    const same = () => "00000001-aaaa";
+    expect(newChoiceId(["g00000001", "g1"], same, "g")).toBe("g2");
+    // Letters as a uuid has them, made small.
+    expect(newChoiceId([], () => "ABCDEF12-0000", "o")).toBe("oabcdef12");
+  });
+
+  it("reads saved groups back unchanged, their ids kept", () => {
+    const drafts = groupDrafts([doneness, extras, size]);
+    expect(drafts[1]).toEqual({
+      id: "extras",
+      name: "תוספות",
+      required: false,
+      most: 2,
+      least: 0,
+      removed: false,
+      options: [
+        { id: "egg", name: "ביצה", price: "6" },
+        { id: "cheese", name: "גבינה", price: "6" },
+        { id: "bacon", name: "בייקון", price: "9" },
+      ],
+    });
+    expect(fromDrafts(drafts)).toEqual({
+      ok: true,
+      groups: [doneness, extras, size],
+    });
+  });
+
+  it("gives what is new fresh ids, a blank price none, and reads prices typed", () => {
+    const drafts = [
+      ...groupDrafts([size]),
+      draft({
+        options: [
+          { name: " עגבניות ", price: " " },
+          { name: "שמנת", price: "6.50" },
+        ],
+      }),
+    ];
+    const read = fromDrafts(drafts);
+    expect(read).toEqual({
+      ok: true,
+      groups: [
+        size,
+        {
+          id: "g00000003",
+          name: "רוטב",
+          min: 1,
+          max: 1,
+          options: [
+            { id: "o00000001", name: "עגבניות", priceAgorot: 0 },
+            { id: "o00000002", name: "שמנת", priceAgorot: 650 },
+          ],
+        },
+      ],
+    });
+    if (read.ok) expect(valid(read.groups)).toBe(true);
+    // An option added to a saved group keeps the others' ids.
+    const [first] = groupDrafts([size]);
+    const more = fromDrafts([
+      {
+        ...(first as GroupDraft),
+        options: [...(first?.options ?? []), { name: "ענק", price: "8" }],
+      },
+    ]);
+    expect(more.ok && more.groups[0]?.options.map((o) => o.id)).toEqual([
+      "regular",
+      "large",
+      "o00000001",
+    ]);
+  });
+
+  it("asks for a pick from the switch, up to the most, between one and every option", () => {
+    const read = (fields: Partial<GroupDraft>) => {
+      const result = fromDrafts([draft(fields)]);
+      return result.ok ? result.groups[0] : null;
+    };
+    expect(read({ required: true, most: 1 })).toMatchObject({ min: 1, max: 1 });
+    expect(read({ required: false, most: 2 })).toMatchObject({
+      min: 0,
+      max: 2,
+    });
+    // Clamped to the options there are, and to one at least.
+    expect(read({ required: false, most: 9 })).toMatchObject({ max: 2 });
+    expect(read({ required: true, most: 0 })).toMatchObject({ min: 1, max: 1 });
+    // A saved least above one stays while required, up to the most.
+    expect(read({ required: true, most: 2, least: 2 })).toMatchObject({
+      min: 2,
+      max: 2,
+    });
+    expect(read({ required: true, most: 1, least: 2 })).toMatchObject({
+      min: 1,
+      max: 1,
+    });
+    expect(read({ required: false, most: 2, least: 2 })).toMatchObject({
+      min: 0,
+    });
+  });
+
+  it("reads the most as typed, waiting on what it can't take yet", () => {
+    expect(typedMost("2", 4)).toBe(2);
+    expect(typedMost(" 4 ", 4)).toBe(4);
+    // Cleared to type another, or past the options for a moment: it waits.
+    expect(typedMost("", 4)).toBeNull();
+    expect(typedMost("12", 4)).toBeNull();
+    expect(typedMost("0", 4)).toBeNull();
+    expect(typedMost("2.5", 4)).toBeNull();
+    // Once the field is left, the nearest the group takes, or nothing.
+    expect(typedMost("12", 4, true)).toBe(4);
+    expect(typedMost("0", 4, true)).toBe(1);
+    expect(typedMost("", 4, true)).toBeNull();
+    expect(typedMost("2.5", 4, true)).toBeNull();
+    expect(typedMost("3", 0, true)).toBe(1);
+  });
+
+  it("says every problem in the form's order, each under its own field", () => {
+    const result = fromDrafts([
+      draft({ name: " " }),
+      draft({
+        options: [
+          { name: "", price: "" },
+          { name: "שמנת", price: "4" },
+          { name: " שמנת ", price: "x" },
+        ],
+      }),
+      draft({ options: [] }),
+    ]);
+    expect(result).toEqual({
+      ok: false,
+      problems: [
+        { group: 0, problem: "nameMissing" },
+        { group: 1, option: 0, problem: "optionMissing" },
+        { group: 1, option: 2, problem: "optionTwice" },
+        { group: 1, option: 2, problem: "priceUnclear" },
+        { group: 2, problem: "empty" },
+      ],
+    });
+    // A name past 40 characters, a price past 1,000.00 ₪.
+    expect(
+      fromDrafts([
+        draft({ name: "א".repeat(41) }),
+        draft({ options: [{ name: "ב".repeat(41), price: "1000.01" }] }),
+      ]),
+    ).toEqual({
+      ok: false,
+      problems: [
+        { group: 0, problem: "nameMissing" },
+        { group: 1, option: 0, problem: "optionMissing" },
+        { group: 1, option: 0, problem: "priceUnclear" },
+      ],
+    });
+  });
+
+  it("holds the choices together to the cap, under the card that passes it", () => {
+    const priced = (price: string) =>
+      draft({ options: [{ name: "יקר", price }], required: false });
+    // 1,000.00 ₪ in all passes; one agora more is too much.
+    expect(fromDrafts([priced("600"), priced("400")]).ok).toBe(true);
+    expect(fromDrafts([priced("600"), priced("400.01")])).toEqual({
+      ok: false,
+      problems: [{ group: 1, problem: "tooMuch" }],
+    });
+    // How many may be picked counts too.
+    const two = draft({
+      required: false,
+      most: 2,
+      options: [
+        { name: "א", price: "500" },
+        { name: "ב", price: "500.01" },
+      ],
+    });
+    expect(fromDrafts([two])).toEqual({
+      ok: false,
+      problems: [{ group: 0, problem: "tooMuch" }],
+    });
+  });
+
+  it("refuses a sixth group and a thirteenth option, and leaves removed groups out", () => {
+    const six = Array.from({ length: 6 }, (_, n) =>
+      draft({ name: `קבוצה ${n}` }),
+    );
+    expect(fromDrafts(six)).toEqual({
+      ok: false,
+      problems: [{ group: 5, problem: "tooManyGroups" }],
+    });
+    // Removed, the sixth is no longer one.
+    const kept = fromDrafts(
+      six.map((g, n) => (n === 2 ? { ...g, removed: true } : g)),
+    );
+    expect(kept.ok && kept.groups.map((g) => g.name)).toEqual([
+      "קבוצה 0",
+      "קבוצה 1",
+      "קבוצה 3",
+      "קבוצה 4",
+      "קבוצה 5",
+    ]);
+    // A removed card's problems aren't said, and its place still names the others.
+    expect(
+      fromDrafts([draft({ name: "", removed: true }), draft({ name: "" })]),
+    ).toEqual({
+      ok: false,
+      problems: [{ group: 1, problem: "nameMissing" }],
+    });
+    const thirteen = draft({
+      options: Array.from({ length: 13 }, (_, n) => ({
+        name: `אפשרות ${n}`,
+        price: "",
+      })),
+    });
+    expect(fromDrafts([thirteen])).toEqual({
+      ok: false,
+      problems: [{ group: 0, problem: "tooManyOptions" }],
+    });
+  });
+
+  it("always sends groups the database takes", () => {
+    const cases: GroupDraft[][] = [
+      [],
+      groupDrafts([doneness, extras, size]),
+      [draft(), draft({ required: false, most: 2 })],
+      [
+        draft({
+          required: false,
+          most: 12,
+          options: Array.from({ length: 12 }, (_, n) => ({
+            name: `אפשרות ${n}`,
+            price: n % 2 ? "" : "8.33",
+          })),
+        }),
+      ],
+    ];
+    for (const drafts of cases) {
+      const result = fromDrafts(drafts);
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(valid(result.groups)).toBe(true);
+    }
   });
 });

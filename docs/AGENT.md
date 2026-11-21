@@ -381,8 +381,10 @@ The design rework is under way in day sessions with Orel, toward `docs/design/ta
   with a reason, on the house, each held 8 seconds and undone while the order is open),
   the order whole (close, move, cancel), "לקופה" by item and by round with no total at
   `/orders/till/[order]`, "נסגרו היום" with reopening, and the owner's line on
-  `/manage/order_taking`. P6 onward (choices, offline, the kitchen) is built by day, a
-  phase per PR; a nightly run doesn't start a phase.
+  `/manage/order_taking`. P6 is built (`20261123000100_order_taking_choices.sql`, the
+  demo's groups and words only): the menu editor's choices, the choice sheet, choices in
+  the draft, on the tickets and the till. P7 onward (offline, the kitchen) is built by
+  day, a phase per PR; a nightly run doesn't start a phase.
 - **Not in the pilot, do not start:** reservations, storefront, the public page.
 
 ## Where things live

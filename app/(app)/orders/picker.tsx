@@ -22,9 +22,11 @@ type Section = { id: string; name: string; items: MenuItem[] };
  * counts what of it the draft holds. A search above finds any item by the
  * starts of its words, Hebrew written loosely. Phone: "הכי מוזמנים", then
  * every category, one under the other. Tablet and desktop: a rail of them
- * beside the items of the one chosen. Sold out is greyed with "נגמר"; an
- * item with a choice to make, or that no department prepares, is greyed
- * with why (default 2: passed on by word of mouth until P6).
+ * beside the items of the one chosen. Sold out is greyed with "נגמר", and
+ * one no department prepares with why. Since P6 an item with a choice to
+ * make opens its choices, saying so under its price; one with only optional
+ * choices is added at once, and says its line in the draft changes them.
+ * "הכי מוזמנים" are items, so a favourite burger opens its choices too.
  */
 export function Picker({
   menu,
@@ -57,11 +59,13 @@ export function Picker({
         count={inDraft(item.id)}
         countLabel={t("picker.inDraft")}
         soldOut={state === "soldOut" ? t("picker.soldOut") : null}
-        reason={
-          state === "needsChoice"
+        reason={state === "noRoute" ? t("picker.noRoute") : null}
+        opens={state === "choose"}
+        hint={
+          state === "choose"
             ? t("picker.needsChoice")
-            : state === "noRoute"
-              ? t("picker.noRoute")
+            : state === "add" && item.optionGroups.length > 0
+              ? t("picker.optionalChoices")
               : null
         }
         // Viewing, nothing is added: the row is greyed as every action is.

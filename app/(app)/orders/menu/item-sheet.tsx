@@ -2,13 +2,14 @@
 
 import { parseShekels } from "@domain/money";
 import {
-  choiceRule,
+  type GroupDraftProblem,
+  groupDrafts,
+  groupsFromDrafts,
   type ItemChange,
   MAX_ITEM_AGOROT,
   MENU_TEXT_MAX,
   type MenuCategory,
   type MenuItem,
-  type OptionGroup,
   typedAgorot,
 } from "@domain/order-taking";
 import { Button } from "@ui/button";
@@ -19,7 +20,8 @@ import { Switch } from "@ui/switch";
 import { ltrInputClass, TextArea, TextField } from "@ui/text-field";
 import { useTranslations } from "next-intl";
 import { useEffect, useId, useRef, useState } from "react";
-import { ltr, useShekels } from "./menu-parts";
+import { newId } from "../new-id";
+import { ChoiceGroupsField, problemField } from "./choice-groups-field";
 import type { MenuActionFailure, MenuDepartment } from "./menu-types";
 
 /** The department choice that goes where the item's category goes. */
@@ -30,11 +32,12 @@ export type Editing = { kind: "new" } | { kind: "item"; item: MenuItem } | null;
 
 /**
  * An item's sheet (waiter mode P2): its name, price, description, category
- * and the department that prepares it, "נגמר", and its choices as they are
- * (edited from P6). Every save sends the item whole, as
- * `public.save_menu_item` replaces every field (`itemSaveInput`). A save
- * someone else's overtook shows the item as it is now, said in a line, and
- * the person saves again.
+ * and the department that prepares it, "נגמר", and since P6 its groups of
+ * choices, edited here (`ChoiceGroupsField`). Every save sends the item
+ * whole, as `public.save_menu_item` replaces every field (`itemSaveInput`).
+ * A save someone else's overtook shows the item as it is now, said in a
+ * line, and the person saves again. The save stays at the sheet's end,
+ * never scrolling away, however long its choices make it.
  */
 export function ItemSheet({
   editing,
@@ -59,6 +62,7 @@ export function ItemSheet({
   onRemove: (item: MenuItem) => void;
 }) {
   const t = useTranslations("app.orders.menu");
+  const formId = useId();
   const item = editing?.kind === "item" ? editing.item : null;
   return (
     <Sheet
@@ -68,11 +72,19 @@ export function ItemSheet({
       }}
       title={item ? item.name : t("sheet.newTitle")}
       closeLabel={t("sheet.close")}
+      footer={
+        editing ? (
+          <Button type="submit" form={formId} size="lg" loading={saving}>
+            {item ? t("sheet.save") : t("sheet.add")}
+          </Button>
+        ) : null
+      }
     >
       {editing ? (
         <ItemForm
           // A save overtaken by another draws the item as it is now.
           key={item ? `${item.id}:${item.version}` : "new"}
+          formId={formId}
           item={item}
           categories={categories}
           departments={departments}
@@ -88,6 +100,7 @@ export function ItemSheet({
 }
 
 function ItemForm({
+  formId,
   item,
   categories,
   departments,
@@ -97,17 +110,19 @@ function ItemForm({
   onSoldOut,
   onRemove,
 }: {
+  /** The sheet's save, at its end, submits this form. */
+  formId: string;
   item: MenuItem | null;
   categories: MenuCategory[];
   departments: MenuDepartment[];
   failure: MenuActionFailure | null;
+  /** A save on its way: once it ends refused, its line takes the focus. */
   saving: boolean;
   onSave: (change: Required<ItemChange>) => void;
   onSoldOut: (item: MenuItem, on: boolean) => void;
   onRemove: (item: MenuItem) => void;
 }) {
   const t = useTranslations("app.orders.menu");
-  const shekels = useShekels();
   const id = useId();
   const nameField = useRef<HTMLInputElement>(null);
   const priceField = useRef<HTMLInputElement>(null);
@@ -120,12 +135,21 @@ function ItemForm({
   // SAME goes where its category goes.
   const [department, setDepartment] = useState(item?.department ?? SAME);
   const failureLine = useRef<HTMLDivElement>(null);
-  // Drawn again with the item as it is now: the line that says so takes the
-  // focus, so it is read before anything is saved again.
+  // Whatever was refused is said at the form's top, above the choices the
+  // save at the sheet's end may have been pressed under: the line takes the
+  // focus, so it is in sight and read before anything is saved again. Each
+  // refusal, the same one twice too, once its save ends; drawn again with
+  // the item as it is now ("changed"), as it comes.
   useEffect(() => {
-    if (failure === "changed") failureLine.current?.focus();
-  }, [failure]);
+    if (failure && !saving) failureLine.current?.focus();
+  }, [failure, saving]);
   const [problem, setProblem] = useState<"name" | "price" | null>(null);
+  // The groups of choices as typed, and what stops their save.
+  const [groups, setGroups] = useState(() =>
+    groupDrafts(item?.optionGroups ?? []),
+  );
+  const [groupProblems, setGroupProblems] = useState<GroupDraftProblem[]>([]);
+  const groupFields = useRef(new Map<string, HTMLElement>());
 
   const nameOf = (departmentId: string) =>
     departments.find((d) => d.id === departmentId && d.live)?.name ??
@@ -148,19 +172,6 @@ function ItemForm({
       .map((d) => ({ key: d.id, label: d.live ? d.name : t("noRoute") })),
   ];
 
-  const ruleWords = (group: OptionGroup) => {
-    switch (choiceRule(group)) {
-      case "one":
-        return t("sheet.rule.one");
-      case "upTo":
-        return t("sheet.rule.upTo", { max: group.max });
-      case "between":
-        return t("sheet.rule.between", { min: group.min, max: group.max });
-      default:
-        return t("sheet.rule.any");
-    }
-  };
-
   function save() {
     const words = name.trim();
     if (!words || [...words].length > MENU_TEXT_MAX.item) {
@@ -174,17 +185,28 @@ function ItemForm({
       priceField.current?.focus();
       return;
     }
+    // Checked as the database checks them: nothing goes while one stands,
+    // and the first takes the focus.
+    const read = groupsFromDrafts(groups, newId);
+    if (!read.ok) {
+      setGroupProblems(read.problems);
+      const [first] = read.problems;
+      if (first) groupFields.current.get(problemField(first))?.focus();
+      return;
+    }
     onSave({
       name: words,
       priceAgorot: agorot,
       description: description.trim() || null,
       category,
       department: department === SAME ? null : department,
+      optionGroups: read.groups,
     });
   }
 
   return (
     <form
+      id={formId}
       className="flex flex-col gap-4 px-2 pt-1 pb-2"
       onSubmit={(event) => {
         event.preventDefault();
@@ -271,39 +293,16 @@ function ItemForm({
           />
         </div>
       ) : null}
-      {item && item.optionGroups.length > 0 ? (
-        <section className="flex flex-col gap-2">
-          <h3 className="px-1 font-semibold text-base">{t("sheet.choices")}</h3>
-          <ul className="flex flex-col gap-2">
-            {item.optionGroups.map((group) => (
-              <li
-                key={group.id}
-                className="flex flex-col gap-1 rounded-card bg-elevated px-4 py-3 shadow-card"
-              >
-                <span className="font-medium">{group.name}</span>
-                <span className="text-ink-2 text-sm">{ruleWords(group)}</span>
-                <span className="text-sm">
-                  {group.options.map((option, index) => (
-                    <span key={option.id}>
-                      {index > 0 ? " · " : null}
-                      {option.priceAgorot > 0
-                        ? t.rich("sheet.option", {
-                            name: option.name,
-                            price: shekels(option.priceAgorot),
-                            ltr,
-                          })
-                        : option.name}
-                    </span>
-                  ))}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-      <Button type="submit" size="lg" loading={saving}>
-        {item ? t("sheet.save") : t("sheet.add")}
-      </Button>
+      <ChoiceGroupsField
+        drafts={groups}
+        problems={groupProblems}
+        fields={groupFields}
+        onChange={(next, changed) => {
+          setGroups(next);
+          // What was typed in a card takes its problems with it.
+          setGroupProblems((was) => was.filter((p) => p.group !== changed));
+        }}
+      />
       {item ? (
         <Button variant="ghost" onClick={() => onRemove(item)}>
           {t("sheet.remove")}

@@ -52,6 +52,7 @@ import {
 } from "./changes";
 import { type DemoData, useOrderDemo } from "./demo-store";
 import {
+  choicesRefused,
   soldOutIn,
   twinFrame,
   twinOrderAt,
@@ -100,7 +101,8 @@ const done = Promise.resolve({ ok: true as const, value: null });
  * fixes write the store the same way; a move to a taken table, a reopen
  * while its table is taken, or a close's "ביטול" too late or of another's
  * close, is refused as the database refuses it, and that "ביטול" puts back
- * what the close served.
+ * what the close served. Since P6 a draft whose choices no longer fit the
+ * twin's menu is refused as the send refuses it.
  */
 export function TwinOrdersMode({ children }: { children: ReactNode }) {
   const { data, now, update } = useOrderDemo();
@@ -289,6 +291,16 @@ export function TwinOrdersMode({ children }: { children: ReactNode }) {
         return refuse({
           ok: false,
           failure: frame.clock,
+          items: [],
+          order: null,
+        });
+      }
+      // Choices that no longer fit: the database stops at them first, and
+      // names no item.
+      if (choicesRefused(data, lines)) {
+        return refuse({
+          ok: false,
+          failure: "choices",
           items: [],
           order: null,
         });

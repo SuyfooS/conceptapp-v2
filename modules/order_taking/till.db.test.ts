@@ -13,7 +13,9 @@ import { afterAll, describe, expect, it } from "vitest";
  * in @domain/orders, waiter mode P5), so it stays current with the mode's
  * sync, and on the till's station from `public.order_till` (P8). pgTAP can't
  * read TypeScript, so this sends a round to the demo restaurant's table 9
- * as its owner (two lemonades in two lines, a beer and a hummus), cancels a
+ * as its owner (two lemonades in two lines, a half beer, a hummus, and since
+ * P6 three burgers: two with the same choices picked in other orders, which
+ * the till rings up as one row, and one with others), cancels a
  * lemonade and gives the beer on the house, and reads both answers for it
  * and for the seed's tables 4 and 7, signed in as the owner, in a
  * transaction rolled back. The rows are the same; only their order inside
@@ -67,11 +69,38 @@ describe("the till's list", () => {
           where p.business_id = ${DEMO_RESTAURANT} and p.name = '9'
             and p.archived_at is null`;
         const lemonade = await item("לימונדה");
+        const burger = await item("המבורגר");
         const lines = [
           { item: lemonade, quantity: 1 },
           { item: lemonade, quantity: 1 },
-          { item: await item("בירה מהחבית"), quantity: 2 },
+          // The beer has a size to choose since P6.
+          {
+            item: await item("בירה מהחבית"),
+            quantity: 2,
+            choices: [{ group: "beer-size", option: "half" }],
+          },
           { item: await item("חומוס"), quantity: 1 },
+          {
+            item: burger,
+            quantity: 1,
+            choices: [
+              { group: "extras", option: "cheese" },
+              { group: "doneness", option: "m" },
+            ],
+          },
+          {
+            item: burger,
+            quantity: 1,
+            choices: [
+              { group: "doneness", option: "m" },
+              { group: "extras", option: "cheese" },
+            ],
+          },
+          {
+            item: burger,
+            quantity: 1,
+            choices: [{ group: "doneness", option: "wd" }],
+          },
         ];
         const [sent] = await tx<{ round: { order: string } }[]>`
           select public.send_order_round(
@@ -110,16 +139,29 @@ describe("the till's list", () => {
           const fromTill = orderTillSchema.parse(read?.till);
           expect(settled(fromDetail), id).toEqual(settled(fromTill));
           if (id === order) {
-            // Table 9: one lemonade left, the beer marked, nothing summed.
+            // Table 9: one lemonade left, the beer marked, nothing summed;
+            // the burgers of the same choices one row, the other its own.
+            const rows = (list: [string, string, number, number, boolean][]) =>
+              list.map((row) => JSON.stringify(row)).sort();
             expect(
-              Object.fromEntries(
-                fromDetail.byItem.map((l) => [l.name, [l.quantity, l.comped]]),
+              rows(
+                fromDetail.byItem.map((l) => [
+                  l.name,
+                  l.choices.join(" · "),
+                  l.quantity,
+                  l.unitAgorot,
+                  l.comped,
+                ]),
               ),
-            ).toEqual({
-              לימונדה: [1, false],
-              "בירה מהחבית": [2, true],
-              חומוס: [1, false],
-            });
+            ).toEqual(
+              rows([
+                ["לימונדה", "", 1, 1600, false],
+                ["בירה מהחבית", "חצי", 2, 3600, true],
+                ["חומוס", "", 1, 3200, false],
+                ["המבורגר", "מדיום · גבינה", 2, 7400, false],
+                ["המבורגר", "וול דאן", 1, 6800, false],
+              ]),
+            );
           }
         }
         throw new Rollback();

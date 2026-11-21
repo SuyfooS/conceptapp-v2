@@ -321,6 +321,9 @@ const PAGES = [
   "/design/order-taking/floor/order?place=table-6&state=pending",
   "/design/order-taking/floor/order?place=table-6&state=soldOut",
   "/design/order-taking/floor/order?place=table-6&state=taken",
+  // P6: the burger's choices open, and a choice gone from the menu.
+  "/design/order-taking/floor/order?place=table-6&state=choices",
+  "/design/order-taking/floor/order?place=table-6&state=choicesChanged",
   "/design/order-taking/floor/order?place=table-4",
   "/design/order-taking/floor/order?place=takeaway-new",
   "/design/order-taking/floor/order?order=order-takeaway-1",
@@ -373,7 +376,7 @@ const PAGES = [
 // page behind it from the accessibility tree. Lists' `?state=photo` opens
 // none.
 const OPENS_A_SHEET =
-  /^\/design\/(chat\/.*[?&]state=(readers|actions|photo|attach|remove)|shell\/clock\/team\/[^?]+[?&]state=(edit|cancel|cancelled|break|addBreak|openBreak))\b/;
+  /^\/design\/(chat\/.*[?&]state=(readers|actions|photo|attach|remove)|shell\/clock\/team\/[^?]+[?&]state=(edit|cancel|cancelled|break|addBreak|openBreak)|order-taking\/floor\/order\?.*[?&]state=choices)\b/;
 
 async function expectCleanPage(
   page: Page,
@@ -4102,6 +4105,175 @@ test("the waiter mode demo sends to the prep screen and comes back ready", async
   await expectCleanPage(page);
 });
 
+// A burger has a doneness to choose (P6): its row opens its choices,
+// "הוספה" waits for one, the draft reads them with the price they make, and
+// the kitchen's ticket reads them under the burger. One page, so the store
+// in memory carries it all.
+test("the waiter mode demo adds a burger through its choices", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "phone", "the walk is timed on a phone");
+  const shown = (locator: Locator) => locator.filter({ visible: true });
+  const table6 = rt("app.orders.place.numbered", { name: "6" });
+
+  await page.goto(
+    "/design/order-taking/floor/order?place=table-6&state=service",
+  );
+  await expect(
+    page.getByRole("heading", { level: 1, name: table6 }),
+  ).toBeVisible();
+  const burger = shown(page.getByRole("button", { name: /^המבורגר/ })).first();
+  await expect(burger).toContainText(rt("app.orders.picker.needsChoice"));
+  await burger.click();
+  const sheet = page.getByRole("dialog", { name: "המבורגר" });
+  const add = sheet.getByRole("button", {
+    name: rt("app.orders.choice.add", { count: 1 }),
+    exact: true,
+  });
+  await expect(add).toBeDisabled();
+  await sheet.getByRole("radio", { name: "מדיום", exact: true }).check();
+  const cheese = sheet.getByRole("switch", { name: "גבינה", exact: true });
+  await cheese.click();
+  await expect(sheet).toContainText("74.00");
+  // What an extra adds is read with its switch, as with a radio.
+  await expect(cheese).toHaveAccessibleDescription(/6\.00/);
+  // Both extras on: there is no other to choose, so nothing says to take
+  // one off. Off again, the burger is as it was.
+  const egg = sheet.getByRole("switch", { name: "ביצה", exact: true });
+  await egg.click();
+  await expect(egg).toHaveAttribute("aria-checked", "true");
+  await expect(sheet).toContainText("80.00");
+  await expect(
+    sheet.getByText(rt("app.orders.choice.full", { max: 2 })),
+  ).toHaveCount(0);
+  await egg.click();
+  await expect(egg).toHaveAttribute("aria-checked", "false");
+  await expect(sheet).toContainText("74.00");
+  await expect(add).toBeEnabled();
+  await add.click();
+  await expect(sheet).toHaveCount(0);
+
+  await shown(
+    page.getByRole("button", {
+      name: new RegExp(`^${rt("app.orders.order.view.order")}`),
+    }),
+  )
+    .first()
+    .click();
+  await expect(shown(page.getByText("מדיום · גבינה")).first()).toBeVisible();
+  await expect(shown(page.getByText("74.00")).first()).toBeVisible();
+  await shown(
+    page.getByRole("button", {
+      name: new RegExp(`^${rt("app.orders.send.label")}`),
+    }),
+  ).click();
+  await expect(
+    page.getByText(rt("app.orders.toast.sent", { place: table6 })),
+  ).toBeVisible();
+
+  await throughTabBar(page, rt("modules.order_taking.mode.prep"));
+  const ticket = page.getByRole("article", {
+    name: rt("app.orders.prep.label", { place: table6, department: "מטבח" }),
+  });
+  await expect(ticket.getByText("מדיום · גבינה")).toBeVisible();
+  await expectCleanPage(page);
+});
+
+// The menu's twin gives the pasta a group of choices (P6), and on the
+// floor its row opens them.
+test("the waiter mode demo's menu gives an item a group of choices", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "phone", "one run is enough");
+  const shown = (locator: Locator) => locator.filter({ visible: true });
+  const m = he.app.orders.menu;
+  await page.goto("/design/order-taking/menu?state=service");
+  await shown(page.getByRole("button", { name: /^פסטה/ }))
+    .first()
+    .click();
+  const sheet = page.getByRole("dialog");
+  await sheet.getByRole("button", { name: m.groups.add }).click();
+  const groupName = sheet.getByLabel(m.group.name, { exact: true });
+  await groupName.fill("רוטב");
+  const option = (n: number) =>
+    sheet.getByLabel(rt("app.orders.menu.group.option", { n }), {
+      exact: true,
+    });
+
+  // With no option, the save focuses "הוספת אפשרות", and the problem is
+  // read with it.
+  await sheet
+    .getByRole("button", {
+      name: rt("app.orders.menu.group.removeOption", {
+        name: rt("app.orders.menu.group.option", { n: 1 }),
+      }),
+    })
+    .click();
+  const addOption = sheet.getByRole("button", { name: m.group.addOption });
+  await sheet.getByRole("button", { name: m.sheet.save }).click();
+  await expect(addOption).toBeFocused();
+  await expect(addOption).toHaveAccessibleDescription(m.group.empty);
+  await addOption.click();
+  await expect(option(1)).toBeFocused();
+  await option(1).fill("עגבניות");
+  await addOption.click();
+  await option(2).fill("שמנת");
+  await addOption.click();
+  await option(3).fill("פסטו");
+
+  // "עד כמה בוחרים" cleared and typed again takes what is typed.
+  const most = sheet.getByLabel(m.group.most, { exact: true });
+  await most.fill("");
+  await expect(most).toHaveValue("");
+  await most.pressSequentially("2");
+  await expect(most).toHaveValue("2");
+  await expect(
+    sheet.getByText(
+      rt("app.orders.menu.sheet.rule.between", { min: 1, max: 2 }),
+    ),
+  ).toBeVisible();
+  await sheet
+    .getByRole("button", {
+      name: rt("app.orders.menu.group.less", { name: "רוטב" }),
+    })
+    .click();
+  await expect(most).toHaveValue("1");
+
+  // Removed, its way back names it, and says it goes with the save.
+  await sheet.getByRole("button", { name: m.group.remove }).click();
+  const restore = sheet.getByRole("button", {
+    name: new RegExp(`^${m.group.restore}.*רוטב`),
+  });
+  await expect(restore).toBeFocused();
+  await expect(restore).toHaveAccessibleDescription(
+    rt("app.orders.menu.group.removed", { name: "רוטב" }),
+  );
+  await restore.click();
+  await expect(groupName).toBeFocused();
+  await expectCleanPage(page, "", true);
+  await sheet.getByRole("button", { name: m.sheet.save }).click();
+  await expect(sheet).toHaveCount(0);
+  // Its row counts it.
+  await expect(
+    shown(page.getByRole("button", { name: /^פסטה/ })).first(),
+  ).toContainText(rt("app.orders.menu.choices", { count: 1 }));
+
+  await throughTabBar(page, rt("modules.order_taking.mode.places"));
+  await shown(
+    page.getByRole("link", {
+      name: new RegExp(`^${rt("app.orders.place.kind")}\\s*6(?!\\d)`),
+    }),
+  ).click();
+  await shown(page.getByRole("button", { name: /^פסטה/ }))
+    .first()
+    .click();
+  const choices = page.getByRole("dialog", { name: "פסטה" });
+  await expect(choices.getByText("רוטב", { exact: true })).toBeVisible();
+  await expect(
+    choices.getByText(rt("app.orders.choice.rule.one")),
+  ).toBeVisible();
+});
+
 // A ticket of Shiran's turns ready while she looks at the floor: the mode's
 // one toast says so, and its "פתיחה" leads to the order (P4).
 test("the waiter mode demo says what turned ready, and opens it", async ({
@@ -4295,7 +4467,11 @@ test("the waiter mode demo's menu marks sold out for the floor's picker, and add
     .first()
     .click();
   const sheet = page.getByRole("dialog");
-  await expect(sheet.getByText("מידת עשייה")).toBeVisible();
+  // Its groups of choices, edited in place since P6: the first's name in
+  // its field, and its rule as it reads now.
+  await expect(
+    sheet.getByLabel(rt("app.orders.menu.group.name"), { exact: true }).first(),
+  ).toHaveValue("מידת עשייה");
   await expect(
     sheet.getByText(rt("app.orders.menu.sheet.rule.one")),
   ).toBeVisible();

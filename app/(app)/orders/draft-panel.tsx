@@ -1,6 +1,11 @@
 "use client";
 
-import { changeDraftLine, type DraftLine } from "@domain/order-screens";
+import {
+  changeDraftLine,
+  choiceNames,
+  type DraftLine,
+  picksAgorot,
+} from "@domain/order-screens";
 import type { Menu } from "@domain/order-taking";
 import { ORDER_CAPS } from "@domain/orders";
 import { Button } from "@ui/button";
@@ -22,36 +27,14 @@ import {
 import { useOrdersMode } from "./orders-mode";
 import { Price, useOrderWords } from "./orders-parts";
 
-/** A line's unit price with its chosen options', as the send freezes it. */
-function unitOf(menu: Menu | null, line: DraftLine): number {
-  const item = menu?.items.find((i) => i.id === line.item);
-  if (!item) return 0;
-  return line.choices.reduce((sum, choice) => {
-    const option = item.optionGroups
-      .find((group) => group.id === choice.group)
-      ?.options.find((o) => o.id === choice.option);
-    return sum + (option?.priceAgorot ?? 0);
-  }, item.priceAgorot);
-}
-
-/** The chosen options by name, in the item's order. */
-function choiceNames(menu: Menu | null, line: DraftLine): string[] {
-  const item = menu?.items.find((i) => i.id === line.item);
-  if (!item) return [];
-  return item.optionGroups.flatMap((group) =>
-    group.options
-      .filter((o) =>
-        line.choices.some((c) => c.group === group.id && c.option === o.id),
-      )
-      .map((o) => o.name),
-  );
-}
-
 /**
  * The draft (the design's §3.2 step 3): what was chosen and not sent yet,
  * each line with how many, its note or allergy in sight, and "הערה",
  * "אלרגיה" and "לחכות עם זה" with no long press. One sheet for the note,
- * with an "אלרגיה" switch (default 1): an allergy needs its words.
+ * with an "אלרגיה" switch (default 1): an allergy needs its words. Since P6
+ * each line names its choices and its unit price with them, and "בחירות"
+ * opens them for a line whose item has any; a line whose picks no longer
+ * fit the menu says "לבחור שוב".
  */
 export function DraftPanel({
   draft,
@@ -60,7 +43,9 @@ export function DraftPanel({
   headingRef,
   onRemove,
   onNoteRemoved,
+  onChoices,
   marked = null,
+  stale = [],
   send,
 }: {
   draft: string;
@@ -71,12 +56,16 @@ export function DraftPanel({
   onRemove: (line: DraftLine, index: number) => void;
   /** A note taken off, for its undo. */
   onNoteRemoved: (line: DraftLine) => void;
+  /** "בחירות": the line's choices, in their sheet. */
+  onChoices: (line: DraftLine) => void;
   /**
    * The items a refusal names, by id, and the word it marks their lines
    * with: "נגמר" for what sold out meanwhile, "אין מחלקה שמכינה" for what no
    * department prepares.
    */
   marked?: { items: readonly string[]; word: string } | null;
+  /** The lines whose picks no longer fit the menu (`staleChoiceLines`). */
+  stale?: readonly string[];
   /** The send, where it sits from tablet up. */
   send: ReactNode;
 }) {
@@ -87,8 +76,9 @@ export function DraftPanel({
     line: DraftLine;
     allergy: boolean;
   } | null>(null);
-  const nameOf = (line: DraftLine) =>
-    menu?.items.find((item) => item.id === line.item)?.name ?? "";
+  const itemOf = (line: DraftLine) =>
+    menu?.items.find((item) => item.id === line.item);
+  const nameOf = (line: DraftLine) => itemOf(line)?.name ?? "";
   // From what the draft holds when the change lands: a note saved from the
   // sheet after the line's quantity changed keeps both.
   const change = (id: string, patch: Parameters<typeof changeDraftLine>[2]) =>
@@ -109,14 +99,28 @@ export function DraftPanel({
           ) : null}
           <ul className="overflow-hidden rounded-card bg-surface shadow-card">
             {lines.map((line, index) => {
-              const name = nameOf(line);
+              const item = itemOf(line);
+              const name = item?.name ?? "";
               const forItem = t("draft.forItem", { name });
+              // A refusal's own mark first: what sold out, or goes nowhere.
+              const mark = marked?.items.includes(line.item)
+                ? marked.word
+                : stale.includes(line.id)
+                  ? t("draft.choicesStale")
+                  : null;
+              const chooses =
+                item !== undefined &&
+                (item.optionGroups.length > 0 || line.choices.length > 0);
               return (
                 <DraftLineRow
                   key={line.id}
                   name={name}
-                  choices={choiceNames(menu, line)}
-                  price={<Price agorot={unitOf(menu, line)} />}
+                  choices={item ? choiceNames(item, line.choices) : []}
+                  price={
+                    <Price
+                      agorot={item ? picksAgorot(item, line.choices) : 0}
+                    />
+                  }
                   quantity={line.quantity}
                   onQuantity={(quantity) => change(line.id, { quantity })}
                   quantityLabels={{
@@ -129,13 +133,22 @@ export function DraftPanel({
                       ? t("line.note", { note: line.note })
                       : null
                   }
-                  mark={marked?.items.includes(line.item) ? marked.word : null}
+                  mark={mark}
                   allergy={
                     line.note && line.allergy
                       ? t("line.allergy", { note: line.note })
                       : null
                   }
                   held={line.held ? t("draft.heldBadge") : null}
+                  choicesButton={
+                    chooses
+                      ? {
+                          label: t("draft.choices"),
+                          forItem,
+                          onClick: () => onChoices(line),
+                        }
+                      : null
+                  }
                   noteButton={{
                     label: t("draft.note"),
                     forItem,

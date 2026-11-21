@@ -1,12 +1,13 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 // Taking orders opens on for the local seed's demo restaurant, for the browser
 // tests of the menu's screens, and stays off in the hosted demo until Orel
 // approves the screens (his decision of 20 November 2026). The definition's
-// flag is what switches it on at every reset
-// (private.seed_demo_order_taking, 20261120000100_order_taking_screens.sql).
+// flag is what switches it on at every reset (private.seed_demo_order_taking,
+// since 20261120000100_order_taking_screens.sql; the newest migration that
+// writes it is read).
 const root = join(__dirname, "..");
 const read = (path: string) => readFileSync(join(root, path), "utf8");
 
@@ -39,9 +40,20 @@ describe("taking orders in the demo", () => {
   });
 
   it("is switched on by the definition's flag at every reset", () => {
-    const sql = read(
-      "supabase/migrations/20261120000100_order_taking_screens.sql",
+    const newest = readdirSync(join(root, "supabase/migrations"))
+      .filter((file) =>
+        /function private\.seed_demo_order_taking\(/.test(
+          read(`supabase/migrations/${file}`),
+        ),
+      )
+      .sort()
+      .at(-1);
+    expect(newest).toBeDefined();
+    const sql = read(`supabase/migrations/${newest}`);
+    const start = sql.lastIndexOf(
+      "function private.seed_demo_order_taking(business",
     );
-    expect(sql).toContain("d.definition -> 'orderTaking' = 'true'::jsonb");
+    const body = sql.slice(start, sql.indexOf("\n$$;", start));
+    expect(body).toContain("d.definition -> 'orderTaking' = 'true'::jsonb");
   });
 });

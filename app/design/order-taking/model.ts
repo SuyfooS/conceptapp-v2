@@ -155,49 +155,6 @@ export function unitPrice(item: MenuItem, choices: readonly string[]): number {
   );
 }
 
-/**
- * A group of exactly one choice, drawn as radios: one must be picked and
- * another replaces it. Any other group, an optional one of one option
- * included, is drawn with switches, so what was picked can be unpicked.
- */
-export const singleChoice = (group: ChoiceGroup) =>
-  group.min === 1 && group.max === 1;
-
-/**
- * The choices after an option of the group is switched on or off. Past the
- * group's most, switching one on replaces the other where only one is
- * allowed, and otherwise changes nothing until one is switched off.
- */
-export function toggleChoice(
-  group: ChoiceGroup,
-  choices: readonly string[],
-  optionId: string,
-  on: boolean,
-): string[] {
-  const rest = choices.filter((c) => c !== optionId);
-  if (!on) return rest;
-  const inGroup = group.options
-    .map((option) => option.id)
-    .filter((id) => rest.includes(id));
-  if (inGroup.length < group.max) return [...rest, optionId];
-  if (group.max === 1) {
-    return [...rest.filter((c) => !inGroup.includes(c)), optionId];
-  }
-  return [...choices];
-}
-
-/** The groups that still need a choice before the item can be added. */
-export function missingGroups(
-  item: MenuItem,
-  choices: readonly string[],
-): ChoiceGroup[] {
-  return item.groups.filter(
-    (group) =>
-      group.options.filter((option) => choices.includes(option.id)).length <
-      group.min,
-  );
-}
-
 /** A line still sent: neither taken back nor cancelled (on the house still is). */
 export const lineLive = (line: SentLine) => !line.takenBack && !line.cancelled;
 

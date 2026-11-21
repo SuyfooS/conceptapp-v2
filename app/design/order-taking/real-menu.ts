@@ -54,6 +54,10 @@ const groupOf = (group: ChoiceGroup): OptionGroup => ({
   })),
 });
 
+/** A twin's item's groups of choices, as `public.order_menu` gives them. */
+export const twinGroups = (item: Pick<MenuItem, "groups">): OptionGroup[] =>
+  item.groups.map(groupOf);
+
 const choiceGroupOf = (group: OptionGroup): ChoiceGroup => ({
   id: group.id,
   name: group.name,
@@ -106,7 +110,7 @@ export function twinMenu(
           department: null,
           route: category.department,
           available: !data.soldOut.includes(item.id),
-          optionGroups: item.groups.map(groupOf),
+          optionGroups: twinGroups(item),
           version: 1,
         })),
     ),

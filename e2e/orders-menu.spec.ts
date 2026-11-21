@@ -31,8 +31,9 @@ import { heT } from "./t";
 // goes; departments open for taking orders alone; the module's switch and
 // the roles' switch open and close it all. The restaurant reads its
 // template's words ("מנה", "שולחן", "מצב מלצרות"), read here from the
-// database as it does; the console reads the app's own. Each test puts the
-// menu back as the seed has it.
+// database as it does; the console reads the app's own. P6: a manager
+// gives an item a group of choices, and taking an order asks for it. Each
+// test puts the menu back as the seed has it.
 const OWNER = { local: "050-000-0001", e164: "+972500000001" };
 const MANAGER = { local: "050-000-0002", e164: "+972500000002" };
 const NOA = { local: "050-000-0003", e164: "+972500000003" };
@@ -817,4 +818,152 @@ test("the owner takes the menu from managers on the roles screen, and gives it b
   } finally {
     await shiran.context().close();
   }
+});
+
+test("a manager gives an item a group of choices, and taking an order asks for it", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(150_000);
+  const project = testInfo.project.name;
+  const since = new Date(Date.now() - 1000);
+  await signIn(page, MANAGER);
+  await page.goto("/orders/menu");
+  await showCategory(page, "עיקריות", project);
+  await button(page, "פסטה").click();
+  const sheet = page.getByRole("dialog");
+  await expect(sheet).toBeVisible();
+  const before = await demoMenuItem("פסטה");
+
+  // A group with no name: said under it, and nothing is saved.
+  await sheet.getByRole("button", { name: o.menu.groups.add }).click();
+  await expect(
+    sheet.getByLabel(o.menu.group.name, { exact: true }),
+  ).toBeFocused();
+  await sheet.getByRole("button", { name: o.menu.sheet.save }).click();
+  await expect(sheet.getByText(o.menu.group.nameMissing)).toBeVisible();
+  await expect(
+    sheet.getByLabel(o.menu.group.name, { exact: true }),
+  ).toBeFocused();
+  expect((await demoMenuItem("פסטה"))?.version).toBe(before?.version);
+
+  // "רוטב", one of two, the cream adding 4.00.
+  await sheet.getByLabel(o.menu.group.name, { exact: true }).fill("רוטב");
+  await sheet
+    .getByLabel(rt("app.orders.menu.group.option", { n: 1 }), { exact: true })
+    .fill("עגבניות");
+  await sheet.getByRole("button", { name: o.menu.group.addOption }).click();
+  await sheet
+    .getByLabel(rt("app.orders.menu.group.option", { n: 2 }), { exact: true })
+    .fill("שמנת");
+  await sheet.getByLabel(o.menu.group.price, { exact: true }).nth(1).fill("4");
+  await expect(
+    sheet.getByRole("switch", { name: o.menu.group.required }),
+  ).toHaveAttribute("aria-checked", "true");
+  await expect(sheet.getByText(o.menu.sheet.rule.one)).toBeVisible();
+  await expectCleanPage(page);
+
+  // A save the network drops is said at the form's top, above the choices
+  // the save at the sheet's end was pressed under: its line takes the focus.
+  let dropped = 0;
+  await page.route(
+    (url) => url.pathname === "/orders/menu",
+    async (route) => {
+      if (route.request().method() !== "POST" || dropped > 0) {
+        await route.fallback();
+        return;
+      }
+      dropped += 1;
+      await route.abort();
+    },
+  );
+  await sheet.getByRole("button", { name: o.menu.sheet.save }).click();
+  const refused = sheet.getByRole("alert");
+  await expect(refused).toHaveText(rt("app.orders.menu.failed.failed"));
+  await expect(refused).toBeFocused();
+  await expect(refused).toBeInViewport();
+  expect(dropped).toBe(1);
+  expect((await demoMenuItem("פסטה"))?.version).toBe(before?.version);
+
+  await sheet.getByRole("button", { name: o.menu.sheet.save }).click();
+  await expect(
+    toast(page, rt("app.orders.menu.toast.saved", { name: "פסטה" })),
+  ).toBeVisible();
+  await expect
+    .poll(async () => (await demoMenuItem("פסטה"))?.groups)
+    .toEqual([
+      {
+        id: expect.stringMatching(/^g[0-9a-f]{8}$/),
+        name: "רוטב",
+        min: 1,
+        max: 1,
+        options: [
+          {
+            id: expect.stringMatching(/^o[0-9a-f]{8}$/),
+            name: "עגבניות",
+            priceAgorot: 0,
+          },
+          {
+            id: expect.stringMatching(/^o[0-9a-f]{8}$/),
+            name: "שמנת",
+            priceAgorot: 400,
+          },
+        ],
+      },
+    ]);
+  const logged = await demoMenuLog(since);
+  expect(logged.map((row) => row.action)).toContain("menu.item.save");
+
+  // The activity log names what changed: the choices.
+  await page.goto("/manage/activity");
+  await expect(
+    shown(
+      page,
+      rt("app.manage.activity.actions.menu.itemSave", { name: "פסטה" }),
+    ),
+  ).toBeVisible();
+  await expect(
+    shown(page, rt("app.manage.activity.actions.menu.fields.options")),
+  ).toBeVisible();
+
+  // Taking an order, the pasta opens its choices now, and the cream adds
+  // 4.00 to it.
+  await page.goto("/orders");
+  await main(page)
+    .getByRole("link", {
+      name: new RegExp(`^${literal(rt("app.orders.place.kind"))}\\s*6(\\D|$)`),
+    })
+    .filter({ visible: true })
+    .first()
+    .click();
+  await expect(page).toHaveURL(/\/orders\/place\//);
+  if (project === "phone") {
+    await button(page, rt("app.orders.order.view.add")).click();
+  }
+  // A tablet and a desktop show one category at a time: the search finds it.
+  await page
+    .getByLabel(rt("app.orders.picker.search"))
+    .filter({ visible: true })
+    .first()
+    .fill("פסטה");
+  await button(page, "פסטה").click();
+  const choices = page.getByRole("dialog", { name: "פסטה" });
+  await expect(choices).toBeVisible();
+  await expect(choices.getByText("רוטב", { exact: true })).toBeVisible();
+  await expect(
+    choices.getByText(rt("app.orders.choice.rule.one")),
+  ).toBeVisible();
+  await choices.getByRole("radio", { name: /^שמנת/ }).check();
+  await expect(choices).toContainText("62.00");
+  await choices
+    .getByRole("button", {
+      name: rt("app.orders.choice.add", { count: 1 }),
+      exact: true,
+    })
+    .click();
+  await expect(choices).toHaveCount(0);
+  if (project === "phone") {
+    await button(page, rt("app.orders.order.view.order")).click();
+  }
+  await expect(shown(page, "שמנת")).toBeVisible();
+  await expect(shown(page, "62.00")).toBeVisible();
 });

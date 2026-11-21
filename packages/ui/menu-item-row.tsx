@@ -1,4 +1,4 @@
-import { Plus } from "lucide-react";
+import { ChevronRight, Plus } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 import { Badge } from "./badge";
 import { cn } from "./cn";
@@ -15,10 +15,17 @@ export type MenuItemRowProps = {
   /** Sold out tonight: greyed, saying so in these words ("נגמר"), and it can't be added. */
   soldOut?: string | null;
   /**
-   * Why else one tap can't add it (a choice to make, no department), under
-   * its detail: greyed, and it can't be added.
+   * Why else one tap can't add it (no department), under its detail:
+   * greyed, and it can't be added.
    */
   reason?: string | null;
+  /**
+   * What a tap does with its choices, under its detail, not greyed ("יש לו
+   * בחירות: הקשה פותחת אותן").
+   */
+  hint?: string | null;
+  /** A tap opens its choices (a choice to make): a chevron in place of the plus. */
+  opens?: boolean;
   /** Nothing adds it here (a view session): greyed, as the screen's other actions. */
   disabled?: boolean;
   /** One tap adds it, or opens its choices. */
@@ -27,8 +34,9 @@ export type MenuItemRowProps = {
 
 /**
  * An item to add to an order (waiter mode): the whole row adds it with one
- * tap, and one with choices says so and opens them. It counts what of it
- * the order holds. A list item: put it in a `MenuItemList`.
+ * tap, and one with a choice to make says so and opens its choices (P6). It
+ * counts what of it the order holds. A list item: put it in a
+ * `MenuItemList`.
  */
 export function MenuItemRow({
   name,
@@ -37,6 +45,8 @@ export function MenuItemRow({
   countLabel,
   soldOut = null,
   reason = null,
+  hint = null,
+  opens = false,
   disabled = false,
   onPick,
 }: MenuItemRowProps) {
@@ -46,6 +56,7 @@ export function MenuItemRow({
       <button
         type="button"
         disabled={out}
+        aria-haspopup={opens ? "dialog" : undefined}
         onClick={onPick}
         className={cn(
           "flex min-h-14 w-full items-center gap-3 px-4 py-2.5 text-start",
@@ -59,6 +70,9 @@ export function MenuItemRow({
           <span className="font-medium">{name}</span>
           <span className="text-ink-2 text-sm">{detail}</span>
           {reason ? <span className="text-ink-2 text-sm">{reason}</span> : null}
+          {hint && !out ? (
+            <span className="text-ink-2 text-sm">{hint}</span>
+          ) : null}
         </span>
         {soldOut !== null ? (
           <Badge>{soldOut}</Badge>
@@ -70,7 +84,17 @@ export function MenuItemRow({
                 <span className="sr-only"> {countLabel}</span>
               </span>
             ) : null}
-            <Plus aria-hidden="true" className="size-6 shrink-0 text-accent" />
+            {opens ? (
+              <ChevronRight
+                aria-hidden="true"
+                className="size-6 shrink-0 text-accent rtl:-scale-x-100"
+              />
+            ) : (
+              <Plus
+                aria-hidden="true"
+                className="size-6 shrink-0 text-accent"
+              />
+            )}
           </>
         )}
       </button>

@@ -1,3 +1,5 @@
+import type { DraftLine } from "@domain/order-screens";
+import { checkPicks } from "@domain/order-taking";
 import type {
   FloorOrder,
   MyOrders,
@@ -27,6 +29,7 @@ import {
   type Ticket,
   ticketCount,
 } from "./model";
+import { twinGroups } from "./real-menu";
 import type { DemoData, TwinViewer } from "./scenario";
 
 /*
@@ -200,6 +203,25 @@ export function twinFixes(data: DemoData): NonNullable<OrderFloor["fixes"]> {
   };
 }
 
+/**
+ * A sent line's choices as `public.order_detail` names them: each with its
+ * group's name and the option's price, from the item as the twin has it now
+ * (the send froze only their names); "" and 0 for one it no longer has.
+ */
+function detailChoices(data: DemoData, line: SentLine) {
+  const item = data.menu.items.find((i) => i.id === line.itemId);
+  return line.choices.map((option) => {
+    const group = item?.groups.find((g) =>
+      g.options.some((o) => o.name === option),
+    );
+    return {
+      group: group?.name ?? "",
+      option,
+      priceAgorot: group?.options.find((o) => o.name === option)?.price ?? 0,
+    };
+  });
+}
+
 /** An order whole, as `public.order_detail` gives it; null for none open or closed today. */
 export function twinDetail(
   data: DemoData,
@@ -258,11 +280,7 @@ export function twinDetail(
           id: line.id,
           item: line.itemId,
           name: line.name,
-          choices: line.choices.map((option) => ({
-            group: "",
-            option,
-            priceAgorot: 0,
-          })),
+          choices: detailChoices(data, line),
           quantity: line.qty,
           note: line.allergy ?? line.note,
           allergy: line.allergy !== null,
@@ -393,6 +411,22 @@ export function twinSentRound(
     })),
   };
 }
+
+/**
+ * Whether the send refuses a draft's choices, as `public.send_order_round`
+ * does: a line of an item still on the menu and available whose picks don't
+ * fit its groups now. The database stops at it before it names what sold
+ * out, so this is asked first.
+ */
+export const choicesRefused = (
+  data: DemoData,
+  lines: readonly DraftLine[],
+): boolean =>
+  lines.some((line) => {
+    const item = data.menu.items.find((i) => i.id === line.item);
+    if (!item || data.soldOut.includes(item.id)) return false;
+    return !checkPicks(twinGroups(item), line.choices).ok;
+  });
 
 /** The items of a draft sold out meanwhile, as the send refuses them. */
 export const soldOutIn = (data: DemoData, items: readonly string[]) =>

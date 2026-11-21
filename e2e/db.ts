@@ -4471,6 +4471,60 @@ export async function resetDemoOrders(): Promise<void> {
   await sql`select private.bump_order_version(${DEMO_RESTAURANT}::uuid)`;
 }
 
+/**
+ * The lines of the open order at the demo restaurant's place of that name,
+ * in the order they were sent, each with its choices by name and its unit
+ * price as the send froze them (waiter mode P6).
+ */
+export async function demoLines(placeName: string): Promise<
+  {
+    name: string;
+    choices: string[];
+    unitAgorot: number;
+    quantity: number;
+  }[]
+> {
+  const rows = await sql<
+    {
+      name: string;
+      choices: { optionName: string }[];
+      unitAgorot: number;
+      quantity: number;
+    }[]
+  >`
+    select l.name, l.choices, l.unit_agorot as "unitAgorot", l.quantity
+    from public.order_lines l
+    join public.order_tickets t on t.id = l.ticket_id
+    join public.order_rounds r on r.id = t.round_id
+    join public.orders o on o.id = t.order_id
+    join public.order_places p on p.id = o.place_id
+    where o.business_id = ${DEMO_RESTAURANT} and o.status = 'open'
+      and p.name = ${placeName}
+    order by r.sent_at, t.position, l.position`;
+  return rows.map((row) => ({
+    ...row,
+    choices: row.choices.map((choice) => choice.optionName),
+  }));
+}
+
+/**
+ * An item's groups of choices set as a manager's save would leave them, its
+ * version and the menu's moved, so a phone holding the old ones reads them
+ * changed with its next sync. A test that calls it ends with
+ * `resetDemoMenu`.
+ */
+export async function setDemoItemGroups(
+  itemName: string,
+  groups: unknown[],
+): Promise<void> {
+  await sql`
+    update public.menu_items
+    set option_groups = ${JSON.stringify(groups)}::text::jsonb,
+      version = version + 1
+    where business_id = ${DEMO_RESTAURANT} and name = ${itemName}
+      and archived_at is null`;
+  await sql`select private.bump_menu_version(${DEMO_RESTAURANT}::uuid)`;
+}
 /** How many rounds the open order at the demo restaurant's place of that name has. */
 export async function demoRounds(placeName: string): Promise<number> {
   const [row] = await sql<{ rounds: number }[]>`

@@ -1,6 +1,6 @@
 "use client";
 
-import { lineFixes } from "@domain/order-screens";
+import { choiceNames, lineFixes } from "@domain/order-screens";
 import type { Menu } from "@domain/order-taking";
 import {
   type CompReason,
@@ -103,8 +103,13 @@ export function Rounds({
   const { t, time, person, department } = useOrderWords();
   const { now, frame, paths } = useOrdersMode();
   if (!order && pending.length === 0) return null;
-  const nameOf = (item: string) =>
-    menu?.items.find((i) => i.id === item)?.name ?? "";
+  const itemOf = (item: string) => menu?.items.find((i) => i.id === item);
+  const nameOf = (item: string) => itemOf(item)?.name ?? "";
+  // A round on its way names its choices from the menu, as the send freezes them.
+  const choicesOf = (line: PendingSend["lines"][number]) => {
+    const item = itemOf(line.item);
+    return item ? choiceNames(item, line.choices) : [];
+  };
   return (
     <PageSection
       title={t("rounds.title")}
@@ -144,7 +149,7 @@ export function Rounds({
                     line={{
                       id: line.id,
                       name: nameOf(line.item),
-                      choices: [],
+                      choices: choicesOf(line),
                       quantity: line.quantity,
                       note: line.note,
                       allergy: line.allergy,

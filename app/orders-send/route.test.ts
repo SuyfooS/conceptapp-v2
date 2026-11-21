@@ -113,6 +113,64 @@ describe("the send", () => {
     expect(mocks.sendOrderRound).toHaveBeenCalledWith(PERSON, BUSINESS, round);
   });
 
+  it("sends a line's choices as they came, and refuses one no pick could name (P6)", async () => {
+    mocks.sendOrderRound.mockResolvedValue({
+      ok: true,
+      value: {
+        round: KEY,
+        order: ORDER,
+        sentAt: "2026-11-20T18:00:00Z",
+        first: true,
+        place: null,
+        takeaway: 1,
+        tickets: [],
+      },
+    });
+    const chosen = {
+      ...round,
+      lines: [
+        {
+          item: ITEM,
+          quantity: 2,
+          choices: [
+            { group: "doneness", option: "m" },
+            { group: "extras", option: "cheese" },
+          ],
+        },
+      ],
+    };
+    expect((await post({ business: BUSINESS, ...chosen })).status).toBe(200);
+    expect(mocks.sendOrderRound).toHaveBeenCalledWith(PERSON, BUSINESS, chosen);
+    mocks.sendOrderRound.mockClear();
+    const unnamed = await post({
+      business: BUSINESS,
+      ...round,
+      lines: [
+        {
+          item: ITEM,
+          quantity: 1,
+          choices: [{ group: "Doneness!", option: "m" }],
+        },
+      ],
+    });
+    expect(unnamed.status).toBe(400);
+    expect(await unnamed.json()).toMatchObject({
+      ok: false,
+      failure: "invalid",
+    });
+    expect(mocks.sendOrderRound).not.toHaveBeenCalled();
+    // The database's own refusals of them, each at its status.
+    for (const failure of ["choices", "price"] as const) {
+      mocks.sendOrderRound.mockResolvedValue({
+        ok: false,
+        failure,
+        items: [],
+        order: null,
+      });
+      expect((await post({ business: BUSINESS, ...chosen })).status).toBe(422);
+    }
+  });
+
   it("answers each refusal at its status, with the items and the order it names", async () => {
     mocks.sendOrderRound.mockResolvedValue({
       ok: false,
