@@ -24,6 +24,8 @@ what is next, defaults applied.
 - Second review, fixed: signing out and locking the station tell the other tabs whose records went, once the transaction is written (`tellTabs` on `conceptapp-orders`), so their rounds stop there too.
 - Second review, fixed: `getOwnPlace` throws when the session couldn't be read now (`sessionGone`: only no session, a token not valid or the auth server's 4xx but 429 is nobody), so `/orders-send`, `/orders-sync` and `/chat-sync` answer 500, tried again, never 401, which took the person's kept orders off the phone.
 - Second review, fixed: `/design`'s station twins lock with `clearsDevice: false` (`LockStation`, `StationLock`, `TodayView`'s `lockClearsDevice`), so the device's real orders are neither read nor cleared there.
+- Third review, fixed: signing out names the session cookie's person, unverified (`claimedSessionUser`, read before `getClaims`), where the auth server can't say who it is, so a sign-out with it out of reach still takes their records off the phone; the claim chooses only what the device deletes.
+- Third review, fixed: `/document-files` has a test for `getOwnPlace` throwing (the same sandboxed 404, nothing opened, logged or read, the error's message nowhere), and `/orders-send`'s 500 test checks the whole body.
 
 ## 2026-11-21 · chat · taking orders: choices, on screen (waiter mode P6)
 

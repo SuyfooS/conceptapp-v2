@@ -72,7 +72,9 @@ export async function signIn(
  * station included. The session is gone before that is read, so a failed
  * read can't keep anyone signed in. It also says whose session it ended,
  * read first, whose waiter-mode records on the phone go with it (P7): the
- * server's word, since the page's may be stale. With "who" it ends nothing
+ * server's word, since the page's may be stale, or the session cookie's
+ * claim where the auth server can't say (`sessionUserHere`), so a sign-out
+ * that can't reach it still takes them. With "who" it ends nothing
  * and says only whose session this is, for SignOutForm's question first;
  * anyone may ask that of their own session.
  */

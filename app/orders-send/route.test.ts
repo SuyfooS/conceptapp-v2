@@ -111,7 +111,13 @@ describe("the send", () => {
     );
     const out = await post(body);
     expect(out.status).toBe(500);
-    expect(await out.json()).toMatchObject({ ok: false, failure: "failed" });
+    // Exactly the failure: nothing of the error goes out with it.
+    expect(await out.json()).toEqual({
+      ok: false,
+      failure: "failed",
+      items: [],
+      order: null,
+    });
     expect(mocks.sendOrderRound).not.toHaveBeenCalled();
     log.mockRestore();
   });

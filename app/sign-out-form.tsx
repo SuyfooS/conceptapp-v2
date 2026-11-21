@@ -19,8 +19,10 @@ export type SignedOut = {
    */
   to: string | null;
   /**
-   * Whose session it ended (or, asked "who", is), as the server reads it:
-   * their records on the phone go with it. Null where nobody was signed in.
+   * Whose session it ended (or, asked "who", is), as the server reads it
+   * (the session cookie's claim where the auth server can't say): their
+   * records on the phone go with it, and nothing else is done by it. Null
+   * where nobody was signed in.
    */
   user: string | null;
 };

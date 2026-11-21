@@ -9,6 +9,7 @@ import {
   isSessionCookie,
   sessionCookieName,
 } from "./cookies";
+import { claimedSessionUser } from "./session-cookie";
 
 /**
  * Supabase for Server Components and Server Actions, acting as the signed-in
@@ -56,4 +57,18 @@ export async function hasSessionCookie(): Promise<boolean> {
     .some(
       (cookie) => cookie.value !== "" && isSessionCookie(cookie.name, name),
     );
+}
+
+/**
+ * Whose session this browser's cookie claims, unverified
+ * (`claimedSessionUser`), or null. Only for choosing which of the device's
+ * own records to delete, where the session couldn't be read as it ends:
+ * never for reading or showing anything.
+ */
+export async function sessionCookieUser(): Promise<string | null> {
+  if (!hasPublicEnv()) return null;
+  return claimedSessionUser(
+    (await cookies()).getAll(),
+    sessionCookieName(publicEnv().url),
+  );
 }

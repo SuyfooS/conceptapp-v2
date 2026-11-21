@@ -248,6 +248,37 @@ describe("GET /document-files/<business>/<file>", () => {
     expect(mocks.documentFileBytes).not.toHaveBeenCalled();
   });
 
+  it("answers the same sandboxed 404 when the session couldn't be read now, reading nothing and saying nothing of the error", async () => {
+    // getOwnPlace throws then (P7): the route's own catch answers, before
+    // the opening, its log line or the file read with the secret key, by
+    // either address.
+    vi.mocked(console.error).mockClear();
+    mocks.getOwnPlace.mockRejectedValue(
+      Object.assign(new Error("fetch failed"), {
+        name: "AuthRetryableFetchError",
+      }),
+    );
+    for (const file of [DOCUMENT, `${KEY}.pdf`]) {
+      const response = await asked(file);
+      expect(response.status, file).toBe(404);
+      expectSandboxed(response);
+      expect(await response.text()).toBe("");
+    }
+    expect(mocks.getOwnPlace).toHaveBeenCalledTimes(2);
+    expect(mocks.documentIdForFile).not.toHaveBeenCalled();
+    expect(mocks.documentToServe).not.toHaveBeenCalled();
+    expect(mocks.openDocument).not.toHaveBeenCalled();
+    expect(mocks.documentFileBytes).not.toHaveBeenCalled();
+    // Logged by its code alone: never its message.
+    expect(console.error).toHaveBeenCalledWith(
+      "a document's file could not be read",
+      "without a code",
+    );
+    expect(JSON.stringify(vi.mocked(console.error).mock.calls)).not.toContain(
+      "fetch failed",
+    );
+  });
+
   it("reads nothing of a removed one, even within its 10 minutes of undo, nor of one whose file is gone", async () => {
     // The row the reader reads says so: nothing is opened by its address.
     mocks.documentToServe.mockResolvedValueOnce(null);
