@@ -4599,6 +4599,44 @@ export async function demoOrderPlaceName(
   return row?.name ?? null;
 }
 
+/**
+ * The open order at the demo restaurant's place of that name, on the
+ * business day of now (P5). The seed opens table 4 six minutes before each
+ * reset, so a reset in the minutes after the day turns (05:00 by default)
+ * leaves it on the day before: "נסגרו היום" never lists it once closed, its
+ * rounds name no sender, and it opens again no more. Its opening and its
+ * rounds move together to the day's start at the earliest, so they keep
+ * their order and stay in the past.
+ */
+export async function demoOrderToToday(placeName: string): Promise<void> {
+  await sql`
+    with target as (
+      select o.id,
+        greatest(
+          o.opened_at,
+          (private.order_business_day(o.business_id, now())::timestamp
+            + private.order_day_ends(o.business_id)) at time zone b.timezone
+        ) - o.opened_at as shift
+      from public.orders o
+      join public.order_places p on p.id = o.place_id
+      join public.businesses b on b.id = o.business_id
+      where o.business_id = ${DEMO_RESTAURANT} and o.status = 'open'
+        and p.name = ${placeName}
+    ),
+    rounds as (
+      update public.order_rounds r
+      set sent_at = r.sent_at + t.shift
+      from target t
+      where r.order_id = t.id
+    )
+    update public.orders o
+    set day = private.order_business_day(o.business_id, now()),
+      opened_at = o.opened_at + t.shift
+    from target t
+    where o.id = t.id`;
+  await sql`select private.bump_order_version(${DEMO_RESTAURANT}::uuid)`;
+}
+
 /** The id of the open order at the demo restaurant's place of that name, or null. */
 export async function demoOpenOrder(placeName: string): Promise<string | null> {
   const [row] = await sql<{ id: string }[]>`

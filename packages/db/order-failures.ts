@@ -3,7 +3,8 @@ import { isMissingFunction } from "./missing";
 /*
  * Why a write to the orders was refused, from what the database said
  * (supabase/migrations/20261120000300_order_taking_orders.sql, its errors
- * table in the header), for the screens' words. Kept apart from @db/orders,
+ * table in the header; the close's "ביטול" in 20261122000100, with the
+ * same codes and hints), for the screens' words. Kept apart from @db/orders,
  * which is server only, so it is tested on its own.
  */
 
@@ -51,7 +52,10 @@ export type OrderFailure =
   | "moved"
   /** A held block waits to be called (55000, hint 'held'). */
   | "held"
-  /** The time for it passed (55000, hint 'window'). */
+  /**
+   * The time for it passed (55000, hint 'window'); for the close's "ביטול",
+   * also another's close.
+   */
   | "window"
   /** Someone already marked it ready (55000, hint 'prepared'). */
   | "prepared"

@@ -102,6 +102,11 @@ export type Order = {
   rounds: Round[];
   closedAt: number | null;
   closedBy: string | null;
+  /**
+   * The tickets its last close served, each with the state it had: the
+   * close's "ביטול" puts them back (P5), as `undo_close_order` does.
+   */
+  closeServed?: Record<string, TicketState> | null;
   /** Moved from another table (P5): the table it was at, when and by whom. */
   moved?: { from: string; at: number; by: string } | null;
   /** Opened again after a close (P5). */

@@ -5705,7 +5705,8 @@
           "moveHint": "Only to a free place",
           "noFree": "No place is free right now.",
           "cancel": "Cancel the order",
-          "cancelHint": "Cancels everything sent, with a reason"
+          "cancelHint": "Cancels everything sent, with a reason",
+          "waitSend": "Waiting for what was just sent to arrive."
         },
         "closed": {
           "title": "This order was closed",
@@ -5982,6 +5983,7 @@
         "takeaway": "An order with no place doesn't move to one.",
         "moveTaken": "{place}: there's an open order there already. Pick another place.",
         "reopenTaken": "The place is taken now. Open it again once it's free.",
+        "undoClose": "The close can't be undone from here any more. Open the order again from “Closed today”.",
         "notYet": "Taking orders isn't ready here yet.",
         "clock": "Not sent. Orders go during a shift: clock in, and what was chosen is kept here.",
         "staleShift": "Not sent. A shift from yesterday is still open: fix it on the clock, then send.",

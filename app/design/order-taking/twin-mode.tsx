@@ -2,7 +2,7 @@
 
 import type { DraftLine } from "@domain/order-screens";
 import { draftCount, withoutSent } from "@domain/order-screens";
-import type { RoundTarget } from "@domain/orders";
+import { closeUndoState, type RoundTarget } from "@domain/orders";
 import { useTranslations } from "next-intl";
 import {
   createContext,
@@ -38,6 +38,7 @@ import {
   setLabel,
   setTakenBack,
   uncompLine,
+  undoCloseOrder,
 } from "./changes";
 import { type DemoData, useOrderDemo } from "./demo-store";
 import {
@@ -86,8 +87,10 @@ const done = Promise.resolve({ ok: true as const, value: null });
  * database would, at once. Nothing goes anywhere: a reload starts the evening
  * again. `?state=readyNow` turns a ticket of Shiran's ready three seconds
  * after opening, and the mode's toast says so, as the app's sync does. P5's
- * fixes write the store the same way; a move to a taken table, or a reopen
- * while its table is taken, is refused as the database refuses it.
+ * fixes write the store the same way; a move to a taken table, a reopen
+ * while its table is taken, or a close's "ביטול" too late or of another's
+ * close, is refused as the database refuses it, and that "ביטול" puts back
+ * what the close served.
  */
 export function TwinOrdersMode({ children }: { children: ReactNode }) {
   const { data, now, update } = useOrderDemo();
@@ -220,6 +223,28 @@ export function TwinOrdersMode({ children }: { children: ReactNode }) {
           return Promise.resolve({ ok: false as const, failure: "taken" });
         }
         update((d) => reopenOrder(d, order, frame.userId, now));
+        return done;
+      },
+      // As undo_close_order: whoever closed it, within the 2 minutes, then
+      // while the table is free; what the close served goes back.
+      undoClose: (order) => {
+        const closed = data.closed.find((o) => o.id === order);
+        if (
+          closed &&
+          closed.closedAt !== null &&
+          closeUndoState({
+            closedAt: new Date(closed.closedAt),
+            closedBy: closed.closedBy,
+            actor: frame.userId,
+            now: new Date(now),
+          }) === "window"
+        ) {
+          return Promise.resolve({ ok: false as const, failure: "window" });
+        }
+        if (closed && data.orders.some((o) => o.placeId === closed.placeId)) {
+          return Promise.resolve({ ok: false as const, failure: "taken" });
+        }
+        update((d) => undoCloseOrder(d, order, frame.userId, now));
         return done;
       },
     }),

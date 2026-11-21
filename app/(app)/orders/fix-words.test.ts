@@ -62,6 +62,16 @@ const MEETS: Record<FixWrite, OrdersActionFailure[]> = {
   move: ["taken", "takeaway", "place", "closed", "gone", "viewOnly", "clock"],
   close: ["held", "closed", "gone", "viewOnly", "clock"],
   reopen: ["day", "notClosed", "taken", "gone", "viewOnly", "clock"],
+  undoClose: [
+    "window",
+    "day",
+    "notClosed",
+    "taken",
+    "gone",
+    "viewOnly",
+    "clock",
+    "notYet",
+  ],
 };
 
 describe("a refused fix", () => {
@@ -87,6 +97,17 @@ describe("a refused fix", () => {
     );
     expect(fixFailureWords(t, "taken", "reopen")).toBe(
       he.app.orders.failed.reopenTaken,
+    );
+    expect(fixFailureWords(t, "taken", "undoClose")).toBe(
+      he.app.orders.failed.reopenTaken,
+    );
+    // The close's undo too late, or of another's close, says where it opens
+    // again; a line's take-back too late keeps its own words.
+    expect(fixFailureWords(t, "window", "undoClose")).toBe(
+      he.app.orders.failed.undoClose,
+    );
+    expect(fixFailureWords(t, "window", "line")).toBe(
+      he.app.orders.failed.window,
     );
     expect(fixFailureWords(t, "held", "close")).toBe(he.app.orders.close.held);
     // A line ready: who cancels it, and who puts it back, each in its words.

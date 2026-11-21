@@ -13,6 +13,7 @@ import {
   setOrderLabel,
   setOrderTicketReady,
   takeBackOrderLine,
+  undoCloseOrder,
 } from "@db/orders";
 import {
   COMP_REASONS,
@@ -28,10 +29,10 @@ import type { OrdersActionResult } from "./orders-types";
  * P4): "הוגש" and its undo, "מוכן" and "החזרה להכנה", "החזרה מהשליחה" and
  * "להוציא", and a takeaway's label; and P5's fixes: a line cancelled with
  * a reason or put back, on the house or not, a whole order cancelled, moved,
- * closed and opened again. Each is bound on its screen to the
- * business it was drawn for, and refused in another (the business the app
- * opens is one cookie for the whole browser); never while viewing as
- * someone. Every argument is parsed here, and the database decides who may
+ * closed, the close taken back by its "ביטול", and opened again. Each is
+ * bound on its screen to the business it was drawn for, and refused in
+ * another (the business the app opens is one cookie for the whole browser);
+ * never while viewing as someone. Every argument is parsed here, and the database decides who may
  * do what again. None draws the screen again: the mode's sync asks at once
  * after each. Server actions rather than routes, as the menu's: none sets a
  * cookie, so one forwarded from another screen (a take-back held for its
@@ -236,7 +237,7 @@ export async function closeOrderAction(
   return answered(await closeOrder(access.userId, which.data));
 }
 
-/** "פתיחה מחדש": a closed order of today open again, and a close's undo. */
+/** "פתיחה מחדש": a closed order of today open again, its tickets served. */
 export async function reopenOrderAction(
   business: string,
   order: unknown,
@@ -246,4 +247,19 @@ export async function reopenOrderAction(
   const which = id.safeParse(order);
   if (!which.success) return { ok: false, failure: "invalid" };
   return answered(await reopenOrder(access.userId, which.data));
+}
+
+/**
+ * The close's "ביטול": the order open again and what the close served back
+ * where it was, by whoever closed it within 2 minutes.
+ */
+export async function undoCloseOrderAction(
+  business: string,
+  order: unknown,
+): Promise<OrdersActionResult> {
+  const access = await writer(business);
+  if (refusedBefore(access)) return access;
+  const which = id.safeParse(order);
+  if (!which.success) return { ok: false, failure: "invalid" };
+  return answered(await undoCloseOrder(access.userId, which.data));
 }

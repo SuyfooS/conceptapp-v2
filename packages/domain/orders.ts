@@ -38,6 +38,12 @@ export const ORDER_RULES = {
   joinFirstRoundSeconds: 60,
   /** A ticket marked ready goes back to new within this. */
   readyUndoMinutes: 5,
+  /**
+   * Whoever closed an order takes the close back within this, what it
+   * served back where it was (`public.undo_close_order`); after it, the
+   * order only opens again, its tickets served.
+   */
+  closeUndoMinutes: 2,
   /** Notes and labels are erased this long after the order closes. */
   notesKeptDays: 2,
   /** Who sent a round is kept this long. */
@@ -206,6 +212,24 @@ export function takeBackOffered(
     state.now.getTime() + holdMs <=
       state.sentAt.getTime() + state.minutes * 60_000
   );
+}
+
+/**
+ * Whether `actor` may take a close back now, as `public.undo_close_order`
+ * checks it: "ok" for whoever closed it, until `ORDER_RULES.closeUndoMinutes`
+ * after the close; "window" for anyone else, or after that.
+ */
+export function closeUndoState(state: {
+  closedAt: Date;
+  closedBy: string | null;
+  actor: string;
+  now: Date;
+}): "ok" | "window" {
+  return state.closedBy === state.actor &&
+    state.now.getTime() <=
+      state.closedAt.getTime() + ORDER_RULES.closeUndoMinutes * 60_000
+    ? "ok"
+    : "window";
 }
 
 /**

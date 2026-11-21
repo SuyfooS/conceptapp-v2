@@ -15,6 +15,7 @@ import {
   demoOrderLog,
   demoOrderPlaceName,
   demoOrderStatus,
+  demoOrderToToday,
   demoRounds,
   demoTakeawayStatus,
   demoTicketStatus,
@@ -37,7 +38,8 @@ import { heT } from "./t";
 // the mode at all, and the owner choosing who takes orders. P5's fixes: a
 // line cancelled with its reason and its undo, one ready refused to a
 // waiter and given on the house by the manager, the till by item and by
-// round with no total, closing and opening again from "נסגרו היום", moving
+// round with no total, a close taken back by its "ביטול" (the kitchen's
+// ticket new again), closing and opening again from "נסגרו היום", moving
 // an order and cancelling one whole. The restaurant
 // reads its template's words ("שולחן", "מנה", "מצב מלצרות"), read here from
 // the database as it does. Each test puts the orders and the clock back:
@@ -863,6 +865,9 @@ test("Shiran reads table 4's till by item and by round with no total, closes it,
   const project = testInfo.project.name;
   await enterAs(page, "manager");
   await addOpenDemoEntry(SHIRAN, 1);
+  // Today's, whenever the reset before it ran: one just after the day
+  // turned at 05:00 leaves the seed's table 4 on the day before.
+  await demoOrderToToday("4");
   await page.goto("/orders");
   await tile(page, "4").click();
   await showOrder(page, project);
@@ -896,6 +901,19 @@ test("Shiran reads table 4's till by item and by round with no total, closes it,
   await expect(main(page)).not.toContainText("סך הכל");
   await expect(main(page)).not.toContainText("60.00");
   await expectCleanPage(page);
+
+  // Closed by mistake: its "ביטול" takes the close back whole, the hummus
+  // the kitchen hasn't made back on its screen as new.
+  expect(await demoTicketStatus("4", "kitchen")).toBe("new");
+  await button(page, rt("app.orders.close.place")).click();
+  await expect.poll(() => demoOrderStatus("4")).toBe("closed");
+  await undoOn(
+    page,
+    rt("app.orders.toast.closed", { place: table("4") }),
+  ).click();
+  await expect.poll(() => demoOrderStatus("4")).toBe("open");
+  expect(await demoTicketStatus("4", "kitchen")).toBe("new");
+  await expect(button(page, rt("app.orders.close.place"))).toBeEnabled();
 
   // Closed: the table is free, and the order is under "נסגרו היום".
   await button(page, rt("app.orders.close.place")).click();

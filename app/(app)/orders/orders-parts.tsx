@@ -358,7 +358,8 @@ export function failureWords(
 
 /**
  * Which of P5's fixes was refused, for its own words: "line" a line taken
- * back or cancelled, "restore" a cancelled line put back.
+ * back or cancelled, "restore" a cancelled line put back, "undoClose" the
+ * close's "ביטול".
  */
 export type FixWrite =
   | "line"
@@ -367,14 +368,16 @@ export type FixWrite =
   | "order"
   | "move"
   | "close"
-  | "reopen";
+  | "reopen"
+  | "undoClose";
 
 /**
  * Why a fix was refused (P5), in the screen's words: what only those who
  * run orders do says so (a comp, a whole order's cancel, a line ready put
- * back); a place taken names it for a move and says to wait for a reopen; a
- * held block says what to do before a close; a shift that ended says so;
- * anything else as any write.
+ * back); a place taken names it for a move and says to wait for a reopen or
+ * a close's undo; a close's undo too late, or of another's close, says where
+ * it opens again; a held block says what to do before a close; a shift that
+ * ended says so; anything else as any write.
  */
 export function fixFailureWords(
   t: OrdersT,
@@ -391,7 +394,12 @@ export function fixFailureWords(
   if (failure === "taken" && what === "move") {
     return t("failed.moveTaken", { place });
   }
-  if (failure === "taken" && what === "reopen") return t("failed.reopenTaken");
+  if (failure === "taken" && (what === "reopen" || what === "undoClose")) {
+    return t("failed.reopenTaken");
+  }
+  if (failure === "window" && what === "undoClose") {
+    return t("failed.undoClose");
+  }
   if (failure === "held" && what === "close") return t("close.held");
   // A shift that ended while the screen was on.
   if (failure === "clock") return t("offClock.title");

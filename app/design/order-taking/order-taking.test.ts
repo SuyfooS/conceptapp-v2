@@ -13,6 +13,7 @@ import he from "@/messages/he.json";
 import {
   cancelLine,
   cancelOrder,
+  changeTicket,
   closeOrder,
   compLine,
   importMenu,
@@ -22,6 +23,7 @@ import {
   saveCategories,
   sendRound,
   uncompLine,
+  undoCloseOrder,
 } from "./changes";
 import {
   DEMO_START,
@@ -562,6 +564,49 @@ describe("the twin's fixes (P5)", () => {
     // Table 3 sat again: its order closed today waits.
     const taken = scenario("reopenTaken");
     expect(reopenOrder(taken, "order-3", READER, at)).toBe(taken);
+  });
+
+  it("takes a close back as undo_close_order does: what it served goes back, by whoever closed it within 2 minutes", () => {
+    const tickets = (data: ReturnType<typeof scenario>) =>
+      data.orders
+        .find((o) => o.id === "order-4")
+        ?.rounds.flatMap((round) => round.tickets)
+        .map((ticket) => `${ticket.id}:${ticket.state}`);
+    // The kitchen's starters ready, the held block new, the bar's beer
+    // served before the close.
+    const before = changeTicket(evening, "t-4a-kitchen", {
+      state: "ready",
+      readyAt: at,
+      readyBy: "noa",
+    });
+    const closed = closeOrder(before, "order-4", READER, at);
+    expect(closed.closed[0]?.closeServed).toEqual({
+      "t-4a-kitchen": "ready",
+      "t-4a-held": "new",
+    });
+    const back = undoCloseOrder(closed, "order-4", READER, at + 30_000);
+    expect(tickets(back)).toEqual([
+      "t-4a-kitchen:ready",
+      "t-4a-held:new",
+      "t-4a-bar:served",
+    ]);
+    expect(twinDetail(back, "order-4", at + 30_000)).toMatchObject({
+      status: "open",
+      closedAt: null,
+      reopenedBy: READER,
+    });
+    expect(back.closed.some((o) => o.id === "order-4")).toBe(false);
+    // Someone else's close, or after the 2 minutes: nothing changes.
+    expect(undoCloseOrder(closed, "order-4", "yoav", at)).toBe(closed);
+    expect(
+      undoCloseOrder(closed, "order-4", READER, at + 2 * MINUTE + 1000),
+    ).toBe(closed);
+    // A reopen leaves what the close served served.
+    expect(tickets(reopenOrder(closed, "order-4", READER, at))).toEqual([
+      "t-4a-kitchen:served",
+      "t-4a-held:served",
+      "t-4a-bar:served",
+    ]);
   });
 
   it("rings table 4 up by item after its fixes, the cancelled hummus out and the beer marked", () => {

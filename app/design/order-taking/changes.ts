@@ -1,10 +1,11 @@
 import type { MenuImportRow } from "@domain/menu-import";
 import type { DraftLine } from "@domain/order-screens";
 import type { CategoryInput } from "@domain/order-taking";
-import type {
-  CompReason,
-  LineCancelReason,
-  OrderCancelReason,
+import {
+  type CompReason,
+  closeUndoState,
+  type LineCancelReason,
+  type OrderCancelReason,
 } from "@domain/orders";
 import { newId as id } from "./ids";
 import {
@@ -355,7 +356,8 @@ export function moveOrder(
 
 /**
  * Closes an open order for the till, a table's or a takeaway's: whatever is
- * new or ready counts as served. The screen refuses first while a held block
+ * new or ready counts as served, and the order keeps what each of those
+ * was, for the close's "ביטול". The screen refuses first while a held block
  * waits (`hasHeld`).
  */
 export function closeOrder(
@@ -370,6 +372,12 @@ export function closeOrder(
     ...order,
     closedAt: now,
     closedBy: by,
+    closeServed: Object.fromEntries(
+      order.rounds
+        .flatMap((round) => round.tickets)
+        .filter((ticket) => ticket.state !== "served")
+        .map((ticket) => [ticket.id, ticket.state]),
+    ),
     rounds: order.rounds.map((round) => ({
       ...round,
       tickets: round.tickets.map((ticket) => ({
@@ -407,7 +415,65 @@ export function reopenOrder(
     ...data,
     orders: [
       ...data.orders,
-      { ...order, closedAt: null, closedBy: null, reopened: { at: now, by } },
+      {
+        ...order,
+        closedAt: null,
+        closedBy: null,
+        closeServed: null,
+        reopened: { at: now, by },
+      },
+    ],
+    closed: data.closed.filter((o) => o !== order),
+  };
+}
+
+/**
+ * The close's "ביטול", as `undo_close_order`: by whoever closed it within
+ * `ORDER_RULES.closeUndoMinutes` (`closeUndoState`), while the place is
+ * free, it opens again as a reopen does, and each ticket the close served
+ * goes back to what it was; one served before the close stays served.
+ * Anything else changes nothing.
+ */
+export function undoCloseOrder(
+  data: DemoData,
+  orderId: string,
+  by: string,
+  now: number,
+): DemoData {
+  const order = data.closed.find((o) => o.id === orderId);
+  if (
+    !order ||
+    order.cancelled ||
+    order.closedAt === null ||
+    closeUndoState({
+      closedAt: new Date(order.closedAt),
+      closedBy: order.closedBy,
+      actor: by,
+      now: new Date(now),
+    }) !== "ok" ||
+    data.orders.some((o) => o.placeId === order.placeId)
+  ) {
+    return data;
+  }
+  const was = order.closeServed ?? {};
+  return {
+    ...data,
+    orders: [
+      ...data.orders,
+      {
+        ...order,
+        closedAt: null,
+        closedBy: null,
+        closeServed: null,
+        reopened: { at: now, by },
+        rounds: order.rounds.map((round) => ({
+          ...round,
+          tickets: round.tickets.map((ticket) => {
+            const state = was[ticket.id];
+            return state ? { ...ticket, state } : ticket;
+          }),
+        })),
+      },
     ],
     closed: data.closed.filter((o) => o !== order),
   };

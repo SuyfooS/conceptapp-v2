@@ -92,6 +92,8 @@ export type OrdersActions = {
   move: (order: string, place: string) => Promise<OrdersActionResult>;
   close: (order: string) => Promise<OrdersActionResult>;
   reopen: (order: string) => Promise<OrdersActionResult>;
+  /** The close's "ביטול": open again, and what it served back where it was. */
+  undoClose: (order: string) => Promise<OrdersActionResult>;
 };
 
 /** Why a send was refused, as the screens say it. */

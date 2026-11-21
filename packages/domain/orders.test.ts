@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  closeUndoState,
   favouritesSchema,
   lineStateOf,
   liveItemCount,
   myOrdersSchema,
   ORDER_CAPS,
+  ORDER_RULES,
   type OrderDetail,
   type OrderLine,
   orderDay,
@@ -196,6 +198,25 @@ describe("taking a line back", () => {
     expect(state({ line: "takenBack" })).toBe("done");
     expect(state({ line: "cancelled" })).toBe("done");
     expect(state({ line: "comped" })).toBe("done");
+  });
+});
+
+describe("taking a close back (P5)", () => {
+  const closedAt = new Date("2026-11-20T18:00:00Z");
+  const at = (seconds: number) => new Date(closedAt.getTime() + seconds * 1000);
+  const state = (actor: string, now: Date, closedBy: string | null = ID) =>
+    closeUndoState({ closedAt, closedBy, actor, now });
+
+  it("is whoever closed it's, up to 2 minutes after, as undo_close_order checks", () => {
+    expect(ORDER_RULES.closeUndoMinutes).toBe(2);
+    expect(state(ID, at(0))).toBe("ok");
+    expect(state(ID, at(120))).toBe("ok");
+    expect(state(ID, at(121))).toBe("window");
+  });
+
+  it("is no one else's, nor once whoever closed it is no longer known", () => {
+    expect(state(OTHER, at(5))).toBe("window");
+    expect(state(ID, at(5), null)).toBe("window");
   });
 });
 

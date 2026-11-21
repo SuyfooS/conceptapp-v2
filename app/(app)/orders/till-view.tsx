@@ -34,9 +34,10 @@ import {
  * struck. Drawn from the order whole (`orderTill`), so it stays current with
  * the mode's sync. Phone and tablet: one view at a time. Desktop: both side
  * by side. The main action closes an open order (refused while a held
- * block waits, with its "ביטול" that opens it again), or opens a closed one
- * again the same day while its place is free; a cancelled order says who
- * cancelled it and why, with no list.
+ * block waits, with its "ביטול" that opens it again and gives the kitchen
+ * back what the close served), or opens a closed one again the same day
+ * while its place is free; a cancelled order says who cancelled it and why,
+ * with no list.
  */
 export function TillView({
   order,
@@ -119,7 +120,7 @@ function Till({
 
   async function write(
     run: () => ReturnType<typeof actions.close>,
-    what: "close" | "reopen",
+    what: "close" | "reopen" | "undoClose",
   ): Promise<boolean> {
     setBusy(true);
     const result = await run().catch(() => null);
@@ -134,9 +135,11 @@ function Till({
 
   async function close() {
     if (!(await write(() => actions.close(order.id), "close"))) return;
-    // The button turns into "פתיחה מחדש": the way back takes the focus.
+    // The button turns into "פתיחה מחדש": the way back takes the focus. It
+    // takes the close back whole, what it served back in the kitchen as it
+    // was; "פתיחה מחדש" leaves that served.
     say(t("toast.closed", { place: title }), {
-      undo: () => void write(() => actions.reopen(order.id), "reopen"),
+      undo: () => void write(() => actions.undoClose(order.id), "undoClose"),
       focus: true,
       after: () => titleRef.current,
     });

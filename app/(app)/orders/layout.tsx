@@ -11,6 +11,7 @@ import {
   setLabelAction,
   setReadyAction,
   takeBackAction,
+  undoCloseOrderAction,
 } from "./actions";
 import { frameOf, ordersAccess } from "./orders-access";
 import { OrdersModeProvider } from "./orders-provider";
@@ -42,6 +43,7 @@ export default async function OrdersLayout({
         move: moveOrderAction.bind(null, business),
         close: closeOrderAction.bind(null, business),
         reopen: reopenOrderAction.bind(null, business),
+        undoClose: undoCloseOrderAction.bind(null, business),
       }}
     >
       {children}

@@ -6,7 +6,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // isn't for, nothing in another business than the screen was drawn for,
 // nothing while viewing, nothing with a shape the database wouldn't take;
 // and each passes the person and the ids it was given. P5's fixes too: a
-// reason from its own list with a fix, and none with its undo.
+// reason from its own list with a fix, and none with its undo; the close's
+// "ביטול" as its own write.
 
 vi.mock("server-only", () => ({}));
 
@@ -23,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   moveOrder: vi.fn(),
   closeOrder: vi.fn(),
   reopenOrder: vi.fn(),
+  undoCloseOrder: vi.fn(),
 }));
 vi.mock("./orders-access", () => ({ ordersAccess: mocks.ordersAccess }));
 vi.mock("@db/orders", () => ({
@@ -37,6 +39,7 @@ vi.mock("@db/orders", () => ({
   moveOrder: mocks.moveOrder,
   closeOrder: mocks.closeOrder,
   reopenOrder: mocks.reopenOrder,
+  undoCloseOrder: mocks.undoCloseOrder,
 }));
 
 const {
@@ -51,6 +54,7 @@ const {
   setLabelAction,
   setReadyAction,
   takeBackAction,
+  undoCloseOrderAction,
 } = await import("./actions");
 
 const PLACE = "11111111-1111-4111-a111-111111111111";
@@ -79,6 +83,7 @@ beforeEach(() => {
     mocks.moveOrder,
     mocks.closeOrder,
     mocks.reopenOrder,
+    mocks.undoCloseOrder,
   ]) {
     write.mockResolvedValue({ ok: true, value: null });
   }
@@ -97,6 +102,7 @@ const all = [
   () => moveOrderAction(PLACE, TICKET, OTHER),
   () => closeOrderAction(PLACE, TICKET),
   () => reopenOrderAction(PLACE, TICKET),
+  () => undoCloseOrderAction(PLACE, TICKET),
 ];
 const writes = () => [
   mocks.serveOrderTicket,
@@ -110,6 +116,7 @@ const writes = () => [
   mocks.moveOrder,
   mocks.closeOrder,
   mocks.reopenOrder,
+  mocks.undoCloseOrder,
 ];
 
 describe("the mode's writes", () => {
@@ -197,6 +204,7 @@ describe("the fixes (P5)", () => {
       () => moveOrderAction(OTHER, TICKET, PLACE),
       () => closeOrderAction(OTHER, TICKET),
       () => reopenOrderAction(OTHER, TICKET),
+      () => undoCloseOrderAction(OTHER, TICKET),
     ]) {
       expect(await write()).toEqual({ ok: false, failure: "businessChanged" });
     }
@@ -228,6 +236,7 @@ describe("the fixes (P5)", () => {
     expect(await moveOrderAction(PLACE, TICKET, "table-4")).toEqual(invalid);
     expect(await closeOrderAction(PLACE, "x")).toEqual(invalid);
     expect(await reopenOrderAction(PLACE, 4)).toEqual(invalid);
+    expect(await undoCloseOrderAction(PLACE, null)).toEqual(invalid);
     for (const write of writes()) expect(write).not.toHaveBeenCalled();
   });
 
@@ -269,6 +278,13 @@ describe("the fixes (P5)", () => {
     expect(mocks.closeOrder).toHaveBeenCalledWith(PERSON, TICKET);
     await reopenOrderAction(PLACE, TICKET);
     expect(mocks.reopenOrder).toHaveBeenCalledWith(PERSON, TICKET);
+    await undoCloseOrderAction(PLACE, TICKET);
+    expect(mocks.undoCloseOrder).toHaveBeenCalledWith(PERSON, TICKET);
+    mocks.undoCloseOrder.mockResolvedValue({ ok: false, failure: "window" });
+    expect(await undoCloseOrderAction(PLACE, TICKET)).toEqual({
+      ok: false,
+      failure: "window",
+    });
     mocks.moveOrder.mockResolvedValue({
       ok: false,
       failure: "taken",

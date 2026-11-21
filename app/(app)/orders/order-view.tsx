@@ -181,8 +181,9 @@ function withShown(
  * taker off one finds the screen waiting, their draft kept. P5 fixes it: a
  * sent line's sheet, and "ההזמנה כולה" (close, move, cancel), each with its
  * "ביטול"; a line fix and a whole order's cancel wait 8 seconds, a close
- * and a move are written at once and undone by the reverse write (the
- * plan's T2).
+ * and a move are written at once and undone by a write (the plan's T2): the
+ * move back, and the close taken back whole, what it served back in the
+ * kitchen. They wait while a round of this screen is on its way.
  */
 export function OrderView({
   where,
@@ -255,6 +256,19 @@ export function OrderView({
   const [sheet, setSheet] = useState<LineSheetTarget | null>(null);
   const [moving, setMoving] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  // The sheets are the open order's they opened on: once it goes (closed or
+  // moved, on another phone too, while the sheet was open or the screen
+  // waited hidden), they close, so none opens again over the next order at
+  // this place. Set while drawing, as a state that follows a prop: never
+  // drawn open for another order, not even once.
+  const openId = known?.status === "open" ? known.id : null;
+  const [sheetsFor, setSheetsFor] = useState(openId);
+  if (sheetsFor !== openId) {
+    setSheetsFor(openId);
+    setSheet(null);
+    setMoving(false);
+    setCancelling(false);
+  }
   // A close or a move on its way: the order's other rows wait for it.
   const [busy, setBusy] = useState(false);
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -667,15 +681,19 @@ export function OrderView({
       say(fixFailureWords(t, result ? result.failure : "failed", "close"));
       return;
     }
-    // The section goes with the order: the way back takes the focus.
+    // The section goes with the order: the way back takes the focus. It
+    // takes the close back whole: the order opens again and what the close
+    // served goes back to the kitchen as it was (`undo_close_order`).
     say(t("toast.closed", { place: title }), {
       undo: () =>
         void actions
-          .reopen(id)
+          .undoClose(id)
           .catch(() => null)
           .then((back) => {
             if (!back?.ok) {
-              say(fixFailureWords(t, back ? back.failure : "failed", "reopen"));
+              say(
+                fixFailureWords(t, back ? back.failure : "failed", "undoClose"),
+              );
             }
             mode.syncNow();
           }),
@@ -795,8 +813,13 @@ export function OrderView({
     />
   ) : null;
 
-  // "ההזמנה כולה": closing, moving and cancelling, for an open order.
-  const locked = frame.viewing || cancelHeld || busy;
+  // "ההזמנה כולה": closing, moving and cancelling, for an open order. Each
+  // waits while a round of this screen is on its way, and says so: a close
+  // would serve it before the kitchen saw it, or refuse it, and a move would
+  // leave it refused at the old place, its lines in that place's draft.
+  const sendOnWay = pending.length > 0 || busySending;
+  const locked = frame.viewing || cancelHeld || busy || sendOnWay;
+  const waitSend = sendOnWay ? t("order.actions.waitSend") : null;
   const whole =
     known && known.status === "open" ? (
       <PageSection title={t("order.actions.title")} headingRef={actionsHeading}>
@@ -805,13 +828,14 @@ export function OrderView({
             leading={<Receipt />}
             title={place ? t("close.place") : t("close.takeaway")}
             subtitle={
-              closing.held
+              waitSend ??
+              (closing.held
                 ? t("close.held")
                 : closing.unserved.length > 0
                   ? t("close.unserved", {
                       departments: closing.unserved.map(department).join(", "),
                     })
-                  : t("close.allServed")
+                  : t("close.allServed"))
             }
             disabled={locked || closing.held}
             onClick={() => void close()}
@@ -821,9 +845,10 @@ export function OrderView({
               leading={<ArrowLeftRight />}
               title={t("order.actions.move")}
               subtitle={
-                free.length > 0
+                waitSend ??
+                (free.length > 0
                   ? t("order.actions.moveHint")
-                  : t("order.actions.noFree")
+                  : t("order.actions.noFree"))
               }
               disabled={locked || free.length === 0}
               onClick={(event) =>
@@ -835,7 +860,7 @@ export function OrderView({
             <ListRow
               leading={<Ban />}
               title={t("order.actions.cancel")}
-              subtitle={t("order.actions.cancelHint")}
+              subtitle={waitSend ?? t("order.actions.cancelHint")}
               disabled={locked || liveIds.length === 0}
               onClick={(event) =>
                 openFrom(event.currentTarget, () => setCancelling(true))

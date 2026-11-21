@@ -23,6 +23,11 @@ what is next, defaults applied.
   - The desktop's "נסגרו היום" names each row's button by its place, state and time (`floor.closed.rowLabel`), so two orders at one table read apart.
   - A serve or a "להוציא" sends a fix held on the order first, as close and move do: a taker's cancel on a new ticket never lands after a serve that makes it too late. e2e: Yoav serves the bar's ticket while his beer's cancel waits.
   - e2e: the till shows no 60.00 for table 4 (32 + 28), the floor reads table 4 open again after the reopen, "נסגרו היום" lists takeaway 1 as cancelled, and the owner's price and reason are read on the newest cancel's own row.
+- After the second review:
+  - The close's "ביטול" takes the close back whole: `public.undo_close_order` in 20261122000100 (no longer words only) opens the order again and, in one transaction, puts the tickets the close served (its `closed_at` and `closed_by`) back to new or ready; only by whoever closed it, within 2 minutes (`ORDER_RULES.closeUndoMinutes`, `closeUndoState`; 'window' otherwise, `failed.undoClose`), else reopen's refusals. pgTAP `order_taking_fixes.test.sql` 13, `database.types.ts`, `undoCloseOrder`, `undoCloseOrderAction`, on the order screen's and the till's toast and the twin (its store keeps `closeServed`). e2e: table 4's kitchen ticket is new again after the undo.
+  - e2e: the till walk puts table 4's seeded order on today's business day first (`demoOrderToToday`), so a reset just after 05:00 no longer leaves it on yesterday's.
+  - Close, move and cancel-order wait while a round of the screen is on its way, and say so (`order.actions.waitSend`): a close no longer serves a round the kitchen never saw, nor a move strands one at the old table.
+  - The order's sheets close when its open order changes (closed or moved elsewhere, from another phone too), so none opens again over the next order at that place.
 
 ## 2026-11-21 · chat · taking orders: send and prepare, on screen (waiter mode P4)
 
