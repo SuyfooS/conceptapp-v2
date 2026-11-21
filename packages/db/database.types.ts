@@ -3925,10 +3925,7 @@ export type Database = {
         Returns: undefined;
       };
       acknowledge_file_duties: {
-        Args: {
-          business: string;
-          duties_version: string;
-        };
+        Args: { business: string; duties_version: string };
         Returns: boolean;
       };
       add_time_break: {
@@ -4020,10 +4017,7 @@ export type Database = {
         };
         Returns: undefined;
       };
-      audit_guard_status: {
-        Args: Record<PropertyKey, never>;
-        Returns: Json;
-      };
+      audit_guard_status: { Args: Record<PropertyKey, never>; Returns: Json };
       cancel_list: {
         Args: { actor: string; at_time?: string; list: string };
         Returns: undefined;
@@ -4263,11 +4257,7 @@ export type Database = {
         Returns: Database["public"]["Enums"]["swap_status"];
       };
       dispute_bank_change: {
-        Args: {
-          actor: string;
-          at_time?: string;
-          business: string;
-        };
+        Args: { actor: string; at_time?: string; business: string };
         Returns: undefined;
       };
       document_upload_place: {
@@ -4291,16 +4281,11 @@ export type Database = {
         Returns: Json;
       };
       employee_file: {
-        Args: {
-          business: string;
-          person: string;
-        };
+        Args: { business: string; person: string };
         Returns: Json;
       };
       employee_file_status: {
-        Args: {
-          business: string;
-        };
+        Args: { business: string };
         Returns: {
           complete: boolean;
           detail: Json;
@@ -4329,10 +4314,7 @@ export type Database = {
         }[];
       };
       export_employee_files: {
-        Args: {
-          business: string;
-          recipient: string;
-        };
+        Args: { business: string; recipient: string };
         Returns: Json;
       };
       finish_list: {
@@ -4475,11 +4457,7 @@ export type Database = {
         Returns: undefined;
       };
       note_step_up: {
-        Args: {
-          actor: string;
-          at_time?: string;
-          step_purpose: string;
-        };
+        Args: { actor: string; at_time?: string; step_purpose: string };
         Returns: undefined;
       };
       open_document: {
@@ -4708,11 +4686,7 @@ export type Database = {
         Returns: undefined;
       };
       reveal_employee_fields: {
-        Args: {
-          business: string;
-          fields: string[];
-          person: string;
-        };
+        Args: { business: string; fields: string[]; person: string };
         Returns: Json;
       };
       role_permission_matrix: {
@@ -5198,11 +5172,7 @@ export type Database = {
         Returns: string;
       };
       submit_employee_file: {
-        Args: {
-          actor: string;
-          at_time?: string;
-          business: string;
-        };
+        Args: { actor: string; at_time?: string; business: string };
         Returns: undefined;
       };
       take_back_order_line: {
@@ -5214,9 +5184,7 @@ export type Database = {
         Returns: undefined;
       };
       team_emergency_contacts: {
-        Args: {
-          business: string;
-        };
+        Args: { business: string };
         Returns: {
           contact: string;
           demo: boolean;

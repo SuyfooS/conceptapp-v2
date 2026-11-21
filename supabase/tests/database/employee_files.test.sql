@@ -8,7 +8,8 @@
 -- every refusal returned and logged (a view as any role, someone outside
 -- the business, which names no more, the cap of 20 a day and its "many",
 -- none for a stranger's ids, none signed out, none with the module off);
--- the two numbers revealed one call at a time, at most 30 people an hour;
+-- the two numbers revealed one call at a time, at most 30 people an hour,
+-- counted under the holder's lock;
 -- the export, with an unconfirmed account held back; the status, details
 -- for holders and a count for the team; the emergency contacts; the log's
 -- rows by who holds the files; and no row holding a value. Fixed ids (f1…),
@@ -16,7 +17,7 @@
 -- or another test. The files are written straight into the tables here
 -- (their writes are employee_files_writes.test.sql's), with stand-in bytes.
 begin;
-select plan(75);
+select plan(76);
 
 -- A: 1 its owner, 2 a manager, 3 Noa and 4 Yoav, workers, 5 the accountant,
 -- 6 a worker who left, 12 a manager given the files, 101 to 131 workers. B:
@@ -436,6 +437,17 @@ select is(
      and a.action = 'employee.view_denied' and a.details ->> 'reason' = 'limit'),
   1,
   'the limit''s refusal is logged'
+);
+-- The count is taken under the holder's lock, held to the end of the
+-- transaction, so parallel reveals count one after another.
+select ok(
+  exists (
+    select 1 from pg_locks l
+    where l.locktype = 'advisory' and l.pid = pg_backend_pid() and l.granted and l.objsubid = 1
+      and ((l.classid::bigint << 32) | l.objid::bigint)
+        = hashtextextended('employee.reveal:' || pg_temp.a()::text || ':' || pg_temp.p(1)::text, 0)
+  ),
+  'a holder''s reveals are counted one at a time'
 );
 select pg_temp.sign_in(pg_temp.p(2));
 select is(pg_temp.reveal(pg_temp.p(3), '{id}'), 'not_holder', 'a manager reveals nothing, and nothing raises');

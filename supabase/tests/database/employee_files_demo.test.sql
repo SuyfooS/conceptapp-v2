@@ -2,15 +2,16 @@
 -- (20261126000200_employee_files.sql; profile H4): a reset gives every
 -- active manager and worker a file of made-up values by its definition's
 -- "files" (0x00 first, IDs from the test range, emails that can't receive
--- mail, the cases on the people they name), with no log row and no key; a
--- demo that keeps its files refuses writes and contacts; 0x00 is refused in
+-- mail, the cases on the people they name), with no log row and no key,
+-- leaving payroll's birth date open; a demo that keeps its files refuses
+-- writes and contacts; 0x00 is refused in
 -- a business that isn't a demo; the purge takes every file table's rows and
 -- the reset runs clean after it, twice; and the nightly check names what is
 -- missing of the log's guards and the files', records a run, and is read
 -- with the secret key alone. Fixed ids (f3…), numbers (050-076-xxxx) and
 -- slugs (efd-…).
 begin;
-select plan(29);
+select plan(31);
 
 -- The demo: 1 its owner, 2 a manager, 3 to 10 workers, 11 its accountant.
 -- 12 owns a business that isn't a demo.
@@ -172,6 +173,13 @@ select is(
   0,
   'with no log row and no key'
 );
+-- The made-up files hold birth dates nobody can change there, so payroll's
+-- details still take one (P5's sheet, the accountant's e2e).
+select lives_ok(
+  $$select public.set_payroll_details(pg_temp.p(11), pg_temp.d(), pg_temp.p(4),
+    '{"birth_date": "1990-01-02"}')$$,
+  'payroll takes a birth date the demo''s file holds, the module off'
+);
 
 ------------------------------------------------------------------------------
 -- Closed, and nowhere else
@@ -187,6 +195,11 @@ select throws_ok(
 select throws_ok(
   $$select public.set_emergency_contact(pg_temp.p(4), pg_temp.d(), null)$$,
   '55000', 'A demo business keeps its made-up files', 'and its contacts'
+);
+select lives_ok(
+  $$select public.set_payroll_details(pg_temp.p(11), pg_temp.d(), pg_temp.p(4),
+    '{"birth_date": "1990-01-03"}')$$,
+  'and with it on, while the demo keeps its files'
 );
 insert into public.businesses (id, slug, name) values (pg_temp.r(), 'efd-real', 'Real');
 insert into public.memberships (business_id, user_id, role)

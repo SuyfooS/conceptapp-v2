@@ -48,8 +48,9 @@
 --                 confirmed the duties writes the names, the birth date and
 --                 the ID (s.14 corrections), also for someone who left, and
 --                 only an owner an owner's. The bank is the person's alone,
---                 after a fresh SMS code recorded here and never in the week
---                 after a phone change; every new account waits for a holder
+--                 a new account or the one there withdrawn, after a fresh SMS
+--                 code recorded here and never in the week after a phone
+--                 change; every new account waits for a holder
 --                 (bank_review). A name, ID or address that replaces one makes
 --                 this year's 101 due again 7 days on. The birth date writes
 --                 youth_until. Each write raises again without the row a
@@ -57,7 +58,8 @@
 --                 never a value or a hint.
 --   reads         security-definer functions under the person's own session:
 --                 the file, the two numbers revealed one call at a time (30
---                 people an hour), the export for payroll, the duties
+--                 people an hour, each holder's reveals counted one after
+--                 another), the export for payroll, the duties
 --                 screen, the completeness status (holders the details,
 --                 team.view a count) and the emergency contacts (team.view
 --                 and holders). The person reads their own, also after
@@ -73,7 +75,9 @@
 --                 is H6's).
 --   payroll       P5 never stored a birth date or an ID; its
 --                 set_payroll_details keeps its birth-date path while the
---                 file holds none, and refuses once it does (22023, hint
+--                 file holds none or takes no writes (the module off, a demo
+--                 keeping its made-up files, real values not open), and
+--                 refuses once it holds one and takes them (22023, hint
 --                 'in_file'). The same advisory lock serializes both.
 --   the demo      both demos get made-up files at every reset
 --                 (private.seed_demo_files, from their definition's "files"),
@@ -82,7 +86,11 @@
 -- Locks, in this order and no other: the person's file
 -- (private.file_lock, an advisory lock per business and person), then
 -- employee_details, then member_payroll_details, then employee_tax_years,
--- then private.person_keys. No writer takes two people's files.
+-- then private.person_keys. No writer takes two people's files. The reads
+-- take one advisory lock each and nothing after it but the log and
+-- private.file_denials: a holder's view of a person on a day
+-- (private.note_file_view), and a holder's reveals in a business
+-- (public.reveal_employee_fields), so no cycle is possible.
 --
 -- It replaces, from their latest versions and with only these changes:
 -- private.accountant_perms (20261110000300_payroll_access.sql's) with
@@ -1167,10 +1175,11 @@ $$;
 -- (sealed: base64 from @db/crypto). The person writes their own while
 -- active; a holder who confirmed the duties writes the names, the birth
 -- date and the identity (42501 hint 'own' for the rest), also for someone
--- who left; an owner's file only an owner. The bank is the person's, after
--- a fresh code (55000 'step_up', consumed here), never in the week after a
--- phone change (55000 'phone_hold', DETAIL the day it opens); a new account
--- waits for a holder ('warned' when its check warned, else 'new'). A plain
+-- who left; an owner's file only an owner. The bank is the person's, a new
+-- account or the one there withdrawn (null), after a fresh code (55000
+-- 'step_up', consumed here), never in the week after a phone change (55000
+-- 'phone_hold', DETAIL the day it opens); a new account waits for a holder
+-- ('warned' when its check warned, else 'new'). A plain
 -- group sent as stored changes nothing; a sealed one always changes, since
 -- the server sends only what changed. A name, ID or address that replaces
 -- one makes this year's 101 due again, 7 days after change_on, when there
@@ -1403,22 +1412,7 @@ begin
 
   if patch ? 'bank' then
     part := patch -> 'bank';
-    if jsonb_typeof(part) = 'null' then
-      -- The person withdraws the instruction: the whole account goes.
-      if was.bank_account_enc is not null then
-        became.bank_code := null;
-        became.bank_branch := null;
-        became.bank_account_enc := null;
-        became.bank_account_hint := null;
-        became.bank_holder_kind := null;
-        became.bank_holder_enc := null;
-        became.bank_instruction_at := null;
-        became.bank_instruction_version := null;
-        became.bank_review := null;
-        became.bank_changed_at := set_on;
-        changed := array_append(changed, 'bank');
-      end if;
-    else
+    if jsonb_typeof(part) is distinct from 'null' then
       if not private.file_keys_ok(
           part, '{code,branch,sealed,hint,holder,holder_sealed,instruction,check}'::text[]
         )
@@ -1444,7 +1438,12 @@ begin
       if ((part ->> 'holder') = 'family') is distinct from (part ? 'holder_sealed') then
         raise exception 'A family account names its holder, and only it' using errcode = '22023';
       end if;
+    end if;
 
+    -- A new account, or the one there withdrawn (bank: null): the payroll
+    -- instruction is the person's own word, so both wait for the checks
+    -- below. Withdrawing what isn't there changes nothing and needs none.
+    if jsonb_typeof(part) is distinct from 'null' or was.bank_account_enc is not null then
       -- The week after a phone change: the new number may not be the
       -- person's, and the code below would have gone to it.
       select max(pc.changed_at) into phone_changed
@@ -1464,7 +1463,24 @@ begin
         raise exception 'A fresh code first' using errcode = '55000', hint = 'step_up';
       end if;
       delete from private.step_ups s where s.user_id = actor and s.purpose = 'bank';
+    end if;
 
+    if jsonb_typeof(part) = 'null' then
+      -- The person withdraws the instruction: the whole account goes.
+      if was.bank_account_enc is not null then
+        became.bank_code := null;
+        became.bank_branch := null;
+        became.bank_account_enc := null;
+        became.bank_account_hint := null;
+        became.bank_holder_kind := null;
+        became.bank_holder_enc := null;
+        became.bank_instruction_at := null;
+        became.bank_instruction_version := null;
+        became.bank_review := null;
+        became.bank_changed_at := set_on;
+        changed := array_append(changed, 'bank');
+      end if;
+    else
       became.bank_code := (part ->> 'code')::smallint;
       became.bank_branch := (part ->> 'branch')::smallint;
       became.bank_account_enc := private.sealed_of(part -> 'sealed', 128);
@@ -2048,9 +2064,10 @@ $$;
 -- The ID number, the account number or both, sealed, for one person: the
 -- same check as the file, and for a holder at most 30 other people revealed
 -- in the last hour (the same person again is fine; over it: 'limit',
--- logged). A holder's reveal logs employee.view {person, fields} every
--- time; the person's own, nothing. Bad fields are the one refusal that
--- raises (22023).
+-- logged), counted under the holder's lock in the business, so parallel
+-- calls can't pass it together. A holder's reveal logs employee.view
+-- {person, fields} every time; the person's own, nothing. Bad fields are
+-- the one refusal that raises (22023).
 create function public.reveal_employee_fields(business uuid, person uuid, fields text[])
 returns jsonb
 language plpgsql
@@ -2082,6 +2099,12 @@ begin
   end if;
 
   if reader = 'holder' then
+    -- One count at a time per holder and business: parallel reveals would
+    -- each count under 30 without seeing the others' rows. The lock holds
+    -- to the end, so the next count sees this reveal's row.
+    perform pg_advisory_xact_lock(
+      hashtextextended('employee.reveal:' || business::text || ':' || me::text, 0)
+    );
     select count(distinct a.details ->> 'person')::integer into revealed
     from public.audit_log a
     where a.business_id = business
@@ -2540,10 +2563,11 @@ create trigger on_auth_user_phone_changed
 
 -- 20261110000600_payroll_details.sql's, with two changes in the birth date's
 -- block: it takes the person's file lock first (private.file_lock, as every
--- writer of the file does), and once the file holds a birth date it refuses
--- one here (22023, hint 'in_file'): the file decides from then on. Until
--- then it works as before, so a business without the file still marks a
--- minor.
+-- writer of the file does), and once the file holds a birth date and takes
+-- writes (private.file_open_for is null) it refuses one here (22023, hint
+-- 'in_file'): the file decides from then on. Until then it works as
+-- before, so a business without the file still marks a minor, and so does
+-- a demo, whose made-up files hold birth dates nobody can change.
 create or replace function public.set_payroll_details(
   actor uuid,
   business uuid,
@@ -2657,9 +2681,12 @@ begin
   -- the accountant), read once, and only the 18th birthday kept.
   if patch ? 'birth_date' then
     -- The file's lock first, as every writer of the file takes it: once the
-    -- file holds a birth date, it is the file's.
+    -- file holds a birth date and takes writes, it is the file's. While it
+    -- takes none (the module off, a demo keeping its made-up files, real
+    -- values not open), nobody could change the date there, so this stays
+    -- the place to enter one.
     perform private.file_lock(business, person);
-    if exists (
+    if private.file_open_for(business) is null and exists (
       select 1 from public.employee_details d
       where d.business_id = business and d.user_id = person and d.birth_date is not null
     ) then

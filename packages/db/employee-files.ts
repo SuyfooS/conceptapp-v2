@@ -718,7 +718,8 @@ export async function submitEmployeeFile(
 
 /**
  * After the server checked a fresh SMS code (H5): the step-up a bank change
- * needs, used once within 10 minutes.
+ * needs, a new account or the withdrawal of the one there, used once within
+ * 10 minutes.
  */
 export async function noteStepUp(
   actorId: string,

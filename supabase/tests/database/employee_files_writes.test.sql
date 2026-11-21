@@ -4,16 +4,17 @@
 -- person their own, a holder who confirmed the duties the names, the birth
 -- date and the ID, also for someone who left, an owner's file only an
 -- owner, never an accountant's); the sealed values checked; the data key
--- made once; the bank behind a fresh code, never in the week after a phone
--- change, every new account waiting for a holder; the 101 due again when a
--- detail is replaced; youth_until from the birth date, and payroll's birth
--- date closed once the file holds one; nothing written for what is stored
+-- made once; the bank, a new account or one withdrawn, behind a fresh code,
+-- never in the week after a phone change, every new account waiting for a
+-- holder; the 101 due again when a detail is replaced; youth_until from the
+-- birth date, and payroll's birth date closed once the file holds one and
+-- takes writes; nothing written for what is stored
 -- already; the contact, the sending, the bank's confirmation and dispute,
 -- what went directly to payroll and the 101's marks; and nothing deleting a
 -- file, a key or the log. Every write at 10:00 on 26 November 2026 in
 -- Israel. Fixed ids (f2…), numbers (050-075-xxxx) and slugs (efw-…).
 begin;
-select plan(87);
+select plan(91);
 
 -- A: 1 its owner, 2 a manager holding the files who confirmed the duties,
 -- 3 Noa and 4 Yoav, workers, 5 the accountant, 6 a worker who left, 7 a
@@ -264,13 +265,25 @@ update auth.users set phone = '972500759998' where id = pg_temp.p(14);
 select is(
   (select count(*)::integer from private.phone_changes c where c.user_id = pg_temp.p(14)),
   0, 'a first number is not a change');
+select is(pg_temp.try($$select pg_temp.set(3, 3, '{"bank": null}')$$), '55000:step_up',
+  'withdrawing the account waits for a fresh code too');
+update private.phone_changes set changed_at = pg_temp.at() - interval '3 days'
+where user_id = pg_temp.p(3);
+select public.note_step_up(pg_temp.p(3), 'bank', pg_temp.at());
+select is(pg_temp.try($$select pg_temp.set(3, 3, '{"bank": null}')$$), '55000:phone_hold',
+  'and for the week after a phone change');
+update private.phone_changes set changed_at = pg_temp.at() - interval '8 days'
+where user_id = pg_temp.p(3);
 select is(pg_temp.try($$select pg_temp.set(3, 3, '{"bank": null}')$$), 'ok',
   'the person withdraws the account');
 select ok(
   (select f.bank_account_enc is null and f.bank_code is null and f.bank_review is null
-   from pg_temp.file(3) f),
-  'and it goes whole'
+   from pg_temp.file(3) f)
+  and not exists (select 1 from private.step_ups s where s.user_id = pg_temp.p(3)),
+  'and it goes whole, the code used'
 );
+select is(pg_temp.set(4, 4, '{"bank": null}') -> 'changed', '[]'::jsonb,
+  'withdrawing no account changes nothing, and needs no code');
 select is(
   (select y.status from public.employee_tax_years y
    where y.user_id = pg_temp.p(3) and y.tax_year = 2026),
@@ -337,6 +350,14 @@ select is(
   pg_temp.try($$select public.set_payroll_details(pg_temp.p(1), pg_temp.a(), pg_temp.p(3),
     '{"birth_date": "1994-03-01"}', pg_temp.at())$$),
   '22023:in_file', 'and none once the file holds one');
+update public.business_modules set enabled = false
+where business_id = pg_temp.a() and module_key = 'employee_files';
+select is(
+  pg_temp.try($$select public.set_payroll_details(pg_temp.p(1), pg_temp.a(), pg_temp.p(3),
+    '{"birth_date": "1994-03-01"}', pg_temp.at())$$),
+  'ok', 'unless the file takes no writes (the module off): then nobody could change it there');
+update public.business_modules set enabled = true
+where business_id = pg_temp.a() and module_key = 'employee_files';
 select is(
   pg_temp.try($$select public.set_payroll_details(pg_temp.p(1), pg_temp.a(), pg_temp.p(3),
     '{"payroll_number": "17", "rest_day": 5}', pg_temp.at())$$),

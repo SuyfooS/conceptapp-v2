@@ -1565,8 +1565,10 @@ with the secret key (`setHourlyWage`, refusals read by `wageFailureOf` in
 Details for payroll (`20261110000600_payroll_details.sql`, payroll P5),
 reconciled with the hiring file's design: no ID number, address, bank account
 or birth date here (they are the hiring file's, below; since H4 its
-`set_payroll_details` takes a birth date only while the file holds none, under
-the file's lock, and refuses one after: 22023, hint `in_file`). `public.member_payroll_details` (one row per person, the
+`set_payroll_details` takes a birth date while the file holds none or takes no
+writes (the module off, a demo keeping its made-up files, real values not
+open), under the file's lock, and refuses one once the file holds one and takes
+writes: 22023, hint `in_file`). `public.member_payroll_details` (one row per person, the
 table's defaults standing for none) holds the payroll system's number
 (`^[0-9A-Za-z-]{1,20}$`, one person's in a business), the weekly rest day
 (6 Saturday, 5 Friday or 0 Sunday: a day, never a religion), whether the Hours
@@ -1672,7 +1674,8 @@ per role: owners always hold it, accountants by `private.accountant_perms`
   back), `set_employee_details` (a patch of groups; the person their own, a
   ready holder the names, birth date and identity, 42501 `own` for the rest,
   an owner's only an owner, `owner`; an accountant's 22023 `not_staff`; the
-  bank the person's after `note_step_up` within 10 minutes, 55000 `step_up`,
+  bank the person's, a new account or the one there withdrawn (`bank: null`),
+  after `note_step_up` within 10 minutes, 55000 `step_up`,
   used once, never in the 7 days after a phone change, 55000 `phone_hold`
   with the day it opens as DETAIL; every new account `new`, `warned` when its
   check warned; a name, ID or address that replaces one makes this year's 101
@@ -1687,7 +1690,8 @@ per role: owners always hold it, accountants by `private.accountant_perms`
   `member.emergency`).
 - **Reads**, under the person's own session, security definer and volatile:
   `employee_file`, `reveal_employee_fields` (`id`, `bank_account`; 30 other
-  people an hour for a holder), `export_employee_files` (ready holders; an
+  people an hour for a holder, counted under an advisory lock per holder and
+  business, so parallel calls can't pass it), `export_employee_files` (ready holders; an
   unconfirmed account held back; one `employee.export {people, recipient,
   held}` first), `acknowledge_file_duties` (`employee.ack`),
   `employee_file_status` (holders the details, `team.view` a count and the
@@ -1703,7 +1707,7 @@ per role: owners always hold it, accountants by `private.accountant_perms`
 - **Real values.** `private.file_settings.real_values` stays false until Orel
   opens it on the production project, after the lawyer:
   `update private.file_settings set real_values = true, changed_at = now();`.
-- **The log's guard.** The nightly job `audit-guard` (02:41, off locally)
+- **The log's guard.** The nightly job `audit-guard` (02:41 UTC, off locally)
   writes `private.audit_guard_runs`: `private.audit_guard_problems()` names a
   missing or disabled `audit_log_kept`, `audit_log_unchanged` or file "kept"
   trigger, an update, delete or truncate on the log for `service_role`,
