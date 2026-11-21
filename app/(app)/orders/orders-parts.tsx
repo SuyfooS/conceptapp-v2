@@ -165,22 +165,31 @@ export function PlaceTileView({
   );
 }
 
-/** A line as the kitchen and the waiter read it, its state in words. */
+/**
+ * A line as the kitchen and the waiter read it, its state in words: struck
+ * once taken back or cancelled ("בוטל", or with its reason in `gone` on the
+ * order), and still made with its `mark` once on the house.
+ */
 export function SentLineView({
   line,
   trailing,
+  gone: goneAs = null,
+  mark,
   large = false,
 }: {
   line: Omit<PrepLine, "state"> & { state?: PrepLine["state"] };
   trailing?: ReactNode;
+  /** The struck line's words in place of the state's own. */
+  gone?: string | null;
+  mark?: ReactNode;
   large?: boolean;
 }) {
   const { t } = useOrderWords();
   const gone =
     line.state === "takenBack"
-      ? t("line.takenBack")
+      ? (goneAs ?? t("line.takenBack"))
       : line.state === "cancelled"
-        ? t("line.cancelled")
+        ? (goneAs ?? t("line.cancelled"))
         : null;
   return (
     <OrderLine
@@ -199,6 +208,7 @@ export function SentLineView({
           : null
       }
       takenBack={gone}
+      mark={gone ? null : mark}
       large={large}
       trailing={trailing}
     />
@@ -323,6 +333,11 @@ const SAID = new Set<string>([
   "ownDepartment",
   "cancelled",
   "takenBack",
+  "managersOnly",
+  "comped",
+  "day",
+  "notClosed",
+  "takeaway",
   "notYet",
   "failed",
 ]);
@@ -339,6 +354,36 @@ export function failureWords(
 ): string {
   const key = SAID.has(failure) ? failure : "failed";
   return t(`failed.${key}` as "failed.failed", { items });
+}
+
+/** Which of P5's fixes was refused, for its own words. */
+export type FixWrite = "line" | "comp" | "order" | "move" | "close" | "reopen";
+
+/**
+ * Why a fix was refused (P5), in the screen's words: what only those who
+ * run orders do says so (a comp, a whole order's cancel); a place taken
+ * names it for a move and says to wait for a reopen; a held block says what
+ * to do before a close; a shift that ended says so; anything else as any
+ * write.
+ */
+export function fixFailureWords(
+  t: OrdersT,
+  failure: OrdersActionFailure,
+  what: FixWrite,
+  place = "",
+): string {
+  if (failure === "noAccess" && (what === "comp" || what === "order")) {
+    return t("failed.runsOnly");
+  }
+  if (failure === "taken" && what === "move") {
+    return t("failed.moveTaken", { place });
+  }
+  if (failure === "taken" && what === "reopen") return t("failed.reopenTaken");
+  if (failure === "held" && what === "close") return t("close.held");
+  // A shift that ended while the screen was on.
+  if (failure === "clock") return t("offClock.title");
+  if (failure === "staleShift") return t("staleShift.title");
+  return failureWords(t, failure);
 }
 
 /**

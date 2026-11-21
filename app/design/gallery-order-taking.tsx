@@ -22,8 +22,10 @@ const FLOOR = "/design/order-taking/floor?state=service";
  * one switched sold out, one that reaches no department, and two read only.
  * P4 adds the draft's line with its note, allergy and hold (and the mark of
  * a send that refused it), the send, "מוכן" while the server hears it, and
- * an item that can't be added while viewing. The words are the twin's and
- * the app's; the dishes and people only stand in.
+ * an item that can't be added while viewing. P5 adds a line cancelled with
+ * its reason, one on the house (`OrderLine mark`) and its row at the till
+ * with the price struck (`TillRow free`). The words are the twin's and the
+ * app's; the dishes and people only stand in.
  */
 export function GalleryOrderTaking() {
   const t = useTranslations("design.orderParts");
@@ -114,6 +116,20 @@ export function GalleryOrderTaking() {
           <OrderLine
             title={o.rich("line.qtyName", { qty: 1, name: t("fish"), ltr })}
             takenBack={o("line.takenBack")}
+          />
+          <OrderLine
+            title={a.rich("line.qtyName", { qty: 1, name: t("salad"), ltr })}
+            takenBack={a("line.cancelledWhy", {
+              reason: a("reasons.line.guest"),
+            })}
+          />
+          <OrderLine
+            title={a.rich("line.qtyName", {
+              qty: 1,
+              name: t("lemonade"),
+              ltr,
+            })}
+            mark={a("line.comped", { reason: a("reasons.comp.make_good") })}
           />
         </TicketCard>
         <TicketCard
@@ -253,6 +269,13 @@ export function GalleryOrderTaking() {
             qty: lemonades,
             name: t("lemonade"),
             price: price(1600),
+          },
+          {
+            key: "beer",
+            qty: 1,
+            name: t("beer"),
+            price: price(2800),
+            free: a("till.free"),
           },
         ]}
         empty={o("till.empty")}

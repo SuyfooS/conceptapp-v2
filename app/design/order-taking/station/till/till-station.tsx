@@ -201,10 +201,10 @@ function TillDetail({
     }
     // Closed now: what refused it before no longer holds.
     setRefused(false);
-    update((d) => closeOrder(d, order.placeId, "station", now));
+    update((d) => closeOrder(d, order.id, "station", now));
     say(
       t("toast.closed", { place: name }),
-      () => update((d) => reopenOrder(d, order.id)),
+      () => update((d) => reopenOrder(d, order.id, "station", now)),
       { focus: true, after: () => heading.current },
     );
   }
@@ -251,10 +251,10 @@ function TillDetail({
       {closed ? (
         <Button
           size="lg"
-          disabled={taken}
+          disabled={taken || Boolean(order.cancelled)}
           className="self-start"
           onClick={() => {
-            update((d) => reopenOrder(d, order.id));
+            update((d) => reopenOrder(d, order.id, "station", now));
             say(t("toast.reopened", { place: name }));
           }}
         >

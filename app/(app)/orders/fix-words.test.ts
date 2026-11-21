@@ -1,0 +1,79 @@
+import { createTranslator } from "next-intl";
+import { describe, expect, it } from "vitest";
+import he from "@/messages/he.json";
+import { type FixWrite, fixFailureWords, type OrdersT } from "./orders-parts";
+import type { OrdersActionFailure } from "./orders-types";
+
+// Why a fix was refused (waiter mode P5), in words of its own for every
+// refusal each write meets in the database
+// (20261120000300_order_taking_orders.sql), never the plain "לא נשמר" that
+// is left for what nothing else explains.
+
+const t = createTranslator({
+  locale: "he",
+  messages: he,
+  namespace: "app.orders",
+}) as unknown as OrdersT;
+
+const fallback = he.app.orders.failed.failed;
+
+/** Each write, and what the database or the server refuses it with. */
+const MEETS: Record<FixWrite, OrdersActionFailure[]> = {
+  line: [
+    "closed",
+    "takenBack",
+    "comped",
+    "cancelled",
+    "managersOnly",
+    "gone",
+    "off",
+    "noAccess",
+    "viewOnly",
+    "businessChanged",
+    "clock",
+    "staleShift",
+  ],
+  comp: [
+    "closed",
+    "takenBack",
+    "cancelled",
+    "noAccess",
+    "gone",
+    "off",
+    "viewOnly",
+  ],
+  order: ["closed", "noAccess", "gone", "off", "viewOnly"],
+  move: ["taken", "takeaway", "place", "closed", "gone", "viewOnly", "clock"],
+  close: ["held", "closed", "gone", "viewOnly", "clock"],
+  reopen: ["day", "notClosed", "taken", "gone", "viewOnly", "clock"],
+};
+
+describe("a refused fix", () => {
+  it("says why in its own words, for every refusal each write meets", () => {
+    for (const [what, failures] of Object.entries(MEETS)) {
+      for (const failure of failures) {
+        const words = fixFailureWords(t, failure, what as FixWrite, "שולחן 4");
+        expect(words, `${what} ${failure}`).not.toBe(fallback);
+        expect(words, `${what} ${failure}`).not.toContain("app.orders");
+      }
+    }
+  });
+
+  it("says who may, which place is taken, and what waits", () => {
+    expect(fixFailureWords(t, "noAccess", "comp")).toBe(
+      he.app.orders.failed.runsOnly,
+    );
+    expect(fixFailureWords(t, "noAccess", "order")).toBe(
+      he.app.orders.failed.runsOnly,
+    );
+    expect(fixFailureWords(t, "taken", "move", "שולחן 4")).toBe(
+      he.app.orders.failed.moveTaken.replace("{place}", "שולחן 4"),
+    );
+    expect(fixFailureWords(t, "taken", "reopen")).toBe(
+      he.app.orders.failed.reopenTaken,
+    );
+    expect(fixFailureWords(t, "held", "close")).toBe(he.app.orders.close.held);
+    // Anything nothing explains: not saved, and pressing again tries again.
+    expect(fixFailureWords(t, "failed", "line")).toBe(fallback);
+  });
+});

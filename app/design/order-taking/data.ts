@@ -217,8 +217,10 @@ export const orderDemoTables: Place[] = Array.from({ length: 12 }, (_, i) => ({
   name: String(i + 1),
 }));
 
+/** Takeaway 1 open in the kitchen; takeaway 2 cancelled earlier (P5). */
 export const demoTakeaways: Place[] = [
   { id: "takeaway-1", kind: "takeaway", name: "1", label: "חולצה אדומה" },
+  { id: "takeaway-2", kind: "takeaway", name: "2", label: null },
 ];
 
 /** A sent line, as the send copies it from the menu. */
@@ -245,6 +247,8 @@ function line(
     note: more.note ?? null,
     allergy: more.allergy ?? null,
     takenBack: false,
+    cancelled: null,
+    comped: null,
   };
 }
 
@@ -455,8 +459,12 @@ export function demoOrders(): Order[] {
   ];
 }
 
-/** Today's closed orders, each with its list for the till. */
+/**
+ * Today's closed orders, newest first, each with its list for the till; and
+ * takeaway 2, cancelled whole by Shiran when the customer left (P5).
+ */
 export function demoClosed(): Order[] {
+  const cancelled = { reason: "guest" as const, at: at(19, 40), by: "shiran" };
   return [
     {
       id: "order-3",
@@ -498,6 +506,29 @@ export function demoClosed(): Order[] {
             ticket("t-5a-kitchen", "kitchen", "served", [
               line("l22", "pasta", 2),
               line("l23", "salad", 1),
+            ]),
+          ],
+        },
+      ],
+    },
+    {
+      id: "order-takeaway-2",
+      placeId: "takeaway-2",
+      openedBy: "maya",
+      openedAt: at(19, 32),
+      // Closed too in the twin, so the till's station lists it with today's.
+      closedAt: cancelled.at,
+      closedBy: cancelled.by,
+      cancelled,
+      rounds: [
+        {
+          id: "round-t2a",
+          at: at(19, 32),
+          by: "maya",
+          tickets: [
+            ticket("t-t2a-bar", "bar", "new", [
+              { ...line("l26", "lemonade", 2), cancelled },
+              { ...line("l27", "coffee", 1), cancelled },
             ]),
           ],
         },
@@ -565,6 +596,26 @@ export function demoFishDraft(): DraftLine[] {
       choices: [],
     },
   ];
+}
+
+/** Table 3 sat again after its order closed: Yoav's new round (`?state=reopenTaken`). */
+export function demoTableThreeAgain(): Order {
+  return {
+    id: "order-3b",
+    placeId: "table-3",
+    openedBy: "yoav",
+    openedAt: at(20, 30),
+    closedAt: null,
+    closedBy: null,
+    rounds: [
+      {
+        id: "round-3b",
+        at: at(20, 30),
+        by: "yoav",
+        tickets: [ticket("t-3b-bar", "bar", "new", [line("l28", "water", 2)])],
+      },
+    ],
+  };
 }
 
 /** What a waiter just sent, for `?state=sent`: its lines can still be taken back. */
@@ -650,7 +701,8 @@ export const demoKnownPaste = [
 /**
  * The restaurant's and the café's own sentences for taking orders, as
  * supabase/migrations/20261120000100_order_taking_screens.sql writes them
- * and 20261121000100_order_taking_mode.sql after it
+ * and 20261121000100_order_taking_mode.sql and
+ * 20261122000100_order_taking_fixes.sql after it
  * (tooling/template-wording.test.ts holds the two the same): the twin's
  * restaurant reads its screens in them, as the demo restaurant does.
  */
@@ -800,4 +852,26 @@ export const restaurantWording: Readonly<Record<string, string>> = {
   "app.orders.failed.off": "מצב מלצרות כבוי בעסק הזה.",
   "app.orders.home.open": "פתיחת מצב מלצרות",
   "app.orders.home.idle": "בוחרים שולחן ושולחים להכנה",
+  // P5 (20261122000100_order_taking_fixes.sql)
+  "app.orders.fix.cancel": "ביטול המנה",
+  "app.orders.fix.restore": "החזרת המנה להזמנה",
+  "app.orders.failed.managersOnly":
+    "המנה כבר מוכנה, אז מבטל אותה רק מי שמנהל את ההזמנות.",
+  "app.orders.failed.takeaway": "הזמנה לקחת לא עוברת לשולחן.",
+  "app.orders.failed.moveTaken":
+    "{place}: כבר יש שם הזמנה פתוחה. בוחרים שולחן אחר.",
+  "app.orders.failed.reopenTaken": "השולחן תפוס עכשיו. פותחים מחדש כשהוא פנוי.",
+  "app.orders.close.place": "סגירת השולחן",
+  "app.orders.close.held":
+    "יש מנות שמחכות לקריאה. מוציאים אותן או מבטלים, ואז סוגרים.",
+  "app.orders.order.actions.move": "העברה לשולחן אחר",
+  "app.orders.order.actions.moveHint": "רק לשולחן פנוי",
+  "app.orders.order.actions.noFree": "אין עכשיו שולחן פנוי.",
+  "app.orders.move.subtitle":
+    "בוחרים שולחן פנוי, וההזמנה עוברת אליו עם כל מה שנשלח.",
+  "app.orders.cancelOrder.subtitle":
+    "{count, plural, one {מנה אחת שעוד לא בוטלה מתבטלת ויורדת ממסך ההכנה} other {# מנות שעוד לא בוטלו מתבטלות ויורדות ממסך ההכנה}}. הזמנה שבוטלה לא נפתחת מחדש.",
+  "app.orders.till.byItem": "לפי מנה",
+  "app.orders.till.noOrder.body": "חוזרים לשולחנות ובוחרים אותה משם.",
+  "app.orders.floor.closed.table.place": "שולחן",
 };

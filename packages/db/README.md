@@ -2376,6 +2376,16 @@ the screens show, short. The send goes through `POST /orders-send`
 reads through `GET /orders-sync` (app/orders-sync/route.ts, the kitchen's
 read first), both outside the proxy's matcher.
 
+P5 (`20261122000100_order_taking_fixes.sql`) adds no function and no
+wrapper: the screens' cancels, "on the house", a whole order's cancel, the
+move, the close and the reopen are P3's writes through `@db/orders`, and
+"נסגרו היום" and the owner's counts are `order_floor`'s `closed` and
+`fixes`. The migration writes the restaurant's and the café's words only
+(`order_taking_fixes.test.sql`). The phones' till is drawn from
+`order_detail` (`orderTill` in `@domain/orders`), so it stays current with
+the mode's sync; `order_till` stays for the till's station (P8), and
+`modules/order_taking/till.db.test.ts` holds the two alike.
+
 The tests that must always pass: a member of business A cannot read
 business B; anonymous visitors read nothing; every table in `public` has RLS.
 

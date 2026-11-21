@@ -327,6 +327,15 @@ const PAGES = [
   "/design/order-taking/floor/till?order=order-4",
   "/design/order-taking/floor/till?order=order-4&state=byRound",
   "/design/order-taking/floor/till?order=order-3",
+  // P5's fixes: table 4 after a cancel and a beer on the house, its till, a
+  // takeaway cancelled whole, a reopen refused while the table is taken, the
+  // kitchen striking the cancelled dish, and the owner's line.
+  "/design/order-taking/floor/order?place=table-4&state=fixed",
+  "/design/order-taking/floor/till?order=order-4&state=fixed",
+  "/design/order-taking/floor/till?order=order-takeaway-2",
+  "/design/order-taking/floor/till?order=order-3&state=reopenTaken",
+  "/design/order-taking/prep?state=fixed",
+  "/design/shell/manage/order_taking",
   "/design/order-taking/mine",
   "/design/order-taking/mine?state=nothingSent",
   "/design/order-taking/prep",
@@ -3981,7 +3990,6 @@ test("the waiter mode demo sends to the prep screen and comes back ready", async
   page,
 }, testInfo) => {
   test.skip(testInfo.project.name !== "phone", "the walk is timed on a phone");
-  const o = he.design.orderTaking;
   const shown = (locator: Locator) => locator.filter({ visible: true });
   // Since P4 the mode's screens are the app's, in the restaurant's words.
   const table6 = rt("app.orders.place.numbered", { name: "6" });
@@ -4074,8 +4082,11 @@ test("the waiter mode demo sends to the prep screen and comes back ready", async
     page.getByRole("link", { name: rt("app.orders.rounds.till") }),
   ).click();
   await expect(page).toHaveURL(/\/floor\/till\?order=/);
-  await expect(shown(page.getByText(o.till.note))).toBeVisible();
-  const list = shown(page.getByRole("list", { name: o.till.byItem }));
+  // The app's own till since P5, in the restaurant's words.
+  await expect(shown(page.getByText(rt("app.orders.till.note")))).toBeVisible();
+  const list = shown(
+    page.getByRole("list", { name: rt("app.orders.till.byItem") }),
+  );
   await expect(list.getByText("לימונדה")).toBeVisible();
   await expect(list.getByText("פוקאצ'ה")).toBeVisible();
   await expectCleanPage(page);
@@ -4202,8 +4213,8 @@ test("the waiter mode demo's list opens each row in its own state", async ({
   await expect(
     page.getByRole("heading", {
       level: 1,
-      name: heT("design.orderTaking.till.title", {
-        place: heT("design.orderTaking.place.table", { name: "4" }),
+      name: rt("app.orders.till.title", {
+        place: rt("app.orders.place.numbered", { name: "4" }),
       }),
     }),
   ).toBeVisible();
@@ -4594,3 +4605,200 @@ for (const [path, rangeOn, shape] of [
     expect(first).toBeLessThan(last);
   });
 }
+
+// P5 on the twin: a dish cancelled with its reason, kept by the toast's
+// undo and cancelled again; the beer given on the house, which the till's
+// list marks with its price struck, the cancelled dish left out of it.
+test("the waiter mode demo cancels a dish with a reason and its undo, and the manager's on the house shows at the till", async ({
+  page,
+}, testInfo) => {
+  const shown = (locator: Locator) => locator.filter({ visible: true }).first();
+  const dialog = page.getByRole("dialog");
+  await page.goto(
+    "/design/order-taking/floor/order?place=table-4&state=service",
+  );
+  if (testInfo.project.name === "phone") {
+    await shown(
+      page.getByRole("button", {
+        name: new RegExp(`^${rt("app.orders.order.view.order")}`),
+      }),
+    ).click();
+  }
+  const fixHummus = shown(
+    page.getByRole("button", {
+      name: rt("app.orders.line.fix", { name: "חומוס" }),
+    }),
+  );
+  const mistake = rt("app.orders.reasons.line.mistake");
+  await fixHummus.click();
+  await expect(dialog).toBeVisible();
+  await expectCleanPage(page, "", true);
+  await dialog.getByRole("button", { name: mistake, exact: true }).click();
+  const cancelled = rt("app.orders.line.cancelledWhy", { reason: mistake });
+  await expect(shown(page.getByText(cancelled))).toBeVisible();
+  await page.getByRole("button", { name: rt("app.orders.toast.undo") }).click();
+  await expect(page.getByText(cancelled)).toHaveCount(0);
+  await fixHummus.click();
+  await dialog.getByRole("button", { name: mistake, exact: true }).click();
+  await expect(shown(page.getByText(cancelled))).toBeVisible();
+
+  // The beer, on the house: the cancel held before it goes now.
+  await shown(
+    page.getByRole("button", {
+      name: rt("app.orders.line.fix", { name: "בירה מהחבית" }),
+    }),
+  ).click();
+  await dialog
+    .getByRole("button", {
+      name: rt("app.orders.reasons.comp.make_good"),
+      exact: true,
+    })
+    .click();
+  await expect(
+    shown(
+      page.getByText(
+        rt("app.orders.line.comped", {
+          reason: rt("app.orders.reasons.comp.make_good"),
+        }),
+      ),
+    ),
+  ).toBeVisible();
+
+  await shown(
+    page.getByRole("link", { name: rt("app.orders.rounds.till") }),
+  ).click();
+  await expect(page).toHaveURL(/\/floor\/till\?order=order-4/);
+  const list = shown(
+    page.getByRole("list", { name: rt("app.orders.till.byItem") }),
+  );
+  await expect(list).toContainText(rt("app.orders.till.free"));
+  await expect(list).not.toContainText("חומוס");
+  await expectCleanPage(page);
+});
+
+// Table 2, all served, closed from its till: the floor lists it under
+// "נסגרו היום", and its till opens it again.
+test("the waiter mode demo closes a table from the till, lists it under נסגרו היום, and opens it again", async ({
+  page,
+}, testInfo) => {
+  const shown = (locator: Locator) => locator.filter({ visible: true }).first();
+  const table2 = rt("app.orders.place.numbered", { name: "2" });
+  await page.goto(
+    "/design/order-taking/floor/till?order=order-2&state=service",
+  );
+  await shown(
+    page.getByRole("button", { name: rt("app.orders.close.place") }),
+  ).click();
+  await expect(
+    page.getByText(rt("app.orders.toast.closed", { place: table2 })),
+  ).toBeVisible();
+  const reopen = shown(
+    page.getByRole("button", { name: rt("app.orders.close.reopen") }),
+  );
+  await expect(reopen).toBeEnabled();
+
+  await throughTabBar(page, rt("modules.order_taking.mode.places"));
+  const closed = page
+    .getByRole("main")
+    .locator("section")
+    .filter({
+      has: page.getByRole("heading", {
+        level: 2,
+        name: rt("app.orders.floor.closed.title"),
+      }),
+    });
+  await expect(closed).toBeVisible();
+  await expectCleanPage(page);
+  await shown(
+    closed.getByRole(testInfo.project.name === "desktop" ? "button" : "link", {
+      name: new RegExp(`^${asIs(table2)}(\\D|$)`),
+    }),
+  ).click();
+  await expect(page).toHaveURL(/\/floor\/till\?order=order-2/);
+  await reopen.click();
+  await expect(
+    page.getByText(rt("app.orders.toast.reopened", { place: table2 })),
+  ).toBeVisible();
+  await expect(
+    shown(page.getByRole("button", { name: rt("app.orders.close.place") })),
+  ).toBeVisible();
+});
+
+// Table 4 moves to table 6, free: its page goes there and says where from.
+test("the waiter mode demo moves an order to a free table", async ({
+  page,
+}, testInfo) => {
+  const shown = (locator: Locator) => locator.filter({ visible: true }).first();
+  await page.goto(
+    "/design/order-taking/floor/order?place=table-4&state=service",
+  );
+  if (testInfo.project.name === "phone") {
+    await shown(
+      page.getByRole("button", {
+        name: new RegExp(`^${rt("app.orders.order.view.order")}`),
+      }),
+    ).click();
+  }
+  await shown(
+    page.getByRole("button", {
+      name: new RegExp(`^${asIs(rt("app.orders.order.actions.move"))}`),
+    }),
+  ).click();
+  const dialog = page.getByRole("dialog");
+  const table6 = rt("app.orders.place.numbered", { name: "6" });
+  await expect(
+    dialog.getByRole("button", {
+      name: rt("app.orders.place.numbered", { name: "7" }),
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await dialog.getByRole("button", { name: table6, exact: true }).click();
+  await expect(page).toHaveURL(/place=table-6$/);
+  await expect(
+    page.getByRole("heading", { level: 1, name: table6 }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(rt("app.orders.toast.moved", { place: table6 })),
+  ).toBeVisible();
+  // Under the title, where it came from.
+  const from = `${he.app.orders.order.movedFrom.split("{from}")[0] ?? ""}${rt(
+    "app.orders.place.numbered",
+    { name: "4" },
+  )}`;
+  await expect(
+    shown(page.getByText(new RegExp(`^${asIs(from)}`))),
+  ).toBeVisible();
+});
+
+// The kitchen strikes table 4's hummus, and still makes its focaccia. Its
+// held mains are a ticket of their own, after it.
+test("the waiter mode demo's kitchen strikes a cancelled dish", async ({
+  page,
+}) => {
+  await page.goto("/design/order-taking/prep?state=fixed");
+  const ticket = page
+    .getByRole("article", {
+      name: rt("app.orders.prep.label", {
+        place: rt("app.orders.place.numbered", { name: "4" }),
+        department: "מטבח",
+      }),
+    })
+    .filter({ visible: true })
+    .first();
+  await expect(ticket).toContainText(rt("app.orders.line.cancelled"));
+  await expect(ticket).toContainText("פוקאצ'ה");
+});
+
+// The owner's line on taking orders' settings: the day's counts, no shekels,
+// leading to the activity log.
+test("the owner's line counts the day's fixes", async ({ page }) => {
+  await page.goto("/design/shell/manage/order_taking");
+  const line = page.getByRole("link", {
+    name: new RegExp(
+      `^${asIs(heT("app.manage.orderFixes.today", { takenBack: 3, cancelled: 2, comped: 1 }))}`,
+    ),
+  });
+  await expect(line.filter({ visible: true })).toBeVisible();
+  await expect(line).toHaveAttribute("href", "/design/shell/manage/activity");
+  await expect(line).not.toContainText("₪");
+});

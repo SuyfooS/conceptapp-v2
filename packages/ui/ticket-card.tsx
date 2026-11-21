@@ -1,4 +1,4 @@
-import { Check, Hourglass, TriangleAlert } from "lucide-react";
+import { Check, Gift, Hourglass, TriangleAlert } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "./button";
 import { cn } from "./cn";
@@ -17,6 +17,11 @@ export type OrderLineProps = {
    * ("בוטל"), with its note and allergy no longer shown.
    */
   takenBack?: string | null;
+  /**
+   * Still made, and marked so in these words under it: on the house ("על
+   * חשבון הבית · פיצוי ללקוח"), never struck.
+   */
+  mark?: ReactNode;
   /** A station's size, readable from about 1.5 m. */
   large?: boolean;
   /** What to do with it, at its end (taking it back). */
@@ -35,6 +40,7 @@ export function OrderLine({
   note,
   allergy,
   takenBack = null,
+  mark,
   large = false,
   trailing,
 }: OrderLineProps) {
@@ -66,6 +72,11 @@ export function OrderLine({
           ) : null}
           {gone ? (
             <span className="font-semibold text-sm">{takenBack}</span>
+          ) : mark ? (
+            <span className="flex items-center gap-1 font-semibold text-ink-2 text-sm">
+              <Gift aria-hidden="true" className="size-4 shrink-0" />
+              {mark}
+            </span>
           ) : null}
         </span>
         {trailing}

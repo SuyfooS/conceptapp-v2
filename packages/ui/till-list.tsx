@@ -9,6 +9,11 @@ export type TillRow = {
   choices?: readonly string[];
   /** Its price for one, in an LTR span. */
   price: ReactNode;
+  /**
+   * On the house: these words under the name, and the price struck, so
+   * nobody rings it up as charged.
+   */
+  free?: string | null;
 };
 
 export type TillListProps = {
@@ -27,8 +32,9 @@ export type TillListProps = {
 
 /**
  * What the cashier rings into the business's own register (waiter mode):
- * each line with how many, what, the choices and the price for one. No
- * total: the register adds it up, and the screen says so beside the list.
+ * each line with how many, what, the choices and the price for one, a line
+ * on the house marked with its price struck. No total: the register adds it
+ * up, and the screen says so beside the list.
  */
 export function TillList({
   label,
@@ -88,6 +94,16 @@ export function TillList({
                 {row.choices.join(" · ")}
               </span>
             ) : null}
+            {row.free ? (
+              <span
+                className={cn(
+                  "font-semibold text-ink-2",
+                  large ? "text-base" : "text-sm",
+                )}
+              >
+                {row.free}
+              </span>
+            ) : null}
           </span>
           <span
             className={cn(
@@ -95,8 +111,10 @@ export function TillList({
               large ? "text-ink text-lg" : "text-ink-2",
             )}
           >
-            <span className="sr-only">{priceLabel} </span>
-            {row.price}
+            <span className="sr-only">
+              {priceLabel} {row.free ? `${row.free} ` : ""}
+            </span>
+            <span className={cn(row.free && "line-through")}>{row.price}</span>
           </span>
         </li>
       ))}

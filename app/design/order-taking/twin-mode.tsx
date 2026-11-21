@@ -24,7 +24,21 @@ import type {
   OrdersSender,
   SendOutcome,
 } from "../../(app)/orders/orders-types";
-import { changeTicket, sendRound, setLabel, setTakenBack } from "./changes";
+import { storeDraftMoved } from "../../(app)/orders/send-store";
+import {
+  cancelLine,
+  cancelOrder,
+  changeTicket,
+  closeOrder,
+  compLine,
+  moveOrder,
+  reopenOrder,
+  restoreLine,
+  sendRound,
+  setLabel,
+  setTakenBack,
+  uncompLine,
+} from "./changes";
 import { type DemoData, useOrderDemo } from "./demo-store";
 import {
   soldOutIn,
@@ -71,7 +85,9 @@ const done = Promise.resolve({ ok: true as const, value: null });
  * read its rows through real-orders.ts, and its stand-ins write them as the
  * database would, at once. Nothing goes anywhere: a reload starts the evening
  * again. `?state=readyNow` turns a ticket of Shiran's ready three seconds
- * after opening, and the mode's toast says so, as the app's sync does.
+ * after opening, and the mode's toast says so, as the app's sync does. P5's
+ * fixes write the store the same way; a move to a taken table, or a reopen
+ * while its table is taken, is refused as the database refuses it.
  */
 export function TwinOrdersMode({ children }: { children: ReactNode }) {
   const { data, now, update } = useOrderDemo();
@@ -167,8 +183,47 @@ export function TwinOrdersMode({ children }: { children: ReactNode }) {
         });
         return done;
       },
+      cancelLine: (line, reason, cancelled) => {
+        update((d) =>
+          cancelled && reason
+            ? cancelLine(d, line, reason, frame.userId, now)
+            : restoreLine(d, line),
+        );
+        return done;
+      },
+      compLine: (line, reason, comped) => {
+        update((d) =>
+          comped && reason
+            ? compLine(d, line, reason, frame.userId, now)
+            : uncompLine(d, line),
+        );
+        return done;
+      },
+      cancelOrder: (order, reason) => {
+        update((d) => cancelOrder(d, order, reason, frame.userId, now));
+        return done;
+      },
+      move: (order, place) => {
+        if (data.orders.some((o) => o.placeId === place && o.id !== order)) {
+          return Promise.resolve({ ok: false as const, failure: "taken" });
+        }
+        update((d) => moveOrder(d, order, place, frame.userId, now));
+        return done;
+      },
+      close: (order) => {
+        update((d) => closeOrder(d, order, frame.userId, now));
+        return done;
+      },
+      reopen: (order) => {
+        const closed = data.closed.find((o) => o.id === order);
+        if (closed && data.orders.some((o) => o.placeId === closed.placeId)) {
+          return Promise.resolve({ ok: false as const, failure: "taken" });
+        }
+        update((d) => reopenOrder(d, order, frame.userId, now));
+        return done;
+      },
     }),
-    [update, frame.userId],
+    [update, frame.userId, now, data.orders, data.closed],
   );
 
   const sender: OrdersSender = {
@@ -262,6 +317,17 @@ export function TwinOrdersMode({ children }: { children: ReactNode }) {
               d.pending[draft]?.lines ?? [],
             ),
           },
+        })),
+      // An order moved: its table's draft goes with it, as the app's.
+      move: (from: string, to: string, only?: readonly string[]) =>
+        update((d) => ({
+          ...d,
+          drafts: storeDraftMoved(
+            { drafts: d.drafts, pending: {} },
+            from,
+            to,
+            only,
+          ).drafts,
         })),
       counts: Object.fromEntries(
         Object.entries(data.drafts).map(([key, lines]) => [

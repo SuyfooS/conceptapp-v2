@@ -64,6 +64,7 @@ import {
   pendingOfDraft,
   type SendStore,
   storeDraftChanged,
+  storeDraftMoved,
   storedFrom,
   storeEmpty,
   storeSent,
@@ -855,10 +856,17 @@ export function OrdersModeProvider({
     [change],
   );
 
+  const move = useCallback(
+    (from: string, to: string, only?: readonly string[]) =>
+      change((was) => storeDraftMoved(was, from, to, only)),
+    [change],
+  );
+
   const drafts = useMemo(
     () => ({
       get: (draft: string) => stored.drafts[draft] ?? [],
       update,
+      move,
       counts: Object.fromEntries(
         Object.entries(stored.drafts).map(([key, lines]) => [
           key,
@@ -866,7 +874,7 @@ export function OrdersModeProvider({
         ]),
       ),
     }),
-    [stored.drafts, update],
+    [stored.drafts, update, move],
   );
 
   const sender = useMemo(

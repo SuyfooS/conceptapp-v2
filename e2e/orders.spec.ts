@@ -8,9 +8,15 @@ import {
   clearTimeEntries,
   clearTimeEntriesSince,
   databaseNow,
+  demoLine,
   demoLineTakenBack,
   demoModuleSettings,
+  demoOpenOrder,
+  demoOrderLog,
+  demoOrderPlaceName,
+  demoOrderStatus,
   demoRounds,
+  demoTakeawayStatus,
   demoTicketStatus,
   endDemoEntry,
   resetDemoOrders,
@@ -28,7 +34,11 @@ import { heT } from "./t";
 // to the kitchen and the bar, the kitchen marking ready on a phone, serving,
 // the same send twice as one round, the draft waiting while the waiter
 // clocks in, taking a line back, holding a dish and firing it, and who gets
-// the mode at all, and the owner choosing who takes orders. The restaurant
+// the mode at all, and the owner choosing who takes orders. P5's fixes: a
+// line cancelled with its reason and its undo, one ready refused to a
+// waiter and given on the house by the manager, the till by item and by
+// round with no total, closing and opening again from "נסגרו היום", moving
+// an order and cancelling one whole. The restaurant
 // reads its template's words ("שולחן", "מנה", "מצב מלצרות"), read here from
 // the database as it does. Each test puts the orders and the clock back:
 // Yoav's own hours only (his seeded month is the payroll specs', which run
@@ -626,4 +636,343 @@ test("the owner chooses on the management page who takes orders", async ({
   } finally {
     await setDemoModuleSettings("order_taking", stored);
   }
+});
+
+/** A row of a sheet, by its words. */
+const sheetRow = (page: Page, name: string) =>
+  page.getByRole("dialog").getByRole("button", { name, exact: true });
+
+/** A sent line's "תיקון", by the item's name. */
+const fixOf = (page: Page, name: string) =>
+  button(page, rt("app.orders.line.fix", { name }));
+
+const table = (name: string) => rt("app.orders.place.numbered", { name });
+
+/**
+ * A row of "נסגרו היום", by its place: a link on a phone and a tablet, its
+ * first cell's button in the desktop's table.
+ */
+const closedRow = (page: Page, project: string, place: string) =>
+  main(page)
+    .locator("section")
+    .filter({
+      has: page.getByRole("heading", {
+        level: 2,
+        name: rt("app.orders.floor.closed.title"),
+      }),
+    })
+    .getByRole(project === "desktop" ? "button" : "link", {
+      name: new RegExp(`^${literal(place)}(\\D|$)`),
+    })
+    .filter({ visible: true })
+    .first();
+
+test("Yoav cancels the beer he sent to his own bar with a reason, the bar sees it struck, and the owner reads it with its price", async ({
+  page,
+  browser,
+}, testInfo) => {
+  test.setTimeout(150_000);
+  const project = testInfo.project.name;
+  await addOpenDemoEntry(YOAV.e164, 1);
+  await signIn(page, YOAV);
+  await page.goto("/orders");
+  await tile(page, "9").click();
+  await showItems(page, project);
+  await button(page, "בירה מהחבית").click();
+  await button(page, "לימונדה").click();
+  await showOrder(page, project);
+  await send(page);
+  await expect.poll(() => demoRounds("9")).toBe(1);
+
+  // His own bar's: never taken back, cancelled with a reason.
+  await expect(fixOf(page, "בירה מהחבית")).toBeVisible();
+  await expect(
+    button(
+      page,
+      new RegExp(`^${literal(rt("app.orders.rounds.takeBack"))}.*בירה`),
+    ),
+  ).toHaveCount(0);
+  await fixOf(page, "בירה מהחבית").click();
+  await expect(
+    page.getByRole("dialog").getByText(rt("app.orders.failed.ownDepartment")),
+  ).toBeVisible();
+  await expectCleanPage(page);
+  const guest = rt("app.orders.reasons.line.guest");
+  await sheetRow(page, guest).click();
+  await expect(
+    toast(page, rt("app.orders.toast.cancelled", { name: "בירה מהחבית" })),
+  ).toBeVisible();
+  // Kept with the toast's undo.
+  await page.getByRole("button", { name: rt("app.orders.toast.undo") }).click();
+  expect(await demoLine("9", "בירה מהחבית")).toEqual({
+    state: "live",
+    reason: null,
+  });
+  // Again, and leaving the screen sends it.
+  await fixOf(page, "בירה מהחבית").click();
+  await sheetRow(page, guest).click();
+  await navItem(page, rt("modules.order_taking.mode.mine")).click();
+  await expect
+    .poll(() => demoLine("9", "בירה מהחבית"))
+    .toEqual({ state: "cancelled", reason: "guest" });
+  const log = await demoOrderLog(began);
+  expect(log.map((row) => row.action)).toContain("order.line.cancel");
+
+  // Back at the table it reads struck, with its reason.
+  await navItem(page, rt("modules.order_taking.mode.places")).click();
+  await tile(page, "9").click();
+  await showOrder(page, project);
+  await expect(
+    shown(page, rt("app.orders.line.cancelledWhy", { reason: guest })),
+  ).toBeVisible();
+
+  // The bar's screen strikes it, and still makes the lemonade.
+  await page.goto("/orders/prep");
+  const ticket = page
+    .getByRole("article", {
+      name: rt("app.orders.prep.label", {
+        place: table("9"),
+        department: "בר",
+      }),
+    })
+    .filter({ visible: true });
+  await expect(ticket).toContainText(rt("app.orders.line.cancelled"));
+  await expect(ticket).toContainText("לימונדה");
+  await expectCleanPage(page);
+
+  // The owner reads it in the activity log with its price, and today's line.
+  const owner = await secondPage(browser, testInfo);
+  await enterAs(owner, "owner");
+  await owner.goto("/manage/activity");
+  const row = shown(
+    owner,
+    rt("app.manage.activity.actions.order.cancel", { name: "בירה מהחבית" }),
+  );
+  await expect(row).toBeVisible();
+  await expect(main(owner)).toContainText("28.00");
+  await expect(main(owner)).toContainText(
+    rt("app.manage.activity.actions.order.reason", {
+      reason: rt("app.manage.activity.actions.order.reasons.guest"),
+    }),
+  );
+  await expectCleanPage(owner);
+  await owner.goto("/manage/order_taking");
+  await expect(
+    shown(
+      owner,
+      rt("app.manage.orderFixes.today", {
+        takenBack: 0,
+        cancelled: 1,
+        comped: 0,
+      }),
+    ),
+  ).toBeVisible();
+  await expectCleanPage(owner);
+  await owner.context().close();
+});
+
+test("a waiter can't cancel a dish already ready; the manager gives it on the house and the till marks it", async ({
+  page,
+  browser,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "tablet", "a phone and a desktop do");
+  test.setTimeout(150_000);
+  const project = testInfo.project.name;
+  await addOpenDemoEntry(YOAV.e164, 1);
+  await signIn(page, YOAV);
+  await page.goto("/orders");
+  // Table 7's drinks are ready at the bar.
+  await tile(page, "7").click();
+  await showOrder(page, project);
+  await fixOf(page, "בירה מהחבית").click();
+  const sheet = page.getByRole("dialog");
+  await expect(
+    sheet.getByText(rt("app.orders.failed.managersOnly")),
+  ).toBeVisible();
+  await expect(
+    sheetRow(page, rt("app.orders.reasons.line.guest")),
+  ).toBeDisabled();
+  await expect(sheet.getByText(rt("app.orders.fix.comp"))).toHaveCount(0);
+  await expectCleanPage(page);
+  await page.keyboard.press("Escape");
+
+  // Shiran runs the orders, on a shift or not.
+  const shiran = await secondPage(browser, testInfo);
+  await enterAs(shiran, "manager");
+  await shiran.goto("/orders");
+  await tile(shiran, "7").click();
+  await showOrder(shiran, project);
+  await fixOf(shiran, "בירה מהחבית").click();
+  await sheetRow(shiran, rt("app.orders.reasons.comp.make_good")).click();
+  await expect(
+    toast(shiran, rt("app.orders.toast.comped", { name: "בירה מהחבית" })),
+  ).toBeVisible();
+  await navItem(shiran, rt("modules.order_taking.mode.mine")).click();
+  await expect
+    .poll(() => demoLine("7", "בירה מהחבית"))
+    .toEqual({ state: "comped", reason: "make_good" });
+  await navItem(shiran, rt("modules.order_taking.mode.places")).click();
+  await tile(shiran, "7").click();
+  await showOrder(shiran, project);
+  await expect(
+    shown(
+      shiran,
+      rt("app.orders.line.comped", {
+        reason: rt("app.orders.reasons.comp.make_good"),
+      }),
+    ),
+  ).toBeVisible();
+
+  // Her list for the till marks it, its price struck.
+  await link(shiran, rt("app.orders.rounds.till")).click();
+  await expect(shiran).toHaveURL(/\/orders\/till\//);
+  const byItem = shiran
+    .getByRole("list", { name: rt("app.orders.till.byItem") })
+    .filter({ visible: true });
+  await expect(byItem).toContainText(rt("app.orders.till.free"));
+  await expectCleanPage(shiran);
+  await shiran.context().close();
+});
+
+test("Shiran reads table 4's till by item and by round with no total, closes it, and opens it again from נסגרו היום", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(150_000);
+  const project = testInfo.project.name;
+  await enterAs(page, "manager");
+  await addOpenDemoEntry(SHIRAN, 1);
+  await page.goto("/orders");
+  await tile(page, "4").click();
+  await showOrder(page, project);
+  await link(page, rt("app.orders.rounds.till")).click();
+  await expect(page).toHaveURL(/\/orders\/till\//);
+  await expect(
+    heading(page, 1, rt("app.orders.till.title", { place: table("4") })),
+  ).toBeVisible();
+  await expect(shown(page, rt("app.orders.till.note"))).toBeVisible();
+  const byItem = page
+    .getByRole("list", { name: rt("app.orders.till.byItem") })
+    .filter({ visible: true });
+  await expect(byItem).toContainText("חומוס");
+  await expect(byItem).toContainText("32.00");
+  // By round: one view at a time on a phone and a tablet, both on a desktop.
+  if (project !== "desktop") {
+    await page
+      .getByRole("button", { name: rt("app.orders.till.byRound") })
+      .filter({ visible: true })
+      .first()
+      .click();
+  }
+  await expect(
+    main(page)
+      .getByRole("heading", { name: /^סבב 1 · .* · יואב$/ })
+      .filter({ visible: true }),
+  ).toBeVisible();
+  // No total anywhere.
+  await expect(main(page)).not.toContainText("סה״כ");
+  await expect(main(page)).not.toContainText("סך הכל");
+  await expectCleanPage(page);
+
+  // Closed: the table is free, and the order is under "נסגרו היום".
+  await button(page, rt("app.orders.close.place")).click();
+  await expect(
+    toast(page, rt("app.orders.toast.closed", { place: table("4") })),
+  ).toBeVisible();
+  await expect.poll(() => demoOrderStatus("4")).toBe("closed");
+  await expect(button(page, rt("app.orders.close.reopen"))).toBeEnabled();
+  await navItem(page, rt("modules.order_taking.mode.places")).click();
+  await expect(tile(page, "4")).toContainText(
+    rt("app.orders.floor.state.free"),
+  );
+  await expect(
+    heading(page, 2, rt("app.orders.floor.closed.title")),
+  ).toBeVisible();
+  await expectCleanPage(page);
+
+  // From there, opened again.
+  await closedRow(page, project, table("4")).click();
+  await expect(page).toHaveURL(/\/orders\/till\//);
+  await button(page, rt("app.orders.close.reopen")).click();
+  await expect(
+    toast(page, rt("app.orders.toast.reopened", { place: table("4") })),
+  ).toBeVisible();
+  await expect.poll(() => demoOrderStatus("4")).toBe("open");
+
+  // Closed again, then a lemonade opens the table anew: the closed one
+  // can't open again while it is taken.
+  await button(page, rt("app.orders.close.place")).click();
+  await expect.poll(() => demoOrderStatus("4")).toBe("closed");
+  await navItem(page, rt("modules.order_taking.mode.places")).click();
+  await tile(page, "4").click();
+  await showItems(page, project);
+  await button(page, "לימונדה").click();
+  await showOrder(page, project);
+  await send(page);
+  await expect.poll(() => demoRounds("4")).toBe(1);
+  await navItem(page, rt("modules.order_taking.mode.places")).click();
+  await closedRow(page, project, table("4")).click();
+  await expect(button(page, rt("app.orders.close.reopen"))).toBeDisabled();
+  await expect(shown(page, rt("app.orders.failed.reopenTaken"))).toBeVisible();
+  await expectCleanPage(page);
+});
+
+test("Shiran moves table 4 to a free table, and cancels takeaway 1 for good", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "tablet", "a phone and a desktop do");
+  test.setTimeout(150_000);
+  const project = testInfo.project.name;
+  await enterAs(page, "manager");
+  await page.goto("/orders");
+  const order = await demoOpenOrder("4");
+  await tile(page, "4").click();
+  await showOrder(page, project);
+  await button(page, rt("app.orders.order.actions.move")).click();
+  const sheet = page.getByRole("dialog");
+  await expect(sheetRow(page, table("11"))).toBeVisible();
+  await expect(sheetRow(page, table("4"))).toHaveCount(0);
+  await expect(sheetRow(page, table("7"))).toHaveCount(0);
+  await expect(sheet).toContainText(rt("app.orders.move.subtitle"));
+  await expectCleanPage(page);
+  await sheetRow(page, table("11")).click();
+  await expect(
+    toast(page, rt("app.orders.toast.moved", { place: table("11") })),
+  ).toBeVisible();
+  await expect.poll(() => demoOrderPlaceName(order ?? "")).toBe("11");
+  await expect(heading(page, 1, table("11"))).toBeVisible();
+  await navItem(page, rt("modules.order_taking.mode.places")).click();
+  await expect(tile(page, "4")).toContainText(
+    rt("app.orders.floor.state.free"),
+  );
+  await expect(tile(page, "11")).not.toContainText(
+    rt("app.orders.floor.state.free"),
+  );
+
+  // Takeaway 1, cancelled whole: the sheet says what goes and that it's final.
+  const takeaway = rt("app.orders.place.takeaway", { number: 1 });
+  await link(
+    page,
+    new RegExp(`^${literal(rt("app.orders.place.takeawayKind"))}\\s*1(\\D|$)`),
+  ).click();
+  await showOrder(page, project);
+  await button(page, rt("app.orders.order.actions.cancel")).click();
+  await expect(page.getByRole("dialog")).toContainText(
+    rt("app.orders.cancelOrder.subtitle", { count: 1 }),
+  );
+  await sheetRow(page, rt("app.orders.reasons.order.mistake")).click();
+  await expect(
+    toast(page, rt("app.orders.toast.orderCancelled", { place: takeaway })),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: rt("app.orders.toast.undo") }),
+  ).toBeVisible();
+  await navItem(page, rt("modules.order_taking.mode.places")).click();
+  await expect.poll(() => demoTakeawayStatus(1)).toBe("cancelled");
+  await closedRow(page, project, takeaway).click();
+  await expect(page).toHaveURL(/\/orders\/till\//);
+  await expect(shown(page, rt("app.orders.till.cancelled"))).toBeVisible();
+  await expect(
+    page.getByRole("list", { name: rt("app.orders.till.byItem") }),
+  ).toHaveCount(0);
+  await expectCleanPage(page);
 });

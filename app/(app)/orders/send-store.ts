@@ -107,6 +107,33 @@ export function storeDraftChanged(
 }
 
 /**
+ * An order moved (P5): the draft waiting at its old place goes with it,
+ * after what the new place's draft holds, each line once; and on the move's
+ * "ביטול" the lines that went (`only`) go back. From what both hold now.
+ */
+export function storeDraftMoved(
+  store: SendStore,
+  from: string,
+  to: string,
+  only?: readonly string[],
+): SendStore {
+  const held = store.drafts[from] ?? [];
+  const moving = only ? held.filter((line) => only.includes(line.id)) : held;
+  if (moving.length === 0 || from === to) return store;
+  const there = store.drafts[to] ?? [];
+  const known = new Set(there.map((line) => line.id));
+  const gone = new Set(moving.map((line) => line.id));
+  return {
+    ...store,
+    drafts: {
+      ...store.drafts,
+      [from]: held.filter((line) => !gone.has(line.id)),
+      [to]: [...there, ...moving.filter((line) => !known.has(line.id))],
+    },
+  };
+}
+
+/**
  * Whether a draft's send waits for its own round still on its way: a new
  * takeaway's first round gives it its order, and a send before that lands
  * would open a second takeaway (a place's or an order's joins its order).

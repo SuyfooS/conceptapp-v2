@@ -7,6 +7,7 @@ import {
   type SendStore,
   sendWaits,
   storeDraftChanged,
+  storeDraftMoved,
   storedFrom,
   storeEmpty,
   storeSent,
@@ -242,5 +243,27 @@ describe("a draft changed from what it holds now", () => {
     expect(changed.drafts[NEW_TAKEAWAY]).toEqual([
       { ...elsewhere, quantity: 2 },
     ]);
+  });
+});
+
+describe("a draft when its order moves (P5)", () => {
+  it("goes with the order after what the new place holds, and back again", () => {
+    const there = "place:00000000-0000-4000-8000-0000000000c2";
+    const waiting = line();
+    const already = line({ quantity: 2 });
+    const store: SendStore = {
+      ...emptySendStore,
+      drafts: { [DRAFT]: [waiting], [there]: [already] },
+    };
+    const moved = storeDraftMoved(store, DRAFT, there);
+    expect(moved.drafts[DRAFT]).toEqual([]);
+    expect(moved.drafts[there]).toEqual([already, waiting]);
+    // Its undo takes back what went, and leaves the new place's own.
+    const back = storeDraftMoved(moved, there, DRAFT, [waiting.id]);
+    expect(back.drafts[DRAFT]).toEqual([waiting]);
+    expect(back.drafts[there]).toEqual([already]);
+    // Nothing waiting, or the same place: nothing changes.
+    expect(storeDraftMoved(emptySendStore, DRAFT, there)).toBe(emptySendStore);
+    expect(storeDraftMoved(store, DRAFT, DRAFT)).toBe(store);
   });
 });

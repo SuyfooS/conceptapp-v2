@@ -1,6 +1,12 @@
 import type { OrderFailure } from "@db/order-failures";
 import type { DraftLine } from "@domain/order-screens";
-import type { RoundTarget, SentRound } from "@domain/orders";
+import type {
+  CompReason,
+  LineCancelReason,
+  OrderCancelReason,
+  RoundTarget,
+  SentRound,
+} from "@domain/orders";
 
 /*
  * What the mode's screens and their parts share (waiter mode P4), in the app
@@ -46,8 +52,8 @@ export type OrdersPaths = {
   leave: string;
   menuPlaces: string;
   menuImport: string;
-  /** The till's list of an order: the twin's alone until P5. */
-  till?: (order: string) => string;
+  /** The till's list of an order, open or closed today (P5). */
+  till: (order: string) => string;
 };
 
 /** Why an action was refused: the database's reasons, and the server's own. */
@@ -67,6 +73,25 @@ export type OrdersActions = {
     order: string,
     label: string | null,
   ) => Promise<OrdersActionResult>;
+  /** A line cancelled with its reason, or put back (false, null). */
+  cancelLine: (
+    line: string,
+    reason: LineCancelReason | null,
+    cancelled: boolean,
+  ) => Promise<OrdersActionResult>;
+  /** A line on the house with its reason, or not any more (false, null). */
+  compLine: (
+    line: string,
+    reason: CompReason | null,
+    comped: boolean,
+  ) => Promise<OrdersActionResult>;
+  cancelOrder: (
+    order: string,
+    reason: OrderCancelReason,
+  ) => Promise<OrdersActionResult>;
+  move: (order: string, place: string) => Promise<OrdersActionResult>;
+  close: (order: string) => Promise<OrdersActionResult>;
+  reopen: (order: string) => Promise<OrdersActionResult>;
 };
 
 /** Why a send was refused, as the screens say it. */
@@ -135,6 +160,11 @@ export type DraftStore = {
    * on its way in a round never comes back into it.
    */
   update: (draft: string, change: (lines: DraftLine[]) => DraftLine[]) => void;
+  /**
+   * An order moved: its old place's draft joins the new place's (P5), or
+   * only the lines named, for the move's undo.
+   */
+  move: (from: string, to: string, only?: readonly string[]) => void;
   /** How many items each draft holds, for the floor's tiles. */
   counts: Record<string, number>;
 };

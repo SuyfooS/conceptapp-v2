@@ -5,7 +5,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // write keeps before it reaches the database: nothing for someone the mode
 // isn't for, nothing in another business than the screen was drawn for,
 // nothing while viewing, nothing with a shape the database wouldn't take;
-// and each passes the person and the ids it was given.
+// and each passes the person and the ids it was given. P5's fixes too: a
+// reason from its own list with a fix, and none with its undo.
 
 vi.mock("server-only", () => ({}));
 
@@ -16,6 +17,12 @@ const mocks = vi.hoisted(() => ({
   takeBackOrderLine: vi.fn(),
   fireOrderTickets: vi.fn(),
   setOrderLabel: vi.fn(),
+  cancelOrderLine: vi.fn(),
+  compOrderLine: vi.fn(),
+  cancelOrder: vi.fn(),
+  moveOrder: vi.fn(),
+  closeOrder: vi.fn(),
+  reopenOrder: vi.fn(),
 }));
 vi.mock("./orders-access", () => ({ ordersAccess: mocks.ordersAccess }));
 vi.mock("@db/orders", () => ({
@@ -24,10 +31,22 @@ vi.mock("@db/orders", () => ({
   takeBackOrderLine: mocks.takeBackOrderLine,
   fireOrderTickets: mocks.fireOrderTickets,
   setOrderLabel: mocks.setOrderLabel,
+  cancelOrderLine: mocks.cancelOrderLine,
+  compOrderLine: mocks.compOrderLine,
+  cancelOrder: mocks.cancelOrder,
+  moveOrder: mocks.moveOrder,
+  closeOrder: mocks.closeOrder,
+  reopenOrder: mocks.reopenOrder,
 }));
 
 const {
+  cancelLineAction,
+  cancelOrderAction,
+  closeOrderAction,
+  compLineAction,
   fireAction,
+  moveOrderAction,
+  reopenOrderAction,
   serveAction,
   setLabelAction,
   setReadyAction,
@@ -54,6 +73,12 @@ beforeEach(() => {
     mocks.setOrderTicketReady,
     mocks.takeBackOrderLine,
     mocks.setOrderLabel,
+    mocks.cancelOrderLine,
+    mocks.compOrderLine,
+    mocks.cancelOrder,
+    mocks.moveOrder,
+    mocks.closeOrder,
+    mocks.reopenOrder,
   ]) {
     write.mockResolvedValue({ ok: true, value: null });
   }
@@ -66,6 +91,12 @@ const all = [
   () => takeBackAction(PLACE, TICKET),
   () => fireAction(PLACE, TICKET),
   () => setLabelAction(PLACE, TICKET, "דנה"),
+  () => cancelLineAction(PLACE, TICKET, "guest", true),
+  () => compLineAction(PLACE, TICKET, "staff", true),
+  () => cancelOrderAction(PLACE, TICKET, "mistake"),
+  () => moveOrderAction(PLACE, TICKET, OTHER),
+  () => closeOrderAction(PLACE, TICKET),
+  () => reopenOrderAction(PLACE, TICKET),
 ];
 const writes = () => [
   mocks.serveOrderTicket,
@@ -73,6 +104,12 @@ const writes = () => [
   mocks.takeBackOrderLine,
   mocks.fireOrderTickets,
   mocks.setOrderLabel,
+  mocks.cancelOrderLine,
+  mocks.compOrderLine,
+  mocks.cancelOrder,
+  mocks.moveOrder,
+  mocks.closeOrder,
+  mocks.reopenOrder,
 ];
 
 describe("the mode's writes", () => {
@@ -146,6 +183,101 @@ describe("the mode's writes", () => {
     expect(await takeBackAction(PLACE, TICKET)).toEqual({
       ok: false,
       failure: "window",
+    });
+  });
+});
+
+describe("the fixes (P5)", () => {
+  it("refuse a screen drawn for another business", async () => {
+    asking();
+    for (const write of [
+      () => cancelLineAction(OTHER, TICKET, "guest", true),
+      () => compLineAction(OTHER, TICKET, "staff", true),
+      () => cancelOrderAction(OTHER, TICKET, "guest"),
+      () => moveOrderAction(OTHER, TICKET, PLACE),
+      () => closeOrderAction(OTHER, TICKET),
+      () => reopenOrderAction(OTHER, TICKET),
+    ]) {
+      expect(await write()).toEqual({ ok: false, failure: "businessChanged" });
+    }
+    for (const write of writes()) expect(write).not.toHaveBeenCalled();
+  });
+
+  it("refuse a reason not in the list, a reason with an undo, none with a fix, and no id", async () => {
+    asking();
+    const invalid = { ok: false, failure: "invalid" };
+    expect(await cancelLineAction(PLACE, TICKET, "bored", true)).toEqual(
+      invalid,
+    );
+    expect(await cancelLineAction(PLACE, TICKET, "guest", false)).toEqual(
+      invalid,
+    );
+    expect(await cancelLineAction(PLACE, TICKET, null, true)).toEqual(invalid);
+    expect(await cancelLineAction(PLACE, TICKET, "guest", "yes")).toEqual(
+      invalid,
+    );
+    expect(await cancelLineAction(PLACE, "x", "guest", true)).toEqual(invalid);
+    // A line's reason is not the house's.
+    expect(await compLineAction(PLACE, TICKET, "guest", true)).toEqual(invalid);
+    expect(await compLineAction(PLACE, TICKET, "staff", false)).toEqual(
+      invalid,
+    );
+    // "sold_out" is a line's reason, not an order's.
+    expect(await cancelOrderAction(PLACE, TICKET, "sold_out")).toEqual(invalid);
+    expect(await cancelOrderAction(PLACE, TICKET, null)).toEqual(invalid);
+    expect(await moveOrderAction(PLACE, TICKET, "table-4")).toEqual(invalid);
+    expect(await closeOrderAction(PLACE, "x")).toEqual(invalid);
+    expect(await reopenOrderAction(PLACE, 4)).toEqual(invalid);
+    for (const write of writes()) expect(write).not.toHaveBeenCalled();
+  });
+
+  it("pass the person, the ids and the reason, and an undo with none", async () => {
+    asking();
+    await cancelLineAction(PLACE, TICKET, "sold_out", true);
+    expect(mocks.cancelOrderLine).toHaveBeenCalledWith(
+      PERSON,
+      TICKET,
+      "sold_out",
+      true,
+    );
+    await cancelLineAction(PLACE, TICKET, null, false);
+    expect(mocks.cancelOrderLine).toHaveBeenLastCalledWith(
+      PERSON,
+      TICKET,
+      null,
+      false,
+    );
+    await compLineAction(PLACE, TICKET, "make_good", true);
+    expect(mocks.compOrderLine).toHaveBeenCalledWith(
+      PERSON,
+      TICKET,
+      "make_good",
+      true,
+    );
+    await compLineAction(PLACE, TICKET, null, false);
+    expect(mocks.compOrderLine).toHaveBeenLastCalledWith(
+      PERSON,
+      TICKET,
+      null,
+      false,
+    );
+    await cancelOrderAction(PLACE, TICKET, "other");
+    expect(mocks.cancelOrder).toHaveBeenCalledWith(PERSON, TICKET, "other");
+    await moveOrderAction(PLACE, TICKET, OTHER);
+    expect(mocks.moveOrder).toHaveBeenCalledWith(PERSON, TICKET, OTHER);
+    await closeOrderAction(PLACE, TICKET);
+    expect(mocks.closeOrder).toHaveBeenCalledWith(PERSON, TICKET);
+    await reopenOrderAction(PLACE, TICKET);
+    expect(mocks.reopenOrder).toHaveBeenCalledWith(PERSON, TICKET);
+    mocks.moveOrder.mockResolvedValue({
+      ok: false,
+      failure: "taken",
+      items: [],
+      order: TICKET,
+    });
+    expect(await moveOrderAction(PLACE, TICKET, OTHER)).toEqual({
+      ok: false,
+      failure: "taken",
     });
   });
 });

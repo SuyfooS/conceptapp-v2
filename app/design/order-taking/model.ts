@@ -3,7 +3,14 @@
 // memory (demo-store.tsx), and P1 and P3 bring the real ones to the
 // database, with `@domain/order-taking` in place of these helpers. Since P4
 // the mode's screens are the app's, drawn from these rows by
-// real-orders.ts; the till and the stations still draw them as S0 did.
+// real-orders.ts, and since P5 its till too; the stations still draw them as
+// S0 did (P8).
+
+import type {
+  CompReason,
+  LineCancelReason,
+  OrderCancelReason,
+} from "@domain/orders";
 
 export type DepartmentKey = "kitchen" | "bar";
 
@@ -58,7 +65,14 @@ export type SentLine = {
   allergy: string | null;
   /** Taken back by its sender within the window: struck through, not made. */
   takenBack: boolean;
+  /** Cancelled with a reason (P5): struck through, not made, not rung up. */
+  cancelled: Fix<LineCancelReason> | null;
+  /** On the house with a reason (P5): made as usual, marked at the till. */
+  comped: Fix<CompReason> | null;
 };
+
+/** A fix to the orders: why, when and by whom (P5). */
+export type Fix<R extends string> = { reason: R; at: number; by: string };
 
 export type TicketState = "new" | "ready" | "served";
 
@@ -88,6 +102,12 @@ export type Order = {
   rounds: Round[];
   closedAt: number | null;
   closedBy: string | null;
+  /** Moved from another table (P5): the table it was at, when and by whom. */
+  moved?: { from: string; at: number; by: string } | null;
+  /** Opened again after a close (P5). */
+  reopened?: { at: number; by: string } | null;
+  /** Cancelled whole, for good (P5); it is closed then too, for the stations. */
+  cancelled?: Fix<OrderCancelReason> | null;
 };
 
 /** After this long a ticket still new is late: `lateAfterMinutes`' default. */
@@ -173,8 +193,10 @@ export function missingGroups(
   );
 }
 
-export const liveLines = (ticket: Ticket) =>
-  ticket.lines.filter((line) => !line.takenBack);
+/** A line still sent: neither taken back nor cancelled (on the house still is). */
+export const lineLive = (line: SentLine) => !line.takenBack && !line.cancelled;
+
+export const liveLines = (ticket: Ticket) => ticket.lines.filter(lineLive);
 
 export const ticketCount = (ticket: Ticket) =>
   liveLines(ticket).reduce((sum, line) => sum + line.qty, 0);

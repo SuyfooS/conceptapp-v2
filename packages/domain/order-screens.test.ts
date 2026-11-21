@@ -2,11 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
   addToDraft,
   changeDraftLine,
+  closedToday,
+  closeState,
   type DraftLine,
   draftCount,
   draftKey,
   draftRoutes,
   floorStatus,
+  freePlaces,
+  lineFixes,
   minutesSince,
   orderModeEntry,
   orderModeItems,
@@ -18,6 +22,7 @@ import {
   readyNews,
   refusalMark,
   removeDraftLine,
+  reopenState,
   roundLinesOf,
   roundOf,
   sendTarget,
@@ -25,7 +30,7 @@ import {
   ticketBadge,
   withoutSent,
 } from "./order-screens";
-import type { MyOrders } from "./orders";
+import type { MyOrders, OrderDetail, OrderFloor } from "./orders";
 
 const HUMMUS = "00000000-0000-4000-8000-000000000001";
 const LEMONADE = "00000000-0000-4000-8000-000000000002";
@@ -433,5 +438,186 @@ describe("the mode's items", () => {
   it("leads a preparer alone to preparing", () => {
     expect(orderModeEntry({ takes: true })).toBe("places");
     expect(orderModeEntry({ takes: false })).toBe("prep");
+  });
+});
+
+describe("fixing a sent line (P5)", () => {
+  const fixes = (
+    status: "held" | "new" | "ready" | "served",
+    line: "live" | "takenBack" | "cancelled" | "comped",
+    runs: boolean,
+    more: { order?: "open" | "closed" | "cancelled"; viewing?: boolean } = {},
+  ) =>
+    lineFixes({
+      order: { status: more.order ?? "open" },
+      ticket: { status },
+      line,
+      runs,
+      viewing: more.viewing ?? false,
+    });
+
+  it("lets a taker cancel what isn't ready yet, and says why not once it is", () => {
+    for (const status of ["held", "new"] as const) {
+      expect(fixes(status, "live", false)).toEqual({
+        fixes: ["cancel"],
+        readyLocked: false,
+      });
+      expect(fixes(status, "cancelled", false)).toEqual({
+        fixes: ["restore"],
+        readyLocked: false,
+      });
+    }
+    for (const status of ["ready", "served"] as const) {
+      expect(fixes(status, "live", false)).toEqual({
+        fixes: [],
+        readyLocked: true,
+      });
+      expect(fixes(status, "cancelled", false)).toEqual({
+        fixes: [],
+        readyLocked: true,
+      });
+    }
+  });
+
+  it("lets whoever runs orders cancel, put back and give on the house at any point", () => {
+    for (const status of ["held", "new", "ready", "served"] as const) {
+      expect(fixes(status, "live", true)).toEqual({
+        fixes: ["cancel", "comp"],
+        readyLocked: false,
+      });
+      expect(fixes(status, "cancelled", true).fixes).toEqual(["restore"]);
+      expect(fixes(status, "comped", true).fixes).toEqual(["uncomp"]);
+      expect(fixes(status, "comped", false).fixes).toEqual([]);
+    }
+  });
+
+  it("offers nothing for a line taken back, an order no longer open, or while viewing", () => {
+    expect(fixes("new", "takenBack", true).fixes).toEqual([]);
+    expect(fixes("new", "live", true, { order: "closed" }).fixes).toEqual([]);
+    expect(fixes("new", "live", true, { order: "cancelled" }).fixes).toEqual(
+      [],
+    );
+    expect(fixes("ready", "live", false, { viewing: true })).toEqual({
+      fixes: [],
+      readyLocked: false,
+    });
+  });
+});
+
+describe("the order whole (P5)", () => {
+  const sent: Record<
+    "takenBackAt" | "cancelledAt" | "compedAt",
+    string | null
+  > = { takenBackAt: null, cancelledAt: null, compedAt: null };
+  const ticket = (
+    department: string,
+    status: "held" | "new" | "ready" | "served",
+    lines: Partial<typeof sent>[] = [{}],
+  ) => ({ department, status, lines: lines.map((l) => ({ ...sent, ...l })) });
+  const rounds = (
+    ...tickets: ReturnType<typeof ticket>[]
+  ): Pick<OrderDetail, "rounds"> =>
+    ({
+      rounds: [{ id: ORDER, sentAt: NOW_ISO, sentBy: null, tickets }],
+    }) as unknown as Pick<OrderDetail, "rounds">;
+  const NOW_ISO = new Date(NOW).toISOString();
+
+  it("refuses a close while a held block has a line still sent", () => {
+    expect(closeState(rounds(ticket(KITCHEN, "held"))).held).toBe(true);
+    // On the house is still sent, and waits to be called.
+    expect(
+      closeState(rounds(ticket(KITCHEN, "held", [{ compedAt: NOW_ISO }]))).held,
+    ).toBe(true);
+    expect(
+      closeState(
+        rounds(
+          ticket(KITCHEN, "held", [
+            { cancelledAt: NOW_ISO },
+            { takenBackAt: NOW_ISO },
+          ]),
+        ),
+      ).held,
+    ).toBe(false);
+  });
+
+  it("names what isn't served yet, once each, in the business's order", () => {
+    const state = closeState(
+      rounds(
+        ticket(KITCHEN, "new"),
+        ticket(BAR, "ready"),
+        ticket(KITCHEN, "ready"),
+        ticket(PLACE, "served"),
+        ticket(ORDER, "new", [{ cancelledAt: NOW_ISO }]),
+      ),
+      [BAR, KITCHEN],
+    );
+    expect(state).toEqual({ held: false, unserved: [BAR, KITCHEN] });
+    expect(closeState(rounds(ticket(KITCHEN, "served"))).unserved).toEqual([]);
+  });
+
+  const floor = (
+    orders: { id: string; place: string | null }[],
+    day = "2026-11-20",
+  ): Pick<OrderFloor, "day" | "orders"> =>
+    ({ day, orders }) as unknown as Pick<OrderFloor, "day" | "orders">;
+  const closed = {
+    id: ORDER,
+    status: "closed" as const,
+    day: "2026-11-20",
+    place: { id: PLACE, name: "4" },
+  };
+
+  it("opens a closed order again the same day, while its place is free", () => {
+    expect(reopenState(closed, floor([]))).toBe("ok");
+    expect(reopenState({ ...closed, status: "open" }, floor([]))).toBe("open");
+    expect(reopenState({ ...closed, status: "cancelled" }, floor([]))).toBe(
+      "cancelled",
+    );
+    expect(reopenState(closed, floor([], "2026-11-21"))).toBe("dayOver");
+    expect(reopenState(closed, floor([{ id: HUMMUS, place: PLACE }]))).toBe(
+      "taken",
+    );
+    // A takeaway has no place to be taken.
+    expect(
+      reopenState(
+        { ...closed, place: null },
+        floor([{ id: HUMMUS, place: null }]),
+      ),
+    ).toBe("ok");
+  });
+
+  it("moves to the live places with no open order, in their order", () => {
+    const places = [
+      { id: PLACE, name: "4" },
+      { id: KITCHEN, name: "7" },
+      { id: BAR, name: "11" },
+    ];
+    expect(
+      freePlaces(
+        places,
+        floor([
+          { id: ORDER, place: PLACE },
+          { id: HUMMUS, place: KITCHEN },
+          { id: LEMONADE, place: null },
+        ]),
+        PLACE,
+      ).map((p) => p.name),
+    ).toEqual(["11"]);
+    expect(freePlaces(places, floor([]), PLACE).map((p) => p.name)).toEqual([
+      "7",
+      "11",
+    ]);
+  });
+
+  it("shows the newest five closed today, the rest a tap away", () => {
+    const list = Array.from({ length: 7 }, (_, n) => n);
+    expect(closedToday(list)).toEqual({
+      rows: [0, 1, 2, 3, 4],
+      rest: [5, 6],
+    });
+    expect(closedToday(list.slice(0, 3))).toEqual({
+      rows: [0, 1, 2],
+      rest: [],
+    });
   });
 });

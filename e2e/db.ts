@@ -4523,6 +4523,105 @@ export async function demoLineTakenBack(
   return row?.taken ?? null;
 }
 
+/**
+ * Where the newest line of that item is at the open order of that place
+ * (waiter mode P5): live, taken back, cancelled or on the house, with the
+ * reason of a cancel or of the house; null when there is none.
+ */
+export async function demoLine(
+  placeName: string,
+  itemName: string,
+): Promise<{
+  state: "live" | "takenBack" | "cancelled" | "comped";
+  reason: string | null;
+} | null> {
+  const [row] = await sql<
+    {
+      state: "live" | "takenBack" | "cancelled" | "comped";
+      reason: string | null;
+    }[]
+  >`
+    select
+      case
+        when l.taken_back_at is not null then 'takenBack'
+        when l.cancelled_at is not null then 'cancelled'
+        when l.comped_at is not null then 'comped'
+        else 'live'
+      end as state,
+      coalesce(l.cancel_reason, l.comp_reason) as reason
+    from public.order_lines l
+    join public.order_tickets t on t.id = l.ticket_id
+    join public.orders o on o.id = t.order_id
+    join public.order_places p on p.id = o.place_id
+    where o.business_id = ${DEMO_RESTAURANT} and o.status = 'open'
+      and p.name = ${placeName} and l.name = ${itemName}
+    order by l.position desc
+    limit 1`;
+  return row ?? null;
+}
+
+/** The status of the newest order at the demo restaurant's place of that name, or null. */
+export async function demoOrderStatus(
+  placeName: string,
+): Promise<string | null> {
+  const [row] = await sql<{ status: string }[]>`
+    select o.status
+    from public.orders o
+    join public.order_places p on p.id = o.place_id
+    where o.business_id = ${DEMO_RESTAURANT} and p.name = ${placeName}
+    order by o.opened_at desc
+    limit 1`;
+  return row?.status ?? null;
+}
+
+/** The status of today's takeaway of that number at the demo restaurant, or null. */
+export async function demoTakeawayStatus(
+  takeaway: number,
+): Promise<string | null> {
+  const [row] = await sql<{ status: string }[]>`
+    select o.status
+    from public.orders o
+    where o.business_id = ${DEMO_RESTAURANT} and o.takeaway_no = ${takeaway}
+    order by o.opened_at desc
+    limit 1`;
+  return row?.status ?? null;
+}
+
+/** The name of the place an order of the demo restaurant is at now; null for a takeaway. */
+export async function demoOrderPlaceName(
+  orderId: string,
+): Promise<string | null> {
+  const [row] = await sql<{ name: string | null }[]>`
+    select p.name
+    from public.orders o
+    left join public.order_places p on p.id = o.place_id
+    where o.business_id = ${DEMO_RESTAURANT} and o.id = ${orderId}`;
+  return row?.name ?? null;
+}
+
+/** The id of the open order at the demo restaurant's place of that name, or null. */
+export async function demoOpenOrder(placeName: string): Promise<string | null> {
+  const [row] = await sql<{ id: string }[]>`
+    select o.id
+    from public.orders o
+    join public.order_places p on p.id = o.place_id
+    where o.business_id = ${DEMO_RESTAURANT} and o.status = 'open'
+      and p.name = ${placeName}`;
+  return row?.id ?? null;
+}
+
+/** The demo restaurant's log of the orders since that moment, oldest first (P5). */
+export async function demoOrderLog(
+  since: Date,
+): Promise<{ action: string; details: Record<string, unknown> }[]> {
+  return sql<{ action: string; details: Record<string, unknown> }[]>`
+    select a.action, a.details
+    from public.audit_log a
+    where a.business_id = ${DEMO_RESTAURANT} and a.action like 'order.%'
+      and a.created_at >= ${since}
+    order by a.created_at, a.id`;
+}
+
 /** Someone's open shift at the demo restaurant ended that many minutes ago. */
 export async function endDemoEntry(
   phone: string,

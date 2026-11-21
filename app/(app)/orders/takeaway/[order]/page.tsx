@@ -16,7 +16,8 @@ export async function generateMetadata(): Promise<Metadata> {
 
 // An order by its id (waiter mode P4): a takeaway's own page, and where
 // "ההזמנות שלי" and the ready toast lead, which name an order and not its
-// place: one at a place goes on to the place's page.
+// place: one at a place goes on to the place's page, and one closed or
+// cancelled to its list for the till (P5).
 export default async function OrderPage({
   params,
 }: PageProps<"/orders/takeaway/[order]">) {
@@ -31,8 +32,8 @@ export default async function OrderPage({
   const read = await getOrderDetail(id);
   if (read === "closed") return <NoPlaceScreen />;
   const detail = readOf(read);
+  if (detail && detail.status !== "open") redirect(`/orders/till/${detail.id}`);
   if (detail?.place) redirect(`/orders/place/${detail.place.id}`);
-  if (detail && detail.status !== "open") return <NoPlaceScreen />;
   const [floor, menu, favourites] = await Promise.all([
     getOrderFloor(access.businessId),
     getMenu(access.businessId),

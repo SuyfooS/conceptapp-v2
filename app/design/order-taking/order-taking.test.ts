@@ -5,16 +5,23 @@ import {
   myOrdersSchema,
   orderDetailSchema,
   orderPrepSchema,
+  orderTill,
   takeBackState,
 } from "@domain/orders";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import he from "@/messages/he.json";
 import {
+  cancelLine,
+  cancelOrder,
   closeOrder,
+  compLine,
   importMenu,
+  moveOrder,
   reopenOrder,
+  restoreLine,
   saveCategories,
   sendRound,
+  uncompLine,
 } from "./changes";
 import {
   DEMO_START,
@@ -45,6 +52,7 @@ import {
   twinFloor,
   twinFrame,
   twinMine,
+  twinOrderAt,
   twinPrep,
   twinSentRound,
 } from "./real-orders";
@@ -119,8 +127,8 @@ describe("the demo's evenings", () => {
       place: null,
       takeaway: 1,
     });
-    // The evening as it opens already has takeaway 1.
-    expect(scenario(null).nextTakeaway).toBe(2);
+    // The evening as it opens already has takeaway 1, and 2 cancelled.
+    expect(scenario(null).nextTakeaway).toBe(3);
   });
 });
 
@@ -307,11 +315,13 @@ describe("the floor's takeaways", () => {
   it("leaves the floor once closed, and comes back when reopened", () => {
     const evening = scenario(null);
     expect(onFloor(evening)).toEqual(["takeaway-1"]);
-    const closed = closeOrder(evening, "takeaway-1", READER, DEMO_START);
+    const closed = closeOrder(evening, "order-takeaway-1", READER, DEMO_START);
     expect(onFloor(closed)).toEqual([]);
     expect(closed.closed[0]?.placeId).toBe("takeaway-1");
     const id = closed.closed[0]?.id ?? "";
-    expect(onFloor(reopenOrder(closed, id))).toEqual(["takeaway-1"]);
+    expect(onFloor(reopenOrder(closed, id, READER, DEMO_START))).toEqual([
+      "takeaway-1",
+    ]);
   });
 });
 
@@ -457,5 +467,119 @@ describe("the twin's menu as the real screens read it", () => {
     });
     const coffee = menu.items.find((item) => item.name === "קפה הפוך");
     expect(coffee?.optionGroups[0]?.options[1]?.priceAgorot).toBe(300);
+  });
+});
+
+// P5's fixes on the twin's store, read back as the app's screens read them.
+describe("the twin's fixes (P5)", () => {
+  const evening = scenario(null);
+  const at = DEMO_START + MINUTE;
+  const lineOf = (data: ReturnType<typeof scenario>, id: string) =>
+    twinDetail(data, "order-4", at)
+      ?.rounds.flatMap((r) => r.tickets)
+      .flatMap((ticket) => ticket.lines)
+      .find((line) => line.id === id);
+
+  it("cancels a line with its reason and puts it back, gives one on the house and takes it off", () => {
+    const cancelled = cancelLine(evening, "l5", "mistake", READER, at);
+    expect(lineOf(cancelled, "l5")).toMatchObject({
+      cancelReason: "mistake",
+      cancelledAt: new Date(at).toISOString(),
+    });
+    expect(lineOf(restoreLine(cancelled, "l5"), "l5")).toMatchObject({
+      cancelledAt: null,
+      cancelReason: null,
+    });
+    const comped = compLine(evening, "l8", "make_good", READER, at);
+    expect(lineOf(comped, "l8")).toMatchObject({ compReason: "make_good" });
+    expect(lineOf(uncompLine(comped, "l8"), "l8")?.compedAt).toBeNull();
+    // A line cancelled isn't given on the house, as the database refuses it.
+    expect(compLine(cancelled, "l5", "staff", READER, at)).toEqual(cancelled);
+    // The kitchen strikes it, and the evening's fixes count it.
+    const kitchen = twinPrep(cancelled, ["kitchen"], at).tickets.find(
+      (ticket) => ticket.id === "t-4a-kitchen",
+    );
+    expect(kitchen?.lines.map((line) => line.state)).toEqual([
+      "live",
+      "cancelled",
+    ]);
+    expect(twinFloor(comped, at).fixes).toEqual({
+      takenBack: 0,
+      cancelled: 2,
+      comped: 1,
+    });
+  });
+
+  it("cancels an order whole, for good, under today's closed", () => {
+    const gone = cancelOrder(evening, "order-4", "guest", READER, at);
+    expect(gone.orders.some((o) => o.id === "order-4")).toBe(false);
+    const floor = twinFloor(gone, at);
+    expect(floor.closed[0]).toMatchObject({
+      placeName: "4",
+      status: "cancelled",
+    });
+    expect(twinDetail(gone, "order-4", at)).toMatchObject({
+      status: "cancelled",
+      cancelReason: "guest",
+      cancelledBy: READER,
+      closedAt: null,
+    });
+    // Off the prep screen, and no reopening it.
+    expect(
+      twinPrep(gone, ["kitchen"], at).tickets.some(
+        (t) => t.order === "order-4",
+      ),
+    ).toBe(false);
+    expect(reopenOrder(gone, "order-4", READER, at)).toBe(gone);
+  });
+
+  it("moves an order to a free table, never to a taken one or from a takeaway", () => {
+    const moved = moveOrder(evening, "order-4", "table-6", READER, at);
+    expect(twinOrderAt(moved, "table-6")?.id).toBe("order-4");
+    expect(twinOrderAt(moved, "table-4")).toBeNull();
+    expect(twinDetail(moved, "order-4", at)).toMatchObject({
+      place: { id: "table-6", name: "6" },
+      movedFrom: "4",
+      movedBy: READER,
+    });
+    expect(moveOrder(evening, "order-4", "table-7", READER, at)).toBe(evening);
+    expect(moveOrder(evening, "order-takeaway-1", "table-6", READER, at)).toBe(
+      evening,
+    );
+  });
+
+  it("closes by the order and opens it again while its table is free", () => {
+    const closed = closeOrder(evening, "order-4", READER, at);
+    expect(twinFloor(closed, at).closed[0]).toMatchObject({
+      placeName: "4",
+      status: "closed",
+    });
+    const again = reopenOrder(closed, "order-4", "yoav", at);
+    expect(twinDetail(again, "order-4", at)).toMatchObject({
+      status: "open",
+      reopenedBy: "yoav",
+    });
+    // Table 3 sat again: its order closed today waits.
+    const taken = scenario("reopenTaken");
+    expect(reopenOrder(taken, "order-3", READER, at)).toBe(taken);
+  });
+
+  it("rings table 4 up by item after its fixes, the cancelled hummus out and the beer marked", () => {
+    const detail = twinDetail(scenario("fixed"), "order-4", at);
+    const till = detail ? orderTill(detail) : null;
+    expect(
+      till?.byItem.map((row) => [row.name, row.quantity, row.comped]),
+    ).toEqual([
+      ["פוקאצ'ה", 1, false],
+      ["שניצל", 1, false],
+      ["המבורגר", 1, false],
+      ["בירה מהחבית", 2, true],
+    ]);
+    // A takeaway cancelled whole, with who and why.
+    expect(twinDetail(evening, "order-takeaway-2", at)).toMatchObject({
+      status: "cancelled",
+      cancelReason: "guest",
+      takeaway: { number: 2 },
+    });
   });
 });

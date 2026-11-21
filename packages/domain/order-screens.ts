@@ -1,8 +1,13 @@
-import type { MenuItem } from "./order-taking";
+import type { MenuItem, OrderPlace } from "./order-taking";
 import {
   type FloorOrder,
+  type LineState,
   type MyOrders,
   ORDER_CAPS,
+  type OrderDetail,
+  type OrderFloor,
+  type OrderLine,
+  type OrderTicket,
   type RoundLine,
   type RoundTarget,
   type TicketStatus,
@@ -443,4 +448,128 @@ export function orderModeItems(mode: {
  */
 export function orderModeEntry(mode: { takes: boolean }): "places" | "prep" {
   return mode.takes ? "places" : "prep";
+}
+
+// Fixing an order (P5)
+
+/** What can be done to a sent line: cancel it, put it back, give it on the house, take that back. */
+export type LineFix = "cancel" | "restore" | "comp" | "uncomp";
+
+/**
+ * What the line's sheet offers, as `public.cancel_order_line` and
+ * `public.comp_order_line` decide it: nothing unless the order is open and
+ * the person isn't viewing; a live line is cancelled while its ticket is
+ * held or new, and once it is ready or served only by those who run orders
+ * (for anyone else `readyLocked`, so the sheet says why), and given on the
+ * house by those who run orders; a cancelled line is put back by the same
+ * rule; a line on the house is taken off it by those who run orders; a line
+ * taken back is done with.
+ */
+export function lineFixes(state: {
+  order: Pick<OrderDetail, "status">;
+  ticket: Pick<OrderTicket, "status">;
+  /** Where the line is, as the screen shows it (`lineStateOf`, or a fix held). */
+  line: LineState;
+  runs: boolean;
+  viewing: boolean;
+}): { fixes: LineFix[]; readyLocked: boolean } {
+  const none = { fixes: [], readyLocked: false };
+  if (state.viewing || state.order.status !== "open") return none;
+  const ready =
+    state.ticket.status === "ready" || state.ticket.status === "served";
+  const readyLocked = ready && !state.runs;
+  switch (state.line) {
+    case "live":
+      return {
+        fixes: [
+          ...(readyLocked ? [] : (["cancel"] as const)),
+          ...(state.runs ? (["comp"] as const) : []),
+        ],
+        readyLocked,
+      };
+    case "cancelled":
+      return { fixes: readyLocked ? [] : ["restore"], readyLocked };
+    case "comped":
+      return { fixes: state.runs ? ["uncomp"] : [], readyLocked: false };
+    default:
+      return none;
+  }
+}
+
+/** Neither taken back nor cancelled: what `public.close_order` asks of a held block. */
+const stillSent = (line: Pick<OrderLine, "takenBackAt" | "cancelledAt">) =>
+  line.takenBackAt === null && line.cancelledAt === null;
+
+/**
+ * What closing an order meets (`public.close_order`): `held` while a held
+ * block with a line still sent waits to be called, which refuses it; and
+ * the departments whose tickets aren't served yet, each once, in the
+ * business's order, which the close then marks served.
+ */
+export function closeState(
+  order: Pick<OrderDetail, "rounds">,
+  departmentOrder: readonly string[] = [],
+): { held: boolean; unserved: string[] } {
+  const tickets = order.rounds
+    .flatMap((round) => round.tickets)
+    .filter((ticket) => ticket.lines.some(stillSent));
+  const held = tickets.some((ticket) => ticket.status === "held");
+  const unserved = [
+    ...new Set(
+      tickets
+        .filter(
+          (ticket) => ticket.status === "new" || ticket.status === "ready",
+        )
+        .map((ticket) => ticket.department),
+    ),
+  ];
+  const place = (id: string) => {
+    const at = departmentOrder.indexOf(id);
+    return at === -1 ? departmentOrder.length : at;
+  };
+  return { held, unserved: unserved.sort((a, b) => place(a) - place(b)) };
+}
+
+/**
+ * Whether a closed order opens again now (`public.reopen_order`): "open"
+ * already, "cancelled" for good, "dayOver" once its business day ended,
+ * "taken" while another open order is at its place (a takeaway never is),
+ * else "ok".
+ */
+export function reopenState(
+  order: Pick<OrderDetail, "id" | "status" | "day" | "place">,
+  floor: Pick<OrderFloor, "day" | "orders">,
+): "open" | "cancelled" | "dayOver" | "taken" | "ok" {
+  if (order.status === "open") return "open";
+  if (order.status === "cancelled") return "cancelled";
+  if (order.day !== floor.day) return "dayOver";
+  const at = order.place?.id ?? null;
+  if (at && floor.orders.some((o) => o.place === at && o.id !== order.id)) {
+    return "taken";
+  }
+  return "ok";
+}
+
+/** Where an order can move: the live places with no open order, but its own. */
+export function freePlaces(
+  places: readonly OrderPlace[],
+  floor: Pick<OrderFloor, "orders">,
+  current: string | null,
+): OrderPlace[] {
+  return places.filter(
+    (place) =>
+      place.id !== current &&
+      !floor.orders.some((order) => order.place === place.id),
+  );
+}
+
+/**
+ * "נסגרו היום" on a phone or a tablet: the newest `shown` first (the read's
+ * order, newest first), and the rest behind "הצגת כל".
+ */
+export function closedToday<T>(
+  closed: readonly T[],
+  shown = 5,
+): { rows: T[]; rest: T[] } {
+  return { rows: closed.slice(0, shown), rest: closed.slice(shown) };
 }
