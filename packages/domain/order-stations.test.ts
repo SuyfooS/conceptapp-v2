@@ -9,6 +9,7 @@ import {
   STATION_FRESH_MS,
   STATION_TICKETS_PATH,
   stationAnswerSchema,
+  stationArrivals,
   stationConnection,
   stationGone,
   stationMenuSchema,
@@ -300,7 +301,11 @@ describe("a station's write", () => {
 
 describe("what the kitchen's screen tells", () => {
   it("tells nothing on the first read after opening", () => {
-    expect(stationNews(null, [ticket(1)])).toEqual({ arrived: [], struck: [] });
+    expect(stationNews(null, [ticket(1)])).toEqual({
+      arrived: [],
+      restored: [],
+      struck: [],
+    });
   });
 
   it("tells a new ticket, and a held block called", () => {
@@ -310,6 +315,7 @@ describe("what the kitchen's screen tells", () => {
       [ticket(1), { ...held, status: "new", firedAt: at(5) }, ticket(3)],
     );
     expect(news.arrived).toEqual([ID(2), ID(3)]);
+    expect(news.restored).toEqual([]);
     expect(news.struck).toEqual([]);
   });
 
@@ -317,7 +323,7 @@ describe("what the kitchen's screen tells", () => {
     const ready = ticket(2, { status: "ready", readyAt: at(1) });
     expect(
       stationNews([ticket(1), ready], [{ ...ready, status: "new" }]),
-    ).toEqual({ arrived: [], struck: [] });
+    ).toEqual({ arrived: [], restored: [], struck: [] });
   });
 
   it("tells a line struck on a ticket still shown, and a ticket struck whole", () => {
@@ -342,7 +348,7 @@ describe("what the kitchen's screen tells", () => {
     );
   });
 
-  it("tells a ticket with a line to make again: struck whole before, or a line restored", () => {
+  it("tells a line restored apart from a new order: struck whole before, or not", () => {
     const struck = { ...ticket(4), lines: [line(40, "cancelled")] };
     const two = ticket(5, {}, [line(50), line(51, "cancelled")]);
     const news = stationNews(
@@ -350,23 +356,71 @@ describe("what the kitchen's screen tells", () => {
       [
         { ...struck, lines: [line(40)] },
         { ...two, lines: [line(50), line(51)] },
+        ticket(6),
       ],
     );
-    expect(news).toEqual({ arrived: [ID(4), ID(5)], struck: [] });
+    expect(news).toEqual({
+      arrived: [ID(6)],
+      restored: [
+        { ticket: ID(4), line: ID(40) },
+        { ticket: ID(5), line: ID(51) },
+      ],
+      struck: [],
+    });
+    // One chime and the flash for each of them, the new first.
+    expect(stationArrivals(news)).toEqual([ID(6), ID(4), ID(5)]);
     // Nothing restored, nothing told.
     expect(stationNews([struck, two], [struck, two])).toEqual({
       arrived: [],
+      restored: [],
       struck: [],
     });
   });
 
-  it("keeps a ticket taken off only while it is still struck whole", () => {
+  it("tells a held block called as called, even with a line restored as it is", () => {
+    const held = ticket(7, { status: "held" }, [
+      line(70),
+      line(71, "cancelled"),
+    ]);
+    const called = {
+      ...held,
+      status: "new" as const,
+      firedAt: at(5),
+      lines: [line(70), line(71)],
+    };
+    const news = stationNews([held], [called]);
+    expect(news).toEqual({ arrived: [ID(7)], restored: [], struck: [] });
+    expect(stationArrivals(news)).toEqual([ID(7)]);
+  });
+
+  it("counts a ticket with two lines restored once", () => {
+    const struck = ticket(8, {}, [
+      line(80, "cancelled"),
+      line(81, "takenBack"),
+    ]);
+    const news = stationNews(
+      [struck],
+      [{ ...struck, lines: [line(80), line(81)] }],
+    );
+    expect(news.restored).toEqual([
+      { ticket: ID(8), line: ID(80) },
+      { ticket: ID(8), line: ID(81) },
+    ]);
+    expect(stationArrivals(news)).toEqual([ID(8)]);
+  });
+
+  it("keeps a ticket taken off while it is struck whole, or missing from the read", () => {
     const struck = { ...ticket(4), lines: [line(40, "cancelled")] };
     const restored = { ...struck, lines: [line(40)] };
     expect(stillDismissed([ID(4)], [struck, ticket(5)])).toEqual([ID(4)]);
     expect(stillDismissed([ID(4)], [restored, ticket(5)])).toEqual([]);
-    // Gone from the read, it is forgotten too.
-    expect(stillDismissed([ID(4)], [ticket(5)])).toEqual([]);
+    // Its order closed: missing from one read, kept, so a close taken back
+    // gives it back struck whole and it stays off.
+    const closed = stillDismissed([ID(4)], [ticket(5)]);
+    expect(closed).toEqual([ID(4)]);
+    expect(stillDismissed(closed, [struck, ticket(5)])).toEqual([ID(4)]);
+    // Back with a line live, it is shown again and forgotten.
+    expect(stillDismissed(closed, [restored, ticket(5)])).toEqual([]);
   });
 
   it("counts a ticket that arrives late already as reminded: its chime is its one sound", () => {

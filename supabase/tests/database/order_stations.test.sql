@@ -11,10 +11,11 @@
 -- a person's are decided, kept as the station's, and a person's write after
 -- one clears the station's column. A kitchen's or a till's secret makes no
 -- clock code; an order station is stopped by whoever runs orders or edits
--- the clock, taking orders off too, and started again only with it on. Every
--- moment is passed in, from 1 December 2026 18:00 UTC (20:00 in the
--- business). Fixed ids (ea…), numbers (05-007-000xx) and slugs
--- (order-stations-…), so nothing here meets the seed or another test.
+-- the clock of its business, taking orders off too, and started again only
+-- by whoever runs orders, with it on. Every moment is passed in, from 1
+-- December 2026 18:00 UTC (20:00 in the business). Fixed ids (ea…), numbers
+-- (05-007-000xx) and slugs (order-stations-…), so nothing here meets the
+-- seed or another test.
 begin;
 select plan(55);
 
@@ -766,23 +767,33 @@ select is(
 -- With taking orders off, a screen left running is still stopped (by a clock
 -- editor who doesn't run orders too, from the clock's lock on that device),
 -- so it never keeps one of the ten; starting it again waits for taking
--- orders to be on.
+-- orders to be on, and then for whoever runs orders: not the clock editor
+-- who stopped it. Nobody of another business stops one. Each write is its
+-- own statement, read in the next.
 update public.business_modules set enabled = false
 where business_id = pg_temp.a() and module_key = 'order_taking';
-select is(
-  concat_ws('|',
-    pg_temp.refusal(format($$select public.station_order_prep(%L, null, %L)$$, pg_temp.h('kitchen'), pg_temp.at(960))),
-    pg_temp.refusal(format($$select public.set_clock_station_stopped(%L, %L, true, %L)$$,
-      pg_temp.p(6), pg_temp.id('till'), pg_temp.at(960))),
-    pg_temp.refusal(format($$select public.set_clock_station_stopped(%L, %L, false, %L)$$,
-      pg_temp.p(2), pg_temp.id('till'), pg_temp.at(970))),
-    (select (s.stopped_at is not null)::text from public.clock_stations s where s.id = pg_temp.id('till'))
-  ),
-  '42501 off|none|42501 off|true',
-  'with taking orders off its screens read nothing, a clock editor still stops the till, and nobody starts it again'
-);
+insert into got values ('off', to_jsonb(concat_ws('|',
+  pg_temp.refusal(format($$select public.station_order_prep(%L, null, %L)$$, pg_temp.h('kitchen'), pg_temp.at(960))),
+  pg_temp.refusal(format($$select public.set_clock_station_stopped(%L, %L, true, %L)$$,
+    pg_temp.p(6), pg_temp.id('till'), pg_temp.at(960))),
+  pg_temp.refusal(format($$select public.set_clock_station_stopped(%L, %L, false, %L)$$,
+    pg_temp.p(2), pg_temp.id('till'), pg_temp.at(970)))
+)));
 update public.business_modules set enabled = true
 where business_id = pg_temp.a() and module_key = 'order_taking';
+insert into got values ('on again', to_jsonb(concat_ws('|',
+  pg_temp.refusal(format($$select public.set_clock_station_stopped(%L, %L, false, %L)$$,
+    pg_temp.p(6), pg_temp.id('till'), pg_temp.at(975))),
+  pg_temp.refusal(format($$select public.set_clock_station_stopped(%L, %L, true, %L)$$,
+    pg_temp.p(11), pg_temp.id('kitchen'), pg_temp.at(975)))
+)));
+select is(
+  (pg_temp.got('off') #>> '{}')
+    || '|' || (pg_temp.got('on again') #>> '{}')
+    || '|' || (select (s.stopped_at is not null)::text from public.clock_stations s where s.id = pg_temp.id('till')),
+  '42501 off|none|42501 off|42501|42501|true',
+  'with taking orders off its screens read nothing, a clock editor still stops the till and nobody starts it again; on again, the clock editor doesn''t either, nor does another business''s owner stop a screen'
+);
 
 ------------------------------------------------------------------------------
 -- Who reads what the screens' locks and stops logged

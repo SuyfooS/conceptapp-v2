@@ -6313,6 +6313,7 @@
         },
         "news": {
           "new": "New order: {place}",
+          "restored": "Back to make: {name} · {place}",
           "cancelled": "Cancelled: {name} · {place}",
           "late": "Waiting too long: {place}"
         },

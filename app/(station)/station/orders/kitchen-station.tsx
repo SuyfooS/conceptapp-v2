@@ -6,6 +6,7 @@ import {
   freshTickets,
   lateNews,
   type StationMenuItem,
+  stationArrivals,
   stationGone,
   stationNews,
   stationSince,
@@ -57,18 +58,20 @@ export type StationFacts = {
  * reads nothing until it is pressed, after every reload too, so no ticket is
  * marked "על המסך" on a screen that can't chime; the press also asks for
  * full screen where the device has it. From then: one chime for each new
- * ticket or block called, or a cancelled line restored, which flashes in
- * the business's colour (an edge for half a minute with reduced motion), one
- * reminder for a ticket waiting past the business's time (none for one that
- * arrives late already, whose chime is its sound), the double chime for a
- * line taken back or cancelled, struck and kept; the screen stays awake. A
- * ticket struck whole and taken off comes back once a line of it is live
- * again. While taking orders is off, the screen shows, counts and reminds of
- * none of its last read. "מוכן" bumps a ticket to "מוכנים לאחרונה" with
- * "ביטול"; "מה נגמר" marks items sold out. With no
- * connection for two asks in a row, a banner across the top; with the sound
- * stopped by the device, a banner that is its button. Phone: one column;
- * tablet: two, three on a landscape one; desktop: four.
+ * ticket or block called, or a cancelled line restored (said as back to
+ * make, not as a new order), which flashes in the business's colour (an
+ * edge for half a minute with reduced motion), one reminder for a ticket
+ * waiting past the business's time (none for one that arrives late
+ * already, whose chime is its sound), the double chime for a line taken
+ * back or cancelled, struck and kept; the screen stays awake. A ticket
+ * struck whole and taken off comes back only once a line of it is live
+ * again, not when its order's close is taken back. While taking orders is
+ * off, the screen shows, counts and reminds of none of its last read.
+ * "מוכן" bumps a ticket to "מוכנים לאחרונה" with "ביטול"; "מה נגמר" marks
+ * items sold out. With no connection for two asks in a row, a banner across
+ * the top; with the sound stopped by the device, a banner that is its
+ * button. Phone: one column; tablet: two, three on a landscape one;
+ * desktop: four.
  */
 export function KitchenStation({
   facts,
@@ -228,7 +231,10 @@ function KitchenScreen({
     setMarked({ version: prep.version, ready: [], back: [] });
   }
   const [busy, setBusy] = useState<string | null>(null);
-  /** Struck whole and taken off this screen by hand, while still struck whole. */
+  /**
+   * Struck whole and taken off this screen by hand, while struck whole or
+   * missing from the read (its order closed, the close maybe taken back).
+   */
   const [dismissed, setDismissed] = useState<readonly string[]>([]);
   /** When each ticket arrived, on the server's clock: fresh for a while. */
   const [arrived, setArrived] = useState<ReadonlyMap<string, number>>(
@@ -265,12 +271,18 @@ function KitchenScreen({
     const ticket = prep?.tickets.find((one) => one.id === id);
     return ticket ? placeTitle(ticket) : "";
   };
+  const lineName = (ticket: string, line: string) =>
+    prep?.tickets
+      .find((one) => one.id === ticket)
+      ?.lines.find((one) => one.id === line)?.name ?? "";
 
-  // What a read brought: a chime for what arrived, the double chime for a
-  // line struck, said to screen readers too. The first read after opening
-  // tells nothing, and what waits too long already then is not reminded of;
-  // nor is what arrives late already later, whose chime is its one sound.
-  // While refused (taking orders off), the last read stays and tells nothing.
+  // What a read brought: a chime for what arrived or came back to make (a
+  // cancelled line restored), each said in its own words, the double chime
+  // for a line struck, said to screen readers too. The first read after
+  // opening tells nothing, and what waits too long already then is not
+  // reminded of; nor is what arrives late already later, whose chime is its
+  // one sound. While refused (taking orders off), the last read stays and
+  // tells nothing.
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new read is what tells; the rest is read as it is then
   useEffect(() => {
     if (!prep || poll.refusal !== null) return;
@@ -292,34 +304,44 @@ function KitchenScreen({
       return;
     }
     const told = stationNews(was, prep.tickets);
+    const came = stationArrivals(told);
     const said: string[] = [];
     for (const id of arrivedLate(
       prep.tickets,
-      told.arrived,
+      came,
       now,
       prep.lateAfterMinutes,
     )) {
       reminded.current.add(id);
     }
-    if (told.arrived.length > 0) {
+    if (came.length > 0) {
       sound.chime();
       setArrived((times) => {
         const next = new Map(times);
-        for (const id of told.arrived) next.set(id, now);
+        for (const id of came) next.set(id, now);
         return next;
       });
       for (const id of told.arrived) {
         said.push(ts("news.new", { place: placeOf(id) }));
       }
+      for (const { ticket, line } of told.restored) {
+        said.push(
+          ts("news.restored", {
+            name: lineName(ticket, line),
+            place: placeOf(ticket),
+          }),
+        );
+      }
     }
     if (told.struck.length > 0) {
       sound.doubleChime();
       for (const { ticket, line } of told.struck) {
-        const name =
-          prep.tickets
-            .find((one) => one.id === ticket)
-            ?.lines.find((one) => one.id === line)?.name ?? "";
-        said.push(ts("news.cancelled", { name, place: placeOf(ticket) }));
+        said.push(
+          ts("news.cancelled", {
+            name: lineName(ticket, line),
+            place: placeOf(ticket),
+          }),
+        );
       }
     }
     if (said.length > 0) setNews(said.join(". "));

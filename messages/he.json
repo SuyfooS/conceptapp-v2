@@ -6313,6 +6313,7 @@
         },
         "news": {
           "new": "הזמנה חדשה: {place}",
+          "restored": "חזר להכנה: {name} · {place}",
           "cancelled": "בוטל: {name} · {place}",
           "late": "מחכה יותר מדי: {place}"
         },

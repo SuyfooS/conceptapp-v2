@@ -21,6 +21,10 @@ what is next, defaults applied.
 - Re-review, fixed: a ticket taken off with "הסרה מהמסך" stays off only while it is struck whole (`stillDismissed`), and one with a line live again (a cancelled line restored) is news: chime and flash (`stationNews`).
 - Re-review, fixed: while refused (taking orders off) the kitchen's screen tells, reminds and counts nothing of its last read, and hides "מוכנים לאחרונה".
 - Re-review, fixed: a ticket that arrives late already counts as reminded (`arrivedLate`): one chime, and "הזמנה חדשה" is what is said.
+- Third review, fixed: pgTAP's 'taking orders off' assertion reads the till's `stopped_at` in a statement after the stop (the refusals kept in `got`), so it sees the stop.
+- Third review, fixed: pgTAP asserts the clock editor who stopped the till is refused starting it again with taking orders on, and B's owner refused stopping A's kitchen's screen (plan still 55).
+- Third review, fixed: a ticket taken off with "הסרה מהמסך" stays off while missing from the read too (`stillDismissed`), so a close taken back doesn't bring it back struck whole.
+- Third review, fixed: a cancelled line restored is said as "חזר להכנה: {name} · {place}" (`app.orders.station.news.restored`), not as a new order: `stationNews` returns `restored` apart, `stationArrivals` gives the one chime and the flash.
 
 ## 2026-11-21 · chat · taking orders: offline (waiter mode P7)
 

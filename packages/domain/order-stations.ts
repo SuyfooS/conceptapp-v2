@@ -359,72 +359,90 @@ export function stillToMake<T extends PrepTicket>(tickets: readonly T[]): T[] {
 
 /**
  * Of the tickets taken off a screen by hand ("הסרה מהמסך"), those that stay
- * off: still in the read and struck whole. One with a line live again (a
- * cancelled line restored) is shown again, and no longer kept as taken off.
+ * off: struck whole in the read, or missing from it (its order closed, a
+ * close that may still be taken back, which gives the ticket back struck
+ * whole as it was). Only one in the read with a line live again (a cancelled
+ * line restored) is shown again, and no longer kept as taken off. What is
+ * kept is bounded by what was taken off on this screen since it opened.
  */
 export function stillDismissed(
   dismissed: readonly string[],
   tickets: readonly PrepTicket[],
 ): string[] {
-  const struck = new Set(
-    tickets.filter(stationGone).map((ticket) => ticket.id),
-  );
-  return dismissed.filter((id) => struck.has(id));
+  const read = new Map(tickets.map((ticket) => [ticket.id, ticket]));
+  return dismissed.filter((id) => {
+    const ticket = read.get(id);
+    return !ticket || stationGone(ticket);
+  });
 }
+
+/** A line of a ticket, by their ids. */
+export type StationLineRef = { ticket: string; line: string };
 
 /** What changed between two reads, for the sound and the screen reader. */
 export type StationNews = {
-  /**
-   * New tickets, held blocks called, and tickets with a line to make again
-   * (a cancelled line restored, on a ticket struck whole or not): one chime.
-   */
+  /** New tickets, and held blocks called: one chime, said as a new order. */
   arrived: string[];
+  /**
+   * Lines taken back or cancelled before and live again now (a cancelled
+   * line restored), on a ticket there before, struck whole or not: the same
+   * chime and flash as an arrival, said as back to make, not as a new order.
+   */
+  restored: StationLineRef[];
   /** Lines live before and taken back or cancelled now, on a ticket still shown: the double chime. */
-  struck: { ticket: string; line: string }[];
+  struck: StationLineRef[];
 };
 
 /**
  * What a read brought (§4.4): the tickets that arrived (new now, and absent
- * or held before, or with a line live now that wasn't before) with a line to
- * make, and the lines struck since on a ticket still shown. The first read
- * after the screen opens (`before` null) tells nothing: what is there
- * already was there.
+ * or held before) with a line to make, the lines restored since on another
+ * ticket there before (live now, not before), and the lines struck since on
+ * a ticket still shown. The first read after the screen opens (`before`
+ * null) tells nothing: what is there already was there.
  */
 export function stationNews(
   before: readonly PrepTicket[] | null,
   after: readonly PrepTicket[],
 ): StationNews {
-  if (before === null) return { arrived: [], struck: [] };
+  if (before === null) return { arrived: [], restored: [], struck: [] };
   const was = new Map(before.map((ticket) => [ticket.id, ticket]));
   const arrived: string[] = [];
-  const struck: { ticket: string; line: string }[] = [];
+  const restored: StationLineRef[] = [];
+  const struck: StationLineRef[] = [];
   for (const ticket of after) {
     const earlier = was.get(ticket.id);
+    const toMake = ticket.status === "new" && liveTicket(ticket);
+    const came = toMake && (!earlier || earlier.status === "held");
+    if (came) arrived.push(ticket.id);
+    if (!earlier) continue;
     const live = new Set(
-      (earlier?.lines ?? [])
+      earlier.lines
         .filter((line) => line.state === "live")
         .map((line) => line.id),
     );
-    if (
-      ticket.status === "new" &&
-      liveTicket(ticket) &&
-      (!earlier ||
-        earlier.status === "held" ||
-        // A cancelled line restored: there is something to make again.
-        ticket.lines.some(
-          (line) => line.state === "live" && !live.has(line.id),
-        ))
-    ) {
-      arrived.push(ticket.id);
-    }
-    if (!earlier) continue;
     for (const line of ticket.lines) {
-      if (live.has(line.id) && line.state !== "live") {
-        struck.push({ ticket: ticket.id, line: line.id });
+      if (live.has(line.id)) {
+        if (line.state !== "live") {
+          struck.push({ ticket: ticket.id, line: line.id });
+        }
+      } else if (line.state === "live" && toMake && !came) {
+        // A cancelled line restored: something to make again, on the same ticket.
+        restored.push({ ticket: ticket.id, line: line.id });
       }
     }
   }
-  return { arrived, struck };
+  return { arrived, restored, struck };
+}
+
+/**
+ * The tickets a read brought to make (`stationNews`): new, called, or with a
+ * line restored, each once, the new and called first. One chime for them
+ * all, the flash for each.
+ */
+export function stationArrivals(news: StationNews): string[] {
+  return [
+    ...new Set([...news.arrived, ...news.restored.map((one) => one.ticket)]),
+  ];
 }
 
 /** Since when a ticket waits: sent, or called for a held block. */
@@ -454,7 +472,7 @@ export function lateNews(
 }
 
 /**
- * Of the tickets a read brought (`arrived`, `stationNews`), those waiting
+ * Of the tickets a read brought (`stationArrivals`), those waiting
  * past `lateAfterMinutes` already (sent while the screen had no connection,
  * or given back by a close taken back): the arrival's chime is their one
  * sound and its words their one announcement, so they count as reminded.
