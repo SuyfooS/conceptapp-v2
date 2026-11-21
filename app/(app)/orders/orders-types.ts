@@ -1,6 +1,12 @@
 import type { OrderFailure } from "@db/order-failures";
 import type { DraftLine } from "@domain/order-screens";
-import type { RoundTarget, SentRound } from "@domain/orders";
+import type {
+  CompReason,
+  LineCancelReason,
+  OrderCancelReason,
+  RoundTarget,
+  SentRound,
+} from "@domain/orders";
 
 /*
  * What the mode's screens and their parts share (waiter mode P4), in the app
@@ -46,18 +52,36 @@ export type OrdersPaths = {
   leave: string;
   menuPlaces: string;
   menuImport: string;
-  /** The till's list of an order: the twin's alone until P5. */
-  till?: (order: string) => string;
+  /** The till's list of an order, open or closed today (P5). */
+  till: (order: string) => string;
 };
 
-/** Why an action was refused: the database's reasons, and the server's own. */
-export type OrdersActionFailure = OrderFailure | "viewOnly" | "businessChanged";
+/**
+ * Why an action was refused: the database's reasons, the server's own, and
+ * the mode's own (P5, `WholeRefusal`), with nothing written.
+ */
+export type OrdersActionFailure =
+  | OrderFailure
+  | "viewOnly"
+  | "businessChanged"
+  | WholeRefusal;
+
+/**
+ * Why the mode holds back a write of the order whole (P5): a round of a
+ * draft it names is on its way ("sending"), or another write of the same
+ * order, or of a draft it names, has not answered yet ("writing").
+ */
+export type WholeRefusal = "sending" | "writing";
 
 export type OrdersActionResult<T = null> =
   | { ok: true; value: T }
   | { ok: false; failure: OrdersActionFailure };
 
-/** The writes on the mode's screens besides the send, each bound to the business. */
+/**
+ * The writes on the mode's screens besides the send, each bound to the
+ * business. The app's close and move go after every write sent before them,
+ * whichever screen sent it (`inTurn`); the twin's land at once, in turn.
+ */
 export type OrdersActions = {
   serve: (ticket: string, served: boolean) => Promise<OrdersActionResult>;
   setReady: (ticket: string, ready: boolean) => Promise<OrdersActionResult>;
@@ -67,7 +91,36 @@ export type OrdersActions = {
     order: string,
     label: string | null,
   ) => Promise<OrdersActionResult>;
+  /** A line cancelled with its reason, or put back (false, null). */
+  cancelLine: (
+    line: string,
+    reason: LineCancelReason | null,
+    cancelled: boolean,
+  ) => Promise<OrdersActionResult>;
+  /** A line on the house with its reason, or not any more (false, null). */
+  compLine: (
+    line: string,
+    reason: CompReason | null,
+    comped: boolean,
+  ) => Promise<OrdersActionResult>;
+  cancelOrder: (
+    order: string,
+    reason: OrderCancelReason,
+  ) => Promise<OrdersActionResult>;
+  move: (order: string, place: string) => Promise<OrdersActionResult>;
+  close: (order: string) => Promise<OrdersActionResult>;
+  reopen: (order: string) => Promise<OrdersActionResult>;
+  /** The close's "ביטול": open again, and what it served back where it was. */
+  undoClose: (order: string) => Promise<OrdersActionResult>;
 };
+
+/**
+ * A write of an order whole (P5: a close, a move, the "ביטול" of either, a
+ * reopen): the order, and the drafts it touches, its place's and the one it
+ * moves to. While it is on its way no send goes to that order or from those
+ * drafts, on any screen of the mode (`OrdersModeValue.wholeOnWay`).
+ */
+export type WholeWrite = { order: string; drafts: readonly string[] };
 
 /** Why a send was refused, as the screens say it. */
 export type SendFailure = OrderFailure | "signedOut" | "viewOnly";
@@ -135,6 +188,22 @@ export type DraftStore = {
    * on its way in a round never comes back into it.
    */
   update: (draft: string, change: (lines: DraftLine[]) => DraftLine[]) => void;
+  /**
+   * An order moved (P5): its old place's draft joins the new place's, and
+   * the refusal of its last send goes with it. What the new place's draft
+   * held then, and its refusal, are the place's own: they stay there on the
+   * move's "ביטול" (`moveBack`).
+   */
+  move: (from: string, to: string) => void;
+  /**
+   * The move's "ביטול", from the place the order moved to back to `to`:
+   * everything its draft holds but its own goes back with the order (what
+   * moved, what was added there meanwhile, more of one of its own lines
+   * than it held, and what went out in one of the order's rounds and came
+   * back refused), and the refusal of the last send there goes too, unless
+   * it is the place's own.
+   */
+  moveBack: (from: string, to: string) => void;
   /** How many items each draft holds, for the floor's tiles. */
   counts: Record<string, number>;
 };

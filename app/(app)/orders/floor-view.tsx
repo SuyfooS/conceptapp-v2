@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  closedToday,
   draftKey,
   floorStatus,
   type PlaceState,
@@ -12,12 +13,13 @@ import { Button } from "@ui/button";
 import { Card } from "@ui/card";
 import { DataTable } from "@ui/data-table";
 import { EmptyState } from "@ui/empty-state";
+import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
-import { LayoutGrid, ShoppingBag } from "lucide-react";
+import { Ban, LayoutGrid, Receipt, ShoppingBag } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useOrdersMode } from "./orders-mode";
 import {
   failureWords,
@@ -48,7 +50,10 @@ type Tile = {
  * main action. Phone: three tiles a row. Tablet: four or five beside what is
  * ready to serve, each served with one tap and its undo. Desktop: six a row,
  * the ready column, and the open orders' table under the tiles. One shared
- * floor: everyone sees every place, and who opened it.
+ * floor: everyone sees every place, and who opened it. Under the places,
+ * "נסגרו היום" (P5), each leading to its list for the till, where a closed
+ * one opens again: the newest five on a phone and a tablet, with the rest a
+ * tap away (default 6), all of them in a table on a desktop.
  */
 export function FloorView({
   floor,
@@ -314,6 +319,11 @@ export function FloorView({
               </PageSection>
             </div>
           ) : null}
+          {floor.closed.length > 0 ? (
+            <PageSection title={t("floor.closed.title")}>
+              <ClosedToday closed={floor.closed} />
+            </PageSection>
+          ) : null}
         </div>
         <div className="hidden md:block">
           <PageSection title={t("floor.readyTitle")} headingRef={readyHeading}>
@@ -362,5 +372,91 @@ export function FloorView({
         <p className="text-ink-2">{t("failed.viewOnly")}</p>
       ) : null}
     </PageBody>
+  );
+}
+
+/**
+ * Today's closed and cancelled orders, newest first, each leading to its list
+ * for the till: a list on a phone and a tablet, five and then the rest; a
+ * table on a desktop, with every one of them, each row's button named by its
+ * place, its state and its time, as two orders at one table read apart.
+ */
+function ClosedToday({ closed }: { closed: OrderFloor["closed"] }) {
+  const { t, placeTitle, time } = useOrderWords();
+  const { paths } = useOrdersMode();
+  const router = useRouter();
+  const [all, setAll] = useState(false);
+  const { rows, rest } = closedToday(closed);
+  const list = useRef<HTMLDivElement>(null);
+  // "הצגת כל" goes with its press: the first row it showed takes the focus.
+  const firstShown = useRef<number | null>(null);
+  useEffect(() => {
+    const at = firstShown.current;
+    if (!all || at === null) return;
+    firstShown.current = null;
+    list.current?.querySelectorAll<HTMLElement>("a")[at]?.focus();
+  }, [all]);
+  const when = (row: OrderFloor["closed"][number]) =>
+    row.status === "cancelled"
+      ? t.rich("floor.closed.cancelledAt", { time: time(row.closedAt), ltr })
+      : t.rich("floor.closed.closedAt", { time: time(row.closedAt), ltr });
+  return (
+    <>
+      <div className="flex flex-col gap-2 xl:hidden">
+        <ListGroup ref={list}>
+          {(all ? closed : rows).map((row) => (
+            <ListRow
+              key={row.id}
+              href={paths.till(row.id)}
+              leading={row.status === "cancelled" ? <Ban /> : <Receipt />}
+              title={placeTitle(row)}
+              subtitle={when(row)}
+            />
+          ))}
+        </ListGroup>
+        {rest.length > 0 && !all ? (
+          <Button
+            variant="ghost"
+            className="self-start"
+            onClick={() => {
+              firstShown.current = rows.length;
+              setAll(true);
+            }}
+          >
+            {t("floor.closed.more", { count: closed.length })}
+          </Button>
+        ) : null}
+      </div>
+      <div className="hidden xl:block">
+        <Card padding="none" className="overflow-hidden">
+          <DataTable
+            caption={t("floor.closed.title")}
+            columns={[
+              { key: "place", label: t("floor.closed.table.place") },
+              { key: "at", label: t("floor.closed.table.at") },
+              { key: "state", label: t("floor.closed.table.state") },
+            ]}
+            rows={closed.map((row) => ({
+              key: row.id,
+              label: t("floor.closed.rowLabel", {
+                place: placeTitle(row),
+                status: row.status,
+                time: time(row.closedAt),
+              }),
+              cells: {
+                place: placeTitle(row),
+                at: <span dir="ltr">{time(row.closedAt)}</span>,
+                state:
+                  row.status === "cancelled"
+                    ? t("floor.closed.state.cancelled")
+                    : t("floor.closed.state.closed"),
+              },
+            }))}
+            onSelect={(key) => router.push(paths.till(key))}
+            rowHint={t("floor.closed.hint")}
+          />
+        </Card>
+      </div>
+    </>
   );
 }

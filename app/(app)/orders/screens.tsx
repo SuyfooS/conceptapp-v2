@@ -12,6 +12,7 @@ import { MineView } from "./mine-view";
 import { OrderView, type OrderWhere } from "./order-view";
 import { useOrdersRead } from "./orders-provider";
 import { PrepView } from "./prep-view";
+import { TillView } from "./till-view";
 
 /*
  * The mode's screens in the app (waiter mode P4): each takes what the server
@@ -81,15 +82,45 @@ export function OrderScreen({
     : { kind: "takeaway", order: takeaway };
   // Undefined while an order just opened is read for the first time.
   const detail = id ? openOnly(read.order) : null;
+  // A takeaway closed or cancelled while its screen was on says so (P5).
+  const closedOrder =
+    !place && read.order && read.order.status !== "open" ? read.order : null;
   return (
     <OrderView
       where={where}
       order={detail}
+      closedOrder={closedOrder}
       menu={held.menu}
       favourites={favourites}
       floor={held.floor}
     />
   );
+}
+
+/**
+ * "לקופה" for an order (P5), open or closed today: it stays current with
+ * the sync, and the floor says whether it may open again.
+ */
+export function TillScreen({
+  order,
+  orderVersion = null,
+  floor,
+}: {
+  order: OrderDetail | null;
+  /** The floor's version, which the order was read after. */
+  orderVersion?: number | null;
+  floor: OrderFloor | null;
+}) {
+  const held = useOrdersRead({ floor }, { floor: true });
+  const read = useOrdersRead(
+    {
+      order: order
+        ? { id: order.id, detail: order, version: orderVersion }
+        : null,
+    },
+    {},
+  );
+  return <TillView order={read.order ?? null} floor={held.floor} />;
 }
 
 export function MineScreen({ mine }: { mine: MyOrders | null }) {

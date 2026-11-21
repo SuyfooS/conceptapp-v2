@@ -7,7 +7,9 @@ import { OrderTwin } from "../../twins";
 // a draft that has an allergy and a main held; `&state=sent` just after a
 // send, its lines still taken back for two minutes; `&state=pending` a send
 // not through yet; `&state=soldOut` the fish sold out meanwhile;
-// `&state=taken` the table opened by Yoav a moment before.
+// `&state=taken` the table opened by Yoav a moment before;
+// `?place=table-4&state=fixed` after its hummus was cancelled and its beer
+// given on the house (P5).
 export default function OrderPlacePage() {
   return (
     <DemoScreen>

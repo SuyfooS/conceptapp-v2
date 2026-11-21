@@ -38,6 +38,12 @@ export const ORDER_RULES = {
   joinFirstRoundSeconds: 60,
   /** A ticket marked ready goes back to new within this. */
   readyUndoMinutes: 5,
+  /**
+   * Whoever closed an order takes the close back within this, what it
+   * served back where it was (`public.undo_close_order`); after it, the
+   * order only opens again, its tickets served.
+   */
+  closeUndoMinutes: 2,
   /** Notes and labels are erased this long after the order closes. */
   notesKeptDays: 2,
   /** Who sent a round is kept this long. */
@@ -206,6 +212,24 @@ export function takeBackOffered(
     state.now.getTime() + holdMs <=
       state.sentAt.getTime() + state.minutes * 60_000
   );
+}
+
+/**
+ * Whether `actor` may take a close back now, as `public.undo_close_order`
+ * checks it: "ok" for whoever closed it, until `ORDER_RULES.closeUndoMinutes`
+ * after the close; "window" for anyone else, or after that.
+ */
+export function closeUndoState(state: {
+  closedAt: Date;
+  closedBy: string | null;
+  actor: string;
+  now: Date;
+}): "ok" | "window" {
+  return state.closedBy === state.actor &&
+    state.now.getTime() <=
+      state.closedAt.getTime() + ORDER_RULES.closeUndoMinutes * 60_000
+    ? "ok"
+    : "window";
 }
 
 /**
@@ -572,6 +596,89 @@ export const orderTillSchema = z.object({
     }),
   ),
 }) satisfies z.ZodType<OrderTill>;
+
+/** Where a line of an order is now: taken back first, as the database refuses in that order. */
+export function lineStateOf(
+  line: Pick<OrderLine, "takenBackAt" | "cancelledAt" | "compedAt">,
+): LineState {
+  if (line.takenBackAt) return "takenBack";
+  if (line.cancelledAt) return "cancelled";
+  if (line.compedAt) return "comped";
+  return "live";
+}
+
+/** A line the till rings up: neither taken back nor cancelled (on the house too, marked). */
+const rungUp = (line: OrderLine) =>
+  line.takenBackAt === null && line.cancelledAt === null;
+
+const tillLineOf = (line: OrderLine): TillLine => ({
+  name: line.name,
+  choices: line.choices.map((choice) => choice.option),
+  unitAgorot: line.unitAgorot,
+  quantity: line.quantity,
+  comped: line.compedAt !== null,
+});
+
+/**
+ * What to ring up for an order, from the order whole (P5), as
+ * `public.order_till` groups it: identical lines (name, choices, unit price,
+ * on the house or not) together by item with their quantities added, in the
+ * order they were first sent; and each round's lines as they were sent.
+ * Taken back and cancelled lines are left out. The phones draw the till from
+ * this, so it stays current with the mode's sync; the till's station reads
+ * `order_till` itself (P8), and modules/order_taking/till.db.test.ts holds
+ * the two alike. No total: the till adds it up.
+ */
+export function orderTill(order: OrderDetail): OrderTill {
+  const byItem = new Map<string, TillLine>();
+  const byRound = order.rounds.map((round) => {
+    const lines = round.tickets
+      .flatMap((ticket) => ticket.lines)
+      .filter(rungUp)
+      .map(tillLineOf);
+    for (const line of lines) {
+      const key = JSON.stringify([
+        line.name,
+        line.choices,
+        line.unitAgorot,
+        line.comped,
+      ]);
+      const same = byItem.get(key);
+      byItem.set(
+        key,
+        same ? { ...same, quantity: same.quantity + line.quantity } : line,
+      );
+    }
+    return {
+      id: round.id,
+      sentAt: round.sentAt,
+      sentBy: round.sentBy,
+      lines,
+    };
+  });
+  return {
+    id: order.id,
+    status: order.status,
+    place: order.place,
+    takeaway: order.takeaway,
+    byItem: [...byItem.values()],
+    byRound,
+  };
+}
+
+/**
+ * How many items a whole order's cancel cancels, as its sheet says before
+ * it: the quantities of the lines still live, neither taken back, cancelled
+ * nor on the house, which `public.cancel_order` cancels. Two coffees on one
+ * line are two.
+ */
+export function liveItemCount(order: Pick<OrderDetail, "rounds">): number {
+  return order.rounds
+    .flatMap((round) => round.tickets)
+    .flatMap((ticket) => ticket.lines)
+    .filter((line) => lineStateOf(line) === "live")
+    .reduce((sum, line) => sum + line.quantity, 0);
+}
 
 /** The reader's own rounds of today, those with a ticket ready first. */
 export type MyOrders = {

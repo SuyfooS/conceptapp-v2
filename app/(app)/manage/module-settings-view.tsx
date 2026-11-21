@@ -3,6 +3,7 @@ import type { ModuleKey } from "@domain/modules";
 import type { SettingField } from "@domain/settings-form";
 import { PageBody, PageHeader } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
+import type { ReactNode } from "react";
 import { type AppWording, translator } from "../wording";
 import { SettingsForm } from "./settings-form";
 import type { SaveSettings } from "./settings-types";
@@ -17,6 +18,7 @@ export function ModuleSettingsView({
   backHref,
   wording,
   departments = [],
+  summary,
 }: {
   module: ModuleKey;
   fields: SettingField[];
@@ -29,6 +31,8 @@ export function ModuleSettingsView({
   wording: AppWording;
   /** The business's live departments, for a setting chosen from them. */
   departments?: readonly { key: string; name: string }[];
+  /** What the module says of today above its settings (taking orders' fixes). */
+  summary?: ReactNode;
 }) {
   const t = translator(wording, "app.manage");
   const tm = translator(wording, "modules");
@@ -39,6 +43,7 @@ export function ModuleSettingsView({
         title={tm(`${module}.name`)}
         subtitle={readOnly ? undefined : t("savesItself")}
       />
+      {summary}
       <SettingsForm
         module={module}
         fields={fields}

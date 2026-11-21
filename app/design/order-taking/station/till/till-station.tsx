@@ -10,7 +10,7 @@ import { pageGlowClass } from "@ui/page-glow";
 import { Segmented } from "@ui/segmented";
 import { ChevronRight, LockOpen, Receipt, ReceiptText } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { closeOrder, reopenOrder } from "../../changes";
+import { closeOrder, reopenOrder, undoCloseOrder } from "../../changes";
 import { orderDemoBusiness } from "../../data";
 import { useOrderDemo } from "../../demo-store";
 import { hasHeld, type Order, placeStatus } from "../../model";
@@ -201,10 +201,11 @@ function TillDetail({
     }
     // Closed now: what refused it before no longer holds.
     setRefused(false);
-    update((d) => closeOrder(d, order.placeId, "station", now));
+    update((d) => closeOrder(d, order.id, "station", now));
+    // Its "ביטול" puts back what the close served, as the app's.
     say(
       t("toast.closed", { place: name }),
-      () => update((d) => reopenOrder(d, order.id)),
+      () => update((d) => undoCloseOrder(d, order.id, "station", now)),
       { focus: true, after: () => heading.current },
     );
   }
@@ -251,10 +252,10 @@ function TillDetail({
       {closed ? (
         <Button
           size="lg"
-          disabled={taken}
+          disabled={taken || Boolean(order.cancelled)}
           className="self-start"
           onClick={() => {
-            update((d) => reopenOrder(d, order.id));
+            update((d) => reopenOrder(d, order.id, "station", now));
             say(t("toast.reopened", { place: name }));
           }}
         >

@@ -165,22 +165,31 @@ export function PlaceTileView({
   );
 }
 
-/** A line as the kitchen and the waiter read it, its state in words. */
+/**
+ * A line as the kitchen and the waiter read it, its state in words: struck
+ * once taken back or cancelled ("בוטל", or with its reason in `gone` on the
+ * order), and still made with its `mark` once on the house.
+ */
 export function SentLineView({
   line,
   trailing,
+  gone: goneAs = null,
+  mark,
   large = false,
 }: {
   line: Omit<PrepLine, "state"> & { state?: PrepLine["state"] };
   trailing?: ReactNode;
+  /** The struck line's words in place of the state's own. */
+  gone?: string | null;
+  mark?: ReactNode;
   large?: boolean;
 }) {
   const { t } = useOrderWords();
   const gone =
     line.state === "takenBack"
-      ? t("line.takenBack")
+      ? (goneAs ?? t("line.takenBack"))
       : line.state === "cancelled"
-        ? t("line.cancelled")
+        ? (goneAs ?? t("line.cancelled"))
         : null;
   return (
     <OrderLine
@@ -199,6 +208,7 @@ export function SentLineView({
           : null
       }
       takenBack={gone}
+      mark={gone ? null : mark}
       large={large}
       trailing={trailing}
     />
@@ -323,6 +333,11 @@ const SAID = new Set<string>([
   "ownDepartment",
   "cancelled",
   "takenBack",
+  "managersOnly",
+  "comped",
+  "day",
+  "notClosed",
+  "takeaway",
   "notYet",
   "failed",
 ]);
@@ -339,6 +354,62 @@ export function failureWords(
 ): string {
   const key = SAID.has(failure) ? failure : "failed";
   return t(`failed.${key}` as "failed.failed", { items });
+}
+
+/**
+ * Which of P5's fixes was refused, for its own words: "line" a line taken
+ * back or cancelled, "restore" a cancelled line put back, "undoClose" the
+ * close's "ביטול".
+ */
+export type FixWrite =
+  | "line"
+  | "restore"
+  | "comp"
+  | "order"
+  | "move"
+  | "close"
+  | "reopen"
+  | "undoClose";
+
+/**
+ * Why a fix was refused (P5), in the screen's words: what only those who
+ * run orders do says so (a comp, a whole order's cancel, a line ready put
+ * back); a place taken names it for a move and says to wait for a reopen or
+ * a close's undo; a close's undo too late, or of another's close, says where
+ * it opens again; a held block says what to do before a close; a round on
+ * its way says it lands first, and another write of the order on its way
+ * says so; a shift that ended says so; anything else as any write.
+ */
+export function fixFailureWords(
+  t: OrdersT,
+  failure: OrdersActionFailure,
+  what: FixWrite,
+  place = "",
+): string {
+  if (failure === "noAccess" && (what === "comp" || what === "order")) {
+    return t("failed.runsOnly");
+  }
+  if (failure === "managersOnly" && what === "restore") {
+    return t("failed.managersOnlyRestore");
+  }
+  if (failure === "taken" && what === "move") {
+    return t("failed.moveTaken", { place });
+  }
+  if (failure === "taken" && (what === "reopen" || what === "undoClose")) {
+    return t("failed.reopenTaken");
+  }
+  if (failure === "window" && what === "undoClose") {
+    return t("failed.undoClose");
+  }
+  if (failure === "held" && what === "close") return t("close.held");
+  // A write of the order whole waits for a round on its way to land first,
+  // and never goes behind another of the order not answered yet.
+  if (failure === "sending") return t("order.actions.waitSend");
+  if (failure === "writing") return t("order.actions.waitWrite");
+  // A shift that ended while the screen was on.
+  if (failure === "clock") return t("offClock.title");
+  if (failure === "staleShift") return t("staleShift.title");
+  return failureWords(t, failure);
 }
 
 /**

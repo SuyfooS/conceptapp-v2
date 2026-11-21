@@ -4787,6 +4787,10 @@ export type Database = {
         Args: { actor: string; at_time?: string; entry: string };
         Returns: undefined;
       };
+      undo_close_order: {
+        Args: { actor: string; at_time?: string; order_ref: string };
+        Returns: undefined;
+      };
       week_shifts: { Args: { week: string }; Returns: Json };
     };
     Enums: {

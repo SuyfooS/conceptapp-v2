@@ -1,6 +1,6 @@
 import type { OrdersPaths } from "./orders-types";
 
-/** Where the mode's screens lead in the app (waiter mode P4). */
+/** Where the mode's screens lead in the app (waiter mode P4, the till since P5). */
 export const appOrdersPaths: OrdersPaths = {
   floor: "/orders",
   mine: "/orders/mine",
@@ -13,4 +13,5 @@ export const appOrdersPaths: OrdersPaths = {
   leave: "/home",
   menuPlaces: "/orders/menu/places",
   menuImport: "/orders/menu/import",
+  till: (order) => `/orders/till/${order}`,
 };

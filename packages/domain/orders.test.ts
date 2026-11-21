@@ -1,13 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
+  closeUndoState,
   favouritesSchema,
+  lineStateOf,
+  liveItemCount,
   myOrdersSchema,
   ORDER_CAPS,
+  ORDER_RULES,
+  type OrderDetail,
+  type OrderLine,
   orderDay,
   orderDetailSchema,
   orderFloorSchema,
   orderModeSchema,
   orderPrepSchema,
+  orderTill,
   orderTillSchema,
   roundInput,
   roundLine,
@@ -191,6 +198,25 @@ describe("taking a line back", () => {
     expect(state({ line: "takenBack" })).toBe("done");
     expect(state({ line: "cancelled" })).toBe("done");
     expect(state({ line: "comped" })).toBe("done");
+  });
+});
+
+describe("taking a close back (P5)", () => {
+  const closedAt = new Date("2026-11-20T18:00:00Z");
+  const at = (seconds: number) => new Date(closedAt.getTime() + seconds * 1000);
+  const state = (actor: string, now: Date, closedBy: string | null = ID) =>
+    closeUndoState({ closedAt, closedBy, actor, now });
+
+  it("is whoever closed it's, up to 2 minutes after, as undo_close_order checks", () => {
+    expect(ORDER_RULES.closeUndoMinutes).toBe(2);
+    expect(state(ID, at(0))).toBe("ok");
+    expect(state(ID, at(120))).toBe("ok");
+    expect(state(ID, at(121))).toBe("window");
+  });
+
+  it("is no one else's, nor once whoever closed it is no longer known", () => {
+    expect(state(OTHER, at(5))).toBe("window");
+    expect(state(ID, at(5), null)).toBe("window");
   });
 });
 
@@ -582,5 +608,207 @@ describe("offering a take-back (P4)", () => {
     expect(takeBackOffered(state(113), 8000)).toBe(false);
     expect(takeBackOffered({ ...state(0), isSender: false }, 8000)).toBe(false);
     expect(takeBackOffered({ ...state(0), minutes: 0 }, 8000)).toBe(false);
+  });
+});
+
+describe("the till, from the order whole (P5)", () => {
+  const LINE = "00000000-0000-4000-8000-0000000000";
+  let next = 10;
+  const line = (extra: Partial<OrderLine> = {}): OrderLine => {
+    next += 1;
+    return {
+      id: `${LINE}${next}`,
+      item: ID,
+      name: "לימונדה",
+      choices: [],
+      quantity: 1,
+      note: null,
+      allergy: false,
+      unitAgorot: 1600,
+      takenBackAt: null,
+      cancelledAt: null,
+      cancelReason: null,
+      compedAt: null,
+      compReason: null,
+      ...extra,
+    };
+  };
+  const ticket = (lines: OrderLine[], department = ID) => ({
+    id: lines[0]?.id ?? ID,
+    department,
+    status: "new" as const,
+    held: false,
+    firedAt: null,
+    kitchenSeenAt: null,
+    readyAt: null,
+    servedAt: null,
+    prepared: false,
+    lines,
+  });
+  const order = (rounds: OrderDetail["rounds"]): OrderDetail => ({
+    id: ID,
+    status: "open",
+    day: "2026-11-20",
+    place: { id: OTHER, name: "4" },
+    takeaway: null,
+    openedAt: T,
+    openedBy: OTHER,
+    closedAt: null,
+    closedBy: null,
+    reopenedAt: null,
+    reopenedBy: null,
+    movedAt: null,
+    movedBy: null,
+    movedFrom: null,
+    cancelledAt: null,
+    cancelledBy: null,
+    cancelReason: null,
+    now: T,
+    takeBackMinutes: 2,
+    rounds,
+  });
+  const large = { group: "גודל", option: "גדול", priceAgorot: 300 };
+  const detail = order([
+    {
+      id: ID,
+      sentAt: T,
+      sentBy: OTHER,
+      tickets: [
+        ticket([
+          line({ quantity: 2 }),
+          line({
+            name: "בירה מהחבית",
+            unitAgorot: 2800,
+            compedAt: T,
+            compReason: "make_good",
+          }),
+        ]),
+        ticket(
+          [
+            line({
+              name: "חומוס",
+              unitAgorot: 3200,
+              cancelledAt: T,
+              cancelReason: "guest",
+            }),
+          ],
+          OTHER,
+        ),
+      ],
+    },
+    {
+      id: OTHER,
+      sentAt: "2026-11-20T18:20:00Z",
+      sentBy: null,
+      tickets: [
+        ticket([
+          line(),
+          line({ choices: [large], unitAgorot: 1900 }),
+          line({ name: "בירה מהחבית", unitAgorot: 2800 }),
+          line({ takenBackAt: T }),
+        ]),
+      ],
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000003",
+      sentAt: "2026-11-20T18:30:00Z",
+      sentBy: OTHER,
+      tickets: [ticket([line({ takenBackAt: T })])],
+    },
+  ]);
+
+  it("adds identical lines across rounds, and keeps another choice, price or comp apart", () => {
+    expect(orderTill(detail).byItem).toEqual([
+      {
+        name: "לימונדה",
+        choices: [],
+        unitAgorot: 1600,
+        quantity: 3,
+        comped: false,
+      },
+      {
+        name: "בירה מהחבית",
+        choices: [],
+        unitAgorot: 2800,
+        quantity: 1,
+        comped: true,
+      },
+      {
+        name: "לימונדה",
+        choices: ["גדול"],
+        unitAgorot: 1900,
+        quantity: 1,
+        comped: false,
+      },
+      {
+        name: "בירה מהחבית",
+        choices: [],
+        unitAgorot: 2800,
+        quantity: 1,
+        comped: false,
+      },
+    ]);
+  });
+
+  it("gives each round its lines still sent, and keeps a round left with none", () => {
+    const till = orderTill(detail);
+    expect(till.byRound.map((round) => round.lines.length)).toEqual([2, 3, 0]);
+    expect(till.byRound[0]?.lines.map((l) => l.name)).toEqual([
+      "לימונדה",
+      "בירה מהחבית",
+    ]);
+    expect(till.byRound[1]).toMatchObject({ id: OTHER, sentBy: null });
+  });
+
+  it("adds no total, and reads as public.order_till answers", () => {
+    const till = orderTill(detail);
+    for (const row of [
+      ...till.byItem,
+      ...till.byRound.flatMap((r) => r.lines),
+    ]) {
+      expect(Object.keys(row).sort()).toEqual([
+        "choices",
+        "comped",
+        "name",
+        "quantity",
+        "unitAgorot",
+      ]);
+    }
+    expect(Object.keys(till).sort()).toEqual([
+      "byItem",
+      "byRound",
+      "id",
+      "place",
+      "status",
+      "takeaway",
+    ]);
+    expect(orderTillSchema.safeParse(till).success).toBe(true);
+  });
+
+  it("counts the items a whole order's cancel takes, as public.cancel_order does", () => {
+    // Live: two lemonades on one line, a lemonade, a large one and a beer.
+    // Not: the beer on the house, the hummus cancelled, the lemonades taken
+    // back.
+    expect(liveItemCount(detail)).toBe(5);
+    expect(liveItemCount(order([]))).toBe(0);
+    // A takeaway's one line of two coffees: two items go, not one.
+    const coffees = order([
+      {
+        id: ID,
+        sentAt: T,
+        sentBy: OTHER,
+        tickets: [ticket([line({ name: "קפה", quantity: 2 })])],
+      },
+    ]);
+    expect(liveItemCount(coffees)).toBe(2);
+  });
+
+  it("says where a line is, taken back before anything else", () => {
+    expect(lineStateOf(line())).toBe("live");
+    expect(lineStateOf(line({ compedAt: T }))).toBe("comped");
+    expect(lineStateOf(line({ cancelledAt: T }))).toBe("cancelled");
+    expect(lineStateOf(line({ takenBackAt: T, cancelledAt: T }))).toBe(
+      "takenBack",
+    );
   });
 });

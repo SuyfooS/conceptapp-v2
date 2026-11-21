@@ -1,12 +1,14 @@
 import type { DraftLine } from "@domain/order-screens";
 import type { PendingSend, SendRefusal } from "../../(app)/orders/orders-types";
 import {
+  DEMO_START,
   demoClosed,
   demoDraft,
   demoFishDraft,
   demoJustSent,
   demoOrders,
   demoSoldOut,
+  demoTableThreeAgain,
   demoTakeaways,
   orderDemoMenu,
   orderDemoTables,
@@ -66,8 +68,17 @@ const service = (): DemoData => ({
   readyIn: null,
 });
 
-/** No takeaway yet today: the first one sent is number 1. */
-const noTakeaways = { takeaways: [], nextTakeaway: 1 };
+/**
+ * No takeaway yet today: the first one sent is number 1, and none is among
+ * today's closed.
+ */
+const noTakeaways = (data: DemoData) => ({
+  takeaways: [],
+  nextTakeaway: 1,
+  closed: data.closed.filter((order) =>
+    data.tables.some((place) => place.id === order.placeId),
+  ),
+});
 
 const TABLE_6 = "place:table-6";
 
@@ -83,13 +94,16 @@ const TABLE_6 = "place:table-6";
  * who only prepares; `readyNow` a ticket of Shiran's turning ready while she
  * looks; `pending` table 6's send not through yet; `soldOut` table 6's draft
  * with the fish, sold out meanwhile; `taken` table 6 opened by Yoav a moment
- * before Shiran's send.
+ * before Shiran's send; `fixed` table 4 after its hummus was cancelled (sent
+ * by mistake) and its beer given on the house (P5); `reopenTaken` table 3
+ * open again with Yoav's new round, so its order closed today can't open
+ * again.
  */
 export function scenario(state: string | null): DemoData {
   const base = service();
   switch (state) {
     case "quiet":
-      return { ...base, orders: [], closed: [], ...noTakeaways };
+      return { ...base, ...noTakeaways(base), orders: [], closed: [] };
     case "draft":
       return { ...base, drafts: { [TABLE_6]: demoDraft() } };
     case "sent":
@@ -100,7 +114,7 @@ export function scenario(state: string | null): DemoData {
         orders: base.orders.filter((order) =>
           order.rounds.every((round) => round.by !== READER),
         ),
-        ...noTakeaways,
+        ...noTakeaways(base),
       };
     case "nothingOpen":
       return {
@@ -122,12 +136,18 @@ export function scenario(state: string | null): DemoData {
         ...base,
         menu: { categories: [], items: [] },
         soldOut: [],
+        ...noTakeaways(base),
         orders: [],
         closed: [],
-        ...noTakeaways,
       };
     case "noPlaces":
-      return { ...base, tables: [], orders: [], closed: [], ...noTakeaways };
+      return {
+        ...base,
+        ...noTakeaways(base),
+        tables: [],
+        orders: [],
+        closed: [],
+      };
     case "offClock":
     case "staleShift":
       return { ...base, viewer: state, drafts: { [TABLE_6]: demoDraft() } };
@@ -174,7 +194,37 @@ export function scenario(state: string | null): DemoData {
         },
       };
     }
+    case "fixed":
+      return { ...base, orders: fixedEvening(base.orders) };
+    case "reopenTaken":
+      return { ...base, orders: [...base.orders, demoTableThreeAgain()] };
     default:
       return base;
   }
+}
+
+/** The evening's orders with table 4's hummus cancelled and its beer on the house. */
+function fixedEvening(orders: Order[]): Order[] {
+  const by = READER;
+  const at = DEMO_START - 3 * 60_000;
+  return orders.map((order) =>
+    order.id !== "order-4"
+      ? order
+      : {
+          ...order,
+          rounds: order.rounds.map((round) => ({
+            ...round,
+            tickets: round.tickets.map((ticket) => ({
+              ...ticket,
+              lines: ticket.lines.map((line) =>
+                line.id === "l5"
+                  ? { ...line, cancelled: { reason: "mistake", at, by } }
+                  : line.id === "l8"
+                    ? { ...line, comped: { reason: "make_good", at, by } }
+                    : line,
+              ),
+            })),
+          })),
+        },
+  );
 }

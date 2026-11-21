@@ -2,7 +2,7 @@
 
 import type { DraftLine } from "@domain/order-screens";
 import { draftCount, withoutSent } from "@domain/order-screens";
-import type { RoundTarget } from "@domain/orders";
+import { closeUndoState, type RoundTarget } from "@domain/orders";
 import { useTranslations } from "next-intl";
 import {
   createContext,
@@ -10,6 +10,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { newId } from "../../(app)/orders/new-id";
@@ -19,12 +20,36 @@ import {
 } from "../../(app)/orders/orders-mode";
 import { usePlaceWords } from "../../(app)/orders/orders-parts";
 import type {
+  OrdersActionResult,
   OrdersActions,
   OrdersPaths,
   OrdersSender,
   SendOutcome,
+  SendRefusal,
+  WholeWrite,
 } from "../../(app)/orders/orders-types";
-import { changeTicket, sendRound, setLabel, setTakenBack } from "./changes";
+import {
+  type OwnLine,
+  refusalMoved,
+  storeDraftMoved,
+  storeMovedBack,
+} from "../../(app)/orders/send-store";
+import { wholeWaits } from "../../(app)/orders/whole-on-way";
+import {
+  cancelLine,
+  cancelOrder,
+  changeTicket,
+  closeOrder,
+  compLine,
+  moveOrder,
+  reopenOrder,
+  restoreLine,
+  sendRound,
+  setLabel,
+  setTakenBack,
+  uncompLine,
+  undoCloseOrder,
+} from "./changes";
 import { type DemoData, useOrderDemo } from "./demo-store";
 import {
   soldOutIn,
@@ -71,7 +96,11 @@ const done = Promise.resolve({ ok: true as const, value: null });
  * read its rows through real-orders.ts, and its stand-ins write them as the
  * database would, at once. Nothing goes anywhere: a reload starts the evening
  * again. `?state=readyNow` turns a ticket of Shiran's ready three seconds
- * after opening, and the mode's toast says so, as the app's sync does.
+ * after opening, and the mode's toast says so, as the app's sync does. P5's
+ * fixes write the store the same way; a move to a taken table, a reopen
+ * while its table is taken, or a close's "ביטול" too late or of another's
+ * close, is refused as the database refuses it, and that "ביטול" puts back
+ * what the close served.
  */
 export function TwinOrdersMode({ children }: { children: ReactNode }) {
   const { data, now, update } = useOrderDemo();
@@ -82,6 +111,11 @@ export function TwinOrdersMode({ children }: { children: ReactNode }) {
   // A version that moves with every change to the rows, as the server's does.
   const [seen, setSeen] = useState({ data, version: 1 });
   if (seen.data !== data) setSeen({ data, version: seen.version + 1 });
+  // What a table held of its own as an order moved there, and its refusal,
+  // by its draft, for the move's "ביטול" (as the app's store and provider).
+  const own = useRef<Record<string, OwnLine[]>>({});
+  const ownRefusals = useRef(new Map<string, SendRefusal | null>());
+  const onItsWay = (draft: string) => (data.pending[draft] ? 1 : 0);
 
   // Shiran's table 4 starters, made in the kitchen while she looks.
   const readyIn = data.readyIn;
@@ -167,12 +201,83 @@ export function TwinOrdersMode({ children }: { children: ReactNode }) {
         });
         return done;
       },
+      cancelLine: (line, reason, cancelled) => {
+        update((d) =>
+          cancelled && reason
+            ? cancelLine(d, line, reason, frame.userId, now)
+            : restoreLine(d, line),
+        );
+        return done;
+      },
+      compLine: (line, reason, comped) => {
+        update((d) =>
+          comped && reason
+            ? compLine(d, line, reason, frame.userId, now)
+            : uncompLine(d, line),
+        );
+        return done;
+      },
+      cancelOrder: (order, reason) => {
+        update((d) => cancelOrder(d, order, reason, frame.userId, now));
+        return done;
+      },
+      move: (order, place) => {
+        if (data.orders.some((o) => o.placeId === place && o.id !== order)) {
+          return Promise.resolve({ ok: false as const, failure: "taken" });
+        }
+        update((d) => moveOrder(d, order, place, frame.userId, now));
+        return done;
+      },
+      close: (order) => {
+        update((d) => closeOrder(d, order, frame.userId, now));
+        return done;
+      },
+      reopen: (order) => {
+        const closed = data.closed.find((o) => o.id === order);
+        if (closed && data.orders.some((o) => o.placeId === closed.placeId)) {
+          return Promise.resolve({ ok: false as const, failure: "taken" });
+        }
+        update((d) => reopenOrder(d, order, frame.userId, now));
+        return done;
+      },
+      // As undo_close_order: whoever closed it, within the 2 minutes, then
+      // while the table is free; what the close served goes back.
+      undoClose: (order) => {
+        const closed = data.closed.find((o) => o.id === order);
+        if (
+          closed &&
+          closed.closedAt !== null &&
+          closeUndoState({
+            closedAt: new Date(closed.closedAt),
+            closedBy: closed.closedBy,
+            actor: frame.userId,
+            now: new Date(now),
+          }) === "window"
+        ) {
+          return Promise.resolve({ ok: false as const, failure: "window" });
+        }
+        if (closed && data.orders.some((o) => o.placeId === closed.placeId)) {
+          return Promise.resolve({ ok: false as const, failure: "taken" });
+        }
+        update((d) => undoCloseOrder(d, order, frame.userId, now));
+        return done;
+      },
     }),
-    [update, frame.userId],
+    [update, frame.userId, now, data.orders, data.closed],
   );
 
   const sender: OrdersSender = {
     send: (draft: string, target: RoundTarget, lines: DraftLine[]) => {
+      // A table's own line that goes out with the order moved there is the
+      // order's from then on, sent or refused, as the app's (`storeSent`).
+      const ownThere = own.current[draft];
+      if (ownThere) {
+        const sent = new Set(lines.map((line) => line.id));
+        own.current = {
+          ...own.current,
+          [draft]: ownThere.filter((line) => !sent.has(line.id)),
+        };
+      }
       const refuse = (outcome: Extract<SendOutcome, { ok: false }>) => {
         update((d) => ({
           ...d,
@@ -263,6 +368,50 @@ export function TwinOrdersMode({ children }: { children: ReactNode }) {
             ),
           },
         })),
+      // An order moved: its table's draft goes with it, its refusal too, as
+      // the app's, and what the new table held, and its refusal, stay there
+      // on its undo, but what went out in one of the order's rounds.
+      move: (from: string, to: string) => {
+        if (from === to) return;
+        const moved = storeDraftMoved(
+          { drafts: data.drafts, pending: {}, own: own.current },
+          from,
+          to,
+        );
+        own.current = moved.own ?? {};
+        ownRefusals.current.delete(from);
+        ownRefusals.current.set(to, data.refusals[to] ?? null);
+        update((d) => {
+          const was = { drafts: d.drafts, pending: {} };
+          const next = storeDraftMoved(was, from, to);
+          return next.drafts === was.drafts
+            ? d
+            : {
+                ...d,
+                drafts: next.drafts,
+                refusals: refusalMoved(d.refusals, from, to),
+              };
+        });
+      },
+      moveBack: (from: string, to: string) => {
+        const lines = own.current[from];
+        const refusal = ownRefusals.current.get(from) ?? null;
+        const { [from]: _, ...others } = own.current;
+        own.current = others;
+        ownRefusals.current.delete(from);
+        if (lines === undefined) return;
+        update((d) => {
+          const was = { drafts: d.drafts, pending: {}, own: { [from]: lines } };
+          const next = storeMovedBack(was, from, to, newId);
+          return next.drafts === was.drafts
+            ? d
+            : {
+                ...d,
+                drafts: next.drafts,
+                refusals: refusalMoved(d.refusals, from, to, refusal),
+              };
+        });
+      },
       counts: Object.fromEntries(
         Object.entries(data.drafts).map(([key, lines]) => [
           key,
@@ -272,6 +421,15 @@ export function TwinOrdersMode({ children }: { children: ReactNode }) {
     },
     sender,
     actions,
+    // The twin's writes land at once, so none is ever on its way; one still
+    // waits for a round its store shows on its way (`?state=pending`).
+    whole: (on: WholeWrite, write: () => Promise<OrdersActionResult>) =>
+      wholeWaits(on, onItsWay)
+        ? Promise.resolve({ ok: false as const, failure: "sending" as const })
+        : write(),
+    wholeRefusal: (on: WholeWrite) =>
+      wholeWaits(on, onItsWay) ? ("sending" as const) : null,
+    wholeOnWay: () => false,
     say,
     tell,
     syncNow: () => {},

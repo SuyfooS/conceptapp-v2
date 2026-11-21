@@ -4,6 +4,7 @@ import type {
   OrderDetail,
   OrderFloor,
   OrderPrep,
+  OrderStatus,
   PrepLine,
   ReadyTicket,
   SentRound,
@@ -17,6 +18,7 @@ import {
   READER_DEPARTMENTS,
 } from "./data";
 import {
+  lineLive,
   type Order,
   type Place,
   type Round,
@@ -33,7 +35,8 @@ import type { DemoData, TwinViewer } from "./scenario";
  * floor sends reaches the prep screen and comes back ready, and the real
  * screens draw it as the app does. Pure, so it is tested
  * (order-taking.test.ts). The twin's ids are words ("table-4"), which the
- * screens never read as more than keys.
+ * screens never read as more than keys. P5 adds the fixes: lines cancelled
+ * and on the house, orders moved, opened again and cancelled whole.
  */
 
 const iso = (at: number) => new Date(at).toISOString();
@@ -75,9 +78,17 @@ function prepLine(line: SentLine): PrepLine {
     quantity: line.qty,
     note: line.allergy ?? line.note,
     allergy: line.allergy !== null,
-    state: line.takenBack ? "takenBack" : "live",
+    state: line.takenBack ? "takenBack" : line.cancelled ? "cancelled" : "live",
   };
 }
+
+/** An order's status as the database keeps it. */
+const statusOfOrder = (data: DemoData, order: Order): OrderStatus =>
+  data.orders.includes(order)
+    ? "open"
+    : order.cancelled
+      ? "cancelled"
+      : "closed";
 
 const servedAt = (ticket: Ticket, round: Round) =>
   ticket.state === "served" ? iso(ticket.readyAt ?? round.at) : null;
@@ -106,7 +117,7 @@ export function twinFloor(
       label: where.label,
       openedAt: iso(order.openedAt),
       openedBy: order.openedBy,
-      movedAt: null,
+      movedAt: order.moved ? iso(order.moved.at) : null,
       lastSentAt: order.rounds.length
         ? iso(Math.max(...order.rounds.map((round) => round.at)))
         : null,
@@ -139,7 +150,7 @@ export function twinFloor(
               readyAt: iso(ticket.readyAt ?? round.at),
               sentBy: round.by,
               lines: ticket.lines
-                .filter((line) => !line.takenBack)
+                .filter(lineLive)
                 .map(({ id, name, choices, qty, note, allergy }) => ({
                   id,
                   name,
@@ -165,12 +176,27 @@ export function twinFloor(
         id: order.id,
         placeName: where.placeName,
         takeaway: where.takeaway,
-        status: "closed" as const,
-        closedAt: iso(order.closedAt ?? now),
+        status: order.cancelled ? ("cancelled" as const) : ("closed" as const),
+        closedAt: iso(order.cancelled?.at ?? order.closedAt ?? now),
       };
     }),
-    fixes: null,
+    // Shiran runs orders: she reads the evening's fixes.
+    fixes: twinFixes(data),
     ready,
+  };
+}
+
+/** How many lines were taken back, cancelled and given on the house this evening. */
+export function twinFixes(data: DemoData): NonNullable<OrderFloor["fixes"]> {
+  const lines = [...data.orders, ...data.closed].flatMap((order) =>
+    order.rounds.flatMap((round) =>
+      round.tickets.flatMap((ticket) => ticket.lines),
+    ),
+  );
+  return {
+    takenBack: lines.filter((line) => line.takenBack).length,
+    cancelled: lines.filter((line) => line.cancelled).length,
+    comped: lines.filter((line) => line.comped).length,
   };
 }
 
@@ -185,9 +211,12 @@ export function twinDetail(
   if (!order) return null;
   const place = placeOf(data, order);
   const where = whereOf(data, order);
+  const from = order.moved
+    ? data.tables.find((p) => p.id === order.moved?.from)
+    : undefined;
   return {
     id: order.id,
-    status: open ? "open" : "closed",
+    status: open ? "open" : order.cancelled ? "cancelled" : "closed",
     day: DAY,
     place:
       place?.kind === "table" ? { id: place.id, name: place.name ?? "" } : null,
@@ -197,16 +226,18 @@ export function twinDetail(
         : { number: where.takeaway, label: where.label },
     openedAt: iso(order.openedAt),
     openedBy: order.openedBy,
-    closedAt: order.closedAt === null ? null : iso(order.closedAt),
-    closedBy: order.closedBy,
-    reopenedAt: null,
-    reopenedBy: null,
-    movedAt: null,
-    movedBy: null,
-    movedFrom: null,
-    cancelledAt: null,
-    cancelledBy: null,
-    cancelReason: null,
+    // A cancelled order is closed in the twin for the stations, never here.
+    closedAt:
+      order.closedAt === null || order.cancelled ? null : iso(order.closedAt),
+    closedBy: order.cancelled ? null : order.closedBy,
+    reopenedAt: order.reopened ? iso(order.reopened.at) : null,
+    reopenedBy: order.reopened?.by ?? null,
+    movedAt: order.moved ? iso(order.moved.at) : null,
+    movedBy: order.moved?.by ?? null,
+    movedFrom: from?.name ?? null,
+    cancelledAt: order.cancelled ? iso(order.cancelled.at) : null,
+    cancelledBy: order.cancelled?.by ?? null,
+    cancelReason: order.cancelled?.reason ?? null,
     now: iso(now),
     takeBackMinutes: TAKE_BACK_MINUTES,
     rounds: order.rounds.map((round) => ({
@@ -237,10 +268,10 @@ export function twinDetail(
           allergy: line.allergy !== null,
           unitAgorot: line.unit,
           takenBackAt: line.takenBack ? iso(round.at) : null,
-          cancelledAt: null,
-          cancelReason: null,
-          compedAt: null,
-          compReason: null,
+          cancelledAt: line.cancelled ? iso(line.cancelled.at) : null,
+          cancelReason: line.cancelled?.reason ?? null,
+          compedAt: line.comped ? iso(line.comped.at) : null,
+          compReason: line.comped?.reason ?? null,
         })),
       })),
     })),
@@ -263,9 +294,7 @@ export function twinMine(data: DemoData, now: number, version = 1): MyOrders {
           order: order.id,
           placeName: where.placeName,
           takeaway: where.takeaway,
-          orderStatus: data.orders.includes(order)
-            ? ("open" as const)
-            : ("closed" as const),
+          orderStatus: statusOfOrder(data, order),
           sentAt: iso(round.at),
           tickets: round.tickets.map((ticket) => ({
             id: ticket.id,
@@ -275,7 +304,7 @@ export function twinMine(data: DemoData, now: number, version = 1): MyOrders {
             kitchenSeenAt: ticket.seen ? iso(round.at) : null,
             readyAt: ticket.readyAt === null ? null : iso(ticket.readyAt),
             servedAt: servedAt(ticket, round),
-            lines: ticket.lines.filter((line) => !line.takenBack).length,
+            lines: ticket.lines.filter(lineLive).length,
             items: ticket.lines.map(prepLine),
           })),
         };

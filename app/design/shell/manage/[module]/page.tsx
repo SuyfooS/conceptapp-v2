@@ -9,6 +9,7 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { modulesToManage } from "../../../../(app)/manage/manage";
 import { ModuleSettingsView } from "../../../../(app)/manage/module-settings-view";
+import { OrderFixesLine } from "../../../../(app)/manage/order-fixes-line";
 import { baseWording } from "../../../../(app)/wording";
 import { demoModuleRows } from "../../data";
 import { demoSaveSettings } from "../actions";
@@ -26,7 +27,8 @@ type Props = {
 // draws it, with the line that says why: `?state=view` for someone at view on
 // the management page, `?state=module` for someone who edits it without the
 // module's own edit (a manager who doesn't build the schedule, on
-// /design/shell/manage/scheduling).
+// /design/shell/manage/scheduling). Taking orders says the day's fixes above
+// its settings, as an owner reads them (P5).
 export default function ShellManageModule({ params, searchParams }: Props) {
   return (
     <Suspense>
@@ -56,6 +58,15 @@ async function Demo({ params, searchParams }: Props) {
       }
       backHref="/design/shell/manage"
       wording={baseWording}
+      summary={
+        key === "order_taking" ? (
+          <OrderFixesLine
+            fixes={{ takenBack: 3, cancelled: 2, comped: 1 }}
+            activityHref="/design/shell/manage/activity"
+            wording={baseWording}
+          />
+        ) : undefined
+      }
     />
   );
 }

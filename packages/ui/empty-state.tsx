@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 import { cn } from "./cn";
 
 /**
@@ -10,6 +10,7 @@ export function EmptyState({
   title,
   body,
   headingLevel = "h1",
+  headingRef,
   className,
   children,
 }: {
@@ -18,6 +19,11 @@ export function EmptyState({
   body: ReactNode;
   /** `h1` when this is all the screen says, `h2` under a page title. */
   headingLevel?: "h1" | "h2";
+  /**
+   * The title, for a screen that puts the keyboard's focus there when what
+   * held it went away (an order closed while its screen was on).
+   */
+  headingRef?: Ref<HTMLHeadingElement>;
   className?: string;
   /** What to do next. */
   children?: ReactNode;
@@ -38,7 +44,13 @@ export function EmptyState({
       </span>
       <div className="flex max-w-md flex-col gap-2">
         {title ? (
-          <Heading className="text-balance font-bold text-2xl">{title}</Heading>
+          <Heading
+            ref={headingRef}
+            tabIndex={headingRef ? -1 : undefined}
+            className="text-balance font-bold text-2xl outline-none"
+          >
+            {title}
+          </Heading>
         ) : null}
         <p className="text-pretty text-ink-2">{body}</p>
       </div>

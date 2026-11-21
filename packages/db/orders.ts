@@ -450,6 +450,24 @@ export async function reopenOrder(
   return error ? refusal(error, "opening an order again") : done;
 }
 
+/**
+ * The close's "ביטול" (`public.undo_close_order`): by whoever closed it,
+ * within 2 minutes ("window" after, or for another's close), the order open
+ * again and the tickets the close served back where they were.
+ */
+export async function undoCloseOrder(
+  actorId: string,
+  orderId: string,
+  at?: Date,
+): Promise<OrderWrite<null>> {
+  const { error } = await createAdminClient().rpc("undo_close_order", {
+    actor: actorId,
+    order_ref: orderId,
+    ...atTime(at),
+  });
+  return error ? refusal(error, "taking a close back") : done;
+}
+
 /** Marks a ticket served, or not (`public.serve_order_ticket`). */
 export async function serveOrderTicket(
   actorId: string,

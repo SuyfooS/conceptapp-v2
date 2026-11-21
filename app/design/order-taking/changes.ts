@@ -1,12 +1,19 @@
 import type { MenuImportRow } from "@domain/menu-import";
 import type { DraftLine } from "@domain/order-screens";
 import type { CategoryInput } from "@domain/order-taking";
+import {
+  type CompReason,
+  closeUndoState,
+  type LineCancelReason,
+  type OrderCancelReason,
+} from "@domain/orders";
 import { newId as id } from "./ids";
 import {
   chosenOptions,
   type DepartmentKey,
   departmentOf,
   itemById,
+  lineLive,
   type MenuItem,
   type Order,
   type Round,
@@ -21,7 +28,8 @@ import type { DemoData } from "./scenario";
 // screen keeps what it needs for its undo before it asks. The send's split
 // and the close's settling follow the design's §3.2 and §6.3, roughly, for
 // the look only: P3 does them in one database function. The drafts are the
-// domain's since P4 (@domain/order-screens), kept by their draft's key.
+// domain's since P4 (@domain/order-screens), kept by their draft's key. P5's
+// fixes refuse here what the database refuses, by changing nothing.
 
 export function setLabel(
   data: DemoData,
@@ -50,6 +58,8 @@ function sentLine(item: MenuItem, line: DraftLine): SentLine {
     note: line.allergy ? null : line.note,
     allergy: line.allergy ? line.note : null,
     takenBack: false,
+    cancelled: null,
+    comped: null,
   };
 }
 
@@ -205,22 +215,169 @@ export function setTakenBack(
   );
 }
 
-/**
- * Closes the place's order for the till: whatever is new or ready counts as
- * served. The screen refuses first while a held block waits (`hasHeld`).
- */
-export function closeOrder(
+/** A line of an open order changed, as a fix makes it. */
+function changeLine(
   data: DemoData,
+  lineId: string,
+  change: (line: SentLine) => SentLine,
+): DemoData {
+  return {
+    ...data,
+    orders: data.orders.map((order) => ({
+      ...order,
+      rounds: order.rounds.map((round) => ({
+        ...round,
+        tickets: round.tickets.map((ticket) =>
+          ticket.lines.some((line) => line.id === lineId)
+            ? {
+                ...ticket,
+                lines: ticket.lines.map((line) =>
+                  line.id === lineId ? change(line) : line,
+                ),
+              }
+            : ticket,
+        ),
+      })),
+    })),
+  };
+}
+
+/** A line cancelled with its reason (P5): not taken back, not on the house. */
+export function cancelLine(
+  data: DemoData,
+  lineId: string,
+  reason: LineCancelReason,
+  by: string,
+  now: number,
+): DemoData {
+  return changeLine(data, lineId, (line) =>
+    line.takenBack || line.comped || line.cancelled
+      ? line
+      : { ...line, cancelled: { reason, at: now, by } },
+  );
+}
+
+/** A cancelled line back on its order, while the order is open. */
+export const restoreLine = (data: DemoData, lineId: string): DemoData =>
+  changeLine(data, lineId, (line) => ({ ...line, cancelled: null }));
+
+/** A line on the house with its reason (P5): one still sent, not on it already. */
+export function compLine(
+  data: DemoData,
+  lineId: string,
+  reason: CompReason,
+  by: string,
+  now: number,
+): DemoData {
+  return changeLine(data, lineId, (line) =>
+    line.takenBack || line.cancelled || line.comped
+      ? line
+      : { ...line, comped: { reason, at: now, by } },
+  );
+}
+
+/** A line off the house again, while the order is open. */
+export const uncompLine = (data: DemoData, lineId: string): DemoData =>
+  changeLine(data, lineId, (line) => ({ ...line, comped: null }));
+
+/**
+ * A whole open order cancelled, for good (P5): every line still live (not
+ * taken back, cancelled or on the house) cancelled with the same reason, and
+ * the order among today's closed, as cancelled.
+ */
+export function cancelOrder(
+  data: DemoData,
+  orderId: string,
+  reason: OrderCancelReason,
+  by: string,
+  now: number,
+): DemoData {
+  const order = data.orders.find((o) => o.id === orderId);
+  if (!order) return data;
+  const cancelled: Order = {
+    ...order,
+    closedAt: now,
+    closedBy: by,
+    cancelled: { reason, at: now, by },
+    rounds: order.rounds.map((round) => ({
+      ...round,
+      tickets: round.tickets.map((ticket) => ({
+        ...ticket,
+        lines: ticket.lines.map((line) =>
+          lineLive(line) && !line.comped
+            ? { ...line, cancelled: { reason, at: now, by } }
+            : line,
+        ),
+      })),
+    })),
+  };
+  return {
+    ...data,
+    orders: data.orders.filter((o) => o !== order),
+    closed: [cancelled, ...data.closed],
+  };
+}
+
+/**
+ * An open table's order moved to another table with no open order (P5); a
+ * takeaway stays where it is, and a taken table refuses it.
+ */
+export function moveOrder(
+  data: DemoData,
+  orderId: string,
   placeId: string,
   by: string,
   now: number,
 ): DemoData {
-  const order = data.orders.find((o) => o.placeId === placeId);
+  const order = data.orders.find((o) => o.id === orderId);
+  const table = (id: string) => data.tables.some((p) => p.id === id);
+  if (
+    !order ||
+    order.placeId === placeId ||
+    !table(order.placeId) ||
+    !table(placeId) ||
+    data.orders.some((o) => o.placeId === placeId)
+  ) {
+    return data;
+  }
+  return {
+    ...data,
+    orders: data.orders.map((o) =>
+      o === order
+        ? {
+            ...o,
+            placeId,
+            moved: { from: order.placeId, at: now, by },
+          }
+        : o,
+    ),
+  };
+}
+
+/**
+ * Closes an open order for the till, a table's or a takeaway's: whatever is
+ * new or ready counts as served, and the order keeps what each of those
+ * was, for the close's "ביטול". The screen refuses first while a held block
+ * waits (`hasHeld`).
+ */
+export function closeOrder(
+  data: DemoData,
+  orderId: string,
+  by: string,
+  now: number,
+): DemoData {
+  const order = data.orders.find((o) => o.id === orderId);
   if (!order) return data;
   const closed: Order = {
     ...order,
     closedAt: now,
     closedBy: by,
+    closeServed: Object.fromEntries(
+      order.rounds
+        .flatMap((round) => round.tickets)
+        .filter((ticket) => ticket.state !== "served")
+        .map((ticket) => [ticket.id, ticket.state]),
+    ),
     rounds: order.rounds.map((round) => ({
       ...round,
       tickets: round.tickets.map((ticket) => ({
@@ -236,15 +393,88 @@ export function closeOrder(
   };
 }
 
-/** "פתיחה מחדש": back on the floor, while the place is free. */
-export function reopenOrder(data: DemoData, orderId: string): DemoData {
+/**
+ * "פתיחה מחדש": back on the floor, while the place is free; never a
+ * cancelled one. Who opened it again, and when, stays on it.
+ */
+export function reopenOrder(
+  data: DemoData,
+  orderId: string,
+  by: string,
+  now: number,
+): DemoData {
   const order = data.closed.find((o) => o.id === orderId);
-  if (!order || data.orders.some((o) => o.placeId === order.placeId)) {
+  if (
+    !order ||
+    order.cancelled ||
+    data.orders.some((o) => o.placeId === order.placeId)
+  ) {
     return data;
   }
   return {
     ...data,
-    orders: [...data.orders, { ...order, closedAt: null, closedBy: null }],
+    orders: [
+      ...data.orders,
+      {
+        ...order,
+        closedAt: null,
+        closedBy: null,
+        closeServed: null,
+        reopened: { at: now, by },
+      },
+    ],
+    closed: data.closed.filter((o) => o !== order),
+  };
+}
+
+/**
+ * The close's "ביטול", as `undo_close_order`: by whoever closed it within
+ * `ORDER_RULES.closeUndoMinutes` (`closeUndoState`), while the place is
+ * free, it opens again as a reopen does, and each ticket the close served
+ * goes back to what it was; one served before the close stays served.
+ * Anything else changes nothing.
+ */
+export function undoCloseOrder(
+  data: DemoData,
+  orderId: string,
+  by: string,
+  now: number,
+): DemoData {
+  const order = data.closed.find((o) => o.id === orderId);
+  if (
+    !order ||
+    order.cancelled ||
+    order.closedAt === null ||
+    closeUndoState({
+      closedAt: new Date(order.closedAt),
+      closedBy: order.closedBy,
+      actor: by,
+      now: new Date(now),
+    }) !== "ok" ||
+    data.orders.some((o) => o.placeId === order.placeId)
+  ) {
+    return data;
+  }
+  const was = order.closeServed ?? {};
+  return {
+    ...data,
+    orders: [
+      ...data.orders,
+      {
+        ...order,
+        closedAt: null,
+        closedBy: null,
+        closeServed: null,
+        reopened: { at: now, by },
+        rounds: order.rounds.map((round) => ({
+          ...round,
+          tickets: round.tickets.map((ticket) => {
+            const state = was[ticket.id];
+            return state ? { ...ticket, state } : ticket;
+          }),
+        })),
+      },
+    ],
     closed: data.closed.filter((o) => o !== order),
   };
 }

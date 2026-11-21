@@ -11,9 +11,10 @@ import { MineView } from "../../../(app)/orders/mine-view";
 import { NoPlace, OrderView } from "../../../(app)/orders/order-view";
 import { useOrdersMode } from "../../../(app)/orders/orders-mode";
 import { PrepView } from "../../../(app)/orders/prep-view";
+import { TillView } from "../../../(app)/orders/till-view";
 import { markSeen } from "../changes";
 import { mostOrdered } from "../data";
-import { useOrderDemo } from "../demo-store";
+import { useOpenedWith, useOrderDemo } from "../demo-store";
 import { paths } from "../parts";
 import { twinMenu, twinPlaces } from "../real-menu";
 import {
@@ -93,7 +94,22 @@ export function OrderTwin() {
     byOrder ??
     data.orders.find((o) => o.placeId === placeId && placeId !== null) ??
     null;
-  if (!takeaway) return <NoPlace />;
+  if (!takeaway) {
+    // A takeaway closed or cancelled while it was on screen says so (P5).
+    const closed = orderId ? data.closed.find((o) => o.id === orderId) : null;
+    if (!closed) return <NoPlace />;
+    return (
+      <OrderView
+        key={closed.id}
+        where={{ kind: "takeaway", order: closed.id }}
+        order={null}
+        closedOrder={twinDetail(data, closed.id, now)}
+        menu={menu}
+        favourites={mostOrdered}
+        floor={floor}
+      />
+    );
+  }
   return (
     <OrderView
       key={takeaway.id}
@@ -102,6 +118,24 @@ export function OrderTwin() {
       menu={menu}
       favourites={mostOrdered}
       floor={floor}
+    />
+  );
+}
+
+/**
+ * "לקופה" on the twin (P5): the app's own till, for `?order=` open or closed
+ * this evening; `&state=byRound` opens it by round.
+ */
+export function TillTwin() {
+  const params = useSearchParams();
+  const opened = useOpenedWith();
+  const { data, now, version } = useTwinData();
+  const orderId = params.get("order");
+  return (
+    <TillView
+      order={orderId ? twinDetail(data, orderId, now) : null}
+      floor={twinFloor(data, now, version)}
+      view={opened === "byRound" ? "round" : "item"}
     />
   );
 }

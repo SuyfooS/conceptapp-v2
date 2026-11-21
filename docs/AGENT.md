@@ -376,9 +376,13 @@ The design rework is under way in day sessions with Orel, toward `docs/design/ta
   with its draft (one note a line with its allergy, held lines and "להוציא"), the send
   through `/orders-send` with the phone's key and the sync through `/orders-sync`,
   ready and served, taking back held for its undo, and who takes orders chosen from the
-  departments; the twins draw the same views. P5 onward (the fixes and the till,
-  choices, offline, the kitchen) is built by day, a phase per PR; a nightly run doesn't
-  start a phase.
+  departments; the twins draw the same views. P5 is built
+  (`20261122000100_order_taking_fixes.sql`, words only): a sent line's "תיקון" (cancel
+  with a reason, on the house, each held 8 seconds and undone while the order is open),
+  the order whole (close, move, cancel), "לקופה" by item and by round with no total at
+  `/orders/till/[order]`, "נסגרו היום" with reopening, and the owner's line on
+  `/manage/order_taking`. P6 onward (choices, offline, the kitchen) is built by day, a
+  phase per PR; a nightly run doesn't start a phase.
 - **Not in the pilot, do not start:** reservations, storefront, the public page.
 
 ## Where things live

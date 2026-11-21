@@ -47,7 +47,7 @@ export const manifest = defineManifest({
         href: "/orders",
         icon: "grid",
         exact: true,
-        also: ["/orders/place", "/orders/takeaway"],
+        also: ["/orders/place", "/orders/takeaway", "/orders/till"],
       },
       { key: "mine", href: "/orders/mine", icon: "send" },
       { key: "prep", href: "/orders/prep", icon: "prep" },

@@ -62,6 +62,24 @@ describe("an order write refused", () => {
     );
   });
 
+  it("reads the close's undo's refusals (20261122000100) as the reopen's, its window too", () => {
+    const refusal = (code: string, hint: string, details?: string) =>
+      orderFailureOf({
+        code,
+        hint,
+        details,
+        message:
+          "Only whoever closed it takes the close back, within 2 minutes",
+      });
+    expect(refusal("55000", "window")).toBe("window");
+    expect(refusal("55000", "day")).toBe("day");
+    expect(refusal("55000", "not_closed")).toBe("notClosed");
+    expect(refusal("23505", "taken", ID)).toBe("taken");
+    expect(
+      takenOrder({ code: "23505", hint: "taken", details: ID, message: "" }),
+    ).toBe(ID);
+  });
+
   it("waits for a function the project doesn't have yet", () => {
     expect(orderFailureOf({ code: "PGRST202", message: "" })).toBe("notYet");
     expect(orderFailureOf({ code: "42883", message: "" })).toBe("notYet");

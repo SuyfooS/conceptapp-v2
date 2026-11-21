@@ -2376,6 +2376,23 @@ the screens show, short. The send goes through `POST /orders-send`
 reads through `GET /orders-sync` (app/orders-sync/route.ts, the kitchen's
 read first), both outside the proxy's matcher.
 
+P5 (`20261122000100_order_taking_fixes.sql`) adds one write: the close's
+"ביטול", `public.undo_close_order` (`undoCloseOrder`), granted to
+`service_role` alone. By whoever closed the order, within 2 minutes of the
+close (55000 hint 'window' after that, or for another's close), it opens the
+order again as `reopen_order` does and, in the same transaction, puts every
+ticket the close served (served at the order's `closed_at` by its
+`closed_by`) back to new or ready, as `serve_order_ticket`'s undo does; one
+served before the close stays served. Its other refusals are reopen's:
+'day', 'taken', 'not_closed'. The screens' cancels, "on the house", a whole
+order's cancel, the move, the close and the reopen are P3's writes through
+`@db/orders`, and "נסגרו היום" and the owner's counts are `order_floor`'s
+`closed` and `fixes`. The migration also writes the restaurant's and the
+café's words (`order_taking_fixes.test.sql` holds both). The phones' till
+is drawn from `order_detail` (`orderTill` in `@domain/orders`), so it stays
+current with the mode's sync; `order_till` stays for the till's station
+(P8), and `modules/order_taking/till.db.test.ts` holds the two alike.
+
 The tests that must always pass: a member of business A cannot read
 business B; anonymous visitors read nothing; every table in `public` has RLS.
 

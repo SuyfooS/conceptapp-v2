@@ -43,6 +43,7 @@ const SECTIONS = [
         href: `${BASE}/floor/order?place=takeaway-new&state=service`,
       },
       { key: "open", href: `${BASE}/floor/order?place=table-4&state=service` },
+      { key: "fixed", href: `${BASE}/floor/order?place=table-4&state=fixed` },
       {
         key: "tillItem",
         href: `${BASE}/floor/till?order=order-4&state=service`,
@@ -52,11 +53,24 @@ const SECTIONS = [
         href: `${BASE}/floor/till?order=order-4&state=byRound`,
       },
       {
+        key: "tillFixed",
+        href: `${BASE}/floor/till?order=order-4&state=fixed`,
+      },
+      {
         key: "tillClosed",
         href: `${BASE}/floor/till?order=order-3&state=service`,
       },
+      {
+        key: "reopenTaken",
+        href: `${BASE}/floor/till?order=order-3&state=reopenTaken`,
+      },
+      {
+        key: "tillCancelled",
+        href: `${BASE}/floor/till?order=order-takeaway-2&state=service`,
+      },
       { key: "mine", href: `${BASE}/mine?state=service` },
       { key: "mineEmpty", href: `${BASE}/mine?state=nothingSent` },
+      { key: "manageLine", href: "/design/shell/manage/order_taking" },
     ],
   },
   {
@@ -95,8 +109,8 @@ const SECTIONS = [
 // for Orel to tap through, and the order a real waiter times against the
 // pad (§3.4). Each link opens the demo afresh in that state. The menu's rows
 // are the real screens since P2, and the floor's, the order's, "ההזמנות
-// שלי" and preparing since P4, on the twin's rows; the till and the
-// stations are still S0's.
+// שלי" and preparing since P4, on the twin's rows, and the till since P5;
+// the stations are still S0's (P8).
 export default function OrderTakingDemoIndex() {
   const t = useTranslations("design.orderTaking.index");
   return (

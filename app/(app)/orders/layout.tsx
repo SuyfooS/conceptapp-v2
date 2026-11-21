@@ -1,10 +1,17 @@
 import type { ReactNode } from "react";
 import {
+  cancelLineAction,
+  cancelOrderAction,
+  closeOrderAction,
+  compLineAction,
   fireAction,
+  moveOrderAction,
+  reopenOrderAction,
   serveAction,
   setLabelAction,
   setReadyAction,
   takeBackAction,
+  undoCloseOrderAction,
 } from "./actions";
 import { frameOf, ordersAccess } from "./orders-access";
 import { OrdersModeProvider } from "./orders-provider";
@@ -30,6 +37,13 @@ export default async function OrdersLayout({
         takeBack: takeBackAction.bind(null, business),
         fire: fireAction.bind(null, business),
         setLabel: setLabelAction.bind(null, business),
+        cancelLine: cancelLineAction.bind(null, business),
+        compLine: compLineAction.bind(null, business),
+        cancelOrder: cancelOrderAction.bind(null, business),
+        move: moveOrderAction.bind(null, business),
+        close: closeOrderAction.bind(null, business),
+        reopen: reopenOrderAction.bind(null, business),
+        undoClose: undoCloseOrderAction.bind(null, business),
       }}
     >
       {children}

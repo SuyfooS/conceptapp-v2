@@ -597,6 +597,26 @@
           "prepKitchen": {
             "title": "Preparing, for whoever only prepares",
             "text": "Noa in the kitchen: preparing and the menu only"
+          },
+          "fixed": {
+            "title": "Table 4 after fixes",
+            "text": "A hummus cancelled with a reason, and a beer on the house"
+          },
+          "tillFixed": {
+            "title": "For the till after fixes",
+            "text": "What was cancelled isn't there, and what's on the house is marked"
+          },
+          "tillCancelled": {
+            "title": "A cancelled order",
+            "text": "No list, with who cancelled it and why"
+          },
+          "reopenTaken": {
+            "title": "Opening again while the table is taken",
+            "text": "The button is off, and it says why"
+          },
+          "manageLine": {
+            "title": "The owner's line",
+            "text": "Today: take-backs, cancels and on the house, no shekels"
           }
         },
         "note": "Every price here is a sample. No bill, no receipt and no payment: what shows \"for the till\" is keyed into the business's own register."
@@ -828,7 +848,7 @@
     "orderTakingText": "Taking orders on a phone and sending them to the kitchen and the bar: the tables, the order, the kitchen screen and the till, with sample data.",
     "orderTakingDemo": "To the waiter mode demo",
     "orderParts": {
-      "text": "A table in each of its states, an order on the prep screen with its choices, note and allergy, what to key in at the till, and items added with one tap.",
+      "text": "A table in each of its states, an order on the prep screen with its choices, note and allergy, what to key in at the till, and items added with one tap. A cancelled dish is struck with its reason, and one on the house is marked, at the till too with its price struck.",
       "tiles": "Tables",
       "tickets": "Orders to prepare",
       "till": "For the till",
@@ -853,7 +873,9 @@
       "draft": "The draft and the send",
       "draftText": "A line with an allergy, a line held to be called, and the send with how many and where they go. On the second ticket, \"Ready\" waits for the server.",
       "peanuts": "Peanuts",
-      "bar": "Bar"
+      "bar": "Bar",
+      "salad": "Salad",
+      "beer": "Beer"
     }
   },
   "shell": {
@@ -3031,6 +3053,10 @@
         "lists": "When to remind, and when a list is late",
         "chat": "Who writes in the whole team's group",
         "order_taking": "Who takes orders, and when"
+      },
+      "orderFixes": {
+        "today": "Today: {takenBack, plural, one {1 take-back} other {# take-backs}}, {cancelled, plural, one {1 cancel} other {# cancels}}, {comped, plural, other {# on the house}}",
+        "details": "Details in the activity log"
       },
       "team": {
         "title": "Team",
@@ -5614,6 +5640,23 @@
         "readyTitle": "Ready to serve",
         "readyEmpty": "Nothing to serve right now. What is marked ready shows here.",
         "readyCard": "{place} · {department}",
+        "closed": {
+          "title": "Closed today",
+          "closedAt": "Closed at <ltr>{time}</ltr>",
+          "cancelledAt": "Cancelled at <ltr>{time}</ltr>",
+          "more": "{count, plural, other {Show all #}}",
+          "table": {
+            "place": "Place",
+            "at": "When",
+            "state": "State"
+          },
+          "state": {
+            "closed": "Closed",
+            "cancelled": "Cancelled"
+          },
+          "rowLabel": "{place}, {status, select, cancelled {cancelled at} other {closed at}} {time}",
+          "hint": "Open the list for the till"
+        },
         "table": {
           "title": "Open orders",
           "place": "Place",
@@ -5636,6 +5679,10 @@
         "free": "Free · choose items and send",
         "opened": "Opened at <ltr>{time}</ltr> · {name}",
         "openedAt": "Opened at <ltr>{time}</ltr>",
+        "movedFrom": "Moved from {from} at <ltr>{time}</ltr> · {name}",
+        "movedFromAt": "Moved from {from} at <ltr>{time}</ltr>",
+        "reopened": "Opened again at <ltr>{time}</ltr> · {name}",
+        "reopenedAt": "Opened again at <ltr>{time}</ltr>",
         "serve": "Served",
         "floorList": "The places",
         "label": "To call the customer",
@@ -5651,6 +5698,22 @@
           "title": "This place wasn't found",
           "body": "It may have been removed, or its order closed. Go back and choose from the list.",
           "back": "Back to the places"
+        },
+        "actions": {
+          "title": "The whole order",
+          "move": "Move to another place",
+          "moveHint": "Only to a free place",
+          "noFree": "No place is free right now.",
+          "cancel": "Cancel the order",
+          "cancelHint": "Cancels everything sent, with a reason",
+          "waitSend": "Waiting for what was just sent to arrive.",
+          "waitWrite": "Another change to the order is still on its way. Wait for it to arrive."
+        },
+        "closed": {
+          "title": "This order was closed",
+          "cancelledTitle": "This order was cancelled",
+          "body": "What was ordered is on the list for the till.",
+          "cancelledBody": "What was sent was cancelled: nothing to ring up."
         }
       },
       "picker": {
@@ -5720,7 +5783,61 @@
         "note": "Note: {note}",
         "allergy": "Allergy: {note}",
         "takenBack": "Taken back",
-        "cancelled": "Cancelled"
+        "cancelled": "Cancelled",
+        "fix": "Fix: {name}",
+        "cancelledWhy": "Cancelled · {reason}",
+        "comped": "On the house · {reason}"
+      },
+      "reasons": {
+        "line": {
+          "guest": "The customer cancelled",
+          "mistake": "Sent by mistake",
+          "sold_out": "Sold out",
+          "other": "Other"
+        },
+        "comp": {
+          "make_good": "To make it up to the customer",
+          "staff": "Staff meal",
+          "other": "Other"
+        },
+        "order": {
+          "guest": "The customer cancelled",
+          "mistake": "Sent by mistake",
+          "other": "Other"
+        }
+      },
+      "fix": {
+        "subtitle": "{department} · {state}",
+        "state": {
+          "held": "Waiting to be called",
+          "sent": "Sent",
+          "onScreen": "On the screen",
+          "ready": "Ready",
+          "served": "Served"
+        },
+        "hint": "Pick a reason. It goes in the activity log.",
+        "cancel": "Cancel the item",
+        "comp": "On the house",
+        "compHint": "Made as usual, not charged.",
+        "restore": "Put it back on the order",
+        "uncomp": "Not on the house after all",
+        "close": "Close"
+      },
+      "close": {
+        "place": "Close the order",
+        "takeaway": "Close the order",
+        "held": "Some items are waiting to be called. Fire or cancel them, then close.",
+        "unserved": "Not served yet: {departments}. Closing marks everything served.",
+        "allServed": "Everything was served.",
+        "reopen": "Open again"
+      },
+      "move": {
+        "subtitle": "Pick a free place. The order moves there with everything sent."
+      },
+      "cancelOrder": {
+        "title": "Cancel the order · {place}",
+        "subtitle": "{count, plural, one {The 1 item not cancelled yet is cancelled and leaves the prep screen} other {The # items not cancelled yet are cancelled and leave the prep screen}}. A cancelled order doesn't open again.",
+        "why": "Why"
       },
       "ticketState": {
         "held": "Waiting to be called",
@@ -5742,7 +5859,41 @@
         "noteRemoved": "Note removed: {name}",
         "fired": "Fired · {department}",
         "takenBack": "Taken back: {name}",
-        "putBack": "Back to preparing: {place}"
+        "putBack": "Back to preparing: {place}",
+        "cancelled": "Cancelled: {name}",
+        "restored": "Back on the order: {name}",
+        "comped": "On the house: {name}",
+        "uncomped": "No longer on the house: {name}",
+        "orderCancelled": "{place}'s order was cancelled",
+        "moved": "The order moved to {place}",
+        "closed": "{place}'s order was closed",
+        "reopened": "{place}'s order is open again",
+        "undoWaits": "What was just sent is still on its way. Undo once it arrives."
+      },
+      "till": {
+        "metaTitle": "For the till",
+        "title": "For the till · {place}",
+        "byItem": "By item",
+        "byRound": "By round",
+        "view": "Show",
+        "note": "Prices as on the menu. Not a receipt or an invoice; payment is recorded on the business's own till.",
+        "round": "Round {n} · <ltr>{time}</ltr> · {name}",
+        "roundAt": "Round {n} · <ltr>{time}</ltr>",
+        "roundLabel": "Round {n}",
+        "roundEmpty": "What this round sent was cancelled or taken back.",
+        "empty": "Nothing to ring up yet.",
+        "qty": "Quantity",
+        "unit": "Price each",
+        "free": "On the house",
+        "closedAt": "Closed at <ltr>{time}</ltr> · {name}",
+        "closedAtNobody": "Closed at <ltr>{time}</ltr>",
+        "cancelledAt": "Cancelled at <ltr>{time}</ltr> · {name} · {reason}",
+        "cancelledAtNobody": "Cancelled at <ltr>{time}</ltr> · {reason}",
+        "cancelled": "The order was cancelled: nothing to ring up.",
+        "noOrder": {
+          "title": "This order wasn't found",
+          "body": "Go back to the places and pick it there."
+        }
       },
       "mine": {
         "metaTitle": "My orders",
@@ -5825,6 +5976,16 @@
         "ownDepartment": "It went to your own department, so it is cancelled with a reason.",
         "cancelled": "It was cancelled already.",
         "takenBack": "It was taken back already.",
+        "managersOnly": "It's ready already, so only someone who runs orders cancels it.",
+        "managersOnlyRestore": "It's ready already, so only someone who runs orders puts it back.",
+        "runsOnly": "Only someone who runs orders does this.",
+        "comped": "It's on the house already.",
+        "day": "The order's working day is over, so it doesn't open again.",
+        "notClosed": "A cancelled order doesn't open again.",
+        "takeaway": "An order with no place doesn't move to one.",
+        "moveTaken": "{place}: there's an open order there already. Pick another place.",
+        "reopenTaken": "The place is taken now. Open it again once it's free.",
+        "undoClose": "The close can't be undone from here any more. Open the order again from “Closed today”.",
         "notYet": "Taking orders isn't ready here yet.",
         "clock": "Not sent. Orders go during a shift: clock in, and what was chosen is kept here.",
         "staleShift": "Not sent. A shift from yesterday is still open: fix it on the clock, then send.",
