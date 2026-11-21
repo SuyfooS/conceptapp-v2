@@ -53,7 +53,7 @@ export type OrdersModeValue = {
    * until a read made after it has landed, whichever screen sent it
    * (`wholeOnWay`); and asks the server again. It never goes while a round
    * of a draft it names is on its way, nor while another write of its order
-   * has not answered, read as the tab has it now: it answers why then
+   * has not answered, read as the outbox has it now: it answers why then
    * (`wholeRefusal`), and nothing was written.
    */
   whole: (
@@ -80,6 +80,11 @@ export type OrdersModeValue = {
   tell: Tell;
   /** Asks the server again now, after one's own write. */
   syncNow: () => void;
+  /**
+   * Whether the mode reaches the server (P7): "down" while the phone is
+   * offline, a sync failed twice in a row, or a round's attempt failed.
+   */
+  connection: "ok" | "down";
   /** A new id for a draft line. */
   newId: () => string;
 };

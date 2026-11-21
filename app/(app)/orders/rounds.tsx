@@ -31,6 +31,71 @@ import {
 } from "./orders-parts";
 import type { PendingSend } from "./orders-types";
 
+/**
+ * Where a round on its way is (P7): being sent, in calm words; a warning
+ * only once it is kept and an attempt failed or the phone is offline; and
+ * after ten minutes the question, with "שליחה" and "הסרה מהטלפון", each
+ * naming the place. Not in the accent: the screen's one main action stays
+ * "שליחת ההזמנה". Its words are read as they change.
+ */
+export function RoundState({
+  round,
+  place,
+  onSendNow,
+  onRemove,
+}: {
+  round: PendingSend;
+  place: string;
+  onSendNow: (key: string) => void;
+  onRemove: (key: string) => void;
+}) {
+  const { t } = useOrderWords();
+  const { frame } = useOrdersMode();
+  return (
+    <div aria-live="polite" className="flex flex-col gap-3">
+      {round.state === "ask" ? (
+        <>
+          <p className="flex items-start gap-2 font-semibold text-warning">
+            <CloudOff aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
+            {round.age?.unit === "hours"
+              ? t("outbox.askHours", { count: round.age.count })
+              : t("outbox.ask", { count: round.age?.count ?? 10 })}
+          </p>
+          <p className="text-ink-2 text-sm">{t("outbox.askHint")}</p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              aria-label={t("outbox.sendLabel", { place })}
+              disabled={frame.viewing}
+              onClick={() => onSendNow(round.key)}
+            >
+              {t("outbox.send")}
+            </Button>
+            <Button
+              variant="ghost"
+              aria-label={t("outbox.removeLabel", { place })}
+              disabled={frame.viewing}
+              onClick={() => onRemove(round.key)}
+            >
+              {t("outbox.remove")}
+            </Button>
+          </div>
+        </>
+      ) : round.state === "waiting" ? (
+        <p className="flex items-center gap-2 font-semibold text-warning">
+          <CloudOff aria-hidden="true" className="size-5 shrink-0" />
+          {t("ticketState.notSent")}
+        </p>
+      ) : (
+        <p className="flex items-center gap-2 font-semibold text-ink-2">
+          <Spinner className="shrink-0" />
+          {t("ticketState.sending")}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /** A sent line as the screen shows it: where it is, and why, for a fix. */
 export type LineShown =
   | { state: "live" | "takenBack" }
@@ -57,9 +122,11 @@ const stillSent = (shown: LineShown) =>
  * seconds with "ביטול" and offered only while that fits in the window
  * (default 13); and beside it "תיקון" (P5), which opens the line's sheet
  * while there is a fix the person may make, or one to read why not. A
- * cancelled line is struck with its reason, one on the house marked so. A
- * round still on its way says so: being sent, and only once an attempt
- * failed or the phone is offline that it goes when there is a connection.
+ * sent with its reason, one on the house marked so. A
+ * round still on its way says so: being sent, and only once it is kept on
+ * the phone and an attempt failed or the phone is offline that it goes when
+ * there is a connection; after ten minutes it asks (P7), with "שליחה" and
+ * "הסרה מהטלפון".
  * While a write of the order whole is on its way, every button of what was
  * sent waits for it. No sum of money.
  */
@@ -72,6 +139,9 @@ export function Rounds({
   fixed,
   held,
   waits,
+  place,
+  onSendNow,
+  onRemove,
   onServe,
   onFire,
   onTakeBack,
@@ -94,6 +164,12 @@ export function Rounds({
    * land after it, refused, its refusal in the place of the close's "ביטול".
    */
   waits: boolean;
+  /** Where the order is, in words, for the question's buttons. */
+  place: string;
+  /** "שליחה" on a round that asks (P7). */
+  onSendNow: (key: string) => void;
+  /** "הסרה מהטלפון" on a round that asks (P7). */
+  onRemove: (key: string) => void;
   onServe: (ticket: OrderTicket) => void;
   onFire: (ticket: OrderTicket) => void;
   onTakeBack: (line: OrderLine) => void;
@@ -129,19 +205,12 @@ export function Rounds({
         {pending.map((round) => (
           <li key={round.key}>
             <Card className="flex flex-col gap-3">
-              {/* Being sent, in calm words; a warning only once an attempt
-                  failed or the phone is offline. */}
-              {round.waiting ? (
-                <p className="flex items-center gap-2 font-semibold text-warning">
-                  <CloudOff aria-hidden="true" className="size-5 shrink-0" />
-                  {t("ticketState.notSent")}
-                </p>
-              ) : (
-                <p className="flex items-center gap-2 font-semibold text-ink-2">
-                  <Spinner className="shrink-0" />
-                  {t("ticketState.sending")}
-                </p>
-              )}
+              <RoundState
+                round={round}
+                place={place}
+                onSendNow={onSendNow}
+                onRemove={onRemove}
+              />
               <ul className="flex flex-col divide-y divide-line">
                 {round.lines.map((line) => (
                   <SentLineView

@@ -1,4 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { memoryOrdersDb } from "./orders-db";
+
+/*
+ * A session's end on the phone (waiter mode P7): signing out says what
+ * hasn't gone and clears the person's records, locking a station clears
+ * everyone's, each with what expired and P4's leftovers in sessionStorage,
+ * and nothing more is written in the page after. Over the store in memory,
+ * as the outbox hands it over, and a tab's sessionStorage in memory.
+ */
 
 /** A tab's sessionStorage, in memory. */
 function fakeStorage(entries: Record<string, string> = {}): Storage {
@@ -22,22 +31,87 @@ const blocked = new Proxy({} as Storage, {
   },
 });
 
-const NOA = "orders:noa:business-1";
-const SHIRAN = "orders:shiran:business-1";
+const BUSINESS = "00000000-0000-4000-8000-000000000001";
+const OTHER = "00000000-0000-4000-8000-000000000002";
+const ITEM = "00000000-0000-4000-8000-000000000003";
+const YOAV = "00000000-0000-4000-8000-000000000004";
+const NOA = "00000000-0000-4000-8000-000000000005";
+const HOUR = 3_600_000;
 
-/** The module afresh: what one page holds, from the start. */
-const load = async () => {
+let key = 0;
+function row(user: string, business: string, at: number, placeName: string) {
+  key += 1;
+  const id = `00000000-0000-4000-a000-${String(key).padStart(12, "0")}`;
+  return {
+    key: id,
+    user,
+    business,
+    draft: "place:x",
+    body: {
+      business,
+      user,
+      key: id,
+      target: { takeaway: true },
+      lines: [{ item: ITEM, quantity: 1 }],
+    },
+    lines: [],
+    where: { placeName, takeaway: null },
+    queuedAt: at,
+    askFrom: at,
+  };
+}
+
+const draft = (user: string, business: string, at: number) => ({
+  user,
+  business,
+  draft: "place:x",
+  lines: [],
+  refusal: null,
+  at,
+});
+
+const menu = (user: string, business: string, at: number) => ({
+  user,
+  business,
+  version: 1,
+  menu: { version: 1, categories: [], items: [], places: [] },
+  at,
+});
+
+/** The module afresh, its page's store the one given. */
+async function load(db = memoryOrdersDb()) {
   vi.resetModules();
-  return await import("./orders-storage");
-};
+  const storage = await import("./orders-storage");
+  storage.ordersOnPage(async () => db);
+  return { ...storage, db };
+}
 
-describe("what waiter mode keeps in the tab", () => {
+async function fill(db: ReturnType<typeof memoryOrdersDb>) {
+  const now = Date.now();
+  await db.run(["rounds", "drafts", "menus"], "readwrite", (tx) => {
+    tx.put("rounds", row(YOAV, BUSINESS, now - 2 * HOUR, "8"));
+    tx.put("rounds", row(YOAV, OTHER, now - HOUR, "3"));
+    tx.put("rounds", row(NOA, BUSINESS, now - HOUR, "4"));
+    // Another person's, untouched for a day: expired.
+    tx.put("rounds", row(NOA, BUSINESS, now - 24 * HOUR, "9"));
+    tx.put("drafts", draft(YOAV, BUSINESS, now));
+    tx.put("drafts", draft(NOA, BUSINESS, now));
+    tx.put("drafts", draft(NOA, OTHER, now - 17 * HOUR));
+    tx.put("menus", menu(YOAV, BUSINESS, now));
+    tx.put("menus", menu(NOA, BUSINESS, now));
+    tx.put("rounds", { key: "junk" });
+  });
+}
+
+const users = (records: unknown[]) =>
+  records.map((record) => (record as { user?: string }).user).sort();
+
+describe("what a session's end does on the phone", () => {
   beforeEach(() => {
     vi.stubGlobal(
       "sessionStorage",
       fakeStorage({
-        [NOA]: JSON.stringify({ drafts: {}, pending: {} }),
-        [SHIRAN]: JSON.stringify({ drafts: { a: [] }, pending: {} }),
+        [`orders:${YOAV}:${BUSINESS}`]: "{}",
         "chat:draft": "kept",
       }),
     );
@@ -46,77 +120,70 @@ describe("what waiter mode keeps in the tab", () => {
     vi.unstubAllGlobals();
   });
 
-  it("reads one person's entry, and drops another person's as they open the mode", async () => {
-    const { readKept, storeKeyOf } = await load();
-    expect(storeKeyOf("noa", "business-1")).toBe(NOA);
-    expect(readKept(NOA, "noa")).toEqual({ drafts: {}, pending: {} });
-    expect(sessionStorage.getItem(SHIRAN)).toBeNull();
-    // What isn't the mode's stays.
+  it("says what hasn't gone, the person's or everyone's, oldest first", async () => {
+    const { db, unsentOnDevice } = await load();
+    await fill(db);
+    expect(await unsentOnDevice(YOAV)).toEqual({
+      count: 2,
+      places: [
+        { placeName: "8", takeaway: null },
+        { placeName: "3", takeaway: null },
+      ],
+    });
+    // Everyone's, as the station's lock asks: what doesn't read is left out.
+    expect((await unsentOnDevice()).count).toBe(4);
+  });
+
+  it("clears the person's records in every business as they sign out, and what expired", async () => {
+    const { db, clearOrdersOnSignOut, ordersClosed } = await load();
+    await fill(db);
+    await clearOrdersOnSignOut(YOAV.toUpperCase());
+    // Noa's waiting round stays for her; her expired one and her old draft go.
+    expect(db.dump("rounds")).toEqual([
+      expect.objectContaining({
+        user: NOA,
+        where: { placeName: "4", takeaway: null },
+      }),
+    ]);
+    expect(users(db.dump("drafts"))).toEqual([NOA]);
+    expect(users(db.dump("menus"))).toEqual([NOA]);
+    expect(ordersClosed()).toBe(true);
+    expect(sessionStorage.getItem(`orders:${YOAV}:${BUSINESS}`)).toBeNull();
     expect(sessionStorage.getItem("chat:draft")).toBe("kept");
   });
 
-  it("clears everyone's entries as a session ends here, and writes nothing after", async () => {
-    const { claim, clearOrdersStorage, keep } = await load();
-    const mode = {};
-    claim(NOA, mode);
-    clearOrdersStorage();
-    expect(sessionStorage.getItem(NOA)).toBeNull();
-    expect(sessionStorage.getItem(SHIRAN)).toBeNull();
-    expect(sessionStorage.getItem("chat:draft")).toBe("kept");
-    // A send that settles on its way to the door puts nothing back.
-    keep(NOA, JSON.stringify({ drafts: { a: [] }, pending: {} }), mode);
-    expect(sessionStorage.getItem(NOA)).toBeNull();
+  it("clears only what expired when nobody is named", async () => {
+    const { db, clearOrdersOnSignOut } = await load();
+    await fill(db);
+    await clearOrdersOnSignOut(null);
+    expect(db.dump("rounds")).toHaveLength(3);
+    expect(db.dump("drafts")).toHaveLength(2);
   });
 
-  it("keeps and removes an entry for the mode that read it", async () => {
-    const { claim, keep } = await load();
-    const mode = {};
-    // Not read yet: nothing is written over what the tab holds.
-    keep(NOA, "{}", mode);
-    expect(sessionStorage.getItem(NOA)).toBe(
-      JSON.stringify({ drafts: {}, pending: {} }),
-    );
-    claim(NOA, mode);
-    keep(NOA, "{}", mode);
-    expect(sessionStorage.getItem(NOA)).toBe("{}");
-    keep(NOA, null, mode);
-    expect(sessionStorage.getItem(NOA)).toBeNull();
+  it("clears everyone's as the device locks into the clock station", async () => {
+    const { db, clearAllOrders, ordersClosed } = await load();
+    await fill(db);
+    await clearAllOrders();
+    expect(db.dump("rounds")).toEqual([]);
+    expect(db.dump("drafts")).toEqual([]);
+    expect(db.dump("menus")).toEqual([]);
+    expect(ordersClosed()).toBe(true);
   });
 
-  it("lets only the mode that read an entry last write it", async () => {
-    const { claim, keep } = await load();
-    // The mode Next dropped from its cache, with a send still on its way.
-    const dropped = {};
-    claim(NOA, dropped);
-    keep(NOA, JSON.stringify({ pending: { r: {} } }), dropped);
-    // The mode opened again reads the entry, sends it and takes a new draft.
-    const reopened = {};
-    claim(NOA, reopened);
-    const draft = JSON.stringify({ drafts: { "place:6": [{}] }, pending: {} });
-    keep(NOA, draft, reopened);
-    // The dropped one hears its old answer last: it settles in its memory.
-    keep(NOA, null, dropped);
-    keep(NOA, JSON.stringify({ drafts: {}, pending: {} }), dropped);
-    expect(sessionStorage.getItem(NOA)).toBe(draft);
-    // Another entry is its own: whoever read it writes it.
-    claim(SHIRAN, dropped);
-    keep(SHIRAN, "{}", dropped);
-    expect(sessionStorage.getItem(SHIRAN)).toBe("{}");
+  it("keeps the outbox's person for the sign-out to ask about", async () => {
+    const { ordersPerson, setOrdersPerson } = await load();
+    expect(ordersPerson()).toBeNull();
+    setOrdersPerson(YOAV.toUpperCase());
+    expect(ordersPerson()).toBe(YOAV);
   });
 
-  it("lives in memory alone where storage is blocked", async () => {
+  it("throws nothing with storage blocked or no store kept", async () => {
     vi.stubGlobal("sessionStorage", blocked);
-    const { claim, clearOrdersStorage, keep, readKept } = await load();
-    const mode = {};
-    claim(NOA, mode);
-    expect(readKept(NOA, "noa")).toBeNull();
-    expect(() => keep(NOA, "{}", mode)).not.toThrow();
-    expect(() => clearOrdersStorage()).not.toThrow();
-  });
-
-  it("reads nothing for an entry that isn't JSON", async () => {
-    vi.stubGlobal("sessionStorage", fakeStorage({ [NOA]: "{nope" }));
-    const { readKept } = await load();
-    expect(readKept(NOA, "noa")).toBeNull();
+    vi.resetModules();
+    // No outbox in this page, and no IndexedDB here: nothing to open.
+    const storage = await import("./orders-storage");
+    expect(await storage.unsentOnDevice()).toEqual({ count: 0, places: [] });
+    await expect(storage.clearAllOrders()).resolves.toBeUndefined();
+    await expect(storage.clearOrdersOnSignOut(YOAV)).resolves.toBeUndefined();
   });
 });

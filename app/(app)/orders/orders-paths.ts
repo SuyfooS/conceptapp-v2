@@ -15,3 +15,14 @@ export const appOrdersPaths: OrdersPaths = {
   menuImport: "/orders/menu/import",
   till: (order) => `/orders/till/${order}`,
 };
+
+/** A draft's screen in the app, by its key (`draftKey`): a place, a takeaway, or a new one. */
+export function draftPath(draft: string): string {
+  if (draft.startsWith("place:")) {
+    return appOrdersPaths.place(draft.slice("place:".length));
+  }
+  const takeaway = draft.startsWith("takeaway:")
+    ? draft.slice("takeaway:".length)
+    : "new";
+  return appOrdersPaths.takeaway(takeaway === "new" ? null : takeaway);
+}

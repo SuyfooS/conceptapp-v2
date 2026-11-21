@@ -3,9 +3,11 @@ import {
   laterServerTime,
   nextOrdersSyncDelay,
   nextOrdersSyncQuery,
+  ORDERS_SYNC_FAST_MS,
   ORDERS_SYNC_MS,
   ordersSyncAnswer,
   ordersSyncHref,
+  ordersSyncPace,
   readOrdersSyncQuery,
   retriesSend,
   SEND_BODY_MAX,
@@ -20,6 +22,7 @@ const BUSINESS = "00000000-0000-4000-8000-000000000001";
 const ITEM = "00000000-0000-4000-8000-000000000002";
 const ORDER = "00000000-0000-4000-8000-000000000003";
 const KEY = "00000000-0000-4000-8000-000000000004";
+const PERSON = "00000000-0000-4000-8000-000000000005";
 
 const read = (href: string) =>
   readOrdersSyncQuery(new URL(href, "http://localhost").searchParams);
@@ -37,6 +40,55 @@ describe("when the mode asks again", () => {
     expect(nextOrdersSyncDelay({ visible: true, failures: 5 })).toBe(60_000);
     expect(nextOrdersSyncDelay({ visible: true, failures: Number.NaN })).toBe(
       ORDERS_SYNC_MS,
+    );
+  });
+
+  it("asks every 5 seconds while a round of one's own waits and on the prep screen (P7)", () => {
+    const delay = (pace: "prep" | "waiting" | "steady", failures = 0) =>
+      nextOrdersSyncDelay({ visible: true, failures, pace });
+    expect(delay("steady")).toBe(ORDERS_SYNC_MS);
+    expect(delay("waiting")).toBe(ORDERS_SYNC_FAST_MS);
+    expect(delay("prep")).toBe(ORDERS_SYNC_FAST_MS);
+    // Doubling up to a minute, or half of one on the prep screen.
+    expect(delay("waiting", 2)).toBe(20_000);
+    expect(delay("waiting", 5)).toBe(60_000);
+    expect(delay("prep", 2)).toBe(20_000);
+    expect(delay("prep", 5)).toBe(30_000);
+    expect(delay("steady", 5)).toBe(60_000);
+    expect(
+      nextOrdersSyncDelay({ visible: false, failures: 0, pace: "prep" }),
+    ).toBeNull();
+  });
+
+  it("is fast only while a ticket of one's own is at its department with lines left", () => {
+    const ticket = (
+      status: "held" | "new" | "ready" | "served",
+      lines = 1,
+    ) => ({
+      status,
+      lines,
+    });
+    const mine = (
+      tickets: ReturnType<typeof ticket>[],
+      orderStatus: "open" | "closed" | "cancelled" = "open",
+    ) => ({ rounds: [{ orderStatus, tickets }] }) as never;
+    expect(ordersSyncPace({ mine: null, prep: false })).toBe("steady");
+    expect(ordersSyncPace({ mine: null, prep: true })).toBe("prep");
+    expect(ordersSyncPace({ mine: mine([ticket("new")]), prep: false })).toBe(
+      "waiting",
+    );
+    for (const waitsNot of [
+      mine([ticket("held")]),
+      mine([ticket("ready")]),
+      mine([ticket("served")]),
+      mine([ticket("new", 0)]),
+      mine([ticket("new")], "closed"),
+    ]) {
+      expect(ordersSyncPace({ mine: waitsNot, prep: false })).toBe("steady");
+    }
+    // The prep screen's pace wins.
+    expect(ordersSyncPace({ mine: mine([ticket("new")]), prep: true })).toBe(
+      "prep",
     );
   });
 });
@@ -234,6 +286,7 @@ describe("what a sync asks", () => {
 describe("the send", () => {
   const body = (extra: Record<string, unknown> = {}) => ({
     business: BUSINESS,
+    user: PERSON,
     key: KEY,
     target: { takeaway: true },
     lines: [{ item: ITEM, quantity: 1 }],
@@ -257,6 +310,13 @@ describe("the send", () => {
       ).success,
     ).toBe(false);
     expect(sendBody.safeParse(body({ extra: 1 })).success).toBe(false);
+  });
+
+  it("names the person who wrote it (P7)", () => {
+    expect(sendBody.safeParse({ ...body(), user: undefined }).success).toBe(
+      false,
+    );
+    expect(sendBody.safeParse(body({ user: "x" })).success).toBe(false);
   });
 
   it("fits a full round in keepalive's limit", () => {

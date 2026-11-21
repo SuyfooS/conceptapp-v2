@@ -2393,6 +2393,18 @@ is drawn from `order_detail` (`orderTill` in `@domain/orders`), so it stays
 current with the mode's sync; `order_till` stays for the till's station
 (P8), and `modules/order_taking/till.db.test.ts` holds the two alike.
 
+P7 (no migration) keeps rounds on the phone until they go. `getOwnPlace`
+returns `memberOf`, every business the person is an active member of, from
+the memberships it already reads. The send's body names its person
+(`sendBody.user`), and `/orders-send` refuses another than the session's
+(409 `person`: a round kept on a shared phone is never written as whoever
+is signed in now) and a business they aren't a member of (403
+`notMember`, told apart from 404 `gone`) before the database, which
+still checks both. `order_mine`'s round ids are the phones' keys, so the
+outbox sees from one's own rounds that a round went (a last send as the app
+closed) before it asks about it. `send_order_round`, its idempotency and
+every read are as they were.
+
 The tests that must always pass: a member of business A cannot read
 business B; anonymous visitors read nothing; every table in `public` has RLS.
 

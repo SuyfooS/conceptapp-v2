@@ -18,6 +18,8 @@ type Answer = { data: unknown; error: { code?: string } | null };
 const db = vi.hoisted(() => ({
   user: "92000000-0000-4000-a000-000000000001",
   reads: [] as string[],
+  /** Each `.eq` a query was narrowed by, as [column, value]. */
+  eqs: [] as unknown[][],
   tables: {} as Record<string, Answer>,
   rpc: { data: null, error: null } as Answer,
   /** A function's own answer, over `rpc`'s. */
@@ -29,7 +31,10 @@ function query(answer: Answer): Promise<Answer> {
   const narrowed = () => query(answer);
   return Object.assign(Promise.resolve(answer), {
     select: narrowed,
-    eq: narrowed,
+    eq: (...args: unknown[]) => {
+      db.eqs.push(args);
+      return query(answer);
+    },
     in: narrowed,
     is: narrowed,
     gt: narrowed,
@@ -68,6 +73,7 @@ const catalogue = declaredPermissions([]);
 
 beforeEach(() => {
   db.reads = [];
+  db.eqs = [];
   db.rpc = { data: null, error: null };
   db.functions = {};
   db.tables = {
@@ -98,6 +104,7 @@ describe("getOwnPlace", () => {
       enabled: ["chat"],
     });
     expect(db.reads).toEqual(["memberships", "view_sessions"]);
+    expect(own?.memberOf).toEqual([BUSINESS]);
 
     db.rpc = { data: ["chat.moderate", "team.view"], error: null };
     expect(await own?.place?.permissions(catalogue)).toEqual([
@@ -109,6 +116,34 @@ describe("getOwnPlace", () => {
       "view_sessions",
       "rpc:my_permissions",
     ]);
+  });
+
+  it("names every business they are an active member of, in lower case (P7)", async () => {
+    // The read asks for active memberships alone: what the database
+    // answers is what they are in.
+    const other = "92000000-0000-4000-B000-000000000002";
+    db.tables.memberships = {
+      data: [
+        {
+          business_id: BUSINESS,
+          role: "worker",
+          perms: [],
+          created_at: "2026-11-01T08:00:00Z",
+          businesses: { business_modules: [] },
+        },
+        {
+          business_id: other,
+          role: "worker",
+          perms: [],
+          created_at: "2026-11-02T08:00:00Z",
+          businesses: null,
+        },
+      ],
+      error: null,
+    };
+    const own = await getOwnPlace();
+    expect(own?.memberOf).toEqual([BUSINESS, other.toLowerCase()]);
+    expect(db.eqs).toContainEqual(["active", true]);
   });
 
   it("takes the database's answer over the role's defaults", async () => {

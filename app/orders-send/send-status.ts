@@ -1,7 +1,16 @@
 import type { OrderFailure } from "@db/order-failures";
 
-/** Why a send was refused before or by the database. */
-export type SendFailure = OrderFailure | "signedOut" | "viewOnly";
+/**
+ * Why a send was refused before or by the database: since P7 also a body
+ * that names another person than the session's (`person`), and a business
+ * the person isn't an active member of (`notMember`).
+ */
+export type SendFailure =
+  | OrderFailure
+  | "signedOut"
+  | "viewOnly"
+  | "person"
+  | "notMember";
 
 /**
  * Each refusal's status, so the phone knows which to try again
@@ -18,6 +27,7 @@ export const SEND_STATUS: Record<SendFailure, number> = {
   place: 422,
   body: 422,
   key: 409,
+  person: 409,
   taken: 409,
   closed: 409,
   moved: 409,
@@ -41,6 +51,7 @@ export const SEND_STATUS: Record<SendFailure, number> = {
   ownDepartment: 403,
   managersOnly: 403,
   viewOnly: 403,
+  notMember: 403,
   signedOut: 401,
   gone: 404,
   tooMany: 429,

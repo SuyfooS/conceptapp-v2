@@ -454,6 +454,14 @@
             "title": "The tables",
             "text": "Two ready to serve, one waiting 20 min, and a takeaway"
           },
+          "floorUnsent": {
+            "title": "The tables, with an order not sent",
+            "text": "Table 6 says “Not sent”, and the status line counts it"
+          },
+          "floorOffline": {
+            "title": "The tables with no connection",
+            "text": "“No connection” over the tables, and table 6 waiting"
+          },
           "quiet": {
             "title": "The start of the evening",
             "text": "Every table free. The test starts here"
@@ -578,9 +586,21 @@
             "title": "Viewing as a manager",
             "text": "The team sees everything, and sends and changes nothing"
           },
+          "lost": {
+            "title": "An order removed from the phone",
+            "text": "The account signed out, so table 6's order was removed, with “Got it”"
+          },
           "pending": {
             "title": "A send not through yet",
             "text": "No connection: \"Not sent yet\", sent again with the same key"
+          },
+          "asking": {
+            "title": "An order waiting ten minutes",
+            "text": "Table 6 hasn't gone for 12 minutes: “Send” or “Remove from the phone”"
+          },
+          "offline": {
+            "title": "No connection",
+            "text": "“No connection” under the title, and table 6 waiting for one"
           },
           "soldOut": {
             "title": "Sold out meanwhile",
@@ -644,7 +664,8 @@
           "draft": "{count, plural, one {1 item in the draft} other {# items in the draft}}",
           "open": "{count, plural, =0 {Sent just now} one {Sent 1 min ago} other {Sent # min ago}}",
           "ready": "Ready to serve",
-          "late": "Waiting {count} min"
+          "late": "Waiting {count} min",
+          "unsent": "Not sent"
         },
         "readyTitle": "Ready to serve",
         "readyEmpty": "Nothing to serve right now. What the kitchen or the bar marks ready shows here.",
@@ -857,6 +878,7 @@
     "orderParts": {
       "text": "A table in each of its states, an order on the prep screen with its choices, note and allergy, what to key in at the till, and items added with one tap. A cancelled dish is struck with its reason, and one on the house is marked, at the till too with its price struck.",
       "tiles": "Tables",
+      "outside": "Outside the mode",
       "tickets": "Orders to prepare",
       "till": "For the till",
       "items": "Items to add",
@@ -5672,6 +5694,7 @@
         "places": "The places",
         "takeaways": "No place",
         "status": {
+          "unsent": "{count, plural, one {1 order not sent} other {# orders not sent}}",
           "ready": "{count, plural, one {1 ready to serve} other {# ready to serve}}",
           "late": "{count, plural, one {1 waiting} other {# waiting}}",
           "open": "{count, plural, one {1 open} other {# open}}",
@@ -5682,7 +5705,8 @@
           "draft": "{count, plural, one {1 item in the draft} other {# items in the draft}}",
           "open": "{count, plural, =0 {Sent just now} one {Sent 1 min ago} other {Sent # min ago}}",
           "ready": "Ready to serve",
-          "late": "Waiting {count} min"
+          "late": "Waiting {count} min",
+          "unsent": "Not sent"
         },
         "readyTitle": "Ready to serve",
         "readyEmpty": "Nothing to serve right now. What is marked ready shows here.",
@@ -5939,7 +5963,46 @@
         "moved": "The order moved to {place}",
         "closed": "{place}'s order was closed",
         "reopened": "{place}'s order is open again",
-        "undoWaits": "What was just sent is still on its way. Undo once it arrives."
+        "undoWaits": "What was just sent is still on its way. Undo once it arrives.",
+        "roundRemoved": "{place}'s order was removed from the phone",
+        "asks": "{place}'s order hasn't gone yet",
+        "asksMany": "{count, plural, other {# orders haven't gone yet}}",
+        "refusedAway": "{place}'s order didn't go. What was chosen is back in the draft"
+      },
+      "outbox": {
+        "ask": "This order hasn't gone for {count, plural, one {a minute} other {# minutes}}. Send it now?",
+        "askHours": "This order hasn't gone for {count, plural, one {an hour} other {# hours}}. Send it now?",
+        "askHint": "If it was already passed on by pad or by word of mouth, remove it from the phone.",
+        "send": "Send",
+        "sendLabel": "Send: {place}",
+        "remove": "Remove from the phone",
+        "removeLabel": "Remove from the phone: {place}",
+        "unsent": "{count, plural, one {1 order hasn't gone} other {# orders haven't gone}}",
+        "places": "{places}",
+        "banner": {
+          "label": "Orders not sent",
+          "waits": "{count, plural, one {It goes} other {They go}} once there's a connection, while the app is open.",
+          "asks": "Open it and choose whether to send it or remove it from the phone.",
+          "refused": "What was chosen is back in the draft. Open it and send again.",
+          "open": "Open"
+        },
+        "lost": {
+          "signedOut": "The account was signed out on this phone, so {count, plural, one {it was} other {they were}} removed from it. Pass {count, plural, one {it on} other {them on}} by pad or by word of mouth.",
+          "notMember": "There's no access to this business any more, so {count, plural, one {it was} other {they were}} removed from the phone. Pass {count, plural, one {it on} other {them on}} by pad or by word of mouth.",
+          "seen": "Got it"
+        },
+        "signOut": {
+          "body": "Signing out removes {count, plural, one {this order} other {these orders}} from the phone, and {count, plural, one {it doesn't} other {they don't}} reach preparing. You can go back, wait for a connection and sign out later.",
+          "confirm": "Sign out and remove",
+          "back": "Back"
+        },
+        "lock": "{count, plural, one {This phone has an order that hasn't gone} other {This phone has # orders that haven't gone}}: {places}. Locking removes {count, plural, one {it from the phone} other {them from the phone}}."
+      },
+      "offline": {
+        "title": "No connection",
+        "body": "Orders are kept on the phone and go to be prepared once the connection is back and the app is open. Until then nothing reaches preparing, and nothing shows as ready.",
+        "stay": "Stay on this screen and keep the app open: with no connection another screen won't open, and neither will the app.",
+        "pad": "If it goes on, carry on with the pad and pass orders on by word of mouth."
       },
       "till": {
         "metaTitle": "For the till",

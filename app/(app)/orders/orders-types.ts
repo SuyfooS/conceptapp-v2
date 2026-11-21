@@ -7,6 +7,7 @@ import type {
   RoundTarget,
   SentRound,
 } from "@domain/orders";
+import type { OutboxWhere } from "@domain/orders-outbox";
 
 /*
  * What the mode's screens and their parts share (waiter mode P4), in the app
@@ -122,8 +123,17 @@ export type OrdersActions = {
  */
 export type WholeWrite = { order: string; drafts: readonly string[] };
 
-/** Why a send was refused, as the screens say it. */
-export type SendFailure = OrderFailure | "signedOut" | "viewOnly";
+/**
+ * Why a send was refused, as the screens say it. `person` and `notMember`
+ * (P7) are never a draft's refusal: the outbox holds the round for its own
+ * person, or takes it off the phone with a notice.
+ */
+export type SendFailure =
+  | OrderFailure
+  | "signedOut"
+  | "viewOnly"
+  | "person"
+  | "notMember";
 
 /** A send's answer, once there is one. */
 export type SendOutcome =
@@ -135,23 +145,32 @@ export type SendOutcome =
       order: string | null;
     };
 
-/** A round on its way: being sent, or waiting to be tried again. */
+/** A round on its way: being sent, waiting to be tried again, or asking. */
 export type PendingSend = {
   /** The round's own key: two rounds of one draft never share a place. */
   key: string;
   target: RoundTarget;
   lines: DraftLine[];
   /**
-   * Waits for a connection: an attempt of it failed and it is tried again,
-   * or the phone is offline. Until then it is simply being sent.
+   * "sending" until it is kept on the phone and while nothing failed yet;
+   * "waiting" for a connection once an attempt failed or the phone is
+   * offline; "ask" once it hasn't gone for ten minutes (P7): it stops, and
+   * asks whether to send it or take it off the phone.
    */
-  waiting: boolean;
+  state: "sending" | "waiting" | "ask";
+  /** How long it hasn't gone, while it asks. */
+  age: { unit: "minutes" | "hours"; count: number } | null;
 };
 
 /** Why the last send of a draft was refused, until it is sent again. */
 export type SendRefusal = Extract<SendOutcome, { ok: false }> & {
   target: RoundTarget;
+  /** Its screen showed it (P7): the app's banner no longer says it. */
+  seen?: boolean;
 };
+
+/** What hasn't gone from a draft: rounds waiting or asking, and how many ask. */
+export type UnsentCount = { count: number; asks: number };
 
 /** Sends a draft, and says what is on its way and what was refused. */
 export type OrdersSender = {
@@ -165,11 +184,27 @@ export type OrdersSender = {
     draft: string,
     target: RoundTarget,
     lines: DraftLine[],
+    where: OutboxWhere,
+    options?: {
+      /** It is kept on the phone (P7): the screen may send again. */
+      onQueued?: () => void;
+    },
   ) => Promise<SendOutcome>;
   /** The draft's rounds on their way, in the order they were sent. */
   pending: (draft: string) => PendingSend[];
+  /** "שליחה" (P7): a round that asked goes again now. */
+  answer: (key: string) => void;
+  /**
+   * "הסרה מהטלפון" (P7): the round goes from the phone, and the way back
+   * for its "ביטול" is returned, or null when it is no longer there.
+   */
+  remove: (key: string) => (() => void) | null;
+  /** What hasn't gone, by draft (P7), for the floor and the counts. */
+  unsent: Readonly<Record<string, UnsentCount>>;
   refusal: (draft: string) => SendRefusal | null;
   clearRefusal: (draft: string) => void;
+  /** The draft's refusal is on its screen (P7): the banner leaves it. */
+  seeRefusal: (draft: string) => void;
   /**
    * The latest round of a new takeaway that landed, by its key, and the
    * order it opened, whichever send it was: the screen that showed it on its

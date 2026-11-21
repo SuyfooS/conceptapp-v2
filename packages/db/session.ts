@@ -521,6 +521,12 @@ export type OwnPlace = {
   } | null;
   /** A view session is open: the app shows the viewed business instead. */
   viewing: boolean;
+  /**
+   * Every business they are an active member of, by its id in lower case,
+   * from the same read: `/orders-send` refuses a round kept for one they
+   * left (P7).
+   */
+  memberOf: string[];
 };
 
 /**
@@ -588,6 +594,9 @@ export async function getOwnPlace(): Promise<OwnPlace | null> {
         }
       : null,
     viewing: (view.data ?? []).length > 0,
+    memberOf: (memberships.data ?? []).map((row) =>
+      row.business_id.toLowerCase(),
+    ),
   };
 }
 
