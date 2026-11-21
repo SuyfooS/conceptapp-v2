@@ -3,10 +3,6 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
-## 2026-11-21 · chat · CI: the e2e jobs get 60 minutes
-
-- PR #217's desktop e2e stopped at the 45-minute limit after 1004 of 1083 tests, none failed (the run of #216 took 38 minutes). `.github/workflows/ci.yml`: `timeout-minutes: 60` for the e2e jobs, with the reason in the comment. Next, once a job passes 50 minutes: split each size in two with `--shard`, each part with its own database.
-
 ## 2026-11-21 · chat · taking orders: "מוכן" on the phone and "המסך לא מחובר" (waiter mode P8b)
 
 - On chat/order-ready-push from origin/main 71600c7 (P8a's branch chat/order-stations, PR #215, on top of main 7a47217 with P1 to P7 merged). §9 of the design with §16's decision 8 as Orel accepted it on 20 November (#1, #191): during a shift `orders` reaches the phone in quiet hours too, and the group's switch still keeps it off.
