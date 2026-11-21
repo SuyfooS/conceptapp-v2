@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   favouritesSchema,
   lineStateOf,
+  liveItemCount,
   myOrdersSchema,
   ORDER_CAPS,
   type OrderDetail,
@@ -761,6 +762,24 @@ describe("the till, from the order whole (P5)", () => {
       "takeaway",
     ]);
     expect(orderTillSchema.safeParse(till).success).toBe(true);
+  });
+
+  it("counts the items a whole order's cancel takes, as public.cancel_order does", () => {
+    // Live: two lemonades on one line, a lemonade, a large one and a beer.
+    // Not: the beer on the house, the hummus cancelled, the lemonades taken
+    // back.
+    expect(liveItemCount(detail)).toBe(5);
+    expect(liveItemCount(order([]))).toBe(0);
+    // A takeaway's one line of two coffees: two items go, not one.
+    const coffees = order([
+      {
+        id: ID,
+        sentAt: T,
+        sentBy: OTHER,
+        tickets: [ticket([line({ name: "קפה", quantity: 2 })])],
+      },
+    ]);
+    expect(liveItemCount(coffees)).toBe(2);
   });
 
   it("says where a line is, taken back before anything else", () => {

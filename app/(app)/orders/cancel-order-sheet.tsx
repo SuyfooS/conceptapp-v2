@@ -23,7 +23,10 @@ export function CancelOrderSheet({
   open: boolean;
   /** The order's place, in words. */
   place: string;
-  /** Its lines still live (`liveLineCount`). */
+  /**
+   * How many items go: the quantities of its lines still live, as the
+   * screen shows them, its own fixes held included (`liveItemCount`).
+   */
   count: number;
   onClose: () => void;
   onPick: (reason: OrderCancelReason) => void;

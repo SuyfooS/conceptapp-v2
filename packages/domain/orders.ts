@@ -643,15 +643,17 @@ export function orderTill(order: OrderDetail): OrderTill {
 }
 
 /**
- * How many lines a whole order's cancel cancels: those still live, neither
- * taken back, cancelled nor on the house, as `public.cancel_order` counts
- * them.
+ * How many items a whole order's cancel cancels, as its sheet says before
+ * it: the quantities of the lines still live, neither taken back, cancelled
+ * nor on the house, which `public.cancel_order` cancels. Two coffees on one
+ * line are two.
  */
-export function liveLineCount(order: OrderDetail): number {
+export function liveItemCount(order: Pick<OrderDetail, "rounds">): number {
   return order.rounds
     .flatMap((round) => round.tickets)
     .flatMap((ticket) => ticket.lines)
-    .filter((line) => lineStateOf(line) === "live").length;
+    .filter((line) => lineStateOf(line) === "live")
+    .reduce((sum, line) => sum + line.quantity, 0);
 }
 
 /** The reader's own rounds of today, those with a ticket ready first. */

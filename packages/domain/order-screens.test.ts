@@ -28,6 +28,7 @@ import {
   sendTarget,
   ticketAge,
   ticketBadge,
+  ticketStage,
   withoutSent,
 } from "./order-screens";
 import type { MyOrders, OrderDetail, OrderFloor } from "./orders";
@@ -297,6 +298,18 @@ describe("a ticket", () => {
     expect(ticketBadge({ status: "new", kitchenSeenAt: null, lines: 0 })).toBe(
       "none",
     );
+  });
+
+  it("has its stage for a line's sheet, the badge's, even once no line of it is live", () => {
+    for (const status of ["held", "new", "ready", "served"] as const) {
+      for (const kitchenSeenAt of [null, minutesAgo(1)]) {
+        expect(ticketStage({ status, kitchenSeenAt })).toBe(
+          ticketBadge({ status, kitchenSeenAt, lines: 2 }),
+        );
+      }
+    }
+    // A ticket whose one line was cancelled: no badge, and still "sent".
+    expect(ticketStage({ status: "new", kitchenSeenAt: null })).toBe("sent");
   });
 
   it("is calm, late from the late mark, and overdue from twice it", () => {

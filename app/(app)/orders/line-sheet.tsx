@@ -1,6 +1,6 @@
 "use client";
 
-import { lineFixes } from "@domain/order-screens";
+import { lineFixes, ticketStage } from "@domain/order-screens";
 import {
   COMP_REASONS,
   type CompReason,
@@ -42,8 +42,10 @@ export type LineSheetTarget = {
  * cancels it ("ביטול הפריט"), or gives it on the house for those who run
  * orders; a cancelled line is put back, and one on the house taken off it,
  * while the order is open. Who may do what is `lineFixes`, as the database
- * decides it; a taker on a ticket already ready reads why the reasons are
- * dimmed. Every fix waits 8 seconds for its "ביטול" on the mode's toast.
+ * decides it; a taker on a ticket already ready reads why the reasons, or
+ * the putting back, are dimmed. Its subtitle names the ticket's state as its
+ * badge does (`ticketStage`). Every fix waits 8 seconds for its "ביטול" on
+ * the mode's toast.
  */
 export function LineSheet({
   order,
@@ -69,7 +71,12 @@ export function LineSheet({
         viewing: frame.viewing,
       })
     : { fixes: [], readyLocked: false };
-  const locked = offered.readyLocked ? t("failed.managersOnly") : null;
+  // Why a taker can't, in words of what they tried: cancel it, or put it back.
+  const locked = !offered.readyLocked
+    ? null
+    : target?.state === "cancelled"
+      ? t("failed.managersOnlyRestore")
+      : t("failed.managersOnly");
   const pick = (choice: LineFixPick) => {
     if (target) onPick(target, choice);
   };
@@ -92,7 +99,7 @@ export function LineSheet({
         target
           ? t("fix.subtitle", {
               department: department(target.ticket.department),
-              state: t(`fix.state.${target.ticket.status}`),
+              state: t(`fix.state.${ticketStage(target.ticket)}`),
             })
           : undefined
       }

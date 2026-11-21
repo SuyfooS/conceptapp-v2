@@ -89,7 +89,8 @@ export function Rounds({
   onServe: (ticket: OrderTicket) => void;
   onFire: (ticket: OrderTicket) => void;
   onTakeBack: (line: OrderLine) => void;
-  onFix: (target: LineSheetTarget) => void;
+  /** Opens the line's sheet, from the button pressed: its focus comes back there. */
+  onFix: (target: LineSheetTarget, from: HTMLElement) => void;
 }) {
   const { t, time, person, department } = useOrderWords();
   const { now, frame, paths } = useOrdersMode();
@@ -279,15 +280,18 @@ export function Rounds({
                                           name: line.name,
                                         })}
                                         icon={<Ellipsis />}
-                                        onClick={() =>
-                                          onFix({
-                                            line,
-                                            ticket: { ...ticket, status },
-                                            state,
-                                            ownDepartment:
-                                              takeBackState(takeBack) ===
-                                              "ownDepartment",
-                                          })
+                                        onClick={(event) =>
+                                          onFix(
+                                            {
+                                              line,
+                                              ticket: { ...ticket, status },
+                                              state,
+                                              ownDepartment:
+                                                takeBackState(takeBack) ===
+                                                "ownDepartment",
+                                            },
+                                            event.currentTarget,
+                                          )
                                         }
                                       />
                                     ) : null}

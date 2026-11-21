@@ -90,6 +90,15 @@ const shown = (page: Page, text: string | RegExp) =>
   page.getByText(text).filter({ visible: true }).first();
 const toast = (page: Page, text: string) =>
   page.getByRole("status").filter({ hasText: text });
+/**
+ * The "ביטול" of the toast that says `text`: on an order screen of someone
+ * who runs orders, "ביטול ההזמנה" is a button too, whose name holds the word.
+ */
+const undoOn = (page: Page, text: string) =>
+  toast(page, text).getByRole("button", {
+    name: rt("app.orders.toast.undo"),
+    exact: true,
+  });
 const button = (page: Page, text: string | RegExp) =>
   main(page)
     .getByRole("button", {
@@ -348,7 +357,10 @@ test("Yoav sends a drink and a starter, the kitchen marks the starter ready, and
     );
   await serveAt("מטבח").click();
   await expect.poll(() => demoTicketStatus("5", "kitchen")).toBe("served");
-  await page.getByRole("button", { name: rt("app.orders.toast.undo") }).click();
+  await undoOn(
+    page,
+    rt("app.orders.toast.served", { place: table5, department: "מטבח" }),
+  ).click();
   await expect.poll(() => demoTicketStatus("5", "kitchen")).toBe("ready");
   await serveAt("מטבח").click();
   await expect.poll(() => demoTicketStatus("5", "kitchen")).toBe("served");
@@ -494,7 +506,10 @@ test("Shiran takes a line back in time, with the toast's undo first", async ({
   );
   // Taken back, then kept with the toast's undo.
   await takeBack.click();
-  await page.getByRole("button", { name: rt("app.orders.toast.undo") }).click();
+  await undoOn(
+    page,
+    rt("app.orders.toast.takenBack", { name: "חומוס" }),
+  ).click();
   expect(await demoLineTakenBack("9", "חומוס")).toBe(false);
   // Again, and leaving the screen sends it.
   await takeBack.click();
@@ -703,7 +718,10 @@ test("Yoav cancels the beer he sent to his own bar with a reason, the bar sees i
     toast(page, rt("app.orders.toast.cancelled", { name: "בירה מהחבית" })),
   ).toBeVisible();
   // Kept with the toast's undo.
-  await page.getByRole("button", { name: rt("app.orders.toast.undo") }).click();
+  await undoOn(
+    page,
+    rt("app.orders.toast.cancelled", { name: "בירה מהחבית" }),
+  ).click();
   expect(await demoLine("9", "בירה מהחבית")).toEqual({
     state: "live",
     reason: null,
@@ -749,8 +767,12 @@ test("Yoav cancels the beer he sent to his own bar with a reason, the bar sees i
     rt("app.manage.activity.actions.order.cancel", { name: "בירה מהחבית" }),
   );
   await expect(row).toBeVisible();
-  await expect(main(owner)).toContainText("28.00");
-  await expect(main(owner)).toContainText(
+  // The newest row first: this run's, its own lines under it. The log is
+  // never reset, and earlier runs' cancels and P4's focaccia taken back
+  // say 28.00 too.
+  const entry = row.locator("..");
+  await expect(entry).toContainText("28.00");
+  await expect(entry).toContainText(
     rt("app.manage.activity.actions.order.reason", {
       reason: rt("app.manage.activity.actions.order.reasons.guest"),
     }),
@@ -868,9 +890,11 @@ test("Shiran reads table 4's till by item and by round with no total, closes it,
       .getByRole("heading", { name: /^סבב 1 · .* · יואב$/ })
       .filter({ visible: true }),
   ).toBeVisible();
-  // No total anywhere.
+  // No total anywhere: neither its words nor the sum of the hummus and the
+  // focaccia (32.00 + 28.00).
   await expect(main(page)).not.toContainText("סה״כ");
   await expect(main(page)).not.toContainText("סך הכל");
+  await expect(main(page)).not.toContainText("60.00");
   await expectCleanPage(page);
 
   // Closed: the table is free, and the order is under "נסגרו היום".
@@ -897,6 +921,16 @@ test("Shiran reads table 4's till by item and by round with no total, closes it,
     toast(page, rt("app.orders.toast.reopened", { place: table("4") })),
   ).toBeVisible();
   await expect.poll(() => demoOrderStatus("4")).toBe("open");
+  // The floor reads it open again, no longer under "נסגרו היום".
+  await navItem(page, rt("modules.order_taking.mode.places")).click();
+  await expect(tile(page, "4")).not.toContainText(
+    rt("app.orders.floor.state.free"),
+  );
+  await expect(closedRow(page, project, table("4"))).toHaveCount(0);
+  await tile(page, "4").click();
+  await showOrder(page, project);
+  await link(page, rt("app.orders.rounds.till")).click();
+  await expect(page).toHaveURL(/\/orders\/till\//);
 
   // Closed again, then a lemonade opens the table anew: the closed one
   // can't open again while it is taken.
@@ -957,22 +991,81 @@ test("Shiran moves table 4 to a free table, and cancels takeaway 1 for good", as
   await showOrder(page, project);
   await button(page, rt("app.orders.order.actions.cancel")).click();
   await expect(page.getByRole("dialog")).toContainText(
-    rt("app.orders.cancelOrder.subtitle", { count: 1 }),
+    rt("app.orders.cancelOrder.subtitle", { count: 2 }),
   );
   await sheetRow(page, rt("app.orders.reasons.order.mistake")).click();
   await expect(
     toast(page, rt("app.orders.toast.orderCancelled", { place: takeaway })),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: rt("app.orders.toast.undo") }),
+    undoOn(page, rt("app.orders.toast.orderCancelled", { place: takeaway })),
   ).toBeVisible();
   await navItem(page, rt("modules.order_taking.mode.places")).click();
   await expect.poll(() => demoTakeawayStatus(1)).toBe("cancelled");
-  await closedRow(page, project, takeaway).click();
+  // Listed as cancelled: the row's words on a phone, the name of its
+  // button (its place, its state and its time) on a desktop.
+  const cancelledRow = closedRow(page, project, takeaway);
+  await expect(cancelledRow).toHaveAccessibleName(
+    new RegExp(literal(rt("app.orders.floor.closed.state.cancelled"))),
+  );
+  await cancelledRow.click();
   await expect(page).toHaveURL(/\/orders\/till\//);
   await expect(shown(page, rt("app.orders.till.cancelled"))).toBeVisible();
   await expect(
     page.getByRole("list", { name: rt("app.orders.till.byItem") }),
   ).toHaveCount(0);
   await expectCleanPage(page);
+});
+
+test("Yoav serves a ticket while his cancel of one of its lines waits: the cancel goes first", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "tablet", "a phone and a desktop do");
+  test.setTimeout(150_000);
+  const project = testInfo.project.name;
+  await addOpenDemoEntry(YOAV.e164, 1);
+  await signIn(page, YOAV);
+  await page.goto("/orders");
+  await tile(page, "9").click();
+  await showItems(page, project);
+  await button(page, "בירה מהחבית").click();
+  await button(page, "לימונדה").click();
+  await showOrder(page, project);
+  await send(page);
+  await expect.poll(() => demoRounds("9")).toBe(1);
+
+  // The beer cancelled, its 8 seconds still running: the bar's ticket is
+  // new, so a taker may.
+  await fixOf(page, "בירה מהחבית").click();
+  await sheetRow(page, rt("app.orders.reasons.line.guest")).click();
+  await expect(
+    toast(page, rt("app.orders.toast.cancelled", { name: "בירה מהחבית" })),
+  ).toBeVisible();
+  // The lemonade served meanwhile: the cancel lands first, so the ticket
+  // served after it never refuses it as too late for a taker.
+  await button(
+    page,
+    new RegExp(`^${literal(rt("app.orders.order.serve"))}.*בר`),
+  ).click();
+  await expect(
+    toast(
+      page,
+      rt("app.orders.toast.served", { place: table("9"), department: "בר" }),
+    ),
+  ).toBeVisible();
+  await expect.poll(() => demoTicketStatus("9", "bar")).toBe("served");
+  await expect
+    .poll(() => demoLine("9", "בירה מהחבית"))
+    .toEqual({ state: "cancelled", reason: "guest" });
+  await expect(
+    shown(
+      page,
+      rt("app.orders.line.cancelledWhy", {
+        reason: rt("app.orders.reasons.line.guest"),
+      }),
+    ),
+  ).toBeVisible();
+  await expect(shown(page, rt("app.orders.failed.managersOnly"))).toHaveCount(
+    0,
+  );
 });

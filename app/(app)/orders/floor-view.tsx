@@ -19,7 +19,7 @@ import { pageGlowClass } from "@ui/page-glow";
 import { Ban, LayoutGrid, Receipt, ShoppingBag } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useOrdersMode } from "./orders-mode";
 import {
   failureWords,
@@ -378,7 +378,8 @@ export function FloorView({
 /**
  * Today's closed and cancelled orders, newest first, each leading to its list
  * for the till: a list on a phone and a tablet, five and then the rest; a
- * table on a desktop, with every one of them.
+ * table on a desktop, with every one of them, each row's button named by its
+ * place, its state and its time, as two orders at one table read apart.
  */
 function ClosedToday({ closed }: { closed: OrderFloor["closed"] }) {
   const { t, placeTitle, time } = useOrderWords();
@@ -386,6 +387,15 @@ function ClosedToday({ closed }: { closed: OrderFloor["closed"] }) {
   const router = useRouter();
   const [all, setAll] = useState(false);
   const { rows, rest } = closedToday(closed);
+  const list = useRef<HTMLDivElement>(null);
+  // "הצגת כל" goes with its press: the first row it showed takes the focus.
+  const firstShown = useRef<number | null>(null);
+  useEffect(() => {
+    const at = firstShown.current;
+    if (!all || at === null) return;
+    firstShown.current = null;
+    list.current?.querySelectorAll<HTMLElement>("a")[at]?.focus();
+  }, [all]);
   const when = (row: OrderFloor["closed"][number]) =>
     row.status === "cancelled"
       ? t.rich("floor.closed.cancelledAt", { time: time(row.closedAt), ltr })
@@ -393,7 +403,7 @@ function ClosedToday({ closed }: { closed: OrderFloor["closed"] }) {
   return (
     <>
       <div className="flex flex-col gap-2 xl:hidden">
-        <ListGroup>
+        <ListGroup ref={list}>
           {(all ? closed : rows).map((row) => (
             <ListRow
               key={row.id}
@@ -408,7 +418,10 @@ function ClosedToday({ closed }: { closed: OrderFloor["closed"] }) {
           <Button
             variant="ghost"
             className="self-start"
-            onClick={() => setAll(true)}
+            onClick={() => {
+              firstShown.current = rows.length;
+              setAll(true);
+            }}
           >
             {t("floor.closed.more", { count: closed.length })}
           </Button>
@@ -425,6 +438,11 @@ function ClosedToday({ closed }: { closed: OrderFloor["closed"] }) {
             ]}
             rows={closed.map((row) => ({
               key: row.id,
+              label: t("floor.closed.rowLabel", {
+                place: placeTitle(row),
+                status: row.status,
+                time: time(row.closedAt),
+              }),
               cells: {
                 place: placeTitle(row),
                 at: <span dir="ltr">{time(row.closedAt)}</span>,

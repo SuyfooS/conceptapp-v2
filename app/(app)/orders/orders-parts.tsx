@@ -356,15 +356,25 @@ export function failureWords(
   return t(`failed.${key}` as "failed.failed", { items });
 }
 
-/** Which of P5's fixes was refused, for its own words. */
-export type FixWrite = "line" | "comp" | "order" | "move" | "close" | "reopen";
+/**
+ * Which of P5's fixes was refused, for its own words: "line" a line taken
+ * back or cancelled, "restore" a cancelled line put back.
+ */
+export type FixWrite =
+  | "line"
+  | "restore"
+  | "comp"
+  | "order"
+  | "move"
+  | "close"
+  | "reopen";
 
 /**
  * Why a fix was refused (P5), in the screen's words: what only those who
- * run orders do says so (a comp, a whole order's cancel); a place taken
- * names it for a move and says to wait for a reopen; a held block says what
- * to do before a close; a shift that ended says so; anything else as any
- * write.
+ * run orders do says so (a comp, a whole order's cancel, a line ready put
+ * back); a place taken names it for a move and says to wait for a reopen; a
+ * held block says what to do before a close; a shift that ended says so;
+ * anything else as any write.
  */
 export function fixFailureWords(
   t: OrdersT,
@@ -374,6 +384,9 @@ export function fixFailureWords(
 ): string {
   if (failure === "noAccess" && (what === "comp" || what === "order")) {
     return t("failed.runsOnly");
+  }
+  if (failure === "managersOnly" && what === "restore") {
+    return t("failed.managersOnlyRestore");
   }
   if (failure === "taken" && what === "move") {
     return t("failed.moveTaken", { place });

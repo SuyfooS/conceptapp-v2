@@ -19,6 +19,7 @@ import type { Menu, MenuItem, OrderPlace } from "@domain/order-taking";
 import {
   type CompReason,
   type LineCancelReason,
+  liveItemCount,
   ORDER_CAPS,
   type OrderCancelReason,
   type OrderDetail,
@@ -48,7 +49,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { type Ref, useEffect, useRef, useState } from "react";
 import { useHeldWrite } from "../use-held-write";
 import { CancelOrderSheet } from "./cancel-order-sheet";
 import { DraftPanel } from "./draft-panel";
@@ -108,7 +109,37 @@ const fixWriteOf = (fix: HeldFix): FixWrite =>
     ? "comp"
     : fix.kind === "cancelOrder"
       ? "order"
-      : "line";
+      : fix.kind === "restore"
+        ? "restore"
+        : "line";
+
+/** Drawn and shown: an element the keyboard's focus can go to. */
+function onView(element: Element | null | undefined): element is HTMLElement {
+  return (
+    element instanceof HTMLElement &&
+    element !== document.body &&
+    element.isConnected &&
+    element.getClientRects().length > 0
+  );
+}
+
+/** Shown and not turned off: what the focus can go back to and press again. */
+const pressable = (element: HTMLElement | null): element is HTMLElement =>
+  onView(element) && !element.matches(":disabled");
+
+/**
+ * The title of the screen on show: this one's, else the one Next shows in
+ * its place (after a move this screen waits hidden, the order's new place
+ * on show).
+ */
+function titleOnShow(own: HTMLElement | null): HTMLElement | null {
+  if (onView(own)) return own;
+  return (
+    [...document.querySelectorAll<HTMLElement>("main h1[tabindex]")].find(
+      onView,
+    ) ?? null
+  );
+}
 
 /** An order's lines with the screen's own fixes over them, until its next read. */
 function withShown(
@@ -241,6 +272,10 @@ export function OrderView({
   const onWay = useRef(new Set<string>());
   /** The order this screen went to, so it goes there once. */
   const movedTo = useRef<string | null>(null);
+  /** What opened the sheet on show: the focus goes back to it on closing. */
+  const opener = useRef<HTMLElement | null>(null);
+  /** Moved back here by the move's "ביטול": the title takes the focus. */
+  const backHere = useRef(false);
   // Whether this screen is the one on show: Next keeps a screen left inside
   // the mode in a hidden <Activity>, where its effects go and its awaits
   // still finish. Left, it forgets the rounds it showed on their way: whoever
@@ -249,12 +284,32 @@ export function OrderView({
   const onScreen = useRef(false);
   useEffect(() => {
     onScreen.current = true;
-    const shown = onWay.current;
+    // On show again after the move's "ביטול": the focus was on the screen
+    // the order had gone to, now hidden, unless the person put it elsewhere.
+    if (backHere.current) {
+      backHere.current = false;
+      if (!onView(document.activeElement)) {
+        titleRef.current?.focus({ preventScroll: true });
+      }
+    }
+    const ways = onWay.current;
     return () => {
       onScreen.current = false;
-      shown.clear();
+      ways.clear();
     };
   }, []);
+
+  /**
+   * Back to what opened a sheet while it is there to press, else `instead`:
+   * what it acted on may have gone, or turned off, with what was picked.
+   */
+  const backTo = (instead: HTMLElement | null) =>
+    pressable(opener.current) ? opener.current : instead;
+  /** A sheet opens: the focus comes back to what opened it. */
+  const openFrom = (from: HTMLElement, open: () => void) => {
+    opener.current = from;
+    open();
+  };
 
   const unshow = (lines: readonly string[]) =>
     setFixed((was) =>
@@ -440,6 +495,9 @@ export function OrderView({
 
   async function serve(ticket: OrderTicket) {
     setServed((was) => [...was, ticket.id]);
+    // A fix held on the order goes first, as it was made first: a serve that
+    // landed before it would leave a taker's cancel too late for its ticket.
+    await fix.commit();
     const result = await actions.serve(ticket.id, true).catch(() => null);
     if (!result?.ok) {
       setServed((was) => was.filter((id) => id !== ticket.id));
@@ -465,6 +523,8 @@ export function OrderView({
 
   async function fire(ticket: OrderTicket) {
     if (!known) return;
+    // A fix held on the order goes first, as for a serve.
+    await fix.commit();
     const result = await actions.fire(known.id).catch(() => null);
     if (!result?.ok) {
       say(failureWords(t, result ? result.failure : "failed"));
@@ -553,6 +613,8 @@ export function OrderView({
         .filter((line) => shownOf(line).state === "live")
         .map((line) => line.id)
     : [];
+  // What a whole order's cancel takes, in items: two coffees on a line are two.
+  const liveItems = shownOrder ? liveItemCount(shownOrder) : 0;
   const closing = shownOrder
     ? closeState(
         {
@@ -661,8 +723,14 @@ export function OrderView({
               return;
             }
             drafts.move(toKey, fromKey, went);
+            // This screen, hidden meanwhile, takes the focus once on show.
+            if (!onScreen.current) backHere.current = true;
             router.replace(paths.place(from.id));
           }),
+      // The row pressed went with the screen: the way back takes the focus,
+      // and after it the title of the place on show.
+      focus: true,
+      after: () => titleOnShow(titleRef.current),
     });
   }
 
@@ -687,7 +755,11 @@ export function OrderView({
   }
   // A takeaway that closed, or isn't one: nothing to add to here.
   if (where.kind === "takeaway" && where.order !== null && order === null) {
-    return closedOrder ? <ClosedOrder order={closedOrder} /> : <NoPlace />;
+    return closedOrder ? (
+      <ClosedOrder order={closedOrder} headingRef={titleRef} />
+    ) : (
+      <NoPlace />
+    );
   }
 
   const sendButton = (floating: boolean) =>
@@ -754,7 +826,9 @@ export function OrderView({
                   : t("order.actions.noFree")
               }
               disabled={locked || free.length === 0}
-              onClick={() => setMoving(true)}
+              onClick={(event) =>
+                openFrom(event.currentTarget, () => setMoving(true))
+              }
             />
           ) : null}
           {frame.runs ? (
@@ -763,7 +837,9 @@ export function OrderView({
               title={t("order.actions.cancel")}
               subtitle={t("order.actions.cancelHint")}
               disabled={locked || liveIds.length === 0}
-              onClick={() => setCancelling(true)}
+              onClick={(event) =>
+                openFrom(event.currentTarget, () => setCancelling(true))
+              }
             />
           ) : null}
         </ListGroup>
@@ -843,7 +919,7 @@ export function OrderView({
         onServe={(ticket) => void serve(ticket)}
         onFire={(ticket) => void fire(ticket)}
         onTakeBack={takeBack}
-        onFix={setSheet}
+        onFix={(target, from) => openFrom(from, () => setSheet(target))}
       />
       {whole}
       <Button
@@ -910,22 +986,22 @@ export function OrderView({
             target={sheet}
             onClose={() => setSheet(null)}
             onPick={pickFix}
-            returnFocus={() => roundsHeading.current}
+            returnFocus={() => backTo(roundsHeading.current)}
           />
           <MoveSheet
             open={moving}
             places={free}
             onClose={() => setMoving(false)}
             onPick={(to) => void moveTo(to)}
-            returnFocus={() => actionsHeading.current}
+            returnFocus={() => backTo(actionsHeading.current)}
           />
           <CancelOrderSheet
             open={cancelling}
             place={title}
-            count={liveIds.length}
+            count={liveItems}
             onClose={() => setCancelling(false)}
             onPick={cancelWhole}
-            returnFocus={() => roundsHeading.current}
+            returnFocus={() => backTo(actionsHeading.current)}
           />
         </>
       ) : null}
@@ -991,8 +1067,17 @@ function OrderHistory({ order }: { order: OrderDetail }) {
   );
 }
 
-/** A takeaway closed or cancelled while its screen was on: its till, or back. */
-function ClosedOrder({ order }: { order: OrderDetail }) {
+/**
+ * A takeaway closed or cancelled while its screen was on: its till, or back.
+ * Its title is the screen's, where the focus goes after the close's toast.
+ */
+function ClosedOrder({
+  order,
+  headingRef,
+}: {
+  order: OrderDetail;
+  headingRef: Ref<HTMLHeadingElement>;
+}) {
   const { t } = useOrderWords();
   const { paths } = useOrdersMode();
   const cancelled = order.status === "cancelled";
@@ -1000,6 +1085,7 @@ function ClosedOrder({ order }: { order: OrderDetail }) {
     <PageBody>
       <EmptyState
         icon={<ReceiptText />}
+        headingRef={headingRef}
         title={
           cancelled ? t("order.closed.cancelledTitle") : t("order.closed.title")
         }

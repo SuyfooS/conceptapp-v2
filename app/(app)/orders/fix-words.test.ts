@@ -1,5 +1,7 @@
+import type { TicketStage } from "@domain/order-screens";
 import { createTranslator } from "next-intl";
 import { describe, expect, it } from "vitest";
+import en from "@/messages/en.json";
 import he from "@/messages/he.json";
 import { type FixWrite, fixFailureWords, type OrdersT } from "./orders-parts";
 import type { OrdersActionFailure } from "./orders-types";
@@ -7,7 +9,8 @@ import type { OrdersActionFailure } from "./orders-types";
 // Why a fix was refused (waiter mode P5), in words of its own for every
 // refusal each write meets in the database
 // (20261120000300_order_taking_orders.sql), never the plain "לא נשמר" that
-// is left for what nothing else explains.
+// is left for what nothing else explains. And the line's sheet names a
+// ticket's state as its badge on the rounds does: one state, one name.
 
 const t = createTranslator({
   locale: "he",
@@ -24,6 +27,19 @@ const MEETS: Record<FixWrite, OrdersActionFailure[]> = {
     "takenBack",
     "comped",
     "cancelled",
+    "managersOnly",
+    "gone",
+    "off",
+    "noAccess",
+    "viewOnly",
+    "businessChanged",
+    "clock",
+    "staleShift",
+  ],
+  restore: [
+    "closed",
+    "takenBack",
+    "comped",
     "managersOnly",
     "gone",
     "off",
@@ -73,7 +89,35 @@ describe("a refused fix", () => {
       he.app.orders.failed.reopenTaken,
     );
     expect(fixFailureWords(t, "held", "close")).toBe(he.app.orders.close.held);
+    // A line ready: who cancels it, and who puts it back, each in its words.
+    expect(fixFailureWords(t, "managersOnly", "line")).toBe(
+      he.app.orders.failed.managersOnly,
+    );
+    expect(fixFailureWords(t, "managersOnly", "restore")).toBe(
+      he.app.orders.failed.managersOnlyRestore,
+    );
     // Anything nothing explains: not saved, and pressing again tries again.
     expect(fixFailureWords(t, "failed", "line")).toBe(fallback);
+  });
+});
+
+describe("a line's sheet", () => {
+  it("names its ticket's state in the words of the ticket's badge", () => {
+    const stages: TicketStage[] = [
+      "held",
+      "sent",
+      "onScreen",
+      "ready",
+      "served",
+    ];
+    for (const words of [he, en]) {
+      const { fix, ticketState } = words.app.orders;
+      expect(Object.keys(fix.state).sort()).toEqual([...stages].sort());
+      for (const stage of stages) {
+        // The badge's words, without the department it names beside them.
+        const badge = ticketState[stage].replace(" · {department}", "");
+        expect(fix.state[stage], stage).toBe(badge);
+      }
+    }
   });
 });

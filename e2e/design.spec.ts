@@ -3980,6 +3980,16 @@ const rt = createTranslator({
   messages: mergeWording(he as MessageTree, restaurantWording) as typeof he,
 }) as typeof heT;
 
+/**
+ * The "ביטול" of the mode's toast that says `text`: the twin runs orders, so
+ * its order screen has "ביטול ההזמנה" too, a button whose name holds the word.
+ */
+const orderUndo = (page: Page, text: string) =>
+  page
+    .getByRole("status")
+    .filter({ hasText: text })
+    .getByRole("button", { name: rt("app.orders.toast.undo"), exact: true });
+
 // Waiter mode's twin (S0, #191) as a waiter times it on a phone: a free
 // table opens on its items, two taps add two, one sends them, and the
 // kitchen's part is on the prep screen. Marked ready there, it comes back
@@ -4075,7 +4085,7 @@ test("the waiter mode demo sends to the prep screen and comes back ready", async
     department: kitchen,
   });
   await expect(page.getByText(served)).toBeVisible();
-  await page.getByRole("button", { name: rt("app.orders.toast.undo") }).click();
+  await orderUndo(page, served).click();
   await expect(page.getByText(served)).toHaveCount(0);
 
   await shown(
@@ -4633,10 +4643,18 @@ test("the waiter mode demo cancels a dish with a reason and its undo, and the ma
   await fixHummus.click();
   await expect(dialog).toBeVisible();
   await expectCleanPage(page, "", true);
+  // Closed with no choice, the sheet gives the focus back to what opened it.
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(fixHummus).toBeFocused();
+  await fixHummus.click();
   await dialog.getByRole("button", { name: mistake, exact: true }).click();
   const cancelled = rt("app.orders.line.cancelledWhy", { reason: mistake });
   await expect(shown(page.getByText(cancelled))).toBeVisible();
-  await page.getByRole("button", { name: rt("app.orders.toast.undo") }).click();
+  await orderUndo(
+    page,
+    rt("app.orders.toast.cancelled", { name: "חומוס" }),
+  ).click();
   await expect(page.getByText(cancelled)).toHaveCount(0);
   await fixHummus.click();
   await dialog.getByRole("button", { name: mistake, exact: true }).click();
@@ -4757,9 +4775,9 @@ test("the waiter mode demo moves an order to a free table", async ({
   await expect(
     page.getByRole("heading", { level: 1, name: table6 }),
   ).toBeVisible();
-  await expect(
-    page.getByText(rt("app.orders.toast.moved", { place: table6 })),
-  ).toBeVisible();
+  const moved = rt("app.orders.toast.moved", { place: table6 });
+  await expect(page.getByText(moved)).toBeVisible();
+  await expect(orderUndo(page, moved)).toBeFocused();
   // Under the title, where it came from.
   const from = `${he.app.orders.order.movedFrom.split("{from}")[0] ?? ""}${rt(
     "app.orders.place.numbered",

@@ -857,6 +857,8 @@ export const restaurantWording: Readonly<Record<string, string>> = {
   "app.orders.fix.restore": "החזרת המנה להזמנה",
   "app.orders.failed.managersOnly":
     "המנה כבר מוכנה, אז מבטל אותה רק מי שמנהל את ההזמנות.",
+  "app.orders.failed.managersOnlyRestore":
+    "המנה כבר מוכנה, אז מחזיר אותה רק מי שמנהל את ההזמנות.",
   "app.orders.failed.takeaway": "הזמנה לקחת לא עוברת לשולחן.",
   "app.orders.failed.moveTaken":
     "{place}: כבר יש שם הזמנה פתוחה. בוחרים שולחן אחר.",

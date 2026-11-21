@@ -5654,6 +5654,7 @@
             "closed": "Closed",
             "cancelled": "Cancelled"
           },
+          "rowLabel": "{place}, {status, select, cancelled {cancelled at} other {closed at}} {time}",
           "hint": "Open the list for the till"
         },
         "table": {
@@ -5807,7 +5808,8 @@
         "subtitle": "{department} · {state}",
         "state": {
           "held": "Waiting to be called",
-          "new": "Being made",
+          "sent": "Sent",
+          "onScreen": "On the screen",
           "ready": "Ready",
           "served": "Served"
         },
@@ -5972,6 +5974,7 @@
         "cancelled": "It was cancelled already.",
         "takenBack": "It was taken back already.",
         "managersOnly": "It's ready already, so only someone who runs orders cancels it.",
+        "managersOnlyRestore": "It's ready already, so only someone who runs orders puts it back.",
         "runsOnly": "Only someone who runs orders does this.",
         "comped": "It's on the house already.",
         "day": "The order's working day is over, so it doesn't open again.",

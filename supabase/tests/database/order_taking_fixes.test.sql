@@ -1,7 +1,7 @@
 -- Taking orders: the fixes and the till, on screen
 -- (20261122000100_order_taking_fixes.sql; waiter mode P5). The migration
 -- writes only the restaurant's and the café's own sentences for P5's
--- screens: both templates hold all sixteen, each written against the app's
+-- screens: both templates hold all seventeen, each written against the app's
 -- sentence it replaces, and the shop and the general template keep the
 -- app's words. The writes the screens make and their refusals are P3's,
 -- tested in order_taking.test.sql and order_taking_access.test.sql.
@@ -15,6 +15,7 @@ insert into p5_keys (key) values
   ('app.orders.fix.cancel'),
   ('app.orders.fix.restore'),
   ('app.orders.failed.managersOnly'),
+  ('app.orders.failed.managersOnlyRestore'),
   ('app.orders.failed.takeaway'),
   ('app.orders.failed.moveTaken'),
   ('app.orders.failed.reopenTaken'),
@@ -44,8 +45,8 @@ select is(
      join p5_keys k on k.key = w.key
      group by w.template_key
    ) x),
-  'cafe-bar:16,restaurant:16',
-  'both hold every one of P5''s sixteen sentences'
+  'cafe-bar:17,restaurant:17',
+  'both hold every one of P5''s seventeen sentences'
 );
 
 select is(

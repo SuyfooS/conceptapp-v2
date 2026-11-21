@@ -290,19 +290,19 @@ export function placeTitleKind(name: string): "numbered" | "named" {
   return /^\d/.test(name.trim()) ? "numbered" : "named";
 }
 
+/** Where a ticket is, as whoever sent it reads it. */
+export type TicketStage = "held" | "sent" | "onScreen" | "ready" | "served";
+
 /**
- * A ticket's state for whoever sent it, in words as well as colour:
- * "held" waiting to be called, "sent" and then "onScreen" once its
- * department had it on a screen, "ready", "served"; "none" when no line of
- * it is live.
+ * Where a ticket is, whatever is left of its lines: "held" waiting to be
+ * called, "sent" and then "onScreen" once its department had it on a
+ * screen, "ready", "served". Its badge and a line's sheet name it alike, so
+ * one state has one name on the screen.
  */
-export function ticketBadge(ticket: {
+export function ticketStage(ticket: {
   status: TicketStatus;
   kitchenSeenAt: string | null;
-  /** Its live lines. */
-  lines: number;
-}): "held" | "sent" | "onScreen" | "ready" | "served" | "none" {
-  if (ticket.lines === 0) return "none";
+}): TicketStage {
   switch (ticket.status) {
     case "held":
       return "held";
@@ -313,6 +313,20 @@ export function ticketBadge(ticket: {
     default:
       return ticket.kitchenSeenAt ? "onScreen" : "sent";
   }
+}
+
+/**
+ * A ticket's state for whoever sent it, in words as well as colour: its
+ * stage (`ticketStage`), or "none" when no line of it is live.
+ */
+export function ticketBadge(ticket: {
+  status: TicketStatus;
+  kitchenSeenAt: string | null;
+  /** Its live lines. */
+  lines: number;
+}): TicketStage | "none" {
+  if (ticket.lines === 0) return "none";
+  return ticketStage(ticket);
 }
 
 /** How long a ticket has waited, and how late that is: calm, late, overdue. */
