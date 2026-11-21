@@ -68,3 +68,67 @@ export function parseSecretKey(source: { SUPABASE_SECRET_KEY?: string }) {
   }
   return result.data;
 }
+
+/** The hiring file's keys, checked: which one seals, and every one that opens. */
+export type EmployeeDataKeys = {
+  /** The key new data keys are wrapped with. */
+  active: number;
+  /** Every key by its id, the active one among them; older ones still open. */
+  keys: Map<number, Buffer>;
+};
+
+const KeyId = z.coerce.number().int().min(1).max(32767);
+const KeyEntry = z.string().regex(/^[0-9]{1,5}:[A-Za-z0-9+/]{43}=$/);
+
+/**
+ * The hiring file's key-encryption keys (profile H4): `EMPLOYEE_DATA_KEKS`,
+ * `id:base64` entries separated by commas, each id 1 to 32767 once and each
+ * key 32 bytes, and `EMPLOYEE_DATA_KEK_ACTIVE`, the id new data keys are
+ * wrapped with. Null when neither is set: the file is closed on this
+ * deployment, and reads and writes say so. Throws naming the setting and the
+ * rule, never a value, when one is set without the other or either is wrong.
+ * `node tooling/employee-data-key.mjs` makes one.
+ */
+export function parseEmployeeDataKeys(source: {
+  EMPLOYEE_DATA_KEKS?: string;
+  EMPLOYEE_DATA_KEK_ACTIVE?: string;
+}): EmployeeDataKeys | null {
+  const listed = source.EMPLOYEE_DATA_KEKS?.trim() ?? "";
+  const chosen = source.EMPLOYEE_DATA_KEK_ACTIVE?.trim() ?? "";
+  if (listed === "" && chosen === "") return null;
+  if (listed === "" || chosen === "") {
+    throw new Error(
+      "Hiring-file keys incomplete (EMPLOYEE_DATA_KEKS, EMPLOYEE_DATA_KEK_ACTIVE): set both or neither",
+    );
+  }
+  const keys = new Map<number, Buffer>();
+  for (const entry of listed.split(",").map((part) => part.trim())) {
+    if (!KeyEntry.safeParse(entry).success) {
+      throw new Error(
+        "EMPLOYEE_DATA_KEKS: each entry is id:base64 of 32 bytes, separated by commas",
+      );
+    }
+    const at = entry.indexOf(":");
+    const id = KeyId.safeParse(entry.slice(0, at));
+    const key = Buffer.from(entry.slice(at + 1), "base64");
+    if (!id.success || key.length !== 32) {
+      throw new Error(
+        "EMPLOYEE_DATA_KEKS: each id is 1 to 32767 and each key 32 bytes",
+      );
+    }
+    if (keys.has(id.data)) {
+      throw new Error("EMPLOYEE_DATA_KEKS: each id appears once");
+    }
+    keys.set(id.data, key);
+  }
+  const active = KeyId.safeParse(chosen);
+  if (!active.success || !/^[0-9]{1,5}$/.test(chosen)) {
+    throw new Error("EMPLOYEE_DATA_KEK_ACTIVE: a key id, 1 to 32767");
+  }
+  if (!keys.has(active.data)) {
+    throw new Error(
+      "EMPLOYEE_DATA_KEK_ACTIVE: names none of EMPLOYEE_DATA_KEKS' ids",
+    );
+  }
+  return { active: active.data, keys };
+}

@@ -207,6 +207,15 @@ describe("detailsFailureOf", () => {
     expect(detailsFailureOf("23514")).toBe("invalid");
     expect(detailsFailureOf(undefined)).toBe("failed");
   });
+
+  it("says when the birth date is the hiring file's now (H4)", () => {
+    expect(
+      detailsFailureOf("22023", "The birth date is kept in the employee file"),
+    ).toBe("birthInFile");
+    expect(detailsFailureOf("22023", "A birth date is a day, YYYY-MM-DD")).toBe(
+      "invalid",
+    );
+  });
 });
 
 describe("periods", () => {

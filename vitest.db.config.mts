@@ -7,5 +7,7 @@ export default defineConfig({
     include: ["**/*.db.test.ts"],
     exclude: ["node_modules/**"],
     environment: "node",
+    // A hiring-file key of the run's own, for the sealing against the database.
+    setupFiles: ["tooling/vitest-setup.ts"],
   },
 });

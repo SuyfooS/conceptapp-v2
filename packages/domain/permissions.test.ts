@@ -137,6 +137,49 @@ describe("permissionsByDefault", () => {
     }
   });
 
+  it("gives an accountant, and a view as one, the files too where they are declared (H4)", () => {
+    const files = defineManifest({
+      key: "employee_files",
+      requires: [],
+      nav: null,
+      homeWidget: null,
+      permissions: [
+        {
+          key: "people.files",
+          area: "employee_files",
+          defaultRole: "owner",
+          byOwner: true,
+        },
+      ],
+      settings: z.object({}),
+    });
+    const withFiles = declaredPermissions([scheduling, clock, files]);
+    for (const viewing of [false, true]) {
+      expect(
+        permissionsByDefault(withFiles, {
+          role: "accountant",
+          given: [],
+          viewing,
+        }),
+      ).toEqual(["clock.payroll", "people.files"]);
+    }
+    // Never a manager's by role, and never a view's as an owner.
+    expect(
+      permissionsByDefault(withFiles, {
+        role: "manager",
+        given: [],
+        viewing: false,
+      }),
+    ).not.toContain("people.files");
+    expect(
+      permissionsByDefault(withFiles, {
+        role: "owner",
+        given: [],
+        viewing: true,
+      }),
+    ).not.toContain("people.files");
+  });
+
   it("gives the staff their role's defaults, core ones included, and never pay by role", () => {
     expect(permissionsByDefault(catalogue, member("manager"))).toEqual(
       [

@@ -8,13 +8,17 @@ import { MIGRATIONS, migrationFiles, withoutComments } from "./role-checks";
  * permission its readers hold besides manage.view, and a family it doesn't
  * name is read by no one through it (it fails closed). The pay rows
  * (`private.is_pay_action`) and documents' have the pay holders' side of the
- * policies instead. So each family a migration writes to the log needs a
- * place in one of them, or its rows show to nobody but pay holders: this
- * reads the families the migrations write and the ones the policies place.
+ * policies instead, and the hiring file's a side of its own. So each family
+ * a migration writes to the log needs a place in one of them, or its rows
+ * show to nobody but pay holders: this reads the families the migrations
+ * write and the ones the policies place.
  */
 
-/** Families the log's policies give to the pay holders by a test of their own: documents'. */
-export const OWN_SIDE = ["document"] as const;
+/**
+ * Families the log's policies give a side of their own: documents' to the pay
+ * holders, and the hiring file's to holders of people.files (H4).
+ */
+export const OWN_SIDE = ["document", "employee"] as const;
 
 /** A family of the log as a string names it: `'clock.station.add'` is `clock`. */
 const ACTION = /'([a-z_]+)\.[a-z_.]+'/g;

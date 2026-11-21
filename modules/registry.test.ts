@@ -588,12 +588,44 @@ describe("module registry", () => {
 
   it("starts every permission an owner gives with the owner alone", () => {
     // public.permission_keys refuses default roles for one (payroll P2): an
-    // owner switches it on for managers, workers or a person.
+    // owner switches it on for managers, workers or a person. Pay, and the
+    // hiring file's (H4).
     const byOwner = manifests.flatMap((m) =>
       m.permissions.filter((p) => p.byOwner),
     );
-    expect(byOwner.map((p) => p.key)).toEqual(["clock.payroll"]);
+    expect(byOwner.map((p) => p.key)).toEqual([
+      "clock.payroll",
+      "people.files",
+    ]);
     for (const p of byOwner) expect(p.defaultRole).toBe("owner");
+  });
+
+  it("gives the hiring file one key an owner gives, no tab, no card and no settings yet", () => {
+    // Profile H4 (20261126000200_employee_files.sql): owners always hold
+    // people.files and accountants through their fixed grant
+    // (private.accountant_perms); never switched per role, so the roles
+    // screen doesn't draw its area. Its screens come with H5 and H6.
+    const manifest = manifestFor("employee_files");
+    expect(manifest.permissions).toEqual([
+      {
+        key: "people.files",
+        area: "employee_files",
+        defaultRole: "owner",
+        byOwner: true,
+      },
+    ]);
+    expect(manifest.nav).toBeNull();
+    expect(manifest.homeWidget).toBeNull();
+    expect(manifest.mode).toBeUndefined();
+    expect(describeSettings(manifest.settings)).toEqual([]);
+    expect(moduleIcon(manifest)).toBe("documents");
+    expect(ACCOUNTANT_PERMISSIONS).toEqual(["clock.payroll", "people.files"]);
+    expect(permissions.find((p) => p.key === "people.files")).toMatchObject({
+      settable: false,
+      byOwner: true,
+      defaultRoles: [],
+    });
+    expect(he.modules.employee_files.name).toBe("תיק עובד");
   });
 
   it("opens a tab off the staff only by a permission its module declares, or the one it names, with its words", () => {

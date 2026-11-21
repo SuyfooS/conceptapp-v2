@@ -2,7 +2,7 @@
 
 One folder per product module, named by its key in the database enum
 `module_key`: `scheduling/`, `time_clock/`, `reservations/`, `storefront/`,
-`notifications/`.
+`notifications/`, `lists/`, `chat/`, `order_taking/`, `employee_files/`.
 
 Each module exports a single typed manifest (`manifest.ts`, built with
 `defineManifest` from `@domain/modules`), and everything the app needs to

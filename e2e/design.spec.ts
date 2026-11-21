@@ -2074,6 +2074,44 @@ test("the activity demo says whose name was fixed", async ({ page }) => {
   ).toBeVisible();
 });
 
+// The activity demo names the hiring file's parts that changed and why a view
+// was refused (profile H4), never a value: the line holds no digit.
+test("the activity demo names the file's fields, never a value", async ({
+  page,
+}) => {
+  const e = he.app.manage.activity.actions.employee;
+  await page.goto("/design/shell/manage/activity");
+  const details = heT("app.manage.activity.actions.employee.details", {
+    person: "נועה כהן",
+    fields: `${e.fields.identity} ו${e.fields.address}`,
+  });
+  expect(details).not.toMatch(/\d/);
+  await expect(
+    page.getByText(details).filter({ visible: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByText(
+        heT("app.manage.activity.actions.employee.viewDenied", {
+          person: "נועה כהן",
+          reason: "not_holder",
+        }),
+      )
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByText(
+        heT("app.manage.activity.actions.member.emergency", {
+          person: "נועה כהן",
+        }),
+      )
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
+});
+
 // The activity demo says what was cancelled at table 12 (waiter mode P3): the
 // line's quantity and unit price, the price in an LTR span, the department
 // after a separator, why and who sent it, and never a total.

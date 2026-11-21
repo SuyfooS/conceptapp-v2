@@ -2780,7 +2780,8 @@
           "unknownPeriod": "התקופה הזאת כבר לא קיימת. כדאי לרענן את הדף.",
           "invalid": "הפרטים לא נשמרו. כדאי לבדוק את מה שמסומן.",
           "viewOnly": "במצב צפייה אי אפשר לשנות פרטים.",
-          "failed": "הפרטים לא נשמרו. בדקו את החיבור ונסו שוב."
+          "failed": "הפרטים לא נשמרו. בדקו את החיבור ונסו שוב.",
+          "birthInFile": "תאריך הלידה נמצא עכשיו בתיק העובד, ומשם הוא מתעדכן."
         },
         "period": {
           "title": "תקופת עבודה של {name}",
@@ -3165,7 +3166,8 @@
         "notifications": "מתי מזכירים לשלוח זמינות ולצאת מהשעון",
         "lists": "מתי מזכירים ומתי רשימה באיחור",
         "chat": "מי כותב בקבוצה של כל הצוות",
-        "order_taking": "מי מקבל הזמנות, ומתי"
+        "order_taking": "מי מקבל הזמנות, ומתי",
+        "employee_files": "מה התיק מבקש מהעובדים"
       },
       "orderFixes": {
         "today": "היום: {takenBack, plural, one {החזרה אחת} other {# החזרות}}, {cancelled, plural, one {ביטול אחד} other {# ביטולים}}, {comped, plural, other {# על חשבון הבית}}",
@@ -3329,7 +3331,8 @@
             "name": "תיקון השם של {person}",
             "shiftsOff": "{count, plural, one {משמרת אחת קדימה התפנתה} other {# משמרות קדימה התפנו}} בסידור",
             "swapsOff": "{count, plural, one {בקשת החלפה אחת בוטלה} other {# בקשות החלפה בוטלו}}",
-            "swapsReopened": "{count, plural, one {בקשת החלפה אחת חזרה להיות פתוחה} other {# בקשות החלפה חזרו להיות פתוחות}}"
+            "swapsReopened": "{count, plural, one {בקשת החלפה אחת חזרה להיות פתוחה} other {# בקשות החלפה חזרו להיות פתוחות}}",
+            "emergency": "עדכון איש הקשר לחירום של {person}"
           },
           "view_as": {
             "start": "צפייה באפליקציה בתור {role}",
@@ -3440,8 +3443,8 @@
             "restore": "התפקיד {name} הוחזר"
           },
           "permission": {
-            "grant": "{perm, select, payroll {מתן גישה לשעות ולשכר} other {מתן הרשאה}} {to}",
-            "revoke": "{perm, select, payroll {הסרת הגישה לשעות ולשכר} other {הסרת הרשאה}} {from}",
+            "grant": "{perm, select, payroll {מתן גישה לשעות ולשכר} files {מתן גישה לתיקי העובדים} other {מתן הרשאה}} {to}",
+            "revoke": "{perm, select, payroll {הסרת הגישה לשעות ולשכר} files {הסרת הגישה לתיקי העובדים} other {הסרת הרשאה}} {from}",
             "to": {
               "role": "{role, select, manager {למנהלים} worker {לעובדים} other {לתפקיד}}",
               "person": "ל{person}"
@@ -3573,6 +3576,44 @@
             "stationRestart": "החזרת המסך „{name}” אחרי שהופסק",
             "stationRestartPlain": "החזרת מסך שהופסק",
             "allDepartments": "כל המחלקות"
+          },
+          "employee": {
+            "details": "עדכון {fields} בתיק של {person}",
+            "detailsPlain": "עדכון התיק של {person}",
+            "fields": {
+              "names": "השם כמו בתעודה",
+              "birth_date": "תאריך הלידה",
+              "identity": "מספר הזהות",
+              "address": "הכתובת",
+              "email": "האימייל",
+              "work_language": "השפה להוראות עבודה",
+              "bank": "חשבון הבנק",
+              "pension": "הפנסיה"
+            },
+            "view": "צפייה ב{fields} של {person}",
+            "viewPlain": "צפייה בתיק של {person}",
+            "viewFields": {
+              "file": "תיק",
+              "id": "מספר הזהות",
+              "bank_account": "מספר החשבון"
+            },
+            "viewDenied": "ניסיון צפייה בתיק של {person} נדחה: {reason, select, ack {עוד לא אושרו הכללים} viewing {בצפייה כצוות האפליקציה} limit {יותר מדי צפיות בשעה} many {ועוד ניסיונות היום} other {אין הרשאה}}",
+            "viewDeniedPlain": "ניסיון צפייה בתיקים נדחה: {reason, select, ack {עוד לא אושרו הכללים} viewing {בצפייה כצוות האפליקציה} limit {יותר מדי צפיות בשעה} many {ועוד ניסיונות היום} other {אין הרשאה}}",
+            "submit": "שליחת התיק של {person}",
+            "taxYear": "טופס 101 לשנת {year} של {person}: {status, select, handed_in {נמסר} accepted {התקבל} returned {הוחזר} change_due {צריך טופס מעודכן} other {הסימון בוטל}}",
+            "ack": "אישור מה מותר ומה אסור עם הפרטים, לפני צפייה בתיקים",
+            "bankAck": "אישור חשבון הבנק החדש של {person}",
+            "bankDisputed": "סימון „לא שיניתי” על חשבון הבנק של {person}",
+            "direct": "בתיק של {person} סומן „נמסר ישירות לשכר” עבור {groups}",
+            "directCleared": "בתיק של {person} הוסר הסימון „נמסר ישירות לשכר”",
+            "groups": {
+              "identity": "פרטי הזהות",
+              "address": "הכתובת",
+              "bank": "חשבון הבנק",
+              "pension": "הפנסיה"
+            },
+            "export": "הורדת פרטים לשכר מהתיקים: {people, plural, one {אדם אחד} other {# אנשים}}, {recipient, select, provider {למי שמכין את השכר} other {לשימוש עצמי}}",
+            "exportHeld": "{held, plural, one {חשבון בנק אחד מחכה לאישור ולא נכלל} other {# חשבונות בנק מחכים לאישור ולא נכללו}}"
           }
         }
       },
@@ -6745,6 +6786,10 @@
         "prep": "הכנה",
         "menu": "תפריט"
       }
+    },
+    "employee_files": {
+      "name": "תיק עובד",
+      "description": "מה שהעסק צריך כדי לשלם שכר: תעודה מזהה, כתובת, חשבון בנק ופנסיה. נשמר מוצפן, וכל צפייה נרשמת."
     }
   },
   "admin": {

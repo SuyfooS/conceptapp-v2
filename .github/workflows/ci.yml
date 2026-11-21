@@ -261,6 +261,14 @@ jobs:
           echo "::add-mask::$cron_secret"
           echo "CRON_SECRET=$cron_secret" >> "$GITHUB_ENV"
           echo "PUSH_TEST_ORIGIN=http://127.0.0.1:3199" >> "$GITHUB_ENV"
+          # A hiring-file key of this run's own (profile H4), never a real one.
+          # The database job's `pnpm test:db` gets its own from
+          # tooling/vitest-setup.ts, and the check job's build has none: the
+          # file refuses cleanly there, as notifications stay in the app
+          # without VAPID keys.
+          keys=$(node tooling/employee-data-key.mjs --env)
+          echo "::add-mask::$(printf '%s\n' "$keys" | sed -n 's/^EMPLOYEE_DATA_KEKS=[0-9]*://p')"
+          printf '%s\n' "$keys" >> "$GITHUB_ENV"
 
       - name: Build
         run: pnpm build

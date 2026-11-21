@@ -133,7 +133,12 @@ values
 -- The restaurant also opens with taking orders on ("orderTaking": true;
 -- 20261120000100_order_taking_screens.sql), for the browser tests of the
 -- menu's screens; the hosted one keeps it off until Orel approves them
--- (tooling/demo-order-taking.test.ts).
+-- (tooling/demo-order-taking.test.ts). And both start with made-up hiring files
+-- ("files", 20261126000200_employee_files.sql), the module off and their writes
+-- closed: in the restaurant, Noa with an emergency contact and Yoav without an
+-- account or this year's 101; in the shop, Tamar's new account for a holder,
+-- Itai's passport and his 101 returned, Roni's 101 due again and his contact,
+-- and Liya's pension handed directly (tooling/demo-files.test.ts).
 insert into private.demo_businesses (business_id, definition)
 values
   ('00000000-0000-4000-b000-000000000001', $json$
@@ -151,6 +156,11 @@ values
       { "user_id": "00000000-0000-4000-a000-000000000004", "case": "none" }
     ] },
     "details": { "since": "2026-03-01", "numbers": 101, "cases": [] },
+    "files": { "cases": [
+      { "user_id": "00000000-0000-4000-a000-000000000003", "case": "emergency" },
+      { "user_id": "00000000-0000-4000-a000-000000000004", "case": "no_bank" },
+      { "user_id": "00000000-0000-4000-a000-000000000004", "case": "form101_missing" }
+    ] },
     "people": [
       { "user_id": "00000000-0000-4000-a000-000000000001", "role": "owner", "name": "אורי הדגמה" },
       { "user_id": "00000000-0000-4000-a000-000000000002", "role": "manager", "name": "שירן הדגמה", "departments": ["floor", "bar"] },
@@ -182,6 +192,14 @@ values
       { "user_id": "00000000-0000-4000-a000-000000000013", "case": "no_number" },
       { "user_id": "00000000-0000-4000-a000-000000000012", "case": "rest_friday" },
       { "user_id": "00000000-0000-4000-a000-000000000011", "case": "started" }
+    ] },
+    "files": { "cases": [
+      { "user_id": "00000000-0000-4000-a000-000000000010", "case": "bank_new" },
+      { "user_id": "00000000-0000-4000-a000-000000000011", "case": "passport" },
+      { "user_id": "00000000-0000-4000-a000-000000000011", "case": "form101_returned" },
+      { "user_id": "00000000-0000-4000-a000-000000000012", "case": "form101_change_due" },
+      { "user_id": "00000000-0000-4000-a000-000000000012", "case": "emergency" },
+      { "user_id": "00000000-0000-4000-a000-000000000013", "case": "direct_pension" }
     ] },
     "people": [
       { "user_id": "00000000-0000-4000-a000-000000000007", "role": "owner", "name": "מיכל הדגמה" },
@@ -242,13 +260,14 @@ grant execute on function dev.send_sms(jsonb) to supabase_auth_admin;
 -- 20261110001500_list_photos.sql) and chat's every 10 minutes
 -- (20261111000200_chat.sql, with its files' clean-up from
 -- 20261111000500_chat_files.sql), and taking orders' every hour
--- (20261120000400_order_taking_orders_demo.sql), stay off here, or they would
--- send, clean, remind, open lists and erase notes at real time under the tests,
--- which call what the jobs run themselves, at times they choose. A hosted
+-- (20261120000400_order_taking_orders_demo.sql), and the log's nightly check
+-- (20261126000200_employee_files.sql), stay off here, or they would send, clean,
+-- remind, open lists, erase notes and check the log at real time under the
+-- tests, which call what the jobs run themselves, at times they choose. A hosted
 -- project keeps them.
 select cron.alter_job(j.jobid, active => false)
 from cron.job j
 where j.jobname in (
   'notifications', 'notifications-clean', 'payroll', 'lists', 'list-photos', 'chat',
-  'order-taking'
+  'order-taking', 'audit-guard'
 );

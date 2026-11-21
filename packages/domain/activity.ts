@@ -6,6 +6,18 @@ import {
   type DocumentDirection,
   type DocumentRemoveReason,
 } from "./documents";
+import {
+  DENIAL_REASONS,
+  type DenialReason,
+  FILE_DETAIL_FIELDS,
+  FILE_GROUPS,
+  FILE_VIEW_FIELDS,
+  type FileDetailField,
+  type FileGroup,
+  type FileViewField,
+  TAX_YEAR_STATUSES,
+  type TaxYearStatus,
+} from "./employee-file";
 import { ROLES, type Role } from "./modules";
 import {
   COMP_REASONS,
@@ -51,6 +63,9 @@ export const ROUTINE_ACTIONS = [
   "lists.late_owner",
   // Someone opened the pay screens: kept for the record, not news.
   "payroll.view",
+  // A holder read a file or revealed a number (H4): kept for the record and
+  // the owner's monthly summary (H6), not news. A refused view is.
+  "employee.view",
 ] as const;
 
 /**
@@ -740,6 +755,71 @@ export type ActivityLine =
       name: string | null;
       shows: OrderStationShows;
     }
+  | {
+      /**
+       * Someone changed a hiring file (profile H4): the person, or a holder
+       * of people.files for the person's name, birth date or ID. Which
+       * parts, never a value or a hint; only holders read these rows.
+       */
+      action: "employee.details";
+      person: ActivityPerson;
+      fields: FileDetailField[];
+    }
+  | {
+      /** A holder read someone's file, or revealed a number (routine, kept). */
+      action: "employee.view";
+      person: ActivityPerson;
+      fields: FileViewField[];
+    }
+  | {
+      /**
+       * A read of a file refused, and why: the person it was for when they
+       * are in the business, else null (an export's, or one asked by
+       * someone outside it, which never says more).
+       */
+      action: "employee.view_denied";
+      person: ActivityPerson | null;
+      reason: DenialReason | null;
+    }
+  | {
+      /**
+       * The person sent their file, a holder confirmed a new bank account,
+       * or the person said "לא שיניתי" about one.
+       */
+      action:
+        | "employee.submit"
+        | "employee.bank_ack"
+        | "employee.bank_disputed";
+      person: ActivityPerson;
+    }
+  | {
+      /** A year's Form 101 marked, or the mark taken off ("cleared"). */
+      action: "employee.tax_year";
+      person: ActivityPerson;
+      year: number;
+      status: TaxYearStatus | "cleared";
+    }
+  /** A holder confirmed the duties screen before their first file. */
+  | { action: "employee.ack" }
+  | {
+      /** A holder marked parts of a file "נמסר ישירות לשכר"; none for the mark taken off. */
+      action: "employee.direct";
+      person: ActivityPerson;
+      groups: FileGroup[];
+    }
+  | {
+      /**
+       * A holder took the details for payroll out of the files: how many
+       * people, for whom, and how many accounts waited for a holder and
+       * stayed out. Never a value.
+       */
+      action: "employee.export";
+      people: number;
+      recipient: "provider" | "own";
+      held: number;
+    }
+  /** Someone set or removed their emergency contact (H4): never who it is. */
+  | { action: "member.emergency"; person: ActivityPerson }
   | { action: "other" };
 
 /** What a station of the orders shows: the kitchen's tickets, or the till. */
@@ -1146,6 +1226,32 @@ const schemas = {
     reason: z.enum(DOCUMENT_REMOVE_REASONS).nullable().catch(null),
   }),
   "document.restore": z.object({ document: id }),
+  // The hiring file (20261126000200_employee_files.sql): names of parts and
+  // reasons only, never a value.
+  "employee.fields": z.object({
+    person: id,
+    fields: z.array(z.unknown()).catch([]),
+  }),
+  "employee.view_denied": z.object({
+    person: id.nullable().optional(),
+    reason: z.enum(DENIAL_REASONS).nullable().catch(null),
+  }),
+  "employee.person": z.object({ person: id }),
+  "employee.tax_year": z.object({
+    person: id,
+    year: z.int().min(2000).max(2100),
+    status: z.enum([...TAX_YEAR_STATUSES, "cleared"]),
+  }),
+  "employee.ack": z.object({ version: z.string().optional() }),
+  "employee.direct": z.object({
+    person: id,
+    groups: z.array(z.unknown()).catch([]),
+  }),
+  "employee.export": z.object({
+    people: z.int().min(0),
+    recipient: z.enum(["provider", "own"]),
+    held: z.int().min(0).catch(0).default(0),
+  }),
   // The menu (20261117000500_order_taking_menu.sql): prices in agorot.
   "menu.item.save": z.object({
     item: id,
@@ -1902,6 +2008,80 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
     }
     case "document.restore":
       return read(schemas["document.restore"]) ? { action: row.action } : other;
+    case "employee.details": {
+      const details = read(schemas["employee.fields"]);
+      if (!details) return other;
+      return {
+        action: row.action,
+        person: personOf(details.person, lookups),
+        fields: knownFields(details.fields, FILE_DETAIL_FIELDS),
+      };
+    }
+    case "employee.view": {
+      const details = read(schemas["employee.fields"]);
+      if (!details) return other;
+      return {
+        action: row.action,
+        person: personOf(details.person, lookups),
+        fields: knownFields(details.fields, FILE_VIEW_FIELDS),
+      };
+    }
+    case "employee.view_denied": {
+      const details = read(schemas["employee.view_denied"]);
+      if (!details) return other;
+      const person = details.person ?? null;
+      return {
+        action: row.action,
+        person: person === null ? null : personOf(person, lookups),
+        reason: details.reason,
+      };
+    }
+    case "employee.submit":
+    case "employee.bank_ack":
+    case "employee.bank_disputed": {
+      const details = read(schemas["employee.person"]);
+      return details
+        ? { action: row.action, person: personOf(details.person, lookups) }
+        : other;
+    }
+    case "employee.tax_year": {
+      const details = read(schemas["employee.tax_year"]);
+      if (!details) return other;
+      return {
+        action: row.action,
+        person: personOf(details.person, lookups),
+        year: details.year,
+        status: details.status,
+      };
+    }
+    case "employee.ack":
+      return read(schemas["employee.ack"]) ? { action: row.action } : other;
+    case "employee.direct": {
+      const details = read(schemas["employee.direct"]);
+      if (!details) return other;
+      return {
+        action: row.action,
+        person: personOf(details.person, lookups),
+        groups: knownFields(details.groups, FILE_GROUPS),
+      };
+    }
+    case "employee.export": {
+      const details = read(schemas["employee.export"]);
+      return details
+        ? {
+            action: row.action,
+            people: details.people,
+            recipient: details.recipient,
+            held: details.held,
+          }
+        : other;
+    }
+    case "member.emergency": {
+      const details = read(schemas["employee.person"]);
+      return details
+        ? { action: row.action, person: personOf(details.person, lookups) }
+        : other;
+    }
     case "menu.item.save": {
       const details = read(schemas["menu.item.save"]);
       if (!details) return other;

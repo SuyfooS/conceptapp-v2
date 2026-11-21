@@ -1052,7 +1052,12 @@ export function ActivityView({
         );
       case "permission.grant":
       case "permission.revoke": {
-        const perm = line.perm === "clock.payroll" ? "payroll" : "other";
+        const perm =
+          line.perm === "clock.payroll"
+            ? "payroll"
+            : line.perm === "people.files"
+              ? "files"
+              : "other";
         const side = line.action === "permission.grant" ? "to" : "from";
         const whom =
           line.to.kind === "role"
@@ -1066,7 +1071,8 @@ export function ActivityView({
           line.action === "permission.grant"
             ? t("actions.permission.grant", { perm, to: whom })
             : t("actions.permission.revoke", { perm, from: whom }),
-          paths.access,
+          // Who sees the files gets its place on /manage/access with H6.
+          perm === "files" ? undefined : paths.access,
         );
       }
       case "wage.set": {
@@ -1234,6 +1240,100 @@ export function ActivityView({
         };
       case "document.restore":
         return plain(t("actions.document.restore"));
+      // The hiring file (profile H4), read by holders of people.files alone:
+      // which parts changed or were viewed, why a view was refused, a year's
+      // 101, never a value, a hint or a digit of one. Their screens come with
+      // H5 and H6, so no line leads anywhere yet.
+      case "employee.details":
+        return plain(
+          line.fields.length > 0
+            ? t("actions.employee.details", {
+                person: who(line.person),
+                fields: names(
+                  line.fields.map((field) =>
+                    t(`actions.employee.fields.${field}`),
+                  ),
+                ),
+              })
+            : t("actions.employee.detailsPlain", { person: who(line.person) }),
+        );
+      case "employee.view":
+        return plain(
+          line.fields.length > 0
+            ? t("actions.employee.view", {
+                person: who(line.person),
+                fields: names(
+                  line.fields.map((field) =>
+                    t(`actions.employee.viewFields.${field}`),
+                  ),
+                ),
+              })
+            : t("actions.employee.viewPlain", { person: who(line.person) }),
+        );
+      case "employee.view_denied":
+        return plain(
+          line.person
+            ? t("actions.employee.viewDenied", {
+                person: who(line.person),
+                reason: line.reason ?? "other",
+              })
+            : t("actions.employee.viewDeniedPlain", {
+                reason: line.reason ?? "other",
+              }),
+        );
+      case "employee.submit":
+        return plain(
+          t("actions.employee.submit", { person: who(line.person) }),
+        );
+      case "employee.bank_ack":
+        return plain(
+          t("actions.employee.bankAck", { person: who(line.person) }),
+        );
+      case "employee.bank_disputed":
+        return plain(
+          t("actions.employee.bankDisputed", { person: who(line.person) }),
+        );
+      case "employee.tax_year":
+        return plain(
+          t("actions.employee.taxYear", {
+            person: who(line.person),
+            // As written, never grouped ("2,026").
+            year: String(line.year),
+            status: line.status,
+          }),
+        );
+      case "employee.ack":
+        return plain(t("actions.employee.ack"));
+      case "employee.direct":
+        return plain(
+          line.groups.length > 0
+            ? t("actions.employee.direct", {
+                person: who(line.person),
+                groups: names(
+                  line.groups.map((group) =>
+                    t(`actions.employee.groups.${group}`),
+                  ),
+                ),
+              })
+            : t("actions.employee.directCleared", { person: who(line.person) }),
+        );
+      case "employee.export":
+        return {
+          what: t("actions.employee.export", {
+            people: line.people,
+            recipient: line.recipient,
+          }),
+          notes:
+            line.held > 0
+              ? [t("actions.employee.exportHeld", { held: line.held })]
+              : [],
+          changes: [],
+        };
+      case "member.emergency":
+        // Never who the contact is: the row holds the person only.
+        return plain(
+          t("actions.member.emergency", { person: who(line.person) }),
+        );
       // The menu (waiter mode P1): an item added or saved, with its price
       // and each option's price before and after in LTR spans, what else
       // changed, an item removed or back, an import's counts, and the
