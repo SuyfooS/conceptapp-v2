@@ -117,10 +117,13 @@ $$;
 create function pg_temp.people(variadic ns integer[]) returns uuid[] language sql as $$
   select array_agg(pg_temp.p(n) order by pg_temp.p(n)) from unnest(ns) as n
 $$;
--- How many pushes of `what` a send at `at_time` claims.
-create function pg_temp.claimed(what text, at_time timestamptz) returns integer language sql as $$
+-- How many pushes of the line `line_key` a send at `at_time` claims. The
+-- parameter must not share a name with claim_due_pushes' columns: in an SQL
+-- function a column wins, so `what` would read the claim's own kind and
+-- count nothing.
+create function pg_temp.claimed(line_key text, at_time timestamptz) returns integer language sql as $$
   select count(*)::integer from public.claim_due_pushes(200, at_time) c
-  where c.notification in (select n.id from public.notifications n where n.dedupe_key = what)
+  where c.notification in (select n.id from public.notifications n where n.dedupe_key = line_key)
 $$;
 create function pg_temp.sign_in(uid uuid) returns void language sql as $$
   select set_config('request.jwt.claims', json_build_object('sub', uid, 'role', 'authenticated')::text, true);
