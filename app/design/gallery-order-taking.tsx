@@ -12,6 +12,10 @@ import { OrderLine, TicketCard } from "@ui/ticket-card";
 import { TillList } from "@ui/till-list";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useId, useState } from "react";
+import {
+  LostOrdersNoticeView,
+  OutboxBannerView,
+} from "../(app)/orders/outbox-notice";
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 
@@ -32,8 +36,11 @@ const FLOOR = "/design/order-taking/floor?state=service";
  * one as radios and extras at their most (`ChoiceGroup`), in the sheet whose
  * footer keeps "הוספה" in sight (`Sheet footer`), the draft's "בחירות" and
  * "לבחור שוב", and an item that opens its choices (`MenuItemRow opens`).
- * The words are the twin's and the app's; the dishes and people only stand
- * in.
+ * P7 adds a place with a round that hasn't gone (`PlaceTile` tone
+ * `unsent`), and what the app says outside the mode: the banner above
+ * another screen while an order waits, and the notice of one taken off the
+ * phone. The words are the twin's and the app's; the dishes and people
+ * only stand in.
  */
 export function GalleryOrderTaking() {
   const t = useTranslations("design.orderParts");
@@ -143,6 +150,12 @@ export function GalleryOrderTaking() {
               state: o("floor.state.late", { count: 20 }),
               by: t("waiter"),
             },
+            {
+              name: "12",
+              tone: "unsent",
+              state: o("floor.state.unsent"),
+              by: t("waiter"),
+            },
           ] as const
         ).map((tile) => (
           <li key={tile.name} className="flex">
@@ -157,6 +170,21 @@ export function GalleryOrderTaking() {
           </li>
         ))}
       </ul>
+
+      <h3 className="font-semibold text-base">{t("outside")}</h3>
+      <div className="flex flex-col gap-3">
+        <OutboxBannerView
+          placement="inline"
+          places={[table("6")]}
+          waiting={1}
+          href={FLOOR}
+        />
+        <LostOrdersNoticeView
+          placement="inline"
+          notice={{ count: 1, places: [table("6")], why: "signedOut" }}
+          onSeen={() => {}}
+        />
+      </div>
 
       <h3 className="font-semibold text-base">{t("tickets")}</h3>
       <div className="grid gap-4 md:grid-cols-2 md:items-start">

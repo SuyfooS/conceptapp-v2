@@ -11,6 +11,7 @@ import { ChefHat, Undo2 } from "lucide-react";
 import { type ReactNode, useRef, useState } from "react";
 import { useOrdersMode } from "./orders-mode";
 import {
+  ConnectionNote,
   failureWords,
   ltr,
   TicketView,
@@ -164,6 +165,7 @@ export function PrepView({
             : undefined
         }
       />
+      <ConnectionNote />
       {ids.length > 1 ? (
         <Segmented
           label={t("prep.department")}

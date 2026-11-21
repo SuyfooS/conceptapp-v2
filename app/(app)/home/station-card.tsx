@@ -17,12 +17,15 @@ import type { Translator } from "../wording";
 export function StationCard({
   station,
   lock,
+  clearsDevice,
   signOut,
   t,
 }: {
   station: StationHome;
   /** Locking again (`lockDeviceAction`, or the demo's); none on a Home whose people never lock. */
   lock?: LockAction;
+  /** Whether locking clears waiter mode's records on the device: not on the demo's. */
+  clearsDevice?: boolean;
   signOut: SignOutAction;
   t: Translator<"app">;
 }) {
@@ -48,6 +51,7 @@ export function StationCard({
           <LockStation
             offer={locks.offer}
             lock={locks.lock}
+            clearsDevice={clearsDevice}
             label={t("clock.station.reminder.lock")}
           />
         ) : (

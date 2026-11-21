@@ -3,10 +3,7 @@ import { Button } from "@ui/button";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { LockStation } from "@/app/(app)/clock/station/lock-station";
-import type {
-  LockAction,
-  LockOffer,
-} from "@/app/(app)/clock/station/station-types";
+import type { StationLock } from "@/app/(app)/clock/station/station-types";
 import { AuthScreen } from "@/app/(auth)/auth-screen";
 
 /*
@@ -55,7 +52,7 @@ export function SignedInHere({
   lock,
   homeHref,
 }: {
-  lock: { offer: LockOffer; action: LockAction } | null;
+  lock: StationLock | null;
   homeHref: string;
 }) {
   const t = useTranslations("station.signedIn");
@@ -76,6 +73,7 @@ export function SignedInHere({
             <LockStation
               offer={lock.offer}
               lock={lock.action}
+              clearsDevice={lock.clearsDevice}
               primary
               label={t("lock")}
             />

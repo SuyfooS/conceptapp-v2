@@ -13,7 +13,12 @@ import { TextField } from "@ui/text-field";
 import { Lock } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type FormEvent, useState, useTransition } from "react";
-import { clearOrdersStorage } from "../../orders/orders-storage";
+import { usePlaceWords } from "../../orders/orders-parts";
+import {
+  clearAllOrders,
+  type UnsentOnDevice,
+  unsentOnDevice,
+} from "../../orders/orders-storage";
 import type { LockAction, LockOffer } from "./station-types";
 
 /**
@@ -23,13 +28,18 @@ import type { LockAction, LockOffer } from "./station-types";
  * signed in), names the station, and locks. A device that is the business's
  * station already keeps its name. Once locked, the device opens the station
  * as a whole new page, as signing out does. With ten stations running and
- * this device none of them, a line says why there is no button.
+ * this device none of them, a line says why there is no button. Waiter
+ * mode's records on the device go as it locks, everyone's (P7): with an
+ * order that hasn't gone, one more line says how many and where. Not on
+ * /design's twins (`clearsDevice`), whose lock locks nothing: the device's
+ * own orders are neither read nor cleared there.
  */
 export function LockStation({
   offer,
   lock,
   label,
   primary = false,
+  clearsDevice = true,
 }: {
   offer: LockOffer;
   lock: LockAction;
@@ -37,9 +47,18 @@ export function LockStation({
   label?: string;
   /** The screen's main action, where locking is what it is for. */
   primary?: boolean;
+  /**
+   * Whether locking clears waiter mode's records on the device, and the
+   * sheet says what hasn't gone: false on /design's twins, which lock
+   * nothing.
+   */
+  clearsDevice?: boolean;
 }) {
   const t = useTranslations("app.clock.station.lock");
+  const to = useTranslations("app.orders.outbox");
+  const { placeTitle } = usePlaceWords();
   const [open, setOpen] = useState(false);
+  const [unsent, setUnsent] = useState<UnsentOnDevice | null>(null);
   const [name, setName] = useState(() =>
     defaultStationName(offer.running, (n) => t("defaultName", { n })),
   );
@@ -60,8 +79,9 @@ export function LockStation({
         const result = await lock({ name });
         if (result.ok) {
           // A whole new page, as signing out opens: nothing of the person's
-          // screens stays in this one, nor their drafts kept in the tab.
-          clearOrdersStorage();
+          // screens stays in this one, nor anyone's orders kept on the
+          // device, cleared before it goes.
+          if (clearsDevice) await clearAllOrders();
           window.location.replace(result.to);
           return;
         }
@@ -80,6 +100,7 @@ export function LockStation({
         onClick={() => {
           setFailure(null);
           setOpen(true);
+          if (clearsDevice) void unsentOnDevice().then(setUnsent);
         }}
       >
         <Lock aria-hidden="true" />
@@ -96,6 +117,16 @@ export function LockStation({
             <li>{t("onlyCode")}</li>
             <li>{t("signInAgain")}</li>
             <li>{t("ownPhone")}</li>
+            {unsent && unsent.count > 0 ? (
+              <li className="font-medium text-warning">
+                {to("lock", {
+                  count: unsent.count,
+                  places: [
+                    ...new Set(unsent.places.map((where) => placeTitle(where))),
+                  ].join(", "),
+                })}
+              </li>
+            ) : null}
           </ul>
           {offer.current ? (
             <p className="text-ink-2">

@@ -5,6 +5,8 @@ import { demoLockDevice, demoSignOutOfStation } from "../station/actions";
 /**
  * The real Today screen on the demo: its links stay in the demo, and locking
  * the station again or signing out from its card leads to the station's twin.
+ * Its lock locks nothing, so the device's own orders are neither read nor
+ * cleared.
  */
 export function TodayDemo({ data }: { data: TodayData }) {
   return (
@@ -14,6 +16,7 @@ export function TodayDemo({ data }: { data: TodayData }) {
       base="/design/shell"
       hideFirstStepsUrl="/design/shell/home/first-steps"
       lockStation={demoLockDevice}
+      lockClearsDevice={false}
       signOut={demoSignOutOfStation}
     />
   );

@@ -25,6 +25,11 @@ import type { NamedRole } from "@domain/role-access";
 import type { BusinessPlace } from "@domain/shabbat";
 import type { ViewSession } from "@domain/view-as";
 import type { Wording } from "@domain/wording";
+import {
+  isAuthApiError,
+  isAuthError,
+  isAuthSessionMissingError,
+} from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import type { Database } from "./database.types";
 import { type MemberNames, memberNames } from "./member-names";
@@ -521,7 +526,32 @@ export type OwnPlace = {
   } | null;
   /** A view session is open: the app shows the viewed business instead. */
   viewing: boolean;
+  /**
+   * Every business they are an active member of, by its id in lower case,
+   * from the same read: `/orders-send` refuses a round kept for one they
+   * left (P7).
+   */
+  memberOf: string[];
 };
+
+/**
+ * Whether an error reading the session says it is gone: none kept, one the
+ * auth server no longer has (signed out elsewhere, its refresh token used
+ * or revoked: its refusal, a 4xx other than a rate limit), or a token that
+ * isn't valid. Anything else says only that it couldn't be read now: no
+ * answer or the server failing (an `AuthRetryableFetchError`), too many
+ * asks, an answer that can't be read.
+ */
+export function sessionGone(error: unknown): boolean {
+  if (isAuthSessionMissingError(error)) return true;
+  if (isAuthError(error) && error.name === "AuthInvalidJwtError") return true;
+  return (
+    isAuthApiError(error) &&
+    error.status >= 400 &&
+    error.status < 500 &&
+    error.status !== 429
+  );
+}
 
 /**
  * Who is signed in and the business they work in, in one round of two reads
@@ -529,12 +559,18 @@ export type OwnPlace = {
  * seconds, where `getCurrentMember`'s profile, wording and counts would cost
  * five more. Under the person's own session, which this renews when it has
  * expired (the cookies go out with the answer, as in a route handler they
- * can); null when nobody is signed in. What they hold there costs one more
- * read, only when `permissions` asks.
+ * can); null when nobody is signed in, or the session is gone
+ * (`sessionGone`). A session that couldn't be read now (the auth server out
+ * of reach or failing, as when a phone back after an hour offline renews
+ * its token) throws, so the route answers 500 and is asked again: never as
+ * signed out, which takes the person's orders kept on the phone off it
+ * (P7). What they hold there costs one more read, only when `permissions`
+ * asks.
  */
 export async function getOwnPlace(): Promise<OwnPlace | null> {
   const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getClaims();
+  const { data: auth, error } = await supabase.auth.getClaims();
+  if (error && !sessionGone(error)) throw error;
   const userId = auth?.claims.sub;
   if (!userId) return null;
   const chosen = (await cookies()).get(BUSINESS_COOKIE)?.value ?? null;
@@ -588,6 +624,9 @@ export async function getOwnPlace(): Promise<OwnPlace | null> {
         }
       : null,
     viewing: (view.data ?? []).length > 0,
+    memberOf: (memberships.data ?? []).map((row) =>
+      row.business_id.toLowerCase(),
+    ),
   };
 }
 

@@ -22,6 +22,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useOrdersMode } from "./orders-mode";
 import {
+  ConnectionNote,
   failureWords,
   ltr,
   OffShiftCard,
@@ -40,6 +41,8 @@ type Tile = {
   order: FloorOrder | null;
   state: PlaceState;
   draft: number;
+  /** Its rounds that haven't gone (P7). */
+  unsent: number;
   href: string;
 };
 
@@ -53,7 +56,9 @@ type Tile = {
  * floor: everyone sees every place, and who opened it. Under the places,
  * "נסגרו היום" (P5), each leading to its list for the till, where a closed
  * one opens again: the newest five on a phone and a tablet, with the rest a
- * tap away (default 6), all of them in a table on a desktop.
+ * tap away (default 6), all of them in a table on a desktop. A place with a
+ * round of one's own that hasn't gone says "לא נשלח" (P7), first on the
+ * status line, and "אין חיבור" shows under the title while there is none.
  */
 export function FloorView({
   floor,
@@ -67,7 +72,7 @@ export function FloorView({
   const { t, placeTitle, person, department, time, ago } = useOrderWords();
   const heading = useModeHeading();
   const mode = useOrdersMode();
-  const { frame, paths, now, drafts, actions, say, off } = mode;
+  const { frame, paths, now, drafts, sender, actions, say, off } = mode;
   const router = useRouter();
   const readyHeading = useRef<HTMLHeadingElement>(null);
   // Served here: off the column at once, until the floor's next version.
@@ -112,6 +117,7 @@ export function FloorView({
     return (
       <PageBody className={pageGlowClass}>
         {header()}
+        <ConnectionNote />
         <OffShiftCard off={off ?? "clock"} />
       </PageBody>
     );
@@ -128,6 +134,7 @@ export function FloorView({
     order,
     state: placeState(order, now, frame.lateAfterMinutes),
     draft: drafts.counts[key] ?? 0,
+    unsent: sender.unsent[key]?.count ?? 0,
     href,
   });
   const live = new Set(places.map((place) => place.id));
@@ -152,7 +159,11 @@ export function FloorView({
         ),
       ),
   ];
-  const newTakeaway = drafts.counts[draftKey({ takeaway: null })] ?? 0;
+  // A new takeaway is a tile while its draft has lines or its first round
+  // is on its way.
+  const newKey = draftKey({ takeaway: null });
+  const newTakeaway =
+    (drafts.counts[newKey] ?? 0) + sender.pending(newKey).length;
   const takeawayTiles = [
     ...floor.orders
       .filter((order) => order.takeaway !== null)
@@ -178,7 +189,12 @@ export function FloorView({
   const status = floorStatus(
     [...placeTiles, ...takeawayTiles].map((tile) => tile.state),
   );
+  const unsent = Object.values(sender.unsent).reduce(
+    (sum, one) => sum + one.count,
+    0,
+  );
   const line = [
+    unsent ? t("floor.status.unsent", { count: unsent }) : null,
     status.ready ? t("floor.status.ready", { count: status.ready }) : null,
     status.late ? t("floor.status.late", { count: status.late }) : null,
     status.open ? t("floor.status.open", { count: status.open }) : null,
@@ -225,6 +241,7 @@ export function FloorView({
             by={tile.order ? person(tile.order.openedBy) || null : null}
             label={tile.order?.label}
             draft={tile.draft}
+            unsent={tile.unsent}
             href={tile.href}
           />
         </li>
@@ -241,6 +258,7 @@ export function FloorView({
         line.length ? line.join(" · ") : t("floor.status.free"),
         frame.viewing ? null : addsPlaces ? "secondary" : "primary",
       )}
+      <ConnectionNote />
       <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_17rem] md:items-start md:gap-6 xl:grid-cols-[minmax(0,1fr)_20rem] xl:gap-8">
         <div className="flex min-w-0 flex-col gap-6">
           {placeTiles.length === 0 ? (
@@ -286,6 +304,12 @@ export function FloorView({
                         now,
                         frame.lateAfterMinutes,
                       );
+                      const unsentHere =
+                        sender.unsent[
+                          order.place
+                            ? draftKey({ place: order.place })
+                            : draftKey({ takeaway: order.id })
+                        ]?.count ?? 0;
                       const last = order.lastSentAt ?? order.openedAt;
                       return {
                         key: order.id,
@@ -298,9 +322,9 @@ export function FloorView({
                             ltr,
                           }),
                           state:
-                            state.kind === "open"
+                            state.kind === "open" && unsentHere === 0
                               ? t("floor.table.open")
-                              : placeStateWords(t, state),
+                              : placeStateWords(t, state, 0, unsentHere),
                         },
                       };
                     })}

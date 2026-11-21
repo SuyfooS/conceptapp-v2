@@ -319,6 +319,13 @@ const PAGES = [
   "/design/order-taking/floor/order?place=table-6&state=draft",
   "/design/order-taking/floor/order?place=table-6&state=sent",
   "/design/order-taking/floor/order?place=table-6&state=pending",
+  // P7: a round that asks after ten minutes, no connection, and the notice
+  // of a round taken off the phone.
+  "/design/order-taking/floor/order?place=table-6&state=asking",
+  "/design/order-taking/floor?state=asking",
+  "/design/order-taking/floor/order?place=table-6&state=offline",
+  "/design/order-taking/floor?state=offline",
+  "/design/order-taking/floor?state=lost",
   "/design/order-taking/floor/order?place=table-6&state=soldOut",
   "/design/order-taking/floor/order?place=table-6&state=taken",
   // P6: the burger's choices open, and a choice gone from the menu.
@@ -4962,6 +4969,60 @@ test("the waiter mode demo moves an order to a free table", async ({
   await expect(
     shown(page.getByText(new RegExp(`^${asIs(from)}`))),
   ).toBeVisible();
+});
+
+// A round that hasn't gone for ten minutes asks (P7): taken off the phone,
+// with the toast's "ביטול" taking the focus, back on its undo, then sent;
+// on a phone the question shows over the items too, and the floor's tile no
+// longer says it hasn't gone.
+test("the waiter mode demo's round that waited asks, comes back on its undo, and goes", async ({
+  page,
+}, testInfo) => {
+  const shown = (locator: Locator) => locator.filter({ visible: true }).first();
+  const table6 = rt("app.orders.place.numbered", { name: "6" });
+  const question = rt("app.orders.outbox.ask", { count: 12 });
+  await page.goto(
+    "/design/order-taking/floor/order?place=table-6&state=asking",
+  );
+  // The phone opens on the order, where the round is; over the items too.
+  await expect(shown(page.getByText(question))).toBeVisible();
+  if (testInfo.project.name === "phone") {
+    await shown(
+      page.getByRole("button", {
+        name: new RegExp(`^${asIs(rt("app.orders.order.view.add"))}`),
+      }),
+    ).click();
+    await expect(shown(page.getByText(question))).toBeVisible();
+  }
+  await shown(
+    page.getByRole("button", {
+      name: rt("app.orders.outbox.removeLabel", { place: table6 }),
+    }),
+  ).click();
+  const removed = rt("app.orders.toast.roundRemoved", { place: table6 });
+  await expect(page.getByText(removed)).toBeVisible();
+  await expect(orderUndo(page, removed)).toBeFocused();
+  await orderUndo(page, removed).click();
+  await expect(shown(page.getByText(question))).toBeVisible();
+  await shown(
+    page.getByRole("button", {
+      name: rt("app.orders.outbox.sendLabel", { place: table6 }),
+    }),
+  ).click();
+  await expect(page.getByText(question).filter({ visible: true })).toHaveCount(
+    0,
+  );
+  await shown(
+    page.getByRole("link", { name: rt("app.orders.order.noPlace.back") }),
+  ).click();
+  await expect(page).toHaveURL(/\/design\/order-taking\/floor$/);
+  const tile6 = shown(
+    page.getByRole("link", {
+      name: new RegExp(`^${asIs(rt("app.orders.place.kind"))}\\s*6(\\D|$)`),
+    }),
+  );
+  await expect(tile6).toBeVisible();
+  await expect(tile6).not.toContainText(rt("app.orders.floor.state.unsent"));
 });
 
 // The kitchen strikes table 4's hummus, and still makes its focaccia. Its

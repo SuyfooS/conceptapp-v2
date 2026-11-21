@@ -12,14 +12,15 @@ import {
 import type { PrepLine, TicketStatus } from "@domain/orders";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
+import { Card } from "@ui/card";
 import { cn } from "@ui/cn";
 import { EmptyState } from "@ui/empty-state";
 import { PlaceTile, type PlaceTileTone } from "@ui/place-tile";
 import { OrderLine, TicketCard } from "@ui/ticket-card";
-import { Clock3, TriangleAlert } from "lucide-react";
+import { Clock3, CloudOff, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
-import { type ReactNode, useCallback } from "react";
+import { type ReactNode, useCallback, useId } from "react";
 import { useOrdersMode } from "./orders-mode";
 import type { OrdersActionFailure, SendFailure } from "./orders-types";
 
@@ -101,12 +102,18 @@ export function Price({ agorot }: { agorot: number }) {
   );
 }
 
-/** A place's one state in words: its tile, its row in a list. */
+/**
+ * A place's one state in words: its tile, its row in a list. Ready to serve
+ * first, then a round of its own that hasn't gone (P7), then late, open, a
+ * draft, free.
+ */
 export function placeStateWords(
   t: OrdersT,
   state: PlaceState,
   draft = 0,
+  unsent = 0,
 ): string {
+  if (state.kind !== "ready" && unsent > 0) return t("floor.state.unsent");
   switch (state.kind) {
     case "ready":
       return t("floor.state.ready");
@@ -128,6 +135,7 @@ export function PlaceTileView({
   by,
   label,
   draft,
+  unsent = 0,
   href,
 }: {
   where: Where;
@@ -137,11 +145,21 @@ export function PlaceTileView({
   label?: string | null;
   /** Items in its draft not sent yet. */
   draft: number;
+  /** Its rounds that haven't gone, waiting or asking (P7). */
+  unsent?: number;
   href: string;
 }) {
   const { t } = useOrderWords();
   const tone: PlaceTileTone =
-    state.kind === "free" ? (draft > 0 ? "draft" : "free") : state.kind;
+    state.kind === "ready"
+      ? "ready"
+      : unsent > 0
+        ? "unsent"
+        : state.kind === "free"
+          ? draft > 0
+            ? "draft"
+            : "free"
+          : state.kind;
   const name = where.placeName;
   return (
     <PlaceTile
@@ -157,7 +175,7 @@ export function PlaceTileView({
         name ??
         (where.takeaway === null ? t("place.newShort") : String(where.takeaway))
       }
-      state={placeStateWords(t, state, draft)}
+      state={placeStateWords(t, state, draft, unsent)}
       tone={tone}
       by={by}
       label={label}
@@ -429,6 +447,46 @@ export function sendFailureWords(
   return SAID.has(failure) && failure !== "failed"
     ? failureWords(t, failure, items)
     : t("failed.notSent");
+}
+
+/**
+ * No connection (P7, §7.4), under the title of every screen of the mode
+ * while the phone is offline or the server isn't reached: what is kept and
+ * when it goes, to stay on the screen (with no connection another screen,
+ * and the app itself, won't open), and the pad if it goes on. Said once to
+ * screen readers as it shows (a region out of the page's flow, so the
+ * screen keeps its spacing while there is a connection).
+ */
+export function ConnectionNote() {
+  const { t } = useOrderWords();
+  const { connection } = useOrdersMode();
+  const heading = useId();
+  const down = connection === "down";
+  return (
+    <>
+      <p aria-live="polite" className="sr-only">
+        {down ? t("offline.title") : ""}
+      </p>
+      {down ? (
+        <section aria-labelledby={heading}>
+          <Card className="flex items-start gap-3">
+            <CloudOff
+              aria-hidden="true"
+              className="mt-0.5 size-6 shrink-0 text-warning"
+            />
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <h2 id={heading} className="font-semibold text-md">
+                {t("offline.title")}
+              </h2>
+              <p>{t("offline.body")}</p>
+              <p>{t("offline.stay")}</p>
+              <p className="text-ink-2">{t("offline.pad")}</p>
+            </div>
+          </Card>
+        </section>
+      ) : null}
+    </>
+  );
 }
 
 /** A refusal over what it is about, in danger, read out at once. */

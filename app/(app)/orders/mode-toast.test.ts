@@ -26,6 +26,22 @@ const withUndo = (
 ): Said => ({ text, undo: vi.fn(), onWaitingChange });
 
 describe("the mode's one toast", () => {
+  it("keeps a round that asks behind a removal's way back (P7)", () => {
+    const { toast, last } = setUp();
+    // Table 6's round taken off the phone, with "ביטול"; table 8's asks.
+    toast.say(withUndo("roundRemoved: 6"));
+    const asks = vi.fn(() => {
+      toast.say(plain("asks: 8"));
+    });
+    toast.tell("asks", asks);
+    expect(asks).not.toHaveBeenCalled();
+    expect(last()?.text).toBe("roundRemoved: 6");
+    // Its 8 seconds are up: the question's news, once.
+    toast.hidden(toast.shown()?.id ?? null);
+    expect(asks).toHaveBeenCalledTimes(1);
+    expect(last()?.text).toBe("asks: 8");
+  });
+
   it("takes a take-back's toast away once it went, and tells what waited for it", async () => {
     const { toast, last } = setUp();
     // "הוחזר מהשליחה: חומוס" with "ביטול", and bar 3 turns ready meanwhile.

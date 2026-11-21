@@ -7,6 +7,7 @@ import { enabledModules, isStaff, moduleNav } from "@domain/modules";
 import { signInPath } from "@domain/passive-sign-in";
 import { displayIsraeliMobile } from "@domain/phone";
 import { profilePhotoSrc } from "@domain/profile-photos";
+import { canWrite } from "@domain/view-as";
 import { manifests } from "@modules/registry";
 import { accentProps } from "@ui/accent";
 import { AppShell, type NavItem } from "@ui/app-shell";
@@ -27,6 +28,8 @@ import { moduleIcons } from "./module-icons";
 import { currentModules } from "./modules";
 import { NoBusinessScreen } from "./no-business";
 import { PushRegistration } from "./notifications/push-registration";
+import { LostOrdersNotice } from "./orders/outbox-notice";
+import { OrdersOutbox } from "./orders-outbox";
 import { ViewAsBanner } from "./view-as-banner";
 import { baseWording, translator } from "./wording";
 import { WordingProvider } from "./wording-provider";
@@ -158,6 +161,11 @@ async function Shell({ children }: { children: ReactNode }) {
   // while viewing as someone, and none without the VAPID settings.
   const push =
     enabled.includes("notifications") && !member.viewing ? pushConfig() : null;
+  // Waiter mode's outbox for someone who takes orders here (P7): from the
+  // moment the app opens, whichever screen, so what waited goes.
+  const takesOrders = modes.some(
+    (mode) => mode.key === "order_taking" && mode.status.takes,
+  );
 
   return (
     <div {...accentProps(accentTokens(business.accent))}>
@@ -175,6 +183,17 @@ async function Shell({ children }: { children: ReactNode }) {
           businesses={businesses}
           modes={modeNav}
         >
+          {takesOrders ? (
+            <OrdersOutbox
+              userId={member.userId}
+              business={business.id}
+              viewing={!canWrite(member.viewing)}
+            />
+          ) : null}
+          {/* Rounds taken off the phone, said once where the page landed.
+              After the outbox, whose live region comes first: a card here is
+              right above the screen's main, which drops its glow under it. */}
+          <LostOrdersNotice />
           {member.viewing ? (
             <ViewAsBanner
               viewing={member.viewing}

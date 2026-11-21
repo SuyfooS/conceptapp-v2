@@ -30,12 +30,15 @@ import {
   compLine,
   importMenu,
   moveOrder,
+  pendingByKey,
   reopenOrder,
   restoreLine,
   saveCategories,
   sendRound,
   uncompLine,
   undoCloseOrder,
+  withoutPending,
+  withPending,
 } from "./changes";
 import {
   DEMO_START,
@@ -625,6 +628,64 @@ describe("the twin's menu as the real screens read it", () => {
 });
 
 // P5's fixes on the twin's store, read back as the app's screens read them.
+describe("the twin's rounds on their way (P7)", () => {
+  const TABLE_6 = "place:table-6";
+
+  it("opens table 6's round asking after 12 minutes, and with no connection", () => {
+    expect(scenario("asking").pending[TABLE_6]).toMatchObject({
+      state: "ask",
+      age: { unit: "minutes", count: 12 },
+    });
+    expect(scenario("offline")).toMatchObject({
+      connection: "down",
+      pending: { [TABLE_6]: { state: "waiting" } },
+    });
+    expect(scenario("service")).toMatchObject({
+      connection: "ok",
+      lost: null,
+    });
+    expect(scenario("lost").lost).toEqual({
+      count: 1,
+      placeNames: ["6"],
+      why: "signedOut",
+    });
+  });
+
+  it("sends a round that asked once, off its way, as the twin's send goes", () => {
+    const asking = scenario("asking");
+    const found = pendingByKey(asking, "pending-table-6");
+    expect(found?.draft).toBe(TABLE_6);
+    const off = withoutPending(asking, "pending-table-6");
+    expect(off.pending).toEqual({});
+    expect(pendingByKey(off, "pending-table-6")).toBeNull();
+    const before = twinOrderAt(off, "table-6");
+    expect(before).toBeNull();
+    const sent = sendRound(
+      off,
+      { orderId: null, placeId: "table-6" },
+      found?.round.lines ?? [],
+      READER,
+      DEMO_START,
+    );
+    const opened = sent.data.orders.filter((o) => o.placeId === "table-6");
+    expect(opened).toHaveLength(1);
+    expect(opened[0]?.rounds).toHaveLength(1);
+  });
+
+  it("takes a round off the phone and puts it back on its undo, asking as it was", () => {
+    const asking = scenario("asking");
+    const found = pendingByKey(asking, "pending-table-6");
+    if (!found) throw new Error("no round");
+    const removed = withoutPending(asking, found.round.key);
+    expect(removed.pending).toEqual({});
+    // A key no longer there changes nothing.
+    expect(withoutPending(removed, found.round.key)).toBe(removed);
+    expect(withPending(removed, found.draft, found.round).pending).toEqual(
+      asking.pending,
+    );
+  });
+});
+
 describe("the twin's fixes (P5)", () => {
   const evening = scenario(null);
   const at = DEMO_START + MINUTE;

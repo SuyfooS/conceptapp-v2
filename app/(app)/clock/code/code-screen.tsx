@@ -10,7 +10,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { LockStation } from "../station/lock-station";
-import type { LockAction, LockOffer } from "../station/station-types";
+import type { StationLock } from "../station/station-types";
 import type { CodeScreenData } from "./code";
 import { CodeCard } from "./code-card";
 import { type RotationAnswer, useCodeRotation } from "./code-rotation";
@@ -61,7 +61,7 @@ export function CodeScreen({
   issueUrl: string;
   paths: CodePaths;
   /** Locking this device into a station; null where it isn't offered. */
-  lock?: { offer: LockOffer; action: LockAction } | null;
+  lock?: StationLock | null;
 }) {
   const t = useTranslations("app.clock");
   const blocked = data.viewOnly || data.stationsOnly;
@@ -172,7 +172,11 @@ export function CodeScreen({
           {lock && refusal !== "noAccess" ? (
             <div className="flex flex-col items-start gap-2 md:mt-2">
               <p className="text-ink-2 text-sm">{t("station.lock.hint")}</p>
-              <LockStation offer={lock.offer} lock={lock.action} />
+              <LockStation
+                offer={lock.offer}
+                lock={lock.action}
+                clearsDevice={lock.clearsDevice}
+              />
             </div>
           ) : null}
         </div>

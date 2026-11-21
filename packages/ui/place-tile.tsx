@@ -1,12 +1,19 @@
-import { Check, Clock, TriangleAlert } from "lucide-react";
+import { Check, Clock, CloudOff, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { cn } from "./cn";
 
 /**
  * A place's one state: free, free with items in its draft, open, ready to
- * serve, or waiting past the late mark.
+ * serve, waiting past the late mark, or with a round that hasn't gone
+ * (waiter mode P7: on the phone, waiting for a connection).
  */
-export type PlaceTileTone = "free" | "draft" | "open" | "ready" | "late";
+export type PlaceTileTone =
+  | "free"
+  | "draft"
+  | "open"
+  | "ready"
+  | "late"
+  | "unsent";
 
 export type PlaceTileProps = {
   href: string;
@@ -30,6 +37,7 @@ const marks = {
   ready: <Check />,
   late: <TriangleAlert />,
   open: <Clock />,
+  unsent: <CloudOff />,
 } as const;
 
 /**
@@ -38,7 +46,8 @@ const marks = {
  * is a flat fill; an open one lifts as a card; one ready to serve lifts
  * too, with the business's colour in its check only, so a floor with many
  * ready keeps the tinted card for the screen's one; one waiting past the
- * late mark says so in warning.
+ * late mark says so in warning, and so does one with a round that hasn't
+ * gone, lifted too, with a cloud crossed out.
  */
 export function PlaceTile({
   href,
@@ -72,7 +81,7 @@ export function PlaceTile({
               "grid size-7 shrink-0 place-items-center rounded-full [&_svg]:size-4 [&_svg]:stroke-[2.2]",
               tone === "ready"
                 ? "bg-accent text-accent-ink"
-                : tone === "late"
+                : tone === "late" || tone === "unsent"
                   ? "bg-warning-soft text-warning"
                   : "bg-surface-2 text-ink-2",
             )}
@@ -86,7 +95,7 @@ export function PlaceTile({
           className={cn(
             "text-sm",
             tone === "ready" ? "font-bold" : "font-semibold",
-            tone === "late"
+            tone === "late" || tone === "unsent"
               ? "text-warning"
               : tone === "free"
                 ? "text-ink-2"

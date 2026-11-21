@@ -12,6 +12,7 @@ import Link from "next/link";
 import { useRef, useState } from "react";
 import { useOrdersMode } from "./orders-mode";
 import {
+  ConnectionNote,
   failureWords,
   ltr,
   OffShiftCard,
@@ -95,17 +96,20 @@ export function MineView({ mine }: { mine: MyOrders | null }) {
   }
 
   const header = (
-    <PageHeader
-      back={heading.back}
-      eyebrow={heading.eyebrow}
-      title={t("mine.title")}
-      headingRef={title}
-      subtitle={
-        !off && sent.length
-          ? t("mine.status", { ready: ready.length, making: making.length })
-          : undefined
-      }
-    />
+    <>
+      <PageHeader
+        back={heading.back}
+        eyebrow={heading.eyebrow}
+        title={t("mine.title")}
+        headingRef={title}
+        subtitle={
+          !off && sent.length
+            ? t("mine.status", { ready: ready.length, making: making.length })
+            : undefined
+        }
+      />
+      <ConnectionNote />
+    </>
   );
 
   if (off) {

@@ -3,15 +3,18 @@ import { SEND_STATUS } from "./send-status";
 
 // The send (waiter mode P4) with the session and the database stood in for:
 // refused from another site, for a body that isn't a round, signed out and
-// while viewing as someone; the person is the session's and the business
-// the body's, never the cookie's; each refusal at its status, with what it
-// names; and nothing of the body in the server's log.
+// while viewing as someone; the person is the session's and the body's,
+// checked (P7), and the business the body's, never the cookie's, once it
+// is one of theirs; each refusal at its status, with what it names; and
+// nothing of the body in the server's log.
 
 vi.mock("server-only", () => ({}));
 
 const BUSINESS = "10000000-0000-4000-b000-000000000001";
 const COOKIE_BUSINESS = "10000000-0000-4000-b000-000000000002";
 const PERSON = "00000000-0000-4000-a000-000000000012";
+const SOMEONE_ELSE = "00000000-0000-4000-a000-000000000013";
+const NOT_THEIRS = "10000000-0000-4000-b000-000000000003";
 const KEY = "30000000-0000-4000-a000-000000000001";
 const ITEM = "40000000-0000-4000-a000-000000000001";
 const ORDER = "50000000-0000-4000-a000-000000000001";
@@ -32,7 +35,7 @@ const round = {
   target: { takeaway: true },
   lines: [{ item: ITEM, quantity: 1, note: "בוטנים", allergy: true }],
 };
-const body = { business: BUSINESS, ...round };
+const body = { business: BUSINESS, user: PERSON, ...round };
 
 function post(content: unknown, headers: Record<string, string> = {}) {
   return POST(
@@ -51,6 +54,7 @@ beforeEach(() => {
     userId: PERSON,
     viewing: false,
     place: { businessId: COOKIE_BUSINESS, role: "worker", enabled: [] },
+    memberOf: [BUSINESS, COOKIE_BUSINESS],
   });
 });
 
@@ -88,11 +92,34 @@ describe("the send", () => {
       userId: PERSON,
       viewing: true,
       place: null,
+      memberOf: [BUSINESS],
     });
     const viewing = await post(body);
     expect(viewing.status).toBe(403);
     expect(await viewing.json()).toMatchObject({ failure: "viewOnly" });
     expect(mocks.sendOrderRound).not.toHaveBeenCalled();
+  });
+
+  it("fails, to be tried again, when the session couldn't be read now: never signed out (P7)", async () => {
+    // A 401 takes the person's kept orders off the phone; a 500 is tried
+    // again with the same key.
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.getOwnPlace.mockRejectedValue(
+      Object.assign(new Error("fetch failed"), {
+        name: "AuthRetryableFetchError",
+      }),
+    );
+    const out = await post(body);
+    expect(out.status).toBe(500);
+    // Exactly the failure: nothing of the error goes out with it.
+    expect(await out.json()).toEqual({
+      ok: false,
+      failure: "failed",
+      items: [],
+      order: null,
+    });
+    expect(mocks.sendOrderRound).not.toHaveBeenCalled();
+    log.mockRestore();
   });
 
   it("sends as the session's person, to the body's business, never the cookie's", async () => {
@@ -111,6 +138,41 @@ describe("the send", () => {
     expect(answer.headers.get("cache-control")).toBe("no-store");
     expect(await answer.json()).toEqual({ ok: true, round: sent });
     expect(mocks.sendOrderRound).toHaveBeenCalledWith(PERSON, BUSINESS, round);
+  });
+
+  it("refuses a body without its person, before anything is read (P7)", async () => {
+    const { user: _, ...nobody } = body;
+    expect((await post(nobody)).status).toBe(400);
+    expect(mocks.getOwnPlace).not.toHaveBeenCalled();
+  });
+
+  it("never sends a round kept for another person as the session's (P7)", async () => {
+    const other = await post({ ...body, user: SOMEONE_ELSE });
+    expect(other.status).toBe(409);
+    expect(await other.json()).toMatchObject({ ok: false, failure: "person" });
+    // Ids in another case are the same person.
+    mocks.sendOrderRound.mockResolvedValue({
+      ok: false,
+      failure: "gone",
+      items: [],
+      order: null,
+    });
+    expect((await post({ ...body, user: PERSON.toUpperCase() })).status).toBe(
+      404,
+    );
+    expect(mocks.sendOrderRound).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses a business the person isn't a member of, before the database (P7)", async () => {
+    const elsewhere = await post({ ...body, business: NOT_THEIRS });
+    expect(elsewhere.status).toBe(403);
+    expect(await elsewhere.json()).toMatchObject({
+      ok: false,
+      failure: "notMember",
+    });
+    expect(mocks.sendOrderRound).not.toHaveBeenCalled();
+    expect(SEND_STATUS.notMember).toBe(403);
+    expect(SEND_STATUS.person).toBe(409);
   });
 
   it("sends a line's choices as they came, and refuses one no pick could name (P6)", async () => {
@@ -139,11 +201,14 @@ describe("the send", () => {
         },
       ],
     };
-    expect((await post({ business: BUSINESS, ...chosen })).status).toBe(200);
+    expect(
+      (await post({ business: BUSINESS, user: PERSON, ...chosen })).status,
+    ).toBe(200);
     expect(mocks.sendOrderRound).toHaveBeenCalledWith(PERSON, BUSINESS, chosen);
     mocks.sendOrderRound.mockClear();
     const unnamed = await post({
       business: BUSINESS,
+      user: PERSON,
       ...round,
       lines: [
         {
@@ -167,7 +232,9 @@ describe("the send", () => {
         items: [],
         order: null,
       });
-      expect((await post({ business: BUSINESS, ...chosen })).status).toBe(422);
+      expect(
+        (await post({ business: BUSINESS, user: PERSON, ...chosen })).status,
+      ).toBe(422);
     }
   });
 

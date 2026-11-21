@@ -28,6 +28,7 @@ export default function ShellClockCode() {
           running: demoStations.rows.map((station) => station.name),
         },
         action: demoLockDevice,
+        clearsDevice: false,
       }}
     />
   );

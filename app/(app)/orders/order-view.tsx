@@ -39,6 +39,7 @@ import {
   type RoundTarget,
 } from "@domain/orders";
 import { Button } from "@ui/button";
+import { Card } from "@ui/card";
 import { cn } from "@ui/cn";
 import { EmptyState } from "@ui/empty-state";
 import { FloatingAction } from "@ui/floating-action";
@@ -60,6 +61,7 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type Ref, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { useHeldWrite } from "../use-held-write";
 import { CancelOrderSheet } from "./cancel-order-sheet";
 import { ChoiceSheet } from "./choice-sheet";
@@ -72,6 +74,7 @@ import {
 import { MoveSheet } from "./move-sheet";
 import { useOrdersMode } from "./orders-mode";
 import {
+  ConnectionNote,
   FailureLine,
   type FixWrite,
   failureWords,
@@ -89,7 +92,7 @@ import type {
   WholeWrite,
 } from "./orders-types";
 import { Picker } from "./picker";
-import { type LineShown, Rounds, shownOf } from "./rounds";
+import { type LineShown, RoundState, Rounds, shownOf } from "./rounds";
 import { sendWaits } from "./send-store";
 
 /** Where the screen is: a place, an open takeaway, or a new one. */
@@ -202,7 +205,10 @@ function withShown(
  * send, and what fixes, serves or fires what was sent, wait while one of
  * them is, from whichever screen of the mode it went (`whole`). P6 adds the
  * choices: an item with one to make opens its sheet, which adds a line with
- * them, and a line's "בחירות" changes its own.
+ * them, and a line's "בחירות" changes its own. P7 keeps a round on the
+ * phone with no connection: the send lets go once it is kept, so another
+ * goes after it, and a round that asks after ten minutes asks over the
+ * items too on a phone, where the order is out of sight.
  */
 export function OrderView({
   where,
@@ -255,8 +261,9 @@ export function OrderView({
     placeName: place?.name ?? null,
     takeaway: known?.takeaway?.number ?? null,
   });
+  // A round on its way is the order's: the phone opens on it.
   const [view, setView] = useState<"add" | "order">(() =>
-    known || count > 0 ? "order" : "add",
+    known || count > 0 || sender.pending(key).length > 0 ? "order" : "add",
   );
   const [label, setLabel] = useState(known?.takeaway?.label ?? "");
   const [sending, setSending] = useState(false);
@@ -443,10 +450,15 @@ export function OrderView({
 
   const refusal = sender.refusal(key);
   const pending = sender.pending(key);
+  // A refusal drawn here is seen: the app's banner no longer says it.
+  const unseen = refusal !== null && !refusal.seen;
+  useEffect(() => {
+    if (unseen) sender.seeRefusal(key);
+  }, [unseen, sender, key]);
   // A new takeaway's first round on its way gives it its order: until it
   // lands, a second send would open a second takeaway, whichever send it
-  // was (this screen's, or one that went again after the mode was left or
-  // the tab read again). What is added meanwhile waits, and is that order's.
+  // was (this screen's, or the outbox's again, as the app opened or came
+  // back online). What is added meanwhile waits, and is that order's.
   const busySending = sending || sendWaits(key, pending.length);
   // Nor does a send go while the whole order's cancel waits, or while a
   // write of the order whole is on its way, from whichever screen, as they
@@ -593,7 +605,17 @@ export function OrderView({
     if (lines.length === 0 || busySending || sendLocked) return;
     setSending(true);
     setView("order");
-    const outcome = await sender.send(key, target, lines);
+    // Kept on the phone, the send lets go: offline, another may follow it.
+    const outcome = await sender.send(
+      key,
+      target,
+      lines,
+      {
+        placeName: place?.name ?? null,
+        takeaway: known?.takeaway?.number ?? null,
+      },
+      { onQueued: () => setSending(false) },
+    );
     setSending(false);
     if (!outcome.ok) return;
     const sentAs = placeTitle({
@@ -696,6 +718,37 @@ export function OrderView({
       after: () => roundsHeading.current,
       onWaitingChange: (waiting) => (waiting ? fix.pause() : fix.resume()),
     });
+  }
+
+  /**
+   * "הסרה מהטלפון" (P7): the round that asked goes from the phone, with
+   * "ביטול" for 8 seconds; its card goes with the button, so the way back
+   * takes the focus, and then the rounds' heading, or the screen's title
+   * where it is hidden (a phone's "הוספת פריטים", where the question shows
+   * over the items).
+   */
+  function removeRound(round: string) {
+    const undo = sender.remove(round);
+    if (!undo) return;
+    say(t("toast.roundRemoved", { place: title }), {
+      undo,
+      focus: true,
+      after: () =>
+        onView(roundsHeading.current)
+          ? roundsHeading.current
+          : titleRef.current,
+    });
+  }
+
+  /**
+   * "שליחה" (P7): it goes now. Its question goes with the button, also over
+   * a phone's items, so the order shows first, as a send does, where its
+   * card says it is on its way, and its heading takes the focus.
+   */
+  function sendNow(round: string) {
+    sender.answer(round);
+    flushSync(() => setView("order"));
+    roundsHeading.current?.focus({ preventScroll: true });
   }
 
   function takeBack(line: OrderLine) {
@@ -934,6 +987,7 @@ export function OrderView({
     return (
       <PageBody className={pageGlowClass}>
         {header}
+        <ConnectionNote />
         <OffShiftCard off={off} />
       </PageBody>
     );
@@ -1122,6 +1176,9 @@ export function OrderView({
         fixed={fixed}
         held={heldNow}
         waits={writing}
+        place={title}
+        onSendNow={sendNow}
+        onRemove={removeRound}
         onServe={(ticket) => void serve(ticket)}
         onFire={(ticket) => void fire(ticket)}
         onTakeBack={takeBack}
@@ -1141,9 +1198,13 @@ export function OrderView({
   );
 
   const open = known && known.status === "open" ? known : null;
+  // A round that asks, over the items on a phone: never out of sight behind
+  // the Segmented.
+  const asking = pending.filter((round) => round.state === "ask");
   return (
     <PageBody className={pageGlowClass}>
       {header}
+      <ConnectionNote />
       <Segmented
         label={t("order.view.label")}
         value={view}
@@ -1163,7 +1224,19 @@ export function OrderView({
         <div className={cn("min-w-0", view === "add" ? "" : "hidden md:block")}>
           {/* A refusal says so over the items too, where the phone is. */}
           {view === "add" ? (
-            <div className="mb-4 md:hidden">{refused}</div>
+            <div className="mb-4 flex flex-col gap-3 md:hidden">
+              {refused}
+              {asking.map((round) => (
+                <Card key={round.key}>
+                  <RoundState
+                    round={round}
+                    place={title}
+                    onSendNow={sendNow}
+                    onRemove={removeRound}
+                  />
+                </Card>
+              ))}
+            </div>
           ) : null}
           <Picker
             menu={menu}
@@ -1403,7 +1476,7 @@ function FloorList({
   current: string;
 }) {
   const { t, placeTitle } = useOrderWords();
-  const { frame, paths, now, drafts } = useOrdersMode();
+  const { frame, paths, now, drafts, sender } = useOrdersMode();
   if (!floor) return <div className="hidden xl:block" />;
   const places = menu?.places ?? [];
   // A new takeaway is a row while it is being taken or has a draft, as its
@@ -1424,7 +1497,9 @@ function FloorList({
         order: o,
         href: paths.takeaway(o.id),
       })),
-    ...(current === newTakeaway || (drafts.counts[newTakeaway] ?? 0) > 0
+    ...(current === newTakeaway ||
+    (drafts.counts[newTakeaway] ?? 0) > 0 ||
+    (sender.unsent[newTakeaway]?.count ?? 0) > 0
       ? [
           {
             key: newTakeaway,
@@ -1451,6 +1526,7 @@ function FloorList({
               t,
               placeState(row.order, now, frame.lateAfterMinutes),
               drafts.counts[row.key] ?? 0,
+              sender.unsent[row.key]?.count ?? 0,
             )}
           />
         ))}

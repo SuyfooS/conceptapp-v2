@@ -4538,6 +4538,24 @@ export async function demoRounds(placeName: string): Promise<number> {
 }
 
 /**
+ * The phones of who sent each round of the open order at the demo
+ * restaurant's place of that name, oldest first (waiter mode P7: a round kept
+ * on a shared phone goes as its own person, never as the next one).
+ */
+export async function demoRoundSenders(placeName: string): Promise<string[]> {
+  const rows = await sql<{ phone: string | null }[]>`
+    select p.phone
+    from public.orders o
+    join public.order_places pl on pl.id = o.place_id
+    join public.order_rounds r on r.order_id = o.id
+    left join public.profiles p on p.id = r.sent_by
+    where o.business_id = ${DEMO_RESTAURANT} and o.status = 'open'
+      and pl.name = ${placeName}
+    order by r.sent_at, r.id`;
+  return rows.map((row) => row.phone ?? "");
+}
+
+/**
  * The newest ticket's status at the open order of the place of that name, for
  * the department of that key, or null when it has none.
  */

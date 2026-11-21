@@ -78,7 +78,7 @@ export function wholeGone(
 /**
  * The mode's writes of an order whole, apart from React so their rules are
  * held by tests (the provider gives `run` to every screen as `whole`). None
- * goes while `refusal` names a reason (read at the call, as the tab has it
+ * goes while `refusal` names a reason (read at the call, as the outbox has it
  * then): it answers that, and nothing was written. Each is on its way from
  * its call until it answers or fails, and once written, until a read the
  * mode made after the answer has landed (`read`): until then the screens

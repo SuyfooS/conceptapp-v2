@@ -42,6 +42,7 @@ import {
   closeOrder,
   compLine,
   moveOrder,
+  pendingByKey,
   reopenOrder,
   restoreLine,
   sendRound,
@@ -49,6 +50,8 @@ import {
   setTakenBack,
   uncompLine,
   undoCloseOrder,
+  withoutPending,
+  withPending,
 } from "./changes";
 import { type DemoData, useOrderDemo } from "./demo-store";
 import {
@@ -102,7 +105,10 @@ const done = Promise.resolve({ ok: true as const, value: null });
  * while its table is taken, or a close's "ביטול" too late or of another's
  * close, is refused as the database refuses it, and that "ביטול" puts back
  * what the close served. Since P6 a draft whose choices no longer fit the
- * twin's menu is refused as the send refuses it.
+ * twin's menu is refused as the send refuses it. Since P7 a round on its
+ * way may ask (`?state=asking`): "שליחה" sends it at once, as the twin's
+ * sends go, and "הסרה מהטלפון" takes it away, its "ביטול" putting it back;
+ * `?state=offline` says there is no connection.
  */
 export function TwinOrdersMode({ children }: { children: ReactNode }) {
   const { data, now, update } = useOrderDemo();
@@ -268,93 +274,131 @@ export function TwinOrdersMode({ children }: { children: ReactNode }) {
     [update, frame.userId, now, data.orders, data.closed],
   );
 
-  const sender: OrdersSender = {
-    send: (draft: string, target: RoundTarget, lines: DraftLine[]) => {
-      // A table's own line that goes out with the order moved there is the
-      // order's from then on, sent or refused, as the app's (`storeSent`).
-      const ownThere = own.current[draft];
-      if (ownThere) {
-        const sent = new Set(lines.map((line) => line.id));
-        own.current = {
-          ...own.current,
-          [draft]: ownThere.filter((line) => !sent.has(line.id)),
-        };
-      }
-      const refuse = (outcome: Extract<SendOutcome, { ok: false }>) => {
-        update((d) => ({
-          ...d,
-          refusals: { ...d.refusals, [draft]: { ...outcome, target } },
-        }));
-        return Promise.resolve(outcome);
+  /** A send over the rows as `base` has them: the screen's, or a round sent again. */
+  const sendFrom = (
+    base: DemoData,
+    draft: string,
+    target: RoundTarget,
+    lines: DraftLine[],
+  ): Promise<SendOutcome> => {
+    // A table's own line that goes out with the order moved there is the
+    // order's from then on, sent or refused, as the app's (`storeSent`).
+    const ownThere = own.current[draft];
+    if (ownThere) {
+      const sent = new Set(lines.map((line) => line.id));
+      own.current = {
+        ...own.current,
+        [draft]: ownThere.filter((line) => !sent.has(line.id)),
       };
-      if (frame.clock && !frame.runs) {
-        return refuse({
-          ok: false,
-          failure: frame.clock,
-          items: [],
-          order: null,
-        });
-      }
-      // Choices that no longer fit: the database stops at them first, and
-      // names no item.
-      if (choicesRefused(data, lines)) {
-        return refuse({
-          ok: false,
-          failure: "choices",
-          items: [],
-          order: null,
-        });
-      }
-      const items = soldOutIn(
-        data,
-        lines.map((line) => line.item),
-      );
-      if (items.length > 0) {
-        return refuse({
-          ok: false,
-          failure: "unavailable",
-          items,
-          order: null,
-        });
-      }
-      if ("place" in target && !("order" in target)) {
-        const open = twinOrderAt(data, target.place);
-        if (open) {
-          return refuse({
-            ok: false,
-            failure: "taken",
-            items: [],
-            order: open.id,
-          });
-        }
-      }
-      const where = {
-        orderId: "order" in target ? target.order : null,
-        placeId: "place" in target ? (target.place ?? null) : null,
-        label: "label" in target ? target.label : null,
-      };
-      const sent = sendRound(data, where, lines, frame.userId, now);
-      const { [draft]: _, ...refusals } = sent.data.refusals;
-      update(() => ({
-        ...sent.data,
-        drafts: { ...sent.data.drafts, [draft]: [] },
-        refusals,
+    }
+    const refuse = (outcome: Extract<SendOutcome, { ok: false }>) => {
+      update((d) => ({
+        ...d,
+        refusals: { ...d.refusals, [draft]: { ...outcome, target } },
       }));
-      return Promise.resolve({
-        ok: true as const,
-        round: twinSentRound(sent.data, sent.order, sent.round),
+      return Promise.resolve(outcome);
+    };
+    if (frame.clock && !frame.runs) {
+      return refuse({
+        ok: false,
+        failure: frame.clock,
+        items: [],
+        order: null,
       });
-    },
+    }
+    // Choices that no longer fit: the database stops at them first, and
+    // names no item.
+    if (choicesRefused(base, lines)) {
+      return refuse({
+        ok: false,
+        failure: "choices",
+        items: [],
+        order: null,
+      });
+    }
+    const items = soldOutIn(
+      base,
+      lines.map((line) => line.item),
+    );
+    if (items.length > 0) {
+      return refuse({
+        ok: false,
+        failure: "unavailable",
+        items,
+        order: null,
+      });
+    }
+    if ("place" in target && !("order" in target)) {
+      const open = twinOrderAt(base, target.place);
+      if (open) {
+        return refuse({
+          ok: false,
+          failure: "taken",
+          items: [],
+          order: open.id,
+        });
+      }
+    }
+    const where = {
+      orderId: "order" in target ? target.order : null,
+      placeId: "place" in target ? (target.place ?? null) : null,
+      label: "label" in target ? target.label : null,
+    };
+    const sent = sendRound(base, where, lines, frame.userId, now);
+    const { [draft]: _, ...refusals } = sent.data.refusals;
+    // Only the lines sent leave the draft, as the app's.
+    update(() => ({
+      ...sent.data,
+      drafts: {
+        ...sent.data.drafts,
+        [draft]: withoutSent(sent.data.drafts[draft] ?? [], lines),
+      },
+      refusals,
+    }));
+    return Promise.resolve({
+      ok: true as const,
+      round: twinSentRound(sent.data, sent.order, sent.round),
+    });
+  };
+
+  const sender: OrdersSender = {
+    send: (draft, target, lines) => sendFrom(data, draft, target, lines),
     pending: (draft) => {
       const round = data.pending[draft];
       return round ? [round] : [];
     },
+    // "שליחה": the round that asked goes now, off its way.
+    answer: (key) => {
+      const found = pendingByKey(data, key);
+      if (!found) return;
+      void sendFrom(
+        withoutPending(data, key),
+        found.draft,
+        found.round.target,
+        found.round.lines,
+      );
+    },
+    remove: (key) => {
+      const found = pendingByKey(data, key);
+      if (!found) return null;
+      update((d) => withoutPending(d, key));
+      return () => update((d) => withPending(d, found.draft, found.round));
+    },
+    unsent: Object.fromEntries(
+      Object.entries(data.pending)
+        .filter(([, round]) => round.state !== "sending")
+        .map(([draft, round]) => [
+          draft,
+          { count: 1, asks: round.state === "ask" ? 1 : 0 },
+        ]),
+    ),
     refusal: (draft) => data.refusals[draft] ?? null,
     clearRefusal: (draft) =>
       update((d) => {
         const { [draft]: _, ...rest } = d.refusals;
         return { ...d, refusals: rest };
       }),
+    seeRefusal: () => {},
     // The twin's send answers at once, to the screen that sent it.
     landed: null,
   };
@@ -445,6 +489,7 @@ export function TwinOrdersMode({ children }: { children: ReactNode }) {
     say,
     tell,
     syncNow: () => {},
+    connection: data.connection,
     newId,
   };
 

@@ -20,18 +20,29 @@ const SECTIONS = [
     key: "waiter",
     screens: [
       { key: "floor", href: `${BASE}/floor?state=service` },
+      { key: "floorUnsent", href: `${BASE}/floor?state=asking` },
+      { key: "floorOffline", href: `${BASE}/floor?state=offline` },
       { key: "quiet", href: `${BASE}/floor?state=quiet` },
       { key: "readyNow", href: `${BASE}/floor?state=readyNow` },
       { key: "offClock", href: `${BASE}/floor?state=offClock` },
       { key: "staleShift", href: `${BASE}/floor?state=staleShift` },
       { key: "floorNoPlaces", href: `${BASE}/floor?state=noPlaces` },
       { key: "viewing", href: `${BASE}/floor?state=viewing` },
+      { key: "lost", href: `${BASE}/floor?state=lost` },
       { key: "free", href: `${BASE}/floor/order?place=table-6&state=service` },
       { key: "draft", href: `${BASE}/floor/order?place=table-6&state=draft` },
       { key: "sent", href: `${BASE}/floor/order?place=table-6&state=sent` },
       {
         key: "pending",
         href: `${BASE}/floor/order?place=table-6&state=pending`,
+      },
+      {
+        key: "asking",
+        href: `${BASE}/floor/order?place=table-6&state=asking`,
+      },
+      {
+        key: "offline",
+        href: `${BASE}/floor/order?place=table-6&state=offline`,
       },
       {
         key: "soldOut",

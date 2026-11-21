@@ -283,6 +283,7 @@ export async function TodayView({
   base = "",
   hideFirstStepsUrl,
   lockStation,
+  lockClearsDevice,
   signOut,
 }: {
   data: TodayData;
@@ -301,6 +302,11 @@ export async function TodayView({
    * `lockDeviceAction`, or the demo's stand-in, which signs nobody out.
    */
   lockStation: LockAction;
+  /**
+   * Whether that lock clears waiter mode's records on the device (P7):
+   * false on the demo, whose lock locks nothing.
+   */
+  lockClearsDevice?: boolean;
   /**
    * Signing out from the station's card (`data.station`): `signOut`, or the
    * demo's stand-in, which goes to the station's twin.
@@ -515,6 +521,7 @@ export async function TodayView({
           <StationCard
             station={data.station}
             lock={lockStation}
+            clearsDevice={lockClearsDevice}
             signOut={signOut}
             t={t}
           />

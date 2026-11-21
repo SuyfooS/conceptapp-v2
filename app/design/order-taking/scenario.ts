@@ -45,8 +45,22 @@ export type DemoData = {
   /** The next takeaway's number, given at its first send. */
   nextTakeaway: number;
   viewer: TwinViewer;
-  /** A send on its way (`?state=pending`), by its draft. */
+  /**
+   * A send on its way (`?state=pending`), waiting, or asking after ten
+   * minutes (`?state=asking`, P7), by its draft.
+   */
   pending: Record<string, PendingSend>;
+  /** Whether the mode reaches the server (`?state=offline`: it doesn't, P7). */
+  connection: "ok" | "down";
+  /**
+   * Rounds taken off the phone as the account signed out (`?state=lost`,
+   * P7): how many, and the names of their places.
+   */
+  lost: {
+    count: number;
+    placeNames: string[];
+    why: "signedOut" | "notMember";
+  } | null;
   /** A send refused (`?state=taken`), by its draft. */
   refusals: Record<string, SendRefusal>;
   /** One of Shiran's tickets turns ready this long after opening (`?state=readyNow`). */
@@ -65,6 +79,8 @@ const service = (): DemoData => ({
   nextTakeaway: demoTakeaways.length + 1,
   viewer: "shiran",
   pending: {},
+  connection: "ok",
+  lost: null,
   refusals: {},
   readyIn: null,
 });
@@ -100,7 +116,10 @@ const TABLE_6 = "place:table-6";
  * open again with Yoav's new round, so its order closed today can't open
  * again; `choices` the evening, with the burger's choices open on table 6
  * (P6, opened by the screen); `choicesChanged` the burger's "מדיום וול"
- * gone from the menu while table 6's draft holds one.
+ * gone from the menu while table 6's draft holds one; `asking` table 6's
+ * round that hasn't gone for 12 minutes, which asks (P7); `offline` no
+ * connection, table 6's round waiting for one; `lost` the notice of table
+ * 6's round taken off the phone as the account signed out.
  */
 export function scenario(state: string | null): DemoData {
   const base = service();
@@ -169,9 +188,42 @@ export function scenario(state: string | null): DemoData {
             target: { place: "table-6" },
             lines: demoDraft().slice(0, 2),
             // Tried, and it didn't go: it waits for a connection.
-            waiting: true,
+            state: "waiting",
+            age: null,
           },
         },
+      };
+    case "asking":
+      return {
+        ...base,
+        pending: {
+          [TABLE_6]: {
+            key: "pending-table-6",
+            target: { place: "table-6" },
+            lines: demoDraft().slice(0, 2),
+            state: "ask",
+            age: { unit: "minutes", count: 12 },
+          },
+        },
+      };
+    case "offline":
+      return {
+        ...base,
+        connection: "down",
+        pending: {
+          [TABLE_6]: {
+            key: "pending-table-6",
+            target: { place: "table-6" },
+            lines: demoDraft().slice(0, 2),
+            state: "waiting",
+            age: null,
+          },
+        },
+      };
+    case "lost":
+      return {
+        ...base,
+        lost: { count: 1, placeNames: ["6"], why: "signedOut" },
       };
     case "soldOut":
       return { ...base, drafts: { [TABLE_6]: demoFishDraft() } };

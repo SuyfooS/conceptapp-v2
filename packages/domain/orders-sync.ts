@@ -30,24 +30,65 @@ export const ORDERS_SYNC_PATH = "/orders-sync";
 
 /** Every screen of the mode asks this often while it is visible (default 10). */
 export const ORDERS_SYNC_MS = 15_000;
+/**
+ * And this often (§7.1, P7) while a round of one's own waits to be ready,
+ * or on the prep screen, until P8's stations.
+ */
+export const ORDERS_SYNC_FAST_MS = 5_000;
 /** And never less often than this, whatever fails. */
 const ORDERS_SYNC_MOST_MS = 60_000;
+/** The prep screen's longest wait, whatever fails. */
+const ORDERS_SYNC_PREP_MOST_MS = 30_000;
+
+/**
+ * How fast the mode asks: `"prep"` while a screen wants the kitchen's
+ * tickets, `"waiting"` while a round of one's own waits to be ready, else
+ * `"steady"`.
+ */
+export type OrdersSyncPace = "prep" | "waiting" | "steady";
 
 /**
  * When to ask `/orders-sync` again, in milliseconds, or null: not until the
  * page is visible again (it asks at once then, when the phone is back
- * online, and after each of its own writes). Each failure in a row doubles
- * the wait, up to a minute.
+ * online, and after each of its own writes). Every 15 seconds, or 5 at the
+ * faster paces; each failure in a row doubles the wait, up to a minute (half
+ * a minute on the prep screen).
  */
 export function nextOrdersSyncDelay(state: {
   visible: boolean;
   failures: number;
+  pace?: OrdersSyncPace;
 }): number | null {
   if (!state.visible) return null;
+  const pace = state.pace ?? "steady";
   const failures = Number.isFinite(state.failures)
     ? Math.min(Math.max(Math.floor(state.failures), 0), 8)
     : 0;
-  return Math.min(ORDERS_SYNC_MS * 2 ** failures, ORDERS_SYNC_MOST_MS);
+  const base = pace === "steady" ? ORDERS_SYNC_MS : ORDERS_SYNC_FAST_MS;
+  const most = pace === "prep" ? ORDERS_SYNC_PREP_MOST_MS : ORDERS_SYNC_MOST_MS;
+  return Math.min(base * 2 ** failures, most);
+}
+
+/**
+ * The mode's pace (§7.1): `"prep"` while a screen wants the kitchen's
+ * tickets and the person prepares or runs orders; `"waiting"` while one of
+ * their own rounds of an open order has a ticket at its department with
+ * lines left (a held block, one ready or served, and one with nothing left
+ * don't count); else `"steady"`.
+ */
+export function ordersSyncPace(input: {
+  mine: Pick<MyOrders, "rounds"> | null;
+  prep: boolean;
+}): OrdersSyncPace {
+  if (input.prep) return "prep";
+  const waiting = input.mine?.rounds.some(
+    (round) =>
+      round.orderStatus === "open" &&
+      round.tickets.some(
+        (ticket) => ticket.status === "new" && ticket.lines > 0,
+      ),
+  );
+  return waiting ? "waiting" : "steady";
 }
 
 /** What a screen asks: the business, what it knows, and which reads. */
@@ -259,11 +300,17 @@ export const offShiftAnswer = z.object({
 // Sending
 
 /**
- * The send's body: the round, and the business it is for. The business is
- * the round's own, never the cookie's: a send retried after the person
- * switched business still goes where it was written.
+ * The send's body: the round, the business it is for and the person who
+ * wrote it. The business is the round's own, never the cookie's: a send
+ * retried after the person switched business still goes where it was
+ * written. The person (P7) is checked against the session's, so a round
+ * kept on a shared phone is never sent as whoever is signed in now. Strict:
+ * nothing else rides along.
  */
-export const sendBody = roundInput.extend({ business: z.uuid() });
+export const sendBody = roundInput.extend({
+  business: z.uuid(),
+  user: z.uuid(),
+});
 
 export type SendBody = z.infer<typeof sendBody>;
 

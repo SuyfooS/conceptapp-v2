@@ -3,6 +3,7 @@ import { Logo } from "@ui/logo";
 import { glowClass } from "@ui/page-glow";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
+import { LostOrdersNotice } from "../(app)/orders/outbox-notice";
 
 /**
  * The door to the app. Phone and tablet (a foldable opened up too): no card,
@@ -21,6 +22,8 @@ export function AuthScreen({
   return (
     <AuthPage>
       <Wordmark />
+      {/* Waiter mode's rounds taken off the phone as it signed out (P7), once. */}
+      <LostOrdersNotice placement="inline" className="mt-6" />
       <h1 className="mt-[9dvh] mb-3 text-balance px-1 font-bold text-2xl xl:mt-6">
         {title}
       </h1>

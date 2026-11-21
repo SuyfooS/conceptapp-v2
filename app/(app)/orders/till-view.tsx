@@ -18,6 +18,7 @@ import Link from "next/link";
 import { useRef, useState } from "react";
 import { useOrdersMode } from "./orders-mode";
 import {
+  ConnectionNote,
   fixFailureWords,
   ltr,
   OffShiftCard,
@@ -63,6 +64,7 @@ export function TillView({
           eyebrow={heading.eyebrow}
           title={t("till.metaTitle")}
         />
+        <ConnectionNote />
         <OffShiftCard off={off} />
       </PageBody>
     );
@@ -373,6 +375,7 @@ function Till({
         subtitle={subtitle()}
         actions={action}
       />
+      <ConnectionNote />
       {why ? <p className="text-ink-2 md:max-w-2xl">{why}</p> : null}
       {frame.viewing ? (
         <p className="text-ink-2 md:max-w-2xl">{t("failed.viewOnly")}</p>

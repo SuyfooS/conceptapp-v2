@@ -4,14 +4,15 @@ import {
   putRefusedBack,
   withoutSent,
 } from "@domain/order-screens";
+import type { OutboxWhere } from "@domain/orders-outbox";
 import type { SendBody } from "@domain/orders-sync";
 
 /*
- * What the mode keeps in the tab for its sends (waiter mode P4): the drafts
- * by where they wait, and the rounds on their way, each by its own key. Pure,
- * so the provider's state and sessionStorage follow one set of rules, which
- * the tests hold: two sends of one draft never share a place, a round
- * settles only itself, and a line on its way never comes back into a draft.
+ * What the mode keeps for its sends (waiter mode P4): the drafts by where
+ * they wait, and the rounds on their way, each by its own key. Pure, so the
+ * outbox (outbox.ts, P7) and the twins follow one set of rules, which the
+ * tests hold: two sends of one draft never share a place, a round settles
+ * only itself, and a line on its way never comes back into a draft.
  */
 
 /** A round on its way: the draft it left, what goes, and its lines as drafted. */
@@ -19,6 +20,12 @@ export type PendingRound = {
   draft: string;
   body: SendBody;
   lines: DraftLine[];
+  /** Where it goes, to name it on any screen (P7). */
+  where?: OutboxWhere;
+  /** When it went first, by the phone's clock (P7). */
+  queuedAt?: number;
+  /** From when its ten minutes count before it asks (P7). */
+  askFrom?: number;
 };
 
 /** A line a place's draft held of its own as an order moved there, and how many. */
@@ -31,7 +38,8 @@ export type SendStore = {
   /**
    * What a place's draft held of its own as an order moved there (P5), by
    * that draft, until the move's "ביטול" or the order moves on: it stays
-   * there on the "ביטול". Kept in memory only, as the "ביטול" is.
+   * there on the "ביטול". Kept in memory only, as the "ביטול" is: never on
+   * the phone's store.
    */
   own?: Record<string, OwnLine[]>;
 };
@@ -71,9 +79,8 @@ export function storeSent(store: SendStore, round: PendingRound): SendStore {
  * refused its lines go back to the front of their draft. A new takeaway's
  * first round, sent, gives it its order: what was added to the new
  * takeaway's draft while the round was on its way is that order's now, as
- * the screen showed it, below the round. A round no longer on its way (the
- * tab's store was read again for another person or business) changes
- * nothing.
+ * the screen showed it, below the round. A round no longer on its way
+ * (settled already, in another tab) changes nothing.
  */
 export function storeSettled(
   store: SendStore,
@@ -240,7 +247,7 @@ export function refusalMoved<R>(
  * would open a second takeaway (a place's or an order's joins its order).
  * What is added meanwhile stays in the draft, and is that order's once the
  * round lands (`storeSettled`), whichever send it was: the screen's own, or
- * one that went again after the mode was left or the tab read again.
+ * the outbox's again, as the app opened or came back online.
  */
 export function sendWaits(draft: string, onItsWay: number): boolean {
   return draft === NEW_TAKEAWAY && onItsWay > 0;
@@ -252,52 +259,4 @@ export function pendingOfDraft(
   draft: string,
 ): PendingRound[] {
   return Object.values(pending).filter((round) => round.draft === draft);
-}
-
-/** A round as the tab kept it, or null for anything else. */
-function roundOf(key: string, entry: unknown): PendingRound | null {
-  if (!entry || typeof entry !== "object") return null;
-  const { draft, body, lines } = entry as Partial<PendingRound>;
-  if (typeof draft !== "string" || !Array.isArray(lines)) return null;
-  if (!body || typeof body !== "object" || body.key !== key) return null;
-  return { draft, body, lines };
-}
-
-/** What the tab kept, read back: what isn't a draft or a round is dropped. */
-export function storedFrom(parsed: unknown): SendStore {
-  if (!parsed || typeof parsed !== "object") return emptySendStore;
-  const { drafts, pending } = parsed as Partial<
-    Record<keyof SendStore, unknown>
-  >;
-  const rounds: Record<string, PendingRound> = {};
-  if (pending && typeof pending === "object") {
-    for (const [key, entry] of Object.entries(pending)) {
-      const round = roundOf(key, entry);
-      if (round) rounds[key] = round;
-    }
-  }
-  return {
-    drafts:
-      drafts && typeof drafts === "object"
-        ? (drafts as Record<string, DraftLine[]>)
-        : {},
-    pending: rounds,
-  };
-}
-
-/**
- * What the tab keeps of the store: its drafts and its rounds on their way,
- * never what places held of their own (`own`), which only the "ביטול" of a
- * move uses, and only while its toast is on screen.
- */
-export function storeKept(store: SendStore): string {
-  return JSON.stringify({ drafts: store.drafts, pending: store.pending });
-}
-
-/** Whether there is nothing to keep: no line in any draft, no round on its way. */
-export function storeEmpty(store: SendStore): boolean {
-  return (
-    Object.values(store.drafts).every((lines) => lines.length === 0) &&
-    Object.keys(store.pending).length === 0
-  );
 }

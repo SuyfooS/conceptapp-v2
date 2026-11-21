@@ -9,15 +9,13 @@ import {
   sendWaits,
   storeDraftChanged,
   storeDraftMoved,
-  storedFrom,
-  storeEmpty,
-  storeKept,
   storeMovedBack,
   storeSent,
   storeSettled,
 } from "./send-store";
 
 const BUSINESS = "00000000-0000-4000-8000-000000000001";
+const PERSON = "00000000-0000-4000-8000-0000000000f1";
 const PLACE = "00000000-0000-4000-8000-0000000000c1";
 const HUMMUS = "00000000-0000-4000-8000-000000000011";
 const ORDER = "00000000-0000-4000-8000-0000000000e1";
@@ -47,6 +45,7 @@ const round = (
   draft,
   body: {
     business: BUSINESS,
+    user: PERSON,
     key,
     target: draft === NEW_TAKEAWAY ? { takeaway: true } : { place: PLACE },
     lines: lines.map((l) => ({ item: l.item, quantity: l.quantity })),
@@ -60,9 +59,8 @@ const B = "00000000-0000-4000-8000-0000000000b1";
 const sent = { sent: true as const, order: ORDER };
 const refused = { sent: false as const };
 
-/** What a reload reads back: the store as JSON, through sessionStorage. */
-const reloaded = (store: SendStore) =>
-  storedFrom(JSON.parse(JSON.stringify(store)));
+/** What a reload reads back: the store copied, as the phone's store copies it. */
+const reloaded = (store: SendStore): SendStore => structuredClone(store);
 
 describe("the sends kept in the tab", () => {
   it("keeps two rounds of one draft apart, and settles each alone", () => {
@@ -177,20 +175,14 @@ describe("the sends kept in the tab", () => {
     expect(store.drafts[DRAFT]).toEqual(draft.slice(40));
   });
 
-  it("reads back only what it wrote", () => {
-    expect(storedFrom(null)).toEqual(emptySendStore);
-    expect(storedFrom("nope")).toEqual(emptySendStore);
-    // A round under another key than its own, or with no draft, is dropped.
-    const a = round(A, [line()]);
-    expect(
-      storedFrom({
-        drafts: {},
-        pending: { [B]: a, [A]: { body: a.body, lines: a.lines } },
-      }).pending,
-    ).toEqual({});
-    expect(storeEmpty(emptySendStore)).toBe(true);
-    expect(storeEmpty({ drafts: { [DRAFT]: [] }, pending: {} })).toBe(true);
-    expect(storeEmpty(storeSent(emptySendStore, a))).toBe(false);
+  it("keeps a round's place, and when it went and asks from, as they came (P7)", () => {
+    const a = {
+      ...round(A, [line()]),
+      where: { placeName: "6", takeaway: null },
+      queuedAt: 1000,
+      askFrom: 2000,
+    };
+    expect(storeSent(emptySendStore, a).pending[A]).toEqual(a);
   });
 });
 
@@ -400,20 +392,6 @@ describe("a draft when its order moves (P5)", () => {
     const onward = storeDraftMoved(moved, there, onTo);
     expect(onward.own).toEqual({ [onTo]: [] });
     expect(onward.drafts[onTo]).toEqual([coffee]);
-  });
-
-  it("keeps in the tab the drafts and the rounds, never what a place held", () => {
-    const coffee = line();
-    const moved = storeDraftMoved(
-      { ...emptySendStore, drafts: { [there]: [coffee] } },
-      DRAFT,
-      there,
-    );
-    expect(JSON.parse(storeKept(moved))).toEqual({
-      drafts: moved.drafts,
-      pending: moved.pending,
-    });
-    expect(storedFrom(JSON.parse(storeKept(moved))).own).toBeUndefined();
   });
 
   it("takes the refusal of its last send along, unless the draft it joins has one", () => {

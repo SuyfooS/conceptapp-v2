@@ -7,6 +7,7 @@ import {
   type LineCancelReason,
   type OrderCancelReason,
 } from "@domain/orders";
+import type { PendingSend } from "../../(app)/orders/orders-types";
 import { newId as id } from "./ids";
 import {
   chosenOptions,
@@ -30,6 +31,34 @@ import type { DemoData } from "./scenario";
 // the look only: P3 does them in one database function. The drafts are the
 // domain's since P4 (@domain/order-screens), kept by their draft's key. P5's
 // fixes refuse here what the database refuses, by changing nothing.
+
+/** A round on its way by its key, and the draft it left (P7). */
+export function pendingByKey(
+  data: DemoData,
+  key: string,
+): { draft: string; round: PendingSend } | null {
+  for (const [draft, round] of Object.entries(data.pending)) {
+    if (round.key === key) return { draft, round };
+  }
+  return null;
+}
+
+/** The round off its way: sent now ("שליחה"), or off the phone ("הסרה מהטלפון"). */
+export function withoutPending(data: DemoData, key: string): DemoData {
+  const found = pendingByKey(data, key);
+  if (!found) return data;
+  const { [found.draft]: _, ...pending } = data.pending;
+  return { ...data, pending };
+}
+
+/** The removal's "ביטול": the round back where it waited, asking as it was. */
+export function withPending(
+  data: DemoData,
+  draft: string,
+  round: PendingSend,
+): DemoData {
+  return { ...data, pending: { ...data.pending, [draft]: round } };
+}
 
 export function setLabel(
   data: DemoData,
