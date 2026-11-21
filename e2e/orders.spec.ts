@@ -148,6 +148,19 @@ async function enterAs(page: Page, key: keyof typeof e.people) {
   await expect(page).toHaveURL(/\/home$/);
 }
 
+/**
+ * Back to the floor from the mode's own nav, once it is the screen shown:
+ * the screen left stays in the page, hidden (Next keeps it in an
+ * <Activity>), and a tile looked for before the floor shows can match a
+ * link of that screen ("ההזמנות שלי"'s "שולחן 9 · בר") and wait on it for
+ * good.
+ */
+async function toFloor(page: Page) {
+  await navItem(page, rt("modules.order_taking.mode.places")).click();
+  await expect(page).toHaveURL(/\/orders$/);
+  await expect(heading(page, 1, rt("app.orders.floor.title"))).toBeVisible();
+}
+
 /** A table's tile on the floor, by its name. */
 const tile = (page: Page, name: string) =>
   link(
@@ -304,7 +317,7 @@ test("Yoav sends a drink and a starter, the kitchen marks the starter ready, and
   expect(await demoTicketStatus("5", "bar")).toBe("new");
 
   // He goes back to the floor, where table 5 waits on its tickets.
-  await navItem(page, rt("modules.order_taking.mode.places")).click();
+  await toFloor(page);
   await expect(page).toHaveURL(/\/orders$/);
   const ready = rt("app.orders.floor.state.ready");
   await expect(tile(page, "5")).not.toContainText(ready);
@@ -739,7 +752,7 @@ test("Yoav cancels the beer he sent to his own bar with a reason, the bar sees i
   expect(log.map((row) => row.action)).toContain("order.line.cancel");
 
   // Back at the table it reads struck, with its reason.
-  await navItem(page, rt("modules.order_taking.mode.places")).click();
+  await toFloor(page);
   await tile(page, "9").click();
   await showOrder(page, project);
   await expect(
@@ -835,7 +848,7 @@ test("a waiter can't cancel a dish already ready; the manager gives it on the ho
   await expect
     .poll(() => demoLine("7", "בירה מהחבית"))
     .toEqual({ state: "comped", reason: "make_good" });
-  await navItem(shiran, rt("modules.order_taking.mode.places")).click();
+  await toFloor(shiran);
   await tile(shiran, "7").click();
   await showOrder(shiran, project);
   await expect(
@@ -922,7 +935,7 @@ test("Shiran reads table 4's till by item and by round with no total, closes it,
   ).toBeVisible();
   await expect.poll(() => demoOrderStatus("4")).toBe("closed");
   await expect(button(page, rt("app.orders.close.reopen"))).toBeEnabled();
-  await navItem(page, rt("modules.order_taking.mode.places")).click();
+  await toFloor(page);
   await expect(tile(page, "4")).toContainText(
     rt("app.orders.floor.state.free"),
   );
@@ -940,7 +953,7 @@ test("Shiran reads table 4's till by item and by round with no total, closes it,
   ).toBeVisible();
   await expect.poll(() => demoOrderStatus("4")).toBe("open");
   // The floor reads it open again, no longer under "נסגרו היום".
-  await navItem(page, rt("modules.order_taking.mode.places")).click();
+  await toFloor(page);
   await expect(tile(page, "4")).not.toContainText(
     rt("app.orders.floor.state.free"),
   );
@@ -954,14 +967,14 @@ test("Shiran reads table 4's till by item and by round with no total, closes it,
   // can't open again while it is taken.
   await button(page, rt("app.orders.close.place")).click();
   await expect.poll(() => demoOrderStatus("4")).toBe("closed");
-  await navItem(page, rt("modules.order_taking.mode.places")).click();
+  await toFloor(page);
   await tile(page, "4").click();
   await showItems(page, project);
   await button(page, "לימונדה").click();
   await showOrder(page, project);
   await send(page);
   await expect.poll(() => demoRounds("4")).toBe(1);
-  await navItem(page, rt("modules.order_taking.mode.places")).click();
+  await toFloor(page);
   await closedRow(page, project, table("4")).click();
   await expect(button(page, rt("app.orders.close.reopen"))).toBeDisabled();
   await expect(shown(page, rt("app.orders.failed.reopenTaken"))).toBeVisible();
@@ -992,7 +1005,7 @@ test("Shiran moves table 4 to a free table, and cancels takeaway 1 for good", as
   ).toBeVisible();
   await expect.poll(() => demoOrderPlaceName(order ?? "")).toBe("11");
   await expect(heading(page, 1, table("11"))).toBeVisible();
-  await navItem(page, rt("modules.order_taking.mode.places")).click();
+  await toFloor(page);
   await expect(tile(page, "4")).toContainText(
     rt("app.orders.floor.state.free"),
   );
@@ -1018,7 +1031,7 @@ test("Shiran moves table 4 to a free table, and cancels takeaway 1 for good", as
   await expect(
     undoOn(page, rt("app.orders.toast.orderCancelled", { place: takeaway })),
   ).toBeVisible();
-  await navItem(page, rt("modules.order_taking.mode.places")).click();
+  await toFloor(page);
   await expect.poll(() => demoTakeawayStatus(1)).toBe("cancelled");
   // Listed as cancelled: the row's words on a phone, the name of its
   // button (its place, its state and its time) on a desktop.
