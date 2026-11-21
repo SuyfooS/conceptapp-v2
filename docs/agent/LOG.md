@@ -3,6 +3,14 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-21 · nightly run · the wizard's slug field says what it is
+
+- Guessed: Orel left no work, no open question. What merged since the last run (#207 to #209) shares Home, messages and the orders with Orel's open P4 (#210), so the smallest item from "תקלות ידועות" instead: #10, "כתובת הדף" in the new-business wizard, required and leading nowhere.
+- Words only: the field, the summary, the console's business list and the business's subtitle now say "השם באנגלית" (en "English name"), its hint says where it shows (the business's link in the console; the payroll file is saved under its Hebrew `filename*`, the slug only its ASCII fallback, so the hint leaves it out, as the design review found), and its errors talk of a name, not an address. No code, no data. Known issue #10 says the same.
+- Checked: `pnpm check`, `pnpm build`, the design reviewer. No screenshots here (the wizard needs the local stack, no Docker): CI's e2e at 390/820/1440 covers it. The e2e reads the labels from the messages, so it follows.
+- Restore point: branch `backup/before-night-2026-11-21` at `b0293d1` (the tag push was cut off).
+- Next: P4 (#210) with Orel, then `/me` H4 (#82). Defaults applied: none.
+
 ## 2026-11-20 · chat · taking orders: the orders in the database, module off (waiter mode P3)
 
 - On chat/order-orders-db from main (879f5db). Orel decided on 20 November to build every phase, with decisions 3, 4, 5 and 7 as the design recommends (#1, #191). P3 is the database half of §14 P3: no new screen.

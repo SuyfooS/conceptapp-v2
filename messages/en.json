@@ -5938,7 +5938,7 @@
       "subtitle": "{count, plural, =0 {No businesses yet} one {One business} other {# businesses}}",
       "listLabel": "Business list",
       "name": "Business",
-      "slug": "Page address",
+      "slug": "English name",
       "template": "Template",
       "members": "Team",
       "invites": "Open invites",
@@ -5994,9 +5994,9 @@
           "hint": "As the staff and customers know it."
         },
         "slug": {
-          "label": "Page address",
+          "label": "English name",
           "placeholder": "studio-noa",
-          "hint": "Latin letters, digits and hyphens."
+          "hint": "Shows in the business's link in the console. Latin letters, digits and hyphens."
         },
         "address": {
           "label": "Address",
@@ -6013,7 +6013,7 @@
         "title": "Summary",
         "template": "Kind",
         "name": "Name",
-        "slug": "Page address",
+        "slug": "English name",
         "address": "Address",
         "empty": "Not filled in",
         "staff": "Staff"
@@ -6033,12 +6033,12 @@
           "tooLong": "Up to 80 characters."
         },
         "slug": {
-          "required": "Choose an address for the page.",
+          "required": "Choose an English name.",
           "tooShort": "At least 3 characters.",
           "tooLong": "Up to 40 characters.",
           "invalid": "Only Latin letters, digits and hyphens.",
-          "reserved": "This address is reserved. Choose another.",
-          "taken": "This address is taken. Choose another."
+          "reserved": "This name is reserved. Choose another.",
+          "taken": "This name is taken. Choose another."
         },
         "address": {
           "tooLong": "Up to 200 characters."
@@ -6084,7 +6084,7 @@
         "title": "{name} is open",
         "body": "The business is ready with the “{template}” template’s settings."
       },
-      "subtitle": "Template: {template} · Page address: <ltr>{slug}</ltr>",
+      "subtitle": "Template: {template} · English name: <ltr>{slug}</ltr>",
       "back": "All businesses",
       "checklist": {
         "title": "What is left to do",
