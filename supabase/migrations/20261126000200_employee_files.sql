@@ -338,13 +338,16 @@ create index phone_changes_user_idx on private.phone_changes (user_id, changed_a
 
 -- How many refused reads each caller logged a row for, in each business,
 -- per day: what someone does in one business never silences another's log.
+-- The count goes with its business, so a demo's reset starts it again.
 create table private.file_denials (
   actor_id uuid not null,
-  business_id uuid not null,
+  business_id uuid not null references public.businesses (id) on delete cascade,
   day date not null,
   denied integer not null default 0,
   primary key (actor_id, business_id, day)
 );
+
+create index file_denials_business_idx on private.file_denials (business_id);
 
 -- The nightly check of the log's guards: what was missing, or nothing.
 create table private.audit_guard_runs (
