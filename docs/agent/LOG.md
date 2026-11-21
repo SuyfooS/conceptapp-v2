@@ -25,6 +25,7 @@ what is next, defaults applied.
 - Third review, fixed: pgTAP asserts the clock editor who stopped the till is refused starting it again with taking orders on, and B's owner refused stopping A's kitchen's screen (plan still 55).
 - Third review, fixed: a ticket taken off with "הסרה מהמסך" stays off while missing from the read too (`stillDismissed`), so a close taken back doesn't bring it back struck whole.
 - Third review, fixed: a cancelled line restored is said as "חזר להכנה: {name} · {place}" (`app.orders.station.news.restored`), not as a new order: `stationNews` returns `restored` apart, `stationArrivals` gives the one chime and the flash.
+- Fourth review, fixed: pgTAP asserts whoever runs orders stops a screen with taking orders off (the manager, lowered from `clock.edit` for that statement, stops the bar's: `none`, `stopped_by` theirs), so neither arm of the off-time stop can narrow unnoticed; the log counts nine (plan still 55).
 
 ## 2026-11-21 · chat · taking orders: offline (waiter mode P7)
 

@@ -764,21 +764,28 @@ select is(
   'true|1',
   'and within its 2 minutes it runs again, logged as order.station.restart'
 );
--- With taking orders off, a screen left running is still stopped (by a clock
--- editor who doesn't run orders too, from the clock's lock on that device),
--- so it never keeps one of the ten; starting it again waits for taking
--- orders to be on, and then for whoever runs orders: not the clock editor
--- who stopped it. Nobody of another business stops one. Each write is its
--- own statement, read in the next.
+-- With taking orders off, a screen left running is still stopped, by a clock
+-- editor who doesn't run orders too (from the clock's lock on that device)
+-- and by whoever runs orders and doesn't edit the clock (the manager, lowered
+-- from it here), so it never keeps one of the ten; starting it again waits
+-- for taking orders to be on, and then for whoever runs orders: not the
+-- clock editor who stopped it. Nobody of another business stops one. Each
+-- write is its own statement, read in the next.
 update public.business_modules set enabled = false
 where business_id = pg_temp.a() and module_key = 'order_taking';
+insert into public.role_permissions (business_id, role, perm, allowed)
+values (pg_temp.a(), 'manager', 'clock.edit', false);
 insert into got values ('off', to_jsonb(concat_ws('|',
   pg_temp.refusal(format($$select public.station_order_prep(%L, null, %L)$$, pg_temp.h('kitchen'), pg_temp.at(960))),
   pg_temp.refusal(format($$select public.set_clock_station_stopped(%L, %L, true, %L)$$,
     pg_temp.p(6), pg_temp.id('till'), pg_temp.at(960))),
+  pg_temp.refusal(format($$select public.set_clock_station_stopped(%L, %L, true, %L)$$,
+    pg_temp.p(2), pg_temp.id('bar'), pg_temp.at(962))),
   pg_temp.refusal(format($$select public.set_clock_station_stopped(%L, %L, false, %L)$$,
     pg_temp.p(2), pg_temp.id('till'), pg_temp.at(970)))
 )));
+delete from public.role_permissions
+where business_id = pg_temp.a() and role = 'manager' and perm = 'clock.edit';
 update public.business_modules set enabled = true
 where business_id = pg_temp.a() and module_key = 'order_taking';
 insert into got values ('on again', to_jsonb(concat_ws('|',
@@ -790,9 +797,11 @@ insert into got values ('on again', to_jsonb(concat_ws('|',
 select is(
   (pg_temp.got('off') #>> '{}')
     || '|' || (pg_temp.got('on again') #>> '{}')
-    || '|' || (select (s.stopped_at is not null)::text from public.clock_stations s where s.id = pg_temp.id('till')),
-  '42501 off|none|42501 off|42501|42501|true',
-  'with taking orders off its screens read nothing, a clock editor still stops the till and nobody starts it again; on again, the clock editor doesn''t either, nor does another business''s owner stop a screen'
+    || '|' || (select (s.stopped_at is not null)::text from public.clock_stations s where s.id = pg_temp.id('till'))
+    || '|' || (select (s.stopped_at is not null and s.stopped_by = pg_temp.p(2))::text
+               from public.clock_stations s where s.id = pg_temp.id('bar')),
+  '42501 off|none|none|42501 off|42501|42501|true|true',
+  'with taking orders off its screens read nothing, a clock editor still stops the till, whoever runs orders but doesn''t edit the clock the bar''s screen, and nobody starts one again; on again, the clock editor doesn''t either, nor does another business''s owner stop a screen'
 );
 
 ------------------------------------------------------------------------------
@@ -828,8 +837,8 @@ select is(
 select is(
   (select count(*)::integer from public.audit_log a
    where a.business_id = pg_temp.a() and a.action like 'order.station.%'),
-  8,
-  'five locks, two stops and a restart, each logged once'
+  9,
+  'five locks, three stops and a restart, each logged once'
 );
 
 ------------------------------------------------------------------------------
