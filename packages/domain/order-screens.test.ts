@@ -12,6 +12,7 @@ import {
   freePlaces,
   lineFixes,
   minutesSince,
+  orderDraftKey,
   orderModeEntry,
   orderModeItems,
   pickState,
@@ -178,6 +179,19 @@ describe("the draft", () => {
     expect(draftKey({ place: PLACE })).toBe(`place:${PLACE}`);
     expect(draftKey({ takeaway: null })).toBe("takeaway:new");
     expect(draftKey({ takeaway: ORDER })).toBe(`takeaway:${ORDER}`);
+  });
+
+  it("finds the draft an order's sends go from: its place's, or its takeaway's", () => {
+    expect(orderDraftKey({ id: ORDER, place: { id: PLACE } })).toBe(
+      draftKey({ place: PLACE }),
+    );
+    expect(orderDraftKey({ id: ORDER, place: null })).toBe(
+      draftKey({ takeaway: ORDER }),
+    );
+    // Never the new takeaway's: an order has its own.
+    expect(orderDraftKey({ id: ORDER, place: null })).not.toBe(
+      draftKey({ takeaway: null }),
+    );
   });
 
   it("sends to the open order with its place, a first send to the place, or a takeaway", () => {

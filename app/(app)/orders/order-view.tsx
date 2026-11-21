@@ -183,7 +183,8 @@ function withShown(
  * "ביטול"; a line fix and a whole order's cancel wait 8 seconds, a close
  * and a move are written at once and undone by a write (the plan's T2): the
  * move back, and the close taken back whole, what it served back in the
- * kitchen. They wait while a round of this screen is on its way.
+ * kitchen. They wait while a round of this screen is on its way, and the
+ * send waits while one of them is.
  */
 export function OrderView({
   where,
@@ -392,6 +393,11 @@ export function OrderView({
   // was (this screen's, or one that went again after the mode was left or
   // the tab read again). What is added meanwhile waits, and is that order's.
   const busySending = sending || sendWaits(key, pending.length);
+  // Nor does a send go while the whole order's cancel waits, or while a
+  // close or a move is on its way, as they wait for a round on its way: the
+  // close would serve it before the kitchen saw it, and the move would leave
+  // it refused at the old place, its lines in a draft no screen shows.
+  const sendLocked = frame.viewing || cancelHeld || busy;
   const newTakeaway = where.kind === "takeaway" && where.order === null;
   const onWayKeys = newTakeaway ? pending.map((p) => p.key).join(" ") : "";
   useEffect(() => {
@@ -470,9 +476,7 @@ export function OrderView({
     }),
   ) {
     const lines = roundOf(drafts.get(key));
-    if (lines.length === 0 || busySending || frame.viewing || cancelHeld) {
-      return;
-    }
+    if (lines.length === 0 || busySending || sendLocked) return;
     setSending(true);
     setView("order");
     const outcome = await sender.send(key, target, lines);
@@ -795,17 +799,20 @@ export function OrderView({
         routes={routes}
         onClick={() => void send()}
         floating={floating}
-        disabled={frame.viewing || cancelHeld}
+        disabled={sendLocked}
         loading={busySending}
       />
     );
 
+  // A refusal's way to send again waits as the send does, the refusal kept.
   const refused = refusal ? (
     <RefusalLine
       title={title}
       menu={menu}
       failure={refusal}
+      disabled={sendLocked || busySending}
       onAgain={(target) => {
+        if (sendLocked || busySending) return;
         sender.clearRefusal(key);
         void send(target);
       }}
@@ -816,7 +823,9 @@ export function OrderView({
   // "ההזמנה כולה": closing, moving and cancelling, for an open order. Each
   // waits while a round of this screen is on its way, and says so: a close
   // would serve it before the kitchen saw it, or refuse it, and a move would
-  // leave it refused at the old place, its lines in that place's draft.
+  // leave it refused at the old place, its lines in that place's draft. The
+  // send waits for a close or a move on its way in turn (`sendLocked`), and
+  // the till's close for a round on its way too.
   const sendOnWay = pending.length > 0 || busySending;
   const locked = frame.viewing || cancelHeld || busy || sendOnWay;
   const waitSend = sendOnWay ? t("order.actions.waitSend") : null;
@@ -1140,12 +1149,15 @@ function RefusalLine({
   menu,
   failure,
   place,
+  disabled,
   onAgain,
 }: {
   title: string;
   menu: Menu | null;
   failure: SendRefusal;
   place: string | null;
+  /** The send waits (a close or a move on its way): its way waits too. */
+  disabled: boolean;
   onAgain: (target: RoundTarget) => void;
 }) {
   const { t } = useOrderWords();
@@ -1161,6 +1173,7 @@ function RefusalLine({
         <Button
           variant="secondary"
           className="mt-2"
+          disabled={disabled}
           onClick={() => onAgain(place ? { order, place } : { order })}
         >
           {t("failed.takenAdd")}
@@ -1175,6 +1188,7 @@ function RefusalLine({
         <Button
           variant="secondary"
           className="mt-2"
+          disabled={disabled}
           onClick={() => onAgain(place ? { place } : { takeaway: true })}
         >
           {t("failed.closedAgain")}

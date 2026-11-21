@@ -44,6 +44,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { inTurn, writesOnWay } from "./in-turn";
 import { newId } from "./new-id";
 import { OrdersModeContext, useModeToast } from "./orders-mode";
 import { usePlaceWords } from "./orders-parts";
@@ -366,6 +367,8 @@ export function OrdersModeProvider({
    * those put back here, until a read made after the put-back.
    */
   const [marks] = useState(readyMarks);
+  /** The writes on their way, for a close or a move to wait its turn. */
+  const [onWay] = useState(writesOnWay);
   /** The latest server time heard, which the clock never goes back from. */
   const heardAt = useRef<number | null>(null);
   /** Each round with a send trying it, by its key: never two for one. */
@@ -896,17 +899,24 @@ export function OrdersModeProvider({
   );
 
   // A ticket marked ready here is no news to this phone, until it is put
-  // back here and a read made after that has come.
+  // back here and a read made after that has come. A close or a move goes
+  // after every write sent before it, from whichever screen: a line's fix
+  // sent on leaving the order's screen lands before the till's close.
   const modeActions = useMemo<OrdersActions>(
-    () => ({
-      ...actions,
-      setReady: async (ticket, ready) => {
-        const result = await actions.setReady(ticket, ready);
-        if (result.ok) marks.said(ticket, ready);
-        return result;
-      },
-    }),
-    [actions, marks],
+    () =>
+      inTurn<OrdersActions>(
+        {
+          ...actions,
+          setReady: async (ticket, ready) => {
+            const result = await actions.setReady(ticket, ready);
+            if (result.ok) marks.said(ticket, ready);
+            return result;
+          },
+        },
+        ["close", "move"],
+        onWay,
+      ),
+    [actions, marks, onWay],
   );
 
   // The items' counts, as the sync hears them.

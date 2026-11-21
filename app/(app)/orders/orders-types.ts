@@ -63,7 +63,11 @@ export type OrdersActionResult<T = null> =
   | { ok: true; value: T }
   | { ok: false; failure: OrdersActionFailure };
 
-/** The writes on the mode's screens besides the send, each bound to the business. */
+/**
+ * The writes on the mode's screens besides the send, each bound to the
+ * business. The app's close and move go after every write sent before them,
+ * whichever screen sent it (`inTurn`); the twin's land at once, in turn.
+ */
 export type OrdersActions = {
   serve: (ticket: string, served: boolean) => Promise<OrdersActionResult>;
   setReady: (ticket: string, ready: boolean) => Promise<OrdersActionResult>;

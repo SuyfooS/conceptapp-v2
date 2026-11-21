@@ -1,6 +1,6 @@
 "use client";
 
-import { closeState, reopenState } from "@domain/order-screens";
+import { closeState, orderDraftKey, reopenState } from "@domain/order-screens";
 import {
   type OrderDetail,
   type OrderFloor,
@@ -34,10 +34,11 @@ import {
  * struck. Drawn from the order whole (`orderTill`), so it stays current with
  * the mode's sync. Phone and tablet: one view at a time. Desktop: both side
  * by side. The main action closes an open order (refused while a held
- * block waits, with its "ביטול" that opens it again and gives the kitchen
- * back what the close served), or opens a closed one again the same day
- * while its place is free; a cancelled order says who cancelled it and why,
- * with no list.
+ * block waits, waiting while a round of it is on its way, as on its screen,
+ * and with its "ביטול" that opens it again and gives the kitchen back what
+ * the close served), or opens a closed one again the same day while its
+ * place is free; a cancelled order says who cancelled it and why, with no
+ * list.
  */
 export function TillView({
   order,
@@ -117,6 +118,14 @@ function Till({
   const open = order.status === "open";
   const closing = closeState(order, frame.departmentOrder);
   const reopen = floor ? reopenState(order, floor) : "ok";
+  // A round of the order on its way (sent from its screen, waiting on a slow
+  // link or offline): the close waits for it and says so, as on the order's
+  // screen. Closed first, it would serve that round before the kitchen saw
+  // it, or refuse it, its lines back in the draft. A line's fix sent on
+  // leaving that screen goes first on its own: the mode's close waits for
+  // the writes on their way (`inTurn`).
+  const sendOnWay =
+    open && mode.sender.pending(orderDraftKey(order)).length > 0;
 
   async function write(
     run: () => ReturnType<typeof actions.close>,
@@ -209,13 +218,15 @@ function Till({
 
   // Why the main action waits, said beside it.
   const why = open
-    ? closing.held
-      ? t("close.held")
-      : closing.unserved.length > 0
-        ? t("close.unserved", {
-            departments: closing.unserved.map(department).join(", "),
-          })
-        : null
+    ? sendOnWay
+      ? t("order.actions.waitSend")
+      : closing.held
+        ? t("close.held")
+        : closing.unserved.length > 0
+          ? t("close.unserved", {
+              departments: closing.unserved.map(department).join(", "),
+            })
+          : null
     : order.status === "closed"
       ? reopen === "taken"
         ? t("failed.reopenTaken")
@@ -227,7 +238,7 @@ function Till({
   const action = open ? (
     <Button
       size="lg"
-      disabled={frame.viewing || closing.held || busy}
+      disabled={frame.viewing || closing.held || sendOnWay || busy}
       loading={busy}
       onClick={() => void close()}
     >

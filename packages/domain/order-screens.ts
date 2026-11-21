@@ -414,6 +414,20 @@ export function draftKey(
 }
 
 /**
+ * The draft an order's sends go from (P5): its place's, or its takeaway's
+ * own. The till reads the rounds of it still on their way, and waits for
+ * them before a close, as the order's screen does.
+ */
+export function orderDraftKey(order: {
+  id: string;
+  place: { id: string } | null;
+}): string {
+  return order.place
+    ? draftKey({ place: order.place.id })
+    : draftKey({ takeaway: order.id });
+}
+
+/**
  * Where a draft's send goes: an open order (with its place, so one moved
  * since is refused), a first send to a place, or a new takeaway with its
  * label.

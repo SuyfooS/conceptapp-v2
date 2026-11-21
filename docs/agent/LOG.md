@@ -28,6 +28,9 @@ what is next, defaults applied.
   - e2e: the till walk puts table 4's seeded order on today's business day first (`demoOrderToToday`), so a reset just after 05:00 no longer leaves it on yesterday's.
   - Close, move and cancel-order wait while a round of the screen is on its way, and say so (`order.actions.waitSend`): a close no longer serves a round the kitchen never saw, nor a move strands one at the old table.
   - The order's sheets close when its open order changes (closed or moved elsewhere, from another phone too), so none opens again over the next order at that place.
+- After the third review:
+  - The till's close waits while a round of the order is on its way and says so (`order.actions.waitSend`, `orderDraftKey`); the app's close and move go after every write sent before them (`inTurn`), so a line's fix sent on leaving the order's screen lands first. Both unit-tested; "לקופה" stays a link, as the till waits on its own.
+  - The send and a refusal's way to send again wait while a close or a move is on its way (`sendLocked`), so the race no longer happens the other way round.
 
 ## 2026-11-21 · chat · taking orders: send and prepare, on screen (waiter mode P4)
 
