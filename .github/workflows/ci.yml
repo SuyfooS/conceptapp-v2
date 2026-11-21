@@ -178,7 +178,10 @@ jobs:
   # After check and database pass: a red PR doesn't spend the time on e2e.
   # One job per screen size, side by side, each with its own database: the
   # sizes no longer share the demo data, and the run takes a third of the
-  # time it took in one job (it had reached the 45-minute limit).
+  # time it took in one job (it had reached the 45-minute limit). By 21
+  # November 2026 the desktop job alone took 38 to 45 minutes (1083 tests, one
+  # worker), and a run stopped at 1004 with none failed, so the limit is 60;
+  # once a job passes 50 minutes, split each size in two with --shard.
   e2e:
     name: e2e (${{ matrix.project }})
     needs: [gate, check, database]
@@ -186,7 +189,7 @@ jobs:
       ${{ !cancelled() && needs.gate.outputs.tested != 'yes'
         && needs.check.result == 'success' && needs.database.result == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
