@@ -36,6 +36,7 @@ export function ClockView({
   actions,
   paths,
   wording,
+  modes = null,
 }: {
   data: ClockData;
   /** Their own month in shekels (`currentOwnPay`); null when it isn't shown. */
@@ -44,6 +45,11 @@ export function ClockView({
   paths: ClockPaths;
   /** The business's words. */
   wording: AppWording;
+  /**
+   * The modes' ways in while on a shift (waiter mode, P4): first in the
+   * second column, where the shift has begun.
+   */
+  modes?: ReactNode;
 }) {
   const t = translator(wording, "app.clock");
   const tPay = translator(wording, "app.pay");
@@ -63,6 +69,7 @@ export function ClockView({
         </div>
 
         <div className="flex flex-col gap-6">
+          {data.open ? modes : null}
           <Card tone="float" padding="none" className="overflow-hidden">
             <dl className="grid grid-cols-2">
               <Hours

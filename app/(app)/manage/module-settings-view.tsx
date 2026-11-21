@@ -16,6 +16,7 @@ export function ModuleSettingsView({
   readOnly,
   backHref,
   wording,
+  departments = [],
 }: {
   module: ModuleKey;
   fields: SettingField[];
@@ -26,6 +27,8 @@ export function ModuleSettingsView({
   backHref: string;
   /** The business's words. */
   wording: AppWording;
+  /** The business's live departments, for a setting chosen from them. */
+  departments?: readonly { key: string; name: string }[];
 }) {
   const t = translator(wording, "app.manage");
   const tm = translator(wording, "modules");
@@ -42,6 +45,8 @@ export function ModuleSettingsView({
         values={values}
         save={save}
         readOnly={readOnly}
+        departments={departments}
+        departmentsHref="/manage/departments"
       />
     </PageBody>
   );

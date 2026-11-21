@@ -5,8 +5,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import {
+  createContext,
   type PointerEvent,
   type ReactNode,
+  useCallback,
+  useContext,
   useEffect,
   useRef,
   useState,
@@ -27,6 +30,8 @@ export type NavItem = {
   icon: ReactNode;
   /** Match only this exact path (use for the home item). */
   exact?: boolean;
+  /** Other paths under which it is the current item (a mode's places, for an order of one). */
+  also?: readonly string[];
   /**
    * Small count shown on the item, read out as needing action: pending
    * requests, or the notifications that ask the person to act.
@@ -50,17 +55,49 @@ export type AppShellProps = {
    */
   businesses?: { list: BusinessChoice[]; action: ChooseBusiness } | null;
   /**
-   * The mode the screens are in, when the app draws a mode's own items
-   * (waiter mode): under the business's name in the sidebar, so a desktop
-   * says where it is, as each of the mode's screens does in its eyebrow.
+   * The app's modes (waiter mode, P4): while the path is a mode's `href` or
+   * under it, the bar and the sidebar draw its own items in place of `nav`
+   * (at most five, the same on every device), and the sidebar its name under
+   * the business's, so a desktop says where it is, as each of the mode's
+   * screens does in its eyebrow.
    */
-  mode?: string;
+  modes?: { href: string; name: string; nav: NavItem[] }[];
   children: ReactNode;
 };
 
+/** Sets an item's count from a screen; undefined gives it back to the server's. */
+type SetCount = (href: string, count: number | undefined) => void;
+
+const NavCountContext = createContext<SetCount | null>(null);
+
+/**
+ * Keeps an item's count current from a screen that knows better than the
+ * last drawing (the mode's sync: what is ready to serve, what is sold out),
+ * while the screen is on, with no drawing again from the server. Outside an
+ * AppShell it does nothing.
+ */
+export function useNavCount(href: string, count: number | undefined) {
+  const set = useContext(NavCountContext);
+  useEffect(() => {
+    if (!set) return;
+    set(href, count);
+    return () => set(href, undefined);
+  }, [set, href, count]);
+}
+
+/** The mode the path is in, if any. */
+function modeAt(pathname: string, modes: AppShellProps["modes"]) {
+  return modes?.find(
+    (mode) => pathname === mode.href || pathname.startsWith(`${mode.href}/`),
+  );
+}
+
 function isActive(pathname: string, item: NavItem) {
+  const under = (href: string) =>
+    pathname === href || pathname.startsWith(`${href}/`);
+  if (item.also?.some(under)) return true;
   if (item.exact) return pathname === item.href;
-  return pathname === item.href || pathname.startsWith(`${item.href}/`);
+  return under(item.href);
 }
 
 /**
@@ -366,11 +403,24 @@ export function AppShell({
   user,
   nav,
   businesses,
-  mode,
+  modes,
   children,
 }: AppShellProps) {
   const { pathname, shown, press } = usePressedPath();
   const t = useTranslations("ui.appShell");
+  const [counts, setCounts] = useState<Record<string, number>>({});
+  const setCount = useCallback<SetCount>((href, count) => {
+    setCounts((now) => {
+      if (now[href] === count) return now;
+      const { [href]: _, ...rest } = now;
+      return count === undefined ? rest : { ...rest, [href]: count };
+    });
+  }, []);
+  const inMode = modeAt(pathname, modes);
+  const mode = inMode?.name;
+  const items = (inMode?.nav ?? nav).map((item) =>
+    item.href in counts ? { ...item, count: counts[item.href] } : item,
+  );
 
   return (
     <div className="min-h-dvh bg-bg">
@@ -380,10 +430,15 @@ export function AppShell({
           {/* The same mark as the switcher's, in the business's colour. */}
           <BusinessMark name={businessName} />
           {businesses && businesses.list.length > 1 ? (
-            <BusinessMenu
-              businesses={businesses.list}
-              action={businesses.action}
-            />
+            <span className="flex min-w-0 flex-1 flex-col">
+              <BusinessMenu
+                businesses={businesses.list}
+                action={businesses.action}
+              />
+              {mode ? (
+                <span className="px-1 text-ink-2 text-sm">{mode}</span>
+              ) : null}
+            </span>
           ) : mode ? (
             <span className="flex min-w-0 flex-col">
               <span className="font-bold text-md">{businessName}</span>
@@ -397,7 +452,7 @@ export function AppShell({
           aria-label={t("mainNav")}
           className="flex flex-1 flex-col gap-1 px-3"
         >
-          {nav.map((item) => {
+          {items.map((item) => {
             const active = isActive(shown, item);
             return (
               <Link
@@ -464,10 +519,12 @@ export function AppShell({
           whenImmersive.room,
         )}
       >
-        {children}
+        <NavCountContext.Provider value={setCount}>
+          {children}
+        </NavCountContext.Provider>
       </div>
 
-      <TabBar nav={nav} />
+      <TabBar nav={items} />
     </div>
   );
 }

@@ -127,6 +127,7 @@ export function ProfileEditor({
   notifications,
   businesses,
   documents,
+  modes,
 }: {
   name: string;
   photo: string | null;
@@ -146,6 +147,8 @@ export function ProfileEditor({
   businesses?: ReactNode;
   /** "המסמכים שלי" (chat C7), where documents are the person's. */
   documents?: ReactNode;
+  /** The ways into the modes the person is in (waiter mode, P4). */
+  modes?: ReactNode;
 }) {
   const t = useTranslations("app");
   const tp = useTranslations("ui.photoPicker");
@@ -395,6 +398,8 @@ export function ProfileEditor({
             />
           </ListGroup>
         </PageSection>
+
+        {modes}
 
         {documents}
 

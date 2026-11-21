@@ -3,9 +3,7 @@
 import { messageTime } from "@domain/chat-days";
 import { formatShekels, moneyLocale } from "@domain/money";
 import { ISRAEL_TIME_ZONE } from "@domain/shabbat";
-import { Badge } from "@ui/badge";
 import { cn } from "@ui/cn";
-import { type PlaceTileTone, PlaceTile as UiPlaceTile } from "@ui/place-tile";
 import { StatusToast } from "@ui/status-toast";
 import { OrderLine, type TicketAge, TicketCard } from "@ui/ticket-card";
 import { TillList } from "@ui/till-list";
@@ -13,13 +11,7 @@ import { Info } from "lucide-react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useRef, useState } from "react";
-import {
-  orderDemoDepartments,
-  orderDemoPeople,
-  orderDemoTables,
-  READER,
-  READER_DEPARTMENTS,
-} from "./data";
+import { orderDemoDepartments, orderDemoPeople, orderDemoTables } from "./data";
 import {
   type DepartmentKey,
   LATE_AFTER_MINUTES,
@@ -28,13 +20,11 @@ import {
   type Order,
   openTicket,
   type Place,
-  type PlaceStatus,
   type Round,
   roundLines,
   type SentLine,
   type Ticket,
   type TillItem,
-  takeawaysOnFloor,
   ticketSince,
   tillByItem,
 } from "./model";
@@ -123,13 +113,6 @@ export const placeById = (data: DemoData, id: string | null) =>
 export const openOrderOf = (data: DemoData, placeId: string) =>
   data.orders.find((order) => order.placeId === placeId);
 
-/** The takeaways on the floor: open, or new with a draft; a closed one is gone. */
-export const floorTakeaways = (data: DemoData) =>
-  takeawaysOnFloor(data.takeaways, data.orders, data.drafts);
-
-/** Who looks at the demo: Shiran, a manager in the bar. */
-export const viewer = { id: READER, departments: READER_DEPARTMENTS };
-
 /** "שולחן 4", "לקחת 2", or a takeaway still being taken. */
 export function placeTitle(t: OrderT, place: Place): string {
   if (place.kind === "table")
@@ -142,90 +125,6 @@ export function placeTitle(t: OrderT, place: Place): string {
 /** How long ago, in words: "עכשיו", "לפני 6 דק׳". */
 export function ago(t: OrderT, at: number, now: number): string {
   return t("age.ago", { count: minutesSince(at, now) });
-}
-
-/** A place's one state, in words: its tile, its row in a list. */
-export function placeStateWords(
-  t: OrderT,
-  status: PlaceStatus,
-  draft = 0,
-): string {
-  switch (status.kind) {
-    case "ready":
-      return t("floor.state.ready");
-    case "late":
-      return t("floor.state.late", { count: status.minutes });
-    case "open":
-      return t("floor.state.open", { count: status.minutes });
-    default:
-      return draft > 0
-        ? t("floor.state.draft", { count: draft })
-        : t("floor.state.free");
-  }
-}
-
-/**
- * A place on the floor, as `PlaceTile` draws it: its kind above its name,
- * its one state in words, and who opened it.
- */
-export function PlaceTile({
-  t,
-  place,
-  status,
-  by,
-  draft,
-  href,
-}: {
-  t: OrderT;
-  place: Place;
-  status: PlaceStatus;
-  /** Who opened it, for an open one. */
-  by: string | null;
-  /** Items in its draft not sent yet. */
-  draft: number;
-  href: string;
-}) {
-  const tone: PlaceTileTone =
-    status.kind === "free" ? (draft > 0 ? "draft" : "free") : status.kind;
-  return (
-    <UiPlaceTile
-      href={href}
-      kind={
-        place.kind === "table" ? t("place.tableWord") : t("place.takeawayWord")
-      }
-      name={
-        place.kind === "takeaway" && place.name === null
-          ? t("place.newShort")
-          : (place.name ?? "")
-      }
-      state={placeStateWords(t, status, draft)}
-      tone={tone}
-      by={by}
-      label={place.label}
-    />
-  );
-}
-
-/** A ticket's state for the person who sent it, in words as well as colour. */
-export function TicketStateBadge({ t, ticket }: { t: OrderT; ticket: Ticket }) {
-  const department = departmentName(ticket.department);
-  if (ticket.held && ticket.state === "new") {
-    return <Badge>{t("ticketState.held")}</Badge>;
-  }
-  switch (ticket.state) {
-    case "ready":
-      return (
-        <Badge tone="accent">{t("ticketState.ready", { department })}</Badge>
-      );
-    case "served":
-      return <Badge tone="success">{t("ticketState.served")}</Badge>;
-    default:
-      return ticket.seen ? (
-        <Badge>{t("ticketState.onScreen", { department })}</Badge>
-      ) : (
-        <Badge>{t("ticketState.sent")}</Badge>
-      );
-  }
 }
 
 /**

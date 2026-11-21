@@ -26,8 +26,8 @@ describe("proxy", () => {
   });
 
   it("guards the orders screens, which have no tab", () => {
-    // Taking orders' menu (waiter mode P2), reached from the management
-    // page until the mode has its own items (P4).
+    // Taking orders' screens: the menu (waiter mode P2) and the mode's own
+    // (P4), which has no tab of the app's.
     expect(source).toContain('"/orders",');
     expect(source).toContain('"/orders/:path*"');
   });
@@ -62,11 +62,13 @@ describe("proxy", () => {
     expect(source).toContain('"/document-files/:path*"');
   });
 
-  it("guards every module screen", () => {
+  it("guards every module screen, and every mode's", () => {
     for (const m of manifests) {
-      if (!m.nav) continue;
-      expect(source).toContain(`"${m.nav.href}",`);
-      expect(source).toContain(`"${m.nav.href}/:path*"`);
+      for (const href of [m.nav?.href, m.mode?.href]) {
+        if (!href) continue;
+        expect(source).toContain(`"${href}",`);
+        expect(source).toContain(`"${href}/:path*"`);
+      }
     }
   });
 
@@ -99,7 +101,15 @@ describe("proxy", () => {
         ? path === pattern.slice(0, -"/:path*".length) ||
           path.startsWith(pattern.slice(0, -":path*".length))
         : path === pattern;
-    for (const path of ["/chat-sync", "/chat-sync/x", "/push/inbox"]) {
+    // The mode's sync and send (P4) too: asked every 15 seconds, and sent
+    // with keepalive; each answers a signed-out caller 401.
+    for (const path of [
+      "/chat-sync",
+      "/chat-sync/x",
+      "/push/inbox",
+      "/orders-sync",
+      "/orders-send",
+    ]) {
       expect(listed.filter((pattern) => matches(pattern, path))).toEqual([]);
     }
     expect(listed.some((pattern) => matches(pattern, "/chat"))).toBe(true);
@@ -114,5 +124,9 @@ describe("proxy", () => {
       listed.some((pattern) => matches(pattern, "/document-files/download")),
     ).toBe(true);
     expect(source).not.toContain('"/chat-sync');
+    expect(source).not.toContain('"/orders-s');
+    expect(listed.some((pattern) => matches(pattern, "/orders/mine"))).toBe(
+      true,
+    );
   });
 });

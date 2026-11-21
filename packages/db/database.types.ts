@@ -4153,6 +4153,7 @@ export type Database = {
         Args: { business: string; known_version?: number };
         Returns: Json;
       };
+      order_mode: { Args: { business: string }; Returns: Json };
       order_prep: {
         Args: { business: string; known_version?: number };
         Returns: Json;

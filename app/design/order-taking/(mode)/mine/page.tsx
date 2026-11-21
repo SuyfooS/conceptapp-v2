@@ -1,12 +1,12 @@
 import { DemoScreen } from "../../demo-store";
-import { MineScreen } from "./mine-screen";
+import { MineTwin } from "../twins";
 
-// What Shiran sent tonight, ready to serve first. `?state=nothingSent` is
-// an evening when she hasn't sent anything yet.
+// What Shiran sent this evening, ready first, on the app's own screen (P4).
+// `?state=nothingSent` is the evening before she sent anything.
 export default function OrderMinePage() {
   return (
     <DemoScreen>
-      <MineScreen />
+      <MineTwin />
     </DemoScreen>
   );
 }

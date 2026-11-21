@@ -1,3 +1,4 @@
+import { getDepartments } from "@db/departments";
 import {
   type ModuleManifest,
   moduleKeyOf,
@@ -41,10 +42,17 @@ export default async function ManageModulePage({
     notFound();
   }
   const manifest: ModuleManifest = manifestFor(key);
+  const fields = fieldsFor(manifest.settings, access.level);
+  // A setting chosen from the departments (who takes orders): the live ones.
+  const departments = fields.some(
+    (field) => field.kind === "editor" && field.editor === "departments",
+  )
+    ? await getDepartments(access.businessId)
+    : [];
   return (
     <ModuleSettingsView
       module={key}
-      fields={fieldsFor(manifest.settings, access.level)}
+      fields={fields}
       values={
         readModuleSettings(
           manifest,
@@ -55,6 +63,13 @@ export default async function ManageModulePage({
       readOnly={readOnlyFor(access, key)}
       backHref="/manage"
       wording={wording}
+      departments={
+        departments === "notYet"
+          ? []
+          : departments
+              .filter((d) => d.archivedAt === null)
+              .map((d) => ({ key: d.key, name: d.name }))
+      }
     />
   );
 }

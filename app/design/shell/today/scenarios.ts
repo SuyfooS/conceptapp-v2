@@ -20,6 +20,7 @@ import { demoStations } from "../clock/team/data";
 import {
   business,
   demoBusinessDetails,
+  demoOrdersMode,
   demoPositions,
   demoShiftPatterns,
   teamAnswers,
@@ -201,9 +202,12 @@ function today(
     modules = DEMO_MODULES,
     now = NOW,
     perms = byDefault(role),
+    modes,
   }: {
     modules?: ModuleKey[];
     now?: string;
+    /** The modes the person is in (waiter mode, P4). */
+    modes?: TodayData["modes"];
     /**
      * What the database answers the person holds: by default, what their
      * role holds with no business choosing anything for it.
@@ -228,6 +232,7 @@ function today(
     bell: role === "worker" ? null : { unread: demoUnread.length },
     // Shiran's lists for the managers, Noa's for the workers.
     lists: role === "worker" ? demoWorkerLists() : demoListsHome(),
+    modes,
   };
 }
 
@@ -340,7 +345,8 @@ export const todayScenarios = {
       "shiran",
       "manager",
       scheduleFor("manager", published("shiran", SWAPS), true, true),
-      { now: "2026-11-03T08:30:00.000Z" },
+      // On a shift in the restaurant, taking orders: the mode's card (P4).
+      { now: "2026-11-03T08:30:00.000Z", modes: [{ ...demoOrdersMode }] },
     ),
   /** Shiran before she sent her own availability: a fifth tile joins. */
   availabilityMissing: () =>

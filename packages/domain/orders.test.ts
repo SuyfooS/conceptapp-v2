@@ -6,12 +6,14 @@ import {
   orderDay,
   orderDetailSchema,
   orderFloorSchema,
+  orderModeSchema,
   orderPrepSchema,
   orderTillSchema,
   roundInput,
   roundLine,
   roundTarget,
   sentRoundSchema,
+  takeBackOffered,
   takeBackState,
   ticketWait,
 } from "./orders";
@@ -433,5 +435,152 @@ describe("the reads", () => {
     const pricedTicket = structuredClone(prep);
     Object.assign(pricedTicket.tickets[0] ?? {}, { priceAgorot: 3200 });
     expect(orderPrepSchema.safeParse(pricedTicket).success).toBe(false);
+  });
+});
+
+describe("the mode's reads (P4)", () => {
+  const mode = {
+    version: 7,
+    takes: true,
+    runs: false,
+    viewing: false,
+    clock: "stale_shift",
+    departments: [OTHER],
+    ready: 1,
+    making: 2,
+    waiting: [{ department: OTHER, count: 2 }],
+    soldOut: 1,
+  };
+
+  it("read where the person stands in the mode, the clock's words as the app's", () => {
+    expect(orderModeSchema.parse(mode).clock).toBe("staleShift");
+    expect(orderModeSchema.parse({ ...mode, clock: "clock" }).clock).toBe(
+      "clock",
+    );
+    expect(orderModeSchema.parse({ ...mode, clock: null }).clock).toBeNull();
+    // Strict: a person or a price that reached it fails.
+    expect(orderModeSchema.safeParse({ ...mode, person: ID }).success).toBe(
+      false,
+    );
+    expect(
+      orderModeSchema.safeParse({
+        ...mode,
+        waiting: [{ department: OTHER, count: 1, unitAgorot: 100 }],
+      }).success,
+    ).toBe(false);
+  });
+
+  const ticket = {
+    id: ID,
+    department: OTHER,
+    status: "ready",
+    held: false,
+    kitchenSeenAt: T,
+    readyAt: T,
+    servedAt: null,
+    lines: 1,
+  };
+  const mine = (tickets: unknown[]) => ({
+    version: 3,
+    now: T,
+    day: "2026-11-20",
+    rounds: [
+      {
+        id: ID,
+        order: OTHER,
+        placeName: "4",
+        takeaway: null,
+        orderStatus: "open",
+        sentAt: T,
+        tickets,
+      },
+    ],
+  });
+  const item = {
+    id: ID,
+    name: "חומוס",
+    choices: ["גדול"],
+    quantity: 1,
+    note: null,
+    allergy: false,
+    state: "live",
+  };
+
+  it("read one's own tickets with their lines, none before the migration, never a price", () => {
+    expect(
+      myOrdersSchema.parse(mine([ticket])).rounds[0]?.tickets[0]?.items,
+    ).toEqual([]);
+    expect(
+      myOrdersSchema.parse(mine([{ ...ticket, items: [item] }])).rounds[0]
+        ?.tickets[0]?.items,
+    ).toEqual([item]);
+    expect(
+      myOrdersSchema.safeParse(
+        mine([{ ...ticket, items: [{ ...item, unitAgorot: 3200 }] }]),
+      ).success,
+    ).toBe(false);
+  });
+
+  const floor = {
+    version: 1,
+    now: T,
+    day: "2026-11-20",
+    runs: false,
+    orders: [],
+    closed: [],
+    fixes: null,
+  };
+  const ready = {
+    ticket: ID,
+    order: OTHER,
+    department: OTHER,
+    placeName: "4",
+    takeaway: null,
+    readyAt: T,
+    sentBy: null,
+    lines: [
+      {
+        id: ID,
+        name: "חומוס",
+        choices: [],
+        quantity: 2,
+        note: "בלי שום",
+        allergy: false,
+      },
+    ],
+  };
+
+  it("read what is ready to serve on the floor, none before the migration, never a price", () => {
+    expect(orderFloorSchema.parse(floor).ready).toEqual([]);
+    expect(orderFloorSchema.parse({ ...floor, ready: [ready] }).ready).toEqual([
+      ready,
+    ]);
+    expect(
+      orderFloorSchema.safeParse({
+        ...floor,
+        ready: [{ ...ready, lines: [{ ...ready.lines[0], unitAgorot: 3200 }] }],
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("offering a take-back (P4)", () => {
+  const sentAt = new Date("2026-11-20T18:00:00Z");
+  const state = (seconds: number) => ({
+    sentAt,
+    now: new Date(sentAt.getTime() + seconds * 1000),
+    minutes: 2,
+    ticket: { status: "new" as const, prepared: false },
+    isSender: true,
+    senderInDepartment: false,
+    line: "live" as const,
+  });
+
+  it("offers it only while the held write still lands in the window", () => {
+    expect(takeBackOffered(state(0), 8000)).toBe(true);
+    expect(takeBackOffered(state(112), 8000)).toBe(true);
+    expect(takeBackOffered(state(113), 8000)).toBe(false);
+    expect(takeBackOffered({ ...state(0), isSender: false }, 8000)).toBe(false);
+    expect(takeBackOffered({ ...state(0), minutes: 0 }, 8000)).toBe(false);
   });
 });

@@ -26,6 +26,8 @@ export type StepperProps = {
   onKeyDown?: KeyboardEventHandler<HTMLInputElement>;
   /** When the typed number loses focus; the buttons never take it there. */
   onBlur?: () => void;
+  /** Nothing changes it (a view session): both buttons and the number. */
+  disabled?: boolean;
   className?: string;
 };
 
@@ -47,6 +49,7 @@ export function Stepper({
   describedBy,
   onKeyDown,
   onBlur,
+  disabled = false,
   className,
 }: StepperProps) {
   const current = Number(value);
@@ -61,7 +64,7 @@ export function Stepper({
       <IconButton
         label={decreaseLabel}
         icon={<Minus />}
-        disabled={current <= min}
+        disabled={disabled || current <= min}
         onClick={() => step(-1)}
       />
       <input
@@ -75,6 +78,7 @@ export function Stepper({
         onChange={(event) => onValueChange(event.target.value)}
         onKeyDown={onKeyDown}
         onBlur={onBlur}
+        disabled={disabled}
         aria-label={label}
         aria-invalid={invalid || undefined}
         aria-describedby={describedBy}
@@ -86,7 +90,7 @@ export function Stepper({
       <IconButton
         label={increaseLabel}
         icon={<Plus />}
-        disabled={current >= max}
+        disabled={disabled || current >= max}
         onClick={() => step(1)}
       />
     </span>

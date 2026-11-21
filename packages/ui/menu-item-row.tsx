@@ -14,6 +14,13 @@ export type MenuItemRowProps = {
   countLabel: string;
   /** Sold out tonight: greyed, saying so in these words ("נגמר"), and it can't be added. */
   soldOut?: string | null;
+  /**
+   * Why else one tap can't add it (a choice to make, no department), under
+   * its detail: greyed, and it can't be added.
+   */
+  reason?: string | null;
+  /** Nothing adds it here (a view session): greyed, as the screen's other actions. */
+  disabled?: boolean;
   /** One tap adds it, or opens its choices. */
   onPick: () => void;
 };
@@ -29,9 +36,11 @@ export function MenuItemRow({
   count,
   countLabel,
   soldOut = null,
+  reason = null,
+  disabled = false,
   onPick,
 }: MenuItemRowProps) {
-  const out = soldOut !== null;
+  const out = soldOut !== null || reason !== null || disabled;
   return (
     <li className="relative not-first:before:absolute not-first:before:start-4 not-first:before:end-0 not-first:before:top-0 not-first:before:h-px not-first:before:bg-line not-first:before:content-['']">
       <button
@@ -49,10 +58,11 @@ export function MenuItemRow({
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="font-medium">{name}</span>
           <span className="text-ink-2 text-sm">{detail}</span>
+          {reason ? <span className="text-ink-2 text-sm">{reason}</span> : null}
         </span>
-        {out ? (
+        {soldOut !== null ? (
           <Badge>{soldOut}</Badge>
-        ) : (
+        ) : out ? null : (
           <>
             {count > 0 ? (
               <span className="grid min-w-8 place-items-center rounded-full bg-accent-soft px-2 py-1 font-bold text-base tabular-nums">

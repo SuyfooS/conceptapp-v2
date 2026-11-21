@@ -15,6 +15,7 @@ import {
   atLeast,
   holdsPermission,
   isStaff,
+  MAX_MODE_NAV,
   MODULE_KEYS,
   type ModuleManifest,
   moduleIcon,
@@ -60,8 +61,49 @@ describe("module registry", () => {
     expect(hrefs).not.toContain("/home");
   });
 
-  it("only puts home cards on modules with a screen", () => {
-    for (const m of manifests) if (m.homeWidget) expect(m.nav).not.toBeNull();
+  it("only puts home cards on modules with a screen: a tab, or a mode shown on Home", () => {
+    for (const m of manifests) {
+      if (!m.homeWidget) continue;
+      expect(m.nav !== null || m.mode?.entries.includes("home"), m.key).toBe(
+        true,
+      );
+    }
+  });
+
+  it("gives each mode at most five items under its own path, each with its words", () => {
+    // A mode draws its items in the same shell while the path is its own
+    // (waiter mode P4): they fit the bar, lead inside it, and are named in
+    // both languages (modules.<key>.mode.<item>).
+    const modes = manifests.flatMap((m) =>
+      m.mode ? [{ key: m.key, mode: m.mode }] : [],
+    );
+    expect(modes.map((m) => m.key)).toEqual(["order_taking"]);
+    for (const { key, mode } of modes) {
+      expect(mode.items.length).toBeLessThanOrEqual(MAX_MODE_NAV);
+      expect(new Set(mode.items.map((i) => i.key)).size).toBe(
+        mode.items.length,
+      );
+      expect(new Set(mode.items.map((i) => i.href)).size).toBe(
+        mode.items.length,
+      );
+      for (const item of mode.items) {
+        expect(
+          item.href === mode.href || item.href.startsWith(`${mode.href}/`),
+          item.href,
+        ).toBe(true);
+        for (const also of item.also ?? []) {
+          expect(also.startsWith(`${mode.href}/`), also).toBe(true);
+        }
+        for (const words of [he, en]) {
+          const own = (words.modules[key] as { mode?: Record<string, string> })
+            .mode;
+          expect(own?.[item.key], `${key}.mode.${item.key}`).toBeTruthy();
+        }
+      }
+      // Its first item is its own path alone, so the others light up theirs.
+      expect(mode.items[0]?.href).toBe(mode.href);
+      expect(mode.items[0]?.exact).toBe(true);
+    }
   });
 
   it("names each permission once, the core ones included", () => {
@@ -310,11 +352,12 @@ describe("module registry", () => {
     ).toBe(0);
   });
 
-  it("gives taking orders one key of its own area, managers' by default, switched per role, and no tab", () => {
+  it("gives taking orders one key of its own area, managers' by default, switched per role, no tab and a mode", () => {
     // Waiter mode P1: private.runs_orders asks it (owners always hold it),
     // and private.settings_perm and private.log_perm name it
-    // (20261117000500_order_taking_menu.sql). No tab: the bar is full, and
-    // the mode draws its own items later; nothing on Home either.
+    // (20261117000500_order_taking_menu.sql). No tab: the bar is full. P4's
+    // mode draws its own items under /orders, and shows on Home, on the
+    // clock's live shift and on the profile.
     const manifest = manifestFor("order_taking");
     expect(manifest.permissions).toEqual([
       {
@@ -325,7 +368,15 @@ describe("module registry", () => {
       },
     ]);
     expect(manifest.nav).toBeNull();
-    expect(manifest.homeWidget).toBeNull();
+    expect(manifest.homeWidget).toEqual({ minRole: "worker" });
+    expect(manifest.mode?.href).toBe("/orders");
+    expect(manifest.mode?.entries).toEqual(["home", "clockIn", "me"]);
+    expect(manifest.mode?.items.map((item) => item.key)).toEqual([
+      "places",
+      "mine",
+      "prep",
+      "menu",
+    ]);
     expect(he.modules.order_taking.name).toBe("קבלת הזמנות");
     // Its own icon where it has no tab (P2): the pad on the roles screen,
     // not the management page's sliders.
@@ -350,26 +401,29 @@ describe("module registry", () => {
       lateAfterMinutes: 15,
       dayEndsAt: "05:00",
     });
-    // Who takes orders is on no screen until P4 draws its departments.
+    // Who takes orders, chosen from the business's departments (P4).
     const fields = describeSettings(manifest.settings);
     expect(fields.map((f) => f.key)).toEqual([
+      "takerDepartments",
       "onlyOnTheClock",
       "takeBackMinutes",
       "lateAfterMinutes",
       "dayEndsAt",
     ]);
+    expect(fields[0]).toMatchObject({ kind: "editor", editor: "departments" });
     expect(Object.fromEntries(fields.map((f) => [f.key, f.level]))).toEqual({
+      takerDepartments: "owner",
       onlyOnTheClock: "owner",
       takeBackMinutes: "owner",
       lateAfterMinutes: "business",
       dayEndsAt: "business",
     });
-    // A manager sees the two of the business's level; owners and the team all four.
+    // A manager sees the two of the business's level; owners and the team all five.
     expect(fieldsFor(manifest.settings, "business").map((f) => f.key)).toEqual([
       "lateAfterMinutes",
       "dayEndsAt",
     ]);
-    expect(fieldsFor(manifest.settings, "owner")).toHaveLength(4);
+    expect(fieldsFor(manifest.settings, "owner")).toHaveLength(5);
     const takeBack = fields.find((f) => f.key === "takeBackMinutes");
     expect(takeBack?.kind === "choice" ? takeBack.options : null).toEqual([
       0, 2, 5,

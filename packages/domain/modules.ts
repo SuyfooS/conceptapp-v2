@@ -77,6 +77,12 @@ export const MODULE_ICONS = [
   // Taking orders: the pad it replaces, not a restaurant's picture, since the
   // list is every business's.
   "pad",
+  // Its mode's items (P4): the places, what one sent, preparing, the menu.
+  // Generic too: a grid, a send, a list to do, a book.
+  "grid",
+  "send",
+  "prep",
+  "book",
 ] as const;
 
 export type ModuleIcon = (typeof MODULE_ICONS)[number];
@@ -142,6 +148,33 @@ export type PermissionDeclaration = {
  */
 export const MAX_MODULE_NAV = 4;
 
+/** A mode's items fit the tab bar, as the app's do: at most five. */
+export const MAX_MODE_NAV = 5;
+
+/** Where a mode's way in shows: Home's card, the clock's live shift, the profile. */
+export type ModeEntry = "home" | "clockIn" | "me";
+
+/**
+ * A mode (waiter mode, P4): while the path is `href` or under it, the shell
+ * draws these items in place of the app's, the same on every device, each
+ * labelled `modules.<key>.mode.<item key>`. Its ways in show where
+ * `entries` says; no page checks a mode by hand.
+ */
+export type ModuleMode = {
+  href: `/${string}`;
+  icon: ModuleIcon;
+  entries: readonly ModeEntry[];
+  items: readonly {
+    key: string;
+    href: `/${string}`;
+    icon: ModuleIcon;
+    /** Matches only this exact path (the mode's first item). */
+    exact?: boolean;
+    /** Paths under which it is the current item too (a place's order, under the places). */
+    also?: readonly `/${string}`[];
+  }[];
+};
+
 export type ModuleManifest<
   Settings extends z.ZodType = z.ZodType,
   Key extends ModuleKey = ModuleKey,
@@ -184,9 +217,11 @@ export type ModuleManifest<
   icon?: ModuleIcon;
   /**
    * The module's part of the Today screen. Until it has one of its own, one
-   * row linking to `nav.href`.
+   * row linking to `nav.href` (or to its mode's, for a module with no tab).
    */
   homeWidget: { minRole: Role } | null;
+  /** Its own items in the same shell, under its own path (`ModuleMode`). */
+  mode?: ModuleMode;
   /**
    * Permissions the module checks, each in the module's own area, with the
    * lowest role that holds it by default (`PermissionDeclaration`).
@@ -254,6 +289,11 @@ export type ModuleNavEntry = {
    * `modules.<key>.outsideNav` instead of the module's name.
    */
   outside: boolean;
+  /**
+   * A mode's way in on Home (`moduleWidgets`): its module's own read
+   * says whether the person is in it at all, and what it shows.
+   */
+  mode?: true;
 };
 
 /**
@@ -336,7 +376,10 @@ export function fitsTabBar(
 
 /**
  * What the Today screen shows for the viewer, from the enabled modules, in nav
- * order. Nothing for someone off the staff: their Home is their own.
+ * order, then each enabled mode whose way in shows on Home (its own href and
+ * icon), in registry order. Nothing for someone off the staff: their Home is
+ * their own. Whether the person is in the mode at all is the mode's to say
+ * (waiter mode: `public.order_mode`), so Home draws its part only then.
  */
 export function moduleWidgets(
   manifests: readonly ModuleManifest[],
@@ -348,8 +391,33 @@ export function moduleWidgets(
       .filter((m) => m.homeWidget && reaches(viewer.role, m.homeWidget.minRole))
       .map((m) => m.key),
   );
-  return moduleNav(manifests, enabled, viewer).filter(
+  const tabs = moduleNav(manifests, enabled, viewer).filter(
     (entry) => !entry.outside && visible.has(entry.key),
+  );
+  const modes = moduleModes(manifests, enabled)
+    .filter(
+      ({ key, mode }) =>
+        visible.has(key) &&
+        mode.entries.includes("home") &&
+        !tabs.some((entry) => entry.key === key),
+    )
+    .map(({ key, mode }) => ({
+      key,
+      href: mode.href,
+      icon: mode.icon,
+      outside: false,
+      mode: true as const,
+    }));
+  return [...tabs, ...modes];
+}
+
+/** The modes of the enabled modules, in registry order. */
+export function moduleModes(
+  manifests: readonly ModuleManifest[],
+  enabled: readonly ModuleKey[],
+): { key: ModuleKey; mode: ModuleMode }[] {
+  return manifests.flatMap((m) =>
+    m.mode && enabled.includes(m.key) ? [{ key: m.key, mode: m.mode }] : [],
   );
 }
 

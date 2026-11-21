@@ -23,15 +23,37 @@ import { z } from "zod";
  * split by department with its prices frozen, taking back and cancelling
  * (decision 5), and no total anywhere (decision 7). Off in every template and
  * business, and on for the local seed's demo restaurant, which has a sample
- * menu and three orders waiting. No tab: the shell's bar is full, and the mode
- * draws its own items later (P4); its own icon for its rows meanwhile.
+ * menu and three orders waiting. P4 puts the orders on screen: no tab (the
+ * shell's bar is full), but a mode, whose items the same shell draws under
+ * /orders (the places, one's own orders, preparing, the menu), reached from
+ * a card on Home while on a shift, a row on the clock's live shift and on
+ * the profile (`public.order_mode` says who gets which, in
+ * 20261121000100_order_taking_mode.sql).
  */
 export const manifest = defineManifest({
   key: "order_taking",
   requires: [],
   nav: null,
   icon: "pad",
-  homeWidget: null,
+  // Home's card, for whoever the mode is for (app/(app)/modes.ts).
+  homeWidget: { minRole: "worker" },
+  mode: {
+    href: "/orders",
+    icon: "pad",
+    entries: ["home", "clockIn", "me"],
+    items: [
+      {
+        key: "places",
+        href: "/orders",
+        icon: "grid",
+        exact: true,
+        also: ["/orders/place", "/orders/takeaway"],
+      },
+      { key: "mine", href: "/orders/mine", icon: "send" },
+      { key: "prep", href: "/orders/prep", icon: "prep" },
+      { key: "menu", href: "/orders/menu", icon: "book" },
+    ],
+  },
   // Running the menu: its categories, items, prices and choices, the places,
   // the import, and "sold out" for any item (private.runs_orders). With P3 it
   // also takes orders from any department, cancels a line that is ready,
@@ -57,14 +79,14 @@ export const manifest = defineManifest({
      * besides those who hold order_taking.edit and owners. The templates name
      * them (the restaurant's floor and bar, the café's coffee bar and bar).
      * An owner's and the team's (`level: "owner"`, which set_module_settings
-     * enforces), and on no screen until P4 draws an editor of departments.
+     * enforces), chosen from the business's departments (P4).
      */
     takerDepartments: z
       .array(departmentKey)
       .max(MAX_DEPARTMENTS)
       .refine((keys) => new Set(keys).size === keys.length, "Each once")
       .default([])
-      .meta({ level: "owner", hidden: true }),
+      .meta({ level: "owner", editor: "departments" }),
     /**
      * Orders are taken only during a shift (decision 4), while the time clock
      * is on: from clocking in until 30 minutes after clocking out, and never

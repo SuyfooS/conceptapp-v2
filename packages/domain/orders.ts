@@ -192,6 +192,23 @@ export function takeBackState(state: {
 }
 
 /**
+ * Whether "החזרה מהשליחה" is offered: the line may be taken back now
+ * (`takeBackState` "open"), with at least `holdMs` left in its window, so a
+ * take-back the screen holds for its "ביטול" never lands after the window
+ * closed.
+ */
+export function takeBackOffered(
+  state: Parameters<typeof takeBackState>[0],
+  holdMs: number,
+): boolean {
+  return (
+    takeBackState(state) === "open" &&
+    state.now.getTime() + holdMs <=
+      state.sentAt.getTime() + state.minutes * 60_000
+  );
+}
+
+/**
  * How long a ticket has waited since it was sent (or called): "late" from
  * `lateAfterMinutes`, "veryLate" from twice that (§4.4 of the design).
  */
@@ -240,6 +257,55 @@ export const sentRoundSchema = z.object({
   tickets: z.array(z.object({ id: uuid, department: uuid, held: z.boolean() })),
 }) satisfies z.ZodType<SentRound>;
 
+/** A line as the kitchen reads it: no price at all. */
+export type PrepLine = {
+  id: string;
+  name: string;
+  /** Each choice by its name. */
+  choices: string[];
+  quantity: number;
+  note: string | null;
+  allergy: boolean;
+  state: PrepLineState;
+};
+
+// Strict, so a price that reached a line without one fails to parse.
+export const prepLineSchema = z.strictObject({
+  id: uuid,
+  name: z.string(),
+  choices: z.array(z.string()),
+  quantity: z.int().min(1).max(ORDER_CAPS.quantity),
+  note: z.string().nullable(),
+  allergy: z.boolean(),
+  state: z.enum(PREP_LINE_STATES),
+}) satisfies z.ZodType<PrepLine>;
+
+/**
+ * A ticket ready to serve, on the floor (P4): where it goes, who sent it (on
+ * an order of today only) and its live lines, no price.
+ */
+export type ReadyTicket = {
+  ticket: string;
+  order: string;
+  department: string;
+  placeName: string | null;
+  takeaway: number | null;
+  readyAt: string;
+  sentBy: string | null;
+  lines: Omit<PrepLine, "state">[];
+};
+
+const readyTicketSchema = z.strictObject({
+  ticket: uuid,
+  order: uuid,
+  department: uuid,
+  placeName: z.string().nullable(),
+  takeaway: takeaway.nullable(),
+  readyAt: instant,
+  sentBy: uuid.nullable(),
+  lines: z.array(prepLineSchema.omit({ state: true })),
+}) satisfies z.ZodType<ReadyTicket>;
+
 /** An open order on the floor. No money. */
 export type FloorOrder = {
   id: string;
@@ -278,6 +344,8 @@ export type OrderFloor = {
   }[];
   /** How many lines were taken back, cancelled and given on the house today. */
   fixes: { takenBack: number; cancelled: number; comped: number } | null;
+  /** Every waiter's tickets ready to serve, oldest first (P4). */
+  ready: ReadyTicket[];
 };
 
 export const orderFloorSchema = z.object({
@@ -319,6 +387,8 @@ export const orderFloorSchema = z.object({
   fixes: z
     .object({ takenBack: count, cancelled: count, comped: count })
     .nullable(),
+  // Until 20261121000100 reaches a project, P3's answer has none.
+  ready: z.array(readyTicketSchema).default([]),
 }) satisfies z.ZodType<OrderFloor>;
 
 /** A line of an order, as it was sent, and what happened to it since. */
@@ -525,6 +595,8 @@ export type MyOrders = {
       servedAt: string | null;
       /** How many of its lines are still live. */
       lines: number;
+      /** Its lines, as the kitchen reads them: no price (P4). */
+      items: PrepLine[];
     }[];
   }[];
 };
@@ -551,6 +623,8 @@ export const myOrdersSchema = z.object({
           readyAt: instant.nullable(),
           servedAt: instant.nullable(),
           lines: count,
+          // Until 20261121000100 reaches a project, P3's answer has none.
+          items: z.array(prepLineSchema).default([]),
         }),
       ),
     }),
@@ -569,16 +643,7 @@ export type PrepTicket = {
   firedAt: string | null;
   readyAt: string | null;
   sentBy: string | null;
-  lines: {
-    id: string;
-    name: string;
-    /** Each choice by its name. */
-    choices: string[];
-    quantity: number;
-    note: string | null;
-    allergy: boolean;
-    state: PrepLineState;
-  }[];
+  lines: PrepLine[];
 };
 
 export type OrderPrep = {
@@ -606,17 +671,7 @@ export const orderPrepSchema = z.strictObject({
       firedAt: instant.nullable(),
       readyAt: instant.nullable(),
       sentBy: uuid.nullable(),
-      lines: z.array(
-        z.strictObject({
-          id: uuid,
-          name: z.string(),
-          choices: z.array(z.string()),
-          quantity: z.int().min(1).max(ORDER_CAPS.quantity),
-          note: z.string().nullable(),
-          allergy: z.boolean(),
-          state: z.enum(PREP_LINE_STATES),
-        }),
-      ),
+      lines: z.array(prepLineSchema),
     }),
   ),
 }) satisfies z.ZodType<OrderPrep>;
@@ -627,3 +682,44 @@ export type Favourites = { items: string[] };
 export const favouritesSchema = z.object({
   items: z.array(uuid).max(ORDER_RULES.favourites),
 }) satisfies z.ZodType<Favourites>;
+
+/**
+ * Where the signed-in person stands in the mode (`public.order_mode`, P4):
+ * whether they take orders, run them, and the clock's refusal for a taker
+ * off a shift; the live departments they prepare for that an item goes to;
+ * their own tickets of today ready and being made; what waits in those
+ * departments; how many items are sold out. Counts only.
+ */
+export type OrderMode = {
+  version: number;
+  takes: boolean;
+  runs: boolean;
+  viewing: boolean;
+  clock: "clock" | "staleShift" | null;
+  departments: string[];
+  ready: number;
+  making: number;
+  waiting: { department: string; count: number }[];
+  soldOut: number;
+};
+
+// Strict, so a person or a price that reached it fails to parse.
+export const orderModeSchema = z
+  .strictObject({
+    version,
+    takes: z.boolean(),
+    runs: z.boolean(),
+    viewing: z.boolean(),
+    clock: z.enum(["clock", "stale_shift"]).nullable(),
+    departments: z.array(uuid),
+    ready: count,
+    making: count,
+    waiting: z.array(z.strictObject({ department: uuid, count })),
+    soldOut: count,
+  })
+  .transform(
+    (mode): OrderMode => ({
+      ...mode,
+      clock: mode.clock === "stale_shift" ? "staleShift" : mode.clock,
+    }),
+  );

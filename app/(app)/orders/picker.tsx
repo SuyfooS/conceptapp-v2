@@ -1,5 +1,8 @@
 "use client";
 
+import { nameMatches } from "@domain/hebrew-search";
+import { type DraftLine, pickState } from "@domain/order-screens";
+import type { Menu, MenuItem } from "@domain/order-taking";
 import { Button } from "@ui/button";
 import { cn } from "@ui/cn";
 import { EmptyState } from "@ui/empty-state";
@@ -9,88 +12,102 @@ import { fieldInputClass } from "@ui/text-field";
 import { BookOpen, Search } from "lucide-react";
 import Link from "next/link";
 import { useId, useState } from "react";
-import { mostOrdered } from "../../../data";
-import { useOrderDemo } from "../../../demo-store";
-import { type MenuItem, nameMatches } from "../../../model";
-import { Price, paths, useOrderWords } from "../../../parts";
+import { useOrdersMode } from "./orders-mode";
+import { Price, useOrderWords } from "./orders-parts";
 
 type Section = { id: string; name: string; items: MenuItem[] };
 
 /**
- * Adding items (§3.2 step 3): one tap adds an item without choices, and
- * one with choices opens its sheet. A search above finds any item by the
- * start of its words. Phone: "הכי מוזמנים", then every category, one under
- * the other. Tablet and desktop: a rail of the categories beside the items
- * of the one chosen. A sold-out item is greyed, says so, and can't be
- * added. Each row counts what of it is in the draft.
+ * Adding items (the design's §3.2 step 3): one tap adds an item, and the row
+ * counts what of it the draft holds. A search above finds any item by the
+ * starts of its words, Hebrew written loosely. Phone: "הכי מוזמנים", then
+ * every category, one under the other. Tablet and desktop: a rail of them
+ * beside the items of the one chosen. Sold out is greyed with "נגמר"; an
+ * item with a choice to make, or that no department prepares, is greyed
+ * with why (default 2: passed on by word of mouth until P6).
  */
 export function Picker({
-  placeId,
+  menu,
+  favourites,
+  draft,
   onPick,
 }: {
-  placeId: string;
+  menu: Menu | null;
+  /** The items ordered most lately, by id. */
+  favourites: readonly string[];
+  draft: readonly DraftLine[];
   onPick: (item: MenuItem) => void;
 }) {
   const { t } = useOrderWords();
-  const { data } = useOrderDemo();
+  const { frame, paths } = useOrdersMode();
   const searchId = useId();
   const [query, setQuery] = useState("");
   const [shown, setShown] = useState("most");
-  const draft = data.drafts[placeId] ?? [];
-  const inDraft = (itemId: string) =>
+  const inDraft = (item: string) =>
     draft
-      .filter((line) => line.itemId === itemId)
-      .reduce((sum, line) => sum + line.qty, 0);
-  // The whole row adds it; one with choices says so, and opens its sheet.
-  const row = (item: MenuItem) => (
-    <MenuItemRow
-      key={item.id}
-      name={item.name}
-      detail={
-        <>
-          <Price agorot={item.price} />
-          {item.groups.length > 0 ? ` · ${t("picker.withChoices")}` : null}
-        </>
-      }
-      count={inDraft(item.id)}
-      countLabel={t("picker.inDraft")}
-      soldOut={data.soldOut.includes(item.id) ? t("picker.soldOut") : null}
-      onPick={() => onPick(item)}
-    />
-  );
+      .filter((line) => line.item === item)
+      .reduce((sum, line) => sum + line.quantity, 0);
+  const row = (item: MenuItem) => {
+    const state = pickState(item);
+    return (
+      <MenuItemRow
+        key={item.id}
+        name={item.name}
+        detail={<Price agorot={item.priceAgorot} />}
+        count={inDraft(item.id)}
+        countLabel={t("picker.inDraft")}
+        soldOut={state === "soldOut" ? t("picker.soldOut") : null}
+        reason={
+          state === "needsChoice"
+            ? t("picker.needsChoice")
+            : state === "noRoute"
+              ? t("picker.noRoute")
+              : null
+        }
+        // Viewing, nothing is added: the row is greyed as every action is.
+        disabled={frame.viewing}
+        onPick={() => {
+          if (!frame.viewing) onPick(item);
+        }}
+      />
+    );
+  };
 
-  if (data.menu.items.length === 0) {
+  if (!menu || menu.items.length === 0) {
     return (
       <EmptyState
         headingLevel="h2"
         icon={<BookOpen />}
         title={t("picker.noMenu.title")}
-        body={t("picker.noMenu.body")}
+        body={frame.runs ? t("picker.noMenu.body") : t("picker.noMenu.waiter")}
       >
-        <Button asChild>
-          <Link href={paths.import}>{t("picker.noMenu.import")}</Link>
-        </Button>
+        {frame.runs && !frame.viewing ? (
+          <Button asChild>
+            <Link href={paths.menuImport}>{t("picker.noMenu.import")}</Link>
+          </Button>
+        ) : null}
       </EmptyState>
     );
   }
 
-  const most = mostOrdered
-    .map((id) => data.menu.items.find((item) => item.id === id))
+  const most = favourites
+    .map((id) => menu.items.find((item) => item.id === id))
     .filter((item): item is MenuItem => Boolean(item));
   const sections: Section[] = [
     ...(most.length
       ? [{ id: "most", name: t("picker.most"), items: most }]
       : []),
-    ...data.menu.categories.map((category) => ({
+    ...menu.categories.map((category) => ({
       id: category.id,
       name: category.name,
-      items: data.menu.items.filter((item) => item.categoryId === category.id),
+      items: menu.items.filter((item) => item.category === category.id),
     })),
   ].filter((section) => section.items.length > 0);
   const chosen =
     sections.find((section) => section.id === shown) ?? sections[0];
-  const found = query.trim()
-    ? data.menu.items.filter((item) => nameMatches(item.name, query))
+  const typed = query.trim();
+  const found = typed
+    ? menu.items.filter((item) => nameMatches(item.name, typed))
     : null;
 
   return (
@@ -126,7 +143,7 @@ export function Picker({
           </MenuItemList>
         ) : (
           <p role="status" className="px-1 text-ink-2">
-            {t("picker.nothingFound", { query: query.trim() })}
+            {t("picker.nothingFound", { query: typed })}
           </p>
         )
       ) : (

@@ -13,6 +13,7 @@ import { TextField } from "@ui/text-field";
 import { Lock } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type FormEvent, useState, useTransition } from "react";
+import { clearOrdersStorage } from "../../orders/orders-storage";
 import type { LockAction, LockOffer } from "./station-types";
 
 /**
@@ -59,7 +60,8 @@ export function LockStation({
         const result = await lock({ name });
         if (result.ok) {
           // A whole new page, as signing out opens: nothing of the person's
-          // screens stays in this one.
+          // screens stays in this one, nor their drafts kept in the tab.
+          clearOrdersStorage();
           window.location.replace(result.to);
           return;
         }

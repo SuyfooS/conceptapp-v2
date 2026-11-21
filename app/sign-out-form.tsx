@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { clearOrdersStorage } from "./(app)/orders/orders-storage";
 
 /**
  * Signs out, and says where the device goes next (the sign-in door, or the
@@ -17,7 +18,9 @@ export type SignOutAction = () => Promise<string | null>;
  * find the last one's chats, drafts and lists still in the page. The page is
  * loaded here, after the action answers, and not by a screen of the app:
  * signing out draws the signed-out app again at once, which may already be
- * on its way to the door, and takes such a screen with it.
+ * on its way to the door, and takes such a screen with it. What the tab
+ * keeps outlives the page, so waiter mode's drafts and rounds on their way
+ * (sessionStorage) go first.
  */
 export function SignOutForm({
   action,
@@ -33,7 +36,9 @@ export function SignOutForm({
     <form
       action={async () => {
         const to = await action();
-        if (to) window.location.replace(to);
+        if (!to) return;
+        clearOrdersStorage();
+        window.location.replace(to);
       }}
       className={className}
     >

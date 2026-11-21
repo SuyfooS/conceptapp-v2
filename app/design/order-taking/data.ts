@@ -5,13 +5,13 @@
 // menu), so their Hebrew stays here rather than in messages/; the
 // Hebrew-literal check in tooling/ allows this file.
 
+import type { DraftLine } from "@domain/order-screens";
 import { portraits } from "../portraits";
 import { business, user } from "../shell/data";
 import type {
   Category,
   Department,
   DepartmentKey,
-  DraftLine,
   Menu,
   MenuItem,
   Order,
@@ -506,35 +506,63 @@ export function demoClosed(): Order[] {
   ];
 }
 
-/** The draft of `?state=draft`: a note, an allergy and a main held for later. */
+/**
+ * The draft of `?state=draft`: an allergy, two lemonades, and a main held
+ * for later with its side, which the draft names (P4: one note a line, the
+ * allergy said in it).
+ */
 export function demoDraft(): DraftLine[] {
   return [
     {
       id: "d1",
-      itemId: "salad",
-      qty: 1,
-      choices: [],
-      note: null,
-      allergy: "אגוזים",
+      item: "salad",
+      quantity: 1,
+      note: "אגוזים",
+      allergy: true,
       held: false,
+      choices: [],
     },
     {
       id: "d2",
-      itemId: "lemonade",
-      qty: 2,
-      choices: [],
+      item: "lemonade",
+      quantity: 2,
       note: null,
-      allergy: null,
+      allergy: false,
       held: false,
+      choices: [],
     },
     {
       id: "d3",
-      itemId: "schnitzel",
-      qty: 1,
-      choices: ["mash"],
+      item: "schnitzel",
+      quantity: 1,
       note: "בלי מלח",
-      allergy: null,
+      allergy: false,
       held: true,
+      choices: [{ group: "side", option: "mash" }],
+    },
+  ];
+}
+
+/** A draft with the fish, sold out since it was chosen (`?state=soldOut`). */
+export function demoFishDraft(): DraftLine[] {
+  return [
+    {
+      id: "d4",
+      item: "fish",
+      quantity: 1,
+      note: null,
+      allergy: false,
+      held: false,
+      choices: [],
+    },
+    {
+      id: "d5",
+      item: "water",
+      quantity: 2,
+      note: null,
+      allergy: false,
+      held: false,
+      choices: [],
     },
   ];
 }
@@ -622,10 +650,11 @@ export const demoKnownPaste = [
 /**
  * The restaurant's and the café's own sentences for taking orders, as
  * supabase/migrations/20261120000100_order_taking_screens.sql writes them
+ * and 20261121000100_order_taking_mode.sql after it
  * (tooling/template-wording.test.ts holds the two the same): the twin's
- * restaurant reads its menu screens in them, as the demo restaurant does.
+ * restaurant reads its screens in them, as the demo restaurant does.
  */
-export const restaurantMenuWording: Readonly<Record<string, string>> = {
+export const restaurantWording: Readonly<Record<string, string>> = {
   "modules.order_taking.name": "מצב מלצרות",
   "modules.order_taking.description": "קבלת הזמנות ושליחה למטבח ולבר",
   "app.orders.menu.status.items":
@@ -721,4 +750,54 @@ export const restaurantMenuWording: Readonly<Record<string, string>> = {
     "{count, plural, one {מכינים כאן מנה אחת מהתפריט} other {מכינים כאן # מנות מהתפריט}}",
   "app.manage.departments.removedMenu":
     "{count, plural, one {המחלקה {name} הוסרה. מנה אחת מהתפריט לא מגיעה עכשיו להכנה, עד שבוחרים לה מחלקה.} other {המחלקה {name} הוסרה. # מנות מהתפריט לא מגיעות עכשיו להכנה, עד שבוחרים להן מחלקה.}}",
+  "modules.order_taking.mode.places": "שולחנות",
+  "app.orders.place.numbered": "שולחן {name}",
+  "app.orders.place.kind": "שולחן",
+  "app.orders.place.takeaway": "לקחת {number}",
+  "app.orders.place.takeawayKind": "לקחת",
+  "app.orders.place.newTakeaway": "לקחת · הזמנה חדשה",
+  "app.orders.floor.title": "שולחנות",
+  "app.orders.floor.takeaway": "פתיחת הזמנה לקחת",
+  "app.orders.floor.places": "השולחנות",
+  "app.orders.floor.takeaways": "לקחת",
+  "app.orders.floor.status.ready":
+    "{count, plural, one {שולחן אחד מוכן להגשה} other {# מוכנים להגשה}}",
+  "app.orders.floor.status.free": "כל השולחנות פנויים",
+  "app.orders.floor.state.draft":
+    "{count, plural, one {מנה אחת בטיוטה} other {# מנות בטיוטה}}",
+  "app.orders.floor.table.place": "שולחן",
+  "app.orders.floor.empty.title": "עוד אין שולחנות",
+  "app.orders.floor.empty.body":
+    "מוסיפים את השולחנות: מספרים או שמות, כמו בר 3.",
+  "app.orders.floor.empty.action": "הוספת שולחנות",
+  "app.orders.floor.empty.waiter":
+    "מי שמנהל את התפריט עוד לא הוסיף שולחנות. בינתיים פותחים הזמנה לקחת.",
+  "app.orders.order.free": "פנוי · בוחרים מנות ושולחים",
+  "app.orders.order.floorList": "השולחנות",
+  "app.orders.order.view.add": "הוספת מנות",
+  "app.orders.order.view.unsent":
+    "{count, plural, one {מנה אחת עוד לא נשלחה} other {# מנות עוד לא נשלחו}}",
+  "app.orders.order.noPlace.title": "השולחן הזה לא נמצא",
+  "app.orders.order.noPlace.back": "חזרה לשולחנות",
+  "app.orders.picker.title": "הוספת מנות",
+  "app.orders.picker.searchPlaceholder": "חיפוש מנה",
+  "app.orders.picker.nothingFound": "אין מנה שמתחילה ב-{query}",
+  "app.orders.picker.needsChoice": "יש לה בחירות. בינתיים מוסרים אותה בעל פה.",
+  "app.orders.picker.noRoute": "אין מחלקה שמכינה אותה",
+  "app.orders.picker.noMenu.body":
+    "מוסיפים מנות, או מעתיקים תפריט קיים בהדבקה.",
+  "app.orders.draft.empty":
+    "עוד לא נבחרו מנות. מה שנבחר מהתפריט מופיע כאן, ונשלח בלחיצה אחת.",
+  "app.orders.send.count":
+    "{count, plural, one {מנה אחת} two {שתי מנות} other {# מנות}}",
+  "app.orders.mine.empty.body": "מה ששולחים מהשולחנות מופיע כאן, והמוכן קודם.",
+  "app.orders.mine.empty.action": "מעבר לשולחנות",
+  "app.orders.mine.columns.place": "שולחן",
+  "app.orders.offClock.title": "מצב מלצרות נפתח בזמן משמרת",
+  "app.orders.failed.moved":
+    "ההזמנה עברה לשולחן אחר בינתיים. בוחרים שוב מהרשימה.",
+  "app.orders.failed.place": "השולחן הוסר בינתיים. בוחרים שוב מהרשימה.",
+  "app.orders.failed.off": "מצב מלצרות כבוי בעסק הזה.",
+  "app.orders.home.open": "פתיחת מצב מלצרות",
+  "app.orders.home.idle": "בוחרים שולחן ושולחים להכנה",
 };

@@ -175,6 +175,10 @@ export function BusinessSettingsView({
               values={module.values}
               save={save.bind(null, module.key)}
               readOnly={null}
+              departments={departments?.list.map((d) => ({
+                key: d.key,
+                name: d.name,
+              }))}
             />
           ) : null}
         </PageSection>

@@ -113,7 +113,9 @@ Only `app/` imports app code (`@/…`).
   (a table's one state), TicketCard and OrderLine (a sent line with its choices, note and
   allergy), TillList (what to ring up, no total), MenuItemRow/MenuItemList (one tap adds;
   mock screens at `/design/order-taking`) and the menu editor's MenuEditRow (its name opens
-  it, "נגמר" switched or said, a warning when it reaches no department).
+  it, "נגמר" switched or said, a warning when it reaches no department), and the order's
+  DraftLineRow (a line not sent yet: how many, its note and allergy, held, a mark when it
+  can't go) and SendOrderButton (what goes, counted, and where it goes).
 - ConceptApp's logo (`@ui/logo`, files in `docs/brand`) appears only where
   ConceptApp itself speaks: sign-in, the console, marketing.
 - A business accent is applied with `{...accentProps(accentTokens(hex))}` on a

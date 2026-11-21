@@ -38,6 +38,12 @@ export type StatusToastProps = {
    * way back is still offered.
    */
   onWaitingChange?: (waiting: boolean) => void;
+  /**
+   * Hears when the toast has gone from sight: its time up, or nothing left
+   * to say. Not for one replaced by a newer message. What waited for it
+   * (news that must never take a way back's place) may say its own then.
+   */
+  onHidden?: () => void;
 };
 
 /** Whether an element shows its focus: the keyboard, not a tap, put it there. */
@@ -66,7 +72,10 @@ export function StatusToast({
   focusAction = false,
   onFocusLeave,
   onWaitingChange,
+  onHidden,
 }: StatusToastProps) {
+  const hidden = useRef(onHidden);
+  hidden.current = onHidden;
   const [text, setText] = useState<string | null>(null);
   const [shown, setShown] = useState(false);
   const [offer, setOffer] = useState<StatusToastProps["action"]>(null);
@@ -81,9 +90,20 @@ export function StatusToast({
   const holds = useRef(false);
   /** Its action was pressed with the focus on it, which goes with the button. */
   const leaving = useRef(false);
+  /**
+   * What it last started to say, and what last took the focus: a screen
+   * left in a hidden <Activity> and shown again runs its effects again with
+   * the same message, which goes on where it was (the time it had left, or
+   * gone if it went) and never takes the focus again.
+   */
+  const said = useRef<string | null>(null);
+  const focused = useRef<string | null>(null);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: stamp is what shows the same message again
   useEffect(() => {
+    const saying = JSON.stringify([message, stamp ?? null, duration]);
+    if (said.current === saying) return;
+    said.current = saying;
     if (message) {
       setText(message);
       setShown(true);
@@ -103,7 +123,10 @@ export function StatusToast({
     if (waiting && message) return;
     const started = Date.now();
     const stay = left.current;
-    const hide = setTimeout(() => setShown(false), stay);
+    const hide = setTimeout(() => {
+      setShown(false);
+      hidden.current?.();
+    }, stay);
     const clear = setTimeout(() => {
       setText(null);
       setOffer(null);
@@ -133,6 +156,9 @@ export function StatusToast({
   // biome-ignore lint/correctness/useExhaustiveDependencies: each toast asks once, as its button shows
   useEffect(() => {
     if (!focusAction || !message || !action || !offered) return;
+    const asking = JSON.stringify([message, stamp ?? null]);
+    if (focused.current === asking) return;
+    focused.current = asking;
     button.current?.focus({ preventScroll: true });
   }, [focusAction, message, stamp, offered]);
 

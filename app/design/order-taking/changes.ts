@@ -1,14 +1,15 @@
 import type { MenuImportRow } from "@domain/menu-import";
+import type { DraftLine } from "@domain/order-screens";
 import type { CategoryInput } from "@domain/order-taking";
 import { newId as id } from "./ids";
 import {
   chosenOptions,
   type DepartmentKey,
-  type DraftLine,
   departmentOf,
   itemById,
   type MenuItem,
   type Order,
+  type Round,
   type SentLine,
   type Ticket,
   unitPrice,
@@ -19,100 +20,8 @@ import type { DemoData } from "./scenario";
 // What the demo's screens change, each as data in and data out, so a
 // screen keeps what it needs for its undo before it asks. The send's split
 // and the close's settling follow the design's §3.2 and §6.3, roughly, for
-// the look only: P3 does them in one database function.
-
-const draftOf = (data: DemoData, placeId: string) => data.drafts[placeId] ?? [];
-
-function withDraft(
-  data: DemoData,
-  placeId: string,
-  lines: DraftLine[],
-): DemoData {
-  return { ...data, drafts: { ...data.drafts, [placeId]: lines } };
-}
-
-/** One tap adds a plain item, or one more of the same plain line. */
-export function addLine(
-  data: DemoData,
-  placeId: string,
-  itemId: string,
-  choices: string[],
-  qty: number,
-): DemoData {
-  const lines = draftOf(data, placeId);
-  const same = lines.find(
-    (line) =>
-      line.itemId === itemId &&
-      line.choices.length === 0 &&
-      choices.length === 0 &&
-      !line.note &&
-      !line.allergy &&
-      !line.held,
-  );
-  if (same) {
-    return withDraft(
-      data,
-      placeId,
-      lines.map((line) =>
-        line === same ? { ...line, qty: line.qty + qty } : line,
-      ),
-    );
-  }
-  return withDraft(data, placeId, [
-    ...lines,
-    { id: id(), itemId, qty, choices, note: null, allergy: null, held: false },
-  ]);
-}
-
-export function changeLine(
-  data: DemoData,
-  placeId: string,
-  lineId: string,
-  change: Partial<Pick<DraftLine, "qty" | "note" | "allergy" | "held">>,
-): DemoData {
-  return withDraft(
-    data,
-    placeId,
-    draftOf(data, placeId).map((line) =>
-      line.id === lineId ? { ...line, ...change } : line,
-    ),
-  );
-}
-
-export function removeLine(
-  data: DemoData,
-  placeId: string,
-  lineId: string,
-): DemoData {
-  return withDraft(
-    data,
-    placeId,
-    draftOf(data, placeId).filter((line) => line.id !== lineId),
-  );
-}
-
-/** The undo of a removal: the line where it was. */
-export function putLineBack(
-  data: DemoData,
-  placeId: string,
-  line: DraftLine,
-  index: number,
-): DemoData {
-  const lines = draftOf(data, placeId).filter((l) => l.id !== line.id);
-  lines.splice(Math.min(index, lines.length), 0, line);
-  return withDraft(data, placeId, lines);
-}
-
-/** A takeaway before its first send: on the phone only, with no number yet. */
-export function newTakeaway(data: DemoData, placeId: string): DemoData {
-  return {
-    ...data,
-    takeaways: [
-      ...data.takeaways,
-      { id: placeId, kind: "takeaway", name: null, label: null },
-    ],
-  };
-}
+// the look only: P3 does them in one database function. The drafts are the
+// domain's since P4 (@domain/order-screens), kept by their draft's key.
 
 export function setLabel(
   data: DemoData,
@@ -129,35 +38,44 @@ export function setLabel(
 
 /** A draft line as the send copies it: its name, choices and unit price. */
 function sentLine(item: MenuItem, line: DraftLine): SentLine {
+  const choices = line.choices.map((choice) => choice.option);
   return {
     id: id(),
     itemId: item.id,
     name: item.name,
-    choices: chosenOptions(item, line.choices).map((option) => option.name),
-    unit: unitPrice(item, line.choices),
-    qty: line.qty,
-    note: line.note,
-    allergy: line.allergy,
+    choices: chosenOptions(item, choices).map((option) => option.name),
+    unit: unitPrice(item, choices),
+    qty: line.quantity,
+    // One note a line: an allergy says what in it (P4).
+    note: line.allergy ? null : line.note,
+    allergy: line.allergy ? line.note : null,
     takenBack: false,
   };
 }
 
+/** Where a twin's round goes: an open order, a place's first, or a new takeaway. */
+export type TwinWhere = {
+  orderId: string | null;
+  placeId: string | null;
+  label?: string | null;
+};
+
 /**
- * Sends the place's draft as one round: one ticket per department, and one
- * more per department for the lines held for later. The first send opens
- * the order, and gives a takeaway its number.
+ * Sends a draft as one round, as the database splits it: one ticket per
+ * department, and one more per department for the lines held for later,
+ * those last. The first send opens the order, and a takeaway's gives it the
+ * next number of the day.
  */
-export function send(
+export function sendRound(
   data: DemoData,
-  placeId: string,
+  where: TwinWhere,
+  lines: readonly DraftLine[],
   by: string,
   now: number,
-): DemoData {
-  const lines = draftOf(data, placeId);
-  if (lines.length === 0) return data;
+): { data: DemoData; order: Order; round: Round } {
   const tickets = new Map<string, Ticket>();
   for (const line of lines) {
-    const item = itemById(data.menu, line.itemId);
+    const item = itemById(data.menu, line.item);
     if (!item) continue;
     const department: DepartmentKey = departmentOf(data.menu, item);
     const key = `${department}:${line.held}`;
@@ -175,47 +93,59 @@ export function send(
     ticket.lines.push(sentLine(item, line));
     tickets.set(key, ticket);
   }
-  // Held blocks last, after what goes now.
-  const round = {
+  const round: Round = {
     id: id(),
     at: now,
     by,
     tickets: [...tickets.values()].sort(
-      (a, b) => Number(a.held) - Number(b.held),
+      (x, y) => Number(x.held) - Number(y.held),
     ),
   };
-  const open = data.orders.find((order) => order.placeId === placeId);
-  const orders: Order[] = open
-    ? data.orders.map((order) =>
-        order === open ? { ...order, rounds: [...order.rounds, round] } : order,
-      )
-    : [
-        ...data.orders,
-        {
-          id: id(),
-          placeId,
-          openedBy: by,
-          openedAt: now,
-          rounds: [round],
-          closedAt: null,
-          closedBy: null,
-        },
-      ];
-  const takeaway = data.takeaways.find(
-    (place) => place.id === placeId && place.name === null,
+  const open = data.orders.find(
+    (order) =>
+      order.id === where.orderId ||
+      (where.placeId !== null && order.placeId === where.placeId),
   );
+  if (open) {
+    const order = { ...open, rounds: [...open.rounds, round] };
+    return {
+      data: {
+        ...data,
+        orders: data.orders.map((o) => (o === open ? order : o)),
+      },
+      order,
+      round,
+    };
+  }
+  let takeaways = data.takeaways;
+  let nextTakeaway = data.nextTakeaway;
+  let placeId = where.placeId;
+  if (placeId === null) {
+    placeId = `takeaway-${id()}`;
+    takeaways = [
+      ...takeaways,
+      {
+        id: placeId,
+        kind: "takeaway",
+        name: String(nextTakeaway),
+        label: where.label?.trim() || null,
+      },
+    ];
+    nextTakeaway += 1;
+  }
+  const order: Order = {
+    id: id(),
+    placeId,
+    openedBy: by,
+    openedAt: now,
+    rounds: [round],
+    closedAt: null,
+    closedBy: null,
+  };
   return {
-    ...data,
-    orders,
-    drafts: { ...data.drafts, [placeId]: [] },
-    takeaways: takeaway
-      ? data.takeaways.map((place) =>
-          place === takeaway
-            ? { ...place, name: String(data.nextTakeaway) }
-            : place,
-        )
-      : data.takeaways,
-    nextTakeaway: takeaway ? data.nextTakeaway + 1 : data.nextTakeaway,
+    data: { ...data, orders: [...data.orders, order], takeaways, nextTakeaway },
+    order,
+    round,
   };
 }
 

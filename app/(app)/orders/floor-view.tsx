@@ -1,0 +1,366 @@
+"use client";
+
+import {
+  draftKey,
+  floorStatus,
+  type PlaceState,
+  placeState,
+} from "@domain/order-screens";
+import type { OrderPlace } from "@domain/order-taking";
+import type { FloorOrder, OrderFloor, ReadyTicket } from "@domain/orders";
+import { Button } from "@ui/button";
+import { Card } from "@ui/card";
+import { DataTable } from "@ui/data-table";
+import { EmptyState } from "@ui/empty-state";
+import { PageBody, PageHeader, PageSection } from "@ui/page";
+import { pageGlowClass } from "@ui/page-glow";
+import { LayoutGrid, ShoppingBag } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useRef, useState } from "react";
+import { useOrdersMode } from "./orders-mode";
+import {
+  failureWords,
+  ltr,
+  OffShiftCard,
+  PlaceTileView,
+  placeStateWords,
+  SentLineView,
+  useModeHeading,
+  useOrderWords,
+  type Where,
+} from "./orders-parts";
+
+/** A tile of the floor: a place, or a takeaway, with its order if it has one. */
+type Tile = {
+  key: string;
+  where: Where;
+  order: FloorOrder | null;
+  state: PlaceState;
+  draft: number;
+  href: string;
+};
+
+/**
+ * The floor (waiter mode P4, the design's §3.2 and §11): every place and
+ * open takeaway as a tile with its one state, a status line under the title
+ * ("1 מוכן להגשה · 1 מחכה · 5 פתוחים"), and "פתיחת הזמנה בלי מקום" as the
+ * main action. Phone: three tiles a row. Tablet: four or five beside what is
+ * ready to serve, each served with one tap and its undo. Desktop: six a row,
+ * the ready column, and the open orders' table under the tiles. One shared
+ * floor: everyone sees every place, and who opened it.
+ */
+export function FloorView({
+  floor,
+  places,
+}: {
+  /** The floor now; null for a taker off a shift. */
+  floor: OrderFloor | null;
+  /** The live places, in their order. */
+  places: OrderPlace[];
+}) {
+  const { t, placeTitle, person, department, time, ago } = useOrderWords();
+  const heading = useModeHeading();
+  const mode = useOrdersMode();
+  const { frame, paths, now, drafts, actions, say, off } = mode;
+  const router = useRouter();
+  const readyHeading = useRef<HTMLHeadingElement>(null);
+  // Served here: off the column at once, until the floor's next version.
+  const [served, setServed] = useState<{ version: number; ids: string[] }>({
+    version: floor?.version ?? 0,
+    ids: [],
+  });
+  if (floor && floor.version !== served.version) {
+    setServed({ version: floor.version, ids: [] });
+  }
+
+  // "פתיחת הזמנה בלי מקום": the screen's one main action, unless the empty
+  // floor's "הוספת מקומות" is (then quieter). None off a shift, where the
+  // card's way to the clock is, and none while viewing, where nothing opens.
+  const header = (
+    subtitle?: string,
+    takeaway: "primary" | "secondary" | null = null,
+  ) => (
+    <PageHeader
+      back={heading.back}
+      eyebrow={heading.eyebrow}
+      title={t("floor.title")}
+      subtitle={subtitle}
+      actions={
+        takeaway ? (
+          <Button
+            asChild
+            size="lg"
+            variant={takeaway === "primary" ? "primary" : "secondary"}
+          >
+            <Link href={paths.takeaway(null)}>
+              <ShoppingBag aria-hidden="true" />
+              {t("floor.takeaway")}
+            </Link>
+          </Button>
+        ) : undefined
+      }
+    />
+  );
+
+  if (!floor || off) {
+    return (
+      <PageBody className={pageGlowClass}>
+        {header()}
+        <OffShiftCard off={off ?? "clock"} />
+      </PageBody>
+    );
+  }
+
+  const tileOf = (
+    where: Where,
+    order: FloorOrder | null,
+    key: string,
+    href: string,
+  ): Tile => ({
+    key,
+    where,
+    order,
+    state: placeState(order, now, frame.lateAfterMinutes),
+    draft: drafts.counts[key] ?? 0,
+    href,
+  });
+  const live = new Set(places.map((place) => place.id));
+  const placeTiles = [
+    ...places.map((place) =>
+      tileOf(
+        { placeName: place.name, takeaway: null },
+        floor.orders.find((order) => order.place === place.id) ?? null,
+        draftKey({ place: place.id }),
+        paths.place(place.id),
+      ),
+    ),
+    // An open order at a place removed since stays on the floor.
+    ...floor.orders
+      .filter((order) => order.place && !live.has(order.place))
+      .map((order) =>
+        tileOf(
+          { placeName: order.placeName, takeaway: null },
+          order,
+          draftKey({ place: order.place ?? "" }),
+          paths.place(order.place ?? ""),
+        ),
+      ),
+  ];
+  const newTakeaway = drafts.counts[draftKey({ takeaway: null })] ?? 0;
+  const takeawayTiles = [
+    ...floor.orders
+      .filter((order) => order.takeaway !== null)
+      .map((order) =>
+        tileOf(
+          { placeName: null, takeaway: order.takeaway },
+          order,
+          draftKey({ takeaway: order.id }),
+          paths.takeaway(order.id),
+        ),
+      ),
+    ...(newTakeaway > 0
+      ? [
+          tileOf(
+            { placeName: null, takeaway: null },
+            null,
+            draftKey({ takeaway: null }),
+            paths.takeaway(null),
+          ),
+        ]
+      : []),
+  ];
+  const status = floorStatus(
+    [...placeTiles, ...takeawayTiles].map((tile) => tile.state),
+  );
+  const line = [
+    status.ready ? t("floor.status.ready", { count: status.ready }) : null,
+    status.late ? t("floor.status.late", { count: status.late }) : null,
+    status.open ? t("floor.status.open", { count: status.open }) : null,
+  ].filter(Boolean);
+  const ready = floor.ready.filter(
+    (ticket) => !served.ids.includes(ticket.ticket),
+  );
+
+  async function serve(ticket: ReadyTicket, place: string) {
+    setServed((was) => ({ ...was, ids: [...was.ids, ticket.ticket] }));
+    const back = () =>
+      setServed((was) => ({
+        ...was,
+        ids: was.ids.filter((id) => id !== ticket.ticket),
+      }));
+    const result = await actions.serve(ticket.ticket, true).catch(() => null);
+    if (!result?.ok) {
+      back();
+      say(failureWords(t, result ? result.failure : "failed"));
+      return;
+    }
+    mode.syncNow();
+    // The card goes with its button: the way back takes the focus.
+    say(
+      t("toast.served", { place, department: department(ticket.department) }),
+      {
+        undo: () => {
+          back();
+          void actions.serve(ticket.ticket, false).then(() => mode.syncNow());
+        },
+        focus: true,
+        after: () => readyHeading.current,
+      },
+    );
+  }
+
+  const tiles = (list: Tile[]) => (
+    <ul className="grid grid-cols-3 gap-2.5 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+      {list.map((tile) => (
+        <li key={tile.key} className="flex">
+          <PlaceTileView
+            where={tile.where}
+            state={tile.state}
+            by={tile.order ? person(tile.order.openedBy) || null : null}
+            label={tile.order?.label}
+            draft={tile.draft}
+            href={tile.href}
+          />
+        </li>
+      ))}
+    </ul>
+  );
+
+  // With no places, whoever runs orders is offered to add them: that is the
+  // screen's main action then.
+  const addsPlaces = placeTiles.length === 0 && frame.runs && !frame.viewing;
+  return (
+    <PageBody className={pageGlowClass}>
+      {header(
+        line.length ? line.join(" · ") : t("floor.status.free"),
+        frame.viewing ? null : addsPlaces ? "secondary" : "primary",
+      )}
+      <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_17rem] md:items-start md:gap-6 xl:grid-cols-[minmax(0,1fr)_20rem] xl:gap-8">
+        <div className="flex min-w-0 flex-col gap-6">
+          {placeTiles.length === 0 ? (
+            <EmptyState
+              headingLevel="h2"
+              icon={<LayoutGrid />}
+              title={t("floor.empty.title")}
+              body={
+                frame.runs ? t("floor.empty.body") : t("floor.empty.waiter")
+              }
+            >
+              {addsPlaces ? (
+                <Button asChild>
+                  <Link href={paths.menuPlaces}>{t("floor.empty.action")}</Link>
+                </Button>
+              ) : null}
+            </EmptyState>
+          ) : (
+            <PageSection title={t("floor.places")}>
+              {tiles(placeTiles)}
+            </PageSection>
+          )}
+          {takeawayTiles.length > 0 ? (
+            <PageSection title={t("floor.takeaways")}>
+              {tiles(takeawayTiles)}
+            </PageSection>
+          ) : null}
+          {floor.orders.length > 0 ? (
+            <div className="hidden xl:block">
+              <PageSection title={t("floor.table.title")}>
+                <Card padding="none" className="overflow-hidden">
+                  <DataTable
+                    caption={t("floor.table.title")}
+                    columns={[
+                      { key: "place", label: t("floor.table.place") },
+                      { key: "by", label: t("floor.table.by") },
+                      { key: "last", label: t("floor.table.lastSent") },
+                      { key: "state", label: t("floor.table.state") },
+                    ]}
+                    rows={floor.orders.map((order) => {
+                      const state = placeState(
+                        order,
+                        now,
+                        frame.lateAfterMinutes,
+                      );
+                      const last = order.lastSentAt ?? order.openedAt;
+                      return {
+                        key: order.id,
+                        cells: {
+                          place: placeTitle(order),
+                          by: person(order.openedBy),
+                          last: t.rich("floor.table.last", {
+                            time: time(last),
+                            ago: ago(last, now),
+                            ltr,
+                          }),
+                          state:
+                            state.kind === "open"
+                              ? t("floor.table.open")
+                              : placeStateWords(t, state),
+                        },
+                      };
+                    })}
+                    onSelect={(key) => {
+                      const order = floor.orders.find((o) => o.id === key);
+                      if (!order) return;
+                      router.push(
+                        order.place
+                          ? paths.place(order.place)
+                          : paths.takeaway(order.id),
+                      );
+                    }}
+                    rowHint={t("floor.table.hint")}
+                  />
+                </Card>
+              </PageSection>
+            </div>
+          ) : null}
+        </div>
+        <div className="hidden md:block">
+          <PageSection title={t("floor.readyTitle")} headingRef={readyHeading}>
+            {ready.length === 0 ? (
+              <Card padding="lg">
+                <p className="text-ink-2">{t("floor.readyEmpty")}</p>
+              </Card>
+            ) : (
+              <ul className="flex flex-col gap-3">
+                {ready.map((ticket) => {
+                  const place = placeTitle(ticket);
+                  // A table's kitchen and bar tickets: each by both.
+                  const card = t("floor.readyCard", {
+                    place,
+                    department: department(ticket.department),
+                  });
+                  return (
+                    <li key={ticket.ticket}>
+                      <Card className="flex flex-col gap-3">
+                        <p className="font-semibold">{card}</p>
+                        <ul className="flex flex-col divide-y divide-line">
+                          {ticket.lines.map((line) => (
+                            <SentLineView key={line.id} line={line} />
+                          ))}
+                        </ul>
+                        <Button
+                          variant="secondary"
+                          disabled={frame.viewing}
+                          onClick={() => void serve(ticket, place)}
+                        >
+                          {t("order.serve")}
+                          <span className="sr-only">
+                            {t("draft.forItem", { name: card })}
+                          </span>
+                        </Button>
+                      </Card>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </PageSection>
+        </div>
+      </div>
+      {frame.viewing ? (
+        <p className="text-ink-2">{t("failed.viewOnly")}</p>
+      ) : null}
+    </PageBody>
+  );
+}

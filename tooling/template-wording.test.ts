@@ -6,7 +6,7 @@ import {
   type MessageTree,
 } from "@domain/wording";
 import { describe, expect, it } from "vitest";
-import { restaurantMenuWording } from "../app/design/order-taking/data";
+import { restaurantWording } from "../app/design/order-taking/data";
 import he from "../messages/he.json";
 import { MIGRATIONS, withoutComments } from "./role-checks";
 
@@ -123,7 +123,7 @@ describe("a template's own sentences", () => {
   });
 
   it("are the menu twin's restaurant's words", () => {
-    expect(restaurantMenuWording).toEqual(
+    expect(restaurantWording).toEqual(
       Object.fromEntries(
         rows
           .filter((row) => row.template === "restaurant")

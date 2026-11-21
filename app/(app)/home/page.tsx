@@ -16,6 +16,7 @@ import { currentWording } from "../current-wording";
 import { renewDemoWeek } from "../demo";
 import { currentListsHome } from "../lists/lists";
 import { currentMember } from "../member";
+import { currentModeRows } from "../mode-rows";
 import { currentModules } from "../modules";
 import {
   currentAvailabilityWeek,
@@ -64,6 +65,7 @@ export default async function HomePage() {
     businesses,
     station,
     firstSteps,
+    modes,
   ] = await Promise.all([
     currentMember(),
     currentModules(),
@@ -81,6 +83,8 @@ export default async function HomePage() {
     currentBusinesses(),
     currentStationHome(),
     currentFirstSteps(),
+    // The modes the person is in: a card while open to them, else a row.
+    currentWording().then((words) => currentModeRows("home", words)),
   ]);
   const membership = member?.membership;
   // The layout has already sent these people elsewhere.
@@ -130,6 +134,7 @@ export default async function HomePage() {
         station,
         // An owner's business still being set up: what to do first.
         firstSteps,
+        modes,
       }}
     />
   );

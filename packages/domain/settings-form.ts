@@ -27,7 +27,13 @@ export function settingLevelOf(role: Role): Exclude<SettingLevel, "team"> {
   return role === "owner" ? "owner" : "business";
 }
 
-export type SettingEditor = "positions" | "shifts" | "weekday" | "time";
+export type SettingEditor =
+  | "positions"
+  | "shifts"
+  | "weekday"
+  | "time"
+  // A list of the business's departments by key (who takes orders, P4).
+  | "departments";
 
 type SettingMeta = {
   level?: SettingLevel;
