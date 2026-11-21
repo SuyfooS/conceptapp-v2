@@ -5,7 +5,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // mode P8a), with the device's station, its session cookie and the database
 // stood in for: the same gates as its poll, a body of at most 1 KB in the
 // write's shape, each write for its own kind of station (a till marks
-// nothing ready), and the database's refusals each with its status.
+// nothing ready), and the database's refusals each with its status. A ticket
+// made ready sends its sender's push once it is due (P8b), and nothing else
+// does.
 
 vi.mock("server-only", () => ({}));
 
@@ -23,6 +25,7 @@ const mocks = vi.hoisted(() => ({
   stationCloseOrder: vi.fn(),
   stationReopenOrder: vi.fn(),
   stationUndoCloseOrder: vi.fn(),
+  pushSoon: vi.fn(),
 }));
 vi.mock("next/headers", () => ({
   headers: async () => new Headers({ host: "localhost:3000" }),
@@ -40,6 +43,7 @@ vi.mock("@db/order-stations", () => ({
 vi.mock("@/app/(app)/clock/station/station", () => ({
   deviceStation: mocks.deviceStation,
 }));
+vi.mock("@/app/push/server", () => ({ pushSoon: mocks.pushSoon }));
 
 const { POST } = await import("./route");
 
@@ -209,6 +213,24 @@ describe("a station's write", () => {
         failure,
       ).toEqual({ status, body: { ok: false, failure } });
     }
+  });
+
+  it("sends the sender's push once a ticket made ready's is due, and for nothing else (P8b)", async () => {
+    station("prep");
+    await write({ do: "ready", ticket: TICKET, ready: true });
+    expect(mocks.pushSoon).toHaveBeenCalledTimes(1);
+    expect(mocks.pushSoon).toHaveBeenCalledWith({ waitMs: 11_000 });
+    mocks.pushSoon.mockClear();
+    await write({ do: "ready", ticket: TICKET, ready: false });
+    await write({ do: "available", item: ITEM, available: false });
+    mocks.stationSetTicketReady.mockResolvedValue({
+      ok: false,
+      failure: "window",
+    });
+    await write({ do: "ready", ticket: TICKET, ready: true });
+    station("till");
+    await write({ do: "close", order: ORDER });
+    expect(mocks.pushSoon).not.toHaveBeenCalled();
   });
 
   it("says it failed when a write throws, logging no secret", async () => {

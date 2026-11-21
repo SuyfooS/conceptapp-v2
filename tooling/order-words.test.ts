@@ -9,7 +9,8 @@ import he from "../messages/he.json";
  * sentence can't bend it: Hebrew would need "במטבח" for one and "בבר" for
  * another. The orders' sentences put it only where it stands alone: at the
  * start, or after " · " or ": " (waiter mode's §12.2), in Hebrew, in English
- * and in the templates' own sentences.
+ * and in the templates' own sentences. The notifications about orders (P8b)
+ * too.
  */
 
 const DEPARTMENT = "{department}";
@@ -30,7 +31,9 @@ function standsAlone(sentence: string): boolean {
 const orders = (tree: MessageTree) =>
   messageLeaves(tree).filter(
     ([key]) =>
-      key.startsWith("app.orders.") || key.startsWith("modules.order_taking."),
+      key.startsWith("app.orders.") ||
+      key.startsWith("modules.order_taking.") ||
+      key.startsWith("app.notifications.kinds.order."),
   );
 
 describe("a department's name in the orders' sentences", () => {
@@ -48,6 +51,12 @@ describe("a department's name in the orders' sentences", () => {
         sentence.includes(DEPARTMENT),
       );
       expect(named.length).toBeGreaterThan(5);
+      // The lines about orders (P8b): "מוכן" and "המסך לא מחובר".
+      expect(
+        named.filter(([key]) =>
+          key.startsWith("app.notifications.kinds.order."),
+        ).length,
+      ).toBe(2);
       for (const [key, sentence] of named) {
         expect(standsAlone(sentence), key).toBe(true);
       }

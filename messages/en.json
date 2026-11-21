@@ -482,6 +482,10 @@
             "title": "An open table",
             "text": "A round sent, mains waiting to be called, and \"Served\""
           },
+          "orderScreenOff": {
+            "title": "The kitchen screen not connected",
+            "text": "A kitchen screen running that didn't get table 4's starters: \"Screen not connected · Kitchen\""
+          },
           "tillItem": {
             "title": "For the till, by item",
             "text": "Table 4: each item with how many and its price, no total"
@@ -501,6 +505,10 @@
           "mineEmpty": {
             "title": "My orders, before sending",
             "text": "What the screen says when nothing was sent yet"
+          },
+          "mineScreenOff": {
+            "title": "My orders, a screen not connected",
+            "text": "The same screen that didn't get it, in the list of what Shiran sent"
           },
           "prep": {
             "title": "Preparing on a phone",
@@ -3984,6 +3992,10 @@
         "documents": {
           "name": "Documents",
           "hint": "New documents for you, and documents to confirm you read"
+        },
+        "orders": {
+          "name": "Orders ready",
+          "hint": "Orders you sent, once they are ready, and a prep screen that didn't get an order"
         }
       },
       "time": {
@@ -4231,6 +4243,20 @@
             "extraBoth": "From now on also {on}, and without {off}",
             "byTeam": "The ConceptApp team made the change"
           }
+        },
+        "order": {
+          "ready": {
+            "title": "{place} · {department}: ready",
+            "titlePlain": "Ready to serve",
+            "body": "{count, plural, one {1 item to serve} other {# items to serve}}",
+            "settledNote": "No longer waiting to be served"
+          },
+          "unseen": {
+            "title": "{place}: screen not connected · {department}",
+            "titlePlain": "Screen not connected",
+            "body": "Check the screen or pass it on by word of mouth.",
+            "settledNote": "The order no longer waits for the screen"
+          }
         }
       },
       "push": {
@@ -4283,6 +4309,7 @@
             "lists": "A lists update",
             "chat": "A new chat message",
             "documents": "A documents update",
+            "orders": "An update on orders",
             "other": "Something new"
           }
         }
@@ -4304,7 +4331,8 @@
           "from": "From",
           "to": "Until",
           "note": "In the app they show at once. A reminder whose time has passed by then won't reach the phone.",
-          "now": "Quiet hours now. What comes waits until <ltr>{time}</ltr>."
+          "now": "Quiet hours now. What comes waits until <ltr>{time}</ltr>.",
+          "shift": "During a shift, ready orders reach the phone in quiet hours too."
         },
         "previews": {
           "title": "Lock screen",
@@ -6013,6 +6041,7 @@
         "sending": "Sending",
         "notSent": "Not sent yet. It goes when there is a connection",
         "sent": "Sent",
+        "screenOff": "Screen not connected · {department}",
         "onScreen": "On the screen · {department}",
         "ready": "Ready · {department}",
         "served": "Served"

@@ -26,6 +26,8 @@ import {
   notificationKindOf,
   notificationPreferenceChange,
   notificationRefs,
+  ORDER_NOTICE_RULES,
+  ORDER_READY_PUSH_WAIT_MS,
   PHONE_ONLY_KINDS,
   parseInboxCursor,
   phoneTime,
@@ -33,8 +35,10 @@ import {
   REMINDER_RULES,
   reachesPhone,
   readNotificationPreferences,
+  SHIFT_GROUPS,
   SWITCHABLE_GROUPS,
   saysShiftsLeft,
+  shiftSkipsQuiet,
   unfilledWeekBegun,
   unreadCounts,
   weekUnderWay,
@@ -132,6 +136,8 @@ describe("the kinds", () => {
       "lists.late_owner",
       "lists.late_team",
       "lists.out_of_range",
+      "order.ready",
+      "order.unseen",
       "pay.month_due",
       "schedule.unfilled",
       "swap.offered",
@@ -153,6 +159,159 @@ describe("the kinds", () => {
         NOTIFICATION_KINDS[kind as keyof typeof NOTIFICATION_KINDS].minRole,
       ).toBe("manager");
     }
+  });
+});
+
+describe("the lines about orders", () => {
+  // Waiter mode P8b: "מוכן" to the round's sender, "המסך לא מחובר" from the
+  // minute job, both in the group `orders`.
+  const ORDER = "66666666-6666-4666-8666-666666666666";
+  const TICKET = "77777777-7777-4777-8777-777777777777";
+  const PLACE = "88888888-8888-4888-8888-888888888888";
+  const facts = {
+    order: ORDER,
+    ticket: TICKET,
+    place: PLACE,
+    placeName: "4",
+    takeaway: null,
+    department: LINE,
+    departmentName: "Kitchen",
+    count: 3,
+  };
+
+  it("are the staff's, of taking orders, in the group last on the settings screen", () => {
+    for (const kind of ["order.ready", "order.unseen"] as const) {
+      const info = NOTIFICATION_KINDS[kind];
+      expect(info.group, kind).toBe("orders");
+      expect(info.module, kind).toBe("order_taking");
+      expect(info.staffOnly, kind).toBe(true);
+      expect(info.minRole, kind).toBe("worker");
+      expect(needsAction(kind), kind).toBe(true);
+      expect(inInbox(kind), kind).toBe(true);
+    }
+    expect(NOTIFICATION_KINDS["order.unseen"].byApp).toBe(true);
+    expect(NOTIFICATION_KINDS["order.ready"]).not.toHaveProperty("byApp");
+    expect(NOTIFICATION_GROUPS.at(-1)).toBe("orders");
+  });
+
+  it("reach everyone on the staff where taking orders is on, never an accountant", () => {
+    for (const role of ["owner", "manager", "worker"] as const) {
+      expect(groupsFor(role, ["order_taking"]), role).toContain("orders");
+      expect(groupsFor(role, ["scheduling"]), role).not.toContain("orders");
+    }
+    expect(groupsFor("worker", ["order_taking"])).toEqual(["orders"]);
+    expect(groupsFor("accountant", ["order_taking"])).not.toContain("orders");
+    expect(alwaysOnPhone("worker", ["order_taking"])).toEqual([]);
+  });
+
+  it("lead to the order at its place, or the takeaway, and only by a real id", () => {
+    for (const kind of ["order.ready", "order.unseen"]) {
+      expect(linkFor(kind, { ...facts, place: PLACE.toUpperCase() })).toBe(
+        `/orders/place/${PLACE}`,
+      );
+      expect(linkFor(kind, { ...facts, place: null, takeaway: 12 }), kind).toBe(
+        `/orders/takeaway/${ORDER}`,
+      );
+      // A place by no real id never leads to the takeaway's screen.
+      expect(linkFor(kind, { ...facts, place: "table-4" })).toBe(
+        "/orders/mine",
+      );
+      expect(linkFor(kind, { order: "../admin", place: null })).toBe(
+        "/orders/mine",
+      );
+      expect(linkFor(kind)).toBe("/orders/mine");
+      // Served, the order still opens: the table.
+      expect(linkFor(kind, facts, true)).toBe(`/orders/place/${PLACE}`);
+    }
+  });
+
+  it("read the place, the department and the count, leniently", () => {
+    expect(lineOf(row("order.ready", facts))).toMatchObject({
+      group: "orders",
+      actor: { kind: "member", name: null },
+      line: {
+        kind: "order.ready",
+        where: { placeName: "4", takeaway: null },
+        department: "Kitchen",
+        count: 3,
+      },
+    });
+    expect(
+      lineOf(
+        row("order.unseen", {
+          order: ORDER,
+          ticket: TICKET,
+          takeaway: 12,
+          count: "two",
+        }),
+      )?.line,
+    ).toEqual({
+      kind: "order.unseen",
+      where: { placeName: null, takeaway: 12 },
+      department: null,
+      count: 0,
+    });
+    // Without its order or ticket, it is no line about one.
+    expect(lineOf(row("order.ready", { ...facts, ticket: "x" }))?.line).toEqual(
+      { kind: "other" },
+    );
+    expect(lineOf(row("order.ready", { placeName: "4" }))?.line).toEqual({
+      kind: "other",
+    });
+  });
+
+  it("are from someone on the team for a kitchen screen's ready, and from the app for a screen not connected", () => {
+    expect(lineOf(row("order.ready", facts, { actorId: null }))?.actor).toEqual(
+      { kind: "unknown" },
+    );
+    expect(
+      lineOf(row("order.unseen", facts, { actorId: null }))?.actor,
+    ).toEqual({ kind: "app" });
+    expect(lineOf(row("order.ready", facts, { actorId: NOA }))?.actor).toEqual({
+      kind: "member",
+      name: "Noa",
+    });
+  });
+
+  it("reach the phone in quiet hours during a shift, where the time clock is on", () => {
+    expect([...SHIFT_GROUPS]).toEqual(["orders"]);
+    expect(shiftSkipsQuiet(["orders"], ["order_taking", "time_clock"])).toBe(
+      true,
+    );
+    // Without the time clock there is no shift to know of.
+    expect(shiftSkipsQuiet(["orders"], ["order_taking"])).toBe(false);
+    expect(shiftSkipsQuiet(["schedule"], ["scheduling", "time_clock"])).toBe(
+      false,
+    );
+    const choices = {
+      pushOff: [],
+      quiet: { from: "22:00", to: "07:00" },
+      timeZone: "Asia/Jerusalem",
+    };
+    const late = new Date("2026-12-01T21:00:00Z");
+    expect(phoneTime("order.ready", choices, late, true)).toEqual(late);
+    expect(phoneTime("order.ready", choices, late)?.toISOString()).toBe(
+      "2026-12-02T05:00:00.000Z",
+    );
+    // Only its group: the rest wait out quiet hours on a shift too.
+    expect(phoneTime("schedule.changed", choices, late, true)).not.toEqual(
+      late,
+    );
+    // The group's switch still keeps it off.
+    expect(
+      phoneTime("order.ready", { ...choices, pushOff: ["orders"] }, late, true),
+    ).toBeNull();
+  });
+
+  it("keep their own times, the app's wait just past the push's", () => {
+    expect(ORDER_NOTICE_RULES).toEqual({
+      readyPushDelaySeconds: 10,
+      unseenAfterMinutes: 2,
+      unseenWindowMinutes: 10,
+      pushForMinutes: 30,
+      keptDays: 2,
+    });
+    expect(ORDER_READY_PUSH_WAIT_MS).toBe(11_000);
   });
 });
 

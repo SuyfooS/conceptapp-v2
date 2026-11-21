@@ -18,6 +18,7 @@ const frame: OrdersFrame = {
   names: { yoav: "Yoav" },
   departments: { kitchen: "Kitchen" },
   departmentOrder: ["kitchen"],
+  screens: [],
   lateAfterMinutes: 20,
   timeZone: "Asia/Jerusalem",
 };

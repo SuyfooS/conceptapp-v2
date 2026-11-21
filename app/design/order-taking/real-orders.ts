@@ -441,8 +441,14 @@ export const choicesRefused = (
 export const soldOutIn = (data: DemoData, items: readonly string[]) =>
   [...new Set(items)].filter((item) => data.soldOut.includes(item));
 
-/** Who looks at the twin, as the mode's frame says it. */
-export function twinFrame(viewer: TwinViewer): OrdersFrame {
+/**
+ * Who looks at the twin, as the mode's frame says it, with the departments a
+ * running prep screen shows (none, but `?state=screenOff`'s kitchen).
+ */
+export function twinFrame(
+  viewer: TwinViewer,
+  screens: readonly string[] = [],
+): OrdersFrame {
   const departments = orderDemoDepartments.map((d) => d.key);
   const base: OrdersFrame = {
     business: "twin",
@@ -458,6 +464,7 @@ export function twinFrame(viewer: TwinViewer): OrdersFrame {
       orderDemoDepartments.map((d) => [d.key, d.name]),
     ),
     departmentOrder: departments,
+    screens: [...screens],
     lateAfterMinutes: 15,
     timeZone: "Asia/Jerusalem",
   };

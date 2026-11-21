@@ -366,6 +366,32 @@ kind, so a new kind is a row in `private.notification_kind_groups` too
 for the groups and for `private.quiet_end` against `quietEnd` across both clock
 changes).
 
+Taking orders' lines (waiter mode P8b,
+`20261125000100_order_taking_notifications.sql`) are the group `orders`, last
+on the settings screen, for the staff alone (`'order_taking'` among
+`private.notify`'s staff-only modules). `order.ready` goes to a round's
+sender when a ticket turns ready (`private.notify_order_ready`, from
+`set_order_ticket_ready` and `station_set_ticket_ready`, never to whoever
+marked it), with the place, the department and the live count of
+`private.order_notice_facts`, no price; its push waits 10 seconds and goes no
+more half an hour on. `public.read_order_ready(actor, business, tickets)`, with
+the secret key, reads the ready lines a sync showed their sender and skips
+their push (`@db/orders`' `readOrderReady`, which `/orders-sync` calls).
+`order.unseen` comes from `private.run_order_notices` in the minute job: once
+per ticket that a running prep screen of its department, or of every one,
+hasn't fetched 2 minutes after it was sent or called (only within 10), to the
+sender and whoever runs orders on the clock. Two triggers settle them
+(`order_tickets_settle_notices` when a ticket leaves "ready", is fetched or is
+no longer new; `orders_settle_notices` when an order is cancelled), and the
+minute job settles what is left before it writes. During a shift (with the
+time clock on) `orders` reaches the phone in quiet hours too, its switch
+still first (`private.shift_groups`, `private.push_skips_quiet`, and
+`private.push_held_in`, which `claim_due_pushes` and the minute job ask in
+place of `push_held`). The daily clean-up deletes `order.*` lines after 2
+days. `private.order_notice_rules` and `private.shift_groups` are kept equal
+to `@domain/notifications` by `notification-preferences.db.test.ts`; the rest
+by pgTAP `order_notifications.test.sql`.
+
 Lists (`20261109000600_lists.sql`) work the same way as the rest. A
 business's departments are its own data, read by every member;
 `public.set_departments` and `public.set_department_members` save them for
@@ -2453,7 +2479,10 @@ for whoever runs orders or edits the clock, taking orders off too (the
 clock's lock offers it on that device), and starts it again only for whoever
 runs orders, with taking orders on (`order.station.stop`, `restart`). A
 kitchen's "מה נגמר" refused says the item's own words (`itemGone`,
-`notHere`, `orderStationItemFailureOf`). The demo's reset deletes the business, and its stations of every kind go with it. Covered by
+`notHere`, `orderStationItemFailureOf`). Since P8b `public.order_mode` says
+which live departments a running prep screen shows (`screens`, none before
+that migration reaches the project), for the order's and "ההזמנות שלי"'s
+"המסך לא מחובר". The demo's reset deletes the business, and its stations of every kind go with it. Covered by
 `order-stations.test.ts`, `order-station-failures.test.ts`,
 pgTAP `order_stations.test.sql`, `modules/order_taking/stations.db.test.ts`
 and `e2e/order-stations.spec.ts`.

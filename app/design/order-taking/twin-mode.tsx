@@ -115,7 +115,10 @@ export function TwinOrdersMode({ children }: { children: ReactNode }) {
   const t = useTranslations("app.orders.toast");
   const { placeTitle } = usePlaceWords();
   const { say, tell, toast } = useModeToast();
-  const frame = useMemo(() => twinFrame(data.viewer), [data.viewer]);
+  const frame = useMemo(
+    () => twinFrame(data.viewer, data.screens),
+    [data.viewer, data.screens],
+  );
   // A version that moves with every change to the rows, as the server's does.
   const [seen, setSeen] = useState({ data, version: 1 });
   if (seen.data !== data) setSeen({ data, version: seen.version + 1 });

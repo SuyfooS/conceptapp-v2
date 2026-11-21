@@ -35,6 +35,12 @@ export type OrdersFrame = {
   departments: Record<string, string>;
   /** The departments in the business's order. */
   departmentOrder: string[];
+  /**
+   * The live departments a running prep screen shows (P8b): a ticket of one
+   * that no screen fetched in 2 minutes says "המסך לא מחובר". As the screen
+   * was drawn: a screen locked or stopped since shows on the next.
+   */
+  screens: string[];
   lateAfterMinutes: number;
   timeZone: string;
 };

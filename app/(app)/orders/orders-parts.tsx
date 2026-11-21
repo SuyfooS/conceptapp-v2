@@ -6,6 +6,7 @@ import {
   minutesSince,
   type PlaceState,
   placeTitleKind,
+  type TicketScreen,
   ticketAge,
   ticketBadge,
 } from "@domain/order-screens";
@@ -236,16 +237,37 @@ export function SentLineView({
   );
 }
 
-/** A ticket's state for whoever sent it, in words as well as colour. */
+/**
+ * A ticket's state for whoever sent it, in words as well as colour. Given
+ * `screen`, a ticket no running prep screen fetched in 2 minutes says "המסך
+ * לא מחובר · מטבח" (P8b) in place of "נשלח", until one does.
+ */
 export function TicketBadgeView({
   ticket,
   department,
+  screen,
 }: {
-  ticket: { status: TicketStatus; kitchenSeenAt: string | null; lines: number };
+  ticket: {
+    status: TicketStatus;
+    kitchenSeenAt: string | null;
+    lines: number;
+    /** Its department's id, held or not, and when it was called. */
+    department?: string;
+    held?: boolean;
+    firedAt?: string | null;
+  };
+  /** The department's name. */
   department: string;
+  screen?: TicketScreen;
 }) {
   const { t } = useOrderWords();
-  switch (ticketBadge(ticket)) {
+  switch (ticketBadge(ticket, screen)) {
+    case "screenOff":
+      return (
+        <Badge tone="warning">
+          {t("ticketState.screenOff", { department })}
+        </Badge>
+      );
     case "held":
       return <Badge>{t("ticketState.held")}</Badge>;
     case "ready":

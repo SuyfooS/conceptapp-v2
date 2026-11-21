@@ -5014,3 +5014,235 @@ export async function demoOpenTicket(
     limit 1`;
   return row?.id ?? null;
 }
+
+// ---------------------------------------------------------------------------
+// Waiter mode P8b: the lines about orders, "מוכן" and "המסך לא מחובר".
+
+/** The newest ticket of that department at the open order of that place, in that business, or null. */
+async function newestTicket(
+  business: string,
+  placeName: string,
+  departmentKey: string,
+): Promise<string | null> {
+  const [row] = await sql<{ id: string }[]>`
+    select t.id
+    from public.order_tickets t
+    join public.orders o on o.id = t.order_id
+    join public.order_places p on p.id = o.place_id
+    join public.departments d on d.id = t.department_id
+    join public.order_rounds r on r.id = t.round_id
+    where o.business_id = ${business} and o.status = 'open'
+      and p.name = ${placeName} and d.key = ${departmentKey}
+    order by r.sent_at desc, t.position desc
+    limit 1`;
+  return row?.id ?? null;
+}
+
+/** The demo restaurant's newest ticket of that department at the open order of that place. */
+export async function demoTicketId(
+  placeName: string,
+  departmentKey: string,
+): Promise<string | null> {
+  return newestTicket(DEMO_RESTAURANT, placeName, departmentKey);
+}
+
+/**
+ * Someone who prepares marks the demo restaurant's newest ticket of that
+ * department at that place ready, through the function the app's "מוכן"
+ * calls (which writes the sender's line). Its id.
+ */
+export async function readyDemoTicket(
+  phone: string,
+  placeName: string,
+  departmentKey: string,
+): Promise<string> {
+  const ticket = await demoTicketId(placeName, departmentKey);
+  if (!ticket)
+    throw new Error(`no ticket at ${placeName} for ${departmentKey}`);
+  await sql`select public.set_order_ticket_ready(
+    (select p.id from public.profiles p where p.phone = ${phone}),
+    ${ticket}::uuid, true)`;
+  return ticket;
+}
+
+export type OrderLineState = { read: boolean; settled: boolean; push: string };
+
+/** Someone's line of that kind about that ticket, in any business, or null. */
+export async function orderLineOf(
+  userId: string,
+  kind: "order.ready" | "order.unseen",
+  ticket: string,
+): Promise<OrderLineState | null> {
+  const [row] = await sql<OrderLineState[]>`
+    select n.read_at is not null as read, n.resolved_at is not null as settled,
+      n.push_state as push
+    from public.notifications n
+    where n.user_id = ${userId} and n.dedupe_key = ${`${kind}:${ticket}`}`;
+  return row ?? null;
+}
+
+/** The same, for someone of the demo restaurant by phone. */
+export async function demoOrderLine(
+  phone: string,
+  kind: "order.ready" | "order.unseen",
+  ticket: string,
+): Promise<OrderLineState | null> {
+  return orderLineOf(await userIdOf(phone), kind, ticket);
+}
+
+/**
+ * The newest round at the open order of that place sent that many minutes
+ * earlier than it was, and the order opened no later: the minute job's 2
+ * minutes, without waiting for them.
+ */
+async function ageRound(
+  business: string,
+  placeName: string,
+  minutes: number,
+): Promise<void> {
+  await sql.begin(async (tx) => {
+    const [round] = await tx<{ id: string; order_id: string }[]>`
+      select r.id, r.order_id
+      from public.order_rounds r
+      join public.orders o on o.id = r.order_id
+      join public.order_places p on p.id = o.place_id
+      where o.business_id = ${business} and o.status = 'open'
+        and p.name = ${placeName}
+      order by r.sent_at desc
+      limit 1`;
+    if (!round) throw new Error(`no round at ${placeName}`);
+    await tx`update public.order_rounds
+      set sent_at = sent_at - make_interval(mins => ${minutes})
+      where id = ${round.id}`;
+    await tx`update public.orders o
+      set opened_at = least(o.opened_at,
+        (select r.sent_at from public.order_rounds r where r.id = ${round.id}))
+      where o.id = ${round.order_id}`;
+  });
+}
+
+/** The demo restaurant's newest round at that place, that many minutes older. */
+export async function ageDemoRound(
+  placeName: string,
+  minutes: number,
+): Promise<void> {
+  await ageRound(DEMO_RESTAURANT, placeName, minutes);
+}
+
+/**
+ * The minute job's "המסך לא מחובר" for that business, now: the job is off
+ * locally and in CI (supabase/seed.sql). How many lines it wrote.
+ */
+export async function runOrderNotices(business: string): Promise<number> {
+  const [row] = await sql<{ written: number }[]>`
+    select private.run_order_notices(now(), ${business}::uuid) as written`;
+  return row?.written ?? 0;
+}
+
+/**
+ * What a kitchen's screen reads by its secret, as /station/prep asks: its
+ * department's new tickets marked seen.
+ */
+export async function stationReads(token: string): Promise<void> {
+  const hash = createHash("sha256").update(token, "utf8").digest("hex");
+  await sql`select public.station_order_prep(${hash}, null, now())`;
+}
+
+/** The demo restaurant's lines about orders written since that moment gone. */
+export async function clearOrderNoticesSince(since: Date): Promise<void> {
+  await sql`delete from public.notifications
+    where business_id = ${DEMO_RESTAURANT} and kind like 'order.%'
+      and created_at >= ${since}::timestamptz`;
+}
+
+/**
+ * A real restaurant of its own for "מוכן" on a phone (order-push.spec.ts),
+ * which demo businesses never get: its owner, who takes orders, and a cook in
+ * the kitchen (their numbers are in no other spec), a starter that goes to
+ * the kitchen, and tables 4, 5 and 6. Made afresh each run.
+ */
+export const ORDER_PUSH_BUSINESS = "00000000-0000-4000-b000-0000000000ed";
+export const ORDER_PUSH_PEOPLE = {
+  owner: {
+    id: "00000000-0000-4000-a000-000000000991",
+    name: "אלה הזמנות",
+    local: "050-000-0991",
+    e164: "+972500000991",
+  },
+  cook: {
+    id: "00000000-0000-4000-a000-000000000992",
+    name: "בן מטבח",
+    local: "050-000-0992",
+    e164: "+972500000992",
+  },
+} as const;
+/** The restaurant's one starter, by name. */
+export const ORDER_PUSH_ITEM = "חומוס";
+
+export async function openOrderPushBusiness(): Promise<void> {
+  const people = Object.values(ORDER_PUSH_PEOPLE);
+  const id = ORDER_PUSH_BUSINESS;
+  await deleteRealBusiness(id);
+  await ensureLogins(people);
+  await sql`delete from public.push_subscriptions
+    where user_id in ${sql(people.map((p) => p.id))}`;
+  await sql`insert into public.businesses (id, slug, name)
+    values (${id}, 'order-push-e2e', 'מסעדה להתראות')`;
+  await sql`select public.apply_template(${id}, 'restaurant')`;
+  await sql`insert into public.memberships (business_id, user_id, role)
+    values (${id}, ${ORDER_PUSH_PEOPLE.owner.id}, 'owner'),
+      (${id}, ${ORDER_PUSH_PEOPLE.cook.id}, 'worker')`;
+  await sql`insert into public.business_modules (business_id, module_key, enabled)
+    values (${id}, 'order_taking', true), (${id}, 'notifications', true)
+    on conflict (business_id, module_key) do update set enabled = true`;
+  await sql`insert into public.department_members (department_id, business_id, user_id)
+    select d.id, d.business_id, ${ORDER_PUSH_PEOPLE.cook.id}::uuid
+    from public.departments d
+    where d.business_id = ${id} and d.key = 'kitchen'`;
+  await sql`insert into public.menu_categories (business_id, name, department_id, position)
+    select ${id}::uuid, 'ראשונות', d.id, 0
+    from public.departments d
+    where d.business_id = ${id} and d.key = 'kitchen'`;
+  await sql`insert into public.menu_items (
+      business_id, category_id, name, price_agorot, available, option_groups, position
+    )
+    select ${id}::uuid, c.id, ${ORDER_PUSH_ITEM}, 3200, true, '[]', 0
+    from public.menu_categories c
+    where c.business_id = ${id}`;
+  await sql`insert into public.order_places (business_id, name, position)
+    values (${id}, '4', 0), (${id}, '5', 1), (${id}, '6', 2)`;
+  await sql`select private.bump_menu_version(${id}::uuid)`;
+}
+
+/** The restaurant's newest kitchen ticket at that table, or null. */
+export async function orderPushTicket(
+  placeName: string,
+): Promise<string | null> {
+  return newestTicket(ORDER_PUSH_BUSINESS, placeName, "kitchen");
+}
+
+/** The restaurant's newest round at that table, that many minutes older. */
+export async function ageOrderPushRound(
+  placeName: string,
+  minutes: number,
+): Promise<void> {
+  await ageRound(ORDER_PUSH_BUSINESS, placeName, minutes);
+}
+
+/** A running kitchen's screen at the restaurant, whose secret nobody holds. */
+export async function addOrderPushStation(): Promise<void> {
+  const tokenHash = createHash("sha256")
+    .update(randomUUID(), "utf8")
+    .digest("hex");
+  await sql`insert into public.clock_stations (business_id, name, token_hash, shows, department_id)
+    select ${ORDER_PUSH_BUSINESS}::uuid, 'מטבח', ${tokenHash}, 'prep', d.id
+    from public.departments d
+    where d.business_id = ${ORDER_PUSH_BUSINESS} and d.key = 'kitchen'`;
+}
+
+/** Forget the restaurant and its people's devices, when the spec is done. */
+export async function closeOrderPushBusiness(): Promise<void> {
+  await sql`delete from public.push_subscriptions
+    where user_id in ${sql(Object.values(ORDER_PUSH_PEOPLE).map((p) => p.id))}`;
+  await deleteRealBusiness(ORDER_PUSH_BUSINESS);
+}

@@ -69,6 +69,7 @@ export function frameOf(access: OrdersAccess): OrdersFrame {
       access.departments.map((d) => [d.id, d.name]),
     ),
     departmentOrder: access.departments.map((d) => d.id),
+    screens: mode.screens,
     lateAfterMinutes: access.lateAfterMinutes,
     timeZone: access.timeZone,
   };

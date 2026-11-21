@@ -4295,6 +4295,10 @@ export type Database = {
         Args: { actor: string; business: string; ids?: string[] };
         Returns: number;
       };
+      read_order_ready: {
+        Args: { actor: string; business: string; tickets: string[] };
+        Returns: number;
+      };
       remove_chat_message: {
         Args: { actor: string; at_time?: string; message: string };
         Returns: undefined;

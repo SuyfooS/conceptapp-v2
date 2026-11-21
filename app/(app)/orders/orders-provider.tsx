@@ -507,6 +507,10 @@ export function OrdersModeProvider({
       viewing: frame.viewing,
       prepares: frame.prepares.length > 0 || frame.runs,
       off: wasOff,
+      // What of one's own turned ready is shown only with the mode on screen
+      // in a visible page: a sync after it was left, or behind a locked
+      // phone, reads no "מוכן" line, and the push goes (P8b).
+      shown: alive.current && document.visibilityState === "visible",
       wants: asked,
       held: {
         floor: held.floor,

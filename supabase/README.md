@@ -103,6 +103,13 @@ and managers. Each comes once, never in a demo business, at the times the busine
 `/manage/notifications`; it needs no secret, and only its pushes wait for them. The same
 migration has `notifications-clean` also delete old lines: read ones after 90 days, any
 after 180.
+From `20261125000100_order_taking_notifications.sql` (waiter mode P8b) the minute job also
+writes "המסך לא מחובר" (`private.run_order_notices`, after the reminders): once per ticket that
+a running prep screen of its department hasn't fetched 2 minutes after it was sent or called,
+only within 10 minutes of that, to its sender and whoever runs orders on the clock, in a demo
+in the app alone. It needs no secret, and only its pushes wait for them. "מוכן" needs no job:
+the app sends its push itself about 11 seconds after it. `notifications-clean` deletes every
+line about orders (`order.*`) 2 days after it was written.
 `20261110001000_payroll_months.sql` adds a third, `payroll`, daily at 06:00 UTC: on each
 business's 2nd it reminds pay holders to close last month (never in a demo business), in
 the app and, like any line, on the phone. It needs no secret.

@@ -1,6 +1,6 @@
 import type { DraftLine } from "@domain/order-screens";
 import type { OutboxRow } from "@domain/orders-outbox";
-import { SEND_BODY_MAX } from "@domain/orders-sync";
+import { readOrdersSyncQuery, SEND_BODY_MAX } from "@domain/orders-sync";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { memoryOrdersDb, type OrdersDb } from "./orders-db";
 import {
@@ -416,9 +416,16 @@ describe("after ten minutes", () => {
     await elapse(2 * MINUTE);
     const tries = posts().length;
     expect(box.snapshot(YOAV, BUSINESS).asking.has(kept.key)).toBe(true);
-    expect(calls.some((call) => call.url.startsWith("/orders-sync"))).toBe(
-      true,
-    );
+    const syncs = calls.filter((call) => call.url.startsWith("/orders-sync"));
+    expect(syncs.length).toBeGreaterThan(0);
+    // One's own rounds, read with nothing showing them (from Home or the
+    // schedule too): what turned ready stays unread, for its push (P8b).
+    for (const call of syncs) {
+      const query = readOrdersSyncQuery(
+        new URL(call.url, "http://localhost").searchParams,
+      );
+      expect(query).toMatchObject({ mine: true, shown: false });
+    }
     expect(events.filter((event) => event.kind === "asks")).toHaveLength(1);
     expect(
       pendingSends(box.snapshot(YOAV, BUSINESS), DRAFT, Date.now()),

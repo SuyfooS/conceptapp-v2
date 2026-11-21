@@ -5,7 +5,8 @@ vi.mock("server-only", () => ({}));
 // The mode's two reads of P4 with the person's own session stood in for:
 // where they stand in the mode, "notYet" before its migration and null when
 // it isn't theirs; and the people its screens name, by the business's names
-// for them, short.
+// for them, short. And P8b's read of the ready lines a sync showed, with the
+// secret key stood in for.
 
 const served = vi.hoisted(() => ({
   rpc: { data: null as unknown, error: null as { code: string } | null },
@@ -14,6 +15,8 @@ const served = vi.hoisted(() => ({
     profiles: { full_name: string } | null;
   }[],
   names: [] as { user_id: string; name: string }[],
+  admin: { data: null as unknown, error: null as { code: string } | null },
+  adminCalls: [] as { name: string; args: unknown }[],
 }));
 vi.mock("./supabase/server", () => ({
   createClient: async () => ({
@@ -34,9 +37,17 @@ vi.mock("./supabase/server", () => ({
     },
   }),
 }));
-vi.mock("./supabase/admin", () => ({ createAdminClient: () => ({}) }));
+vi.mock("./supabase/admin", () => ({
+  createAdminClient: () => ({
+    rpc: async (name: string, args: unknown) => {
+      served.adminCalls.push({ name, args });
+      return served.admin;
+    },
+  }),
+}));
 
-const { getOrderMode, getOrderPeople } = await import("./orders");
+const { getOrderMode, getOrderPeople, READ_READY_MOST, readOrderReady } =
+  await import("./orders");
 
 const BUSINESS = "10000000-0000-4000-b000-000000000001";
 const KITCHEN = "20000000-0000-4000-a000-000000000001";
@@ -48,6 +59,8 @@ afterEach(() => {
   served.rpc = { data: null, error: null };
   served.memberships = [];
   served.names = [];
+  served.admin = { data: null, error: null };
+  served.adminCalls = [];
 });
 
 describe("where the person stands in the mode", () => {
@@ -97,5 +110,50 @@ describe("the people the orders' screens name", () => {
     expect(names.get(DANA)).toBe("דנה לוי");
     expect(names.get(DANI)).toBe("דנה כהן");
     expect(names.get(YOAV.toLowerCase())).toBe("יואב");
+  });
+});
+
+describe("the ready lines a sync showed (P8b)", () => {
+  const TICKET = "30000000-0000-4000-a000-000000000001";
+  const OTHER = "30000000-0000-4000-a000-000000000002";
+
+  it("are read for the person in the business, each ticket once", async () => {
+    served.admin = { data: 2, error: null };
+    expect(await readOrderReady(DANA, BUSINESS, [TICKET, OTHER, TICKET])).toBe(
+      2,
+    );
+    expect(served.adminCalls).toEqual([
+      {
+        name: "read_order_ready",
+        args: { actor: DANA, business: BUSINESS, tickets: [TICKET, OTHER] },
+      },
+    ]);
+  });
+
+  it("ask nothing for no ticket, or none by a real id", async () => {
+    expect(await readOrderReady(DANA, BUSINESS, [])).toBe(0);
+    expect(await readOrderReady(DANA, BUSINESS, ["../x", "7"])).toBe(0);
+    expect(served.adminCalls).toEqual([]);
+  });
+
+  it("ask for at most the database's cap", async () => {
+    served.admin = { data: READ_READY_MOST, error: null };
+    const many = Array.from(
+      { length: READ_READY_MOST + 5 },
+      (_, n) => `30000000-0000-4000-a000-${String(n).padStart(12, "0")}`,
+    );
+    await readOrderReady(DANA, BUSINESS, many);
+    const asked = served.adminCalls[0]?.args as { tickets: string[] };
+    expect(asked.tickets).toHaveLength(READ_READY_MOST);
+    expect(READ_READY_MOST).toBe(200);
+  });
+
+  it("read none before the migration, and throw anything else", async () => {
+    served.admin = { data: null, error: { code: "PGRST202" } };
+    expect(await readOrderReady(DANA, BUSINESS, [TICKET])).toBe(0);
+    served.admin = { data: null, error: { code: "XX000" } };
+    await expect(
+      readOrderReady(DANA, BUSINESS, [TICKET]),
+    ).rejects.toMatchObject({ code: "XX000" });
   });
 });

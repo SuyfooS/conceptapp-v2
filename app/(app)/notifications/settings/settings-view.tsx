@@ -21,6 +21,7 @@ export function NotificationSettingsView({
   preferences,
   groups,
   always = false,
+  shift = false,
   device,
   save,
   now,
@@ -31,6 +32,11 @@ export function NotificationSettingsView({
   groups: readonly NotificationGroup[];
   /** Lines about pay reach this person's phone whatever they switch off. */
   always?: boolean;
+  /**
+   * During a shift, ready orders reach the phone in quiet hours too
+   * (`shiftSkipsQuiet`: the group is offered, and the time clock is on).
+   */
+  shift?: boolean;
   /** The switch for this phone, where push is set up. */
   device?: ReactNode;
   save: SavePreferences;
@@ -54,6 +60,7 @@ export function NotificationSettingsView({
           preferences={preferences}
           groups={groups}
           always={always}
+          shift={shift}
           device={device}
           save={save}
           now={now}

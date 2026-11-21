@@ -15,12 +15,14 @@ import {
   takeBackOrderLine,
   undoCloseOrder,
 } from "@db/orders";
+import { ORDER_READY_PUSH_WAIT_MS } from "@domain/notifications";
 import {
   COMP_REASONS,
   LINE_CANCEL_REASONS,
   ORDER_CANCEL_REASONS,
 } from "@domain/orders";
 import { z } from "zod";
+import { pushSoon } from "../../push/server";
 import { type OrdersAccess, ordersAccess } from "./orders-access";
 import type { OrdersActionResult } from "./orders-types";
 
@@ -93,7 +95,11 @@ export async function serveAction(
   return answered(await serveOrderTicket(access.userId, which.data, on.data));
 }
 
-/** "מוכן", or "החזרה להכנה" within five minutes. */
+/**
+ * "מוכן", or "החזרה להכנה" within five minutes. "מוכן" tells the round's
+ * sender (P8b), and its push goes 10 seconds late, unless an open mode reads
+ * it first: sent from here once it is due.
+ */
 export async function setReadyAction(
   business: string,
   ticket: unknown,
@@ -104,9 +110,9 @@ export async function setReadyAction(
   const which = id.safeParse(ticket);
   const on = flag.safeParse(ready);
   if (!which.success || !on.success) return { ok: false, failure: "invalid" };
-  return answered(
-    await setOrderTicketReady(access.userId, which.data, on.data),
-  );
+  const result = await setOrderTicketReady(access.userId, which.data, on.data);
+  if (result.ok && on.data) pushSoon({ waitMs: ORDER_READY_PUSH_WAIT_MS });
+  return answered(result);
 }
 
 /** "החזרה מהשליחה": the sender takes a line back within the window. */
