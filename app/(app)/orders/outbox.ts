@@ -741,6 +741,9 @@ export function createOutbox(deps: OutboxDeps) {
           floor: false,
           mine: true,
           prep: false,
+          // Nothing shows this read: what turned ready stays unread, for
+          // its push (P8b).
+          shown: false,
           order: null,
         }),
         { cache: "no-store", credentials: "same-origin" },

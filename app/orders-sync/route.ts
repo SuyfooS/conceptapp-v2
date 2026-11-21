@@ -53,9 +53,10 @@ const codeOf = (error: unknown) =>
  * screens, which ask every 15 seconds while visible, at once when they come
  * back on screen or online, and after their own writes
  * (`nextOrdersSyncDelay`): `GET /orders-sync?b=<business>&v=<the orders'
- * version>&m=<the menu's>&f=1&y=1&p=1&o=<an order>`, as `ordersSyncHref`
+ * version>&m=<the menu's>&f=1&y=1&s=1&p=1&o=<an order>`, as `ordersSyncHref`
  * writes it. `f`, `y` and `p` ask for the floor, one's own rounds and the
- * kitchen's tickets; an empty `m` asks for the menu whole.
+ * kitchen's tickets; `s` says one's own rounds are shown; an empty `m` asks
+ * for the menu whole.
  *
  * Under the person's own session, so the database's read functions decide
  * what comes back, a view session's included (orders are the floor's work,
@@ -70,8 +71,11 @@ const codeOf = (error: unknown) =>
  * among them (`syncedVersion`), so a write landing between two reads is read
  * again, never missed. Every answer is `no-store`.
  *
- * One's own rounds that came back with a ticket ready read its "מוכן" line
- * (P8b, `readOrderReady`): a ready ticket shown to its sender needs no push.
+ * One's own rounds that came back shown (`s`, the mode on screen) with a
+ * ticket ready read its "מוכן" line (P8b, `readOrderReady`): a ready ticket
+ * shown to its sender needs no push. Without `s` (the outbox's read of one's
+ * rounds, from any screen of the app, which nothing shows) the line stays
+ * unread, and its push goes.
  *
  * Outside the proxy's matcher (tooling/proxy.test.ts), as /chat-sync is: a
  * poll costs one invocation, and an expired session is renewed here. Nothing
@@ -115,9 +119,9 @@ export async function GET(request: Request): Promise<Response> {
     const floorRead = answered(floor);
     const mineRead = answered(mine);
     // A ready ticket shown to its sender reads its line, so no push follows
-    // (§9; P8b). Never while viewing as someone, and the sync answers
-    // whatever this does.
-    if (mineRead && !own.viewing) {
+    // (§9; P8b): only when the caller says the mode shows it (`s`), never
+    // while viewing as someone, and the sync answers whatever this does.
+    if (mineRead && query.shown && !own.viewing) {
       try {
         await readOrderReady(own.userId, business, readyOf(mineRead));
       } catch (error) {

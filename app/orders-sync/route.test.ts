@@ -6,9 +6,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // and one's own rounds only when it found something new; 204 when nothing
 // asked moved; 404 while the module is off; 409 for a taker off a shift; the
 // order read whole only when the orders moved; the smallest version answered;
-// nothing kept on the way. One's own rounds that came back read their ready
-// tickets' lines (P8b), never while viewing, and a failure there still
-// answers.
+// nothing kept on the way. One's own rounds that came back for the mode on
+// screen (`s=1`) read their ready tickets' lines (P8b), never for the
+// outbox's read nor while viewing, and a failure there still answers.
 
 vi.mock("server-only", () => ({}));
 
@@ -216,13 +216,22 @@ describe("the ready lines a sync shows (P8b)", () => {
     ],
   });
 
-  it("reads the person's own ready tickets' lines when their rounds came back", async () => {
+  it("reads the person's own ready tickets' lines when their rounds came back shown", async () => {
     mocks.getMyOrders.mockResolvedValue(withReady(10));
-    const answer = await ask("v=5&y=1");
+    const answer = await ask("v=5&y=1&s=1");
     expect(answer.status).toBe(200);
     expect(mocks.readOrderReady).toHaveBeenCalledWith(PERSON, BUSINESS, [
       READY,
     ]);
+  });
+
+  it("reads none for a read nothing shows: the outbox's, from any screen of the app", async () => {
+    mocks.getMyOrders.mockResolvedValue(withReady(10));
+    // As outbox.ts asks after ten minutes, on Home or the schedule.
+    const answer = await ask("y=1");
+    expect(answer.status).toBe(200);
+    expect((await answer.json()).mine.rounds).toHaveLength(1);
+    expect(mocks.readOrderReady).not.toHaveBeenCalled();
   });
 
   it("reads none while viewing, nor when their rounds weren't asked or didn't move", async () => {
@@ -232,16 +241,16 @@ describe("the ready lines a sync shows (P8b)", () => {
       viewing: true,
       place: null,
     });
-    expect((await ask("v=5&y=1")).status).toBe(200);
+    expect((await ask("v=5&y=1&s=1")).status).toBe(200);
     mocks.getOwnPlace.mockResolvedValue({
       userId: PERSON,
       viewing: false,
       place: null,
     });
-    await ask("v=5&f=1");
+    await ask("v=5&f=1&s=1");
     mocks.getMyOrders.mockResolvedValue("same");
     mocks.getOrderFloor.mockResolvedValue("same");
-    expect((await ask("v=10&f=1&y=1")).status).toBe(204);
+    expect((await ask("v=10&f=1&y=1&s=1")).status).toBe(204);
     expect(mocks.readOrderReady).not.toHaveBeenCalled();
   });
 
@@ -251,7 +260,7 @@ describe("the ready lines a sync shows (P8b)", () => {
     mocks.readOrderReady.mockRejectedValue(
       Object.assign(new Error("secret detail"), { code: "XX000" }),
     );
-    const answer = await ask("v=5&y=1");
+    const answer = await ask("v=5&y=1&s=1");
     expect(answer.status).toBe(200);
     expect((await answer.json()).mine.version).toBe(10);
     expect(log).toHaveBeenCalledWith("reading the ready lines failed", "XX000");

@@ -159,6 +159,11 @@ test("ready reaches the sender's phone by itself, unless the open mode showed it
     expect(mock.seen).toHaveLength(1);
 
     // Table 6, and a kitchen screen running that never got it: told at once.
+    // The cook's phone leaves the app first: its prep screen asks every 5
+    // seconds, and that read marks the kitchen's new tickets seen (a phone's
+    // prep screen counts as the kitchen having them), which would leave the
+    // minute job nothing to tell, or settle the line before the cron sends.
+    await cook.goto("about:blank");
     await addOrderPushStation();
     await ownerSends(page, "6");
     await ageOrderPushRound("6", 3);

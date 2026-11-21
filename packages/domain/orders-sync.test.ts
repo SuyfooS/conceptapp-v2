@@ -102,17 +102,21 @@ describe("what a sync asks", () => {
       floor: true,
       mine: true,
       prep: false,
+      shown: true,
       order: ORDER,
     };
     expect(read(ordersSyncHref(query))).toEqual(query);
+    expect(ordersSyncHref(query)).toContain("s=1");
     const first = {
       ...query,
       version: null,
       menu: "new" as const,
+      shown: false,
       order: null,
     };
     expect(read(ordersSyncHref(first))).toEqual(first);
     expect(ordersSyncHref(first)).toContain("m=");
+    expect(ordersSyncHref(first)).not.toContain("s=");
   });
 
   it("refuses a question that isn't one", () => {
@@ -124,6 +128,9 @@ describe("what a sync asks", () => {
     expect(read(`/orders-sync?b=${BUSINESS}&f=1&v=1.5`)).toBeNull();
     expect(read(`/orders-sync?b=${BUSINESS}&f=1&m=x`)).toBeNull();
     expect(read(`/orders-sync?b=${BUSINESS}&f=1&o=x`)).toBeNull();
+    expect(read(`/orders-sync?b=${BUSINESS}&y=1&s=2`)).toBeNull();
+    // Shown alone asks nothing.
+    expect(read(`/orders-sync?b=${BUSINESS}&s=1`)).toBeNull();
     expect(read(`/orders-sync?b=${BUSINESS}&p=1`)).toMatchObject({
       prep: true,
     });
@@ -146,6 +153,7 @@ describe("what a sync asks", () => {
         viewing: false,
         prepares: false,
         off: false,
+        shown: true,
         wants: [{ floor: true, prep: false, order: null }],
         held,
         ...extra,
@@ -159,6 +167,7 @@ describe("what a sync asks", () => {
         floor: true,
         mine: true,
         prep: false,
+        shown: true,
         order: null,
       });
       expect(ask({ held: { ...held, mine: null } }).version).toBeNull();
@@ -243,12 +252,30 @@ describe("what a sync asks", () => {
       ).toMatchObject({ mine: false, prep: true, version: 9 });
     });
 
+    it("says one's own rounds are shown only while the mode is on screen, and only when it asks for them (P8b)", () => {
+      expect(ask()).toMatchObject({ mine: true, shown: true });
+      // Left, or behind a locked phone: what turned ready stays unread.
+      expect(ask({ shown: false })).toMatchObject({ mine: true, shown: false });
+      // Nothing of one's own asked, nothing shown: viewing, or not a taker.
+      expect(ask({ viewing: true })).toMatchObject({
+        mine: false,
+        shown: false,
+      });
+      expect(ask({ takes: false })).toMatchObject({
+        mine: false,
+        shown: false,
+      });
+      expect(ordersSyncHref(ask())).toContain("s=1");
+      expect(ordersSyncHref(ask({ shown: false }))).not.toContain("s=");
+    });
+
     it("asks only the menu where no screen wants anything, and that is a question", () => {
       const menuOnly = ask({ takes: false, wants: [] });
       expect(menuOnly).toMatchObject({
         floor: false,
         mine: false,
         prep: false,
+        shown: false,
         order: null,
         version: null,
         menu: 2,

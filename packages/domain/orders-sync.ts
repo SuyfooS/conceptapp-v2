@@ -102,13 +102,20 @@ export type OrdersSyncQuery = {
   floor: boolean;
   mine: boolean;
   prep: boolean;
+  /**
+   * One's own rounds are asked for the mode on screen, which shows what of
+   * them turned ready (P8b): the route reads those "מוכן" lines, so no push
+   * follows. Never for a read nothing shows, as the outbox's (outbox.ts).
+   * Written `s=1`.
+   */
+  shown: boolean;
   /** An order to read whole when the orders moved. */
   order: string | null;
 };
 
 const VERSION = /^\d{1,19}$/;
 
-/** `GET /orders-sync?b=&v=&m=&f=1&y=1&p=1&o=`, as the route reads it back. */
+/** `GET /orders-sync?b=&v=&m=&f=1&y=1&s=1&p=1&o=`, read back by the route. */
 export function ordersSyncHref(query: OrdersSyncQuery): string {
   const params = new URLSearchParams({ b: query.business });
   if (query.version !== null) params.set("v", String(query.version));
@@ -117,6 +124,7 @@ export function ordersSyncHref(query: OrdersSyncQuery): string {
   }
   if (query.floor) params.set("f", "1");
   if (query.mine) params.set("y", "1");
+  if (query.shown) params.set("s", "1");
   if (query.prep) params.set("p", "1");
   if (query.order) params.set("o", query.order);
   return `${ORDERS_SYNC_PATH}?${params}`;
@@ -150,7 +158,13 @@ export function readOrdersSyncQuery(
   const floor = flag("f");
   const mine = flag("y");
   const prep = flag("p");
-  if (floor === undefined || mine === undefined || prep === undefined) {
+  const shown = flag("s");
+  if (
+    floor === undefined ||
+    mine === undefined ||
+    prep === undefined ||
+    shown === undefined
+  ) {
     return null;
   }
   const o = params.get("o");
@@ -162,6 +176,7 @@ export function readOrdersSyncQuery(
     floor,
     mine,
     prep,
+    shown,
     order: o ? o.toLowerCase() : null,
   };
   if (!floor && !mine && !prep && menu === null && !o) return null;
@@ -191,7 +206,9 @@ export type OrdersSyncWant = {
  * wants isn't held yet or was read at a version it doesn't know (the first
  * send at a free place opens one; the server drew a takeaway's page with
  * it): with no version, everything has moved. The menu always, by its own
- * version.
+ * version. One's own rounds say they are shown (P8b) only while the mode is
+ * on screen in a visible page: what of them turned ready is shown then, so
+ * the route reads those lines and no push follows.
  */
 export function nextOrdersSyncQuery(input: {
   business: string;
@@ -201,6 +218,8 @@ export function nextOrdersSyncQuery(input: {
   prepares: boolean;
   /** A taker off a shift, or with a shift left open: their screens wait. */
   off: boolean;
+  /** The mode is on screen, in a page that is visible. */
+  shown: boolean;
   wants: readonly OrdersSyncWant[];
   held: {
     floor: { version: number } | null;
@@ -240,6 +259,7 @@ export function nextOrdersSyncQuery(input: {
     floor,
     mine,
     prep,
+    shown: mine && input.shown,
     order,
   };
 }
