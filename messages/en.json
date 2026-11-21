@@ -511,24 +511,24 @@
             "text": "What the screen says when everything is out"
           },
           "kitchen": {
-            "title": "The kitchen screen",
-            "text": "A locked tablet, opened with a tap that turns the sound on"
+            "title": "The kitchen's screen",
+            "text": "A locked tablet that opens with a tap that turns the sound on"
           },
           "kitchenOpen": {
-            "title": "The kitchen screen, open",
-            "text": "Orders in columns, oldest first, with a large \"Ready\""
+            "title": "The kitchen's screen, open",
+            "text": "The orders in columns, oldest first, with a large \"ready\""
           },
           "kitchenOffline": {
-            "title": "The kitchen screen offline",
+            "title": "The kitchen's screen with no connection",
             "text": "What the screen says when the connection drops"
           },
           "kitchenEmpty": {
-            "title": "The kitchen screen with no orders",
+            "title": "The kitchen's screen with no orders",
             "text": "What the screen says when there is nothing to make"
           },
           "counter": {
-            "title": "The till screen",
-            "text": "The open tables and those closed today, by item and by round"
+            "title": "The till's screen",
+            "text": "The open orders and what closed today, by item and by round"
           },
           "menu": {
             "title": "The menu",
@@ -645,6 +645,54 @@
           "manageLine": {
             "title": "The owner's line",
             "text": "Today: take-backs, cancels and on the house, no shekels"
+          },
+          "kitchenSoundLocked": {
+            "title": "The kitchen's screen with no sound",
+            "text": "The banner that brings the sound back with a tap"
+          },
+          "kitchenArrives": {
+            "title": "An order reaches the kitchen",
+            "text": "Table 6 arrives after five seconds, with a chime and a flash"
+          },
+          "kitchenLate": {
+            "title": "An order waiting too long",
+            "text": "After a few seconds it passes the time, with one reminder"
+          },
+          "kitchenStruck": {
+            "title": "An item cancelled on the kitchen's screen",
+            "text": "The item is struck with a double chime, and the ticket stays"
+          },
+          "kitchenSoldOut": {
+            "title": "Sold out",
+            "text": "The kitchen's items, with a switch each"
+          },
+          "kitchenAll": {
+            "title": "A screen for every department",
+            "text": "The kitchen and the bar in one grid, each ticket naming its department"
+          },
+          "kitchenStopped": {
+            "title": "A kitchen's screen that was stopped",
+            "text": "What the tablet says once it's stopped"
+          },
+          "counterChosen": {
+            "title": "The till, table 4",
+            "text": "What to ring up, with no total, and a close with an undo"
+          },
+          "counterHeld": {
+            "title": "The till, with items waiting",
+            "text": "The close waits until the mains are called"
+          },
+          "counterClosed": {
+            "title": "The till, an order closed",
+            "text": "Table 3 from today, with opening again"
+          },
+          "counterOffline": {
+            "title": "The till with no connection",
+            "text": "What the till says when the connection drops"
+          },
+          "prepFullStations": {
+            "title": "Preparing, with ten devices locked",
+            "text": "In place of the locks, a line that says why"
           }
         },
         "note": "Every price here is a sample. No bill, no receipt and no payment: what shows \"for the till\" is keyed into the business's own register."
@@ -825,38 +873,11 @@
         },
         "recent": "Ready lately",
         "readyAt": "Marked ready at <ltr>{time}</ltr> · {name}",
-        "putBack": "Back to preparing",
-        "devices": "A screen in the kitchen or at the till",
-        "lockKitchen": "Lock this device as the kitchen screen",
-        "lockKitchenHint": "The tablet shows the kitchen's orders, with nobody's account on it. In the demo this opens the screen.",
-        "lockTill": "Lock this device as the till",
-        "lockTillHint": "The tablet at the counter shows what to key into the register, with nobody's account on it. In the demo this opens the screen."
+        "putBack": "Back to preparing"
       },
       "station": {
-        "kitchenEyebrow": "{business} · kitchen screen",
-        "openKitchen": "Open the kitchen",
-        "openHint": "The tap turns the sound on and keeps the screen awake. From then on every new order chimes.",
-        "online": "Connected",
-        "offlineBadge": "No connection",
-        "offline": "No connection. New orders don't reach this screen. Pass them on by word of mouth until it's back.",
-        "soundOn": "Sound on",
-        "soundLocked": "Tap to turn the sound on",
-        "empty": {
-          "title": "No open orders",
-          "body": "A new order will show here with a chime."
-        },
-        "readyAt": "Marked ready at <ltr>{time}</ltr>",
         "demoNote": "In the demo the screen isn't locked.",
-        "backToPhone": "Back to Shiran's phone",
-        "tillEyebrow": "{business} · till",
-        "tillTitle": "Till",
-        "tillStatus": "{open, plural, =0 {No open tables} one {1 open} other {# open}} · {closed, plural, =0 {none closed yet} one {1 closed today} other {# closed today}}",
-        "openTitle": "Open",
-        "openEmpty": "No open tables right now.",
-        "chooseTitle": "Choose a table",
-        "chooseBody": "What to key into the till shows here, by item or by round, with no total.",
-        "backToPlaces": "All the tables",
-        "newOrder": "New order: {place}"
+        "backToPhone": "Back to Shiran's phone"
       },
       "toast": {
         "undo": "Undo",
@@ -914,7 +935,18 @@
       "wellDone": "Well done",
       "extras": "Extras",
       "egg": "Egg",
-      "onion": "Fried onion"
+      "onion": "Fried onion",
+      "station": "The kitchen's screen",
+      "stationText": "The banner with no connection, and the banner that is a button once the sound stops. An order that just arrived with an edge in the business's colour, and one with every item cancelled. And the three sounds, after a tap that turns them on.",
+      "sound": {
+        "unlock": "Turn the sound on",
+        "chime": "A new order's sound",
+        "reminder": "A reminder's sound",
+        "double": "A cancel's sound",
+        "locked": "The sound isn't on yet",
+        "on": "The sound is on",
+        "off": "This device has no sound"
+      }
     }
   },
   "shell": {
@@ -1104,7 +1136,14 @@
     "stopped": {
       "title": "This device no longer shows the clock code",
       "body": "Whoever approves hours can lock it again from the clock code.",
-      "signIn": "Sign in"
+      "signIn": "Sign in",
+      "prep": {
+        "title": "This device is no longer the prep screen"
+      },
+      "till": {
+        "title": "This device is no longer the till"
+      },
+      "ordersBody": "Whoever runs the orders can lock it again from the prep screen."
     },
     "signedIn": {
       "title": "This device is signed in to an account",
@@ -1112,12 +1151,32 @@
       "lockAgain": "When you're done, lock it again, and it shows the code again.",
       "lockNew": "You can leave it now as the business's clock station.",
       "lock": "Lock the device",
-      "home": "Go to Today"
+      "home": "Go to Today",
+      "bodyOrders": "While someone is signed in here, the device doesn't show the orders.",
+      "lockAgainOrders": "When you're done, lock it again and it goes back to showing the orders."
     },
     "manifest": {
       "name": "ConceptApp · Clock station",
       "shortName": "Clock station",
-      "description": "The business's clock code, for clocking in and out."
+      "description": "The business's clock code, for clocking in and out.",
+      "prep": {
+        "name": "ConceptApp · Prep screen",
+        "shortName": "Prep screen",
+        "description": "The orders to prepare, with nobody's account."
+      },
+      "till": {
+        "name": "ConceptApp · Till",
+        "shortName": "Till",
+        "description": "What to ring up at the business's till, with nobody's account."
+      }
+    },
+    "prep": {
+      "metaTitle": "Prep screen",
+      "loading": "Loading the prep screen"
+    },
+    "till": {
+      "metaTitle": "Till",
+      "loading": "Loading the till"
     }
   },
   "app": {
@@ -2352,16 +2411,18 @@
           "same": "This device is already the clock station “{name}”, and it will show the code again.",
           "submit": "Lock the device",
           "close": "Close",
-          "full": "The business already runs {count, plural, one {one clock station} other {# clock stations}}, the most it can. To add one, stop one of them in the team's hours.",
+          "full": "{count, plural, one {One locked device runs} other {# locked devices run}} at the business already (clock stations, prep screens and tills), the most there can be. To add a station, stop one of them.",
           "failure": {
-            "tooManyStations": "The business already runs {count, plural, one {one clock station} other {# clock stations}}. To add one, stop one of them in the team's hours.",
+            "tooManyStations": "{count, plural, one {One locked device runs} other {# locked devices run}} at the business already (clock stations, prep screens and tills). To add a station, stop one of them.",
             "managerOnly": "This business shows the code only on the phone of whoever approves hours, so it has no clock stations.",
             "name": "The station needs a name, up to 40 characters.",
             "busy": "We couldn't lock the device just now. You can try again in a few minutes.",
             "noAccess": "Locking a device on the code is no longer yours to do.",
             "viewOnly": "No device is locked in view mode.",
-            "failed": "We couldn't lock the device. You can try again."
-          }
+            "failed": "We couldn't lock the device. You can try again.",
+            "otherStation": "This device is already a prep screen or a till of the business. To lock it on the code, stop that first on the prep screen."
+          },
+          "other": "This device is already “{name}”. To lock it on the code, stop that first on the prep screen."
         },
         "reminder": {
           "body": "This device is the business's clock station. When you're done, lock it again.",
@@ -3490,7 +3551,15 @@
               "staff": "Staff meal",
               "other": "Other"
             },
-            "line": "{name} · <ltr>{quantity} × {price}</ltr>"
+            "line": "{name} · <ltr>{quantity} × {price}</ltr>",
+            "stationAdd": "A device left as the prep screen: {name} · {department}",
+            "stationAddPlain": "A device left as the prep screen: {name}",
+            "stationAddTill": "A device left as the till: {name}",
+            "stationStop": "Stopped the screen “{name}”",
+            "stationStopPlain": "Stopped a screen",
+            "stationRestart": "Brought the screen “{name}” back after a stop",
+            "stationRestartPlain": "Brought a stopped screen back",
+            "allDepartments": "Every department"
           }
         }
       },
@@ -6140,6 +6209,145 @@
         "sendWaits": "Orders are sent during a shift",
         "waiting": "{department} · {count, plural, one {1 being made} other {# being made}}",
         "nothingWaiting": "Nothing to prepare right now"
+      },
+      "stations": {
+        "title": "A screen in the kitchen or at the till",
+        "prep": {
+          "lock": "Lock this device as the prep screen",
+          "hint": "The tablet shows the orders to prepare, with a sound, and nobody's account."
+        },
+        "till": {
+          "lock": "Lock this device as the till",
+          "hint": "The tablet at the counter shows what to ring up, with no total and nobody's account."
+        },
+        "running": "Screens running",
+        "kind": {
+          "prep": "Prep screen · {department}",
+          "prepAll": "Prep screen · every department",
+          "till": "Till"
+        },
+        "showing": "Open now",
+        "seenToday": "Last seen at <ltr>{time}</ltr>",
+        "seenOn": "Last seen {day}, <ltr>{time}</ltr>",
+        "never": "Not opened yet",
+        "last": "Last: {what} · <ltr>{time}</ltr>",
+        "what": {
+          "ready": "ready",
+          "putBack": "put back",
+          "soldOut": "sold out",
+          "available": "back on",
+          "close": "closed",
+          "reopen": "opened again"
+        },
+        "stop": "Stop the screen",
+        "stopLabel": "Stop the screen {name}",
+        "stopped": "The screen “{name}” was stopped",
+        "restarted": "The screen “{name}” is back on",
+        "undo": "Undo",
+        "failure": {
+          "gone": "This screen no longer exists.",
+          "tooLate": "More than two minutes passed, so the screen stays stopped. To bring it back, lock the device again from here.",
+          "noAccess": "The screens are no longer yours to manage.",
+          "viewOnly": "A view doesn't stop screens.",
+          "failed": "That didn't work. Try again."
+        },
+        "reminder": {
+          "prep": "This device is the business's prep screen. When you're done, lock it again.",
+          "till": "This device is the business's till. When you're done, lock it again."
+        },
+        "lock": {
+          "prep": {
+            "title": "Leave this device as the prep screen",
+            "only": "The device shows only the chosen department's orders, with no prices and without your account.",
+            "sound": "When it opens, tap the big button; from then on every new order chimes."
+          },
+          "till": {
+            "title": "Leave this device as the till",
+            "only": "The device shows only what to ring up, with no total and without your account."
+          },
+          "department": "Orders for",
+          "allDepartments": "Every department",
+          "allHint": "For one screen that makes everything, like a café counter.",
+          "name": "Screen name",
+          "nameHint": "How it shows in the list of screens and the activity log.",
+          "defaultAll": "Prep",
+          "defaultTill": "Till",
+          "numbered": "{name} {n}",
+          "samePrep": "This device is already the prep screen “{name}”, and it goes back to showing the orders.",
+          "sameTill": "This device is already the till “{name}”, and it goes back to showing the orders.",
+          "other": "This device is already “{name}”. To lock it as something else, stop that first.",
+          "full": "{count, plural, one {One locked device runs} other {# locked devices run}} at the business already, the most there can be. To add one, stop one of them.",
+          "failure": {
+            "tooManyStations": "{count, plural, one {One locked device runs} other {# locked devices run}} at the business already, the most there can be. To add one, stop one of them.",
+            "name": "The screen needs a name of up to 40 characters.",
+            "busy": "We couldn't lock the device just now. Try again in a few minutes.",
+            "noAccess": "Locking screens is no longer yours to do.",
+            "viewOnly": "A view doesn't lock a device.",
+            "off": "Taking orders is off for this business.",
+            "department": "That department is no longer active. Choose another.",
+            "otherStation": "This device is already another screen of the business. To lock it as something else, stop that first.",
+            "failed": "We couldn't lock the device. Try again."
+          }
+        }
+      },
+      "station": {
+        "open": "Open the prep screen",
+        "openHint": "The tap turns the sound on and keeps the screen awake. From then on every new order chimes.",
+        "allDepartments": "Every department",
+        "name": "Screen: {name}",
+        "online": "Connected",
+        "offlineShort": "No connection",
+        "soundOn": "Sound on",
+        "awakeOff": "The screen may turn off. To keep it on, lengthen the screen timeout in the device's settings.",
+        "offline": "No connection. New orders don't reach this screen. Pass them on by word of mouth until it's back.",
+        "soundLocked": "Tap to turn the sound on",
+        "soundLockedBody": "The sound stopped, so a new order won't chime.",
+        "empty": {
+          "title": "No open orders",
+          "body": "A new order shows here with a sound."
+        },
+        "news": {
+          "new": "New order: {place}",
+          "cancelled": "Cancelled: {name} · {place}",
+          "late": "Waiting too long: {place}"
+        },
+        "gone": "All cancelled",
+        "dismiss": "Remove from the screen",
+        "dismissLabel": "Remove from the screen: {place}",
+        "soldOut": {
+          "open": "Sold out",
+          "title": "Sold out · {department}",
+          "titleAll": "Sold out",
+          "hint": "What's marked here shows at once to everyone taking orders.",
+          "switch": "Sold out",
+          "done": "{name}: sold out",
+          "back": "{name}: back on",
+          "empty": "No items reach this screen yet.",
+          "close": "Close"
+        },
+        "off": "Taking orders is off for this business now, so there are no orders on the screen.",
+        "departmentGone": "This screen's department was removed. Whoever runs the orders locks it again.",
+        "checking": "Checking the screen",
+        "till": {
+          "title": "Till",
+          "status": "{open, plural, =0 {No open orders} one {1 open} other {# open}} · {closed, plural, =0 {none closed today yet} one {1 closed today} other {# closed today}}",
+          "open": "Open",
+          "openEmpty": "No open orders right now.",
+          "closedEmpty": "No order closed today yet.",
+          "choose": {
+            "title": "Choose an order",
+            "body": "What to ring up shows here, by item or by round, with no total."
+          },
+          "back": "All orders",
+          "openedAt": "Open since <ltr>{time}</ltr>",
+          "closedHere": "Closed here at <ltr>{time}</ltr>",
+          "closedRow": "Closed at <ltr>{time}</ltr>",
+          "cancelledRow": "Cancelled at <ltr>{time}</ltr>",
+          "empty": {
+            "title": "No orders today yet",
+            "body": "An order that's sent shows here, with what to ring up."
+          }
+        }
       }
     },
     "departure": {

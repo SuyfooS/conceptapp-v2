@@ -4,7 +4,7 @@
 -- that renews has this week's schedule published from its own shifts, and only
 -- the server can do either.
 begin;
-select plan(51);
+select plan(52);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -606,6 +606,32 @@ select is(
    where business_id = '6d000000-0000-4000-b000-000000000001'),
   0,
   'and no file''s place reserved before it is left'
+);
+
+-- The demo restaurant's kitchen's screen (20261124000100_order_taking_stations.sql):
+-- its reset deletes the business, and its stations of every kind go with
+-- it, with what they marked ready or sold out.
+reset role;
+insert into public.clock_stations (business_id, name, token_hash, shows)
+values ('e2000000-0000-4000-b000-000000000001', 'Kitchen M', repeat('e', 64), 'prep');
+update public.order_tickets t
+set ready_by = null,
+  ready_station = (select s.id from public.clock_stations s where s.token_hash = repeat('e', 64))
+where t.business_id = 'e2000000-0000-4000-b000-000000000001' and t.status = 'ready';
+update public.menu_items i
+set available_station = (select s.id from public.clock_stations s where s.token_hash = repeat('e', 64))
+where i.business_id = 'e2000000-0000-4000-b000-000000000001' and not i.available;
+set local role service_role;
+select public.reset_demo_business('e2000000-0000-4000-b000-000000000001');
+reset role;
+select is(
+  (select count(*)::integer from public.clock_stations s where s.token_hash = repeat('e', 64))
+  + (select count(*)::integer from public.order_tickets t
+     where t.business_id = 'e2000000-0000-4000-b000-000000000001' and t.ready_station is not null)
+  + (select count(*)::integer from public.menu_items i
+     where i.business_id = 'e2000000-0000-4000-b000-000000000001' and i.available_station is not null),
+  0,
+  'a demo restaurant''s reset takes its kitchen''s screen with it, and nothing it marked keeps it'
 );
 
 select throws_ok(

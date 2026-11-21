@@ -1877,8 +1877,9 @@ within two minutes (`set_clock_station_stopped`). All four with the secret key.
 `getRunningStations(business)` lists the running ones under the person's session
 (RLS: whoever edits the clock, with the clock on), never their secrets. The
 refusals read through `@domain/clock-station`: `lockFailureOf`
-(`tooManyStations` for 54000 "At most ten stations", `managerOnly` and
-`noAccess` for 42501, `name` for 22023), `stationCodeFailureOf` (`notStation`,
+(`tooManyStations` for 54000 "At most ten stations", ten of every kind
+together since P8a, `managerOnly` and `noAccess` for 42501, `off` for its
+hint, `name` for 22023, `department` for hint 'route'), `stationCodeFailureOf` (`notStation`,
 `stopped`, `clockOff`, `managerOnly`, all 42501 by their words) and
 `stationStopFailureOf` (`gone` P0002, `tooLate` 55000, `noAccess` 42501).
 `hasSessionCookie()` (`supabase/server.ts`) says whether the browser holds any
@@ -2390,8 +2391,10 @@ order's cancel, the move, the close and the reopen are P3's writes through
 `closed` and `fixes`. The migration also writes the restaurant's and the
 café's words (`order_taking_fixes.test.sql` holds both). The phones' till
 is drawn from `order_detail` (`orderTill` in `@domain/orders`), so it stays
-current with the mode's sync; `order_till` stays for the till's station
-(P8), and `modules/order_taking/till.db.test.ts` holds the two alike.
+current with the mode's sync; the till's station reads `station_order_till`
+(P8a, below), which groups them as `order_till` does, and
+`modules/order_taking/till.db.test.ts` and `stations.db.test.ts` hold them
+alike.
 
 P7 (no migration) keeps rounds on the phone until they go. `getOwnPlace`
 returns `memberOf`, every business the person is an active member of, from
@@ -2404,6 +2407,53 @@ still checks both. `order_mine`'s round ids are the phones' keys, so the
 outbox sees from one's own rounds that a round went (a last send as the app
 closed) before it asks about it. `send_order_round`, its idempotency and
 every read are as they were.
+
+Order stations (`order-stations.ts`, waiter mode P8a,
+`20261124000100_order_taking_stations.sql`): the kitchen's screens and the
+till are stations of the clock's one registry. `clock_stations.shows` says
+what each shows (`clock_code`, every station before; `prep`, with
+`department_id` or none for every department; `till`), and `last_action`
+with `last_action_at` what it last did, for the list of screens; ten
+running in a business of every kind together (`approve_station_pairing`'s
+count already reads them all, `lock_order_station` counts the same under the
+business's lock). `lockOrderStation(actor, business, {name, shows,
+department})` is the clock's lock (`pairThenApprove`, now shared with
+`lockStation`, on the business's own three pairings) approved by
+`public.lock_order_station`, by whoever runs orders, logged as
+`order.station.add`. By the station's secret, with the secret key: the reads
+`stationOrderPrep` (its department's tickets or every one's, as
+`order_prep` gives them, with no price and the senders only on today's
+orders, marking the new ones seen and stamping the station seen),
+`stationOrderMenu` (the items that reach it, for "מה נגמר", no price) and
+`stationOrderTill` (the open orders and today's closed and cancelled ones,
+by item and by round, no label, no person, no total), each "same" for the
+version the station has; the writes `stationSetTicketReady`,
+`stationSetItemAvailable`, `stationCloseOrder`, `stationReopenOrder` and
+`stationUndoCloseOrder` (the close's "ביטול", the same station within 2
+minutes), decided as a person's are and kept on the row as the station's
+(`ready_station`, `served_station`, `closed_station`, `reopened_station`,
+P1's `available_station` with its key now), at most one of a person and a
+station beside each other; `set_order_ticket_ready`, `serve_order_ticket`,
+`reopen_order` and `undo_close_order` clear the station's column with the
+person's. Every answer is parsed with `@domain/order-stations`' strict
+schemas; refusals by `order-station-failures.ts` (`notStation`, `stopped`,
+`notOrders` for another kind, `off`, then the orders' own). With the
+secret key too, since a station has nobody signed in: `getStationPeople`
+(the senders' short names, over the whole team, only those asked),
+`getStationWording` (the template's and the business's sentences, as the
+session reads them) and `getStationDepartment`. `getRunningOrderStations`
+lists the kitchen's screens and tills under the person's session (RLS: the
+new policy "order_taking's runners read its stations", for
+`order_taking.edit` with taking orders on; the clock's own policy now reads
+the clock's rows only, and `getRunningStations` asks for them); the secret is
+still never granted. `station_by_token` says what a station shows and its
+department; `issue_station_code` makes no clock code for a kitchen's or a
+till's secret; `set_clock_station_stopped` stops a kitchen's screen or a till
+for whoever runs orders (`order.station.stop`, `restart`). The demo's reset
+deletes the business, and its stations of every kind go with it. Covered by
+`order-stations.test.ts`, `order-station-failures.test.ts`,
+pgTAP `order_stations.test.sql`, `modules/order_taking/stations.db.test.ts`
+and `e2e/order-stations.spec.ts`.
 
 The tests that must always pass: a member of business A cannot read
 business B; anonymous visitors read nothing; every table in `public` has RLS.

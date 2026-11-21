@@ -1,30 +1,22 @@
 "use client";
 
 import { minutesSince } from "@domain/order-screens";
-import { ORDER_RULES, type OrderPrep, type PrepTicket } from "@domain/orders";
-import { Button } from "@ui/button";
+import { stationSince as since } from "@domain/order-stations";
+import type { OrderPrep, PrepTicket } from "@domain/orders";
 import { EmptyState } from "@ui/empty-state";
-import { PageBody, PageHeader, PageSection } from "@ui/page";
+import { PageBody, PageHeader } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
 import { Segmented } from "@ui/segmented";
-import { ChefHat, Undo2 } from "lucide-react";
+import { ChefHat } from "lucide-react";
 import { type ReactNode, useRef, useState } from "react";
 import { useOrdersMode } from "./orders-mode";
 import {
   ConnectionNote,
   failureWords,
-  ltr,
-  TicketView,
   useModeHeading,
   useOrderWords,
 } from "./orders-parts";
-
-/** Since when a ticket waits: sent, or fired for a held block. */
-const since = (ticket: PrepTicket) => ticket.firedAt ?? ticket.sentAt;
-
-/** A ticket still to make: a line of it is live. */
-const live = (ticket: PrepTicket) =>
-  ticket.lines.some((line) => line.state === "live");
+import { RecentlyReady, recentlyReady, TicketGrid, toMake } from "./prep-parts";
 
 /**
  * "הכנה" on a phone (waiter mode P4; the design's §4.2): the tickets of the
@@ -32,17 +24,19 @@ const live = (ticket: PrepTicket) =>
  * after them, greyed and with no "מוכן" until they are called. "מוכן" puts
  * a ticket in "מוכנים לאחרונה" for five minutes, to put back. Phone: one
  * column, a department at a time when there are several; tablet: two;
- * desktop: a grid of three. No price at all. The stations come in P8.
+ * desktop: a grid of three. No price at all. The kitchen's station (P8a)
+ * draws the same tickets (prep-parts.tsx); the locks and the list of screens
+ * follow the tickets for whoever runs orders (`children`).
  */
 export function PrepView({
   prep,
   children,
 }: {
   prep: OrderPrep | null;
-  /** What follows the tickets (the twin's stations). */
+  /** What follows the tickets: the kitchen's and the till's screens. */
   children?: ReactNode;
 }) {
-  const { t, placeTitle, department, time } = useOrderWords();
+  const { t, department } = useOrderWords();
   const heading = useModeHeading();
   const mode = useOrdersMode();
   const { frame, now, actions, say } = mode;
@@ -78,30 +72,12 @@ export function PrepView({
   );
   const [chosen, setChosen] = useState(ids[0] ?? "");
   const current = ids.includes(chosen) ? chosen : (ids[0] ?? "");
-  const toMake = (id: string) => {
-    const mine = tickets.filter(
-      (ticket) =>
-        ticket.department === id &&
-        (ticket.status === "new" || ticket.status === "held") &&
-        live(ticket),
-    );
-    return [
-      ...mine.filter((ticket) => ticket.status === "new"),
-      ...mine.filter((ticket) => ticket.status === "held"),
-    ];
-  };
+  const of = (id: string) =>
+    tickets.filter((ticket) => ticket.department === id);
   const open = (id: string) =>
-    toMake(id).filter((ticket) => ticket.status === "new");
-  const shown = toMake(current);
-  const recent = tickets
-    .filter(
-      (ticket) =>
-        ticket.department === current &&
-        ticket.status === "ready" &&
-        ticket.readyAt !== null &&
-        minutesSince(ticket.readyAt, now) < ORDER_RULES.readyUndoMinutes,
-    )
-    .sort((a, b) => Date.parse(b.readyAt ?? "") - Date.parse(a.readyAt ?? ""));
+    toMake(of(id)).filter((ticket) => ticket.status === "new");
+  const shown = toMake(of(current));
+  const recent = recentlyReady(of(current), now);
   const oldest = open(current)[0];
 
   async function ready(ticket: PrepTicket, place: string) {
@@ -190,66 +166,22 @@ export function PrepView({
           body={t("prep.empty.body")}
         />
       ) : (
-        <ul
-          aria-label={t("prep.listLabel", { department: department(current) })}
-          className="grid gap-4 md:grid-cols-2 md:items-start xl:grid-cols-3"
-        >
-          {shown.map((ticket) => {
-            const place = placeTitle(ticket);
-            return (
-              <li key={ticket.id}>
-                <TicketView
-                  title={place}
-                  department={department(ticket.department)}
-                  sentBy={ticket.sentBy}
-                  since={since(ticket)}
-                  held={ticket.status === "held"}
-                  lines={ticket.lines}
-                  ready={frame.viewing ? null : () => void ready(ticket, place)}
-                  busy={busy === ticket.id}
-                />
-              </li>
-            );
-          })}
-        </ul>
+        <TicketGrid
+          tickets={shown}
+          label={t("prep.listLabel", { department: department(current) })}
+          layout="phone"
+          busy={busy}
+          onReady={
+            frame.viewing ? null : (ticket, place) => void ready(ticket, place)
+          }
+        />
       )}
-      {recent.length > 0 ? (
-        <PageSection title={t("prep.recent")}>
-          <ul className="overflow-hidden rounded-card bg-surface shadow-card md:max-w-2xl">
-            {recent.map((ticket) => {
-              const place = placeTitle(ticket);
-              return (
-                <li
-                  key={ticket.id}
-                  className="relative flex min-h-16 items-center gap-3 px-4 py-2.5 not-first:before:absolute not-first:before:start-4 not-first:before:end-0 not-first:before:top-0 not-first:before:h-px not-first:before:bg-line not-first:before:content-['']"
-                >
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="font-medium">{place}</span>
-                    <span className="text-ink-2 text-sm">
-                      {t.rich("prep.readyAt", {
-                        time: time(ticket.readyAt ?? now),
-                        ltr,
-                      })}
-                    </span>
-                  </span>
-                  <Button
-                    variant="ghost"
-                    className="shrink-0 px-3"
-                    disabled={frame.viewing}
-                    onClick={() => void putBack(ticket, place)}
-                  >
-                    <Undo2 aria-hidden="true" />
-                    {t("prep.putBack")}
-                    <span className="sr-only">
-                      {t("draft.forItem", { name: place })}
-                    </span>
-                  </Button>
-                </li>
-              );
-            })}
-          </ul>
-        </PageSection>
-      ) : null}
+      <RecentlyReady
+        tickets={recent}
+        layout="phone"
+        disabled={frame.viewing}
+        onPutBack={(ticket, place) => void putBack(ticket, place)}
+      />
       {frame.viewing ? (
         <p className="text-ink-2">{t("failed.viewOnly")}</p>
       ) : null}

@@ -732,6 +732,75 @@ describe("buildActivity: each action", () => {
     }
   });
 
+  it("reads a kitchen's screen or a till left, by its name, and stopped or started again", () => {
+    expect(
+      lineOf(
+        row("order.station.add", {
+          station: STATION,
+          name: " Kitchen ",
+          shows: "prep",
+          department: KITCHEN,
+        }),
+      ),
+    ).toEqual({
+      action: "order.station.add",
+      name: "Kitchen",
+      shows: "prep",
+      department: "Kitchen",
+      every: false,
+    });
+    expect(
+      lineOf(
+        row("order.station.add", {
+          station: STATION,
+          name: "Prep",
+          shows: "prep",
+          department: null,
+        }),
+      ),
+    ).toEqual({
+      action: "order.station.add",
+      name: "Prep",
+      shows: "prep",
+      department: null,
+      every: true,
+    });
+    expect(
+      lineOf(
+        row("order.station.add", {
+          station: STATION,
+          name: "Till",
+          shows: "till",
+          department: null,
+        }),
+      ),
+    ).toMatchObject({ shows: "till", every: false });
+    for (const action of ["order.station.stop", "order.station.restart"]) {
+      expect(lineOf(row(action, { station: STATION, shows: "till" }))).toEqual({
+        action,
+        name: "Entrance",
+        shows: "till",
+      });
+      expect(lineOf(row(action, { station: GONE, shows: "prep" }))).toEqual({
+        action,
+        name: null,
+        shows: "prep",
+      });
+      for (const details of [{ station: STATION }, { shows: "prep" }, null]) {
+        expect(lineOf(row(action, details))).toEqual({ action: "other" });
+      }
+    }
+    for (const details of [
+      { station: STATION, name: "  ", shows: "prep" },
+      { station: STATION, name: "Kitchen", shows: "clock_code" },
+      null,
+    ]) {
+      expect(lineOf(row("order.station.add", details))).toEqual({
+        action: "other",
+      });
+    }
+  });
+
   it("reads invites with the invited name, the row's role first", () => {
     expect(
       lineOf(row("invite.create", { invite: INVITE, role: "manager" })),
@@ -2644,6 +2713,18 @@ describe("activityRefs", () => {
         row("clock.station.stop", { station: "not an id" }, YOAV),
       ]).stations,
     ).toEqual([STATION]);
+    const refs = activityRefs([
+      row("order.station.add", {
+        station: SHIFT,
+        name: "Kitchen",
+        shows: "prep",
+        department: KITCHEN,
+      }),
+      row("order.station.stop", { station: STATION, shows: "prep" }, YOAV),
+      row("order.station.restart", { station: STATION, shows: "prep" }, YOAV),
+    ]);
+    expect(refs.stations).toEqual([STATION]);
+    expect(refs.departments).toEqual([KITCHEN]);
   });
 });
 

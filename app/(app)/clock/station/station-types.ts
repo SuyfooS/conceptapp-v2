@@ -1,14 +1,17 @@
-import type { LockResult } from "@domain/clock-station";
+import type { LockResult, StationShows } from "@domain/clock-station";
 
 /**
- * Locking the device the person is on into the business's clock station,
- * offered to whoever edits the clock (`editsClock`), writing as themselves,
- * where codes may be shown on a station (`codeDisplay` isn't "manager").
+ * Locking the device the person is on into one of the business's stations:
+ * the clock's, offered to whoever edits the clock (`editsClock`), writing as
+ * themselves, where codes may be shown on a station (`codeDisplay` isn't
+ * "manager"); or the kitchen's screen or the till (waiter mode P8a), offered
+ * to whoever runs orders.
  */
 export type LockOffer = {
   /**
-   * This device is already one of the business's running stations: locking
-   * it again keeps that one, with its name, rather than making another.
+   * This device is already one of the business's running stations of this
+   * kind: locking it again keeps that one, with its name, rather than making
+   * another.
    */
   current: { name: string } | null;
   /**
@@ -16,10 +19,20 @@ export type LockOffer = {
    * the limit of ten; empty with `current`, where neither applies.
    */
   running: string[];
+  /** How many run of every kind, for the limit of ten, when it is known. */
+  total?: number;
+  /**
+   * This device is a running station of another kind: it isn't locked as this
+   * one until that one is stopped.
+   */
+  other?: { name: string; shows: StationShows } | null;
 };
 
+/** What locking takes: the name, and a kitchen's screen's department (null for every one). */
+export type LockInput = { name: string; department?: string | null };
+
 /** Locks the device, signs out on it, and says where it goes. The demo passes a stand-in. */
-export type LockAction = (input: { name: string }) => Promise<LockResult>;
+export type LockAction = (input: LockInput) => Promise<LockResult>;
 
 /**
  * Locking offered on a screen: what is offered and the action, and whether
@@ -34,9 +47,13 @@ export type StationLock = {
 
 /**
  * What Home says on a device that is one of the business's running stations
- * (`currentStationHome`): whoever may lock it locks it again, as the station
- * it is; anyone else signs out when done.
+ * (`currentStationHome`), of the kind it shows: whoever may lock it locks it
+ * again, as the station it is; anyone else signs out when done.
  */
 export type StationHome =
-  | { kind: "lock"; offer: LockOffer & { current: { name: string } } }
-  | { kind: "signOut" };
+  | {
+      kind: "lock";
+      shows: StationShows;
+      offer: LockOffer & { current: { name: string } };
+    }
+  | { kind: "signOut"; shows: StationShows };

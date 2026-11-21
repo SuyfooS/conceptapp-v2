@@ -626,8 +626,9 @@ const tillLineOf = (line: OrderLine): TillLine => ({
  * order they were first sent; and each round's lines as they were sent.
  * Taken back and cancelled lines are left out. The phones draw the till from
  * this, so it stays current with the mode's sync; the till's station reads
- * `order_till` itself (P8), and modules/order_taking/till.db.test.ts holds
- * the two alike. No total: the till adds it up.
+ * `station_order_till` (P8a), which groups them the same, and
+ * modules/order_taking/till.db.test.ts and stations.db.test.ts hold them
+ * alike. No total: the till adds it up.
  */
 export function orderTill(order: OrderDetail): OrderTill {
   const byItem = new Map<string, TillLine>();
@@ -761,26 +762,30 @@ export type OrderPrep = {
   tickets: PrepTicket[];
 };
 
+/**
+ * A ticket of the kitchen's read, strict, so a price or a label that reached
+ * it fails to parse; the stations read the same (@domain/order-stations).
+ */
+export const prepTicketSchema = z.strictObject({
+  id: uuid,
+  order: uuid,
+  department: uuid,
+  placeName: z.string().nullable(),
+  takeaway: takeaway.nullable(),
+  status: z.enum(TICKET_STATUSES),
+  sentAt: instant,
+  firedAt: instant.nullable(),
+  readyAt: instant.nullable(),
+  sentBy: uuid.nullable(),
+  lines: z.array(prepLineSchema),
+}) satisfies z.ZodType<PrepTicket>;
+
 // Strict, so a price that reached the kitchen's read fails to parse.
 export const orderPrepSchema = z.strictObject({
   version,
   now: instant,
   departments: z.array(uuid),
-  tickets: z.array(
-    z.strictObject({
-      id: uuid,
-      order: uuid,
-      department: uuid,
-      placeName: z.string().nullable(),
-      takeaway: takeaway.nullable(),
-      status: z.enum(TICKET_STATUSES),
-      sentAt: instant,
-      firedAt: instant.nullable(),
-      readyAt: instant.nullable(),
-      sentBy: uuid.nullable(),
-      lines: z.array(prepLineSchema),
-    }),
-  ),
+  tickets: z.array(prepTicketSchema),
 }) satisfies z.ZodType<OrderPrep>;
 
 /** The items most ordered lately, for the send's first screen. */

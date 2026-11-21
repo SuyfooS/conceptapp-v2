@@ -98,11 +98,29 @@ const SECTIONS = [
       { key: "prep", href: `${BASE}/prep?state=service` },
       { key: "prepEmpty", href: `${BASE}/prep?state=nothingOpen` },
       { key: "prepKitchen", href: `${BASE}/prep?state=kitchen` },
+      { key: "prepFullStations", href: `${BASE}/prep?state=fullStations` },
       { key: "kitchen", href: `${BASE}/station/prep?state=service` },
       { key: "kitchenOpen", href: `${BASE}/station/prep?state=open` },
+      { key: "kitchenArrives", href: `${BASE}/station/prep?state=arrives` },
+      { key: "kitchenLate", href: `${BASE}/station/prep?state=late` },
+      { key: "kitchenStruck", href: `${BASE}/station/prep?state=struck` },
+      { key: "kitchenSoldOut", href: `${BASE}/station/prep?state=soldOut` },
+      {
+        key: "kitchenAll",
+        href: `${BASE}/station/prep?state=allDepartments`,
+      },
       { key: "kitchenOffline", href: `${BASE}/station/prep?state=offline` },
+      {
+        key: "kitchenSoundLocked",
+        href: `${BASE}/station/prep?state=soundLocked`,
+      },
       { key: "kitchenEmpty", href: `${BASE}/station/prep?state=nothingOpen` },
+      { key: "kitchenStopped", href: `${BASE}/station/prep?state=stopped` },
       { key: "counter", href: `${BASE}/station/till?state=service` },
+      { key: "counterChosen", href: `${BASE}/station/till?state=chosen` },
+      { key: "counterHeld", href: `${BASE}/station/till?state=held` },
+      { key: "counterClosed", href: `${BASE}/station/till?state=closed` },
+      { key: "counterOffline", href: `${BASE}/station/till?state=offline` },
     ],
   },
   {
@@ -128,8 +146,8 @@ const SECTIONS = [
 // for Orel to tap through, and the order a real waiter times against the
 // pad (§3.4). Each link opens the demo afresh in that state. The menu's rows
 // are the real screens since P2, and the floor's, the order's, "ההזמנות
-// שלי" and preparing since P4, on the twin's rows, and the till since P5;
-// the stations are still S0's (P8).
+// שלי" and preparing since P4, on the twin's rows, the till since P5, and
+// the kitchen's and the till's stations since P8a.
 export default function OrderTakingDemoIndex() {
   const t = useTranslations("design.orderTaking.index");
   return (

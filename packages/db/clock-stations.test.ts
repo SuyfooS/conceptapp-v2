@@ -40,10 +40,39 @@ vi.mock("./supabase/admin", () => ({
     },
   }),
 }));
-vi.mock("./supabase/server", () => ({ createClient: async () => ({}) }));
+/** The person's session: the list of running stations, read in turn. */
+const server = vi.hoisted(() => ({
+  answers: [] as {
+    data: unknown;
+    error: { code?: string; message: string } | null;
+  }[],
+  filters: [] as unknown[][],
+}));
+vi.mock("./supabase/server", () => ({
+  createClient: async () => ({
+    from: () => {
+      const query = {
+        select: () => query,
+        eq: (...args: unknown[]) => {
+          server.filters.push(args);
+          return query;
+        },
+        is: () => query,
+        order: async () => server.answers.shift() ?? { data: [], error: null },
+      };
+      return query;
+    },
+  }),
+}));
 
-const { hashStationToken, LOCK_PAIRING_SLOTS, lockPairingHash, lockStation } =
-  await import("./clock-stations");
+const {
+  getRunningStations,
+  hashStationToken,
+  LOCK_PAIRING_SLOTS,
+  lockPairingHash,
+  lockStation,
+  stationByToken,
+} = await import("./clock-stations");
 const { punchKeyFrom } = await import("./punch-key");
 
 const ACTOR = "00000000-0000-4000-a000-000000000001";
@@ -62,6 +91,8 @@ beforeEach(() => {
   db.answers = {};
   db.calls = [];
   db.counted = [];
+  server.answers = [];
+  server.filters = [];
 });
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -170,5 +201,78 @@ describe("locking a device", () => {
     error.mockRestore();
     expect(started()).toHaveLength(LOCK_PAIRING_SLOTS);
     expect(approved()).toEqual([]);
+  });
+});
+
+describe("a station read by its secret", () => {
+  const row = {
+    station: STATION,
+    name: "Kitchen",
+    business: BUSINESS,
+    businessName: "Demo",
+    accent: "#0a84ff",
+    timeZone: "Asia/Jerusalem",
+    stopped: false,
+  };
+
+  it("says what it shows and its department (waiter mode P8a)", async () => {
+    db.answers.station_by_token = [
+      {
+        data: {
+          ...row,
+          shows: "prep",
+          department: "00000000-0000-4000-9000-000000000001",
+        },
+        error: null,
+      },
+    ];
+    expect(await stationByToken("token")).toMatchObject({
+      shows: "prep",
+      departmentId: "00000000-0000-4000-9000-000000000001",
+    });
+  });
+
+  it("is the clock's before the migration says what it shows", async () => {
+    db.answers.station_by_token = [{ data: row, error: null }];
+    expect(await stationByToken("token")).toMatchObject({
+      shows: "clock_code",
+      departmentId: null,
+    });
+  });
+});
+
+describe("the business's running clock stations", () => {
+  it("are the clock's only, the kitchen's screens and the tills left out", async () => {
+    server.answers = [
+      {
+        data: [
+          {
+            id: STATION,
+            name: "Entrance",
+            created_at: "2026-12-01T18:00:00Z",
+            last_seen_at: null,
+          },
+        ],
+        error: null,
+      },
+    ];
+    expect(await getRunningStations(BUSINESS)).toEqual([
+      {
+        id: STATION,
+        name: "Entrance",
+        createdAt: "2026-12-01T18:00:00Z",
+        lastSeenAt: null,
+      },
+    ]);
+    expect(server.filters).toContainEqual(["shows", "clock_code"]);
+  });
+
+  it("are every one before the migration reaches the project", async () => {
+    server.answers = [
+      { data: null, error: { code: "42703", message: "no column shows" } },
+      { data: [], error: null },
+    ];
+    expect(await getRunningStations(BUSINESS)).toEqual([]);
+    expect(server.answers).toEqual([]);
   });
 });

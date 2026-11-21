@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { unstable_doesMiddlewareMatch } from "next/experimental/testing/server";
 import { describe, expect, it } from "vitest";
 import { manifests } from "../modules/registry";
 
@@ -72,12 +73,40 @@ describe("proxy", () => {
     }
   });
 
-  it("refreshes a session left on a clock station, without guarding it", () => {
+  it("refreshes a session left on a station, without guarding it, but never on its poll and writes", () => {
     // /station is for a device with nobody signed in, so never PRIVATE; in
-    // the matcher, a session left on it is renewed and seen as one, and no
-    // code shows beside it.
-    expect(source).toContain('"/station/:path*"');
-    expect(source).not.toContain('"/station",');
+    // the matcher, a session left on it is renewed and seen as one, and
+    // nothing shows beside it. The kitchen's and the till's poll and writes
+    // (waiter mode P8a) stay out: asked every five seconds, each would run
+    // the proxy too, and each refuses any session itself.
+    const block = /matcher: \[([\s\S]*?)\],/.exec(source)?.[1] ?? "";
+    const matcher = [...block.matchAll(/^\s+"([^"]+)",$/gm)].map(
+      ([, pattern = ""]) => pattern,
+    );
+    expect(matcher.length).toBeGreaterThan(10);
+    const runs = (url: string) =>
+      unstable_doesMiddlewareMatch({ config: { matcher }, url });
+    for (const path of [
+      "/station",
+      "/station/code",
+      "/station/manifest.webmanifest",
+    ]) {
+      expect(runs(path), path).toBe(true);
+    }
+    for (const path of [
+      "/station/tickets",
+      "/station/tickets?v=1&m=2",
+      "/station/write",
+    ]) {
+      expect(runs(path), path).toBe(false);
+    }
+    expect(runs("/orders/prep")).toBe(true);
+    expect(runs("/chat-sync")).toBe(false);
+    const privateBlock = /export const PRIVATE = \[([\s\S]*?)\];/.exec(
+      source,
+    )?.[1];
+    expect(privateBlock).toBeDefined();
+    expect(privateBlock).not.toContain('"/station');
   });
 
   it("guards the admin console", () => {

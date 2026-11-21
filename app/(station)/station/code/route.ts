@@ -35,7 +35,11 @@ export async function POST(request: Request): Promise<Response> {
     console.error("reading a station failed", (error as Error).message);
     return answer({ ok: false, failure: "failed" }, 500);
   }
-  if (!held) return answer({ ok: false, failure: "notStation" }, 403);
+  // A kitchen's screen or a till makes no clock code (waiter mode P8a): the
+  // database refuses it too.
+  if (held?.station.shows !== "clock_code") {
+    return answer({ ok: false, failure: "notStation" }, 403);
+  }
   if (held.station.stopped) {
     return answer({ ok: false, failure: "stopped" }, 409);
   }

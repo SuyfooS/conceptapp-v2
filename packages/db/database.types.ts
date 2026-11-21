@@ -581,9 +581,13 @@ export type Database = {
           business_id: string;
           created_at: string;
           created_by: string | null;
+          department_id: string | null;
           id: string;
+          last_action: string | null;
+          last_action_at: string | null;
           last_seen_at: string | null;
           name: string;
+          shows: string;
           stopped_at: string | null;
           stopped_by: string | null;
           token_hash: string;
@@ -592,9 +596,13 @@ export type Database = {
           business_id: string;
           created_at?: string;
           created_by?: string | null;
+          department_id?: string | null;
           id?: string;
+          last_action?: string | null;
+          last_action_at?: string | null;
           last_seen_at?: string | null;
           name: string;
+          shows?: string;
           stopped_at?: string | null;
           stopped_by?: string | null;
           token_hash: string;
@@ -603,9 +611,13 @@ export type Database = {
           business_id?: string;
           created_at?: string;
           created_by?: string | null;
+          department_id?: string | null;
           id?: string;
+          last_action?: string | null;
+          last_action_at?: string | null;
           last_seen_at?: string | null;
           name?: string;
+          shows?: string;
           stopped_at?: string | null;
           stopped_by?: string | null;
           token_hash?: string;
@@ -624,6 +636,13 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "clock_stations_department_id_business_id_fkey";
+            columns: ["department_id", "business_id"];
+            isOneToOne: false;
+            referencedRelation: "departments";
+            referencedColumns: ["id", "business_id"];
           },
           {
             foreignKeyName: "clock_stations_stopped_by_fkey";
@@ -2091,6 +2110,13 @@ export type Database = {
             referencedColumns: ["id"];
           },
           {
+            foreignKeyName: "menu_items_available_station_fkey";
+            columns: ["available_station"];
+            isOneToOne: false;
+            referencedRelation: "clock_stations";
+            referencedColumns: ["id"];
+          },
+          {
             foreignKeyName: "menu_items_business_id_fkey";
             columns: ["business_id"];
             isOneToOne: false;
@@ -2509,10 +2535,12 @@ export type Database = {
           prepared_at: string | null;
           ready_at: string | null;
           ready_by: string | null;
+          ready_station: string | null;
           round_id: string;
           served_at: string | null;
           served_by: string | null;
           served_new: boolean;
+          served_station: string | null;
           status: string;
         };
         Insert: {
@@ -2528,10 +2556,12 @@ export type Database = {
           prepared_at?: string | null;
           ready_at?: string | null;
           ready_by?: string | null;
+          ready_station?: string | null;
           round_id: string;
           served_at?: string | null;
           served_by?: string | null;
           served_new?: boolean;
+          served_station?: string | null;
           status: string;
         };
         Update: {
@@ -2547,10 +2577,12 @@ export type Database = {
           prepared_at?: string | null;
           ready_at?: string | null;
           ready_by?: string | null;
+          ready_station?: string | null;
           round_id?: string;
           served_at?: string | null;
           served_by?: string | null;
           served_new?: boolean;
+          served_station?: string | null;
           status?: string;
         };
         Relationships: [
@@ -2590,6 +2622,13 @@ export type Database = {
             referencedColumns: ["id"];
           },
           {
+            foreignKeyName: "order_tickets_ready_station_fkey";
+            columns: ["ready_station"];
+            isOneToOne: false;
+            referencedRelation: "clock_stations";
+            referencedColumns: ["id"];
+          },
+          {
             foreignKeyName: "order_tickets_round_id_business_id_fkey";
             columns: ["round_id", "business_id"];
             isOneToOne: false;
@@ -2603,6 +2642,13 @@ export type Database = {
             referencedRelation: "profiles";
             referencedColumns: ["id"];
           },
+          {
+            foreignKeyName: "order_tickets_served_station_fkey";
+            columns: ["served_station"];
+            isOneToOne: false;
+            referencedRelation: "clock_stations";
+            referencedColumns: ["id"];
+          },
         ];
       };
       orders: {
@@ -2613,6 +2659,7 @@ export type Database = {
           cancelled_by: string | null;
           closed_at: string | null;
           closed_by: string | null;
+          closed_station: string | null;
           day: string;
           id: string;
           moved_at: string | null;
@@ -2624,6 +2671,7 @@ export type Database = {
           place_id: string | null;
           reopened_at: string | null;
           reopened_by: string | null;
+          reopened_station: string | null;
           status: string;
           takeaway_label: string | null;
           takeaway_no: number | null;
@@ -2635,6 +2683,7 @@ export type Database = {
           cancelled_by?: string | null;
           closed_at?: string | null;
           closed_by?: string | null;
+          closed_station?: string | null;
           day: string;
           id?: string;
           moved_at?: string | null;
@@ -2646,6 +2695,7 @@ export type Database = {
           place_id?: string | null;
           reopened_at?: string | null;
           reopened_by?: string | null;
+          reopened_station?: string | null;
           status?: string;
           takeaway_label?: string | null;
           takeaway_no?: number | null;
@@ -2657,6 +2707,7 @@ export type Database = {
           cancelled_by?: string | null;
           closed_at?: string | null;
           closed_by?: string | null;
+          closed_station?: string | null;
           day?: string;
           id?: string;
           moved_at?: string | null;
@@ -2668,6 +2719,7 @@ export type Database = {
           place_id?: string | null;
           reopened_at?: string | null;
           reopened_by?: string | null;
+          reopened_station?: string | null;
           status?: string;
           takeaway_label?: string | null;
           takeaway_no?: number | null;
@@ -2692,6 +2744,13 @@ export type Database = {
             columns: ["closed_by"];
             isOneToOne: false;
             referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "orders_closed_station_fkey";
+            columns: ["closed_station"];
+            isOneToOne: false;
+            referencedRelation: "clock_stations";
             referencedColumns: ["id"];
           },
           {
@@ -2727,6 +2786,13 @@ export type Database = {
             columns: ["reopened_by"];
             isOneToOne: false;
             referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "orders_reopened_station_fkey";
+            columns: ["reopened_station"];
+            isOneToOne: false;
+            referencedRelation: "clock_stations";
             referencedColumns: ["id"];
           },
         ];
@@ -4071,6 +4137,18 @@ export type Database = {
       };
       keeps_demo_profile: { Args: { person: string }; Returns: boolean };
       list_photos_closed: { Args: { business: string }; Returns: boolean };
+      lock_order_station: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          business: string;
+          pairing?: string;
+          station_department?: string;
+          station_name: string;
+          station_shows: string;
+        };
+        Returns: string;
+      };
       move_order: {
         Args: {
           actor: string;
@@ -4737,6 +4815,56 @@ export type Database = {
         Returns: string;
       };
       station_by_token: { Args: { token_hash: string }; Returns: Json };
+      station_close_order: {
+        Args: { at_time?: string; order_ref: string; station_hash: string };
+        Returns: undefined;
+      };
+      station_order_menu: {
+        Args: { known_version?: number; station_hash: string };
+        Returns: Json;
+      };
+      station_order_prep: {
+        Args: {
+          at_time?: string;
+          known_version?: number;
+          station_hash: string;
+        };
+        Returns: Json;
+      };
+      station_order_till: {
+        Args: {
+          at_time?: string;
+          known_version?: number;
+          station_hash: string;
+        };
+        Returns: Json;
+      };
+      station_reopen_order: {
+        Args: { at_time?: string; order_ref: string; station_hash: string };
+        Returns: undefined;
+      };
+      station_set_item_available: {
+        Args: {
+          at_time?: string;
+          is_available: boolean;
+          item: string;
+          station_hash: string;
+        };
+        Returns: undefined;
+      };
+      station_set_ticket_ready: {
+        Args: {
+          at_time?: string;
+          ready?: boolean;
+          station_hash: string;
+          ticket: string;
+        };
+        Returns: undefined;
+      };
+      station_undo_close_order: {
+        Args: { at_time?: string; order_ref: string; station_hash: string };
+        Returns: undefined;
+      };
       submit_availability: {
         Args: { actor: string; note?: string; ranges: Json; week: string };
         Returns: string;

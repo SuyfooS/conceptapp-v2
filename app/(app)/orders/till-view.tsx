@@ -1,18 +1,12 @@
 "use client";
 
 import { closeState, orderDraftKey, reopenState } from "@domain/order-screens";
-import {
-  type OrderDetail,
-  type OrderFloor,
-  orderTill,
-  type TillLine,
-} from "@domain/orders";
+import { type OrderDetail, type OrderFloor, orderTill } from "@domain/orders";
 import { Button } from "@ui/button";
 import { EmptyState } from "@ui/empty-state";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
 import { Segmented } from "@ui/segmented";
-import { TillList } from "@ui/till-list";
 import { Info, LockOpen, Receipt, ReceiptText } from "lucide-react";
 import Link from "next/link";
 import { useRef, useState } from "react";
@@ -22,11 +16,11 @@ import {
   fixFailureWords,
   ltr,
   OffShiftCard,
-  Price,
   useModeHeading,
   useOrderWords,
 } from "./orders-parts";
 import type { OrdersActionResult, WholeWrite } from "./orders-types";
+import { TillItemList, TillRoundLists } from "./till-parts";
 
 /**
  * "לקופה" for an order (waiter mode P5, the design's §3.2 step 10): what the
@@ -297,64 +291,10 @@ function Till({
     </Button>
   ) : undefined;
 
-  const itemRows = (lines: readonly TillLine[], prefix: string) =>
-    lines.map((line, index) => ({
-      key: `${prefix}-${index}`,
-      qty: line.quantity,
-      name: line.name,
-      choices: line.choices,
-      price: <Price agorot={line.unitAgorot} />,
-      free: line.comped ? t("till.free") : null,
-    }));
-  const byItem = (
-    <TillList
-      label={t("till.byItem")}
-      rows={itemRows(till.byItem, "item")}
-      empty={t("till.empty")}
-      qtyLabel={t("till.qty")}
-      priceLabel={t("till.unit")}
-    />
+  const byItem = <TillItemList lines={till.byItem} />;
+  const byRound = (level: 2 | 3) => (
+    <TillRoundLists rounds={till.byRound} level={level} />
   );
-  const byRound = (level: 2 | 3) => {
-    const Heading = level === 2 ? "h2" : "h3";
-    return (
-      <div className="flex flex-col gap-4">
-        {till.byRound.length === 0 ? (
-          <p className="rounded-card bg-surface px-4 py-4 text-ink-2 shadow-card">
-            {t("till.empty")}
-          </p>
-        ) : null}
-        {till.byRound.map((round, index) => {
-          const by = person(round.sentBy);
-          return (
-            <section key={round.id} className="flex flex-col gap-2">
-              <Heading className="px-1 font-semibold text-base text-ink-2">
-                {by
-                  ? t.rich("till.round", {
-                      n: index + 1,
-                      time: time(round.sentAt),
-                      name: by,
-                      ltr,
-                    })
-                  : t.rich("till.roundAt", {
-                      n: index + 1,
-                      time: time(round.sentAt),
-                      ltr,
-                    })}
-              </Heading>
-              <TillList
-                label={t("till.roundLabel", { n: index + 1 })}
-                rows={itemRows(round.lines, round.id)}
-                empty={t("till.roundEmpty")}
-                qtyLabel={t("till.qty")}
-                priceLabel={t("till.unit")}
-              />
-            </section>
-          );
-        })}
-      </div>
-    );
-  };
 
   return (
     <PageBody className={pageGlowClass}>
