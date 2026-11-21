@@ -170,6 +170,80 @@ describe("what a session's end does on the phone", () => {
     expect(ordersClosed()).toBe(true);
   });
 
+  it("tells the other tabs whose records went, once they are gone from the store", async () => {
+    const { db, clearOrdersOnSignOut, clearAllOrders } = await load();
+    await fill(db);
+    const told: { name: string; message: unknown; rounds: number }[] = [];
+    let open = 0;
+    vi.stubGlobal(
+      "BroadcastChannel",
+      class {
+        name: string;
+        constructor(name: string) {
+          this.name = name;
+          open += 1;
+        }
+        postMessage(message: unknown) {
+          told.push({
+            name: this.name,
+            message,
+            rounds: db.dump("rounds").length,
+          });
+        }
+        close() {
+          open -= 1;
+        }
+      },
+    );
+    await clearOrdersOnSignOut(YOAV.toUpperCase());
+    // Yoav's in both businesses, and whoever's expired: each once, on the
+    // outbox's channel, after the transaction (only Noa's waiting round left).
+    expect(told.map((one) => one.message)).toEqual(
+      expect.arrayContaining([
+        { user: YOAV, business: BUSINESS },
+        { user: YOAV, business: OTHER },
+        { user: NOA, business: BUSINESS },
+        { user: NOA, business: OTHER },
+      ]),
+    );
+    expect(told).toHaveLength(4);
+    for (const one of told) {
+      expect(one).toMatchObject({ name: "conceptapp-orders", rounds: 1 });
+    }
+    expect(open).toBe(0);
+
+    // Nothing more went: nothing to tell.
+    told.length = 0;
+    await clearOrdersOnSignOut(YOAV);
+    expect(told).toEqual([]);
+    await clearAllOrders();
+    expect(told.map((one) => one.message)).toEqual([
+      { user: NOA, business: BUSINESS },
+    ]);
+    expect(open).toBe(0);
+  });
+
+  it("tells no tab anything when the store can't be cleared", async () => {
+    const failing = memoryOrdersDb();
+    await fill(failing);
+    const { clearAllOrders } = await load({
+      ...failing,
+      run: async () => {
+        throw new Error("QuotaExceededError");
+      },
+    });
+    const post = vi.fn();
+    vi.stubGlobal(
+      "BroadcastChannel",
+      class {
+        postMessage = post;
+        close() {}
+      },
+    );
+    await expect(clearAllOrders()).resolves.toBeUndefined();
+    expect(post).not.toHaveBeenCalled();
+  });
+
   it("asks the sign-out about the rounds of whoever the server names, though no outbox started in the page", async () => {
     // A page where no outbox started (another business, the console): the
     // server's answer is all there is to go by.

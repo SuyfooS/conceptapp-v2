@@ -15,6 +15,7 @@ import {
   enterAs,
   expectCleanPage,
   heading,
+  literal,
   loadRestaurantWords,
   main,
   NOA,
@@ -286,7 +287,10 @@ test("an order waiting more than 10 minutes asks first: removed with its undo, t
   // Asking already as the page reloads, so its last send passes it by; the
   // sends stay aborted through the reload all the same, until "שליחה".
   await ageRows(page, 12);
-  const question = rt("app.orders.outbox.ask", { count: 12 });
+  // Its minutes as they are, whichever: 12 as it asks, more on a slow run.
+  const question = new RegExp(
+    literal(rt("app.orders.outbox.ask", { count: 99 })).replace("99", "\\d+"),
+  );
   await expect(shown(page, question)).toBeVisible();
   await page.reload();
   await expect(shown(page, question)).toBeVisible();

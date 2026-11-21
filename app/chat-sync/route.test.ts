@@ -123,3 +123,20 @@ describe("the chat sync's look again", () => {
     expect(mocks.getPinnedState).not.toHaveBeenCalled();
   });
 });
+
+describe("the chat sync's session", () => {
+  it("is signed out only when nobody is, and fails, to be asked again, when it couldn't be read now", async () => {
+    mocks.getOwnPlace.mockResolvedValue(null);
+    expect((await lookAgain("team")).status).toBe(401);
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.getOwnPlace.mockRejectedValue(
+      Object.assign(new Error("fetch failed"), {
+        name: "AuthRetryableFetchError",
+      }),
+    );
+    const out = await lookAgain("team");
+    expect(out.status).toBe(500);
+    expect(mocks.getConversationStamp).not.toHaveBeenCalled();
+    log.mockRestore();
+  });
+});

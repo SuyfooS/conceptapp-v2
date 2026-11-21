@@ -101,6 +101,20 @@ describe("the mode's sync", () => {
     expect(out.headers.get("cache-control")).toBe("no-store");
   });
 
+  it("fails, to be asked again, when the session couldn't be read now: never signed out", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.getOwnPlace.mockRejectedValue(
+      Object.assign(new Error("fetch failed"), {
+        name: "AuthRetryableFetchError",
+      }),
+    );
+    const out = await ask("f=1");
+    expect(out.status).toBe(500);
+    expect(out.headers.get("cache-control")).toBe("no-store");
+    expect(mocks.getOrderFloor).not.toHaveBeenCalled();
+    log.mockRestore();
+  });
+
   it("reads the kitchen first, then the rest, and answers the smallest version", async () => {
     const answer = await ask("v=5&f=1&y=1&p=1");
     expect(mocks.order).toEqual(["prep", "floor"]);

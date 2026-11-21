@@ -285,6 +285,38 @@ describe("a round on its way", () => {
     expect(box.snapshot(YOAV, BUSINESS).retrying.has(kept.key)).toBe(true);
   });
 
+  it("sends a round again with the same key when its success can't be read, never back in the draft", async () => {
+    // The round went, but its answer was cut off: the database answers the
+    // same key with the same round.
+    let first = true;
+    server = (call) => {
+      if (!call.key) return mine([]);
+      if (first) {
+        first = false;
+        return new Response("<html>", { status: 200 });
+      }
+      return sent(call.key);
+    };
+    const box = outbox();
+    box.start(yoav);
+    await elapse();
+    const kept = row();
+    const outcome = box.send(YOAV, BUSINESS, {
+      draft: kept.draft,
+      body: kept.body,
+      lines: kept.lines,
+      where: kept.where,
+    });
+    await elapse();
+    await elapse(1000);
+    expect(await outcome).toMatchObject({ ok: true });
+    expect(posts().map((call) => call.key)).toEqual([kept.key, kept.key]);
+    const held = box.snapshot(YOAV, BUSINESS);
+    expect(held.store.drafts[DRAFT] ?? []).toEqual([]);
+    expect(held.refusals[DRAFT]).toBeUndefined();
+    expect(events).toEqual([expect.objectContaining({ kind: "sent" })]);
+  });
+
   it("puts a refused round's lines at the front of its draft with the reason, kept, and says so with no screen waiting", async () => {
     const kept = row({ lines: [line("sent")] });
     await keep(kept);

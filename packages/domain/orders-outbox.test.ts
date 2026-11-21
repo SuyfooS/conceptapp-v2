@@ -165,6 +165,18 @@ describe("what a send's answer means", () => {
       expect(sendVerdict(status, null)).toEqual({ kind: "retry" });
     }
   });
+
+  it("tries again, with the same key, a success whose round can't be read", () => {
+    // The round may have been written: never a refusal that puts its lines
+    // back in the draft, to go again under a new key.
+    expect(sendVerdict(200, null)).toEqual({ kind: "retry" });
+    expect(sendVerdict(200, "<html>")).toEqual({ kind: "retry" });
+    expect(sendVerdict(200, { ok: true, round: { id: "x" } })).toEqual({
+      kind: "retry",
+    });
+    expect(sendVerdict(204, null)).toEqual({ kind: "retry" });
+    expect(sendVerdict(200, refusal("taken"))).toEqual({ kind: "retry" });
+  });
 });
 
 describe("what the phone keeps", () => {

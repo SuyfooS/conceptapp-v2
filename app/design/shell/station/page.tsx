@@ -51,6 +51,7 @@ async function Demo({ searchParams }: Props) {
           lock={{
             offer: { current: { name: STATION }, running: [] },
             action: demoLockDevice,
+            clearsDevice: false,
           }}
           homeHref={HOME}
         />
@@ -67,6 +68,7 @@ async function Demo({ searchParams }: Props) {
               ),
             },
             action: demoLockDevice,
+            clearsDevice: false,
           }}
           homeHref={HOME}
         />

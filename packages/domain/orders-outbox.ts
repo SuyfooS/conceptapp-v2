@@ -217,15 +217,22 @@ export function failureOfStatus(status: number | null): string {
 
 /**
  * A send's answer, by its status and body: tried again while nothing came
- * back or the server failed on its way (`retriesSend`); the round; lost
- * when signed out or no longer a member; held for another person; else
- * refused, by the body's reason or the status's.
+ * back or the server failed on its way (`retriesSend`); the round; tried
+ * again, too, for a success whose round can't be read (the body cut off on
+ * a weak connection, or a page in its place), with the same key, which the
+ * database answers with the same round: never put back in the draft, to be
+ * sent again under a new one; lost when signed out or no longer a member;
+ * held for another person; else refused, by the body's reason or the
+ * status's.
  */
 export function sendVerdict(status: number | null, json: unknown): SendVerdict {
   if (retriesSend(status)) return { kind: "retry" };
   const parsed = sendAnswer.safeParse(json);
   if (parsed.success && parsed.data.ok) {
     return { kind: "sent", round: parsed.data.round };
+  }
+  if (status !== null && status >= 200 && status < 300) {
+    return { kind: "retry" };
   }
   const said = parsed.success && !parsed.data.ok ? parsed.data : null;
   if (status === 401 || said?.failure === "signedOut") {

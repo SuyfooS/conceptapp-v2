@@ -6,7 +6,7 @@ import {
   outboxRowSchema,
   rowTouched,
 } from "@domain/orders-outbox";
-import { type OrdersDb, openOrdersDb } from "./orders-db";
+import { ORDERS_DB, type OrdersDb, openOrdersDb } from "./orders-db";
 
 /*
  * What a session's end does to waiter mode's records on the phone (P7):
@@ -20,7 +20,9 @@ import { type OrdersDb, openOrdersDb } from "./orders-db";
  * where no outbox started knows nobody, and another tab may have changed
  * the cookie under it. Each also removes P4's leftovers in sessionStorage
  * (`orders:<user>:<business>`), and from then on nothing more is written
- * in this page (`closed`): it is about to open a whole new one.
+ * in this page (`closed`): it is about to open a whole new one. The other
+ * tabs are told whose records went, as their outbox tells them a change
+ * (`heard`), so they read them again and the rounds gone stop there too.
  */
 
 /** P4's entries in sessionStorage, which only go now. */
@@ -100,9 +102,35 @@ export function forgetTabEntries(): void {
   }
 }
 
+/** Whose a record is, as the outbox's tabs tell each other: `{user, business}`. */
+type Owner = { user: string; business: string };
+
+/**
+ * Tells the other tabs whose records went, once they are gone from the
+ * disk: each tab's outbox reads that person's records in that business
+ * again (`heard`), so a round deleted here stops there, never sent nor
+ * said lost later. No BroadcastChannel: nothing to tell.
+ */
+function tellTabs(owners: Iterable<Owner>): void {
+  let tabs: BroadcastChannel;
+  try {
+    tabs = new BroadcastChannel(ORDERS_DB);
+  } catch {
+    return;
+  }
+  try {
+    for (const owner of owners) tabs.postMessage(owner);
+  } catch {
+    // The channel closed meanwhile: nothing more to tell.
+  } finally {
+    tabs.close();
+  }
+}
+
 /**
  * Clears what the phone keeps, in one transaction that waits for the disk:
- * every record `drop` says goes, and every one expired whoever's.
+ * every record `drop` says goes, and every one expired whoever's. Once it is
+ * written, the other tabs are told whose went (`tellTabs`).
  */
 async function clearWhere(
   drop: (record: { user?: unknown }) => boolean,
@@ -112,13 +140,24 @@ async function clearWhere(
   const db = await storeOnPage();
   if (!db) return;
   const now = Date.now();
-  await db
+  const gone = new Map<string, Owner>();
+  const went = (record: { user?: unknown; business?: unknown }) => {
+    const { user, business } = record;
+    if (typeof user === "string" && typeof business === "string") {
+      gone.set(JSON.stringify([user, business]), { user, business });
+    }
+  };
+  const cleared = await db
     .run(
       ["rounds", "drafts", "menus"],
       "readwrite",
       async (tx) => {
         for (const raw of await tx.getAll("rounds")) {
-          const record = (raw ?? {}) as { key?: unknown; user?: unknown };
+          const record = (raw ?? {}) as {
+            key?: unknown;
+            user?: unknown;
+            business?: unknown;
+          };
           const row = outboxRowSchema.safeParse(raw);
           const expired =
             !row.success ||
@@ -130,6 +169,7 @@ async function clearWhere(
             );
           if ((drop(record) || expired) && typeof record.key === "string") {
             tx.delete("rounds", record.key);
+            went(record);
           }
         }
         for (const raw of await tx.getAll("drafts")) {
@@ -147,6 +187,7 @@ async function clearWhere(
               record.business ?? "",
               record.draft ?? "",
             ]);
+            went(record);
           }
         }
         for (const raw of await tx.getAll("menus")) {
@@ -156,14 +197,18 @@ async function clearWhere(
             !menu.success || !keepsRecord("menu", menu.data, null, now);
           if (drop(record) || expired) {
             tx.delete("menus", [record.user ?? "", record.business ?? ""]);
+            went(record);
           }
         }
+        return true;
       },
       "strict",
     )
     .catch(() => {
-      // Storage gone meanwhile: nothing more to clear.
+      // Storage gone meanwhile: nothing more to clear, nor to tell.
+      return false;
     });
+  if (cleared && gone.size > 0) tellTabs(gone.values());
 }
 
 /**

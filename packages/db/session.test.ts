@@ -1,4 +1,12 @@
 import { declaredPermissions } from "@domain/permissions";
+import {
+  AuthApiError,
+  AuthInvalidJwtError,
+  AuthRefreshDiscardedError,
+  AuthRetryableFetchError,
+  AuthSessionMissingError,
+  AuthUnknownError,
+} from "@supabase/supabase-js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
@@ -24,6 +32,8 @@ const db = vi.hoisted(() => ({
   rpc: { data: null, error: null } as Answer,
   /** A function's own answer, over `rpc`'s. */
   functions: {} as Record<string, Answer>,
+  /** The session's read (`getClaims`), when not the signed-in `user`'s. */
+  claims: null as { data: unknown; error: unknown } | null,
 }));
 
 /** A query that answers the table's rows however it is narrowed. */
@@ -51,7 +61,8 @@ vi.mock("./supabase/admin", () => ({ createAdminClient: () => ({}) }));
 vi.mock("./supabase/server", () => ({
   createClient: async () => ({
     auth: {
-      getClaims: async () => ({ data: { claims: { sub: db.user } } }),
+      getClaims: async () =>
+        db.claims ?? { data: { claims: { sub: db.user } }, error: null },
     },
     from: (table: string) => {
       db.reads.push(table);
@@ -72,6 +83,7 @@ const BUSINESS = "92000000-0000-4000-b000-000000000001";
 const catalogue = declaredPermissions([]);
 
 beforeEach(() => {
+  db.claims = null;
   db.reads = [];
   db.eqs = [];
   db.rpc = { data: null, error: null };
@@ -177,6 +189,45 @@ describe("getOwnPlace", () => {
     await expect(own?.place?.permissions(catalogue)).rejects.toMatchObject({
       code: "42501",
     });
+  });
+
+  it("is nobody without a session, or with one the auth server says is gone", async () => {
+    for (const error of [
+      null,
+      new AuthSessionMissingError(),
+      new AuthApiError(
+        "Invalid Refresh Token: Refresh Token Not Found",
+        400,
+        "refresh_token_not_found",
+      ),
+      new AuthApiError("invalid JWT", 403, "bad_jwt"),
+      new AuthInvalidJwtError("Invalid JWT signature"),
+    ]) {
+      db.claims = { data: null, error };
+      expect(await getOwnPlace()).toBeNull();
+    }
+    expect(db.reads).toEqual([]);
+  });
+
+  it("throws when the session couldn't be read now, never says nobody (P7)", async () => {
+    // A phone back after an hour offline renews its token here: the auth
+    // server out of reach or failing is a failure tried again, never a
+    // sign-out that takes the person's kept orders off the phone.
+    for (const error of [
+      new AuthRetryableFetchError("fetch failed", 0),
+      new AuthRetryableFetchError("Service Unavailable", 503),
+      new AuthApiError(
+        "Request rate limit reached",
+        429,
+        "over_request_rate_limit",
+      ),
+      new AuthUnknownError("Unexpected token <", new SyntaxError()),
+      new AuthRefreshDiscardedError(),
+    ]) {
+      db.claims = { data: null, error };
+      await expect(getOwnPlace()).rejects.toBe(error);
+    }
+    expect(db.reads).toEqual([]);
   });
 });
 

@@ -30,13 +30,16 @@ import type { LockAction, LockOffer } from "./station-types";
  * as a whole new page, as signing out does. With ten stations running and
  * this device none of them, a line says why there is no button. Waiter
  * mode's records on the device go as it locks, everyone's (P7): with an
- * order that hasn't gone, one more line says how many and where.
+ * order that hasn't gone, one more line says how many and where. Not on
+ * /design's twins (`clearsDevice`), whose lock locks nothing: the device's
+ * own orders are neither read nor cleared there.
  */
 export function LockStation({
   offer,
   lock,
   label,
   primary = false,
+  clearsDevice = true,
 }: {
   offer: LockOffer;
   lock: LockAction;
@@ -44,6 +47,12 @@ export function LockStation({
   label?: string;
   /** The screen's main action, where locking is what it is for. */
   primary?: boolean;
+  /**
+   * Whether locking clears waiter mode's records on the device, and the
+   * sheet says what hasn't gone: false on /design's twins, which lock
+   * nothing.
+   */
+  clearsDevice?: boolean;
 }) {
   const t = useTranslations("app.clock.station.lock");
   const to = useTranslations("app.orders.outbox");
@@ -72,7 +81,7 @@ export function LockStation({
           // A whole new page, as signing out opens: nothing of the person's
           // screens stays in this one, nor anyone's orders kept on the
           // device, cleared before it goes.
-          await clearAllOrders();
+          if (clearsDevice) await clearAllOrders();
           window.location.replace(result.to);
           return;
         }
@@ -91,7 +100,7 @@ export function LockStation({
         onClick={() => {
           setFailure(null);
           setOpen(true);
-          void unsentOnDevice().then(setUnsent);
+          if (clearsDevice) void unsentOnDevice().then(setUnsent);
         }}
       >
         <Lock aria-hidden="true" />

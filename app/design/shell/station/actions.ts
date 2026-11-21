@@ -4,7 +4,8 @@ import { type LockResult, stationName } from "@domain/clock-station";
 import type { SignedOut } from "../../../sign-out-form";
 
 // The demo's stand-in for locking a device: the same check on the name,
-// nothing stored and nobody signed out, and on to the station's twin.
+// nothing stored and nobody signed out, and on to the station's twin. Its
+// screens pass `clearsDevice: false`, so the device's own orders stay.
 export async function demoLockDevice(input: {
   name: string;
 }): Promise<LockResult> {

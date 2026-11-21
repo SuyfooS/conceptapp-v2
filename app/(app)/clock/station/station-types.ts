@@ -22,6 +22,17 @@ export type LockOffer = {
 export type LockAction = (input: { name: string }) => Promise<LockResult>;
 
 /**
+ * Locking offered on a screen: what is offered and the action, and whether
+ * it clears waiter mode's records on the device (`LockStation`'s
+ * `clearsDevice`; false on /design's twins, whose lock locks nothing).
+ */
+export type StationLock = {
+  offer: LockOffer;
+  action: LockAction;
+  clearsDevice?: boolean;
+};
+
+/**
  * What Home says on a device that is one of the business's running stations
  * (`currentStationHome`): whoever may lock it locks it again, as the station
  * it is; anyone else signs out when done.

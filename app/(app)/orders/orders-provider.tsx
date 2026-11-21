@@ -869,11 +869,15 @@ export function OrdersModeProvider({
   );
 
   const unsent = useMemo(() => unsentOf(held), [held]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: each tick of the clock is what moves the age
   const sender = useMemo<OrdersSender>(
     () => ({
       send,
-      // How long a round asking hasn't gone, by the phone's clock.
-      pending: (draft: string) => pendingSends(held, draft, now - offset),
+      // How long a round asking hasn't gone, by the phone's clock as it is
+      // now, the clock its time sent was kept by: never the last tick's, up
+      // to ten seconds behind, so the question names the minutes it has
+      // waited as it comes; each tick then draws it again.
+      pending: (draft: string) => pendingSends(held, draft, Date.now()),
       answer: (key: string) =>
         outbox.answer(who.current.user, who.current.business, key),
       remove: (key: string) => {
@@ -888,7 +892,7 @@ export function OrdersModeProvider({
         outbox.seeRefusal(who.current.user, who.current.business, draft),
       landed: held.landed,
     }),
-    [send, held, now, offset, outbox, unsent, setRefusals],
+    [send, held, now, outbox, unsent, setRefusals],
   );
 
   // A ticket marked ready here is no news to this phone, until it is put

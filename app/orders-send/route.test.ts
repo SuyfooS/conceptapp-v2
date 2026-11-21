@@ -100,6 +100,22 @@ describe("the send", () => {
     expect(mocks.sendOrderRound).not.toHaveBeenCalled();
   });
 
+  it("fails, to be tried again, when the session couldn't be read now: never signed out (P7)", async () => {
+    // A 401 takes the person's kept orders off the phone; a 500 is tried
+    // again with the same key.
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.getOwnPlace.mockRejectedValue(
+      Object.assign(new Error("fetch failed"), {
+        name: "AuthRetryableFetchError",
+      }),
+    );
+    const out = await post(body);
+    expect(out.status).toBe(500);
+    expect(await out.json()).toMatchObject({ ok: false, failure: "failed" });
+    expect(mocks.sendOrderRound).not.toHaveBeenCalled();
+    log.mockRestore();
+  });
+
   it("sends as the session's person, to the body's business, never the cookie's", async () => {
     const sent = {
       round: KEY,
