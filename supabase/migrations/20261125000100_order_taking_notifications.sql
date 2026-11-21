@@ -22,11 +22,13 @@
 --                 beside the reminders; the order-taking job runs hourly):
 --                 once per ticket that no running prep screen of its
 --                 department, or of every department, fetched 2 minutes
---                 after it was sent or called. To the sender, and to whoever
---                 runs orders and is on the clock (with the time clock on),
---                 its push at once. Only tickets of the last 10 minutes, so a
---                 minute job that missed its runs never tells late. A place
---                 with no running prep screen never gets one.
+--                 after it was sent or called. To the sender, by rank, and to
+--                 whoever runs orders and is on the clock (with the time
+--                 clock on), as a line for order_taking.edit (holders_of),
+--                 read and pushed only while they hold it. Its push at once.
+--                 Only tickets of the last 10 minutes, so a minute job that
+--                 missed its runs never tells late. A place with no running
+--                 prep screen never gets one.
 --
 --   settled       a ticket leaving "ready" (served, put back, closed)
 --                 settles its order.ready, and one fetched by a screen or no
@@ -76,7 +78,9 @@
 -- ('order_taking' staff only); from 20261124000100_order_taking_stations.sql
 -- public.set_order_ticket_ready and public.station_set_ticket_ready (the
 -- ready line); from 20261121000100_order_taking_mode.sql public.order_mode
--- (`screens`). private.notification_group needs no change: it reads
+-- (`screens`); from 20261115001400_roles_chat.sql the comment on
+-- notifications.audience_perm (order.unseen's lines to whoever runs orders).
+-- private.notification_group needs no change: it reads
 -- private.notification_kind_groups. The push_off check reads
 -- private.notification_groups, a superset now, so every row stays valid.
 -- packages/db/database.types.ts gains public.read_order_ready.
@@ -844,9 +848,11 @@ $$;
 -- Then each ticket new and unseen, with a line live, of an open order, sent
 -- or called between `unseen_window` and `unseen_after` ago, whose department
 -- a running prep screen shows (its own, or every one), and with no line
--- about it yet, tells its sender and whoever runs orders and is on the clock
--- (only with the time clock on), once. A ticket a write holds waits for the
--- next minute. Returns how many lines it wrote.
+-- about it yet, tells its sender, by rank, and whoever runs orders and is on
+-- the clock (only with the time clock on), as a line for order_taking.edit
+-- (holders_of), so it is read and pushed only while they hold it, once: one
+-- key for both, the sender left out of the second. A ticket a write holds
+-- waits for the next minute. Returns how many lines it wrote.
 create function private.run_order_notices(
   at_time timestamptz default now(),
   for_business uuid default null
@@ -859,7 +865,8 @@ as $$
 declare
   each_business uuid;
   late record;
-  recipients uuid[];
+  ticket_facts jsonb;
+  holders uuid[];
   wait_for interval;
   look_back interval;
   push_within interval;
@@ -946,24 +953,40 @@ begin
         order by t.id
         for share of t skip locked
       loop
-        recipients := array_remove(array[late.sender], null);
-        if private.module_enabled(each_business, 'time_clock'::public.module_key) then
-          recipients := recipients || array(
-            select h.person
-            from unnest(private.members_holding(each_business, 'order_taking.edit')) as h (person)
-            where private.on_the_clock(each_business, h.person, at_time)
-          );
-        end if;
-        if cardinality(recipients) > 0 then
+        ticket_facts := private.order_notice_facts(late.ticket_id);
+        -- The sender, by rank: the staff's line about their own ticket.
+        if late.sender is not null then
           written := written + private.notify(
-            each_business, recipients, 'order.unseen',
-            private.order_notice_facts(late.ticket_id), null,
+            each_business, array[late.sender], 'order.unseen', ticket_facts, null,
             'order_taking'::public.module_key, 'worker'::public.member_role,
             'order.unseen:' || late.ticket_id::text,
             realert => false,
             push_until => at_time + push_within,
             at_time => at_time
           );
+        end if;
+        -- Whoever runs orders and is on the clock, as a line for
+        -- order_taking.edit, read only while they hold it; 'manager', the
+        -- lowest role that holds it by default, its audience_role. The same
+        -- key, and never the sender, who has theirs.
+        if private.module_enabled(each_business, 'time_clock'::public.module_key) then
+          holders := array(
+            select h.person
+            from unnest(private.members_holding(each_business, 'order_taking.edit')) as h (person)
+            where private.on_the_clock(each_business, h.person, at_time)
+          );
+          if cardinality(holders) > 0 then
+            written := written + private.notify(
+              each_business, holders, 'order.unseen', ticket_facts, null,
+              'order_taking'::public.module_key, 'manager'::public.member_role,
+              'order.unseen:' || late.ticket_id::text,
+              realert => false,
+              push_until => at_time + push_within,
+              at_time => at_time,
+              leave_out => array[late.sender],
+              holders_of => 'order_taking.edit'::text
+            );
+          end if;
         end if;
       end loop;
     exception when others then
@@ -973,6 +996,12 @@ begin
   return written;
 end;
 $$;
+
+-- 20261115001400_roles_chat.sql's, with order.unseen's lines to whoever runs
+-- orders among the lines for a permission: its kind names none, since its
+-- sender's line is by rank.
+comment on column public.notifications.audience_perm is
+  'The permission whoever reads the line holds (private.holds_perm), when it is for those who hold one rather than for a rank and up, as each kind''s perm in NOTIFICATION_KINDS (@domain/notifications) names it, on chat''s lines about a department''s group for those in it by moderating alone (chat.moderate), and on order.unseen''s for whoever runs orders (order_taking.edit), its sender''s being by rank. Written only to them (private.notify''s holders_of, private.notify_chat), read only while they hold it, its push skipped once they don''t (public.claim_due_pushes), and settled when a change of role takes it away (public.set_member_role).';
 
 -- 20261112000200_reminders.sql's, with the order notices after the
 -- reminders, so what they queue goes this same minute, and a delivery held

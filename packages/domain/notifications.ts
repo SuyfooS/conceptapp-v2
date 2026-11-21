@@ -592,7 +592,9 @@ export const NOTIFICATION_KINDS = {
   // No running prep screen of its department fetched a ticket 2 minutes after
   // it was sent or called (P8b, the minute job): once per ticket, to its
   // sender and to whoever runs orders and is on the clock, its push at once.
-  // Fetched, ready, served or cancelled settles it.
+  // No `perm`: the sender's line is by rank, and only the others' is for
+  // order_taking.edit (`audience_perm`), read while they hold it. Fetched,
+  // ready, served or cancelled settles it.
   "order.unseen": {
     group: "orders",
     module: "order_taking",

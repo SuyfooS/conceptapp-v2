@@ -20,7 +20,7 @@
 -- (05-007-100xx) and slugs (order-notices-…), so nothing here meets the seed
 -- or another test.
 begin;
-select plan(66);
+select plan(70);
 -- Times read back as text, in UTC.
 set local timezone = 'UTC';
 
@@ -513,6 +513,42 @@ select is(
   jsonb_build_object('placeName', '9', 'takeaway', null, 'departmentName', 'Kitchen', 'count', 1),
   'it says the place, the department and how many'
 );
+select is(
+  (select string_agg(n.user_id::text || '/' || n.audience_role || '/' || coalesce(n.audience_perm, 'rank'),
+     ',' order by n.user_id)
+   from public.notifications n where n.dedupe_key = pg_temp.unseen(9, 0)),
+  pg_temp.p(2) || '/manager/order_taking.edit,' || pg_temp.p(4) || '/worker/rank',
+  'the line of whoever runs orders is for those who hold it, the sender''s by rank'
+);
+
+-- Running orders taken from the managers: the manager no longer reads his
+-- line, and the sender still reads theirs.
+insert into line_keys values ('unseen-9', pg_temp.unseen(9, 0));
+select pg_temp.sign_in(pg_temp.p(2));
+select is(
+  (select count(*)::integer from public.notifications n where n.dedupe_key = pg_temp.key('unseen-9')),
+  1,
+  'whoever runs orders reads it'
+);
+reset role;
+insert into public.role_permissions (business_id, role, perm, allowed)
+values (pg_temp.a(), 'manager', 'order_taking.edit', false);
+select pg_temp.sign_in(pg_temp.p(2));
+select is(
+  (select count(*)::integer from public.notifications n where n.dedupe_key = pg_temp.key('unseen-9')),
+  0,
+  'and no more once running orders is taken away'
+);
+select pg_temp.sign_in(pg_temp.p(4));
+select is(
+  (select count(*)::integer from public.notifications n where n.dedupe_key = pg_temp.key('unseen-9')),
+  1,
+  'while its sender still does'
+);
+reset role;
+delete from public.role_permissions
+where business_id = pg_temp.a() and role = 'manager' and perm = 'order_taking.edit';
+
 select is(private.run_order_notices(pg_temp.at(3600 + 180), pg_temp.a()), 0,
   'a minute later, nothing new');
 select is(
