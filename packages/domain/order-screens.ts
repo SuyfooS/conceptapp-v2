@@ -265,18 +265,12 @@ export function toggleChoice(
   return [...picks];
 }
 
-/**
- * Whether a group's other options wait until one of its picks is switched
- * off: at its most, past one (a group of up to one replaces its pick
- * instead), and with an option still off. A group whose every option may be
- * picked together never waits, however many are on.
- */
-export function groupFull(
+/** How many of the group's options are picked, each once, as `checkPicks` counts what the sheet keeps. */
+export function pickedIn(
   group: OptionGroup,
   picks: readonly ChoicePick[],
-): boolean {
-  if (group.max <= 1 || group.max >= group.options.length) return false;
-  const mine = new Set(
+): number {
+  return new Set(
     picks
       .filter(
         (pick) =>
@@ -284,8 +278,22 @@ export function groupFull(
           group.options.some((option) => option.id === pick.option),
       )
       .map((pick) => pick.option),
-  );
-  return mine.size >= group.max;
+  ).size;
+}
+
+/**
+ * Whether a group's other options wait until one of its picks is switched
+ * off: at its most, past one (a group of up to one replaces its pick
+ * instead), and with an option still off. A group whose every option may be
+ * picked together never waits, however many are on. Past its most is
+ * `overGroups`, said in words of its own.
+ */
+export function groupFull(
+  group: OptionGroup,
+  picks: readonly ChoicePick[],
+): boolean {
+  if (group.max <= 1 || group.max >= group.options.length) return false;
+  return pickedIn(group, picks) >= group.max;
 }
 
 /** The groups that still need a choice before the item is added: fewer than their least. */
@@ -293,10 +301,24 @@ export function missingGroups(
   item: Choosing,
   picks: readonly ChoicePick[],
 ): OptionGroup[] {
-  const kept = keepPicks(item, picks);
   return item.optionGroups.filter(
-    (group) =>
-      kept.filter((pick) => pick.group === group.id).length < group.min,
+    (group) => pickedIn(group, picks) < group.min,
+  );
+}
+
+/**
+ * The groups with more picks than their most, as `checkPicks` refuses them
+ * ("tooMany"): a line's picks after the menu lowered a group's most under
+ * them, a group of one included. Nothing is added or saved until enough are
+ * taken off, so the sheet never keeps what the send refuses: with none
+ * missing and none over, what it keeps fits.
+ */
+export function overGroups(
+  item: Choosing,
+  picks: readonly ChoicePick[],
+): OptionGroup[] {
+  return item.optionGroups.filter(
+    (group) => pickedIn(group, picks) > group.max,
   );
 }
 

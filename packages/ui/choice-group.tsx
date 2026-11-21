@@ -28,7 +28,9 @@ export type ChoiceGroupProps = {
   onPick: (id: string, on: boolean) => void;
   /**
    * At its most, these words under the group ("נבחרו 2. מורידים אחת כדי
-   * לבחור אחרת"), and the options not picked wait.
+   * לבחור אחרת"), and the options not picked wait; past it (the menu lowered
+   * it), words that say how many to take off. Radios say them too, and each
+   * still replaces the pick.
    */
   full?: string | null;
   /** Nothing is picked (the item sold out meanwhile). */
@@ -64,6 +66,7 @@ export function ChoiceGroup({
         legend={legend}
         legendClassName="text-md"
         groupClassName="bg-elevated shadow-none"
+        note={full}
       >
         {options.map((option) => (
           <ChoiceRow

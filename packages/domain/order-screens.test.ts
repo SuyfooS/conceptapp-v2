@@ -22,6 +22,8 @@ import {
   orderedPicks,
   orderModeEntry,
   orderModeItems,
+  overGroups,
+  pickedIn,
   pickState,
   picksAgorot,
   placeState,
@@ -43,7 +45,12 @@ import {
   toggleChoice,
   withoutSent,
 } from "./order-screens";
-import { checkPicks, type OptionGroup, unitAgorot } from "./order-taking";
+import {
+  type ChoicePick,
+  checkPicks,
+  type OptionGroup,
+  unitAgorot,
+} from "./order-taking";
 import type { MyOrders, OrderDetail, OrderFloor } from "./orders";
 
 const HUMMUS = "00000000-0000-4000-8000-000000000001";
@@ -377,6 +384,90 @@ describe("choosing (P6)", () => {
     expect(
       picksAgorot(salad, [pick("extras", "feta"), pick("extras", "egg")]),
     ).toBe(4700);
+  });
+
+  it("holds a line's picks past a group's most once the menu lowers it, as the send refuses them", () => {
+    // A draft burger, medium with egg and cheese: fine while the extras go up to two.
+    const picks = [medium, egg, cheese];
+    expect(checkPicks(burger.optionGroups, picks)).toEqual({ ok: true });
+    expect(overGroups(burger, picks)).toEqual([]);
+    // A manager sets the extras to up to one, and the sync brings it.
+    const oneExtra: OptionGroup = { ...extras, max: 1 };
+    const lowered = { ...burger, optionGroups: [doneness, oneExtra] };
+    const drafted = line({ item: BURGER, choices: picks });
+    expect(staleChoiceLines([lowered], [drafted])).toEqual([drafted.id]);
+    expect(checkPicks(lowered.optionGroups, picks)).toMatchObject({
+      ok: false,
+      problem: "tooMany",
+      group: "extras",
+    });
+    // Nothing is missing, but the extras are over: the sheet waits, a group
+    // of up to one too (which is never "full").
+    expect(missingGroups(lowered, picks)).toEqual([]);
+    expect(overGroups(lowered, picks)).toEqual([oneExtra]);
+    expect(pickedIn(oneExtra, picks)).toBe(2);
+    expect(groupFull(oneExtra, picks)).toBe(false);
+    // One switched off, the line fits again, as the send takes it.
+    const fewer = toggleChoice(oneExtra, picks, "egg", false);
+    expect(overGroups(lowered, fewer)).toEqual([]);
+    expect(checkPicks(lowered.optionGroups, fewer)).toEqual({ ok: true });
+    // A pick the group no longer has, or one twice, isn't counted over.
+    expect(overGroups(lowered, [medium, egg, egg])).toEqual([]);
+    expect(overGroups(lowered, [medium, egg, pick("extras", "gone")])).toEqual(
+      [],
+    );
+  });
+
+  it("holds a group of one with two picks, and choosing one again fits", () => {
+    // A doneness of one or two, set to exactly one under a line with two.
+    const rare = pick("doneness", "mr");
+    const two = [rare, medium];
+    expect(checkPicks([{ ...doneness, max: 2 }, extras], two)).toEqual({
+      ok: true,
+    });
+    expect(missingGroups(burger, two)).toEqual([]);
+    expect(overGroups(burger, two)).toEqual([doneness]);
+    expect(checkPicks(burger.optionGroups, two)).toMatchObject({
+      ok: false,
+      problem: "tooMany",
+      group: "doneness",
+    });
+    // A radio replaces both, whichever is chosen.
+    expect(toggleChoice(doneness, two, "m", true)).toEqual([medium]);
+    expect(toggleChoice(doneness, two, "wd", true)).toEqual([
+      pick("doneness", "wd"),
+    ]);
+    expect(overGroups(burger, [medium])).toEqual([]);
+  });
+
+  it("keeps only what the send takes: none missing and none over is what checkPicks says", () => {
+    const all: ChoicePick[] = [
+      ...doneness.options.map((o) => pick("doneness", o.id)),
+      ...withBacon.options.map((o) => pick("extras", o.id)),
+      pick("extras", "gone"),
+    ];
+    // Every set of them, the empty one first.
+    const subsets: ChoicePick[][] = [[]];
+    for (const one of all) {
+      for (const set of subsets.slice()) subsets.push([...set, one]);
+    }
+    for (const [min, max] of [
+      [0, 1],
+      [0, 2],
+      [1, 2],
+      [0, 3],
+    ] as const) {
+      const item = { optionGroups: [doneness, { ...withBacon, min, max }] };
+      for (const picks of subsets) {
+        const kept = keepPicks(item, picks);
+        const fits =
+          missingGroups(item, kept).length === 0 &&
+          overGroups(item, kept).length === 0;
+        expect(fits, JSON.stringify([min, max, picks])).toBe(
+          checkPicks(item.optionGroups, kept).ok,
+        );
+      }
+    }
   });
 
   it("names the choices in the item's order", () => {

@@ -6,6 +6,8 @@ import {
   keepPicks,
   missingGroups,
   orderedPicks,
+  overGroups,
+  pickedIn,
   pickState,
   picksAgorot,
   toggleChoice,
@@ -35,7 +37,9 @@ export type ChoiceTarget = { mode: "new" } | { mode: "edit"; line: DraftLine };
  * which waits for every required group and says which are left; from a
  * draft line, "שמירת הבחירות" for that line alone (its count stays its own).
  * The item is the menu's as it is now, so a sync changes it in place: a pick
- * it no longer has is left out, and once it sold out nothing is added.
+ * it no longer has is left out, a group whose most went under its picks
+ * says so and the action waits until enough are taken off (as the send
+ * would refuse them), and once it sold out nothing is added.
  */
 export function ChoiceSheet({
   item,
@@ -162,6 +166,26 @@ function ChoiceGroups({
         return t("choice.rule.any");
     }
   };
+  // Under the group; while it says anything, its switches still off wait.
+  const note = (group: OptionGroup, one: boolean) => {
+    const count = pickedIn(group, kept);
+    // Past its most (the menu lowered it under a line's picks), a group of
+    // up to one too: how many to take off. Radios can't show two at once,
+    // so a group of one shows none and asks for one again.
+    if (count > group.max) {
+      return one
+        ? t("choice.overOne", { count })
+        : t("choice.over", {
+            count,
+            max: group.max,
+            extra: count - group.max,
+          });
+    }
+    // At its most, with an option still off: the rest wait until one is
+    // taken off. A group of up to one replaces its pick instead, and one
+    // whose every option may be on has nothing to wait for.
+    return groupFull(group, kept) ? t("choice.full", { max: group.max }) : null;
+  };
   return (
     <div className="flex flex-col gap-5 px-2 pt-1 pb-2">
       {groups.map((group) => {
@@ -169,12 +193,7 @@ function ChoiceGroups({
           .filter((pick) => pick.group === group.id)
           .map((pick) => pick.option);
         const one = group.min === 1 && group.max === 1;
-        // At its most, with an option still off: the rest wait until one is
-        // taken off. A group of up to one replaces its pick instead, and one
-        // whose every option may be on has nothing to wait for.
-        const full = groupFull(group, kept)
-          ? t("choice.full", { max: group.max })
-          : null;
+        const over = pickedIn(group, kept) > group.max;
         return (
           <ChoiceGroup
             key={group.id}
@@ -192,8 +211,8 @@ function ChoiceGroups({
                     })
                   : undefined,
             }))}
-            picked={mine}
-            full={full}
+            picked={over && one ? [] : mine}
+            full={note(group, one)}
             disabled={disabled}
             onPick={(option, on) =>
               onPicks(toggleChoice(group, kept, option, on))
@@ -206,8 +225,9 @@ function ChoiceGroups({
 }
 
 /**
- * The sheet's end: how many (a new line), what is still to choose, and the
- * main action, which waits until every required group has its choice.
+ * The sheet's end: how many (a new line), what is still to choose or has
+ * too many, and the main action, which waits until every group has from its
+ * least to its most: what `checkPicks` takes, so the send takes it too.
  */
 function ChoiceFooter({
   item,
@@ -229,8 +249,15 @@ function ChoiceFooter({
   const { t } = useOrderWords();
   const qtyId = useId();
   const missingId = useId();
+  const overId = useId();
   const kept = orderedPicks(item, keepPicks(item, picks));
   const missing = missingGroups(item, kept);
+  const over = overGroups(item, kept);
+  const waits = missing.length > 0 || over.length > 0;
+  const describedBy =
+    [missing.length > 0 ? missingId : null, over.length > 0 ? overId : null]
+      .filter(Boolean)
+      .join(" ") || undefined;
   const count = Number(quantity);
   const counted =
     Number.isInteger(count) && count >= 1 && count <= ORDER_CAPS.quantity;
@@ -264,11 +291,19 @@ function ChoiceFooter({
           })}
         </p>
       ) : null}
+      {over.length > 0 ? (
+        <p id={overId} className="px-1 text-ink-2 text-sm">
+          {/* The group says how many to take off; this says which, for either action. */}
+          {t("choice.tooMany", {
+            groups: over.map((group) => group.name).join(", "),
+          })}
+        </p>
+      ) : null}
       {target.mode === "new" ? (
         <Button
           size="lg"
-          disabled={missing.length > 0 || !counted || blocked}
-          aria-describedby={missing.length > 0 ? missingId : undefined}
+          disabled={waits || !counted || blocked}
+          aria-describedby={describedBy}
           onClick={() => onAdd(item, kept, count)}
         >
           {t("choice.add", { count: counted ? count : 1 })}
@@ -276,8 +311,8 @@ function ChoiceFooter({
       ) : (
         <Button
           size="lg"
-          disabled={missing.length > 0}
-          aria-describedby={missing.length > 0 ? missingId : undefined}
+          disabled={waits}
+          aria-describedby={describedBy}
           onClick={() => onSave(item, target.line, kept)}
         >
           {t("choice.save")}

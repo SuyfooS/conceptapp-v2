@@ -2,6 +2,7 @@ import { importRows, parseMenu, reverseLine } from "@domain/menu-import";
 import {
   addToDraft,
   draftKey,
+  overGroups,
   placeState,
   staleChoiceLines,
   toggleChoice,
@@ -406,6 +407,52 @@ describe("an item's choices", () => {
     expect(staleChoiceLines(twinMenu(scenario(null), 1).items, draft)).toEqual(
       [],
     );
+  });
+
+  it("refuses a line past a group's most once the menu lowers it, and its sheet waits too (P6)", () => {
+    const evening = scenario(null);
+    // The burger's extras set to up to one, under a draft with both.
+    const lowered = {
+      ...evening,
+      menu: {
+        ...evening.menu,
+        items: evening.menu.items.map((item) =>
+          item.id === "burger"
+            ? {
+                ...item,
+                groups: item.groups.map((group) =>
+                  group.id === "extras" ? { ...group, max: 1 } : group,
+                ),
+              }
+            : item,
+        ),
+      },
+    };
+    const both = [
+      { group: "doneness", option: "m" },
+      { group: "extras", option: "egg" },
+      { group: "extras", option: "cheese" },
+    ];
+    const draft = [
+      {
+        id: "d1",
+        item: "burger",
+        quantity: 1,
+        note: null,
+        allergy: false,
+        held: false,
+        choices: both,
+      },
+    ];
+    expect(choicesRefused(evening, draft)).toBe(false);
+    expect(choicesRefused(lowered, draft)).toBe(true);
+    const items = twinMenu(lowered, 1).items;
+    expect(staleChoiceLines(items, draft)).toEqual(["d1"]);
+    // The app's sheet, which the twin draws, holds the same picks.
+    const burger = items.find((item) => item.id === "burger");
+    expect(overGroups(burger ?? { optionGroups: [] }, both)).toMatchObject([
+      { id: "extras", max: 1 },
+    ]);
   });
 });
 
