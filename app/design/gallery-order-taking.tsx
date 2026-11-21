@@ -1,13 +1,17 @@
 "use client";
 
 import { formatShekels, moneyLocale } from "@domain/money";
+import { Button } from "@ui/button";
+import { ChoiceGroup } from "@ui/choice-group";
 import { MenuEditRow, MenuItemList, MenuItemRow } from "@ui/menu-item-row";
 import { DraftLineRow, SendOrderButton } from "@ui/order-draft";
 import { PlaceTile } from "@ui/place-tile";
+import { Sheet } from "@ui/sheet";
+import { Stepper } from "@ui/stepper";
 import { OrderLine, TicketCard } from "@ui/ticket-card";
 import { TillList } from "@ui/till-list";
 import { useLocale, useTranslations } from "next-intl";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useId, useState } from "react";
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 
@@ -24,8 +28,12 @@ const FLOOR = "/design/order-taking/floor?state=service";
  * a send that refused it), the send, "מוכן" while the server hears it, and
  * an item that can't be added while viewing. P5 adds a line cancelled with
  * its reason, one on the house (`OrderLine mark`) and its row at the till
- * with the price struck (`TillRow free`). The words are the twin's and the
- * app's; the dishes and people only stand in.
+ * with the price struck (`TillRow free`). P6 adds the choices: a group of
+ * one as radios and extras at their most (`ChoiceGroup`), in the sheet whose
+ * footer keeps "הוספה" in sight (`Sheet footer`), the draft's "בחירות" and
+ * "לבחור שוב", and an item that opens its choices (`MenuItemRow opens`).
+ * The words are the twin's and the app's; the dishes and people only stand
+ * in.
  */
 export function GalleryOrderTaking() {
   const t = useTranslations("design.orderParts");
@@ -47,6 +55,61 @@ export function GalleryOrderTaking() {
   const [held, setHeld] = useState(true);
   const kitchen = t("kitchen");
   const table = (name: string) => o("place.table", { name });
+  // The burger's choices: a doneness picked, both extras on, so the group
+  // is at its most; the sheet adds two.
+  const [doneness, setDoneness] = useState("medium");
+  const [extras, setExtras] = useState(["egg", "cheese"]);
+  const [choicesOpen, setChoicesOpen] = useState(false);
+  const [burgers, setBurgers] = useState("2");
+  const qtyId = useId();
+  const extrasFull = extras.length >= 2;
+  const donenessGroup = (
+    <ChoiceGroup
+      name={t("doneness")}
+      rule={a("choice.rule.one")}
+      kind="one"
+      options={[
+        { id: "rare", name: t("rare") },
+        { id: "medium", name: t("medium") },
+        { id: "wellDone", name: t("wellDone") },
+      ]}
+      picked={[doneness]}
+      onPick={(id) => setDoneness(id)}
+    />
+  );
+  const extrasGroup = (
+    <ChoiceGroup
+      name={t("extras")}
+      rule={a("choice.rule.upTo", { max: 2 })}
+      kind="many"
+      options={[
+        {
+          id: "egg",
+          name: t("egg"),
+          hint: a.rich("choice.extra", {
+            price: formatShekels(600, locale),
+            ltr,
+          }),
+        },
+        {
+          id: "cheese",
+          name: t("cheese"),
+          hint: a.rich("choice.extra", {
+            price: formatShekels(600, locale),
+            ltr,
+          }),
+        },
+        { id: "onion", name: t("onion") },
+      ]}
+      picked={extras}
+      full={extrasFull ? a("choice.full", { max: 2 }) : null}
+      onPick={(id, on) =>
+        setExtras((was) =>
+          on ? [...was, id] : was.filter((option) => option !== id),
+        )
+      }
+    />
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -166,6 +229,19 @@ export function GalleryOrderTaking() {
                   allergy: t("peanuts"),
                   held: false,
                   mark: null,
+                  chooses: true,
+                },
+                // Its doneness left the menu meanwhile: it asks to choose again.
+                {
+                  key: "burgerStale",
+                  name: t("burger"),
+                  choices: [t("mediumWell")],
+                  agorot: 6800,
+                  quantity: 1,
+                  allergy: null,
+                  held: false,
+                  mark: a("draft.choicesStale"),
+                  chooses: true,
                 },
                 {
                   key: "hummus",
@@ -176,6 +252,7 @@ export function GalleryOrderTaking() {
                   allergy: null,
                   held,
                   mark: null,
+                  chooses: false,
                 },
                 // A send refused it: it sold out meanwhile.
                 {
@@ -187,6 +264,7 @@ export function GalleryOrderTaking() {
                   allergy: null,
                   held: false,
                   mark: a("picker.soldOut"),
+                  chooses: false,
                 },
               ] as const
             ).map((row) => (
@@ -207,6 +285,15 @@ export function GalleryOrderTaking() {
                 }
                 held={row.held ? a("draft.heldBadge") : null}
                 mark={row.mark}
+                choicesButton={
+                  row.chooses
+                    ? {
+                        label: a("draft.choices"),
+                        forItem: a("draft.forItem", { name: row.name }),
+                        onClick: () => setChoicesOpen(true),
+                      }
+                    : null
+                }
                 noteButton={{
                   label: a("draft.note"),
                   forItem: a("draft.forItem", { name: row.name }),
@@ -292,16 +379,15 @@ export function GalleryOrderTaking() {
           countLabel={o("picker.inDraft")}
           onPick={() => setLemonades((n) => n + 1)}
         />
+        {/* A choice to make: a tap opens its choices (P6). */}
         <MenuItemRow
           name={t("burger")}
-          detail={
-            <>
-              {price(6800)} · {o("picker.withChoices")}
-            </>
-          }
+          detail={price(6800)}
+          hint={a("picker.needsChoice")}
+          opens
           count={0}
           countLabel={o("picker.inDraft")}
-          onPick={() => {}}
+          onPick={() => setChoicesOpen(true)}
         />
         <MenuItemRow
           name={t("fish")}
@@ -321,6 +407,53 @@ export function GalleryOrderTaking() {
           onPick={() => {}}
         />
       </MenuItemList>
+
+      <h3 className="font-semibold text-base">{t("choices")}</h3>
+      <p className="text-ink-2 text-sm">{t("choicesText")}</p>
+      <div className="grid gap-4 md:grid-cols-2 md:items-start">
+        {donenessGroup}
+        {extrasGroup}
+      </div>
+      <Button
+        variant="secondary"
+        className="self-start"
+        onClick={() => setChoicesOpen(true)}
+      >
+        {t("choicesOpen")}
+      </Button>
+      <Sheet
+        open={choicesOpen}
+        onOpenChange={setChoicesOpen}
+        title={t("burger")}
+        subtitle={price(6800 + extras.length * 600)}
+        closeLabel={a("choice.close")}
+        footer={
+          <>
+            <div className="flex items-center justify-between gap-3 px-1">
+              <label htmlFor={qtyId} className="font-medium">
+                {a("choice.qty")}
+              </label>
+              <Stepper
+                id={qtyId}
+                value={burgers}
+                onValueChange={setBurgers}
+                min={1}
+                max={99}
+                decreaseLabel={a("draft.less", { name: t("burger") })}
+                increaseLabel={a("draft.more", { name: t("burger") })}
+              />
+            </div>
+            <Button size="lg" onClick={() => setChoicesOpen(false)}>
+              {a("choice.add", { count: Number(burgers) || 1 })}
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-5 px-2 pt-1 pb-2">
+          {donenessGroup}
+          {extrasGroup}
+        </div>
+      </Sheet>
 
       <h3 className="font-semibold text-base">{t("edit.title")}</h3>
       <p className="text-ink-2 text-sm">{t("edit.text")}</p>

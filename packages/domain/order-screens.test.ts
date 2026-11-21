@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  addChoiceLine,
   addToDraft,
+  changeDraftChoices,
   changeDraftLine,
+  choiceNames,
   closedToday,
   closeState,
   type DraftLine,
@@ -10,12 +13,16 @@ import {
   draftRoutes,
   floorStatus,
   freePlaces,
+  keepPicks,
   lineFixes,
   minutesSince,
+  missingGroups,
   orderDraftKey,
+  orderedPicks,
   orderModeEntry,
   orderModeItems,
   pickState,
+  picksAgorot,
   placeState,
   placeTitleKind,
   putDraftLineBack,
@@ -26,12 +33,16 @@ import {
   reopenState,
   roundLinesOf,
   roundOf,
+  samePicks,
   sendTarget,
+  staleChoiceLines,
   ticketAge,
   ticketBadge,
   ticketStage,
+  toggleChoice,
   withoutSent,
 } from "./order-screens";
+import { checkPicks, type OptionGroup, unitAgorot } from "./order-taking";
 import type { MyOrders, OrderDetail, OrderFloor } from "./orders";
 
 const HUMMUS = "00000000-0000-4000-8000-000000000001";
@@ -227,10 +238,267 @@ describe("picking an item", () => {
     expect(item({ optionGroups: [group(0)] })).toBe("add");
   });
 
-  it("refuses one sold out, one going nowhere, and one with a choice to make", () => {
+  it("refuses one sold out and one going nowhere, and opens the choices of one with a choice to make", () => {
     expect(item({ available: false })).toBe("soldOut");
     expect(item({ route: null })).toBe("noRoute");
-    expect(item({ optionGroups: [group(1)] })).toBe("needsChoice");
+    expect(item({ optionGroups: [group(1)] })).toBe("choose");
+  });
+});
+
+// The demo restaurant's burger and salad (P6's seed): a required doneness,
+// up to two extras; and only optional extras.
+const doneness: OptionGroup = {
+  id: "doneness",
+  name: "מידת עשייה",
+  min: 1,
+  max: 1,
+  options: [
+    { id: "mr", name: "מדיום רייר", priceAgorot: 0 },
+    { id: "m", name: "מדיום", priceAgorot: 0 },
+    { id: "mw", name: "מדיום וול", priceAgorot: 0 },
+    { id: "wd", name: "וול דאן", priceAgorot: 0 },
+  ],
+};
+const extras: OptionGroup = {
+  id: "extras",
+  name: "תוספות",
+  min: 0,
+  max: 2,
+  options: [
+    { id: "egg", name: "ביצה", priceAgorot: 600 },
+    { id: "cheese", name: "גבינה", priceAgorot: 600 },
+  ],
+};
+const BURGER = "00000000-0000-4000-8000-000000000003";
+const SALAD = "00000000-0000-4000-8000-000000000004";
+const burger = {
+  id: BURGER,
+  priceAgorot: 6800,
+  optionGroups: [doneness, extras],
+};
+const saladExtras: OptionGroup = {
+  id: "extras",
+  name: "תוספות",
+  min: 0,
+  max: 2,
+  options: [
+    { id: "feta", name: "פטה", priceAgorot: 600 },
+    { id: "egg", name: "ביצה קשה", priceAgorot: 500 },
+  ],
+};
+const salad = { id: SALAD, priceAgorot: 3600, optionGroups: [saladExtras] };
+const pick = (group: string, option: string) => ({ group, option });
+const medium = pick("doneness", "m");
+const cheese = pick("extras", "cheese");
+const egg = pick("extras", "egg");
+const withBacon: OptionGroup = {
+  ...extras,
+  options: [
+    ...extras.options,
+    { id: "bacon", name: "בייקון", priceAgorot: 900 },
+  ],
+};
+
+describe("choosing (P6)", () => {
+  it("puts picks in the item's order, its groups' then their options'", () => {
+    expect(orderedPicks(burger, [cheese, egg, medium])).toEqual([
+      medium,
+      egg,
+      cheese,
+    ]);
+    // What the item doesn't have goes last, as it was.
+    expect(orderedPicks(burger, [pick("size", "x"), cheese, medium])).toEqual([
+      medium,
+      cheese,
+      pick("size", "x"),
+    ]);
+    expect(samePicks([cheese, medium], [medium, cheese])).toBe(true);
+    expect(samePicks([cheese, medium], [medium])).toBe(false);
+    expect(samePicks([cheese, cheese], [cheese, medium])).toBe(false);
+  });
+
+  it("keeps only the picks the item still has, each once", () => {
+    expect(
+      keepPicks(burger, [medium, pick("doneness", "gone"), medium, cheese]),
+    ).toEqual([medium, cheese]);
+    expect(keepPicks({ optionGroups: [] }, [medium])).toEqual([]);
+  });
+
+  it("replaces a pick of one, and takes picks of more up to the most", () => {
+    const rare = pick("doneness", "mr");
+    expect(toggleChoice(doneness, [rare, cheese], "m", true)).toEqual([
+      cheese,
+      medium,
+    ]);
+    expect(toggleChoice(doneness, [medium], "m", false)).toEqual([]);
+    const two = toggleChoice(extras, [egg], "cheese", true);
+    expect(two).toEqual([egg, cheese]);
+    // At two, a third changes nothing until one goes.
+    expect(toggleChoice(withBacon, two, "bacon", true)).toEqual(two);
+    expect(toggleChoice(withBacon, two, "egg", false)).toEqual([cheese]);
+    // A group of up to one, not required, replaces too.
+    const one: OptionGroup = { ...extras, max: 1 };
+    expect(toggleChoice(one, [egg], "cheese", true)).toEqual([cheese]);
+  });
+
+  it("names the groups still to choose, and the price with what is picked", () => {
+    expect(missingGroups(burger, [])).toEqual([doneness]);
+    expect(missingGroups(burger, [cheese])).toEqual([doneness]);
+    expect(missingGroups(burger, [medium])).toEqual([]);
+    expect(missingGroups(burger, [pick("doneness", "gone")])).toEqual([
+      doneness,
+    ]);
+    expect(picksAgorot(burger, [])).toBe(6800);
+    expect(picksAgorot(burger, [cheese])).toBe(7400);
+    for (const picks of [
+      [medium],
+      [medium, cheese],
+      [cheese, egg, pick("doneness", "wd")],
+    ]) {
+      expect(picksAgorot(burger, picks)).toBe(unitAgorot(burger, picks));
+    }
+    expect(
+      picksAgorot(salad, [pick("extras", "feta"), pick("extras", "egg")]),
+    ).toBe(4700);
+  });
+
+  it("names the choices in the item's order", () => {
+    expect(choiceNames(burger, [cheese, medium])).toEqual(["מדיום", "גבינה"]);
+    expect(choiceNames(burger, [pick("doneness", "gone"), egg])).toEqual([
+      "ביצה",
+    ]);
+    expect(choiceNames(salad, [])).toEqual([]);
+  });
+
+  it("adds more of a plain line with the same picks, else a line of its own", () => {
+    const one = addChoiceLine([], burger, [cheese, medium], 2, newId);
+    expect(one).toHaveLength(1);
+    expect(one[0]).toMatchObject({
+      item: BURGER,
+      quantity: 2,
+      choices: [medium, cheese],
+    });
+    // The same picks in another order: the same line.
+    const two = addChoiceLine(one, burger, [medium, cheese], 1, newId);
+    expect(two).toEqual([{ ...one[0], quantity: 3 }]);
+    // Other picks: a line of their own.
+    const other = addChoiceLine(
+      two,
+      burger,
+      [pick("doneness", "wd")],
+      1,
+      newId,
+    );
+    expect(other).toHaveLength(2);
+    // Never into a line with a note, an allergy or a hold.
+    for (const own of [
+      { note: "בלי בצל" },
+      { note: "שומשום", allergy: true },
+      { held: true },
+    ]) {
+      const noted = [line({ item: BURGER, choices: [medium], ...own })];
+      expect(addChoiceLine(noted, burger, [medium], 1, newId)).toHaveLength(2);
+    }
+    // No picks: more of the plain line one tap added.
+    const tapped = addToDraft([], SALAD, newId);
+    expect(addChoiceLine(tapped, salad, [], 1, newId)).toEqual([
+      { ...tapped[0], quantity: 2 },
+    ]);
+  });
+
+  it("stops at a line's 99 and a round's 40", () => {
+    const full = [line({ item: BURGER, choices: [medium], quantity: 99 })];
+    expect(addChoiceLine(full, burger, [medium], 1, newId)).toEqual(full);
+    const near = [line({ item: BURGER, choices: [medium], quantity: 98 })];
+    expect(addChoiceLine(near, burger, [medium], 5, newId)[0]?.quantity).toBe(
+      99,
+    );
+    const forty = Array.from({ length: 40 }, () => line());
+    expect(addChoiceLine(forty, burger, [medium], 1, newId)).toHaveLength(40);
+    expect(addChoiceLine([], burger, [medium], 250, newId)[0]?.quantity).toBe(
+      99,
+    );
+  });
+
+  it("changes a line's picks and nothing else", () => {
+    const lines = [
+      line({ item: BURGER, choices: [medium], note: "בלי בצל" }),
+      line({ item: BURGER, choices: [medium] }),
+    ];
+    const id = lines[0]?.id ?? "";
+    const changed = changeDraftChoices(lines, id, [pick("doneness", "wd")]);
+    expect(changed[0]).toEqual({
+      ...lines[0],
+      choices: [pick("doneness", "wd")],
+    });
+    // No merge: two lines still.
+    expect(changed[1]).toBe(lines[1]);
+  });
+
+  it("marks the lines whose picks no longer fit the menu", () => {
+    const fits = line({ item: BURGER, choices: [medium, cheese] });
+    const gone = line({ item: BURGER, choices: [pick("doneness", "mw")] });
+    const plainSalad = line({ item: SALAD });
+    const unknownItem = line({ item: LEMONADE, choices: [medium] });
+    const withoutMw = {
+      ...burger,
+      optionGroups: [
+        {
+          ...doneness,
+          options: doneness.options.filter((o) => o.id !== "mw"),
+        },
+        extras,
+      ],
+    };
+    expect(
+      staleChoiceLines(
+        [withoutMw, salad],
+        [fits, gone, plainSalad, unknownItem],
+      ),
+    ).toEqual([gone.id]);
+    // A group made required: the plain line has none of it.
+    const required = { ...salad, optionGroups: [{ ...saladExtras, min: 1 }] };
+    expect(staleChoiceLines([required], [plainSalad])).toEqual([plainSalad.id]);
+    // A group gone: its picks no longer fit.
+    expect(
+      staleChoiceLines([{ ...burger, optionGroups: [doneness] }], [fits]),
+    ).toEqual([fits.id]);
+    expect(staleChoiceLines([burger, salad], [fits, plainSalad])).toEqual([]);
+  });
+
+  it("checks the seeded burger's picks as the send does", () => {
+    const groups = burger.optionGroups;
+    expect(checkPicks(groups, [])).toMatchObject({
+      ok: false,
+      problem: "required",
+      group: "doneness",
+    });
+    expect(checkPicks(groups, [medium, pick("doneness", "wd")])).toMatchObject({
+      ok: false,
+      problem: "tooMany",
+      group: "doneness",
+    });
+    expect(
+      checkPicks(
+        [doneness, withBacon],
+        [medium, egg, cheese, pick("extras", "bacon")],
+      ),
+    ).toMatchObject({ ok: false, problem: "tooMany", group: "extras" });
+    expect(checkPicks(groups, [medium, pick("extras", "x")])).toMatchObject({
+      ok: false,
+      problem: "unknown",
+    });
+    expect(checkPicks(groups, [medium, egg, egg])).toMatchObject({
+      ok: false,
+      problem: "repeated",
+    });
+    expect(checkPicks(groups, [cheese, medium])).toEqual({ ok: true });
+  });
+
+  it("marks the lines of a choices refusal, and sends picks as they are kept", () => {
+    expect(refusalMark("choices")).toBe("choices");
+    const lines = addChoiceLine([], burger, [cheese, medium], 1, newId);
+    expect(roundLinesOf(lines)[0]?.choices).toEqual([medium, cheese]);
   });
 });
 

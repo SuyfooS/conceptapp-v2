@@ -51,10 +51,11 @@ export function FloorTwin() {
 /**
  * A place's order, or a takeaway's: `?place=table-6`, `?place=takeaway-new`
  * for a new one, or `?order=` for one by its id (where "ההזמנות שלי" and the
- * ready toast lead).
+ * ready toast lead). `&state=choices` opens the burger's choices (P6).
  */
 export function OrderTwin() {
   const params = useSearchParams();
+  const opened = useOpenedWith();
   const { data, now, version } = useTwinData();
   const menu = useMenu();
   const floor = twinFloor(data, now, version);
@@ -76,6 +77,7 @@ export function OrderTwin() {
         menu={menu}
         favourites={mostOrdered}
         floor={floor}
+        choosing={opened === "choices" ? "burger" : null}
       />
     );
   }

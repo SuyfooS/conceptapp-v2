@@ -590,6 +590,14 @@
             "title": "A table opened meanwhile",
             "text": "Yoav opened table 6 a moment before: add to the open order"
           },
+          "choices": {
+            "title": "The choices' sheet",
+            "text": "A burger with its doneness and extras; “Add” waits for a choice"
+          },
+          "choicesChanged": {
+            "title": "A choice that changed",
+            "text": "“Medium well” left the menu, and the line asks to choose again"
+          },
           "takeaway": {
             "title": "A new takeaway",
             "text": "Its number comes with the first send, with words to call the customer"
@@ -682,7 +690,6 @@
         "nothingFound": "No item starts with {query}",
         "most": "Ordered most",
         "categories": "Categories",
-        "withChoices": "with choices",
         "soldOut": "Sold out",
         "inDraft": "in the draft",
         "added": "{count, plural, one {Added to the draft: {name}} other {Added to the draft: {name}, # in the draft}}",
@@ -875,7 +882,17 @@
       "peanuts": "Peanuts",
       "bar": "Bar",
       "salad": "Salad",
-      "beer": "Beer"
+      "beer": "Beer",
+      "choices": "Choices",
+      "choicesText": "A burger's choices: a doneness to choose one of, and up to two extras, with how many and “Add” in a footer that never scrolls away. In the draft, a line with its choices and one whose choice left the menu. On the menu, an item that opens its choices.",
+      "choicesOpen": "Open the choices' sheet",
+      "doneness": "Doneness",
+      "rare": "Medium rare",
+      "mediumWell": "Medium well",
+      "wellDone": "Well done",
+      "extras": "Extras",
+      "egg": "Egg",
+      "onion": "Fried onion"
     }
   },
   "shell": {
@@ -5488,6 +5505,35 @@
           "remove": "Remove from the menu",
           "close": "Close"
         },
+        "groups": {
+          "hint": "Such as size or extras. Up to 5 groups, each with up to 12 options.",
+          "add": "Add a group of choices",
+          "full": "Up to 5 groups."
+        },
+        "group": {
+          "name": "Group name",
+          "namePlaceholder": "For example: size",
+          "unnamed": "New group",
+          "required": "Required",
+          "requiredHint": "It can't be added without a choice",
+          "most": "How many can be chosen",
+          "less": "One fewer: {name}",
+          "more": "One more: {name}",
+          "option": "Option {n}",
+          "price": "Added to the price",
+          "priceHint": "Leave it empty when nothing is added",
+          "addOption": "Add an option",
+          "optionsFull": "Up to 12 options in a group.",
+          "removeOption": "Remove: {name}",
+          "remove": "Remove the group",
+          "removed": "{name} goes when you save",
+          "restore": "Bring it back",
+          "nameMissing": "Write the group's name, up to 40 characters.",
+          "optionMissing": "Write the option's name, up to 40 characters.",
+          "optionTwice": "The group has an option by that name already.",
+          "empty": "It needs one option at least.",
+          "tooMuch": "Together the choices add at most <ltr>{max}</ltr>. Lower a price or how many can be chosen."
+        },
         "toast": {
           "soldOut": "Marked sold out: {name}",
           "available": "Back on the menu: {name}",
@@ -5726,7 +5772,8 @@
         "categories": "Categories",
         "soldOut": "Sold out",
         "inDraft": "in the draft",
-        "needsChoice": "It has choices. Pass it on by word of mouth for now.",
+        "needsChoice": "It has choices: a tap opens them",
+        "optionalChoices": "Added at once; change its choices in the draft",
         "noRoute": "No department prepares it",
         "added": "{count, plural, one {Added to the draft: {name}} other {Added to the draft: {name}, # in the draft}}",
         "noMenu": {
@@ -5735,6 +5782,22 @@
           "waiter": "Whoever runs the menu hasn't added it yet.",
           "import": "Copy a menu"
         }
+      },
+      "choice": {
+        "rule": {
+          "one": "Choose one",
+          "between": "Choose {min} to {max}",
+          "upTo": "Optional, up to {max}",
+          "any": "Optional"
+        },
+        "extra": "<ltr>+{price}</ltr>",
+        "full": "{max} chosen. Take one off to choose another.",
+        "qty": "How many",
+        "missing": "To add it, choose: {groups}",
+        "add": "{count, plural, one {Add it} other {Add #}}",
+        "save": "Save the choices",
+        "close": "Close",
+        "gone": "{name} is no longer on the menu."
       },
       "draft": {
         "title": "To send",
@@ -5747,6 +5810,8 @@
         "allergy": "Allergy",
         "hold": "Hold this",
         "forItem": ", {name}",
+        "choices": "Choices",
+        "choicesStale": "Choose again",
         "heldBadge": "Will wait to be called",
         "remove": "Remove from the draft: {name}"
       },
@@ -5955,6 +6020,8 @@
       "failed": {
         "unavailable": "Sold out meanwhile: {items}. Remove it and send again.",
         "route": "No department prepares: {items}. Remove it and send; whoever runs the menu fixes it.",
+        "choices": "The choices changed on the menu meanwhile. Choose again what is marked, then send.",
+        "price": "The price with these choices is over the limit. Take a choice off and send again.",
         "taken": "{place}: there is an open order already. Add to it?",
         "takenAdd": "Add to the open order",
         "closed": "The order closed meanwhile.",

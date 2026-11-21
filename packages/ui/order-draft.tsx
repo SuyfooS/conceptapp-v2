@@ -1,5 +1,6 @@
 import {
   Hourglass,
+  ListChecks,
   Send,
   StickyNote,
   Trash2,
@@ -34,9 +35,12 @@ export type DraftLineRowProps = {
   held?: string | null;
   /**
    * Why a send just refused it, in danger beside its name ("נגמר", "אין
-   * מחלקה שמכינה אותה"), whatever its note says.
+   * מחלקה שמכינה אותה"), whatever its note says; or that its choices no
+   * longer fit the menu ("לבחור שוב").
    */
   mark?: string | null;
+  /** "בחירות", for an item that has them (P6): opens them for this line. */
+  choicesButton?: LineButton | null;
   noteButton: LineButton;
   allergyButton: LineButton;
   /** "לחכות עם זה", pressed while held. */
@@ -49,9 +53,9 @@ export type DraftLineRowProps = {
 
 /**
  * A line of the draft (waiter mode): its name and choices, unit price, how
- * many, its note and allergy in sight, and "הערה", "אלרגיה" and "לחכות עם
- * זה" with no long press, each named with the item. A list item: put it in
- * the draft's `ul`.
+ * many, its note and allergy in sight, and "בחירות" (P6), "הערה", "אלרגיה"
+ * and "לחכות עם זה" with no long press, each named with the item. A list
+ * item: put it in the draft's `ul`.
  */
 export function DraftLineRow({
   name,
@@ -64,6 +68,7 @@ export function DraftLineRow({
   allergy,
   held = null,
   mark = null,
+  choicesButton = null,
   noteButton,
   allergyButton,
   holdButton,
@@ -121,6 +126,14 @@ export function DraftLineRow({
       <div className="-ms-2 flex flex-wrap items-center gap-1">
         {(
           [
+            ...(choicesButton
+              ? ([
+                  [
+                    choicesButton,
+                    <ListChecks key="choices" aria-hidden="true" />,
+                  ],
+                ] as const)
+              : []),
             [noteButton, <StickyNote key="note" aria-hidden="true" />],
             [allergyButton, <TriangleAlert key="allergy" aria-hidden="true" />],
           ] as const

@@ -215,6 +215,61 @@ describe("the menu's actions", () => {
     for (const write of writes()) expect(write).not.toHaveBeenCalled();
   });
 
+  it("save an item's groups of choices as they were sent (P6)", async () => {
+    const sauce = {
+      id: "g1a2b3c4d",
+      name: "רוטב",
+      min: 1,
+      max: 1,
+      options: [
+        { id: "o1a2b3c4d", name: "עגבניות", priceAgorot: 0 },
+        { id: "o5e6f7a8b", name: "שמנת", priceAgorot: 400 },
+      ],
+    };
+    const result = await saveItemAction(
+      PLACE,
+      { ...saved, optionGroups: [sauce] },
+      2,
+    );
+    expect(result.ok).toBe(true);
+    expect(mocks.saveMenuItem).toHaveBeenCalledWith(
+      PERSON,
+      PLACE,
+      { ...saved, optionGroups: [sauce] },
+      2,
+    );
+  });
+
+  it("refuse choices past what the database takes before it gets there (P6)", async () => {
+    const dear = (id: string, priceAgorot: number) => ({
+      id,
+      name: id,
+      min: 0,
+      max: 1,
+      options: [{ id: "o1", name: "יקר", priceAgorot }],
+    });
+    const refused = [
+      // Together over 1,000.00 ₪.
+      saveItemAction(
+        PLACE,
+        { ...saved, optionGroups: [dear("a", 60_000), dear("b", 40_001)] },
+        2,
+      ),
+      // Two picks out of one option.
+      saveItemAction(
+        PLACE,
+        { ...saved, optionGroups: [{ ...dear("a", 0), max: 2 }] },
+        2,
+      ),
+      // An id no pick could name.
+      saveItemAction(PLACE, { ...saved, optionGroups: [dear("Size!", 0)] }, 2),
+    ];
+    for (const result of await Promise.all(refused)) {
+      expect(result).toEqual({ ok: false, failure: "invalid" });
+    }
+    expect(mocks.saveMenuItem).not.toHaveBeenCalled();
+  });
+
   it("brings the item as it is now when someone saved it since", async () => {
     mocks.saveMenuItem.mockResolvedValue({ ok: false, failure: "changed" });
     const now = { ...schnitzel, priceAgorot: 6600, version: 3 };

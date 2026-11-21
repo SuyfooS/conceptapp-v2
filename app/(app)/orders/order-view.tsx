@@ -1,21 +1,31 @@
 "use client";
 
 import {
+  addChoiceLine,
   addToDraft,
+  changeDraftChoices,
   closeState,
   type DraftLine,
   draftCount,
   draftKey,
   draftRoutes,
   freePlaces,
+  orderedPicks,
+  pickState,
   placeState,
   putDraftLineBack,
   refusalMark,
   removeDraftLine,
   roundOf,
   sendTarget,
+  staleChoiceLines,
 } from "@domain/order-screens";
-import type { Menu, MenuItem, OrderPlace } from "@domain/order-taking";
+import type {
+  ChoicePick,
+  Menu,
+  MenuItem,
+  OrderPlace,
+} from "@domain/order-taking";
 import {
   type CompReason,
   type LineCancelReason,
@@ -52,6 +62,7 @@ import { useRouter } from "next/navigation";
 import { type Ref, useEffect, useRef, useState } from "react";
 import { useHeldWrite } from "../use-held-write";
 import { CancelOrderSheet } from "./cancel-order-sheet";
+import { ChoiceSheet } from "./choice-sheet";
 import { DraftPanel } from "./draft-panel";
 import {
   type LineFixPick,
@@ -189,7 +200,9 @@ function withShown(
  * move back, and the close taken back whole, what it served back in the
  * kitchen. They wait while a round of this screen is on its way, and the
  * send, and what fixes, serves or fires what was sent, wait while one of
- * them is, from whichever screen of the mode it went (`whole`).
+ * them is, from whichever screen of the mode it went (`whole`). P6 adds the
+ * choices: an item with one to make opens its sheet, which adds a line with
+ * them, and a line's "בחירות" changes its own.
  */
 export function OrderView({
   where,
@@ -198,6 +211,7 @@ export function OrderView({
   menu,
   favourites,
   floor,
+  choosing = null,
 }: {
   where: OrderWhere;
   /** Its open order, or null while it has none; undefined while it is read. */
@@ -208,6 +222,8 @@ export function OrderView({
   favourites: readonly string[];
   /** The floor, for the desktop's list of places and where an order moves. */
   floor: OrderFloor | null;
+  /** An item whose choices are open as the screen is first drawn (the twin's state). */
+  choosing?: string | null;
 }) {
   const { t, placeTitle, department } = useOrderWords();
   const heading = useModeHeading();
@@ -265,6 +281,18 @@ export function OrderView({
   const [sheet, setSheet] = useState<LineSheetTarget | null>(null);
   const [moving, setMoving] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  // An item's choices (P6): a new line of it, or a draft line's own. Its
+  // name is kept, to say so if the item leaves the menu while it is open.
+  const [choice, setChoice] = useState<{
+    item: string;
+    line: string | null;
+    name: string;
+  } | null>(() => {
+    const opened = choosing
+      ? menu?.items.find((item) => item.id === choosing)
+      : undefined;
+    return opened ? { item: opened.id, line: null, name: opened.name } : null;
+  });
   // The sheets are the open order's they opened on: once it goes (closed or
   // moved, on another phone too, while the sheet was open or the screen
   // waited hidden), they close, so none opens again over the next order at
@@ -454,13 +482,13 @@ export function OrderView({
   // the frame said it or a refused send heard it since.
   const needsShift = clock !== null;
   const mark = refusal ? refusalMark(refusal.failure) : null;
+  // Lines whose picks no longer fit the menu as the phone has it: after a
+  // "choices" refusal (which names no item), and as soon as a sync shows it.
+  const stale = staleChoiceLines(menu?.items ?? [], draft);
 
-  // Every change to the draft starts from what it holds when it lands
-  // (`drafts.update`): an undo kept for 8 seconds never puts back an old copy.
-  function pick(item: MenuItem) {
-    drafts.update(key, (lines) => addToDraft(lines, item.id, newId));
-    // What it now holds of the item, for screen readers: as drawn, plus one.
-    const n = addToDraft(draft, item.id, () => "")
+  /** What the draft holds of an item once an add lands, for screen readers. */
+  function sayAdded(item: MenuItem, lines: readonly DraftLine[]) {
+    const n = lines
       .filter((line) => line.item === item.id)
       .reduce((sum, line) => sum + line.quantity, 0);
     setAdded((was) => ({
@@ -468,6 +496,63 @@ export function OrderView({
       stamp: was.stamp + 1,
     }));
   }
+
+  // Every change to the draft starts from what it holds when it lands
+  // (`drafts.update`): an undo kept for 8 seconds never puts back an old copy.
+  function pick(item: MenuItem) {
+    // A choice to make: its sheet adds the item, with them.
+    if (pickState(item) === "choose") {
+      setChoice({ item: item.id, line: null, name: item.name });
+      return;
+    }
+    drafts.update(key, (lines) => addToDraft(lines, item.id, newId));
+    // What it now holds of the item: as drawn, plus one.
+    sayAdded(
+      item,
+      addToDraft(draft, item.id, () => ""),
+    );
+  }
+
+  function addChosen(item: MenuItem, picks: ChoicePick[], quantity: number) {
+    setChoice(null);
+    drafts.update(key, (lines) =>
+      addChoiceLine(lines, item, picks, quantity, newId),
+    );
+    sayAdded(
+      item,
+      addChoiceLine(draft, item, picks, quantity, () => ""),
+    );
+  }
+
+  function saveChosen(item: MenuItem, line: DraftLine, picks: ChoicePick[]) {
+    setChoice(null);
+    drafts.update(key, (lines) =>
+      changeDraftChoices(lines, line.id, orderedPicks(item, picks)),
+    );
+  }
+
+  // The sheet reads the item from the menu on every draw, so a sync changes
+  // it in place. Gone from the menu, it closes and says so as news, never in
+  // the place of a way back on the toast; the line it was open on gone from
+  // the draft (sent, removed, moved), it closes.
+  const choiceItem = choice
+    ? (menu?.items.find((item) => item.id === choice.item) ?? null)
+    : null;
+  const choiceLine = choice?.line
+    ? (draft.find((line) => line.id === choice.line) ?? null)
+    : null;
+  const choiceGone = choice !== null && menu !== null && choiceItem === null;
+  if (choice !== null && choice.line !== null && choiceLine === null) {
+    setChoice(null);
+  }
+  const goneChoice = choiceGone ? choice : null;
+  useEffect(() => {
+    if (!goneChoice) return;
+    setChoice(null);
+    tell(`choice:${goneChoice.item}`, () =>
+      say(t("choice.gone", { name: goneChoice.name })),
+    );
+  }, [goneChoice, tell, say, t]);
 
   function remove(line: DraftLine, index: number) {
     const name = menu?.items.find((i) => i.id === line.item)?.name ?? "";
@@ -1007,8 +1092,15 @@ export function OrderView({
           headingRef={draftHeading}
           onRemove={remove}
           onNoteRemoved={noteRemoved}
+          onChoices={(line) => {
+            const item = menu?.items.find((i) => i.id === line.item);
+            if (item && !frame.viewing) {
+              setChoice({ item: item.id, line: line.id, name: item.name });
+            }
+          }}
+          stale={stale}
           marked={
-            refusal && mark
+            refusal && (mark === "soldOut" || mark === "noRoute")
               ? {
                   items: refusal.items,
                   word:
@@ -1093,6 +1185,22 @@ export function OrderView({
       <p role="status" className="sr-only">
         {added.text ? <span key={added.stamp}>{added.text}</span> : null}
       </p>
+      {/* Outside the open order's sheets: a new place has no order yet. */}
+      <ChoiceSheet
+        item={choiceItem}
+        target={
+          choiceItem === null || choice === null
+            ? null
+            : choice.line === null
+              ? { mode: "new" }
+              : choiceLine
+                ? { mode: "edit", line: choiceLine }
+                : null
+        }
+        onAdd={addChosen}
+        onSave={saveChosen}
+        onClose={() => setChoice(null)}
+      />
       {open ? (
         <>
           <LineSheet

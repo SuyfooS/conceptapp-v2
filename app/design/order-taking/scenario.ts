@@ -2,6 +2,7 @@ import type { DraftLine } from "@domain/order-screens";
 import type { PendingSend, SendRefusal } from "../../(app)/orders/orders-types";
 import {
   DEMO_START,
+  demoChoicesDraft,
   demoClosed,
   demoDraft,
   demoFishDraft,
@@ -97,7 +98,9 @@ const TABLE_6 = "place:table-6";
  * before Shiran's send; `fixed` table 4 after its hummus was cancelled (sent
  * by mistake) and its beer given on the house (P5); `reopenTaken` table 3
  * open again with Yoav's new round, so its order closed today can't open
- * again.
+ * again; `choices` the evening, with the burger's choices open on table 6
+ * (P6, opened by the screen); `choicesChanged` the burger's "מדיום וול"
+ * gone from the menu while table 6's draft holds one.
  */
 export function scenario(state: string | null): DemoData {
   const base = service();
@@ -198,9 +201,41 @@ export function scenario(state: string | null): DemoData {
       return { ...base, orders: fixedEvening(base.orders) };
     case "reopenTaken":
       return { ...base, orders: [...base.orders, demoTableThreeAgain()] };
+    case "choices":
+      return base;
+    case "choicesChanged":
+      return {
+        ...base,
+        menu: withoutOption(base.menu, "burger", "doneness", "mw"),
+        drafts: { [TABLE_6]: demoChoicesDraft() },
+      };
     default:
       return base;
   }
+}
+
+/** The menu with one option of an item's group gone, as a manager removed it. */
+function withoutOption(
+  menu: Menu,
+  item: string,
+  group: string,
+  option: string,
+): Menu {
+  return {
+    ...menu,
+    items: menu.items.map((i) =>
+      i.id !== item
+        ? i
+        : {
+            ...i,
+            groups: i.groups.map((g) =>
+              g.id !== group
+                ? g
+                : { ...g, options: g.options.filter((o) => o.id !== option) },
+            ),
+          },
+    ),
+  };
 }
 
 /** The evening's orders with table 4's hummus cancelled and its beer on the house. */

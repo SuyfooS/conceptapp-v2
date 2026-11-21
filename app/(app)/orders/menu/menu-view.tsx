@@ -253,6 +253,7 @@ export function MenuView({
         description: fields.description,
         priceAgorot: fields.priceAgorot,
         department: fields.department,
+        optionGroups: fields.optionGroups,
       };
       const result = await tried(() => actions.saveItem(input, null));
       setSaving(false);
@@ -269,7 +270,7 @@ export function MenuView({
         department: fields.department,
         route: routeOf(fields.category, fields.department),
         available: true,
-        optionGroups: [],
+        optionGroups: fields.optionGroups,
         version: result.value.version,
       });
       closeSheet();

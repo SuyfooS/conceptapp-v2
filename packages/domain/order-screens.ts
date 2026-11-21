@@ -1,4 +1,10 @@
-import type { MenuItem, OrderPlace } from "./order-taking";
+import {
+  type ChoicePick,
+  checkPicks,
+  type MenuItem,
+  type OptionGroup,
+  type OrderPlace,
+} from "./order-taking";
 import {
   type FloorOrder,
   type LineState,
@@ -22,7 +28,7 @@ import {
  */
 
 /** A choice of a line: its group and option, by their ids in the item. */
-export type DraftChoice = { group: string; option: string };
+export type DraftChoice = ChoicePick;
 
 /** A line as the waiter builds it, before anything is sent. */
 export type DraftLine = {
@@ -34,7 +40,7 @@ export type DraftLine = {
   allergy: boolean;
   /** "לחכות עם זה": it goes in the held block, for a later course. */
   held: boolean;
-  /** Empty in P4, whose picker adds only items with no required choice (P6). */
+  /** The picks, in the item's order (`orderedPicks`, P6). */
   choices: DraftChoice[];
 };
 
@@ -153,13 +159,229 @@ export function putRefusedBack(
 
 /**
  * How a refused send marks the draft's lines it names: "soldOut" for what
- * sold out meanwhile, "noRoute" for what no department prepares; nothing
- * for any other refusal.
+ * sold out meanwhile, "noRoute" for what no department prepares; "choices"
+ * for choices the menu no longer has, which names no item, so the lines are
+ * the ones whose picks don't fit the menu as the phone has it
+ * (`staleChoiceLines`); nothing for any other refusal.
  */
-export function refusalMark(failure: string): "soldOut" | "noRoute" | null {
+export function refusalMark(
+  failure: string,
+): "soldOut" | "noRoute" | "choices" | null {
   if (failure === "unavailable") return "soldOut";
   if (failure === "route") return "noRoute";
+  if (failure === "choices") return "choices";
   return null;
+}
+
+// Choices (P6): the item's sheet adds a line with its picks, and a line's
+// picks are changed from the draft.
+
+/** An item's choices, as the picks are read against them. */
+type Choosing = Pick<MenuItem, "optionGroups">;
+
+/** Where a pick is in the item: its group's place, then its option's; -1 for none. */
+function placeOf(item: Choosing, pick: ChoicePick): [number, number] {
+  const group = item.optionGroups.findIndex((g) => g.id === pick.group);
+  const option =
+    item.optionGroups[group]?.options.findIndex((o) => o.id === pick.option) ??
+    -1;
+  return [group, option];
+}
+
+const known = (item: Choosing, pick: ChoicePick) => placeOf(item, pick)[1] >= 0;
+
+/**
+ * Picks in the item's order, its groups' then their options' (picks it
+ * doesn't have last, as they were): the order the send freezes them in, so
+ * a round sends them as the server keeps them and two lines of the same
+ * picks hold them alike.
+ */
+export function orderedPicks(
+  item: Choosing,
+  picks: readonly ChoicePick[],
+): ChoicePick[] {
+  const rank = (pick: ChoicePick) => {
+    const [group, option] = placeOf(item, pick);
+    return option < 0 ? Number.MAX_SAFE_INTEGER : group * 1000 + option;
+  };
+  return picks
+    .map((pick, at) => ({ pick, at, rank: rank(pick) }))
+    .sort((a, b) => a.rank - b.rank || a.at - b.at)
+    .map(({ pick }) => ({ group: pick.group, option: pick.option }));
+}
+
+const pickKey = (pick: ChoicePick) => `${pick.group}\u0000${pick.option}`;
+
+/** The same picks, in whatever order. */
+export function samePicks(
+  a: readonly ChoicePick[],
+  b: readonly ChoicePick[],
+): boolean {
+  const keys = new Set(a.map(pickKey));
+  return (
+    a.length === b.length &&
+    keys.size === new Set(b.map(pickKey)).size &&
+    b.every((pick) => keys.has(pickKey(pick)))
+  );
+}
+
+/** The picks the item still has, each once: what the sheet keeps of a line's. */
+export function keepPicks(
+  item: Choosing,
+  picks: readonly ChoicePick[],
+): ChoicePick[] {
+  const seen = new Set<string>();
+  return picks.filter((pick) => {
+    const key = pickKey(pick);
+    if (!known(item, pick) || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/**
+ * The picks after an option of the group is switched on or off. A group of
+ * one replaces the pick it had; one of more takes picks up to its most, and
+ * past it changes nothing until one is switched off.
+ */
+export function toggleChoice(
+  group: OptionGroup,
+  picks: readonly ChoicePick[],
+  option: string,
+  on: boolean,
+): ChoicePick[] {
+  const rest = picks.filter(
+    (pick) => !(pick.group === group.id && pick.option === option),
+  );
+  if (!on) return rest;
+  const mine = rest.filter((pick) => pick.group === group.id);
+  if (mine.length < group.max) return [...rest, { group: group.id, option }];
+  if (group.max === 1) {
+    return [
+      ...rest.filter((pick) => pick.group !== group.id),
+      { group: group.id, option },
+    ];
+  }
+  return [...picks];
+}
+
+/** The groups that still need a choice before the item is added: fewer than their least. */
+export function missingGroups(
+  item: Choosing,
+  picks: readonly ChoicePick[],
+): OptionGroup[] {
+  const kept = keepPicks(item, picks);
+  return item.optionGroups.filter(
+    (group) =>
+      kept.filter((pick) => pick.group === group.id).length < group.min,
+  );
+}
+
+/**
+ * The item's price with each picked option's, for the screen while picking:
+ * what `unitAgorot` says once the picks fit, and before that what is picked
+ * so far.
+ */
+export function picksAgorot(
+  item: Pick<MenuItem, "priceAgorot" | "optionGroups">,
+  picks: readonly ChoicePick[],
+): number {
+  return keepPicks(item, picks).reduce((sum, pick) => {
+    const [group, option] = placeOf(item, pick);
+    return sum + (item.optionGroups[group]?.options[option]?.priceAgorot ?? 0);
+  }, item.priceAgorot);
+}
+
+/** The chosen options by name, in the item's order ("מדיום · גבינה"). */
+export function choiceNames(
+  item: Choosing,
+  picks: readonly ChoicePick[],
+): string[] {
+  return orderedPicks(item, keepPicks(item, picks)).flatMap((pick) => {
+    const [group, option] = placeOf(item, pick);
+    const name = item.optionGroups[group]?.options[option]?.name;
+    return name ? [name] : [];
+  });
+}
+
+/**
+ * The item added from its sheet with its picks: more of a plain line of the
+ * same item and picks, in any order, up to a line's 99 (at 99 nothing
+ * changes); else a new line, up to a round's 40. A line with a note, an
+ * allergy or a hold is never added to.
+ */
+export function addChoiceLine(
+  lines: readonly DraftLine[],
+  item: Pick<MenuItem, "id" | "optionGroups">,
+  picks: readonly ChoicePick[],
+  quantity: number,
+  newId: () => string,
+): DraftLine[] {
+  const count = Math.min(
+    ORDER_CAPS.quantity,
+    Math.max(1, Math.floor(quantity)),
+  );
+  const choices = orderedPicks(item, picks);
+  const same = lines.find(
+    (line) =>
+      line.item === item.id &&
+      !line.note &&
+      !line.allergy &&
+      !line.held &&
+      samePicks(line.choices, choices),
+  );
+  if (same) {
+    if (same.quantity >= ORDER_CAPS.quantity) return [...lines];
+    return lines.map((line) =>
+      line === same
+        ? {
+            ...line,
+            quantity: Math.min(ORDER_CAPS.quantity, line.quantity + count),
+          }
+        : line,
+    );
+  }
+  if (lines.length >= ORDER_CAPS.linesPerRound) return [...lines];
+  return [
+    ...lines,
+    {
+      id: newId(),
+      item: item.id,
+      quantity: count,
+      note: null,
+      allergy: false,
+      held: false,
+      choices,
+    },
+  ];
+}
+
+/** A line's picks, changed from its sheet: the line stays as it is otherwise. */
+export function changeDraftChoices(
+  lines: readonly DraftLine[],
+  id: string,
+  picks: readonly ChoicePick[],
+): DraftLine[] {
+  return lines.map((line) =>
+    line.id === id ? { ...line, choices: [...picks] } : line,
+  );
+}
+
+/**
+ * The lines whose picks don't fit their item as the menu has it now (an
+ * option gone, a group made required, a group gone): each says "לבחור שוב".
+ * None for an item gone from the menu, which the send refuses on its own.
+ */
+export function staleChoiceLines(
+  items: readonly Pick<MenuItem, "id" | "optionGroups">[],
+  lines: readonly DraftLine[],
+): string[] {
+  return lines
+    .filter((line) => {
+      const item = items.find((candidate) => candidate.id === line.item);
+      return item ? !checkPicks(item.optionGroups, line.choices).ok : false;
+    })
+    .map((line) => line.id);
 }
 
 /**
@@ -207,17 +429,17 @@ export function roundLinesOf(lines: readonly DraftLine[]): RoundLine[] {
 }
 
 /**
- * Whether one tap adds an item: "soldOut" tonight, "noRoute" when no
- * department prepares it, "needsChoice" with a choice that must be made
- * (passed on by word of mouth until the choices' sheet, P6); otherwise
- * "add", an item with only optional choices added with none.
+ * What a tap on an item does: nothing while "soldOut" tonight or "noRoute"
+ * when no department prepares it; "choose" with a choice that must be made,
+ * which opens the item's choices (P6); otherwise "add", an item with only
+ * optional choices added with none, which its line in the draft changes.
  */
 export function pickState(
   item: Pick<MenuItem, "available" | "route" | "optionGroups">,
-): "add" | "soldOut" | "noRoute" | "needsChoice" {
+): "add" | "soldOut" | "noRoute" | "choose" {
   if (!item.available) return "soldOut";
   if (!item.route) return "noRoute";
-  if (item.optionGroups.some((group) => group.min > 0)) return "needsChoice";
+  if (item.optionGroups.some((group) => group.min > 0)) return "choose";
   return "add";
 }
 

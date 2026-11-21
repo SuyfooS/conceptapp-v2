@@ -3,7 +3,12 @@ import { createTranslator } from "next-intl";
 import { describe, expect, it } from "vitest";
 import en from "@/messages/en.json";
 import he from "@/messages/he.json";
-import { type FixWrite, fixFailureWords, type OrdersT } from "./orders-parts";
+import {
+  type FixWrite,
+  fixFailureWords,
+  type OrdersT,
+  sendFailureWords,
+} from "./orders-parts";
 import type { OrdersActionFailure } from "./orders-types";
 
 // Why a fix was refused (waiter mode P5), in words of its own for every
@@ -164,6 +169,15 @@ describe("a refused fix", () => {
     );
     // Anything nothing explains: not saved, and pressing again tries again.
     expect(fixFailureWords(t, "failed", "line")).toBe(fallback);
+  });
+});
+
+describe("a refused send (P6)", () => {
+  it("says the choices changed on the menu, or the price is past the most, in words of its own", () => {
+    expect(sendFailureWords(t, "choices")).toBe(he.app.orders.failed.choices);
+    expect(sendFailureWords(t, "price")).toBe(he.app.orders.failed.price);
+    // What nothing else explains: the draft is back, to send again.
+    expect(sendFailureWords(t, "invalid")).toBe(he.app.orders.failed.notSent);
   });
 });
 

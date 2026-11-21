@@ -74,7 +74,20 @@ const items: MenuItem[] = [
     categoryId: "starters",
     name: "סלט ירוק",
     price: 3600,
-    groups: [],
+    // Only optional choices (P6, default 2): one tap adds it, and its line
+    // in the draft changes them.
+    groups: [
+      {
+        id: "extras",
+        name: "תוספות",
+        min: 0,
+        max: 2,
+        options: [
+          { id: "feta", name: "פטה", price: 600 },
+          { id: "egg", name: "ביצה קשה", price: 500 },
+        ],
+      },
+    ],
   },
   {
     id: "hummus",
@@ -598,6 +611,34 @@ export function demoFishDraft(): DraftLine[] {
   ];
 }
 
+/**
+ * Table 6's draft once "מדיום וול" left the burger's doneness (P6's
+ * `?state=choicesChanged`): the burger asks to be chosen again, and the
+ * large coffee still fits.
+ */
+export function demoChoicesDraft(): DraftLine[] {
+  return [
+    {
+      id: "d6",
+      item: "burger",
+      quantity: 1,
+      note: null,
+      allergy: false,
+      held: false,
+      choices: [{ group: "doneness", option: "mw" }],
+    },
+    {
+      id: "d7",
+      item: "coffee",
+      quantity: 1,
+      note: null,
+      allergy: false,
+      held: false,
+      choices: [{ group: "size", option: "large" }],
+    },
+  ];
+}
+
 /** Table 3 sat again after its order closed: Yoav's new round (`?state=reopenTaken`). */
 export function demoTableThreeAgain(): Order {
   return {
@@ -701,8 +742,9 @@ export const demoKnownPaste = [
 /**
  * The restaurant's and the café's own sentences for taking orders, as
  * supabase/migrations/20261120000100_order_taking_screens.sql writes them
- * and 20261121000100_order_taking_mode.sql and
- * 20261122000100_order_taking_fixes.sql after it
+ * and 20261121000100_order_taking_mode.sql,
+ * 20261122000100_order_taking_fixes.sql and
+ * 20261123000100_order_taking_choices.sql after it
  * (tooling/template-wording.test.ts holds the two the same): the twin's
  * restaurant reads its screens in them, as the demo restaurant does.
  */
@@ -834,7 +876,7 @@ export const restaurantWording: Readonly<Record<string, string>> = {
   "app.orders.picker.title": "הוספת מנות",
   "app.orders.picker.searchPlaceholder": "חיפוש מנה",
   "app.orders.picker.nothingFound": "אין מנה שמתחילה ב-{query}",
-  "app.orders.picker.needsChoice": "יש לה בחירות. בינתיים מוסרים אותה בעל פה.",
+  "app.orders.picker.needsChoice": "יש לה בחירות: הקשה פותחת אותן",
   "app.orders.picker.noRoute": "אין מחלקה שמכינה אותה",
   "app.orders.picker.noMenu.body":
     "מוסיפים מנות, או מעתיקים תפריט קיים בהדבקה.",
@@ -876,4 +918,8 @@ export const restaurantWording: Readonly<Record<string, string>> = {
   "app.orders.till.byItem": "לפי מנה",
   "app.orders.till.noOrder.body": "חוזרים לשולחנות ובוחרים אותה משם.",
   "app.orders.floor.closed.table.place": "שולחן",
+  // P6 (20261123000100_order_taking_choices.sql)
+  "app.orders.picker.optionalChoices":
+    "נוספת מיד, ואת הבחירות שלה משנים בטיוטה",
+  "app.orders.menu.group.requiredHint": "בלי בחירה לא מוסיפים את המנה",
 };

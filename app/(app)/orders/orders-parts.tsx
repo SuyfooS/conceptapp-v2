@@ -315,6 +315,8 @@ export function OffShiftCard({ off }: { off: "clock" | "staleShift" }) {
 const SAID = new Set<string>([
   "unavailable",
   "route",
+  "choices",
+  "price",
   "closed",
   "moved",
   "place",

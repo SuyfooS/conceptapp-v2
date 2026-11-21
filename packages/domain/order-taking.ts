@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseShekels } from "./money";
 
 /**
  * Taking orders (waiter mode, P1): the menu as the database keeps it
@@ -367,7 +368,12 @@ export type ItemInput = z.infer<typeof itemInput>;
 export type ItemChange = Partial<
   Pick<
     ItemInput,
-    "category" | "name" | "description" | "priceAgorot" | "department"
+    | "category"
+    | "name"
+    | "description"
+    | "priceAgorot"
+    | "department"
+    | "optionGroups"
   >
 >;
 
@@ -376,7 +382,8 @@ export type ItemChange = Partial<
  * every field, so what isn't changed goes as the item has it, its choices,
  * its description and its own department too. A blank description is none.
  * No place is sent: one moved to another category goes last there, and one
- * that stays keeps its place.
+ * that stays keeps its place. Since P6 the item's sheet changes its choices
+ * too.
  */
 export function itemSaveInput(
   item: MenuItem,
@@ -392,7 +399,7 @@ export function itemSaveInput(
     priceAgorot: change.priceAgorot ?? item.priceAgorot,
     department:
       "department" in change ? (change.department ?? null) : item.department,
-    optionGroups: [...item.optionGroups],
+    optionGroups: [...(change.optionGroups ?? item.optionGroups)],
   };
 }
 
@@ -481,12 +488,196 @@ export function typedAgorot(agorot: number): string {
  * How a group of choices is picked, for its words: exactly one, up to some,
  * from some to some, or any of them.
  */
-export function choiceRule(
-  group: Pick<OptionGroup, "min" | "max" | "options">,
-): "one" | "upTo" | "between" | "any" {
+export function choiceRule(group: {
+  min: number;
+  max: number;
+  /** Only how many it has counts: a group's options, or its card's in the sheet. */
+  options: readonly unknown[];
+}): "one" | "upTo" | "between" | "any" {
   if (group.min === 1 && group.max === 1) return "one";
   if (group.min === 0) {
     return group.max >= group.options.length ? "any" : "upTo";
   }
   return "between";
+}
+
+/*
+ * The item's choices in its sheet (P6): groups as typed, read back into the
+ * groups a save sends, checked as `private.valid_option_groups` checks them,
+ * so a problem is said under its own field before anything is sent.
+ */
+
+/**
+ * A new group's or option's id: the prefix and 8 hex characters of
+ * `random()` (a uuid, its dashes dropped), never one `taken`. An id is kept
+ * for good once saved, and a new one is never a removed one's again, so a
+ * pick a phone holds never lands on another option.
+ */
+export function newChoiceId(
+  taken: Iterable<string>,
+  random: () => string,
+  prefix: "g" | "o",
+): string {
+  const used = new Set(taken);
+  for (let tries = 0; tries < 20; tries++) {
+    const id = `${prefix}${random().replaceAll("-", "").toLowerCase().slice(0, 8)}`;
+    if (!used.has(id) && choiceId.safeParse(id).success) return id;
+  }
+  // A random that keeps coming back the same: counting up still finds one.
+  for (let n = 1; ; n++) {
+    if (!used.has(`${prefix}${n}`)) return `${prefix}${n}`;
+  }
+}
+
+/** An option as its row in the sheet holds it: the price as typed, blank for none. */
+export type OptionDraft = { id?: string; name: string; price: string };
+
+/** A group as its card in the sheet holds it, until the save. */
+export type GroupDraft = {
+  /** Its saved id; a new group has none until the save. */
+  id?: string;
+  name: string;
+  /** "חובה לבחור": at least one is picked. */
+  required: boolean;
+  /** "עד כמה בוחרים". */
+  most: number;
+  /** A saved least above one, kept while it stays required. */
+  least: number;
+  options: OptionDraft[];
+  /** "הסרת הקבוצה": it goes with the save, and until then comes back. */
+  removed: boolean;
+};
+
+/** Why a group, or one of its options, can't be saved as typed. */
+export type GroupProblem =
+  /** No name, or more than 40 characters. */
+  | "nameMissing"
+  /** An option with no name, or more than 40 characters. */
+  | "optionMissing"
+  /** An option named as another of its group. */
+  | "optionTwice"
+  /** An option's price that isn't one. */
+  | "priceUnclear"
+  /** A group with no option. */
+  | "empty"
+  /** The choices together add more than `MAX_EXTRAS_AGOROT`. */
+  | "tooMuch"
+  /** More than five groups. */
+  | "tooManyGroups"
+  /** More than twelve options in a group. */
+  | "tooManyOptions";
+
+/** A problem, by the draft's place in the list, and its option's in the group. */
+export type GroupDraftProblem = {
+  group: number;
+  option?: number;
+  problem: GroupProblem;
+};
+
+/** An item's groups as the sheet first shows them. */
+export function groupDrafts(groups: readonly OptionGroup[]): GroupDraft[] {
+  return groups.map((group) => ({
+    id: group.id,
+    name: group.name,
+    required: group.min > 0,
+    most: group.max,
+    least: group.min,
+    options: group.options.map((option) => ({
+      id: option.id,
+      name: option.name,
+      price: option.priceAgorot > 0 ? typedAgorot(option.priceAgorot) : "",
+    })),
+    removed: false,
+  }));
+}
+
+/** A new group's card: required, one picked, one empty option. */
+export const newGroupDraft = (): GroupDraft => ({
+  name: "",
+  required: true,
+  most: 1,
+  least: 1,
+  options: [{ name: "", price: "" }],
+  removed: false,
+});
+
+/** How many a group lets one pick: from one to every option it has. */
+export const draftMost = (group: Pick<GroupDraft, "most" | "options">) =>
+  Math.min(
+    Math.max(1, Math.floor(group.most)),
+    Math.max(1, group.options.length),
+  );
+
+/**
+ * The groups a save sends, from their cards: names trimmed, a blank price
+ * none, a group required picking at least one (a saved least above one kept,
+ * up to its most) and its most from one to its options. Removed cards go.
+ * Every problem, in the form's order, each by its card and its option; with
+ * none, the groups, which `optionGroups` takes. Saved ids are kept, new ones
+ * made (`newChoiceId`).
+ */
+export function groupsFromDrafts(
+  drafts: readonly GroupDraft[],
+  random: () => string,
+):
+  | { ok: true; groups: OptionGroup[] }
+  | { ok: false; problems: GroupDraftProblem[] } {
+  const problems: GroupDraftProblem[] = [];
+  const kept = drafts
+    .map((draft, index) => ({ draft, index }))
+    .filter(({ draft }) => !draft.removed);
+  const groupIds = kept.flatMap(({ draft }) => draft.id ?? []);
+  const groups: OptionGroup[] = [];
+  let extras = 0;
+  for (const [at, { draft, index }] of kept.entries()) {
+    if (at === MENU_CAPS.groups) {
+      problems.push({ group: index, problem: "tooManyGroups" });
+    }
+    const name = draft.name.trim();
+    if (chars(name) < 1 || chars(name) > MENU_TEXT_MAX.group) {
+      problems.push({ group: index, problem: "nameMissing" });
+    }
+    const names = new Set<string>();
+    const optionIds = draft.options.flatMap((option) => option.id ?? []);
+    const options: MenuOption[] = [];
+    for (const [place, option] of draft.options.entries()) {
+      const optionName = option.name.trim();
+      if (chars(optionName) < 1 || chars(optionName) > MENU_TEXT_MAX.option) {
+        problems.push({
+          group: index,
+          option: place,
+          problem: "optionMissing",
+        });
+      } else if (names.has(optionName.toLowerCase())) {
+        problems.push({ group: index, option: place, problem: "optionTwice" });
+      }
+      names.add(optionName.toLowerCase());
+      const typed = option.price.trim();
+      const price = typed === "" ? 0 : parseShekels(typed, MAX_OPTION_AGOROT);
+      if (price === null) {
+        problems.push({ group: index, option: place, problem: "priceUnclear" });
+      }
+      const id = option.id ?? newChoiceId(optionIds, random, "o");
+      optionIds.push(id);
+      options.push({ id, name: optionName, priceAgorot: price ?? 0 });
+    }
+    if (draft.options.length === 0) {
+      problems.push({ group: index, problem: "empty" });
+    } else if (draft.options.length > MENU_CAPS.options) {
+      problems.push({ group: index, problem: "tooManyOptions" });
+    }
+    const max = draftMost(draft);
+    const min = draft.required ? Math.min(Math.max(1, draft.least), max) : 0;
+    const id = draft.id ?? newChoiceId(groupIds, random, "g");
+    groupIds.push(id);
+    const group: OptionGroup = { id, name, min, max, options };
+    // Said under the card whose choices take the total past the cap.
+    const before = extras;
+    extras += groupMostAgorot(group);
+    if (before <= MAX_EXTRAS_AGOROT && extras > MAX_EXTRAS_AGOROT) {
+      problems.push({ group: index, problem: "tooMuch" });
+    }
+    groups.push(group);
+  }
+  return problems.length > 0 ? { ok: false, problems } : { ok: true, groups };
 }

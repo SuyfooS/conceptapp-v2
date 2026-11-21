@@ -1,6 +1,16 @@
 import { importRows, parseMenu, reverseLine } from "@domain/menu-import";
-import { addToDraft, draftKey, placeState } from "@domain/order-screens";
-import { itemSaveInput } from "@domain/order-taking";
+import {
+  addToDraft,
+  draftKey,
+  placeState,
+  staleChoiceLines,
+  toggleChoice,
+} from "@domain/order-screens";
+import {
+  choiceRule,
+  itemSaveInput,
+  type OptionGroup,
+} from "@domain/order-taking";
 import {
   myOrdersSchema,
   orderDetailSchema,
@@ -36,19 +46,16 @@ import {
   READER_DEPARTMENTS,
 } from "./data";
 import { newId } from "./ids";
-import {
-  type ChoiceGroup,
-  singleChoice,
-  takeawaysOnFloor,
-  toggleChoice,
-} from "./model";
+import { takeawaysOnFloor } from "./model";
 import {
   fromItemInput,
   twinDepartments,
+  twinGroups,
   twinMenu,
   withoutDepartment,
 } from "./real-menu";
 import {
+  choicesRefused,
   soldOutIn,
   twinDetail,
   twinFloor,
@@ -263,18 +270,20 @@ describe("the twin's rows as the app's screens read them (P4)", () => {
 });
 
 describe("an item's choices", () => {
-  const one = (min: number, max: number, ids: string[]): ChoiceGroup => ({
+  const one = (min: number, max: number, ids: string[]): OptionGroup => ({
     id: "g",
     name: "g",
     min,
     max,
-    options: ids.map((id) => ({ id, name: id, price: 0 })),
+    options: ids.map((id) => ({ id, name: id, priceAgorot: 0 })),
   });
+  const picks = (...options: string[]) =>
+    options.map((option) => ({ group: "g", option }));
 
   it("draws radios only for exactly one choice", () => {
-    expect(singleChoice(one(1, 1, ["a", "b"]))).toBe(true);
-    expect(singleChoice(one(0, 1, ["a"]))).toBe(false);
-    expect(singleChoice(one(0, 2, ["a", "b"]))).toBe(false);
+    expect(choiceRule(one(1, 1, ["a", "b"]))).toBe("one");
+    expect(choiceRule(one(0, 1, ["a"]))).not.toBe("one");
+    expect(choiceRule(one(0, 2, ["a", "b"]))).not.toBe("one");
   });
 
   it("lets an optional extra of one option be picked and unpicked", () => {
@@ -291,22 +300,112 @@ describe("an item's choices", () => {
       scenario("service"),
       importRows(pasted.categories, ["kitchen"]),
     ).data.menu.items.at(-1);
-    const group = item?.groups[0];
+    const group = item ? twinGroups(item)[0] : undefined;
     if (!group) throw new Error("the shakshuka has its extras");
     expect(group).toMatchObject({ min: 0, max: 1 });
-    expect(singleChoice(group)).toBe(false);
+    expect(choiceRule(group)).not.toBe("one");
     const option = group.options[0]?.id ?? "";
     const on = toggleChoice(group, [], option, true);
-    expect(on).toEqual([option]);
+    expect(on).toEqual([{ group: group.id, option }]);
     expect(toggleChoice(group, on, option, false)).toEqual([]);
   });
 
   it("keeps a group within its most", () => {
     const pickOne = one(0, 1, ["a", "b"]);
-    expect(toggleChoice(pickOne, ["a", "x"], "b", true)).toEqual(["x", "b"]);
+    expect(toggleChoice(pickOne, picks("a"), "b", true)).toEqual(picks("b"));
     const pickTwo = one(0, 2, ["a", "b", "c"]);
-    expect(toggleChoice(pickTwo, ["a", "b"], "c", true)).toEqual(["a", "b"]);
-    expect(toggleChoice(pickTwo, ["a"], "c", true)).toEqual(["a", "c"]);
+    expect(toggleChoice(pickTwo, picks("a", "b"), "c", true)).toEqual(
+      picks("a", "b"),
+    );
+    expect(toggleChoice(pickTwo, picks("a"), "c", true)).toEqual(
+      picks("a", "c"),
+    );
+  });
+
+  it("names each sent choice with its group and price, as order_detail does (P6)", () => {
+    const evening = scenario(null);
+    const detail = twinDetail(evening, "order-4", DEMO_START);
+    const burger = detail?.rounds[0]?.tickets[1]?.lines[1];
+    expect(burger?.choices).toEqual([
+      { group: "מידת עשייה", option: "מדיום", priceAgorot: 0 },
+      { group: "תוספות", option: "גבינה", priceAgorot: 600 },
+    ]);
+    expect(burger?.unitAgorot).toBe(7400);
+    const beer = detail?.rounds[0]?.tickets[2]?.lines[0];
+    expect(beer?.choices).toEqual([
+      { group: "גודל", option: "חצי", priceAgorot: 800 },
+    ]);
+    // A choice the menu no longer has keeps its name, with no group.
+    const changed = scenario("choicesChanged");
+    const table7 = twinDetail(changed, "order-7", DEMO_START);
+    expect(table7?.rounds[0]?.tickets[1]?.lines[0]?.choices).toEqual([
+      { group: "", option: "מדיום וול", priceAgorot: 0 },
+    ]);
+  });
+
+  it("refuses a draft whose choices don't fit, as the send does, and sends one that does (P6)", () => {
+    const evening = scenario(null);
+    const line = (
+      item: string,
+      choices: { group: string; option: string }[],
+    ) => ({
+      id: newId(),
+      item,
+      quantity: 1,
+      note: null,
+      allergy: false,
+      held: false,
+      choices,
+    });
+    // A burger with no doneness, or two.
+    expect(choicesRefused(evening, [line("burger", [])])).toBe(true);
+    expect(
+      choicesRefused(evening, [
+        line("burger", [
+          { group: "doneness", option: "m" },
+          { group: "doneness", option: "wd" },
+        ]),
+      ]),
+    ).toBe(true);
+    // One that fits goes, a salad with no extras too.
+    const fits = [
+      line("burger", [
+        { group: "doneness", option: "m" },
+        { group: "extras", option: "cheese" },
+      ]),
+      line("salad", []),
+    ];
+    expect(choicesRefused(evening, fits)).toBe(false);
+    const sent = sendRound(
+      evening,
+      { orderId: null, placeId: "table-6" },
+      fits,
+      READER,
+      DEMO_START,
+    );
+    const kitchen = sent.round.tickets.find((t) => t.department === "kitchen");
+    expect(kitchen?.lines.map((l) => [l.name, l.choices, l.unit])).toEqual([
+      ["המבורגר", ["מדיום", "גבינה"], 7400],
+      ["סלט ירוק", [], 3600],
+    ]);
+    // A sold-out item is left to its own refusal.
+    expect(
+      choicesRefused(evening, [line("fish", [{ group: "x", option: "y" }])]),
+    ).toBe(false);
+  });
+
+  it("opens the choices' states: the burger's sheet, and a choice gone from the menu (P6)", () => {
+    expect(scenario("choices")).toEqual(scenario("service"));
+    const changed = scenario("choicesChanged");
+    const draft = changed.drafts["place:table-6"] ?? [];
+    expect(draft.map((l) => l.item)).toEqual(["burger", "coffee"]);
+    const menu = twinMenu(changed, 1);
+    expect(staleChoiceLines(menu.items, draft)).toEqual(["d6"]);
+    expect(choicesRefused(changed, draft)).toBe(true);
+    // The evening's menu still has it.
+    expect(staleChoiceLines(twinMenu(scenario(null), 1).items, draft)).toEqual(
+      [],
+    );
   });
 });
 
