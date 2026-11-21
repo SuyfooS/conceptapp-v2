@@ -3,8 +3,8 @@
 // memory (demo-store.tsx), and P1 and P3 bring the real ones to the
 // database, with `@domain/order-taking` in place of these helpers. Since P4
 // the mode's screens are the app's, drawn from these rows by
-// real-orders.ts, and since P5 its till too; the stations still draw them as
-// S0 did (P8).
+// real-orders.ts, since P5 its till too, and since P8a the kitchen's and the
+// till's stations.
 
 import type {
   CompReason,
@@ -115,16 +115,8 @@ export type Order = {
   cancelled?: Fix<OrderCancelReason> | null;
 };
 
-/** After this long a ticket still new is late: `lateAfterMinutes`' default. */
-export const LATE_AFTER_MINUTES = 15;
 /** How long the sender may take a line back: `takeBackMinutes`' default. */
 export const TAKE_BACK_MINUTES = 2;
-
-const MINUTE = 60_000;
-
-export function minutesSince(at: number, now: number): number {
-  return Math.max(0, Math.floor((now - at) / MINUTE));
-}
 
 export function itemById(menu: Menu, id: string): MenuItem | undefined {
   return menu.items.find((item) => item.id === id);
@@ -163,45 +155,9 @@ export const liveLines = (ticket: Ticket) => ticket.lines.filter(lineLive);
 export const ticketCount = (ticket: Ticket) =>
   liveLines(ticket).reduce((sum, line) => sum + line.qty, 0);
 
-/** A ticket still to make: nothing taken back left it empty. */
-export const openTicket = (ticket: Ticket) =>
-  ticket.state === "new" && ticketCount(ticket) > 0;
-
 /** How long a ticket has waited: from its fire for a held block once called. */
 export const ticketSince = (ticket: Ticket, round: Round) =>
   ticket.firedAt ?? round.at;
-
-export type PlaceStatus =
-  | { kind: "free" }
-  | { kind: "ready"; count: number }
-  | { kind: "late"; minutes: number }
-  | { kind: "open"; minutes: number };
-
-/**
- * A place's one state on the floor, in words as well as colour: ready to
- * serve first, then a ticket waiting past the late mark, then open with
- * the minutes since its last send.
- */
-export function placeStatus(
-  order: Order | undefined,
-  now: number,
-): PlaceStatus {
-  if (!order) return { kind: "free" };
-  const tickets = order.rounds.flatMap((round) =>
-    round.tickets.map((ticket) => ({ ticket, round })),
-  );
-  const ready = tickets.filter(
-    ({ ticket }) => ticket.state === "ready" && ticketCount(ticket) > 0,
-  ).length;
-  if (ready > 0) return { kind: "ready", count: ready };
-  const waited = tickets
-    .filter(({ ticket }) => !ticket.held && openTicket(ticket))
-    .map(({ ticket, round }) => minutesSince(ticketSince(ticket, round), now));
-  const longest = Math.max(0, ...waited);
-  if (longest >= LATE_AFTER_MINUTES) return { kind: "late", minutes: longest };
-  const last = order.rounds.at(-1)?.at ?? order.openedAt;
-  return { kind: "open", minutes: minutesSince(last, now) };
-}
 
 /**
  * The takeaways the floor shows: each with an open order. A closed one
@@ -224,39 +180,3 @@ export const hasHeld = (order: Order) =>
       (ticket) => ticket.held && ticket.state === "new" && ticketCount(ticket),
     ),
   );
-
-/** One line of the till's list by item: the same item, choices and price added up. */
-export type TillItem = {
-  key: string;
-  name: string;
-  choices: string[];
-  unit: number;
-  qty: number;
-};
-
-/** The order's lines for ringing up at the register, by item, with no total. */
-export function tillByItem(order: Order): TillItem[] {
-  const rows = new Map<string, TillItem>();
-  for (const round of order.rounds) {
-    for (const ticket of round.tickets) {
-      for (const line of liveLines(ticket)) {
-        const key = [line.itemId, ...line.choices, line.unit].join("|");
-        const row = rows.get(key);
-        if (row) row.qty += line.qty;
-        else
-          rows.set(key, {
-            key,
-            name: line.name,
-            choices: line.choices,
-            unit: line.unit,
-            qty: line.qty,
-          });
-      }
-    }
-  }
-  return [...rows.values()];
-}
-
-/** A round's lines for the till, whatever department made them. */
-export const roundLines = (round: Round) =>
-  round.tickets.flatMap((ticket) => liveLines(ticket));

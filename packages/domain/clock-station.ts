@@ -10,7 +10,10 @@ import { issuedCode } from "./punch-code";
  * holding the station's secret, which the database keeps only as a hash
  * (20261108000200_qr_clock.sql). These are the schemas at its boundaries, the
  * refusals in words and the team's list's timing; the database checks every
- * code and every stop again.
+ * code and every stop again. Since waiter mode's P8a the same registry holds
+ * the kitchen's screens and the till (20261124000100_order_taking_stations.sql):
+ * each station shows one thing (`STATION_SHOWS`), and ten run in a business
+ * of every kind together.
  */
 
 /** The cookie that makes this device a station: the station's secret. */
@@ -19,15 +22,36 @@ export const STATION_COOKIE = "ca_station";
 /** Where a locked device goes, and stays: the station's code. */
 export const STATION_PATH = "/station";
 
+/**
+ * What a station shows: the clock's code, a prep screen (the kitchen's, of
+ * one department or every one) or the till (waiter mode P8a).
+ */
+export const STATION_SHOWS = ["clock_code", "prep", "till"] as const;
+export type StationShows = (typeof STATION_SHOWS)[number];
+
 /** The device's station, as its secret finds it, for the rules below. */
-type HeldStation = { businessId: string; stopped: boolean };
+type HeldStation = {
+  businessId: string;
+  stopped: boolean;
+  shows?: StationShows;
+};
 
 /**
- * Whether the device is a running station of `businessId`: Home's card, and
- * the lock that keeps the same station.
+ * Whether the device is a running station of `businessId`, and with `shows`
+ * one that shows that: Home's card, and the lock that keeps the same station.
+ * A station read before it said what it shows is the clock's.
  */
-export function runsFor(held: HeldStation | null, businessId: string): boolean {
-  return held !== null && !held.stopped && held.businessId === businessId;
+export function runsFor(
+  held: HeldStation | null,
+  businessId: string,
+  shows?: StationShows,
+): boolean {
+  return (
+    held !== null &&
+    !held.stopped &&
+    held.businessId === businessId &&
+    (shows === undefined || (held.shows ?? "clock_code") === shows)
+  );
 }
 
 /**
@@ -63,19 +87,31 @@ export function stationCookieOptions(secure: boolean) {
 /** A station's secret as the cookie holds it: 32 random bytes, base64url. */
 export const stationToken = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
 
-/** At most this many running in a business (approve_station_pairing). */
+/**
+ * At most this many running in a business, of every kind together
+ * (approve_station_pairing, lock_order_station).
+ */
 export const MAX_STATIONS = 10;
 
 /**
  * Whether the device can be locked now: it is one of the business's running
- * stations already (locking keeps that one), or fewer than ten run. With ten
- * running and this device none of them, nothing offers to lock it.
+ * stations of this kind already (locking keeps that one), or fewer than ten
+ * run, of every kind (`total`, or the kind's own when it isn't known). A
+ * device that is a running station of another kind (`other`) isn't locked
+ * again until that one is stopped. With ten running and this device none of
+ * them, nothing offers to lock it.
  */
 export function lockOpen(offer: {
   current: { name: string } | null;
   running: readonly string[];
+  total?: number;
+  other?: { name: string } | null;
 }): boolean {
-  return offer.current !== null || offer.running.length < MAX_STATIONS;
+  if (offer.other) return false;
+  return (
+    offer.current !== null ||
+    (offer.total ?? offer.running.length) < MAX_STATIONS
+  );
 }
 
 /**
@@ -173,7 +209,9 @@ export function stationCodeFailureOf(
  * Why a device wasn't locked. `tooManyStations`: ten run already; `name`: no
  * name, or one longer than 40 characters; `busy`: the business's few
  * pairings are all taken (locks refused in the last five minutes), so the next
- * try works once they expire.
+ * try works once they expire; `otherStation`: the device is a running station
+ * of another kind, stopped first; `off`: taking orders is off; `department`:
+ * the kitchen's department is no longer live.
  */
 export type LockFailure =
   | "tooManyStations"
@@ -182,21 +220,30 @@ export type LockFailure =
   | "busy"
   | "noAccess"
   | "viewOnly"
+  | "otherStation"
+  | "off"
+  | "department"
   | "failed";
 
-/** Locking refused by the database (start_station_pairing, approve_station_pairing). */
+/**
+ * Locking refused by the database (start_station_pairing,
+ * approve_station_pairing, lock_order_station), by its code, message and hint.
+ */
 export function lockFailureOf(
   code: string | undefined,
   message = "",
+  hint: string | null = null,
 ): LockFailure {
   switch (code) {
     case "54000":
       // Its other 54000 is a thousand devices pairing at once, everywhere.
       return /at most ten/i.test(message) ? "tooManyStations" : "failed";
     case "42501":
+      if (hint === "off") return "off";
       // The clock being off reads the same as no access.
       return /phone only/i.test(message) ? "managerOnly" : "noAccess";
     case "22023":
+      if (hint === "route") return "department";
       return /name/i.test(message) ? "name" : "failed";
     default:
       return "failed";

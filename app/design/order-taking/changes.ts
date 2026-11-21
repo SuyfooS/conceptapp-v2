@@ -1,5 +1,10 @@
 import type { MenuImportRow } from "@domain/menu-import";
 import type { DraftLine } from "@domain/order-screens";
+import type {
+  StationWrite,
+  StationWriteAnswer,
+  StationWriteFailure,
+} from "@domain/order-stations";
 import type { CategoryInput } from "@domain/order-taking";
 import {
   type CompReason,
@@ -13,6 +18,7 @@ import {
   chosenOptions,
   type DepartmentKey,
   departmentOf,
+  hasHeld,
   itemById,
   lineLive,
   type MenuItem,
@@ -557,4 +563,99 @@ export function saveCategories(
 ): { data: DemoData; ids: string[] } {
   const saved = savedCategories(data.menu, list, id);
   return { data: { ...data, menu: saved.menu }, ids: saved.ids };
+}
+
+/**
+ * A station's write on the twin (waiter mode P8a), as the database decides
+ * it for a station: a kitchen's screen marks a ticket of its department
+ * ready, or back within 5 minutes, and an item sold out or back; the till
+ * closes an order (refused while a held block waits), takes its own close
+ * back within 2 minutes, and opens a closed one again while its place is
+ * free. Each kept as the station's ("station"), never a person's. What it
+ * refuses changes nothing.
+ */
+export function stationWrite(
+  data: DemoData,
+  body: StationWrite,
+  at: { department: string | null; now: number },
+): { data: DemoData; answer: StationWriteAnswer } {
+  const refused = (failure: StationWriteFailure) => ({
+    data,
+    answer: { ok: false as const, failure },
+  });
+  const done = (next: DemoData) => ({
+    data: next,
+    answer: { ok: true as const },
+  });
+  switch (body.do) {
+    case "ready": {
+      const order = data.orders.find((o) =>
+        o.rounds.some((r) => r.tickets.some((t) => t.id === body.ticket)),
+      );
+      const ticket = order?.rounds
+        .flatMap((r) => r.tickets)
+        .find((t) => t.id === body.ticket);
+      if (
+        !ticket ||
+        (at.department !== null && ticket.department !== at.department)
+      ) {
+        return refused("gone");
+      }
+      if (ticket.held && ticket.state === "new") return refused("held");
+      if (body.ready) {
+        if (ticket.state !== "new") return done(data);
+        return done(
+          changeTicket(data, ticket.id, {
+            state: "ready",
+            readyAt: at.now,
+            readyBy: null,
+          }),
+        );
+      }
+      if (ticket.state === "new") return done(data);
+      if (ticket.state === "served") return refused("served");
+      if (at.now > (ticket.readyAt ?? 0) + 5 * 60_000) {
+        return refused("window");
+      }
+      return done(
+        changeTicket(data, ticket.id, { state: "new", readyAt: null }),
+      );
+    }
+    case "available": {
+      const item = data.menu.items.find((i) => i.id === body.item);
+      const category = data.menu.categories.find(
+        (c) => c.id === item?.categoryId,
+      );
+      if (!item || !category) return refused("gone");
+      if (at.department !== null && category.department !== at.department) {
+        return refused("noAccess");
+      }
+      return done(setSoldOut(data, item.id, !body.available));
+    }
+    case "close": {
+      const order = data.orders.find((o) => o.id === body.order);
+      if (!order) {
+        return data.closed.some((o) => o.id === body.order && !o.cancelled)
+          ? done(data)
+          : refused("gone");
+      }
+      if (hasHeld(order)) return refused("held");
+      return done(closeOrder(data, order.id, "station", at.now));
+    }
+    case "reopen":
+    case "undoClose": {
+      if (data.orders.some((o) => o.id === body.order)) return done(data);
+      const order = data.closed.find((o) => o.id === body.order);
+      if (!order) return refused("gone");
+      if (order.cancelled) return refused("notClosed");
+      if (data.orders.some((o) => o.placeId === order.placeId)) {
+        return refused("taken");
+      }
+      if (body.do === "reopen") {
+        return done(reopenOrder(data, order.id, "station", at.now));
+      }
+      const next = undoCloseOrder(data, order.id, "station", at.now);
+      return next === data ? refused("window") : done(next);
+    }
+  }
 }

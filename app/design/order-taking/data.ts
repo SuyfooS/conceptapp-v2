@@ -743,8 +743,9 @@ export const demoKnownPaste = [
  * The restaurant's and the café's own sentences for taking orders, as
  * supabase/migrations/20261120000100_order_taking_screens.sql writes them
  * and 20261121000100_order_taking_mode.sql,
- * 20261122000100_order_taking_fixes.sql and
- * 20261123000100_order_taking_choices.sql after it
+ * 20261122000100_order_taking_fixes.sql,
+ * 20261123000100_order_taking_choices.sql and
+ * 20261124000100_order_taking_stations.sql after it
  * (tooling/template-wording.test.ts holds the two the same): the twin's
  * restaurant reads its screens in them, as the demo restaurant does.
  */
@@ -922,4 +923,14 @@ export const restaurantWording: Readonly<Record<string, string>> = {
   "app.orders.picker.optionalChoices":
     "נוספת מיד, ואת הבחירות שלה משנים בטיוטה",
   "app.orders.menu.group.requiredHint": "בלי בחירה לא מוסיפים את המנה",
+  // P8a (20261124000100_order_taking_stations.sql)
+  "app.orders.stations.prep.lock": "נעילת המכשיר כמסך מטבח",
+  "app.orders.stations.prep.hint":
+    "הטאבלט מציג את ההזמנות למטבח, עם צליל, בלי החשבון של אף אחד.",
+  "app.orders.stations.reminder.prep":
+    "המכשיר הזה הוא מסך המטבח של העסק. כשמסיימים, נועלים אותו שוב.",
+  "app.orders.stations.lock.prep.title": "להשאיר את המכשיר כמסך מטבח",
+  "app.orders.station.open": "פתיחת המטבח",
+  "app.orders.station.till.choose.title": "בוחרים שולחן",
+  "app.orders.station.till.back": "לכל השולחנות",
 };

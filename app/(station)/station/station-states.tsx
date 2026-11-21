@@ -1,4 +1,4 @@
-import { lockOpen } from "@domain/clock-station";
+import { lockOpen, type StationShows } from "@domain/clock-station";
 import { Button } from "@ui/button";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
@@ -26,13 +26,33 @@ export function NotAStation({ signInHref }: { signInHref: string }) {
   );
 }
 
-/** Someone who edits the clock stopped this station, from the team's hours. */
-export function StoppedStation({ signInHref }: { signInHref: string }) {
+/**
+ * Someone stopped this station: whoever edits the clock, from the team's
+ * hours, or whoever runs orders, from the prep screen (a kitchen's screen
+ * or the till, waiter mode P8a).
+ */
+export function StoppedStation({
+  signInHref,
+  shows = "clock_code",
+}: {
+  signInHref: string;
+  shows?: StationShows;
+}) {
   const t = useTranslations("station.stopped");
   return (
-    <AuthScreen title={t("title")}>
+    <AuthScreen
+      title={
+        shows === "prep"
+          ? t("prep.title")
+          : shows === "till"
+            ? t("till.title")
+            : t("title")
+      }
+    >
       <div className="flex flex-col gap-6 px-1">
-        <p className="text-ink-2 text-md">{t("body")}</p>
+        <p className="text-ink-2 text-md">
+          {shows === "clock_code" ? t("body") : t("ordersBody")}
+        </p>
         <Button asChild size="lg">
           <Link href={signInHref}>{t("signIn")}</Link>
         </Button>
@@ -43,28 +63,34 @@ export function StoppedStation({ signInHref }: { signInHref: string }) {
 
 /**
  * Someone is signed in on this device, valid session or not: a station never
- * shows codes beside an account. Whoever edits the clock locks it (again)
- * from here, keeping the station it is; anyone else goes home. With ten
- * stations running and this device none of them, the lock's line says why
- * it can't be one, and home is the way on.
+ * shows codes, nor orders, beside an account. Whoever may lock it locks it
+ * (again) from here, keeping the station it is (whoever edits the clock the
+ * clock's; whoever runs orders the kitchen's screen or the till, `shows`);
+ * anyone else goes home. With ten stations running and this device none of
+ * them, the lock's line says why it can't be one, and home is the way on.
  */
 export function SignedInHere({
   lock,
   homeHref,
+  shows = "clock_code",
 }: {
   lock: StationLock | null;
   homeHref: string;
+  shows?: StationShows;
 }) {
   const t = useTranslations("station.signedIn");
   const locks = lock !== null && lockOpen(lock.offer);
+  const orders = shows !== "clock_code";
   return (
     <AuthScreen title={t("title")}>
       <div className="flex flex-col gap-6 px-1">
         <p className="text-ink-2 text-md">
-          {t("body")}
+          {orders ? t("bodyOrders") : t("body")}
           {locks ? (
             <span className="mt-2 block">
-              {t(lock.offer.current ? "lockAgain" : "lockNew")}
+              {orders
+                ? t("lockAgainOrders")
+                : t(lock.offer.current ? "lockAgain" : "lockNew")}
             </span>
           ) : null}
         </p>
@@ -74,6 +100,7 @@ export function SignedInHere({
               offer={lock.offer}
               lock={lock.action}
               clearsDevice={lock.clearsDevice}
+              kind={orders ? (shows === "till" ? "till" : "prep") : "clock"}
               primary
               label={t("lock")}
             />

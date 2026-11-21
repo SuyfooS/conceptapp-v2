@@ -4,13 +4,16 @@ import {
   type LockFailure,
   lockFailureOf,
   MAX_STATIONS,
+  STATION_SHOWS,
   type StationRefusal,
+  type StationShows,
   type StationStopFailure,
   stationCodeFailureOf,
   stationStopFailureOf,
 } from "@domain/clock-station";
 import { PUNCH_CODE_TTL_SECONDS } from "@domain/time-clock";
 import { z } from "zod";
+import { isMissingColumn } from "./missing";
 import { punchKey } from "./punch-key";
 import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
@@ -28,7 +31,9 @@ import {
  * database keeps as a hash. Writes and reads by secret run with the secret
  * key: a station has nobody signed in. The database checks who stops one
  * again (`actorId`); callers make sure the actor is the signed-in person and
- * not viewing as someone else.
+ * not viewing as someone else. The kitchen's screens and the till are
+ * stations too (20261124000100_order_taking_stations.sql), locked and read
+ * through @db/order-stations.
  */
 
 export type StationResult<T, F extends string> =
@@ -94,17 +99,54 @@ export async function lockStation(
   businessId: string,
   name: string,
 ): Promise<StationResult<{ token: string; stationId: string }, LockFailure>> {
-  const admin = createAdminClient();
-  const running = await admin
+  const running = await countRunningStations(businessId);
+  if (!running.ok) return lockRefusal(running.error);
+  if (running.count >= MAX_STATIONS) {
+    return { ok: false, failure: "tooManyStations" };
+  }
+  return pairThenApprove(businessId, async (pairing) => {
+    const { data, error } = await createAdminClient().rpc(
+      "approve_station_pairing",
+      {
+        actor: actorId,
+        business: businessId,
+        name,
+        pairing_hash: pairing,
+      },
+    );
+    return { data, error };
+  });
+}
+
+/**
+ * How many stations of the business run, of every kind: ten in all is the
+ * most (approve_station_pairing, lock_order_station). With the secret key, so
+ * the count is the database's, whoever asks.
+ */
+export async function countRunningStations(
+  businessId: string,
+): Promise<{ ok: true; count: number } | { ok: false; error: RpcError }> {
+  const { count, error } = await createAdminClient()
     .from("clock_stations")
     .select("id", { count: "exact", head: true })
     .eq("business_id", businessId)
     .is("stopped_at", null);
-  if (running.error) return lockRefusal(running.error);
-  if ((running.count ?? 0) >= MAX_STATIONS) {
-    return { ok: false, failure: "tooManyStations" };
-  }
+  return error ? { ok: false, error } : { ok: true, count: count ?? 0 };
+}
 
+/**
+ * A new station's secret, paired on one of the business's own hashes
+ * (`lockPairingHash`) and approved at once by `approve`, which the clock's
+ * lock and the orders' lock each give: a slot taken (23505) takes the next,
+ * and all of them taken is `busy`. Refusals as `lockFailureOf` reads them.
+ */
+export async function pairThenApprove(
+  businessId: string,
+  approve: (
+    pairing: string,
+  ) => Promise<{ data: string | null; error: RpcError | null }>,
+): Promise<StationResult<{ token: string; stationId: string }, LockFailure>> {
+  const admin = createAdminClient();
   const token = newStationToken();
   for (let slot = 0; ; slot += 1) {
     const pairing = lockPairingHash(businessId, slot);
@@ -118,27 +160,32 @@ export async function lockStation(
       return { ok: false, failure: "busy" };
     }
     if (started.error) return lockRefusal(started.error);
-    const { data, error } = await admin.rpc("approve_station_pairing", {
-      actor: actorId,
-      business: businessId,
-      name,
-      pairing_hash: pairing,
-    });
+    const { data, error } = await approve(pairing);
     if (error) return lockRefusal(error);
+    if (!data) return lockRefusal({ message: "no station came back" });
     return { ok: true, value: { token, stationId: data } };
   }
 }
 
-type RpcError = { code?: string; message: string };
+export type RpcError = {
+  code?: string;
+  message: string;
+  hint?: string | null;
+};
 
 /** Only the message is logged: it holds no hash. */
-function lockRefusal(error: RpcError): { ok: false; failure: LockFailure } {
-  const failure = lockFailureOf(error.code, error.message);
+export function lockRefusal(error: RpcError): {
+  ok: false;
+  failure: LockFailure;
+} {
+  const failure = lockFailureOf(error.code, error.message, error.hint ?? null);
   if (failure === "failed")
     console.error("locking a station failed", error.message);
   return { ok: false, failure };
 }
 
+// What it shows and its department default, so the station is read the
+// same before 20261124000100_order_taking_stations.sql reaches a project.
 const stationRow = z.object({
   station: z.string(),
   name: z.string(),
@@ -147,6 +194,8 @@ const stationRow = z.object({
   accent: z.string(),
   timeZone: z.string(),
   stopped: z.boolean(),
+  shows: z.enum(STATION_SHOWS).default("clock_code"),
+  department: z.uuid().nullable().default(null),
 });
 
 /** A station as its secret finds it, for its page. */
@@ -158,6 +207,10 @@ export type StationOfToken = {
   accent: string;
   timeZone: string;
   stopped: boolean;
+  /** What it shows: the clock's code, a kitchen's screen or the till. */
+  shows: StationShows;
+  /** A kitchen's screen's department; null for every one, and for the others. */
+  departmentId: string | null;
 };
 
 /**
@@ -181,6 +234,8 @@ export async function stationByToken(
     accent: row.accent,
     timeZone: row.timeZone,
     stopped: row.stopped,
+    shows: row.shows,
+    departmentId: row.department,
   };
 }
 
@@ -266,22 +321,31 @@ export type RunningStation = {
 };
 
 /**
- * A business's running stations, oldest first, as the signed-in person may
- * read them (RLS: whoever edits the clock, with the clock on; nobody else
- * reads any). Never their secrets: those columns aren't granted.
+ * A business's running clock stations, oldest first, as the signed-in person
+ * may read them (RLS: whoever edits the clock, with the clock on; nobody else
+ * reads any), never the kitchen's screens or the till, which someone who
+ * also runs orders reads too. Never their secrets: those columns aren't
+ * granted. Before 20261124000100_order_taking_stations.sql reaches a
+ * project there is no `shows`, and every station is the clock's.
  */
 export async function getRunningStations(
   businessId: string,
 ): Promise<RunningStation[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("clock_stations")
-    .select("id, name, created_at, last_seen_at")
-    .eq("business_id", businessId)
-    .is("stopped_at", null)
-    .order("created_at");
+  const read = (clockOnly: boolean) => {
+    const query = supabase
+      .from("clock_stations")
+      .select("id, name, created_at, last_seen_at")
+      .eq("business_id", businessId)
+      .is("stopped_at", null);
+    return (clockOnly ? query.eq("shows", "clock_code") : query).order(
+      "created_at",
+    );
+  };
+  let { data, error } = await read(true);
+  if (error && isMissingColumn(error)) ({ data, error } = await read(false));
   if (error) throw error;
-  return data.map((row) => ({
+  return (data ?? []).map((row) => ({
     id: row.id,
     name: row.name,
     createdAt: row.created_at,

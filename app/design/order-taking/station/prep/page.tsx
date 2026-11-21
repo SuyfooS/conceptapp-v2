@@ -1,13 +1,13 @@
 import { DemoScreen } from "../../demo-store";
-import { KitchenStation } from "./kitchen-station";
+import { KitchenStationTwin } from "../station-twins";
 
-// The kitchen's tablet, locked as its screen: it opens on "פתיחת המטבח".
-// `?state=open` as if tapped, `?state=offline` with the connection gone,
-// `?state=nothingOpen` with every ticket out.
+// The kitchen's tablet, locked as its screen (waiter mode P8a): the real
+// screen over the demo's store, opening on "פתיחת המטבח". Its states are
+// KitchenStationTwin's.
 export default function KitchenStationPage() {
   return (
     <DemoScreen>
-      <KitchenStation />
+      <KitchenStationTwin />
     </DemoScreen>
   );
 }

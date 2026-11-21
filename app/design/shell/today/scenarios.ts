@@ -16,6 +16,7 @@ import type {
   PublishedSchedule,
   ScheduleBuildWeek,
 } from "../../../(app)/schedule/week";
+import { orderDemoDepartments } from "../../order-taking/data";
 import { demoStations } from "../clock/team/data";
 import {
   business,
@@ -38,6 +39,10 @@ import {
   demoRequest,
   demoRunningBuild,
 } from "../schedule/shifts/published";
+
+/** The twin restaurant's kitchen, by its name: the kitchen's screen is called after it. */
+const DEMO_KITCHEN =
+  orderDemoDepartments.find((d) => d.key === "kitchen")?.name ?? "";
 
 // The demo restaurant on Tuesday 3 November 2026 at 08:12 in Tel Aviv: this
 // week's schedule is published, with four places still open in what is still
@@ -438,9 +443,11 @@ export const todayScenarios = {
    * where the clock is on: Today says the device is the business's station,
    * to lock again when she is done, as that same station. `worker` is Noa
    * signed in on it instead: Today says the device is the business's tablet,
-   * and to sign out when she is done (Orel, 20 November 2026).
+   * and to sign out when she is done (Orel, 20 November 2026). `prep` is
+   * Shiran signed in again on the kitchen's screen (waiter mode P8a): Today
+   * says it is the business's prep screen, to lock again as that screen.
    */
-  station: (who?: "worker"): TodayData =>
+  station: (who?: "worker" | "prep"): TodayData =>
     who === "worker"
       ? {
           ...today(
@@ -449,7 +456,7 @@ export const todayScenarios = {
             scheduleFor("worker", published("noa", NOA_SWAPS), false, false),
             { modules: [...DEMO_MODULES, "time_clock"] },
           ),
-          station: { kind: "signOut" },
+          station: { kind: "signOut", shows: "clock_code" },
         }
       : {
           ...today(
@@ -458,13 +465,21 @@ export const todayScenarios = {
             scheduleFor("manager", published("shiran", SWAPS), true, true),
             { modules: [...DEMO_MODULES, "time_clock"] },
           ),
-          station: {
-            kind: "lock",
-            offer: {
-              current: { name: demoStations.rows[0]?.name ?? "" },
-              running: [],
-            },
-          },
+          station:
+            who === "prep"
+              ? {
+                  kind: "lock",
+                  shows: "prep",
+                  offer: { current: { name: DEMO_KITCHEN }, running: [] },
+                }
+              : {
+                  kind: "lock",
+                  shows: "clock_code",
+                  offer: {
+                    current: { name: demoStations.rows[0]?.name ?? "" },
+                    running: [],
+                  },
+                },
         },
   /** The owner's first steps (`firstSteps` above). */
   firstSteps,

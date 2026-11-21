@@ -53,7 +53,8 @@ async function Demo({ searchParams }: Props) {
                   ? demoPayHomeNoAmounts
                   : demoPayHome,
         bell: { unread: 1 },
-        station: state === "station" ? { kind: "signOut" } : null,
+        station:
+          state === "station" ? { kind: "signOut", shows: "clock_code" } : null,
       }}
     />
   );

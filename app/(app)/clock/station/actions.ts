@@ -12,7 +12,7 @@ import { z } from "zod";
 import { endSessionHere } from "../../../(auth)/end-session";
 import { currentModuleSettings } from "../../modules";
 import { clockAccess } from "../clock";
-import { deviceStation, rememberStation } from "./station";
+import { deviceStation, orderLockerBusiness, rememberStation } from "./station";
 
 const lockInput = z.object({ name: z.string() });
 
@@ -22,21 +22,20 @@ const lockInput = z.object({ name: z.string() });
  * account. Whoever edits the clock, as themselves, where codes may show on a
  * station; the database checks the actor again. A device that is one of the
  * business's running stations already stays that one, so locking again never
- * piles stations up. Then it ends the session here only, as signing out does
- * (`endSessionHere`: its device, its business, its session; the person's own
- * phone stays signed in), and answers /station, which the screen opens as a
- * whole new page, so nothing of the person's screens stays on the device.
+ * piles stations up: Home's and /station's "lock again" keep the kitchen's
+ * screen or the till it is too (waiter mode P8a), for whoever runs orders,
+ * and anyone else in its business is refused (`otherStation`), the device
+ * locked on the code only once that one is stopped; another business's
+ * gives way to this one's clock, as the prep screen's lock does. Then it
+ * ends the session here only, as signing out does (`endSessionHere`: its
+ * device, its business, its session;
+ * the person's own phone stays signed in), and answers /station, which the
+ * screen opens as a whole new page, so nothing of the person's screens stays
+ * on the device.
  */
 export async function lockDeviceAction(input: unknown): Promise<LockResult> {
   const parsed = lockInput.safeParse(input);
   if (!parsed.success) return { ok: false, failure: "name" };
-  const access = await clockAccess();
-  if (!access || !editsClock(access)) return { ok: false, failure: "noAccess" };
-  if (access.viewOnly) return { ok: false, failure: "viewOnly" };
-  const settings = await currentModuleSettings("time_clock");
-  if (settings.codeDisplay === "manager") {
-    return { ok: false, failure: "managerOnly" };
-  }
 
   let device: Awaited<ReturnType<typeof deviceStation>> = null;
   try {
@@ -48,15 +47,49 @@ export async function lockDeviceAction(input: unknown): Promise<LockResult> {
       (error as Error).message,
     );
   }
+
   let token: string;
-  if (device && runsFor(device.station, access.businessId)) {
+  const held = device?.station ?? null;
+  const orderStation =
+    held !== null && !held.stopped && held.shows !== "clock_code";
+  if (
+    device &&
+    orderStation &&
+    (await orderLockerBusiness()) === held.businessId
+  ) {
+    // The kitchen's screen or the till it is, kept for whoever runs orders
+    // in its business.
     token = device.token;
   } else {
-    const name = stationName.safeParse(parsed.data.name);
-    if (!name.success) return { ok: false, failure: "name" };
-    const made = await lockStation(access.userId, access.businessId, name.data);
-    if (!made.ok) return made;
-    token = made.value.token;
+    const access = await clockAccess();
+    if (!access || !editsClock(access)) {
+      return { ok: false, failure: "noAccess" };
+    }
+    if (access.viewOnly) return { ok: false, failure: "viewOnly" };
+    const settings = await currentModuleSettings("time_clock");
+    if (settings.codeDisplay === "manager") {
+      return { ok: false, failure: "managerOnly" };
+    }
+    // The business's own kitchen's screen or till isn't the clock's until
+    // it is stopped (`currentLockOffer`'s `other`); another business's is
+    // none of this one's, and the device becomes this one's station, as it
+    // would from any other business's station.
+    if (orderStation && held.businessId === access.businessId) {
+      return { ok: false, failure: "otherStation" };
+    }
+    if (device && runsFor(device.station, access.businessId, "clock_code")) {
+      token = device.token;
+    } else {
+      const name = stationName.safeParse(parsed.data.name);
+      if (!name.success) return { ok: false, failure: "name" };
+      const made = await lockStation(
+        access.userId,
+        access.businessId,
+        name.data,
+      );
+      if (!made.ok) return made;
+      token = made.value.token;
+    }
   }
 
   // Kept for 400 days from now, also when it was the same station.

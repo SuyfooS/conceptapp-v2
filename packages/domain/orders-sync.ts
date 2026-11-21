@@ -32,7 +32,8 @@ export const ORDERS_SYNC_PATH = "/orders-sync";
 export const ORDERS_SYNC_MS = 15_000;
 /**
  * And this often (§7.1, P7) while a round of one's own waits to be ready,
- * or on the prep screen, until P8's stations.
+ * or on a phone's prep screen. The kitchen's and the till's stations ask on
+ * their own, at the prep screen's pace (@domain/order-stations).
  */
 export const ORDERS_SYNC_FAST_MS = 5_000;
 /** And never less often than this, whatever fails. */

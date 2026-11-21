@@ -7,10 +7,11 @@ import type { LockAction, StationHome } from "../clock/station/station-types";
 import type { Translator } from "../wording";
 
 /**
- * On the business's clock station, signed in: it is the station. Whoever may
- * lock it locks it again when done, with the code screen's sheet; anyone else
- * signs out when done, and the device shows the code again (Orel, 20 November
- * 2026). Small, since it is not what Home is for: one row from tablet up, the
+ * On the business's station, signed in: it is the station (the clock's, or
+ * since waiter mode's P8a the kitchen's screen or the till, each in its own
+ * words). Whoever may lock it locks it again when done, with the lock's
+ * sheet; anyone else signs out when done, and the device shows what it shows
+ * again (Orel, 20 November 2026). Small, since it is not what Home is for: one row from tablet up, the
  * action under the words on a phone. Without a lock action (the accountant's
  * Home, whose people never lock) it is the sign-out, which is safe for anyone.
  */
@@ -41,9 +42,13 @@ export function StationCard({
           <Tablet />
         </span>
         <p className="text-ink">
-          {locks
-            ? t("clock.station.reminder.body")
-            : t("clock.station.reminder.signOutBody")}
+          {!locks
+            ? t("clock.station.reminder.signOutBody")
+            : station.shows === "prep"
+              ? t("orders.stations.reminder.prep")
+              : station.shows === "till"
+                ? t("orders.stations.reminder.till")
+                : t("clock.station.reminder.body")}
         </p>
       </div>
       <div className="ps-[52px] md:ps-0">
@@ -52,6 +57,7 @@ export function StationCard({
             offer={locks.offer}
             lock={locks.lock}
             clearsDevice={clearsDevice}
+            kind={station.shows === "clock_code" ? "clock" : station.shows}
             label={t("clock.station.reminder.lock")}
           />
         ) : (

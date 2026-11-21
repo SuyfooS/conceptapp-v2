@@ -259,6 +259,7 @@ describe("signing out", () => {
     for (const file of [
       "app/(auth)/actions.ts",
       "app/(app)/clock/station/actions.ts",
+      "app/(app)/orders/stations/actions.ts",
     ]) {
       const source = read(file);
       expect(source, file).toContain("await endSessionHere()");

@@ -99,6 +99,22 @@ describe("locking a device", () => {
     ).toBe(true);
     expect(lockOpen({ current: { name: "Entrance" }, running: [] })).toBe(true);
   });
+
+  it("counts every kind of station when the total is known", () => {
+    // Nine clock stations and the kitchen's screen: the till's lock is shut.
+    expect(lockOpen({ current: null, running: [], total: 10 })).toBe(false);
+    expect(lockOpen({ current: null, running: names(2), total: 9 })).toBe(true);
+    expect(
+      lockOpen({ current: { name: "Till" }, running: [], total: 10 }),
+    ).toBe(true);
+  });
+
+  it("is shut on a device that is a running station of another kind", () => {
+    expect(
+      lockOpen({ current: null, running: [], other: { name: "Kitchen" } }),
+    ).toBe(false);
+    expect(lockOpen({ current: null, running: [], other: null })).toBe(true);
+  });
 });
 
 describe("a device that is a station", () => {
@@ -112,6 +128,24 @@ describe("a device that is a station", () => {
     );
     expect(runsFor({ businessId: BUSINESS, stopped: false }, BUSINESS)).toBe(
       true,
+    );
+  });
+
+  it("is of one kind when asked: a station read before it said is the clock's", () => {
+    const kitchen = {
+      businessId: BUSINESS,
+      stopped: false,
+      shows: "prep" as const,
+    };
+    expect(runsFor(kitchen, BUSINESS, "prep")).toBe(true);
+    expect(runsFor(kitchen, BUSINESS, "till")).toBe(false);
+    expect(runsFor(kitchen, BUSINESS, "clock_code")).toBe(false);
+    expect(runsFor(kitchen, BUSINESS)).toBe(true);
+    expect(
+      runsFor({ businessId: BUSINESS, stopped: false }, BUSINESS, "clock_code"),
+    ).toBe(true);
+    expect(runsFor({ ...kitchen, stopped: true }, BUSINESS, "prep")).toBe(
+      false,
     );
   });
 
@@ -235,6 +269,28 @@ describe("the database's refusals, in words", () => {
     expect(
       lockFailureOf("28000", "The pairing code is missing or expired"),
     ).toBe("failed");
+  });
+
+  it("of locking a device as the kitchen's screen or the till", () => {
+    expect(
+      lockFailureOf("42501", "Taking orders is off for this business", "off"),
+    ).toBe("off");
+    expect(lockFailureOf("42501", "Those who run orders only", null)).toBe(
+      "noAccess",
+    );
+    expect(
+      lockFailureOf("22023", "Not a live department of the business", "route"),
+    ).toBe("department");
+    expect(
+      lockFailureOf("22023", "A kitchen's screen or a till", "shows"),
+    ).toBe("failed");
+    expect(
+      lockFailureOf(
+        "22023",
+        "A station needs a name of up to 40 characters",
+        null,
+      ),
+    ).toBe("name");
   });
 
   it("of stopping a station and taking it back", () => {

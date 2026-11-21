@@ -129,11 +129,30 @@ export type TicketCardProps = {
   /** A station's size: the lines larger, "מוכן" at least 64px tall. */
   large?: boolean;
   /**
+   * Just reached a station's screen (P8a): a ring in the business's colour
+   * fades once, and while it stays fresh an edge in that colour at its
+   * start, drawn inside the card so it keeps no border. With reduced motion,
+   * the edge alone.
+   */
+  fresh?: boolean;
+  /**
+   * Every line of it taken back or cancelled (P8a): these words ("בוטל
+   * כולו") in danger in place of its age, its lines struck.
+   */
+  gone?: string | null;
+  /**
    * "מוכן", full width at its foot: one on every ticket, so not in the
    * accent. `loading` while the server hears it (the button says so and
-   * waits).
+   * waits). `ariaLabel` names it with its ticket, where its words alone
+   * would name several buttons alike ("הסרה מהמסך: שולחן 4"); it starts
+   * with `label`, so what is read is what shows.
    */
-  ready?: { label: string; onClick: () => void; loading?: boolean } | null;
+  ready?: {
+    label: string;
+    onClick: () => void;
+    loading?: boolean;
+    ariaLabel?: string;
+  } | null;
   /** The ticket's lines, each an `OrderLine`. */
   children: ReactNode;
 };
@@ -156,6 +175,8 @@ export function TicketCard({
   age,
   held = null,
   large = false,
+  fresh = false,
+  gone = null,
   ready = null,
   children,
 }: TicketCardProps) {
@@ -163,8 +184,10 @@ export function TicketCard({
     <article
       aria-label={label}
       className={cn(
-        "flex flex-col gap-3 rounded-card p-4",
+        "relative flex flex-col gap-3 overflow-hidden rounded-card p-4",
         held !== null ? "bg-surface-2" : "bg-surface shadow-card",
+        fresh &&
+          "motion-safe:animate-[ticket-flash_1s_ease-out] before:absolute before:inset-y-0 before:start-0 before:w-1.5 before:bg-accent before:content-['']",
       )}
     >
       <header className="flex items-start justify-between gap-3">
@@ -172,7 +195,16 @@ export function TicketCard({
           <span className="font-bold text-2xl">{title}</span>
           <span className="text-ink-2 text-sm">{from}</span>
         </span>
-        {held !== null ? (
+        {gone !== null ? (
+          <span
+            className={cn(
+              "shrink-0 font-semibold text-danger",
+              large ? "text-md" : "text-base",
+            )}
+          >
+            {gone}
+          </span>
+        ) : held !== null ? (
           <span className="flex shrink-0 items-center gap-1.5 font-semibold text-base text-ink-2">
             <Hourglass aria-hidden="true" className="size-4" />
             {held}
@@ -196,6 +228,7 @@ export function TicketCard({
           variant="secondary"
           onClick={ready.onClick}
           loading={ready.loading}
+          aria-label={ready.ariaLabel}
           className={cn("w-full", large && "min-h-16 text-lg")}
         >
           <Check aria-hidden="true" />

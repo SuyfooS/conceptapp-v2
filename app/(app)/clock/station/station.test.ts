@@ -9,6 +9,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // `currentStationHome`: on a running station of the business open on Home,
 // whoever may lock it gets the lock and anyone else the sign-out; nothing on
 // any other device, and a device with no station's cookie reads nothing more.
+// A kitchen's screen or a till (waiter mode P8a) is locked again by whoever
+// runs orders, and the clock's lock on such a device says what it is.
 
 vi.mock("server-only", () => ({}));
 
@@ -21,7 +23,9 @@ const jar = vi.hoisted(() => new Map<string, string>());
 const mocks = vi.hoisted(() => ({
   stationByToken: vi.fn(),
   getRunningStations: vi.fn(),
+  countRunningStations: vi.fn(),
   clockAccess: vi.fn(),
+  ordersAccess: vi.fn(),
   currentModuleSettings: vi.fn(),
   currentMember: vi.fn(),
 }));
@@ -36,27 +40,48 @@ vi.mock("next/headers", () => ({
 vi.mock("@db/clock-stations", () => ({
   stationByToken: mocks.stationByToken,
   getRunningStations: mocks.getRunningStations,
+  countRunningStations: mocks.countRunningStations,
 }));
 vi.mock("../clock", () => ({ clockAccess: mocks.clockAccess }));
+vi.mock("../../orders/orders-access", () => ({
+  ordersAccess: mocks.ordersAccess,
+}));
 vi.mock("../../modules", () => ({
   currentModuleSettings: mocks.currentModuleSettings,
 }));
 vi.mock("../../member", () => ({ currentMember: mocks.currentMember }));
 vi.mock("@/app/origin", () => ({ requestOrigin: vi.fn() }));
 
-const { currentStationHome, signedOutPath } = await import("./station");
+const { currentLockOffer, currentStationHome, signedOutPath } = await import(
+  "./station"
+);
 
-/** This device holds the secret of a station of `businessId`. */
-function heldStation(businessId = BUSINESS, stopped = false) {
+/** This device holds the secret of a station of `businessId`, showing `shows`. */
+function heldStation(
+  businessId = BUSINESS,
+  stopped = false,
+  shows: "clock_code" | "prep" | "till" = "clock_code",
+) {
   jar.set(STATION_COOKIE, TOKEN);
   mocks.stationByToken.mockResolvedValue({
     id: "station-entrance",
-    name: "entrance",
+    name: shows === "clock_code" ? "entrance" : "kitchen",
     businessId,
     businessName: "Demo",
     accent: "#0a84ff",
     timeZone: "Asia/Jerusalem",
     stopped,
+    shows,
+    departmentId: null,
+  });
+}
+
+/** Signed in as someone who runs orders in the business, or doesn't. */
+function runsOrders(runs: boolean, viewing = false) {
+  mocks.ordersAccess.mockResolvedValue({
+    businessId: BUSINESS,
+    viewing,
+    reach: { mode: { runs } },
   });
 }
 
@@ -84,6 +109,9 @@ beforeEach(() => {
   for (const mock of Object.values(mocks)) mock.mockReset();
   mocks.stationByToken.mockResolvedValue(null);
   mocks.currentModuleSettings.mockResolvedValue({ codeDisplay: "both" });
+  mocks.getRunningStations.mockResolvedValue([]);
+  mocks.countRunningStations.mockResolvedValue({ ok: true, count: 0 });
+  mocks.ordersAccess.mockResolvedValue(null);
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
@@ -142,6 +170,7 @@ describe("Home's card on the business's clock station", () => {
     signedIn({ edits: true });
     expect(await currentStationHome()).toEqual({
       kind: "lock",
+      shows: "clock_code",
       offer: { current: { name: "entrance" }, running: [] },
     });
     expect(mocks.getRunningStations).not.toHaveBeenCalled();
@@ -150,21 +179,33 @@ describe("Home's card on the business's clock station", () => {
   it("tells anyone else to sign out when done", async () => {
     heldStation();
     signedIn();
-    expect(await currentStationHome()).toEqual({ kind: "signOut" });
+    expect(await currentStationHome()).toEqual({
+      kind: "signOut",
+      shows: "clock_code",
+    });
   });
 
   it("tells whoever edits the clock to sign out where they can't lock it", async () => {
     heldStation();
     // The team viewing as someone only reads.
     signedIn({ edits: true, viewOnly: true });
-    expect(await currentStationHome()).toEqual({ kind: "signOut" });
+    expect(await currentStationHome()).toEqual({
+      kind: "signOut",
+      shows: "clock_code",
+    });
     // Codes on a manager's phone only: locking would be refused.
     signedIn({ edits: true });
     mocks.currentModuleSettings.mockResolvedValue({ codeDisplay: "manager" });
-    expect(await currentStationHome()).toEqual({ kind: "signOut" });
+    expect(await currentStationHome()).toEqual({
+      kind: "signOut",
+      shows: "clock_code",
+    });
     // The clock off for the person: no access to it at all.
     mocks.clockAccess.mockResolvedValue(null);
-    expect(await currentStationHome()).toEqual({ kind: "signOut" });
+    expect(await currentStationHome()).toEqual({
+      kind: "signOut",
+      shows: "clock_code",
+    });
   });
 
   it("is nothing on a stopped station, or another business's", async () => {
@@ -180,5 +221,67 @@ describe("Home's card on the business's clock station", () => {
     jar.set(STATION_COOKIE, TOKEN);
     mocks.stationByToken.mockRejectedValue(new Error("reading failed"));
     expect(await currentStationHome()).toBeNull();
+  });
+});
+
+describe("Home's card on the business's kitchen's screen or till", () => {
+  it("locks it again for whoever runs orders, as the screen it is", async () => {
+    heldStation(BUSINESS, false, "prep");
+    signedIn();
+    runsOrders(true);
+    expect(await currentStationHome()).toEqual({
+      kind: "lock",
+      shows: "prep",
+      offer: { current: { name: "kitchen" }, running: [] },
+    });
+  });
+
+  it("tells whoever edits the clock and doesn't run orders to sign out, and a view too", async () => {
+    heldStation(BUSINESS, false, "till");
+    signedIn({ edits: true });
+    runsOrders(false);
+    expect(await currentStationHome()).toEqual({
+      kind: "signOut",
+      shows: "till",
+    });
+    runsOrders(true, true);
+    expect(await currentStationHome()).toEqual({
+      kind: "signOut",
+      shows: "till",
+    });
+  });
+});
+
+describe("the clock's lock on a device", () => {
+  it("keeps the clock's station it is", async () => {
+    heldStation();
+    signedIn({ edits: true });
+    expect(await currentLockOffer()).toEqual({
+      current: { name: "entrance" },
+      running: [],
+    });
+  });
+
+  it("says what a kitchen's screen is, and counts every kind of station", async () => {
+    heldStation(BUSINESS, false, "prep");
+    signedIn({ edits: true });
+    mocks.getRunningStations.mockResolvedValue([{ name: "Front" }]);
+    mocks.countRunningStations.mockResolvedValue({ ok: true, count: 2 });
+    expect(await currentLockOffer()).toEqual({
+      current: null,
+      running: ["Front"],
+      total: 2,
+      other: { name: "kitchen", shows: "prep" },
+    });
+  });
+
+  it("is a new station's elsewhere", async () => {
+    signedIn({ edits: true });
+    expect(await currentLockOffer()).toEqual({
+      current: null,
+      running: [],
+      total: 0,
+      other: null,
+    });
   });
 });

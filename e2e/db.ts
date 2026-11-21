@@ -4863,3 +4863,154 @@ export async function demoMenuRule(role: string): Promise<boolean | null> {
       and named_role is null and perm = 'order_taking.edit'`;
   return rows[0]?.allowed ?? null;
 }
+
+/**
+ * A running kitchen's screen or till of the demo restaurant (waiter mode
+ * P8a), as another device locked it: its kind, a kitchen's department by its
+ * key, and a secret only the test holds, to set as a device's cookie.
+ */
+export async function addDemoOrderStation(station: {
+  name: string;
+  shows: "prep" | "till" | "clock_code";
+  department?: string;
+}): Promise<{ id: string; token: string }> {
+  const token = randomBytes(32).toString("base64url");
+  const tokenHash = createHash("sha256").update(token, "utf8").digest("hex");
+  const [row] = await sql<{ id: string }[]>`
+    insert into public.clock_stations (business_id, name, token_hash, shows, department_id)
+    values (
+      ${DEMO_RESTAURANT}, ${station.name}, ${tokenHash}, ${station.shows},
+      (select d.id from public.departments d
+       where d.business_id = ${DEMO_RESTAURANT} and d.key = ${station.department ?? ""})
+    )
+    returning id`;
+  if (!row) throw new Error("no station was made");
+  return { id: row.id, token };
+}
+
+export type DemoOrderStation = {
+  name: string;
+  shows: string;
+  department: string | null;
+  stopped: boolean;
+  seen: boolean;
+  lastAction: string | null;
+};
+
+/** The demo restaurant's kitchen's screens and tills, oldest first. */
+export async function demoOrderStations(): Promise<DemoOrderStation[]> {
+  return await sql<DemoOrderStation[]>`
+    select s.name, s.shows, d.key as department, s.stopped_at is not null as stopped,
+      s.last_seen_at is not null as seen, s.last_action as "lastAction"
+    from public.clock_stations s
+    left join public.departments d on d.id = s.department_id
+    where s.business_id = ${DEMO_RESTAURANT} and s.shows <> 'clock_code'
+    order by s.created_at`;
+}
+
+/**
+ * The newest ticket of that department at the open order of that place:
+ * its status, the station that made it ready by its name, and the person who
+ * did, by phone.
+ */
+export async function demoTicketStation(
+  placeName: string,
+  departmentKey: string,
+): Promise<{
+  status: string;
+  station: string | null;
+  readyBy: string | null;
+} | null> {
+  const [row] = await sql<
+    { status: string; station: string | null; readyBy: string | null }[]
+  >`
+    select t.status, s.name as station, pr.phone as "readyBy"
+    from public.order_tickets t
+    join public.orders o on o.id = t.order_id
+    join public.order_places p on p.id = o.place_id
+    join public.departments d on d.id = t.department_id
+    join public.order_rounds r on r.id = t.round_id
+    left join public.clock_stations s on s.id = t.ready_station
+    left join public.profiles pr on pr.id = t.ready_by
+    where o.business_id = ${DEMO_RESTAURANT} and o.status = 'open'
+      and p.name = ${placeName} and d.key = ${departmentKey}
+    order by r.sent_at desc, t.position desc
+    limit 1`;
+  return row ?? null;
+}
+
+/**
+ * The newest order at that place: its status, and the stations that closed
+ * it and opened it again, by their names.
+ */
+export async function demoOrderStation(placeName: string): Promise<{
+  status: string;
+  closedBy: string | null;
+  reopenedBy: string | null;
+} | null> {
+  const [row] = await sql<
+    { status: string; closedBy: string | null; reopenedBy: string | null }[]
+  >`
+    select o.status, c.name as "closedBy", ro.name as "reopenedBy"
+    from public.orders o
+    join public.order_places p on p.id = o.place_id
+    left join public.clock_stations c on c.id = o.closed_station
+    left join public.clock_stations ro on ro.id = o.reopened_station
+    where o.business_id = ${DEMO_RESTAURANT} and p.name = ${placeName}
+    order by o.opened_at desc
+    limit 1`;
+  return row ?? null;
+}
+
+/** Whether the demo restaurant's item of that name is available, and which station changed it. */
+export async function demoItemAvailability(
+  name: string,
+): Promise<{ available: boolean; station: string | null } | null> {
+  const [row] = await sql<{ available: boolean; station: string | null }[]>`
+    select i.available, s.name as station
+    from public.menu_items i
+    left join public.clock_stations s on s.id = i.available_station
+    where i.business_id = ${DEMO_RESTAURANT} and i.name = ${name}
+      and i.archived_at is null
+    limit 1`;
+  return row ?? null;
+}
+
+/**
+ * Someone who takes orders cancels the newest line of that item at the open
+ * order of that place, for the guest, as their phone would.
+ */
+export async function cancelDemoLine(
+  phone: string,
+  placeName: string,
+  itemName: string,
+): Promise<void> {
+  await sql`
+    select public.cancel_order_line(
+      (select p.id from public.profiles p where p.phone = ${phone}),
+      (select l.id from public.order_lines l
+       join public.order_tickets t on t.id = l.ticket_id
+       join public.orders o on o.id = t.order_id
+       join public.order_places pl on pl.id = o.place_id
+       where o.business_id = ${DEMO_RESTAURANT} and o.status = 'open'
+         and pl.name = ${placeName} and l.name = ${itemName}
+       order by l.position desc
+       limit 1),
+      'guest',
+      true
+    )`;
+}
+
+/** A ticket of that department at one of the demo restaurant's open orders, or null. */
+export async function demoOpenTicket(
+  departmentKey: string,
+): Promise<string | null> {
+  const [row] = await sql<{ id: string }[]>`
+    select t.id from public.order_tickets t
+    join public.departments d on d.id = t.department_id
+    join public.orders o on o.id = t.order_id
+    where t.business_id = ${DEMO_RESTAURANT} and d.key = ${departmentKey}
+      and o.status = 'open'
+    limit 1`;
+  return row?.id ?? null;
+}

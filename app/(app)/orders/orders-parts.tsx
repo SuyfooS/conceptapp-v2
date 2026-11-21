@@ -21,6 +21,7 @@ import { Clock3, CloudOff, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useCallback, useId } from "react";
+import { useOrderFacts } from "./order-facts";
 import { useOrdersMode } from "./orders-mode";
 import type { OrdersActionFailure, SendFailure } from "./orders-types";
 
@@ -28,7 +29,9 @@ import type { OrdersActionFailure, SendFailure } from "./orders-types";
  * The parts the mode's screens share (waiter mode P4): the words for places,
  * people, departments and times, and the reads put into words for the parts
  * in packages/ui that draw them (PlaceTile, TicketCard and OrderLine, Badge),
- * which /design shows. The twins draw the same.
+ * which /design shows. The twins draw the same. The words, the tickets and
+ * the prices read their facts through `useOrderFacts`, so the kitchen's and
+ * the till's stations (P8a), which mount no mode, draw them too.
  */
 
 export const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
@@ -60,23 +63,23 @@ export function usePlaceWords() {
   return { placeTitle };
 }
 
-/** The mode's words, with its times, people and departments as the frame names them. */
+/** The mode's words, with its times, people and departments as the frame (or a station) names them. */
 export function useOrderWords() {
   const t = useTranslations("app.orders");
   const locale = moneyLocale(useLocale());
-  const { frame } = useOrdersMode();
+  const facts = useOrderFacts();
   const { placeTitle } = usePlaceWords();
   return {
     t,
     placeTitle,
     /** An instant as "20:36" in the business's clock, for an LTR span. */
-    time: (at: string | number) => messageTime(new Date(at), frame.timeZone),
+    time: (at: string | number) => messageTime(new Date(at), facts.timeZone),
     /** How long ago, in words: "עכשיו", "לפני 6 דק׳". */
     ago: (at: string | number, now: number) =>
       t("age.ago", { count: minutesSince(at, now) }),
-    department: (id: string) => frame.departments[id] ?? "",
+    department: (id: string) => facts.departments[id] ?? "",
     person: (id: string | null) =>
-      id ? (frame.names[id.toLowerCase()] ?? "") : "",
+      id ? (facts.names[id.toLowerCase()] ?? "") : "",
     /** Agorot as "62.00 ₪", for an LTR span. */
     shekels: (agorot: number) => formatShekels(agorot, locale),
   };
@@ -260,7 +263,11 @@ export function TicketBadgeView({
   }
 }
 
-/** A ticket on a prep screen, as `TicketCard` draws it. */
+/**
+ * A ticket on a prep screen, as `TicketCard` draws it. On a station (P8a)
+ * it is large, fresh for a while once it arrived, and struck whole once
+ * every line of it went, its "מוכן" then taking it off that screen.
+ */
 export function TicketView({
   title,
   department,
@@ -270,6 +277,9 @@ export function TicketView({
   lines,
   ready,
   busy = false,
+  large = false,
+  fresh = false,
+  gone = null,
 }: {
   title: string;
   department: string;
@@ -280,10 +290,22 @@ export function TicketView({
   lines: PrepLine[];
   ready?: (() => void) | null;
   busy?: boolean;
+  large?: boolean;
+  fresh?: boolean;
+  /**
+   * Every line taken back or cancelled: these words, and taking it off the
+   * screen, its button named with its place (`dismissLabel`).
+   */
+  gone?: {
+    label: string;
+    dismiss: string;
+    dismissLabel: string;
+    onDismiss: () => void;
+  } | null;
 }) {
   const { t, person } = useOrderWords();
-  const { now, frame } = useOrdersMode();
-  const age = ticketAge(since, now, frame.lateAfterMinutes);
+  const { now, lateAfterMinutes } = useOrderFacts();
+  const age = ticketAge(since, now, lateAfterMinutes);
   const name = person(sentBy);
   return (
     <TicketCard
@@ -296,12 +318,23 @@ export function TicketView({
       }
       age={{ text: t("age.ago", { count: age.minutes }), tone: age.tone }}
       held={held ? t("ticketState.held") : null}
+      large={large}
+      fresh={fresh}
+      gone={gone?.label ?? null}
       ready={
-        ready ? { label: t("prep.ready"), onClick: ready, loading: busy } : null
+        gone
+          ? {
+              label: gone.dismiss,
+              ariaLabel: gone.dismissLabel,
+              onClick: gone.onDismiss,
+            }
+          : ready
+            ? { label: t("prep.ready"), onClick: ready, loading: busy }
+            : null
       }
     >
       {lines.map((line) => (
-        <SentLineView key={line.id} line={line} />
+        <SentLineView key={line.id} line={line} large={large} />
       ))}
     </TicketCard>
   );

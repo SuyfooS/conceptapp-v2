@@ -3,6 +3,7 @@ import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import { expectCameraOff, standInCamera } from "./camera";
 import {
+  addDemoOrderStation,
   addDemoStations,
   clearDemoStations,
   clearPunchState,
@@ -238,6 +239,26 @@ test("with ten stations running a lock is refused before it pairs, and leaves no
   expect(await demoStations()).toHaveLength(10);
   // Nothing was locked: still signed in, on the code screen.
   await expect(page).toHaveURL(/\/clock\/code$/);
+});
+
+// The kitchen's screens and the till (waiter mode P8a) share the registry,
+// but the team's hours list the clock's stations only.
+test("the team's hours list the clock's stations, never a kitchen's screen", async ({
+  page,
+}) => {
+  await addDemoStations(["עמדת הכניסה"]);
+  await addDemoOrderStation({
+    name: "מסך המטבח",
+    shows: "prep",
+    department: "kitchen",
+  });
+  await signIn(page, MANAGER);
+  await page.goto("/clock/team");
+  await expect(
+    page.getByRole("heading", { level: 2, name: listed.title }),
+  ).toBeVisible();
+  await expect(page.getByText("עמדת הכניסה")).toBeVisible();
+  await expect(page.getByText("מסך המטבח")).toHaveCount(0);
 });
 
 test("only the business's station gets codes, and never beside an account", async ({
