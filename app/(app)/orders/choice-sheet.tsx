@@ -4,13 +4,12 @@ import {
   type DraftLine,
   groupFull,
   keepPicks,
-  missingGroups,
   orderedPicks,
-  overGroups,
   pickedIn,
   pickState,
   picksAgorot,
   toggleChoice,
+  waitingGroups,
 } from "@domain/order-screens";
 import {
   type ChoicePick,
@@ -38,8 +37,9 @@ export type ChoiceTarget = { mode: "new" } | { mode: "edit"; line: DraftLine };
  * draft line, "שמירת הבחירות" for that line alone (its count stays its own).
  * The item is the menu's as it is now, so a sync changes it in place: a pick
  * it no longer has is left out, a group whose most went under its picks
- * says so and the action waits until enough are taken off (as the send
- * would refuse them), and once it sold out nothing is added.
+ * says so and the action waits until enough are taken off (a group of one
+ * until one is chosen again), as the send would refuse them, and once it
+ * sold out nothing is added.
  */
 export function ChoiceSheet({
   item,
@@ -192,7 +192,8 @@ function ChoiceGroups({
         const mine = kept
           .filter((pick) => pick.group === group.id)
           .map((pick) => pick.option);
-        const one = group.min === 1 && group.max === 1;
+        // As `waitingGroups` reads it: a group of one over asks to choose.
+        const one = choiceRule(group) === "one";
         const over = pickedIn(group, kept) > group.max;
         return (
           <ChoiceGroup
@@ -225,9 +226,12 @@ function ChoiceGroups({
 }
 
 /**
- * The sheet's end: how many (a new line), what is still to choose or has
- * too many, and the main action, which waits until every group has from its
- * least to its most: what `checkPicks` takes, so the send takes it too.
+ * The sheet's end: how many (a new line), what to do before the action, and
+ * the main action, which waits until every group has from its least to its
+ * most: what `checkPicks` takes, so the send takes it too. Each line says the
+ * action and what is done for it, as the group's own note says it: which
+ * groups to choose in (a group of one past its most among them, its radios
+ * showing none), and which to take picks off.
  */
 function ChoiceFooter({
   item,
@@ -251,8 +255,7 @@ function ChoiceFooter({
   const missingId = useId();
   const overId = useId();
   const kept = orderedPicks(item, keepPicks(item, picks));
-  const missing = missingGroups(item, kept);
-  const over = overGroups(item, kept);
+  const { choose: missing, takeOff: over } = waitingGroups(item, kept);
   const waits = missing.length > 0 || over.length > 0;
   const describedBy =
     [missing.length > 0 ? missingId : null, over.length > 0 ? overId : null]
@@ -293,8 +296,8 @@ function ChoiceFooter({
       ) : null}
       {over.length > 0 ? (
         <p id={overId} className="px-1 text-ink-2 text-sm">
-          {/* The group says how many to take off; this says which, for either action. */}
-          {t("choice.tooMany", {
+          {/* Which groups to take off from, for the action under it; each group says how many. */}
+          {t(target.mode === "new" ? "choice.tooMany" : "choice.tooManySave", {
             groups: over.map((group) => group.name).join(", "),
           })}
         </p>

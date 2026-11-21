@@ -43,11 +43,13 @@ import {
   ticketBadge,
   ticketStage,
   toggleChoice,
+  waitingGroups,
   withoutSent,
 } from "./order-screens";
 import {
   type ChoicePick,
   checkPicks,
+  choiceRule,
   type OptionGroup,
   unitAgorot,
 } from "./order-taking";
@@ -407,6 +409,16 @@ describe("choosing (P6)", () => {
     expect(overGroups(lowered, picks)).toEqual([oneExtra]);
     expect(pickedIn(oneExtra, picks)).toBe(2);
     expect(groupFull(oneExtra, picks)).toBe(false);
+    // Drawn as switches, the footer says to take one off it.
+    expect(waitingGroups(lowered, picks)).toEqual({
+      choose: [],
+      takeOff: [oneExtra],
+    });
+    // A new line with no doneness yet: both, each said for itself.
+    expect(waitingGroups(lowered, [egg, cheese])).toEqual({
+      choose: [doneness],
+      takeOff: [oneExtra],
+    });
     // One switched off, the line fits again, as the send takes it.
     const fewer = toggleChoice(oneExtra, picks, "egg", false);
     expect(overGroups(lowered, fewer)).toEqual([]);
@@ -431,6 +443,23 @@ describe("choosing (P6)", () => {
       ok: false,
       problem: "tooMany",
       group: "doneness",
+    });
+    // Its radios show none, so the footer asks to choose in it, as its note
+    // does ("בוחרים אחת"), not to take one off.
+    expect(waitingGroups(burger, two)).toEqual({
+      choose: [doneness],
+      takeOff: [],
+    });
+    expect(waitingGroups(burger, [...two, egg, cheese])).toEqual({
+      choose: [doneness],
+      takeOff: [],
+    });
+    // A group of up to one isn't one of exactly one: drawn as switches, it's
+    // taken off from.
+    const upToOne = { ...doneness, min: 0 };
+    expect(waitingGroups({ optionGroups: [upToOne] }, two)).toEqual({
+      choose: [],
+      takeOff: [upToOne],
     });
     // A radio replaces both, whichever is chosen.
     expect(toggleChoice(doneness, two, "m", true)).toEqual([medium]);
@@ -460,12 +489,23 @@ describe("choosing (P6)", () => {
       const item = { optionGroups: [doneness, { ...withBacon, min, max }] };
       for (const picks of subsets) {
         const kept = keepPicks(item, picks);
-        const fits =
-          missingGroups(item, kept).length === 0 &&
-          overGroups(item, kept).length === 0;
-        expect(fits, JSON.stringify([min, max, picks])).toBe(
-          checkPicks(item.optionGroups, kept).ok,
+        const missing = missingGroups(item, kept);
+        const over = overGroups(item, kept);
+        const fits = missing.length === 0 && over.length === 0;
+        const why = JSON.stringify([min, max, picks]);
+        expect(fits, why).toBe(checkPicks(item.optionGroups, kept).ok);
+        // The footer's two lines say each of them once, and never "take
+        // off" for a group of one, whose radios show none.
+        const { choose, takeOff } = waitingGroups(item, kept);
+        const ids = (groups: OptionGroup[]) =>
+          groups.map((group) => group.id).sort();
+        expect(ids([...choose, ...takeOff]), why).toEqual(
+          ids([...missing, ...over]),
         );
+        expect(
+          takeOff.some((group) => choiceRule(group) === "one"),
+          why,
+        ).toBe(false);
       }
     }
   });

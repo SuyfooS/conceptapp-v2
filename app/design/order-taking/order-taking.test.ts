@@ -6,6 +6,7 @@ import {
   placeState,
   staleChoiceLines,
   toggleChoice,
+  waitingGroups,
 } from "@domain/order-screens";
 import {
   choiceRule,
@@ -448,11 +449,16 @@ describe("an item's choices", () => {
     expect(choicesRefused(lowered, draft)).toBe(true);
     const items = twinMenu(lowered, 1).items;
     expect(staleChoiceLines(items, draft)).toEqual(["d1"]);
-    // The app's sheet, which the twin draws, holds the same picks.
+    // The app's sheet, which the twin draws, holds the same picks, and its
+    // footer says to take one off the extras.
     const burger = items.find((item) => item.id === "burger");
     expect(overGroups(burger ?? { optionGroups: [] }, both)).toMatchObject([
       { id: "extras", max: 1 },
     ]);
+    expect(waitingGroups(burger ?? { optionGroups: [] }, both)).toMatchObject({
+      choose: [],
+      takeOff: [{ id: "extras", max: 1 }],
+    });
   });
 });
 

@@ -1,6 +1,7 @@
 import {
   type ChoicePick,
   checkPicks,
+  choiceRule,
   type MenuItem,
   type OptionGroup,
   type OrderPlace,
@@ -320,6 +321,29 @@ export function overGroups(
   return item.optionGroups.filter(
     (group) => pickedIn(group, picks) > group.max,
   );
+}
+
+/**
+ * What the sheet's action waits on, by what is done about it: groups to
+ * choose in (fewer than their least, and a group of exactly one past its
+ * most, whose radios show none and ask for one) and groups to take picks off
+ * (any other group past its most, drawn as switches). Together they are
+ * `missingGroups` and `overGroups`, each group once, in the item's order.
+ */
+export function waitingGroups(
+  item: Choosing,
+  picks: readonly ChoicePick[],
+): { choose: OptionGroup[]; takeOff: OptionGroup[] } {
+  const missing = missingGroups(item, picks);
+  const over = overGroups(item, picks);
+  const one = (group: OptionGroup) => choiceRule(group) === "one";
+  return {
+    choose: item.optionGroups.filter(
+      (group) =>
+        missing.includes(group) || (one(group) && over.includes(group)),
+    ),
+    takeOff: over.filter((group) => !one(group)),
+  };
 }
 
 /**
