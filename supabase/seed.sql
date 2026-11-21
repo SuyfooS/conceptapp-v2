@@ -132,8 +132,8 @@ values
 -- workers each names, as the hosted ones are (tooling/demo-chat.test.ts).
 -- The restaurant also opens with taking orders on ("orderTaking": true;
 -- 20261120000100_order_taking_screens.sql), for the browser tests of the
--- menu's screens; the hosted one keeps it off until Orel approves them
--- (tooling/demo-order-taking.test.ts).
+-- menu's screens; the hosted one has it on too since Orel approved the screens
+-- on 21.11.2026 (tooling/demo-order-taking.test.ts).
 insert into private.demo_businesses (business_id, definition)
 values
   ('00000000-0000-4000-b000-000000000001', $json$
