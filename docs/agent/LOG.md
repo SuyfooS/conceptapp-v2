@@ -3,6 +3,13 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-21 · chat · waiter mode on in the hosted demo restaurant
+
+- Orel approved the screens on 21.11 (#1, #191 decision 9): the hosted demo restaurant takes orders, the shop keeps the module off.
+- `supabase/hosted-demo.sql`: the restaurant's definition says `"orderTaking": true`, and a business whose definition asks for it with no enabled `order_taking` row starts again, as the door's reset would (which switches it on with the menu, the places and the sample orders). Safe to run again: once on, a later run leaves it as visitors left it.
+- `tooling/demo-order-taking.test.ts`: on for both restaurants, off for both shops, and the reset rule held. The seed's comment, CLAUDE.md principle 1, AGENT.md and the ROADMAP rows say so.
+- After the deploy: Migrate with its "demo" box on (it runs `hosted-demo.sql`; there is no dry run for that step, and the file is one `do` block, so a failure leaves the demo as it was).
+
 ## 2026-11-21 · chat · taking orders: "מוכן" on the phone and "המסך לא מחובר" (waiter mode P8b)
 
 - On chat/order-ready-push from origin/main 71600c7 (P8a's branch chat/order-stations, PR #215, on top of main 7a47217 with P1 to P7 merged). §9 of the design with §16's decision 8 as Orel accepted it on 20 November (#1, #191): during a shift `orders` reaches the phone in quiet hours too, and the group's switch still keeps it off.
