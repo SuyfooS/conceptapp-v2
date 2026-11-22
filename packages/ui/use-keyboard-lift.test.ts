@@ -513,6 +513,7 @@ describe("watchKeyboard within a sheet", () => {
     expect(onLift).not.toHaveBeenCalled();
     sheet.focus(close);
     view.set({ height: TALL });
+    win.settle();
     expect(onLift).not.toHaveBeenCalled();
     expect(win.timers.size).toBe(0);
   });
@@ -543,13 +544,35 @@ describe("watchKeyboard within a sheet", () => {
     expect(onLift).toHaveBeenLastCalledWith({ inset: 336, room: 508 });
     sheet.focus(price);
     expect(onLift).toHaveBeenCalledTimes(1);
+    // A tapped button takes the focus before its press lands: the sheet
+    // stays where it is until the next task, so the press finds the button.
     sheet.focus(save);
+    expect(onLift).toHaveBeenCalledTimes(1);
+    win.settle();
     expect(onLift).toHaveBeenLastCalledWith(NO_KEYBOARD);
     sheet.focus(price);
     expect(onLift).toHaveBeenLastCalledWith({ inset: 336, room: 508 });
     sheet.focus(null);
+    expect(onLift).toHaveBeenCalledTimes(3);
+    win.settle();
     expect(onLift).toHaveBeenLastCalledWith(NO_KEYBOARD);
     expect(onLift).toHaveBeenCalledTimes(4);
+  });
+
+  it("goes from a button back to a field before the next task without moving", () => {
+    const win = new Win(TALL);
+    (win.visualViewport as View).height = 508;
+    const sheet = new Scope();
+    const name = sheet.draw(text());
+    const save = sheet.draw({ tagName: "BUTTON" });
+    const onLift = vi.fn();
+    watchKeyboard(asWin(win), { onLift, within: asScope(sheet) });
+    sheet.focus(name);
+    expect(onLift).toHaveBeenCalledTimes(1);
+    sheet.focus(save);
+    sheet.focus(name);
+    win.settle();
+    expect(onLift).toHaveBeenCalledTimes(1);
   });
 
   it("hears the focus no more once stopped", () => {

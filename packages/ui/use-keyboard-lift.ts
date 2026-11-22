@@ -279,24 +279,40 @@ export function watchKeyboard(
             onSettled?.();
           }, SETTLE_MS);
   };
-  // As the focus comes in, it is already where it went; as it leaves, it is
-  // nowhere yet, and `relatedTarget` says where it goes, so going from one
-  // field to the next is no drop.
   const reread = () => read(within?.ownerDocument.activeElement);
-  const leave = (event: FocusEvent) => read(event.relatedTarget);
+  // A field taking the focus lifts at once. Anything else waits a task: a
+  // tapped button takes the focus before its press lands, and a sheet that
+  // dropped in between would move the button from under the finger, so the
+  // press would miss it. The keyboard closing drops it anyway, through the
+  // visual viewport. Going from one field to the next is no drop.
+  let later: number | undefined;
+  const soon = () => {
+    win.clearTimeout(later);
+    later = win.setTimeout(() => {
+      later = undefined;
+      reread();
+    }, 0);
+  };
+  const moved = () => {
+    if (!typing(within?.ownerDocument.activeElement)) return soon();
+    win.clearTimeout(later);
+    later = undefined;
+    reread();
+  };
   reread();
   view.addEventListener("resize", reread);
   view.addEventListener("scroll", reread);
   win.addEventListener("resize", reread);
-  within?.addEventListener("focusin", reread);
-  within?.addEventListener("focusout", leave);
+  within?.addEventListener("focusin", moved);
+  within?.addEventListener("focusout", soon);
   return () => {
     view.removeEventListener("resize", reread);
     view.removeEventListener("scroll", reread);
     win.removeEventListener("resize", reread);
-    within?.removeEventListener("focusin", reread);
-    within?.removeEventListener("focusout", leave);
+    within?.removeEventListener("focusin", moved);
+    within?.removeEventListener("focusout", soon);
     win.clearTimeout(settling);
+    win.clearTimeout(later);
   };
 }
 
