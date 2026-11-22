@@ -188,12 +188,16 @@ test("a new worker picks how to be addressed, stops at the account and comes bac
   }
   if (isDesktop(testInfo)) {
     await expect(section(page, "bank")).toBeInViewport();
-    await expect(
-      page
-        .getByRole("complementary")
-        .getByRole("listitem")
-        .filter({ hasText: f.steps.name.bank }),
-    ).not.toHaveCount(0);
+    // The summary beside the steps lists what is still missing, and only
+    // that: not the step rows, which name every step whatever its state.
+    const stillMissing = page
+      .getByRole("complementary", { name: f.steps.title })
+      .getByRole("list", { name: f.summary.title });
+    await expect(stillMissing.getByRole("listitem")).toHaveText([
+      f.steps.name.bank,
+      f.steps.name.pension,
+      f.steps.name.form101,
+    ]);
   }
   await expect(section(page, "bank")).toBeVisible();
   await expectCleanPage(page);
@@ -356,6 +360,11 @@ test("the flow switches to English, and back", async ({ page }, testInfo) => {
   ).toBeVisible();
   await expectCleanPage(page);
 
+  // What was typed in the step stays through the switch.
+  await english
+    .getByRole("region", { name: en.app.file.steps.name.identity })
+    .getByLabel(en.app.file.identity.firstName)
+    .fill("Noa");
   await english
     .getByRole("button", { name: en.app.file.language.switch })
     .click();
@@ -366,6 +375,29 @@ test("the flow switches to English, and back", async ({ page }, testInfo) => {
       name: heT("app.file.title", { business: BUSINESS }),
     }),
   ).toBeVisible();
+  await expect(
+    section(page, "identity").getByLabel(f.identity.firstName),
+  ).toHaveValue("Noa");
+});
+
+test("the welcome goes on where the person stopped", async ({
+  page,
+}, testInfo) => {
+  test.skip(isDesktop(testInfo), "A desktop shows every step under it.");
+  await signIn(page, NOA);
+  await page.goto("/me/file?step=start");
+  await section(page, "start").getByRole("radio", { name: f.start.f }).check();
+  await save(page, testInfo, "start", f.actions.saveStart);
+
+  // Step 0 is the profile's, so the file is still new: the welcome again,
+  // and its way in leads on to the step after it.
+  await page.goto("/me/file");
+  await expect(
+    main(page).getByText(heT("app.file.welcome.title", { business: BUSINESS })),
+  ).toBeVisible();
+  await visible(page, "button", f.welcome.start).click();
+  await expect(page).toHaveURL(/\/me\/file\?step=identity$/);
+  await expect(section(page, "identity")).toBeVisible();
 });
 
 test("the own ID shows masked, and hides again after a minute", async ({

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { datePartsOf, isEmptyDate, parseTypedDate } from "./typed-date";
+import {
+  datePartsOf,
+  isEmptyDate,
+  isShortYear,
+  parseTypedDate,
+} from "./typed-date";
 
 describe("parseTypedDate", () => {
   it("reads a day, a month and a year", () => {
@@ -64,5 +69,22 @@ describe("datePartsOf", () => {
       year: "2026",
     });
     expect(datePartsOf(null)).toEqual({ day: "", month: "", year: "" });
+  });
+});
+
+describe("isShortYear", () => {
+  it("says a year typed with one to three digits", () => {
+    expect(isShortYear({ day: "1", month: "1", year: "95" })).toBe(true);
+    expect(isShortYear({ day: "1", month: "1", year: "9" })).toBe(true);
+    expect(isShortYear({ day: "1", month: "1", year: "199" })).toBe(true);
+    expect(isShortYear({ day: "1", month: "1", year: "\u0669\u0665" })).toBe(
+      true,
+    );
+  });
+
+  it("not a full year, or none", () => {
+    expect(isShortYear({ day: "1", month: "1", year: "1995" })).toBe(false);
+    expect(isShortYear({ day: "1", month: "1", year: "" })).toBe(false);
+    expect(isShortYear({ day: "", month: "", year: " " })).toBe(false);
   });
 });

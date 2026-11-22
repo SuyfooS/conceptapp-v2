@@ -13,9 +13,10 @@ import {
   type DateParts,
   datePartsOf,
   isEmptyDate,
+  isShortYear,
   parseTypedDate,
 } from "@domain/typed-date";
-import { tidyLine } from "@domain/typed-text";
+import { cleanTyped, tidyLine } from "@domain/typed-text";
 import { Button } from "@ui/button";
 import { Card, CardText, CardTitle } from "@ui/card";
 import { ChoiceList, ChoiceRow } from "@ui/choice-row";
@@ -30,10 +31,12 @@ import type { FileActionFailure } from "../file-types";
 import {
   Failure,
   FileSection,
+  firstProblem,
   type Kit,
   LaterLink,
   Reason,
   StepDock,
+  showFirstProblem,
   useDay,
 } from "../flow-kit";
 
@@ -49,6 +52,12 @@ const typedDay = (parts: DateParts) => {
 const complete = (parts: DateParts) =>
   parts.day !== "" && parts.month !== "" && parts.year.length === 4;
 
+/** Whether one of the three parts is still empty: the date is missing, not wrong. */
+const partEmpty = (parts: DateParts) =>
+  [parts.day, parts.month, parts.year].some(
+    (part) => cleanTyped(part).trim() === "",
+  );
+
 /**
  * Step 1, "הפרטים שלך כמו בתעודה": the document (an Israeli ID, a passport
  * or another), its number, the names exactly as on it and the birth date.
@@ -56,7 +65,10 @@ const complete = (parts: DateParts) =>
  * number shows as its last digits, with "הצגה" for the person's own eyes,
  * and "תיקון" types a new one; left empty, the saved one stays. As soon as
  * the birth date says the person is under 18 today, the card about the
- * medical certificate shows, before anything is saved.
+ * medical certificate shows, before anything is saved. A date with every
+ * part typed is judged once it is full or left ("1/1/95" says the year has
+ * four digits); with nothing missing the main action can be pressed, and a
+ * press that can't save says every problem and goes to the first.
  */
 export function IdentityStep({ kit, active }: { kit: Kit; active: boolean }) {
   const { t, data } = kit;
@@ -79,43 +91,54 @@ export function IdentityStep({ kit, active }: { kit: Kit; active: boolean }) {
   const [birth, setBirth] = useState<DateParts>(
     datePartsOf(file?.birth_date ?? null),
   );
+  // A date is judged once the focus leaves its three fields.
+  const [birthLeft, setBirthLeft] = useState(false);
+  const [expiresLeft, setExpiresLeft] = useState(false);
   const [tried, setTried] = useState(false);
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<FileActionFailure | null>(null);
   // A change that makes this year's 101 due again: said, and the step stays.
   const [changeDueBy, setChangeDueBy] = useState<string | null>(null);
 
-  // What is wrong, field by field, once it can be judged.
+  // What is wrong, field by field, once it can be judged: whether it is
+  // wrong doesn't wait, only saying so does.
+  const dateWords = (parts: DateParts, invalid: string) =>
+    isShortYear(parts) ? t("date.yearShort") : invalid;
   const birthDay = typedDay(birth);
   const birthCheck = birthDateSchema(data.today).safeParse(birth);
   const birthError =
-    complete(birth) || (tried && !isEmptyDate(birth))
+    !isEmptyDate(birth) &&
+    (complete(birth) || tried || (birthLeft && !partEmpty(birth)))
       ? birthDay === null
-        ? t("identity.birthInvalid")
+        ? dateWords(birth, t("identity.birthInvalid"))
         : !birthCheck.success
           ? t("identity.birthRange")
           : null
       : null;
-  const numberError = !retype
+  const numberOk =
+    !retype ||
+    number === "" ||
+    (kind === "il"
+      ? isIsraeliId(number)
+      : normalizeDocumentNumber(number) !== null);
+  const numberError = numberOk
     ? null
     : kind === "il"
-      ? number.length === 9 && !isIsraeliId(number)
+      ? number.length === 9 || tried
         ? t("identity.idInvalid")
-        : tried && number !== "" && !isIsraeliId(number)
-          ? t("identity.idInvalid")
-          : null
-      : number !== "" && normalizeDocumentNumber(number) === null
-        ? t("identity.documentInvalid")
-        : null;
+        : null
+      : t("identity.documentInvalid");
   const expiresDay = typedDay(expires);
+  const expiresOk =
+    kind === "il" ||
+    isEmptyDate(expires) ||
+    (expiresDay !== null &&
+      expiresDay >= "2000-01-01" &&
+      expiresDay <= "2100-12-31");
   const expiresError =
-    kind !== "il" &&
-    !isEmptyDate(expires) &&
-    (complete(expires) || tried) &&
-    (expiresDay === null ||
-      expiresDay < "2000-01-01" ||
-      expiresDay > "2100-12-31")
-      ? t("identity.expiresInvalid")
+    !expiresOk &&
+    (complete(expires) || tried || (expiresLeft && !partEmpty(expires)))
+      ? dateWords(expires, t("identity.expiresInvalid"))
       : null;
 
   // A number kept as saved, of the same kind, may stay as it is: the
@@ -127,12 +150,12 @@ export function IdentityStep({ kit, active }: { kit: Kit; active: boolean }) {
   const empty = [
     tidyLine(first) === "",
     tidyLine(last) === "",
-    !birthCheck.success,
+    partEmpty(birth),
     sendsDocument && number === "",
     sendsDocument && kind === "passport" && country === null,
     sendsDocument && kind === "other" && tidyLine(documentName).length < 2,
   ].filter(Boolean).length;
-  const ready = empty === 0 && !numberError && !expiresError;
+  const ready = empty === 0 && birthCheck.success && numberOk && expiresOk;
   const minor = birthCheck.success && minorOnFile(birthCheck.data, data.today);
 
   function changeKind(next: IdKind) {
@@ -140,10 +163,15 @@ export function IdentityStep({ kit, active }: { kit: Kit; active: boolean }) {
     if (next !== (file?.id_kind ?? null)) setRetype(true);
   }
 
-  async function save(event: FormEvent) {
+  async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setTried(true);
-    if (!ready || pending) return;
+    if (pending) return;
+    const form = event.currentTarget;
+    if (!ready || firstProblem(form)) {
+      showFirstProblem(form);
+      return;
+    }
     setPending(true);
     setFailure(null);
     const identity = !sendsDocument
@@ -250,6 +278,7 @@ export function IdentityStep({ kit, active }: { kit: Kit; active: boolean }) {
                     value={country}
                     onChange={setCountry}
                     emptyText={t("identity.countryNone")}
+                    unpickedText={t("identity.countryUnpicked")}
                     placeholder={t("search.placeholder")}
                   />
                   <DateField
@@ -261,6 +290,7 @@ export function IdentityStep({ kit, active }: { kit: Kit; active: boolean }) {
                     }}
                     value={expires}
                     onChange={setExpires}
+                    onBlur={() => setExpiresLeft(true)}
                     error={expiresError}
                   />
                 </>
@@ -318,6 +348,7 @@ export function IdentityStep({ kit, active }: { kit: Kit; active: boolean }) {
             }}
             value={birth}
             onChange={setBirth}
+            onBlur={() => setBirthLeft(true)}
             error={birthError}
             autoComplete="bday"
           />
@@ -364,7 +395,8 @@ export function IdentityStep({ kit, active }: { kit: Kit; active: boolean }) {
           main={{
             label: t("actions.next"),
             form: formId,
-            disabled: !ready,
+            // Something missing is said above it; anything else, once pressed.
+            disabled: empty > 0,
             pending,
           }}
           notice={empty > 0 ? t("missingRequired", { count: empty }) : null}

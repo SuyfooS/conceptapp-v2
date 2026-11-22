@@ -4,11 +4,41 @@ import { Eye, EyeOff } from "lucide-react";
 import { useEffect, useEffectEvent, useState } from "react";
 import { Button } from "./button";
 
+/** What a page says about itself: whether it is on screen, and when that changes. */
+export type PageVisibility = Pick<
+  Document,
+  "visibilityState" | "addEventListener" | "removeEventListener"
+>;
+
+/**
+ * Asks for a number, and gives it only to a page that stayed on screen the
+ * whole way: one put away while it came (another app, the phone locked) gets
+ * "away", even when the answer lands as it comes back, so nothing shows that
+ * the person didn't watch arrive. A failure is null.
+ */
+export async function revealWhileShown(
+  onReveal: () => Promise<string | null>,
+  page: PageVisibility,
+): Promise<string | null | "away"> {
+  let away = page.visibilityState === "hidden";
+  const left = () => {
+    if (page.visibilityState === "hidden") away = true;
+  };
+  page.addEventListener("visibilitychange", left);
+  try {
+    const value = await onReveal().catch(() => null);
+    return away || page.visibilityState === "hidden" ? "away" : value;
+  } finally {
+    page.removeEventListener("visibilitychange", left);
+  }
+}
+
 /**
  * A number that stays hidden until asked for (the hiring file, H5a: the
  * person's own ID and account): its last digits after three dots, left to
  * right, and "הצגה", which asks the server for it (`onReveal`). Shown, it
- * hides again after a minute, or as soon as the page is put away, and is
+ * hides again after a minute, or as soon as the page is put away; one that
+ * arrives while the page is away never shows (`revealWhileShown`). It is
  * never kept anywhere but here while it shows. Its words are the caller's.
  */
 export function MaskedValue({
@@ -47,19 +77,22 @@ export function MaskedValue({
       if (document.visibilityState === "hidden") hide();
     };
     document.addEventListener("visibilitychange", away);
+    window.addEventListener("pagehide", hide);
     return () => {
       clearTimeout(timer);
       document.removeEventListener("visibilitychange", away);
+      window.removeEventListener("pagehide", hide);
     };
   }, [shown, hideAfterMs]);
 
   async function reveal() {
     setPending(true);
     setFailed(false);
-    const value = await onReveal().catch(() => null);
+    const value = await revealWhileShown(onReveal, document);
     setPending(false);
     if (value === null) setFailed(true);
-    else setShown(value);
+    // Put away while it came: it stays hidden, to be asked for again.
+    else if (value !== "away") setShown(value);
   }
 
   return (

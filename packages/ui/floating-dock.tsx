@@ -4,10 +4,14 @@ import { cn } from "./cn";
 
 /**
  * The tab bar says when it has shrunk (see app-shell), and on a phone the dock
- * then drops down beside it. The selector lives here, in one place.
+ * then drops down beside it. The selector lives here, in one place. The bar
+ * sits at the start of the shell's own direction, which a dock inside a frame
+ * of the other direction (the hiring file in English) doesn't share: so the
+ * side it leaves room on is the bar's, read with `:dir()` on the bar itself,
+ * on the physical side.
  */
 const whenBarShrunk = {
-  dock: "max-md:[body:has([data-tab-compact])_&]:bottom-[calc(env(safe-area-inset-bottom)+14px)] max-md:[body:has([data-tab-compact])_&]:start-[5.625rem]",
+  dock: "max-md:[body:has([data-tab-compact])_&]:bottom-[calc(env(safe-area-inset-bottom)+14px)] max-md:[body:has([data-tab-compact]:dir(rtl))_&]:right-[5.625rem] max-md:[body:has([data-tab-compact]:dir(ltr))_&]:left-[5.625rem]",
   button: "max-md:[body:has([data-tab-compact])_&]:min-h-16",
   quietButton: "max-md:[body:has([data-tab-compact])_&]:min-w-16",
   hideLabel: "max-md:[body:has([data-tab-compact])_&]:sr-only",
@@ -30,7 +34,7 @@ export function FloatingDock({ notice, children }: FloatingDockProps) {
     <div
       className={cn(
         "pointer-events-none fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom)+88px)] z-30 flex flex-col gap-2",
-        "transition-[bottom,inset-inline-start] duration-500 ease-spring",
+        "transition-[bottom,left,right] duration-500 ease-spring",
         "md:inset-x-0 md:mx-auto md:max-w-[480px]",
         "xl:inset-x-auto xl:end-8 xl:bottom-6 xl:mx-0 xl:w-[23rem]",
         whenBarShrunk.dock,

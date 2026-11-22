@@ -4083,6 +4083,7 @@
         "otherNameHint": "For example: a stay permit",
         "country": "Issuing country",
         "countryNone": "No country by that name. Try another spelling.",
+        "countryUnpicked": "Choose a country from the list.",
         "expires": "Valid until",
         "expiresInvalid": "That isn't a valid expiry. Check the day, month and year.",
         "idReason": "Required by law: for your payslip, Form 101, your pension and the safety training record.",
@@ -4103,11 +4104,13 @@
       "date": {
         "day": "Day",
         "month": "Month",
-        "year": "Year"
+        "year": "Year",
+        "yearShort": "Write the year with all four digits."
       },
       "address": {
         "city": "Town",
         "cityNone": "No town by that name. Try another spelling.",
+        "cityUnpicked": "Choose a town from the list.",
         "reason": "Required by law: for Form 101 and the notice of your working conditions.",
         "street": "Street",
         "noStreet": "No street name",
@@ -4120,6 +4123,8 @@
         "zipInvalid": "A postcode has 7 digits.",
         "numberInvalid": "A house number is digits, and may end in one letter, like <ltr>12A</ltr>.",
         "poBoxInvalid": "A PO box is up to 6 digits.",
+        "tooLong": "Up to <ltr>{max}</ltr> characters here.",
+        "lineInvalid": "One line of text here, without special characters.",
         "email": "Email",
         "emailReason": "For {business} to contact you about your pay.",
         "emailInvalid": "That isn't an email address."

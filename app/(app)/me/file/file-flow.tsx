@@ -24,7 +24,7 @@ import { ArrowRight, ChevronRight, Languages, Send } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { failureKey } from "./failure-words";
 import type {
   FileActionFailure,
@@ -85,6 +85,7 @@ export function FileFlow({
   const t = useTranslations("app.file");
   const router = useRouter();
   const day = useDay();
+  const summaryId = useId();
   const [notice, setNotice] = useState(false);
   const [toast, setToast] = useState<{ message: string; stamp: string } | null>(
     null,
@@ -187,33 +188,39 @@ export function FileFlow({
   const sendWords = sendFailure
     ? t(`failures.${failureKey(sendFailure)}`)
     : null;
+  // A step handed in directly is done, and says how under its name: the
+  // words a screen reader hears after the name are said once.
   const stepRow = (s: FileStep, link: boolean) => (
     <StepRow
       key={s}
       mark={MARK[states[s]]}
       title={t(`steps.name.${s}`)}
-      state={t(`steps.state.${states[s]}`)}
+      state={t(`steps.state.${states[s] === "direct" ? "done" : states[s]}`)}
       detail={states[s] === "direct" ? t("steps.state.direct") : undefined}
       href={link ? stepHref(s) : undefined}
       current={link && current === s}
     />
   );
 
+  // The card over the hero's foot stays in the flow, so longer words (a
+  // narrow phone, larger text) push down rather than up over the title.
   const hero = (
-    <Card tone="hero" padding="none" className="relative mb-10 px-5 pt-6 pb-14">
-      <p className="text-balance font-bold text-accent-ink text-xl">
-        {t("welcome.title", { business })}
-      </p>
+    <div className="flex flex-col">
+      <Card tone="hero" padding="none" className="px-5 pt-6 pb-16">
+        <p className="text-balance font-bold text-accent-ink text-xl">
+          {t("welcome.title", { business })}
+        </p>
+      </Card>
       <Card
         tone="float"
         padding="lg"
-        className="absolute inset-x-4 -bottom-10 flex flex-col gap-1"
+        className="relative z-10 mx-4 -mt-12 flex flex-col gap-1"
       >
         <CardText className="text-ink">
           {t("welcome.body", { count: FILE_STEPS.length })}
         </CardText>
       </Card>
-    </Card>
+    </div>
   );
 
   return (
@@ -266,35 +273,50 @@ export function FileFlow({
               current === "welcome" && "hidden xl:grid",
             )}
           >
+            {/* Never taller than the screen: the steps and what is missing
+                scroll inside it when they don't fit, and the page's main
+                action stays at its foot, in view on a laptop for a new
+                file too. */}
             <aside
               aria-label={t("steps.title")}
-              className="hidden min-w-0 flex-col gap-4 md:sticky md:top-8 md:flex xl:order-last"
+              className="hidden min-w-0 flex-col gap-3 md:sticky md:top-8 md:flex md:max-h-[calc(100dvh-env(safe-area-inset-bottom)-10.5rem)] xl:order-last xl:max-h-[calc(100dvh-4rem)]"
             >
-              <StepList>{FILE_STEPS.map((s) => stepRow(s, true))}</StepList>
-              <div className="hidden flex-col gap-3 xl:flex">
-                <Card padding="lg" className="flex flex-col gap-2">
-                  <h2 className="font-semibold text-md">
-                    {t("summary.title")}
-                  </h2>
-                  {missingSteps.length === 0 ? (
-                    <p className="text-base text-ink-2">{t("summary.none")}</p>
-                  ) : (
-                    <ul className="flex flex-col gap-1 text-base">
-                      {missingSteps.map((s) => (
-                        <li key={s}>{t(`steps.name.${s}`)}</li>
-                      ))}
-                    </ul>
-                  )}
-                  {due.kind === "open" ? (
-                    <p className="text-ink-2 text-sm">
-                      {t("pension.dueOn", { date: day(due.dueOn), business })}
-                    </p>
-                  ) : null}
-                </Card>
-                <VisibilityNote icon="lock" className="px-1">
-                  {t("visible")}
-                </VisibilityNote>
-                <WhyButton kit={kit} label={t("notice.title")} />
+              <div className="-mx-1 flex min-h-0 flex-col gap-4 overflow-y-auto px-1 pb-4">
+                <StepList className="shrink-0">
+                  {FILE_STEPS.map((s) => stepRow(s, true))}
+                </StepList>
+                <div className="hidden shrink-0 flex-col gap-3 xl:flex">
+                  <Card padding="lg" className="flex flex-col gap-2">
+                    <h2 id={summaryId} className="font-semibold text-md">
+                      {t("summary.title")}
+                    </h2>
+                    {missingSteps.length === 0 ? (
+                      <p className="text-base text-ink-2">
+                        {t("summary.none")}
+                      </p>
+                    ) : (
+                      <ul
+                        aria-labelledby={summaryId}
+                        className="flex flex-col gap-1 text-base"
+                      >
+                        {missingSteps.map((s) => (
+                          <li key={s}>{t(`steps.name.${s}`)}</li>
+                        ))}
+                      </ul>
+                    )}
+                    {due.kind === "open" ? (
+                      <p className="text-ink-2 text-sm">
+                        {t("pension.dueOn", { date: day(due.dueOn), business })}
+                      </p>
+                    ) : null}
+                  </Card>
+                  <VisibilityNote icon="lock" className="px-1">
+                    {t("visible")}
+                  </VisibilityNote>
+                  <WhyButton kit={kit} label={t("notice.title")} />
+                </div>
+              </div>
+              <div className="hidden shrink-0 flex-col gap-3 xl:flex">
                 <Button size="lg" loading={sending} onClick={send}>
                   <Send aria-hidden="true" className="rtl:-scale-x-100" />
                   {t("actions.send", { business })}
@@ -346,7 +368,9 @@ export function FileFlow({
               icon={
                 <ArrowRight aria-hidden="true" className="rtl:-scale-x-100" />
               }
-              onClick={() => go("start")}
+              // Step 0 saves to the profile, so a file can be new with it
+              // done: the welcome goes on where the person stopped.
+              onClick={() => go(resume === "done" ? "start" : resume)}
             >
               {t("welcome.start")}
             </DockButton>

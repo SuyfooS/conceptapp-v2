@@ -119,8 +119,11 @@ export function Reason({ children }: { children: ReactNode }) {
  * A step's main action on a phone and a tablet, floating above the tab bar,
  * with "חזרה" beside it; on a desktop each section has its own quiet save
  * and the summary holds the page's one main action. A main action that
- * can't go yet says why in words above it. Room is kept under the page so
- * nothing hides behind it.
+ * can't go yet says why in words above it: it waits only while something is
+ * missing, which the notice counts; with everything filled in it can be
+ * pressed, and a step that still can't save says each problem under its
+ * field (`showFirstProblem`). Room is kept under the page so nothing hides
+ * behind it.
  */
 export function StepDock({
   kit,
@@ -196,6 +199,36 @@ export function LaterLink({ kit }: { kit: Kit }) {
       {kit.t("actions.later")}
     </Link>
   );
+}
+
+/**
+ * The first field in a form that says what is wrong with it, or null. A
+ * step saves with none, so nothing goes while a field says it is wrong: a
+ * town or a country typed and not chosen from the list included, which only
+ * its field knows.
+ */
+export function firstProblem(form: HTMLFormElement): HTMLElement | null {
+  return form.querySelector<HTMLElement>('[aria-invalid="true"]');
+}
+
+/**
+ * After a save that can't go yet: the first field that says what is wrong
+ * comes into view, clear of the dock, and takes the focus, so its words are
+ * seen and read out. Once the words are drawn, the frame after.
+ */
+export function showFirstProblem(form: HTMLFormElement) {
+  requestAnimationFrame(() => {
+    const field = firstProblem(form);
+    if (!field) return;
+    const reduce = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    field.scrollIntoView({
+      block: "center",
+      behavior: reduce ? "auto" : "smooth",
+    });
+    field.focus({ preventScroll: true });
+  });
 }
 
 /** A refusal in words, beside the action it refused. */

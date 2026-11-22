@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { cleanTyped, oneLineSchema } from "./typed-text";
+import { cleanTyped, oneLineSchema, tidyLine } from "./typed-text";
 
 /*
  * A home address as Form 101 asks for it (part ב, "רחוב/שכונה"): a street with
@@ -65,8 +65,9 @@ export const poBoxSchema = z
 
 export const ADDRESS_TEXT_MAX = 60;
 const addressText = oneLineSchema(1, ADDRESS_TEXT_MAX);
-/** An apartment: short, one line ("12", "3ב"). */
-const apartment = oneLineSchema(1, 10);
+/** An apartment's most characters: short, one line ("12", "3ב"). */
+export const APARTMENT_MAX = 10;
+const apartment = oneLineSchema(1, APARTMENT_MAX);
 
 /**
  * The 101's "רחוב/שכונה" field: a street with its number; a neighbourhood
@@ -99,3 +100,47 @@ export const addressSchema = z.discriminatedUnion("kind", [
 ]);
 
 export type Address = z.infer<typeof addressSchema>;
+
+/** The typed fields of an address a screen says a problem under. */
+export type AddressField =
+  | "street"
+  | "area"
+  | "number"
+  | "apartment"
+  | "zip"
+  | "poBox";
+
+/** Why a typed field is refused: too long, or not one of its kind (a zip, a house number, a P.O. box, one line). */
+export type AddressProblem = "tooLong" | "invalid";
+
+const ADDRESS_FIELDS: readonly AddressField[] = [
+  "street",
+  "area",
+  "number",
+  "apartment",
+  "zip",
+  "poBox",
+];
+
+/**
+ * Where `addressSchema` refuses an address, field by field, so a screen can
+ * say each refusal under its own field and none goes unsaid: too long, or
+ * not one of its kind. A field left empty is no problem here (the screen
+ * counts what is still missing), and neither is the town, which is chosen
+ * from a list.
+ */
+export function addressProblems(
+  input: Readonly<Record<string, unknown>>,
+): Partial<Record<AddressField, AddressProblem>> {
+  const checked = addressSchema.safeParse(input);
+  if (checked.success) return {};
+  const problems: Partial<Record<AddressField, AddressProblem>> = {};
+  for (const issue of checked.error.issues) {
+    const field = ADDRESS_FIELDS.find((name) => name === issue.path[0]);
+    if (!field || problems[field]) continue;
+    const typed = input[field];
+    if (typeof typed !== "string" || tidyLine(typed) === "") continue;
+    problems[field] = issue.code === "too_big" ? "tooLong" : "invalid";
+  }
+  return problems;
+}

@@ -17,6 +17,7 @@ import { Steps } from "@ui/steps";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
+import { business } from "./shell/data";
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 const TODAY = "2026-11-24";
@@ -86,7 +87,7 @@ export function GalleryFile() {
           mark="done"
           title={tf("steps.name.pension")}
           detail={tf("steps.state.direct")}
-          state={tf("steps.state.direct")}
+          state={tf("steps.state.done")}
         />
       </StepList>
       <Card padding="lg" className="flex flex-col gap-4">
@@ -124,7 +125,7 @@ export function GalleryFile() {
             account: tf("bank.account"),
             where: tf("bank.where"),
             keep: tf("bank.keep"),
-            kept: tf("bank.kept", { business: t("fileTitle") }),
+            kept: tf("bank.kept", { business: business.name }),
           }}
           banks={banks}
           value={bank}
@@ -146,6 +147,7 @@ export function GalleryFile() {
           value={city}
           onChange={setCity}
           emptyText={tf("address.cityNone")}
+          unpickedText={tf("address.cityUnpicked")}
           placeholder={tf("search.placeholder")}
         />
         <CountryField
@@ -154,6 +156,7 @@ export function GalleryFile() {
           value={country}
           onChange={setCountry}
           emptyText={tf("identity.countryNone")}
+          unpickedText={tf("identity.countryUnpicked")}
           placeholder={tf("search.placeholder")}
         />
       </Card>

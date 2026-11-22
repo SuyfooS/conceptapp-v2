@@ -15,7 +15,8 @@ const nameOf = (city: City, locale: "he" | "en") =>
  * settlements, found by typing in either language and spelled either way
  * (@domain/cities). The list loads the first time the field takes the
  * focus, so it isn't in every page's bundle; a town already chosen shows
- * from `value` without it.
+ * from `value` without it. Left without a choice, a name that is one town's
+ * is taken as it (`cityNamed`); anything else says to choose from the list.
  */
 export function CityField({
   label,
@@ -23,6 +24,7 @@ export function CityField({
   value,
   onChange,
   emptyText,
+  unpickedText,
   placeholder,
   hint,
   error,
@@ -32,6 +34,8 @@ export function CityField({
   value: City | null;
   onChange: (city: City | null) => void;
   emptyText: string;
+  /** "כדאי לבחור יישוב מהרשימה": left with a name typed and no town chosen. */
+  unpickedText: string;
   placeholder?: string;
   hint?: ReactNode;
   error?: ReactNode;
@@ -45,6 +49,11 @@ export function CityField({
   }
 
   const found = cities && query.trim() ? cities.searchCities(query) : [];
+  const named = cities && query.trim() ? cities.cityNamed(query) : null;
+  const option = (city: City) => ({
+    key: String(city.code),
+    label: nameOf(city, locale),
+  });
   return (
     <SearchField
       label={label}
@@ -54,20 +63,13 @@ export function CityField({
         setQuery(text);
       }}
       // Until the list is here, nothing is said to meet nothing.
-      options={found.map((city) => ({
-        key: String(city.code),
-        label: nameOf(city, locale),
-      }))}
+      options={found.map(option)}
+      match={named ? option(named) : null}
       emptyText={cities ? emptyText : ""}
-      picked={
-        value ? { key: String(value.code), label: nameOf(value, locale) } : null
-      }
+      unpickedText={unpickedText}
+      picked={value ? option(value) : null}
       onPick={(key) =>
-        onChange(
-          key === null
-            ? null
-            : (found.find((city) => String(city.code) === key) ?? null),
-        )
+        onChange(key === null ? null : (cities?.cityOf(Number(key)) ?? null))
       }
       onFocus={load}
       placeholder={placeholder}

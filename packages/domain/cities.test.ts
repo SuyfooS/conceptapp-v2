@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { cityName, cityOf, normalizeCityQuery, searchCities } from "./cities";
+import {
+  cityName,
+  cityNamed,
+  cityOf,
+  normalizeCityQuery,
+  searchCities,
+} from "./cities";
 import { CITIES, CITIES_AS_OF } from "./cities-data";
 
 const codes = (query: string, limit?: number) =>
@@ -97,5 +103,33 @@ describe("searchCities", () => {
   it("gives at most as many as asked", () => {
     expect(codes("כפר").length).toBe(8);
     expect(codes("כפר", 3)).toHaveLength(3);
+  });
+});
+
+describe("cityNamed", () => {
+  const code = (query: string) => cityNamed(query)?.code ?? null;
+
+  it("finds the town a name is, spelled either way, in either language", () => {
+    expect(code("חיפה")).toBe(4000);
+    expect(code("haifa")).toBe(4000);
+    expect(code("קריית אתא")).toBe(6800);
+    expect(code("kiryat ata")).toBe(6800);
+    // Another town holds its name ("חצור-אשדוד"), and it is still this one.
+    expect(searchCities("אשדוד").length).toBeGreaterThan(1);
+    expect(code("אשדוד")).toBe(70);
+  });
+
+  it("finds the only town a beginning meets", () => {
+    expect(searchCities("תל אביב")).toHaveLength(1);
+    expect(code("תל אביב")).toBe(5000);
+    expect(code("tel aviv")).toBe(5000);
+  });
+
+  it("finds none for several, or for nothing", () => {
+    expect(searchCities("מודיעין").length).toBeGreaterThan(1);
+    expect(code("מודיעין")).toBeNull();
+    expect(code("רמת")).toBeNull();
+    expect(code("")).toBeNull();
+    expect(code("זזזזקקק")).toBeNull();
   });
 });

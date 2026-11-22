@@ -11,8 +11,12 @@ export type SearchOption = { key: string; label: string };
  * WAI-ARIA 1.2 has it, the matches in a list under the field, at most as
  * many as the caller gives, each a 44px row whose words wrap. Arrows move
  * through them, Enter picks, Escape clears what was typed. Once picked, the
- * field shows the choice, and typing again searches again. The search is
- * the caller's (`options` for `query`), and so are the words.
+ * field shows the choice, and typing again searches again; the choice stays
+ * until another is picked, or the field is emptied. Left without a choice,
+ * what was typed is picked when it names one option by itself (`match`),
+ * the earlier choice comes back, or the field says to choose from the list
+ * (`unpickedText`): text that looks filled in is never taken for a choice.
+ * The search is the caller's (`options` for `query`), and so are the words.
  */
 export function SearchField({
   label,
@@ -21,7 +25,9 @@ export function SearchField({
   options,
   picked,
   onPick,
+  match = null,
   emptyText,
+  unpickedText,
   placeholder,
   hint,
   error,
@@ -34,10 +40,14 @@ export function SearchField({
   /** The matches for `query`, best first. */
   options: readonly SearchOption[];
   picked: SearchOption | null;
-  /** The key picked, or null when the person types again. */
+  /** The key picked, or null once the field is emptied or cleared. */
   onPick: (key: string | null) => void;
+  /** The option `query` names by itself (its very name, or the only match): picked when the field is left without a choice. */
+  match?: SearchOption | null;
   /** Said under the field when what was typed meets nothing. */
   emptyText: string;
+  /** Said under the field, as its error, when it was left with text typed and nothing chosen. */
+  unpickedText: string;
   placeholder?: string;
   hint?: ReactNode;
   error?: ReactNode;
@@ -53,11 +63,14 @@ export function SearchField({
   const typed = query.trim() !== "";
   const showList = open && typed && options.length > 0;
   const none = open && typed && options.length === 0;
-  const message = none ? emptyText : (error ?? hint);
+  // Left with words in it and nothing chosen: it looks filled, and isn't.
+  const unpicked = !open && typed && picked === null;
+  const wrong = unpicked || Boolean(error);
+  const message = none ? emptyText : unpicked ? unpickedText : (error ?? hint);
   const optionId = (at: number) => `${id}-option-${at}`;
 
+  // A choice made stays until another is: typing over it only searches.
   function type(text: string) {
-    if (picked) onPick(null);
     onQuery(text);
     setActive(0);
     setOpen(true);
@@ -92,6 +105,23 @@ export function SearchField({
     }
   }
 
+  // Left after typing, without a choice from the list.
+  function leave() {
+    setOpen(false);
+    if (!open) return;
+    if (!typed) {
+      // Emptied: no choice any more.
+      if (picked) onPick(null);
+      return;
+    }
+    if (match) {
+      choose(match);
+      return;
+    }
+    // The earlier choice comes back; with none, the words stay, said as unchosen.
+    if (picked) onQuery("");
+  }
+
   return (
     <div className="relative flex flex-col gap-1.5">
       <label htmlFor={id} className="font-medium text-ink text-sm">
@@ -106,7 +136,7 @@ export function SearchField({
         aria-controls={listId}
         aria-autocomplete="list"
         aria-activedescendant={showList ? optionId(active) : undefined}
-        aria-invalid={error ? true : undefined}
+        aria-invalid={wrong ? true : undefined}
         aria-describedby={message ? messageId : undefined}
         autoComplete="off"
         autoCorrect="off"
@@ -120,7 +150,7 @@ export function SearchField({
           // A choice shown is replaced by whatever is typed next.
           if (picked) event.currentTarget.select();
         }}
-        onBlur={() => setOpen(false)}
+        onBlur={leave}
         className={fieldInputClass}
       />
       {/* A listbox of its own, not a select: the matches change as the
@@ -160,7 +190,7 @@ export function SearchField({
         aria-live="polite"
         className={cn(
           "text-sm",
-          error && !none ? "text-danger" : "text-ink-2",
+          wrong && !none ? "text-danger" : "text-ink-2",
           message ? undefined : "sr-only",
         )}
       >

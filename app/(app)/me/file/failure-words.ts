@@ -41,10 +41,25 @@ export function failureKey(failure: FileActionFailure): FailureKey {
   }
 }
 
-/** A code's refusal as the bank step says it, in `app.file.bank.code`; null for a file's refusal. */
+/** The words a code's refusal shows, in `app.file.bank.code`. */
+export type CodeKey =
+  | "wrongCode"
+  | "tooMany"
+  | "rateLimit"
+  | "noPhone"
+  | "failed";
+
+/**
+ * A code's refusal as the bank step says it, in `app.file.bank.code`; null
+ * for a file's refusal. A send that failed (the SMS service or the auth
+ * server) says the code didn't go, never that something wasn't saved; a
+ * check that failed is the file's "not saved", since the account didn't go
+ * in either.
+ */
 export function codeKey(
   failure: CodeFailure | FileActionFailure,
-): "wrongCode" | "tooMany" | "rateLimit" | "noPhone" | null {
+  when: "send" | "confirm",
+): CodeKey | null {
   switch (failure) {
     case "wrongCode":
     case "tooMany":
@@ -53,6 +68,8 @@ export function codeKey(
       return failure;
     case "invalidPhone":
       return "noPhone";
+    case "failed":
+      return when === "send" ? "failed" : null;
     default:
       return null;
   }

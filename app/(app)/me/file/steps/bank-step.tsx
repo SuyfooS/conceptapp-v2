@@ -14,7 +14,7 @@ import { MaskedValue } from "@ui/masked-value";
 import { TextField } from "@ui/text-field";
 import { useTranslations } from "next-intl";
 import { type FormEvent, useId, useState } from "react";
-import { codeKey, failureKey } from "../failure-words";
+import { type CodeKey, codeKey, failureKey } from "../failure-words";
 import type { CodeFailure, FileActionFailure } from "../file-types";
 import {
   Failure,
@@ -40,7 +40,7 @@ export type BankPreset = {
 };
 
 type Problem =
-  | { of: "code"; key: "wrongCode" | "tooMany" | "rateLimit" | "noPhone" }
+  | { of: "code"; key: CodeKey }
   | { of: "file"; failure: FileActionFailure; opensOn?: string };
 
 /**
@@ -132,8 +132,12 @@ export function BankStep({
     !unusable &&
     (warning === null || value.kept);
 
-  function said(failure: CodeFailure | FileActionFailure, opensOn?: string) {
-    const key = codeKey(failure);
+  function said(
+    failure: CodeFailure | FileActionFailure,
+    when: "send" | "confirm",
+    opensOn?: string,
+  ) {
+    const key = codeKey(failure, when);
     setProblem(
       key
         ? { of: "code", key }
@@ -151,7 +155,7 @@ export function BankStep({
       .catch(() => ({ ok: false, failure: "failed" }) as const);
     setSending(false);
     if (!answer.ok) {
-      said(answer.failure);
+      said(answer.failure, "send");
       return;
     }
     setTail(answer.tail);
@@ -194,7 +198,11 @@ export function BankStep({
       kit.say(t("saved"));
       return;
     }
-    said(answer.failure, "opensOn" in answer ? answer.opensOn : undefined);
+    said(
+      answer.failure,
+      "confirm",
+      "opensOn" in answer ? answer.opensOn : undefined,
+    );
     if (answer.failure === "wrongCode") {
       setStatus("error");
       return;

@@ -19,7 +19,9 @@ const loose = (text: string) =>
  * The country that issued a document (the hiring file, H5a): ISO 3166's,
  * named in the screen's language by the browser (`Intl.DisplayNames`), so the
  * messages hold none. Found by the start of its name or of a word in it, or
- * by its two letters.
+ * by its two letters. Left without a choice, its whole name, its two letters
+ * or a beginning only one country has is taken as it; anything else says to
+ * choose from the list.
  */
 export function CountryField({
   label,
@@ -27,6 +29,7 @@ export function CountryField({
   value,
   onChange,
   emptyText,
+  unpickedText,
   placeholder,
   hint,
   error,
@@ -36,6 +39,8 @@ export function CountryField({
   value: Country | null;
   onChange: (country: Country | null) => void;
   emptyText: string;
+  /** "כדאי לבחור מדינה מהרשימה": left with a name typed and no country chosen. */
+  unpickedText: string;
   placeholder?: string;
   hint?: ReactNode;
   error?: ReactNode;
@@ -77,6 +82,18 @@ export function CountryField({
           .slice(0, SHOWN)
           .map(({ country }) => country);
 
+  // What was typed names one country by itself: its whole name, its two
+  // letters, or a beginning no other has.
+  const exact =
+    typed === ""
+      ? []
+      : names.filter(
+          (country) =>
+            country.whole === typed || country.code.toLowerCase() === typed,
+        );
+  const named =
+    exact.length === 1 ? exact[0] : found.length === 1 ? found[0] : undefined;
+
   const picked = value
     ? (names.find((country) => country.code === value) ?? null)
     : null;
@@ -89,7 +106,9 @@ export function CountryField({
         key: country.code,
         label: country.name,
       }))}
+      match={named ? { key: named.code, label: named.name } : null}
       emptyText={emptyText}
+      unpickedText={unpickedText}
       picked={picked ? { key: picked.code, label: picked.name } : null}
       onPick={(key) =>
         onChange(ISO_COUNTRIES.find((code) => code === key) ?? null)

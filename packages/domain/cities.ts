@@ -108,3 +108,23 @@ export function searchCities(query: string, limit = 8): City[] {
     return row ? [asCity(row)] : [];
   });
 }
+
+/**
+ * The settlement that what was typed names by itself, for a field left
+ * without a choice from its list: the one whose name it is, spelled either
+ * way ("אשדוד", "kiryat ata"), or the only one it meets ("תל אביב"). Null
+ * when it names none, or several.
+ */
+export function cityNamed(query: string): City | null {
+  const script = HEBREW.test(query) ? "he" : "en";
+  const typed = normalizeCityQuery(query, script);
+  if (typed === "") return null;
+  const exact = searchIndex().flatMap((names, at) =>
+    names[script].whole === typed ? [at] : [],
+  );
+  if (exact.length > 1) return null;
+  const row = exact[0] === undefined ? undefined : CITIES[exact[0]];
+  if (row) return asCity(row);
+  const found = searchCities(query, 2);
+  return found.length === 1 ? (found[0] ?? null) : null;
+}

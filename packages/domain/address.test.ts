@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  addressProblems,
   addressSchema,
   cityCodeSchema,
   houseNumberSchema,
@@ -157,5 +158,94 @@ describe("addressSchema", () => {
         number: "1",
       }).success,
     ).toBe(true);
+  });
+});
+
+describe("addressProblems", () => {
+  const telAviv = 5000;
+  const street = {
+    kind: "street",
+    cityCode: telAviv,
+    street: "הרצל",
+    number: "12",
+  };
+
+  it("finds none in an address the schema takes", () => {
+    expect(addressProblems(street)).toEqual({});
+    expect(
+      addressProblems({ ...street, apartment: "3ב", zip: "61000 01" }),
+    ).toEqual({});
+  });
+
+  it.each([
+    ["an old five-digit zip", { zip: "61000" }, { zip: "invalid" }],
+    [
+      "an apartment of 11 characters",
+      { apartment: "1".repeat(11) },
+      { apartment: "tooLong" },
+    ],
+    [
+      "a street of 61 characters",
+      { street: "א".repeat(61) },
+      { street: "tooLong" },
+    ],
+    [
+      "a street on two lines",
+      { street: "הרצל\nתל אביב" },
+      { street: "invalid" },
+    ],
+    [
+      "a house number of five digits",
+      { number: "12345" },
+      { number: "invalid" },
+    ],
+    [
+      "two at once",
+      { zip: "61000", apartment: "1".repeat(11) },
+      { zip: "invalid", apartment: "tooLong" },
+    ],
+  ])("says %s under its own field", (_name, change, expected) => {
+    expect(addressProblems({ ...street, ...change })).toEqual(expected);
+  });
+
+  it("says a place too long and a P.O. box of seven digits", () => {
+    expect(
+      addressProblems({
+        kind: "area",
+        cityCode: telAviv,
+        area: "א".repeat(61),
+      }),
+    ).toEqual({ area: "tooLong" });
+    expect(
+      addressProblems({ kind: "poBox", cityCode: telAviv, poBox: "1234567" }),
+    ).toEqual({ poBox: "invalid" });
+  });
+
+  it("leaves what is empty to the count of what is missing", () => {
+    expect(addressProblems({ ...street, street: "  " })).toEqual({});
+    expect(addressProblems({ ...street, cityCode: undefined })).toEqual({});
+    expect(
+      addressProblems({ kind: "street", cityCode: telAviv, street: "הרצל" }),
+    ).toEqual({});
+  });
+
+  it("names a field for every refusal of an address with nothing missing", () => {
+    for (const change of [
+      { zip: "123" },
+      { zip: "0000000" },
+      { zip: "61000011" },
+      { number: "0" },
+      { number: "12/3" },
+      { apartment: "דירה מספר 12" },
+      { street: "א".repeat(70) },
+      { street: "הרצל\u0007" },
+    ]) {
+      const address = { ...street, ...change };
+      expect(addressSchema.safeParse(address).success).toBe(false);
+      expect(
+        Object.keys(addressProblems(address)),
+        JSON.stringify(change),
+      ).not.toHaveLength(0);
+    }
   });
 });

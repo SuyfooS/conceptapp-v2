@@ -1,9 +1,11 @@
 "use client";
 
 import {
+  ADDRESS_TEXT_MAX,
+  APARTMENT_MAX,
+  addressProblems,
   addressSchema,
-  normalizeHouseNumber,
-  normalizeZip,
+  ZIP_DIGITS,
 } from "@domain/address";
 import type { City } from "@domain/cities";
 import { nextFileStep } from "@domain/employee-file-steps";
@@ -21,11 +23,13 @@ import type { FileActionFailure } from "../file-types";
 import {
   Failure,
   FileSection,
+  firstProblem,
   type Kit,
   LaterLink,
   ltr,
   Reason,
   StepDock,
+  showFirstProblem,
 } from "../flow-kit";
 
 const email = z.email();
@@ -36,7 +40,10 @@ const email = z.email();
  * number, or with "אין שם רחוב" a neighbourhood or place, or a P.O. box;
  * the apartment and the zip optional, and the email optional too. What is
  * typed goes as typed: the domain's schema tidies it, here and on the
- * server.
+ * server. Each of its refusals is said under its own field (`addressProblems`):
+ * at once for what is too long, and for the zip once it is left or full.
+ * With nothing missing the main action can always be pressed, and a press
+ * that can't save says every problem and goes to the first.
  */
 export function AddressStep({ kit, active }: { kit: Kit; active: boolean }) {
   const { t, data } = kit;
@@ -64,6 +71,8 @@ export function AddressStep({ kit, active }: { kit: Kit; active: boolean }) {
     stored && stored.kind !== "poBox" ? (stored.apartment ?? "") : "",
   );
   const [zip, setZip] = useState(stored?.zip ?? "");
+  // The zip is judged once it is left (or full): an old five-digit one too.
+  const [zipLeft, setZipLeft] = useState(false);
   const [mail, setMail] = useState(data.email ?? "");
   const [tried, setTried] = useState(false);
   const [pending, setPending] = useState(false);
@@ -82,28 +91,30 @@ export function AddressStep({ kit, active }: { kit: Kit; active: boolean }) {
     ...(tidyLine(zip) ? { zip } : {}),
   };
   const checked = addressSchema.safeParse(address);
-  const mailTyped = mail.trim();
-  const mailError =
-    mailTyped !== "" &&
-    (tried || mailTyped.includes("@")) &&
-    !email.safeParse(mailTyped).success
-      ? t("address.emailInvalid")
-      : null;
-  const numberError =
-    tidyLine(number) !== "" && normalizeHouseNumber(number) === null
-      ? t.rich("address.numberInvalid", { ltr })
-      : null;
+  // Every refusal of the schema, under the field it is about.
+  const problems = addressProblems(address);
+  const lineError = (field: "street" | "area" | "apartment", max: number) =>
+    problems[field] === "tooLong"
+      ? t.rich("address.tooLong", { max, ltr })
+      : problems[field] === "invalid"
+        ? t("address.lineInvalid")
+        : null;
+  const streetError = lineError("street", ADDRESS_TEXT_MAX);
+  const areaError = lineError("area", ADDRESS_TEXT_MAX);
+  const apartmentError = lineError("apartment", APARTMENT_MAX);
+  const numberError = problems.number
+    ? t.rich("address.numberInvalid", { ltr })
+    : null;
   const zipError =
-    tidyLine(zip) !== "" &&
-    (tried || zip.length >= 7) &&
-    normalizeZip(zip) === null
+    problems.zip && (tried || zipLeft || zip.length >= ZIP_DIGITS)
       ? t("address.zipInvalid")
       : null;
-  const poBoxError =
-    kind === "poBox" &&
-    tidyLine(poBox) !== "" &&
-    !/^\d{1,6}$/.test(tidyLine(poBox))
-      ? t("address.poBoxInvalid")
+  const poBoxError = problems.poBox ? t("address.poBoxInvalid") : null;
+  const mailTyped = mail.trim();
+  const mailOk = mailTyped === "" || email.safeParse(mailTyped).success;
+  const mailError =
+    !mailOk && (tried || mailTyped.includes("@"))
+      ? t("address.emailInvalid")
       : null;
 
   const empty = [
@@ -113,13 +124,17 @@ export function AddressStep({ kit, active }: { kit: Kit; active: boolean }) {
     kind === "area" && tidyLine(area) === "",
     kind === "poBox" && tidyLine(poBox) === "",
   ].filter(Boolean).length;
-  const ready =
-    empty === 0 && checked.success && !mailError && !numberError && !zipError;
+  const ready = empty === 0 && checked.success && mailOk;
 
-  async function save(event: FormEvent) {
+  async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setTried(true);
-    if (!ready || pending) return;
+    if (pending) return;
+    const form = event.currentTarget;
+    if (!ready || firstProblem(form)) {
+      showFirstProblem(form);
+      return;
+    }
     setPending(true);
     setFailure(null);
     const result = await kit.actions
@@ -149,6 +164,7 @@ export function AddressStep({ kit, active }: { kit: Kit; active: boolean }) {
             value={city}
             onChange={setCity}
             emptyText={t("address.cityNone")}
+            unpickedText={t("address.cityUnpicked")}
             placeholder={t("search.placeholder")}
           />
           <div className="flex min-h-11 items-center justify-between gap-3">
@@ -177,6 +193,7 @@ export function AddressStep({ kit, active }: { kit: Kit; active: boolean }) {
               label={t("address.street")}
               value={street}
               onChange={(event) => setStreet(event.target.value)}
+              error={streetError}
               autoComplete="address-line1"
             />
           ) : kind === "area" ? (
@@ -184,6 +201,7 @@ export function AddressStep({ kit, active }: { kit: Kit; active: boolean }) {
               label={t("address.area")}
               value={area}
               onChange={(event) => setArea(event.target.value)}
+              error={areaError}
             />
           ) : (
             <TextField
@@ -214,6 +232,7 @@ export function AddressStep({ kit, active }: { kit: Kit; active: boolean }) {
                 label={t("optionalField", { field: t("address.apartment") })}
                 value={apartment}
                 onChange={(event) => setApartment(event.target.value)}
+                error={apartmentError}
                 dir="ltr"
                 className={ltrInputClass}
               />
@@ -223,6 +242,7 @@ export function AddressStep({ kit, active }: { kit: Kit; active: boolean }) {
             label={t("optionalField", { field: t("address.zip") })}
             value={zip}
             onChange={(event) => setZip(event.target.value)}
+            onBlur={() => setZipLeft(true)}
             error={zipError}
             dir="ltr"
             className={ltrInputClass}
@@ -269,7 +289,8 @@ export function AddressStep({ kit, active }: { kit: Kit; active: boolean }) {
           main={{
             label: t("actions.next"),
             form: formId,
-            disabled: !ready,
+            // Something missing is said above it; anything else, once pressed.
+            disabled: empty > 0,
             pending,
           }}
           notice={empty > 0 ? t("missingRequired", { count: empty }) : null}

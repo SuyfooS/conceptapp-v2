@@ -1,10 +1,10 @@
 import { accentTokens } from "@domain/color";
 import { fileStepOf } from "@domain/employee-file-steps";
 import { accentProps } from "@ui/accent";
-import { NextIntlClientProvider } from "next-intl";
 import en from "@/messages/en.json";
 import type he from "@/messages/he.json";
 import { FileFlow, type FileView as View } from "./file-flow";
+import { FileFrame } from "./file-frame";
 import { fileMessages } from "./file-messages";
 import type { FileActions, FileScreenData } from "./file-types";
 import type { BankPreset } from "./steps/bank-step";
@@ -20,7 +20,8 @@ export function fileViewOf(param: unknown): View {
  * browser in a provider of their own, in a left-to-right frame that keeps
  * the business's colour (its sheets open inside it). The rest of the app
  * stays Hebrew, and a business's own sentences, which are Hebrew, don't
- * apply here.
+ * apply here. Both languages draw the same frame (`FileFrame`), so the
+ * language button keeps what was typed in the step on screen.
  */
 export function FileView({
   data,
@@ -40,27 +41,23 @@ export function FileView({
   keep?: string;
   preset?: { bank?: BankPreset };
 }) {
-  const flow = (
-    <FileFlow
-      data={data}
-      view={view}
-      actions={actions}
-      base={base}
-      profileHref={profileHref}
-      keep={keep}
-      preset={preset}
-    />
-  );
-  if (data.locale !== "en") return flow;
+  const english = data.locale === "en";
   return (
-    <NextIntlClientProvider
-      locale="en"
+    <FileFrame
+      english={english}
+      messages={english ? fileMessages(en as typeof he) : undefined}
       timeZone={data.timeZone}
-      messages={fileMessages(en as typeof he)}
+      accent={english ? accentProps(accentTokens(data.accent)) : undefined}
     >
-      <div dir="ltr" lang="en" {...accentProps(accentTokens(data.accent))}>
-        {flow}
-      </div>
-    </NextIntlClientProvider>
+      <FileFlow
+        data={data}
+        view={view}
+        actions={actions}
+        base={base}
+        profileHref={profileHref}
+        keep={keep}
+        preset={preset}
+      />
+    </FileFrame>
   );
 }

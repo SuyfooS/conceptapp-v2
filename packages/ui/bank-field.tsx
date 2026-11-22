@@ -27,6 +27,59 @@ export const EMPTY_BANK: BankFieldValue = {
 const digits = (raw: string, most: number) =>
   cleanTyped(raw).replace(/\D/g, "").slice(0, most);
 
+/** What a paste leaves: the parts, the paste box, and whether to say it wasn't read. */
+export type BankPaste = {
+  /** The parts: the same object when the paste read nothing. */
+  value: BankFieldValue;
+  /** What stays in the paste box: nothing once it was read. */
+  pasted: string;
+  /** Say it couldn't be read: only once it holds six digits or more, never while a number is typed. */
+  unread: boolean;
+};
+
+/**
+ * Text pasted (or typed) into the paste box, read into the parts
+ * (`splitPastedAccount`): a whole account replaces the bank too, a branch
+ * and an account keep the bank chosen, and either takes back "המספר נכון,
+ * לשמור", since the number is a new one to check. Text it can't read
+ * changes no part and stays in the box.
+ */
+export function bankFieldFromPaste(
+  text: string,
+  value: BankFieldValue,
+): BankPaste {
+  const split = splitPastedAccount(text);
+  if (split.kind === "full") {
+    return {
+      value: {
+        bank: split.bank,
+        branch: String(split.branch),
+        account: split.account,
+        kept: false,
+      },
+      pasted: "",
+      unread: false,
+    };
+  }
+  if (split.kind === "branchAndAccount") {
+    return {
+      value: {
+        ...value,
+        branch: String(split.branch),
+        account: split.account,
+        kept: false,
+      },
+      pasted: "",
+      unread: false,
+    };
+  }
+  return {
+    value,
+    pasted: text,
+    unread: cleanTyped(text).replace(/\D/g, "").length >= 6,
+  };
+}
+
 /**
  * A bank account for wages (the hiring file, H5a): a box to paste what the
  * bank's app copies, which fills the three parts when it reads them
@@ -71,31 +124,11 @@ export function BankField({
   const [unread, setUnread] = useState(false);
 
   function paste(text: string) {
-    const split = splitPastedAccount(text);
-    if (split.kind === "full") {
-      onChange({
-        bank: split.bank,
-        branch: String(split.branch),
-        account: split.account,
-        kept: false,
-      });
-    } else if (split.kind === "branchAndAccount") {
-      onChange({
-        ...value,
-        branch: String(split.branch),
-        account: split.account,
-        kept: false,
-      });
-    }
+    const read = bankFieldFromPaste(text, value);
     // Read: the parts below hold it now, and the box is ready for another.
-    if (split.kind !== "none") {
-      setPasted("");
-      setUnread(false);
-      return;
-    }
-    setPasted(text);
-    // Only once there is enough to be a number: never while it is typed.
-    setUnread(cleanTyped(text).replace(/\D/g, "").length >= 6);
+    if (read.value !== value) onChange(read.value);
+    setPasted(read.pasted);
+    setUnread(read.unread);
   }
 
   const options = banks.map((bank) => ({

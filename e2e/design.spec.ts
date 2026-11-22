@@ -3,6 +3,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { createTranslator } from "next-intl";
 import { restaurantWording } from "../app/design/order-taking/data";
+import en from "../messages/en.json" with { type: "json" };
 import he from "../messages/he.json" with { type: "json" };
 import { daysLeftToRight } from "../packages/domain/share";
 import { type MessageTree, mergeWording } from "../packages/domain/wording";
@@ -5561,4 +5562,176 @@ test("the file demo reads the same in each device's shape", async ({
   await expect(
     page.getByRole("region", { name: f.steps.name.bank }),
   ).toBeVisible();
+});
+
+/** A step's main action: the dock's on a phone and a tablet, its own save on a desktop. */
+const fileStepAction = (
+  page: Page,
+  region: Locator,
+  project: string,
+  desktopLabel: string,
+) =>
+  project === "desktop"
+    ? region.getByRole("button", { name: desktopLabel })
+    : page
+        .getByRole("button", { name: he.app.file.actions.next, exact: true })
+        .filter({ visible: true });
+
+// Every refusal of a filled step has words, and its main action can be
+// pressed to show them: an old five-digit zip, an apartment past its ten
+// characters, a birth year of two digits.
+test("the file demo says under each field what keeps a step from saving", async ({
+  page,
+}, testInfo) => {
+  const f = he.app.file;
+  const project = testInfo.project.name;
+  await page.goto("/design/shell/me/file?step=address");
+  const address = page.getByRole("region", { name: f.steps.name.address });
+  const apartment = address.getByLabel(
+    heT("app.file.optionalField", { field: f.address.apartment }),
+  );
+  await apartment.fill("12345678901");
+  await expect(
+    address.getByText(
+      f.address.tooLong.replace(/<\/?ltr>/g, "").replace("{max}", "10"),
+    ),
+  ).toBeVisible();
+  await apartment.fill("3");
+  await address
+    .getByLabel(heT("app.file.optionalField", { field: f.address.zip }))
+    .fill("61000");
+  const saveAddress = fileStepAction(
+    page,
+    address,
+    project,
+    f.actions.saveAddress,
+  );
+  await expect(saveAddress).toBeEnabled();
+  await saveAddress.click();
+  await expect(address.getByText(f.address.zipInvalid)).toBeVisible();
+  await expect(page).toHaveURL(/step=address/);
+
+  await page.goto("/design/shell/me/file?step=identity");
+  const identity = page.getByRole("region", { name: f.steps.name.identity });
+  const year = identity
+    .getByRole("group", { name: f.identity.birthDate })
+    .getByLabel(f.date.year);
+  await year.fill("95");
+  await year.blur();
+  await expect(identity.getByText(f.date.yearShort)).toBeVisible();
+  // Every box shows a value: nothing is said to be missing.
+  await expect(
+    page.getByText(heT("app.file.missingRequired", { count: 1 })),
+  ).toHaveCount(0);
+  await expect(
+    fileStepAction(page, identity, project, f.actions.saveIdentity),
+  ).toBeEnabled();
+});
+
+// A town typed and left: the one it names is chosen; a choice made stays
+// until another is; and words that choose nothing say so.
+test("the file demo never takes a town typed for one chosen", async ({
+  page,
+}) => {
+  const f = he.app.file;
+  await page.goto("/design/shell/me/file?step=address");
+  const address = page.getByRole("region", { name: f.steps.name.address });
+  const town = address.getByRole("combobox", { name: f.address.city });
+  await expect(town).toHaveValue("תל אביב - יפו");
+
+  await town.fill("חיפה");
+  await expect(
+    page.getByRole("option", { name: "חיפה", exact: true }),
+  ).toBeVisible();
+  await town.blur();
+  await expect(town).toHaveValue("חיפה");
+
+  // Several towns: the one chosen before stays.
+  await town.fill("מודיעין");
+  await expect(page.getByRole("option").first()).toBeVisible();
+  await town.blur();
+  await expect(town).toHaveValue("חיפה");
+  await expect(address.getByText(f.address.cityUnpicked)).toHaveCount(0);
+
+  // Emptied, then words that choose nothing: said under the field.
+  await town.fill("");
+  await town.blur();
+  await town.fill("מודיעין");
+  await expect(page.getByRole("option").first()).toBeVisible();
+  await town.blur();
+  await expect(town).toHaveValue("מודיעין");
+  await expect(address.getByText(f.address.cityUnpicked)).toBeVisible();
+  await expect(town).toHaveAttribute("aria-invalid", "true");
+});
+
+// The English file draws its dock in a left-to-right frame inside the
+// Hebrew shell: shrunk on a phone, the tab bar keeps its corner and the
+// dock stays beside it, never over it.
+test("the file demo in English keeps its dock beside the shrunk tab bar", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "phone", "Only a phone's bar shrinks.");
+  await page.setViewportSize({ width: 390, height: 600 });
+  await page.goto("/design/shell/me/file?lang=en&step=address");
+  const next = page
+    .getByRole("button", { name: en.app.file.actions.next, exact: true })
+    .filter({ visible: true });
+  await expect(next).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, 500));
+  await expect(page.locator("nav[data-tab-compact]")).toHaveCount(1);
+  const bar = page.locator("nav[data-tab-compact] ul");
+  await expect
+    .poll(async () => {
+      const [button, tabs] = await Promise.all([
+        next.boundingBox(),
+        bar.boundingBox(),
+      ]);
+      if (!button || !tabs) return "unseen";
+      const apart =
+        button.x + button.width <= tabs.x + 1 ||
+        tabs.x + tabs.width <= button.x + 1;
+      return apart ? "beside" : "over";
+    })
+    .toBe("beside");
+});
+
+// A laptop leaves less than the screen's 900px: the summary's one main
+// action stays in view beside the steps, a new file's six included.
+test("the file demo keeps its main action in view on a laptop", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "The summary is a desktop's.");
+  await page.setViewportSize({ width: 1440, height: 780 });
+  await page.goto("/design/shell/me/file?state=new");
+  const send = page
+    .getByRole("button", {
+      name: heT("app.file.actions.send", { business: "מסעדת הדגמה" }),
+    })
+    .filter({ visible: true });
+  await expect(send).toHaveCount(1);
+  await page.evaluate(() => window.scrollTo(0, 600));
+  await expect(send).toBeInViewport({ ratio: 1 });
+});
+
+// The welcome's card over the hero grows down as its words do (a narrow
+// phone, larger text), never up over the title.
+test("the file demo's welcome keeps its card under the title", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "phone", "A narrow phone's.");
+  await page.setViewportSize({ width: 320, height: 700 });
+  await page.goto("/design/shell/me/file?state=new");
+  const title = page.getByText(
+    heT("app.file.welcome.title", { business: "מסעדת הדגמה" }),
+  );
+  const card = page
+    .getByText(heT("app.file.welcome.body", { count: 6 }))
+    .locator("..");
+  const [titleBox, cardBox] = await Promise.all([
+    title.boundingBox(),
+    card.boundingBox(),
+  ]);
+  expect(titleBox && cardBox).toBeTruthy();
+  if (!titleBox || !cardBox) return;
+  expect(cardBox.y).toBeGreaterThanOrEqual(titleBox.y + titleBox.height);
 });
