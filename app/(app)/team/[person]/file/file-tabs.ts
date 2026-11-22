@@ -144,3 +144,19 @@ export function deviceFileTabs(
 
   return { tell, hear };
 }
+
+/**
+ * The session on this device just ended (signed out, or the device locked
+ * as a station), which forgot the files' step-up on the server: every open
+ * file on the device closes now, in every tab and window, which nothing
+ * else would tell a window that is in sight (it asks the server only on a
+ * press, a minute after the last, or on coming back). Each locks too, which
+ * is harmless. Never throws, so it never stands in the way of signing out.
+ */
+export function closeFilesOnDevice(win: TabsWindow): void {
+  try {
+    deviceFileTabs(win).tell({ kind: "closed" });
+  } catch {
+    // No tab could be told: theirs ask the server on their own.
+  }
+}

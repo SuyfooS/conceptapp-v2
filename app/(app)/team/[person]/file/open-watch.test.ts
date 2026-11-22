@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { FileTabNews, FileTabs } from "./file-tabs";
 import type { KeepOpenAnswer } from "./holder-file-types";
 import {
+  KEEP_OPEN_WAIT_MS,
   lockAndDraw,
   type OpenFileMemory,
   type WatchedPage,
@@ -13,14 +14,15 @@ import {
 /*
  * The open file's idle lock (profile H6a, plan §3.5), against a clock of
  * its own: 15 minutes from the last activity on any of the device's tabs,
- * failing closed when the server can't be asked, and the 15 minutes kept
- * while Next hides the screen and shows it again (an <Activity>: its state
- * kept, its effects stopped and started again), so a file left open on a
- * screen kept for later never comes back with a fresh quarter of an hour,
- * nor is drawn at all once it passed. A page put away hides the file, and
- * coming back asks the server at once, the file hidden until it says the
- * file is open, so a file locked in another tab never shows again; another
- * tab's lock closes it at once.
+ * failing closed when the server can't be asked or doesn't answer. A screen
+ * Next hides and shows again (an <Activity>: its state kept, its effects
+ * stopped and started again) heard nothing meanwhile, so it is held until
+ * the server says the file is open, whatever its own clock says, and never
+ * locks the device on it; its 15 minutes then start from the answer. A page
+ * put away hides the file, and coming back asks the server at once, the
+ * file hidden until it says the file is open, so a file locked in another
+ * tab never shows again; another tab's lock closes it at once, and another
+ * tab's activity keeps it open only as long as the server says so.
  */
 
 const MINUTE = 60_000;
@@ -145,6 +147,8 @@ describe("watchOpenFile", () => {
     // Just opened from the server's own drawing: shown at once.
     expect(hold).not.toHaveBeenCalled();
     await settle();
+    // Answered: only the 15 minutes' timer is left.
+    expect(clock.timers.size).toBe(1);
     clock.pass(FILE_IDLE_MS - 1);
     expect(close).not.toHaveBeenCalled();
     clock.pass(1);
@@ -156,9 +160,11 @@ describe("watchOpenFile", () => {
     const { clock, tabs, keep, close, page, watch } = setup();
     const opened = clock.at;
     watch();
+    await settle();
     clock.pass(10 * MINUTE);
     page.press();
     expect(keep).toHaveBeenCalledTimes(2);
+    await settle();
     clock.pass(FILE_TOUCH_EVERY_MS / 2);
     page.key();
     expect(keep).toHaveBeenCalledTimes(2);
@@ -212,34 +218,125 @@ describe("watchOpenFile", () => {
     expect(close).toHaveBeenCalledExactlyOnceWith("failed");
   });
 
-  // Next hides a screen it leaves (its effects stopped) and shows it again
-  // on Back (started again): the 15 minutes run from the last activity.
-  it("keeps the moment of the last activity while the screen is hidden and shown again", async () => {
-    const { clock, close, watch } = setup();
-    const stop = watch();
-    clock.pass(5 * MINUTE);
-    stop();
-    clock.pass(5 * MINUTE);
+  // A weak connection, or an answer lost: the file is never left hidden
+  // with nothing said, and ends on "התיק נעול".
+  it("fails closed when the server's answer doesn't come", async () => {
+    const { clock, close, page, tabs, watch } = setup(
+      () => new Promise(() => {}),
+    );
+    watch();
+    clock.pass(KEEP_OPEN_WAIT_MS - 1);
+    expect(close).not.toHaveBeenCalled();
+    clock.pass(1);
+    expect(close).toHaveBeenCalledExactlyOnceWith("failed");
+    expect(page.listening).toBe(0);
+    expect(tabs.heard).toBeNull();
+    expect(clock.timers.size).toBe(0);
+  });
+
+  it("fails closed when the answer doesn't come on coming back, the file held till then", async () => {
+    let asked = 0;
+    const { clock, close, page, held, watch } = setup(() => {
+      asked += 1;
+      return asked === 1
+        ? Promise.resolve({ open: true })
+        : new Promise(() => {});
+    });
     watch();
     await settle();
-    clock.pass(5 * MINUTE - 1);
+    page.set("hidden");
+    page.set("visible");
+    expect(held()).toBe(true);
+    // A press while it waits asks nothing more within the minute.
+    page.press();
+    expect(asked).toBe(2);
+    clock.pass(KEEP_OPEN_WAIT_MS);
+    expect(close).toHaveBeenCalledExactlyOnceWith("failed");
+    expect(held()).toBe(true);
+  });
+
+  // Next hides a screen it leaves (its effects stopped) and shows it again
+  // on Back (started again). Meanwhile the person worked elsewhere, in this
+  // tab or another, sliding the server's 15 minutes each minute: its own
+  // clock heard none of that, so the server decides, and its 15 minutes
+  // start again from the answer, as the server's did.
+  it("starts the 15 minutes of a screen shown again from the server's answer: at 14 minutes, it doesn't lock a minute later", async () => {
+    const { clock, keep, close, held, watch } = setup();
+    const stop = watch();
+    await settle();
+    clock.pass(14 * MINUTE);
+    stop();
+    watch();
+    expect(keep).toHaveBeenCalledTimes(2);
+    expect(held()).toBe(true);
+    await settle();
+    expect(held()).toBe(false);
+    clock.pass(2 * MINUTE);
+    expect(close).not.toHaveBeenCalled();
+    clock.pass(FILE_IDLE_MS - 2 * MINUTE - 1);
     expect(close).not.toHaveBeenCalled();
     clock.pass(1);
     expect(close).toHaveBeenCalledExactlyOnceWith("idle");
   });
 
-  it("closes a file shown again after its 15 minutes before anything else, asking nothing", () => {
-    const { clock, keep, close, page, tabs, watch } = setup();
+  it("asks the server first for a screen shown again after its own 15 minutes, held and telling nothing until it answers open", async () => {
+    let letGo: (answer: KeepOpenAnswer) => void = () => {};
+    const { clock, keep, close, page, tabs, held, watch } = setup(
+      () =>
+        new Promise((resolve) => {
+          letGo = resolve;
+        }),
+    );
     const stop = watch();
+    letGo({ open: true });
+    await settle();
     stop();
+    // 20 minutes on another file, heard by none of this screen.
     clock.pass(20 * MINUTE);
     keep.mockClear();
+    const told = tabs.told.length;
     watch();
+    expect(close).not.toHaveBeenCalled();
+    expect(keep).toHaveBeenCalledTimes(1);
+    expect(held()).toBe(true);
+    // Its own clock decides nothing: a press while it waits locks nothing.
+    page.press();
+    clock.pass(KEEP_OPEN_WAIT_MS / 2);
+    expect(close).not.toHaveBeenCalled();
+    expect(tabs.told).toHaveLength(told);
+    letGo({ open: true });
+    await settle();
+    expect(held()).toBe(false);
+    expect(close).not.toHaveBeenCalled();
+    // The server slid its 15 minutes: the other tabs hear of it, never that
+    // the files closed.
+    expect(tabs.told.slice(told)).toEqual([{ kind: "active", at: clock.at }]);
+    clock.pass(FILE_IDLE_MS - 1);
+    expect(close).not.toHaveBeenCalled();
+    clock.pass(1);
     expect(close).toHaveBeenCalledExactlyOnceWith("idle");
-    expect(keep).not.toHaveBeenCalled();
+  });
+
+  it("closes a screen shown again after its own 15 minutes as the server says, telling the other tabs nothing", async () => {
+    let open = true;
+    const { clock, close, page, tabs, held, watch } = setup(async () => ({
+      open,
+    }));
+    const stop = watch();
+    await settle();
+    stop();
+    clock.pass(20 * MINUTE);
+    open = false;
+    const told = tabs.told.length;
+    watch();
+    expect(held()).toBe(true);
+    await settle();
+    // Closed as the server said, not "idle": nothing told, nothing locked.
+    expect(close).toHaveBeenCalledExactlyOnceWith("closed");
+    expect(tabs.told).toHaveLength(told);
+    expect(held()).toBe(true);
     expect(page.listening).toBe(0);
     expect(clock.timers.size).toBe(0);
-    expect(tabs.heard).toBeNull();
   });
 
   it("asks again when shown, leaving an answer that came while hidden", async () => {
@@ -417,28 +514,55 @@ describe("watchOpenFile", () => {
   });
 
   // The device's files close together after 15 minutes with no activity on
-  // any of them: one tab in use keeps the others open.
-  it("starts the 15 minutes again on another tab's activity, never later than now", async () => {
+  // any of them: one tab in use keeps the others open, as long as the
+  // server says each is still open.
+  it("starts the 15 minutes again on another tab's activity, asking the server once a minute, never later than now", async () => {
     const { clock, keep, close, tabs, watch } = setup();
     watch();
     await settle();
     clock.pass(10 * MINUTE);
     tabs.say({ kind: "active", at: clock.at });
+    // The server decides each extension: asked once for the minute.
+    expect(keep).toHaveBeenCalledTimes(2);
+    await settle();
+    clock.pass(FILE_TOUCH_EVERY_MS / 2);
+    tabs.say({ kind: "active", at: clock.at });
+    expect(keep).toHaveBeenCalledTimes(2);
     clock.pass(FILE_IDLE_MS - 1);
     expect(close).not.toHaveBeenCalled();
-    // A moment before the last activity doesn't bring the lock nearer; one
-    // later than now counts as now.
+    // A moment before the last activity doesn't bring the lock nearer, nor
+    // asks; one later than now counts as now.
     tabs.say({ kind: "active", at: clock.at - 20 * MINUTE });
     clock.pass(0);
     expect(close).not.toHaveBeenCalled();
+    expect(keep).toHaveBeenCalledTimes(2);
     tabs.say({ kind: "active", at: clock.at + 60 * MINUTE });
+    expect(keep).toHaveBeenCalledTimes(3);
+    await settle();
     clock.pass(FILE_IDLE_MS - 1);
     expect(close).not.toHaveBeenCalled();
     clock.pass(1);
     expect(close).toHaveBeenCalledExactlyOnceWith("idle");
-    // Heard, not done here: nothing asked of the server, nothing told back.
-    expect(keep).toHaveBeenCalledTimes(1);
+    // Heard, not done here: nothing told back.
     expect(tabs.told).toHaveLength(1);
+  });
+
+  // A shared computer: the file was left open in one window, its step-up
+  // gone (signed out, or another person's or business's now), while someone
+  // works on a file of their own in another.
+  it("closes on another tab's activity when the server says this file is closed, telling nothing", async () => {
+    let open = true;
+    const { clock, close, page, tabs, watch } = setup(async () => ({ open }));
+    watch();
+    await settle();
+    clock.pass(2 * MINUTE);
+    open = false;
+    tabs.say({ kind: "active", at: clock.at });
+    await settle();
+    expect(close).toHaveBeenCalledExactlyOnceWith("closed");
+    expect(tabs.told).toEqual([{ kind: "active", at: clock.at - 2 * MINUTE }]);
+    expect(page.listening).toBe(0);
+    expect(clock.timers.size).toBe(0);
   });
 
   it("listens no more once stopped", () => {

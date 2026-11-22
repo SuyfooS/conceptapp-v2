@@ -1749,6 +1749,7 @@
           "action": "Lock the file",
           "hint": "The files also lock by themselves after a quarter of an hour without activity."
         },
+        "checking": "Checking that the file is still open",
         "viewing": "Viewing as the app's team, you don't see the file, only how many details are missing.",
         "unavailable": "Files can't be opened here yet.",
         "failures": {

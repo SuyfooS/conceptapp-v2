@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  closeFilesOnDevice,
   deviceFileTabs,
   FILE_TABS_CHANNEL,
   FILE_TABS_TWIN_CHANNEL,
@@ -226,6 +227,45 @@ describe("deviceFileTabs", () => {
       JSON.stringify({ kind: "closed", from: "x" }),
     );
     expect(a.heard).toEqual([]);
+  });
+});
+
+// Signing out, or locking the device as a station, forgets the step-up on
+// the server, and nothing else would tell a window in sight.
+describe("closeFilesOnDevice", () => {
+  it("closes the file in every tab of the device, with or without a channel", async () => {
+    const phone = device();
+    const open = line(phone.tab().win);
+    const other = line(phone.tab().win);
+    const twin = line(phone.tab().win, FILE_TABS_TWIN_CHANNEL);
+    closeFilesOnDevice(phone.tab().win);
+    await settle();
+    expect(open.heard).toEqual([{ kind: "closed" }]);
+    expect(other.heard).toEqual([{ kind: "closed" }]);
+    expect(twin.heard).toEqual([]);
+
+    const old = device();
+    const oldOpen = line(old.tab({ channel: false }).win);
+    closeFilesOnDevice(old.tab({ channel: false }).win);
+    await settle();
+    expect(oldOpen.heard).toEqual([{ kind: "closed" }]);
+  });
+
+  it("never throws: no channel and the site's data blocked", () => {
+    const phone = device();
+    const { win } = phone.tab({ channel: false, storage: false });
+    expect(() => closeFilesOnDevice(win)).not.toThrow();
+    const broken = {
+      get BroadcastChannel(): never {
+        throw new Error("SecurityError");
+      },
+      get localStorage(): never {
+        throw new Error("SecurityError");
+      },
+      addEventListener() {},
+      removeEventListener() {},
+    } as unknown as TabsWindow;
+    expect(() => closeFilesOnDevice(broken)).not.toThrow();
   });
 });
 

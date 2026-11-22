@@ -23,6 +23,7 @@ import {
   type UnsentOnDevice,
   unsentOnDevice,
 } from "../../orders/orders-storage";
+import { closeFilesOnDevice } from "../../team/[person]/file/file-tabs";
 import {
   type LockAction,
   type LockKind,
@@ -65,7 +66,8 @@ const orderKey = (failure: LockFailure): Exclude<LockFailure, "managerOnly"> =>
  * Waiter mode's records on the device go as it locks, everyone's (P7): with
  * an order that hasn't gone, one more line says how many and where. Not on
  * /design's twins (`clearsDevice`), whose lock locks nothing: the device's
- * own orders are neither read nor cleared there. The same sheet locks the
+ * own orders are neither read nor cleared there, nor its hiring files
+ * closed, as they are on a real lock (H6a). The same sheet locks the
  * kitchen's screen (`kind` "prep", with the department it shows, or every
  * one) and the till (P8a), each in its own words, its name offered from its
  * department ("מטבח"), "הכנה" or "קופה", numbered when one runs by it.
@@ -87,9 +89,9 @@ export function LockStation({
   /** The screen's main action, where locking is what it is for. */
   primary?: boolean;
   /**
-   * Whether locking clears waiter mode's records on the device, and the
-   * sheet says what hasn't gone: false on /design's twins, which lock
-   * nothing.
+   * Whether locking clears the device (waiter mode's records, and the sheet
+   * says what hasn't gone; the hiring files open in its tabs and windows,
+   * closed): false on /design's twins, which lock nothing.
    */
   clearsDevice?: boolean;
   kind?: LockKind;
@@ -240,8 +242,13 @@ export function LockStation({
         if (result.ok) {
           // A whole new page, as signing out opens: nothing of the person's
           // screens stays in this one, nor anyone's orders kept on the
-          // device, cleared before it goes.
-          if (clearsDevice) await clearAllOrders();
+          // device, cleared before it goes. The session ended, and the
+          // hiring files' step-up with it, so a file open in any tab or
+          // window of the device closes now (H6a).
+          if (clearsDevice) {
+            closeFilesOnDevice(window);
+            await clearAllOrders();
+          }
           window.location.replace(result.to);
           return;
         }
