@@ -302,6 +302,7 @@ export async function TodayView({
   lockClearsDevice,
   signOut,
   fileActions,
+  fileQuery,
 }: {
   data: TodayData;
   /** The business's words; the app's own on the demo. */
@@ -335,6 +336,12 @@ export async function TodayView({
    * stand-ins, which keep nothing.
    */
   fileActions?: FileTodayActions;
+  /**
+   * The demo's: the state of the file its card and row tell
+   * (`state=later`), carried to the file's twin, which keeps nothing. None
+   * in the app.
+   */
+  fileQuery?: string;
 }) {
   const t = translator(wording, "app");
   const tm = translator(wording, "modules");
@@ -440,11 +447,14 @@ export async function TodayView({
                   <ListRow
                     key={widget.key}
                     href={
-                      // Hours waiting for approval are approved on the team's hours.
+                      // Hours waiting for approval are approved on the team's
+                      // hours; the demo's file, in the state its row tells.
                       widget.key === "time_clock" &&
                       data.clockLine?.kind === "confirm"
                         ? path("/clock/team")
-                        : path(widget.href)
+                        : widget.key === "employee_files" && fileQuery
+                          ? `${path(widget.href)}?${fileQuery}`
+                          : path(widget.href)
                     }
                     leading={moduleIcons[widget.icon]}
                     title={tm(`${widget.key}.name`)}
@@ -611,7 +621,7 @@ export async function TodayView({
             tone={filePart.card}
             t={t}
             day={day}
-            href={completeHref(base, file.pension)}
+            href={completeHref(base, file.pension, fileQuery)}
           />
         ) : null}
 

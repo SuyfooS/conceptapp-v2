@@ -23,7 +23,8 @@ const { NextIntlClientProvider, createTranslator } = await import("next-intl");
 const { todayFilePart } = await import("./today-file");
 const { FileTodayCard } = await import("./today-file-card");
 const { BankChangeCard } = await import("./bank-change-card");
-const { completeHref } = await import("../me/file/file-parts");
+const { completeHref, pensionLeftOf } = await import("../me/file/file-parts");
+const { fileScreenDemo } = await import("../../design/shell/me/file/data");
 const { baseWording, translator } = await import("../wording");
 const he = (await import("@/messages/he.json")).default;
 
@@ -184,6 +185,41 @@ describe("the file's card", () => {
     expect(passed).toContain(heT("app.me.file.missing", { count: 1 }));
     expect(linkOf(passed).attributes).toContain('href="/me/file?step=pension"');
     expect(completeHref("/design/shell", null)).toBe("/design/shell/me/file");
+  });
+
+  it("leads to the file, not the pension, while the file isn't sent yet", () => {
+    // Noa's "later" file, not sent: a fund is all it lacks, but it still has
+    // to go, and the flow's done screen sends it first.
+    const { data } = fileScreenDemo("later", "he", { form101: "off" });
+    const pension = pensionLeftOf({
+      ...data,
+      file: data.file ? { ...data.file, submitted_at: null } : null,
+    });
+    expect(pension).toBeNull();
+    const html = card(noa({ missing: 1, pension }));
+    expect(html).toContain(heT("app.me.file.missing", { count: 1 }));
+    expect(html).not.toContain(
+      heT("app.me.file.pensionLeft", { date: longDay("2026-12-24") }),
+    );
+    const link = linkOf(html);
+    expect(link.words).toBe(he.app.me.file.complete);
+    expect(link.attributes).toContain('href="/me/file"');
+  });
+
+  it("carries the twin's state to the file's twin", () => {
+    const pension = { kind: "open", dueOn: "2026-12-24" } as const;
+    const html = draw(
+      createElement(FileTodayCard, {
+        file: noa({ missing: 1, pension }),
+        tone: "accent",
+        t: translator(baseWording, "app"),
+        day: longDay,
+        href: completeHref("/design/shell", pension, "state=later"),
+      }),
+    );
+    expect(linkOf(html).attributes).toContain(
+      'href="/design/shell/me/file?step=pension&amp;state=later"',
+    );
   });
 });
 

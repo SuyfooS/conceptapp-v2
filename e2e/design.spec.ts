@@ -6236,11 +6236,55 @@ test("the file demo's 101 link opens the provider and shows its domain", async (
 });
 
 // A fund chosen "later" all that is left: the done screen, Today's card and
-// the profile's lead to the pension's step, not to "סיימת".
+// the profile's lead to the pension's step, not to "סיימת"; the cards to the
+// very file they told, whose way back is to the profile that tells it.
 test("the file demo leads to the pension when a fund chosen later is all that is left", async ({
   page,
-}) => {
+}, testInfo) => {
   const f = he.app.file;
+  const onPension = async () => {
+    await expect(page).toHaveURL(
+      /\/design\/shell\/me\/file\?step=pension&state=later$/,
+    );
+    await page.waitForLoadState("networkidle");
+    const pension = page.getByRole("region", {
+      name: f.steps.name.pension,
+      exact: true,
+    });
+    await expect(
+      pension.getByRole("radio", { name: f.pension.choose, exact: true }),
+    ).toBeChecked();
+    await expect(
+      pension.getByRole("button", {
+        name: `${f.pension.which} ${f.pension.later}`,
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(heT("app.file.progress", { done: 6, count: 6 })),
+    ).toBeVisible();
+    if (testInfo.project.name !== "phone") {
+      const steps = page.getByRole("complementary", { name: f.steps.title });
+      await expect(
+        steps.getByRole("link", {
+          name: `${f.steps.name.bank} · ${f.steps.state.done}`,
+        }),
+      ).toBeVisible();
+      await expect(
+        steps.getByRole("link", {
+          name: `${f.steps.name.pension} · ${f.steps.state.done}`,
+        }),
+      ).toContainText(
+        heT("app.file.done.leftPension", { date: "24 בדצמבר 2026" }),
+      );
+    }
+    const back = page.getByRole("link", { name: f.back, exact: true });
+    await expect(back).toHaveAttribute("href", "/design/shell/me?file=later");
+    await back.click();
+    await expect(page).toHaveURL(/\/design\/shell\/me\?file=later$/);
+    await page.waitForLoadState("networkidle");
+  };
+
   await openFileDemo(page, "/design/shell/me/file?state=later");
   await expect(
     page.getByRole("heading", { name: f.done.titlePension }),
@@ -6261,16 +6305,25 @@ test("the file demo leads to the pension when a fund chosen later is all that is
   await expect(
     today.getByText(heT("app.me.file.pensionLeft", { date: "24 בדצמבר" })),
   ).toBeVisible();
-  await expect(
-    today.getByRole("link", { name: f.actions.choosePension }),
-  ).toHaveAttribute("href", "/design/shell/me/file?step=pension");
+  const fromToday = today.getByRole("link", { name: f.actions.choosePension });
+  await expect(fromToday).toHaveAttribute(
+    "href",
+    "/design/shell/me/file?step=pension&state=later",
+  );
   await expectCleanPage(page);
+  await fromToday.click();
+  await onPension();
 
-  await page.goto("/design/shell/me?file=later");
-  await page.waitForLoadState("networkidle");
-  await expect(
-    page.getByRole("main").getByRole("link", { name: f.actions.choosePension }),
-  ).toHaveAttribute("href", "/design/shell/me/file?step=pension");
+  // Landed on the profile that tells the same file: its card goes there too.
+  const fromProfile = page
+    .getByRole("main")
+    .getByRole("link", { name: f.actions.choosePension });
+  await expect(fromProfile).toHaveAttribute(
+    "href",
+    "/design/shell/me/file?step=pension&state=later",
+  );
+  await fromProfile.click();
+  await onPension();
 });
 
 // The account's change in the bank step, while Today tells it: "לא שיניתי"
@@ -6374,11 +6427,15 @@ test("the Today demo tells of a bank change, hides it with a way back, and 'לא
   await expect(seen).toBeFocused();
   await expectCleanPage(page);
 
-  // Nothing left to tell: the file's quiet row says it is complete.
+  // Nothing left to tell: the file's quiet row says it is complete, and
+  // leads to the file's twin with everything in.
   await page.goto("/design/shell/today/worker?file=complete");
   await page.waitForLoadState("networkidle");
   await expect(main.getByRole("region", { name: b.title })).toHaveCount(0);
   await expect(main.getByText(he.app.home.file.complete)).toBeVisible();
+  await expect(
+    main.getByRole("link").filter({ hasText: he.app.home.file.complete }),
+  ).toHaveAttribute("href", "/design/shell/me/file?state=done");
 });
 
 test("the settings demo types the link and the phone left to right", async ({

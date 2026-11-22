@@ -272,7 +272,13 @@ export function FileFlow({
     : null;
   // A step handed in directly is done, and says how under its name; an
   // optional one says so beside it: the words a screen reader hears after
-  // the name are said once.
+  // the name are said once. The pension answered "אבחר אחר כך" is behind
+  // the person, so the file can go, but a fund is still theirs to choose:
+  // its row says by when, as the profile's does.
+  const pensionLater =
+    data.file?.pension_answer === "later" && due.kind === "open"
+      ? t("done.leftPension", { date: day(due.dueOn) })
+      : undefined;
   const stepRow = (s: FileStep, link: boolean) => (
     <StepRow
       key={s}
@@ -283,7 +289,13 @@ export function FileFlow({
           ? t("optional")
           : t(`steps.state.${states[s] === "direct" ? "done" : states[s]}`)
       }
-      detail={states[s] === "direct" ? t("steps.state.direct") : undefined}
+      detail={
+        states[s] === "direct"
+          ? t("steps.state.direct")
+          : s === "pension"
+            ? pensionLater
+            : undefined
+      }
       badge={
         states[s] === "optional" ? (
           <Badge aria-hidden="true">{t("optional")}</Badge>

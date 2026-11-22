@@ -456,6 +456,41 @@ describe("the done screen", () => {
   });
 });
 
+describe("the pension's row, a fund chosen 'later'", () => {
+  /** The steps' rows that lead to the pension: their marks and their words. */
+  const pensionRows = (html: string) =>
+    html.match(
+      /<a href="\/me\/file\?step=pension"[^>]*>(?:(?!<\/a>)[\s\S])*<\/a>/g,
+    ) ?? [];
+
+  it("says by when a fund is still to choose, though the step is behind her", () => {
+    const missing: string[] = [];
+    const { data } = fileScreenDemo("later", "he");
+    const left = heT("app.file.done.leftPension", { date: "24 בדצמבר 2026" });
+    // On the done screen's list, and beside the step on a tablet and a desktop.
+    for (const view of ["done", "pension"] as const) {
+      const html = drawData(data, "he", view, missing);
+      const rows = pensionRows(html);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toContain(`text-sm">${left}</span>`);
+      // Still marked done, and counted: the file goes with it.
+      expect(rows[0]).toContain("bg-success-soft");
+      expect(rows[0]).toContain(f.steps.state.done);
+      expect(html).toContain(heT("app.file.progress", { done: 6, count: 6 }));
+    }
+    expect(missing).toEqual([]);
+  });
+
+  it("says nothing more once a fund is chosen", () => {
+    const missing: string[] = [];
+    const html = draw("done", "he", "done", missing);
+    expect(missing).toEqual([]);
+    const rows = pensionRows(html);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).not.toContain(f.done.leftPension.split("{")[0] ?? "");
+  });
+});
+
 describe("the progress line", () => {
   it("counts an optional step only once something of it is in", () => {
     const missing: string[] = [];

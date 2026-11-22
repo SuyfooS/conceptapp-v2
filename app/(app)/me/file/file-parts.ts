@@ -78,13 +78,15 @@ export function fileStepInputOf(data: FileScreenData): FileStepInput {
 }
 
 /**
- * A fund still to choose, when that is all the file lacks
+ * A fund still to choose, when that is all a sent file lacks
  * (`onlyPensionLeft`): by its day, or with the day passed. Null otherwise.
  * The ways in that ask to complete the file (Today's card, the profile's)
  * then open the pension's step and say so, rather than the flow's done
- * screen.
+ * screen. Not sent yet, the file still has to go: they keep "השלמת
+ * הפרטים" to the flow, whose done screen sends it first.
  */
 export function pensionLeftOf(data: FileScreenData): PensionDue | null {
+  if (data.file?.submitted_at == null) return null;
   return onlyPensionLeft(
     data.missing,
     fileStepStates(fileStepInputOf(data)),
@@ -94,7 +96,16 @@ export function pensionLeftOf(data: FileScreenData): PensionDue | null {
     : null;
 }
 
-/** Where a way in that asks to complete the file opens it: the pension's step when only a fund is left. */
-export function completeHref(base: string, pensionLeft: PensionDue | null) {
-  return pensionLeft ? `${base}/me/file?step=pension` : `${base}/me/file`;
+/**
+ * Where a way in that asks to complete the file opens it: the pension's
+ * step when only a fund is left. `query` is a twin's own (the state of the
+ * file it told), carried to the file's twin.
+ */
+export function completeHref(
+  base: string,
+  pensionLeft: PensionDue | null,
+  query = "",
+) {
+  const params = [pensionLeft ? "step=pension" : "", query].filter(Boolean);
+  return `${base}/me/file${params.length > 0 ? `?${params.join("&")}` : ""}`;
 }

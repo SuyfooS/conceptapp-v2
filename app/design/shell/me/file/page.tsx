@@ -89,14 +89,22 @@ async function Demo({ searchParams }: Props) {
     he: kept.join("&"),
     en: [...kept, "lang=en"].join("&"),
   };
+  // Back to the profile's twin that tells this file: as this business asks
+  // it, else in its state (sent with a fund still to choose, or everything
+  // in), else stopped at the account.
+  const profile =
+    asks === "lean" || asks === "contact"
+      ? asks
+      : which === "later" || which === "done"
+        ? which
+        : "missing";
   return (
     <FileView
       data={data}
       view={view}
       preset={preset}
       base="/design/shell"
-      // Back to the profile as this business asks the file.
-      profileHref={`/design/shell/me?file=${asks === "lean" || asks === "contact" ? asks : "missing"}`}
+      profileHref={`/design/shell/me?file=${profile}`}
       keep={keep}
       actions={{
         saveStep: demoSaveFileStepAction.bind(null, which),

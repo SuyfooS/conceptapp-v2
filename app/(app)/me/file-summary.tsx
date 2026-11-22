@@ -59,23 +59,30 @@ const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
  * The way into the file from the profile: while something is missing, the
  * screen's one accent card says how much, with "השלמת הפרטים" (not for an
  * owner, who isn't counted, and may still fill a file for themselves), or,
- * when a fund chosen "later" is all that is left, by when, with "בחירת קרן
- * פנסיה" to the pension's step, as Today's card does; then
+ * when a fund chosen "later" is all a sent file lacks, by when, with "בחירת
+ * קרן פנסיה" to the pension's step, as Today's card does; then
  * "התיק שלי ב{business}", who sees it, and a row for each part the business
  * asks or the file holds (H5b): the identity and the pension always, the
  * address, the account and the emergency contact where they show, and Form
  * 101 unless it is taken outside the app; each to its step. Hebrew, as the
- * profile is. Also drawn with mock data on the twin.
+ * profile is. Also drawn with mock data on the twin, whose links carry the
+ * file twin's state (`query`).
  */
 export async function FileSummary({
   data,
   wording,
   base = "",
+  query = "",
 }: {
   data: FileScreenData;
   wording: AppWording;
   /** "" in the app, "/design/shell" on the twin. */
   base?: string;
+  /**
+   * The twin's: the file twin's own query for the file drawn here (its state,
+   * what the business asks), so each link lands on that file. None in the app.
+   */
+  query?: string;
 }) {
   const t = translator(wording, "app.me.file");
   const tf = translator(wording, "app.file");
@@ -130,7 +137,8 @@ export async function FileSummary({
               ? t("values.duePassed")
               : t("values.missing");
 
-  const href = (step: string) => `${base}/me/file?step=${step}`;
+  const href = (step: string) =>
+    `${base}/me/file?step=${step}${query ? `&${query}` : ""}`;
   const asked = data.asked.length;
   const missing = data.missing.length;
   // A fund chosen "later" all that is left: the card opens its step, as
@@ -150,7 +158,7 @@ export async function FileSummary({
             </CardText>
           </div>
           <Button asChild size="lg" className="w-full md:w-auto md:self-start">
-            <Link href={completeHref(base, pensionLeft)}>
+            <Link href={completeHref(base, pensionLeft, query)}>
               {pensionLeft ? tf("actions.choosePension") : t("complete")}
             </Link>
           </Button>

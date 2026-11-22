@@ -13,7 +13,8 @@ type Props = { searchParams: Promise<{ file?: string }> };
 // to pick later all that is left, its card leading to the pension's step;
 // ?file=bank, her account changed two days ago; ?file=disputed, after "לא
 // שיניתי"; ?file=complete, nothing missing and nothing to tell, the file's
-// quiet row saying so, as Today is once the bank's card is hidden.
+// quiet row saying so, as Today is once the bank's card is hidden. The
+// file's card and row lead to its twin in the state they tell.
 export default function ShellTodayWorker({ searchParams }: Props) {
   return (
     <Suspense>
@@ -25,15 +26,26 @@ export default function ShellTodayWorker({ searchParams }: Props) {
 const isFileState = (file: unknown): file is WorkerFileState =>
   WORKER_FILE_STATES.some((state) => state === file);
 
+/**
+ * The file twin's state for each of Today's: stopped (its own default), sent
+ * with a fund still to choose, or everything in.
+ */
+const FILE_TWIN_QUERY: Record<WorkerFileState, string | undefined> = {
+  missing: undefined,
+  pension: "state=later",
+  bank: "state=done",
+  disputed: "state=done",
+  complete: "state=done",
+};
+
 async function Demo({ searchParams }: Props) {
   const { file } = await searchParams;
-  return (
+  return isFileState(file) ? (
     <TodayDemo
-      data={
-        isFileState(file)
-          ? todayScenarios.workerFile(file)
-          : todayScenarios.worker()
-      }
+      data={todayScenarios.workerFile(file)}
+      fileQuery={FILE_TWIN_QUERY[file]}
     />
+  ) : (
+    <TodayDemo data={todayScenarios.worker()} />
   );
 }

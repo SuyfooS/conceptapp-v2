@@ -210,9 +210,10 @@ export function stepsDone(
  * A fund still to choose is all the file lacks: the pension is the only
  * group the database counts missing, though "אבחר אחר כך" put its step
  * behind the person, and no step on screen is open. The flow, with nothing
- * open, opens on its done screen, so the ways in that ask to complete the
- * file (Today's card, the profile's) open the pension's step instead and
- * say that is what is left (H5b).
+ * open, opens on its done screen, so the ways in that ask to complete a
+ * file already sent (Today's card, the profile's) open the pension's step
+ * instead and say that is what is left (H5b); one not sent yet is sent from
+ * that done screen first.
  */
 export function onlyPensionLeft(
   missing: readonly FileGroup[],

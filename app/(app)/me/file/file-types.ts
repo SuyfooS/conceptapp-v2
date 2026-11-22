@@ -172,8 +172,8 @@ export type FileActions = {
 /**
  * What Today's cards need of the person's own file (H5b), never a value:
  * how many groups are asked and how many are missing, whether a fund still
- * to choose is all that is left (`onlyPensionLeft`: the card then opens the
- * pension's step and says by when), and the account's last change while
+ * to choose is all a sent file lacks (`pensionLeftOf`: the card then opens
+ * the pension's step and says by when), and the account's last change while
  * Today tells it, by its day in the business's zone and by the database's
  * moment of it, which "אני שיניתי" sends back so that only this very change
  * is kept seen.
