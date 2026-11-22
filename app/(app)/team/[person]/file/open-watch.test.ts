@@ -698,6 +698,55 @@ describe("watchOpenFile, the final check's cases", () => {
   });
 });
 
+describe("watchOpenFile, a press kept for the minute's end", () => {
+  it("slides nothing when its check runs long after, in a tab frozen in the background", async () => {
+    const { clock, server, tab } = setup();
+    const used = tab();
+    const away = tab();
+    used.watch();
+    away.watch();
+    await clock.pass(TRIP_MS);
+    // A press in the second tab inside its minute, kept for the minute's end;
+    // then it is put away and frozen before that end comes.
+    await clock.pass(2_000);
+    away.page.press();
+    await clock.pass(0);
+    away.page.set("hidden");
+    away.win.asleep = true;
+    // The person works in the first tab for ten minutes, then leaves.
+    for (let minute = 0; minute < 10; minute += 1) {
+      await clock.pass(MINUTE);
+      used.page.press();
+    }
+    // Its own last press, kept for its minute's end, slides once more.
+    await clock.pass(2 * MINUTE);
+    const lastSlide = server.slid.at(-1) ?? 0;
+    // Fourteen minutes after that last press, the frozen tab's timers run,
+    // still hidden, with the step-up still fresh: the stale press only reads,
+    // so nothing slides after the person left.
+    await clock.pass(12 * MINUTE);
+    expect(server.stepUp).not.toBeNull();
+    away.win.asleep = false;
+    await clock.pass(0);
+    away.line.wake();
+    await clock.pass(TRIP_MS);
+    expect(server.slid.at(-1)).toBe(lastSlide);
+    expect(away.slides().at(-1)).toBe(false);
+  });
+
+  it("slides as it should when its check runs at the minute's end", async () => {
+    const { clock, server, tab } = setup();
+    const a = tab();
+    a.watch();
+    await clock.pass(TRIP_MS);
+    await clock.pass(10_000);
+    a.page.press();
+    await clock.pass(MINUTE);
+    expect(a.slides()).toEqual([true, true]);
+    expect(server.slid).toHaveLength(2);
+  });
+});
+
 describe("watchOpenFile, tabs left alone", () => {
   // Each tab's own 15 minutes ask the server, and so does each word heard:
   // if those checks slid the step-up, two idle tabs whose checks come under

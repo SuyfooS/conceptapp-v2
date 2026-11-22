@@ -39,7 +39,9 @@ import type { KeepOpenAnswer, LockAnswer } from "./holder-file-types";
  *    reads the step-up, and tells nothing. So tabs left alone never keep
  *    each other open: the files close on the device 15 minutes after the
  *    last activity in any tab, a minute more at most for a press kept for
- *    the minute's end.
+ *    the minute's end. A kept press slides only while it is fresh
+ *    (`PRESS_FRESH_MS`): run long after, in a tab frozen in the background,
+ *    its check only reads.
  * 6. While the file is hidden for an answer, a line says the server is being
  *    asked (`FileOpenWatch`), and no answer within 10 seconds closes the file
  *    in this tab.
@@ -51,6 +53,14 @@ import type { KeepOpenAnswer, LockAnswer } from "./holder-file-types";
  * hidden with nothing said.
  */
 export const KEEP_OPEN_WAIT_MS = 10_000;
+
+/**
+ * How old a press kept for the minute's end may be when its check runs and
+ * still slide the step-up: the minute, and a few seconds for a busy page.
+ * Older, the tab was frozen and its timer ran late with nobody there, so the
+ * check only reads.
+ */
+export const PRESS_FRESH_MS = FILE_TOUCH_EVERY_MS + 5_000;
 
 /** Why the file closed in this tab, and in this tab only. */
 export type WatchClose =
@@ -127,11 +137,12 @@ export function watchOpenFile({
   // The answers still waited for, each by the timer that gives up on it.
   const waits = new Set<number>();
   let lastCheck: number | null = null;
-  // The one check kept for the minute's end, and whether it is for activity
-  // here: then it slides the step-up, and the other tabs hear of it once it
-  // answers open.
+  // The one check kept for the minute's end, and when the press it keeps
+  // for was: a press still fresh when the check runs slides the step-up, and
+  // the other tabs hear of it once it answers open. A press gone stale (the
+  // tab frozen in the background, its timer run long after) only reads.
   let later: number | undefined;
-  let laterTells = false;
+  let pressedAt: number | null = null;
   // The latest hold: only its own answer shows the file again, and putting
   // the page away makes any other stale.
   let look = 0;
@@ -177,11 +188,13 @@ export function watchOpenFile({
    * closes in this tab.
    */
   function check(tell: boolean, open?: () => void) {
-    const tells = tell || laterTells;
+    const at = now();
+    const tells =
+      tell || (pressedAt !== null && at - pressedAt <= PRESS_FRESH_MS);
     win.clearTimeout(later);
     later = undefined;
-    laterTells = false;
-    lastCheck = now();
+    pressedAt = null;
+    lastCheck = at;
     let answer: Promise<KeepOpenAnswer>;
     try {
       answer = keepOpen(tells);
@@ -231,7 +244,7 @@ export function watchOpenFile({
       check(tell);
       return;
     }
-    laterTells ||= tell;
+    if (tell) pressedAt = at;
     if (later !== undefined) return;
     later = win.setTimeout(
       () => check(false),
