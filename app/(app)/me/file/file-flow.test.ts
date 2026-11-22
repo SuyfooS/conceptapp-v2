@@ -1,6 +1,7 @@
 import { createElement, type ReactElement } from "react";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+import type { Kit } from "./flow-kit";
 
 // The worker's own file drawn whole (profile H5a), on the server as a page
 // first is: every state of Noa's twin, at every step and done, in Hebrew
@@ -18,8 +19,10 @@ vi.mock("next/link", () => ({
     createElement("a", { href, ...rest }, children as never),
 }));
 
-const { NextIntlClientProvider, createTranslator } = await import("next-intl");
+const { NextIntlClientProvider, createTranslator, useTranslations } =
+  await import("next-intl");
 const { FileFlow } = await import("./file-flow");
+const { bankHeld, useHoldWords } = await import("./steps/bank-step");
 const { FileFrame } = await import("./file-frame");
 const { FileView } = await import("./file-view");
 const { fileMessages } = await import("./file-messages");
@@ -250,9 +253,122 @@ describe("sending the file", () => {
     expect(buttonWith(html, f.welcome.start)).toHaveLength(2);
     const summary = buttonWith(html, f.actions.finish.identity);
     expect(summary).toHaveLength(1);
-    expect(summary[0]).toContain("bg-surface-2 text-ink");
-    expect(summary[0]).not.toContain("bg-accent text-accent-ink");
+    expect(summary[0]).toContain(QUIET);
+    expect(summary[0]).not.toContain(ACCENT);
     expect(html).not.toContain(heT("app.file.actions.send", { business }));
+  });
+});
+
+/** A button's look: the accent (the screen's main action) or the quiet one. */
+const ACCENT = "bg-accent text-accent-ink";
+const QUIET = "bg-surface-2 text-ink";
+
+// On a desktop the step that keeps the file back may be the one on screen
+// already (Noa's twin stops at the account): the summary's main action is
+// then that step's own, under its words, never a way to where the person is
+// (H5a's check of the second review).
+describe("the summary's main action, with the open step on screen", () => {
+  it("sends the account's own form, in the accent", () => {
+    const missing: string[] = [];
+    const html = draw("stopped", "he", null, missing);
+    expect(missing).toEqual([]);
+    expect(html).not.toContain(f.actions.finish.bank);
+    const own = buttonWith(html, f.bank.confirm).filter((button) =>
+      button.includes(ACCENT),
+    );
+    // The summary's and the dock's, each sending the step's form.
+    expect(own.length).toBeGreaterThan(0);
+    const summary = own.filter((button) => button.includes('type="submit"'));
+    expect(summary.length).toBeGreaterThan(0);
+    for (const button of summary) {
+      expect(button).toContain('form="file-bank-form"');
+      expect(button).not.toMatch(DISABLED);
+    }
+    // The form it sends is there.
+    expect(html).toContain('<form id="file-bank-form"');
+    // The step's own quiet save stays in its section.
+    expect(
+      buttonWith(html, f.bank.confirm).some((button) => button.includes(QUIET)),
+    ).toBe(true);
+  });
+
+  it("saves a new file's details, the welcome's way in gone from the step", () => {
+    const missing: string[] = [];
+    const html = draw("new", "he", "identity", missing);
+    expect(missing).toEqual([]);
+    expect(buttonWith(html, f.welcome.start)).toHaveLength(0);
+    const own = buttonWith(html, f.actions.saveIdentity).filter((button) =>
+      button.includes('form="file-identity-form"'),
+    );
+    expect(own).toHaveLength(1);
+    expect(own[0]).toContain(ACCENT);
+    expect(html).toContain('<form id="file-identity-form"');
+    expect(html).not.toContain(f.actions.finish.identity);
+  });
+
+  it("saves the pension's answer", () => {
+    const missing: string[] = [];
+    const html = draw("saved", "he", "pension", missing);
+    expect(missing).toEqual([]);
+    const own = buttonWith(html, f.actions.savePension).filter((button) =>
+      button.includes('form="file-pension-form"'),
+    );
+    expect(own).toHaveLength(1);
+    expect(own[0]).toContain(ACCENT);
+  });
+
+  it("goes to the code's boxes while they are up, and waits with the hold", () => {
+    const missing: string[] = [];
+    const code = draw("code", "he", "bank", missing);
+    const asked = buttonWith(code, f.bank.confirm).filter((button) =>
+      button.includes('form="file-bank-form"'),
+    );
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).not.toMatch(DISABLED);
+    const held = draw("hold", "he", "bank", missing);
+    const waiting = buttonWith(held, f.bank.confirm).filter((button) =>
+      button.includes('form="file-bank-form"'),
+    );
+    expect(waiting.length).toBeGreaterThan(0);
+    for (const button of waiting) expect(button).toMatch(DISABLED);
+    // Said under it, as beside the step's own: in the section, the dock and
+    // the summary.
+    const words = heT("app.file.bank.phoneHold", { date: "27 בנובמבר 2026" });
+    expect(held.split(words).length - 1).toBe(3);
+    expect(missing).toEqual([]);
+  });
+
+  it("goes on once the account on screen is in", () => {
+    const { data } = fileScreenDemo("stopped", "he");
+    if (!data.file) throw new Error("a file");
+    const missing: string[] = [];
+    // The account shown saved while the file still counts it open.
+    const html = drawData(
+      {
+        ...data,
+        file: { ...data.file, has: { ...data.file.has, bank_account: true } },
+      },
+      "he",
+      "bank",
+      missing,
+    );
+    expect(missing).toEqual([]);
+    const own = buttonWith(html, f.actions.continue).filter((button) =>
+      button.includes(ACCENT),
+    );
+    expect(own.length).toBeGreaterThan(0);
+    for (const button of own) expect(button).not.toContain("form=");
+    expect(html).not.toContain(f.actions.finish.bank);
+  });
+
+  it("leads to the open step from another", () => {
+    const missing: string[] = [];
+    const html = draw("stopped", "he", "pension", missing);
+    expect(missing).toEqual([]);
+    const toBank = buttonWith(html, f.actions.finish.bank);
+    expect(toBank).toHaveLength(1);
+    expect(toBank[0]).toContain(ACCENT);
+    expect(toBank[0]).not.toContain("form=");
   });
 });
 
@@ -322,9 +438,13 @@ describe("the bank step", () => {
         "&quot;",
       ),
     );
-    const dock = dockButtons(html);
-    expect(dock).toHaveLength(1);
-    expect(dock[0]).not.toMatch(DISABLED);
+    // The dock's and, on a desktop, the summary's: both send the step's form.
+    const sending = dockButtons(html);
+    expect(sending).toHaveLength(2);
+    for (const button of sending) {
+      expect(button).toContain('form="file-bank-form"');
+      expect(button).not.toMatch(DISABLED);
+    }
     // A desktop's own action is never pressed in vain without words.
     for (const button of buttonWith(html, f.bank.confirm)) {
       expect(button).not.toMatch(DISABLED);
@@ -359,6 +479,69 @@ describe("the bank step", () => {
     expect(draw("warning", "he", "bank", missing)).not.toContain(
       f.bank.keepCurrent,
     );
+  });
+});
+
+type Hold = Parameters<typeof bankHeld>[0];
+
+/** The hold's words, as the step and the summary say them, on Noa's twin. */
+function HoldWords({ hold }: { hold: Hold }) {
+  const t = useTranslations("app.file");
+  const { data } = fileScreenDemo("stopped", "he");
+  return createElement("p", null, useHoldWords({ t, data } as Kit, hold));
+}
+
+// The week after a phone change as the server says it before a code goes:
+// its day and the moment it opens. Held while that day hasn't passed, so a
+// week ending later today keeps the code's action back (the timer lets it
+// go at the moment), and said by its time, never as "from today".
+describe("the week after a phone change, on the screen", () => {
+  const today = fileScreenDemo("stopped", "he").data.today;
+
+  it("holds through the day it opens, never after", () => {
+    expect(bankHeld({ day: today, at: null }, today)).toBe(true);
+    expect(bankHeld({ day: today, at: `${today}T12:05:00Z` }, today)).toBe(
+      true,
+    );
+    expect(bankHeld({ day: "2026-11-27", at: null }, today)).toBe(true);
+    expect(bankHeld({ day: "2026-11-23", at: null }, today)).toBe(false);
+    expect(bankHeld(null, today)).toBe(false);
+  });
+
+  function wordsOf(hold: Hold): string {
+    const missing: string[] = [];
+    const html = renderToString(
+      createElement(
+        NextIntlClientProvider,
+        {
+          locale: "he",
+          timeZone: "Asia/Jerusalem",
+          messages: he,
+          onError: (error: Error) => {
+            missing.push(error.message);
+          },
+        } as unknown as Parameters<typeof NextIntlClientProvider>[0],
+        createElement(HoldWords, { hold }),
+      ),
+    );
+    expect(missing).toEqual([]);
+    return html;
+  }
+
+  it("says a week ending later today by its time, in the business's zone", () => {
+    expect(wordsOf({ day: today, at: `${today}T12:05:00Z` })).toBe(
+      `<p>${he.app.file.bank.phoneHoldToday
+        .replace("<ltr>", '<span dir="ltr">')
+        .replace("{time}", "14:05")
+        .replace("</ltr>", "</span>")}</p>`,
+    );
+    expect(wordsOf({ day: "2026-11-27", at: "2026-11-27T08:00:00Z" })).toBe(
+      `<p>${heT("app.file.bank.phoneHold", { date: "27 בנובמבר 2026" })}</p>`,
+    );
+    expect(wordsOf({ day: today, at: null })).toBe(
+      `<p>${heT("app.file.bank.phoneHold", { date: "24 בנובמבר 2026" })}</p>`,
+    );
+    expect(wordsOf(null)).toBe("<p></p>");
   });
 });
 

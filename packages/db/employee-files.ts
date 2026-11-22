@@ -77,12 +77,15 @@ export type FileReadFailure =
 
 /**
  * A write refused, in the screens' terms. In the week after a phone change
- * (`phoneHold`) it says the day a bank change opens again, a date only.
+ * (`phoneHold`) it says the day a bank change opens again (`opensOn`), and,
+ * when asked before a code goes (`checkBankChange`), the moment it does
+ * (`opensAt`, ISO).
  */
 export type FileWriteFailure = {
   ok: false;
   failure: FileFailure;
   opensOn?: string;
+  opensAt?: string;
 };
 
 export type FileWriteResult = { ok: true } | FileWriteFailure;
@@ -712,16 +715,29 @@ export async function saveEmployeeDetails(
  */
 export const BANK_TRY_AHEAD_MS = 15 * 60_000;
 
+/** `bank_change_hold`'s answer: when the week ends, and its day; null with none. */
+const holdReply = z
+  .object({
+    opens_at: z
+      .string()
+      .refine((at) => Number.isFinite(Date.parse(at)))
+      .transform((at) => new Date(at).toISOString()),
+    opens_on: z.string().regex(OPENS_ON),
+  })
+  .nullable();
+
 /**
  * Whether the person's own bank change could be saved now but for its code,
  * asked before an SMS goes, so no code is spent on what couldn't be kept:
  * the database's own rules run on the account as typed (a demo, the module
- * off, an account it can't keep, the week after a phone change with the day
- * it opens), in the write itself, dated `BANK_TRY_AHEAD_MS` on. A code it
- * holds is older than ten minutes by then, so the write always stops at the
- * code and keeps nothing; that refusal (`stepUp`) is the answer "it can go".
- * A phone change whose week ends within those minutes still holds here, and
- * says the day it opens: today.
+ * off, an account it can't keep), in the write itself, dated
+ * `BANK_TRY_AHEAD_MS` on. A code it holds is older than ten minutes by then,
+ * so the write always stops at the code and keeps nothing; that refusal
+ * (`stepUp`) is the answer "it can go". Dated that far on, the write would
+ * also measure the week after a phone change there and miss one ending in
+ * between, which the real write, dated now, still refuses once the code is
+ * spent: so that week is read on its own, now (`bank_change_hold`), and
+ * holds with its day and the moment it opens (`opensAt`).
  */
 export async function checkBankChange(
   personId: string,
@@ -741,6 +757,28 @@ export async function checkBankChange(
     // Never: no code counts that far on. Said, and taken as a failure.
     console.error("a bank change went through without its code");
     return { ok: false, failure: "failed" };
+  }
+  // Anything else keeps it back at any time: said as it is.
+  if (tried.failure !== "stepUp" && tried.failure !== "phoneHold") {
+    return tried;
+  }
+  const { data, error } = await createAdminClient().rpc("bank_change_hold", {
+    business: businessId,
+    person: personId,
+  });
+  // Before its migration reaches the project, the try's own answer, as before.
+  if (error && !isMissingFunction(error)) {
+    return failedWith("reading a phone hold failed", error);
+  }
+  const hold = holdReply.safeParse(error ? null : data);
+  if (!hold.success) return { ok: false, failure: "failed" };
+  if (hold.data) {
+    return {
+      ok: false,
+      failure: "phoneHold",
+      opensOn: hold.data.opens_on,
+      opensAt: hold.data.opens_at,
+    };
   }
   return tried.failure === "stepUp" ? { ok: true } : tried;
 }

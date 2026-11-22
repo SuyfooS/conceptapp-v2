@@ -5,8 +5,8 @@
 -- date and the ID, also for someone who left, an owner's file only an
 -- owner, never an accountant's); the sealed values checked; the data key
 -- made once; the bank, a new account or one withdrawn, behind a fresh code,
--- never in the week after a phone change, every new account waiting for a
--- holder; the 101 due again when a detail is replaced; youth_until from the
+-- never in the week after a phone change (and that week read on its own,
+-- before a code goes), every new account waiting for a holder; the 101 due again when a detail is replaced; youth_until from the
 -- birth date, and payroll's birth date closed once the file holds one and
 -- takes writes; nothing written for what is stored
 -- already; the contact, the sending, the bank's confirmation and dispute,
@@ -14,7 +14,7 @@
 -- file, a key or the log. Every write at 10:00 on 26 November 2026 in
 -- Israel. Fixed ids (f2…), numbers (050-075-xxxx) and slugs (efw-…).
 begin;
-select plan(91);
+select plan(96);
 
 -- A: 1 its owner, 2 a manager holding the files who confirmed the duties,
 -- 3 Noa and 4 Yoav, workers, 5 the accountant, 6 a worker who left, 7 a
@@ -257,14 +257,31 @@ where user_id = pg_temp.p(3);
 select public.note_step_up(pg_temp.p(3), 'bank', pg_temp.at());
 select is(pg_temp.try($$select pg_temp.set(3, 3, pg_temp.bank('valid'))$$), '55000:phone_hold',
   'no bank change in the week after a phone change');
+-- What the server reads before a code goes (20261126000300_bank_change_hold.sql):
+-- the week measured at the time asked, never past it, with the day the
+-- refusal names.
+select is(public.bank_change_hold(pg_temp.a(), pg_temp.p(3), pg_temp.at()),
+  jsonb_build_object('opens_at', pg_temp.at() + interval '4 days', 'opens_on', '2026-11-30'),
+  'the week''s end is read, with its day in the business''s zone');
+select is(
+  public.bank_change_hold(pg_temp.a(), pg_temp.p(3),
+    pg_temp.at() + interval '4 days' - interval '5 minutes') ->> 'opens_on',
+  '2026-11-30', 'also minutes before it ends');
+select is(
+  public.bank_change_hold(pg_temp.a(), pg_temp.p(3), pg_temp.at() + interval '4 days'),
+  null::jsonb, 'and nothing once it has, as the write measures it');
 update private.phone_changes set changed_at = pg_temp.at() - interval '8 days'
 where user_id = pg_temp.p(3);
 select is(pg_temp.try($$select pg_temp.set(3, 3, pg_temp.bank('valid'))$$), 'ok',
   'and after it, one again');
+select is(public.bank_change_hold(pg_temp.a(), pg_temp.p(3), pg_temp.at()), null::jsonb,
+  'the week read as over too');
 update auth.users set phone = '972500759998' where id = pg_temp.p(14);
 select is(
   (select count(*)::integer from private.phone_changes c where c.user_id = pg_temp.p(14)),
   0, 'a first number is not a change');
+select is(public.bank_change_hold(pg_temp.a(), pg_temp.p(14), pg_temp.at()), null::jsonb,
+  'and holds nothing');
 select is(pg_temp.try($$select pg_temp.set(3, 3, '{"bank": null}')$$), '55000:step_up',
   'withdrawing the account waits for a fresh code too');
 update private.phone_changes set changed_at = pg_temp.at() - interval '3 days'

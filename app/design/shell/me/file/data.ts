@@ -1,3 +1,4 @@
+import type { Address } from "@domain/address";
 import { cityOf } from "@domain/cities";
 import type { FileRow } from "@domain/employee-file";
 import { addYears } from "@domain/youth";
@@ -46,6 +47,14 @@ export const FILE_DEMO_HELD_UNTIL = "2026-11-27";
 
 /** When an updated 101 is due on the twin's `done`, after a move: a week on. */
 export const FILE_DEMO_CHANGE_DUE = "2026-12-01";
+
+/** Noa's address on the twin: a save that keeps it is no move. */
+export const FILE_DEMO_ADDRESS = {
+  kind: "street",
+  cityCode: 5000,
+  street: "הרצל",
+  number: "12",
+} satisfies Address;
 
 const EMPTY_ROW: FileRow = {
   legal_first_name: null,
@@ -173,10 +182,7 @@ export function fileScreenDemo(
     role: "worker",
     demo: false,
     file: row,
-    address:
-      row === null
-        ? null
-        : { kind: "street", cityCode: 5000, street: "הרצל", number: "12" },
+    address: row === null ? null : FILE_DEMO_ADDRESS,
     city: row === null ? null : cityOf(5000),
     email: row === null ? null : "noa@demo.conceptapp.invalid",
     documentName: null,

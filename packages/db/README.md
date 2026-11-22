@@ -1733,7 +1733,12 @@ per role: owners always hold it, accountants by `private.accountant_perms`
   (`opensOn`, from the refusal's DETAIL, a date only: H5a's bank step says
   it). `checkBankChange` tries a bank write before its SMS goes, dated past
   any code's ten minutes (`at_time`), so it always stops at the code and
-  keeps nothing, and says the hold first. The step-up code goes to
+  keeps nothing; dated that far on, it would miss a week after a phone
+  change that ends in between, so that week is read on its own, now
+  (`public.bank_change_hold(business, person)`,
+  `20261126000300_bank_change_hold.sql`, the secret key's: when it ends and
+  its day, or null), and holds with the day and the moment it opens
+  (`opensAt`). The step-up code goes to
   `auth.users.phone` (read with the secret key), never `profiles.phone`,
   which a phone change doesn't reach yet. Covered by
   `employee_files.test.sql`, `employee_files_writes.test.sql`,

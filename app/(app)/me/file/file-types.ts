@@ -110,6 +110,8 @@ type CodeRefusal = {
   failure: CodeFailure | FileActionFailure;
   /** In the week after a phone change: the day a change opens again. */
   opensOn?: string;
+  /** And, asked before a code goes, the moment it does (ISO). */
+  opensAt?: string;
 };
 
 /** Sent, to the number ending in `tail`; or why not, before any SMS went. */

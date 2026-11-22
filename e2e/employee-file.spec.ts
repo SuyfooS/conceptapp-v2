@@ -39,6 +39,14 @@ const visible = (page: Page, role: "button" | "link", name: string) =>
 /** A step's section: on a phone and a tablet only the one on screen. */
 const section = (page: Page, step: Step) =>
   page.getByRole("region", { name: f.steps.name[step], exact: true });
+/**
+ * "אישור החשבון בקוד", the account's own: the dock's on a phone and a tablet,
+ * the section's on a desktop (whose summary offers the same press).
+ */
+const bankConfirm = (page: Page) =>
+  section(page, "bank")
+    .getByRole("button", { name: f.bank.confirm, exact: true })
+    .filter({ visible: true });
 /** A step's row in the list beside the steps, by where it stands. */
 const stepRow = (page: Page, step: Step, state: keyof typeof f.steps.state) =>
   visible(page, "link", `${f.steps.name[step]} · ${f.steps.state[state]}`);
@@ -126,14 +134,14 @@ async function fillToBank(page: Page, testInfo: TestInfo) {
 /** "אישור החשבון בקוד", waiting out the auth server's wait if a code just went. */
 async function askForBankCode(page: Page): Promise<Date> {
   let since = new Date(Date.now() - 1000);
-  await visible(page, "button", f.bank.confirm).click();
+  await bankConfirm(page).click();
   const code = page.getByLabel(f.bank.code.label);
   const tooSoon = page.getByText(f.bank.code.rateLimit);
   await expect(code.or(tooSoon)).toBeVisible();
   if (await tooSoon.isVisible()) {
     await page.waitForTimeout(SMS_COOLDOWN_MS + 500);
     since = new Date(Date.now() - 1000);
-    await visible(page, "button", f.bank.confirm).click();
+    await bankConfirm(page).click();
   }
   await expect(code).toBeVisible();
   return since;
@@ -259,7 +267,7 @@ test("a wrong account number gets a warning in words and is saved with a flag", 
     .filter({ visible: true });
   await expect(checkFirst).toBeVisible();
   const before = new Date(Date.now() - 1000);
-  await visible(page, "button", f.bank.confirm).click();
+  await bankConfirm(page).click();
   await expect(bank.getByLabel(f.bank.account)).toBeFocused();
   await expect(page.getByLabel(f.bank.code.label)).toHaveCount(0);
   expect(await codesSentSince(NOA.e164, before)).toBe(0);
@@ -466,14 +474,22 @@ test("an account waits a week after a phone change, and no code goes", async ({
     })
     .check();
   const before = new Date(Date.now() - 1000);
-  await visible(page, "button", f.bank.confirm).click();
+  await bankConfirm(page).click();
   await expect(
-    page
+    bank
       .getByText(f.bank.phoneHold.split("{date}")[0] ?? "")
       .filter({ visible: true }),
   ).toBeVisible();
   await expect(page.getByLabel(f.bank.code.label)).toHaveCount(0);
-  await expect(visible(page, "button", f.bank.confirm)).toBeDisabled();
+  await expect(bankConfirm(page)).toBeDisabled();
+  if (isDesktop(testInfo)) {
+    // The summary's action is the account's own: held as well.
+    await expect(
+      page
+        .getByRole("complementary", { name: f.steps.title })
+        .getByRole("button", { name: f.bank.confirm }),
+    ).toBeDisabled();
+  }
   expect(await codesSentSince(NOA.e164, before)).toBe(0);
   expect((await demoFileFacts(NOA.id))?.bankCode).toBeNull();
   await expectCleanPage(page);

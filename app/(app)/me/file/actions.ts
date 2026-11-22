@@ -216,6 +216,7 @@ export async function sendBankCodeAction(
         ok: false,
         failure: keepable.failure,
         ...(keepable.opensOn ? { opensOn: keepable.opensOn } : {}),
+        ...(keepable.opensAt ? { opensAt: keepable.opensAt } : {}),
       };
     }
     const phone = await signInPhoneOf(who.userId);

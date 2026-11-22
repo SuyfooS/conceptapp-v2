@@ -25,6 +25,7 @@ import {
   Failure,
   FileSection,
   firstProblem,
+  formIdOf,
   type Kit,
   LaterLink,
   ltr,
@@ -47,12 +48,13 @@ const email = z.email();
  * With nothing missing the main action can always be pressed, and a press
  * that can't save says every problem and goes to the first. A move with this
  * year's 101 handed in makes an updated one due within a week: said, and the
- * step stays until the person goes on.
+ * step stays until the person goes on, by the same press with nothing
+ * changed since (the save is in: the database would find nothing to change).
  */
 export function AddressStep({ kit, active }: { kit: Kit; active: boolean }) {
   const { t, data } = kit;
   const day = useDay();
-  const formId = useId();
+  const formId = formIdOf("address");
   const noStreetId = useId();
   const stored = data.address;
   const [city, setCity] = useState<City | null>(data.city);
@@ -82,8 +84,10 @@ export function AddressStep({ kit, active }: { kit: Kit; active: boolean }) {
   const [tried, setTried] = useState(false);
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<FileActionFailure | null>(null);
-  // A move that makes this year's 101 due again: said, and the step stays.
+  // A move that makes this year's 101 due again: said, and the step stays,
+  // with what that save sent.
   const [changeDueBy, setChangeDueBy] = useState<string | null>(null);
+  const [savedAs, setSavedAs] = useState<string | null>(null);
 
   const kind = noStreet ? instead : "street";
   const address = {
@@ -145,10 +149,21 @@ export function AddressStep({ kit, active }: { kit: Kit; active: boolean }) {
       showFirstProblem(form);
       return;
     }
+    const sent = { address, email: mailTyped || null };
+    const sentAs = JSON.stringify(sent);
+    // Pressed again after the save the step stayed for, nothing changed
+    // since: it is in, and the person goes on, as a second save would.
+    if (changeDueBy !== null && savedAs === sentAs) {
+      setTried(false);
+      setChangeDueBy(null);
+      kit.say(t("saved"));
+      if (active) kit.go(nextFileStep("address") ?? "done");
+      return;
+    }
     setPending(true);
     setFailure(null);
     const result = await kit.actions
-      .saveStep("address", { address, email: mailTyped || null })
+      .saveStep("address", sent)
       .catch(() => ({ ok: false, failure: "failed" }) as const);
     setPending(false);
     if (!result.ok) {
@@ -157,6 +172,7 @@ export function AddressStep({ kit, active }: { kit: Kit; active: boolean }) {
     }
     setTried(false);
     setChangeDueBy(result.changeDueBy);
+    setSavedAs(sentAs);
     kit.say(t("saved"));
     if (active && !result.changeDueBy) {
       kit.go(nextFileStep("address") ?? "done");

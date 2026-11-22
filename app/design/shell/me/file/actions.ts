@@ -1,7 +1,8 @@
 "use server";
 
+import { type Address, addressSchema } from "@domain/address";
 import { checkBankAccount } from "@domain/bank-account";
-import { employeeDetailsInput } from "@domain/employee-file";
+import { addressText, employeeDetailsInput } from "@domain/employee-file";
 import type {
   ConfirmBankAnswer,
   FileWriteAnswer,
@@ -11,6 +12,7 @@ import type {
   SendCodeAnswer,
 } from "../../../../(app)/me/file/file-types";
 import {
+  FILE_DEMO_ADDRESS,
   FILE_DEMO_CHANGE_DUE,
   FILE_DEMO_CODE,
   FILE_DEMO_NUMBERS,
@@ -22,9 +24,17 @@ import {
 // the same checks of what is typed, a moment's wait, and nothing kept. The
 // code step takes the twin's code and refuses any other, and "הצגה" shows
 // the twin's made-up numbers. On `done`, whose 101 is handed in, a new
-// address makes an updated one due, as a move does.
+// address makes an updated one due, as a move does; Noa's own typed again
+// is no move, as the app leaves out an address saved as it is stored.
 
 const pause = () => new Promise((resolve) => setTimeout(resolve, 400));
+
+/** An address as the app compares it with the one stored: its city and its sealed text. */
+const addressKey = (address: Address) =>
+  JSON.stringify([address.cityCode, addressText(address)]);
+
+/** Noa's, read as the app reads a stored one back. */
+const STORED_ADDRESS = addressKey(addressSchema.parse(FILE_DEMO_ADDRESS));
 
 export async function demoSaveFileStepAction(
   state: FileDemoState,
@@ -32,13 +42,15 @@ export async function demoSaveFileStepAction(
   input: unknown,
 ): Promise<SaveStepAnswer> {
   await pause();
-  if (!employeeDetailsInput(FILE_DEMO_TODAY).safeParse(input).success) {
-    return { ok: false, failure: "invalid" };
-  }
+  const parsed = employeeDetailsInput(FILE_DEMO_TODAY).safeParse(input);
+  if (!parsed.success) return { ok: false, failure: "invalid" };
+  const moved =
+    step === "address" &&
+    parsed.data.address != null &&
+    addressKey(parsed.data.address) !== STORED_ADDRESS;
   return {
     ok: true,
-    changeDueBy:
-      state === "done" && step === "address" ? FILE_DEMO_CHANGE_DUE : null,
+    changeDueBy: state === "done" && moved ? FILE_DEMO_CHANGE_DUE : null,
   };
 }
 

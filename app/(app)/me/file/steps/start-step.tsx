@@ -8,10 +8,11 @@ import {
 } from "@domain/profile";
 import { Button } from "@ui/button";
 import { ChoiceList, ChoiceRow } from "@ui/choice-row";
-import { type FormEvent, useId, useState } from "react";
+import { type FormEvent, useState } from "react";
 import {
   Failure,
   FileSection,
+  formIdOf,
   type Kit,
   LaterLink,
   Reason,
@@ -31,7 +32,7 @@ import { localeToSave } from "../flow-rules";
  */
 export function StartStep({ kit, active }: { kit: Kit; active: boolean }) {
   const { t, data } = kit;
-  const formId = useId();
+  const formId = formIdOf("start");
   const [picked, setPicked] = useState<ProfileLocale | null>(null);
   // The file's language changed (the button above, or this step's save):
   // what was picked here is behind it now, and the choice follows the file.

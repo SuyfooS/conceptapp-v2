@@ -509,6 +509,36 @@ describe("checkBankChange", () => {
     const at = Date.parse(tried?.args.at_time as string);
     expect(at - before).toBeGreaterThanOrEqual(files.BANK_TRY_AHEAD_MS - 1000);
     expect(files.BANK_TRY_AHEAD_MS).toBeGreaterThan(10 * 60_000);
+    // The week after a phone change, read now: none.
+    expect(callsTo("bank_change_hold")).toEqual([
+      {
+        fn: "bank_change_hold",
+        args: { business: BUSINESS, person: NOA },
+        as: "admin",
+      },
+    ]);
+  });
+
+  // The try, dated past the code's minutes, misses a week ending in
+  // between; the real write, dated now, would refuse it once the SMS went.
+  it("holds a week that ends within the try's minutes, read now, with the moment it opens", async () => {
+    db.answers.set_employee_details = () => ({
+      data: null,
+      error: refusal("step_up"),
+    });
+    db.answers.bank_change_hold = () => ({
+      data: {
+        opens_at: "2026-11-26T12:05:00.123456+00:00",
+        opens_on: "2026-11-26",
+      },
+      error: null,
+    });
+    expect(await files.checkBankChange(NOA, BUSINESS, account, TODAY)).toEqual({
+      ok: false,
+      failure: "phoneHold",
+      opensOn: "2026-11-26",
+      opensAt: "2026-11-26T12:05:00.123Z",
+    });
   });
 
   it("says the week after a phone change, with the day it opens", async () => {
@@ -516,10 +546,66 @@ describe("checkBankChange", () => {
       data: null,
       error: refusal("phone_hold", "2026-11-30"),
     });
+    db.answers.bank_change_hold = () => ({
+      data: {
+        opens_at: "2026-11-30T08:00:00+00:00",
+        opens_on: "2026-11-30",
+      },
+      error: null,
+    });
     expect(await files.checkBankChange(NOA, BUSINESS, account, TODAY)).toEqual({
       ok: false,
       failure: "phoneHold",
       opensOn: "2026-11-30",
+      opensAt: "2026-11-30T08:00:00.000Z",
+    });
+    // Ended between the two: the try's own day.
+    db.answers.bank_change_hold = () => ({ data: null, error: null });
+    expect(await files.checkBankChange(NOA, BUSINESS, account, TODAY)).toEqual({
+      ok: false,
+      failure: "phoneHold",
+      opensOn: "2026-11-30",
+    });
+  });
+
+  it("takes no yes from a hold it couldn't read", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    db.answers.set_employee_details = () => ({
+      data: null,
+      error: refusal("step_up"),
+    });
+    db.answers.bank_change_hold = () => ({
+      data: null,
+      error: { code: "XX000", message: "broken" },
+    });
+    expect(await files.checkBankChange(NOA, BUSINESS, account, TODAY)).toEqual({
+      ok: false,
+      failure: "failed",
+    });
+    db.answers.bank_change_hold = () => ({
+      data: { opens_at: "soon", opens_on: "2026-11-30" },
+      error: null,
+    });
+    expect(await files.checkBankChange(NOA, BUSINESS, account, TODAY)).toEqual({
+      ok: false,
+      failure: "failed",
+    });
+  });
+
+  it("goes by the try alone before the read reaches the project", async () => {
+    db.answers.set_employee_details = () => ({
+      data: null,
+      error: refusal("step_up"),
+    });
+    db.answers.bank_change_hold = () => ({
+      data: null,
+      error: {
+        code: "PGRST202",
+        message: "Could not find the function public.bank_change_hold",
+      },
+    });
+    expect(await files.checkBankChange(NOA, BUSINESS, account, TODAY)).toEqual({
+      ok: true,
     });
   });
 
@@ -539,6 +625,7 @@ describe("checkBankChange", () => {
         TODAY,
       ),
     ).toEqual({ ok: false, failure: "invalid" });
+    expect(callsTo("bank_change_hold")).toEqual([]);
   });
 
   it("never takes a write that went through for a yes", async () => {

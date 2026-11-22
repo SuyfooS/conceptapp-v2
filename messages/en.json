@@ -4100,7 +4100,7 @@
         "idReason": "Required by law: for your payslip, Form 101, your pension and the safety training record.",
         "idInvalid": "This ID number isn't valid. Check the digits again.",
         "documentInvalid": "The number can hold only English letters and digits.",
-        "documentShort": "That number is too short. It has at least <ltr>{min}</ltr> characters.",
+        "documentShort": "That number is too short: it needs at least <ltr>{min}</ltr> characters.",
         "keepStored": "Leave it empty to keep the number already saved.",
         "retypeToChange": "To change the document's details, type its number again.",
         "firstName": "First name as on the document",
@@ -4182,6 +4182,7 @@
           "noPhone": "To change the account, your sign-in needs a phone number. Talk to {business}."
         },
         "phoneHold": "You can change the account a week after changing your phone number, from {date}.",
+        "phoneHoldToday": "You can change the account a week after changing your phone number, today from <ltr>{time}</ltr>.",
         "saved": "The account is saved. {business} will check it before wages go to it.",
         "savedWarned": "The account is saved with a note, and {business} will check it before wages go to it.",
         "current": "Account for wages",

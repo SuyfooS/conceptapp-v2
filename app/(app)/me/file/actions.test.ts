@@ -302,16 +302,18 @@ describe("the bank's code", () => {
 
   // The week after a phone change: said with the day it opens, before an
   // SMS goes to a number the hold doesn't trust, and counted nowhere.
-  it("goes nowhere in the week after a phone change, and says the day", async () => {
+  it("goes nowhere in the week after a phone change, and says the day and the moment", async () => {
     mocks.checkBankChange.mockResolvedValue({
       ok: false,
       failure: "phoneHold",
       opensOn: "2026-11-30",
+      opensAt: "2026-11-30T08:00:00.000Z",
     });
     expect(await send()).toEqual({
       ok: false,
       failure: "phoneHold",
       opensOn: "2026-11-30",
+      opensAt: "2026-11-30T08:00:00.000Z",
     });
     mocks.checkBankChange.mockResolvedValue({ ok: false, failure: "demo" });
     expect(await send()).toEqual({ ok: false, failure: "demo" });

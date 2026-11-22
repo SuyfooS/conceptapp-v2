@@ -8,6 +8,7 @@ import {
   maskedHint,
 } from "@domain/employee-file";
 import { nextFileStep } from "@domain/employee-file-steps";
+import { clockAt } from "@domain/today";
 import { tidyLine } from "@domain/typed-text";
 import { BankField, type BankFieldValue, EMPTY_BANK } from "@ui/bank-field";
 import { Button } from "@ui/button";
@@ -17,15 +18,29 @@ import { CodeSlots, type CodeSlotsStatus } from "@ui/code-slots";
 import { MaskedValue } from "@ui/masked-value";
 import { TextField } from "@ui/text-field";
 import { useTranslations } from "next-intl";
-import { type FormEvent, useId, useRef, useState } from "react";
+import {
+  type FormEvent,
+  type ReactNode,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from "react";
 import { type CodeKey, codeKey, failureKey } from "../failure-words";
-import type { CodeFailure, FileActionFailure } from "../file-types";
+import type {
+  CodeFailure,
+  ConfirmBankAnswer,
+  FileActionFailure,
+  FileScreenData,
+  SendCodeAnswer,
+} from "../file-types";
 import {
   Failure,
   FileSection,
   focusFirstField,
   focusTitle,
   formArgs,
+  formIdOf,
   type Kit,
   LaterLink,
   ltr,
@@ -38,6 +53,9 @@ import { bankBlock } from "../flow-rules";
 
 type Holder = "self" | "family" | "other";
 
+/** The account typed, its code asked for, or the one saved shown. */
+export type BankPhase = "edit" | "code" | "saved";
+
 /** What the twin opens the step on: an account typed, its code asked for, or held. */
 export type BankPreset = {
   value: BankFieldValue;
@@ -48,6 +66,62 @@ export type BankPreset = {
   /** The week after a phone change: the day a change opens again. */
   heldUntil?: string;
 };
+
+/**
+ * The week after a phone change, as the server said it: the day a change
+ * opens again, and the moment it does when that was asked before a code
+ * went (`checkBankChange`); a refusal after the code says the day only.
+ */
+export type BankHold = { day: string; at: string | null };
+
+/**
+ * Where the account stands on screen. The flow keeps it (`useBankScreen`),
+ * so a desktop's summary offers what the step's own action does now.
+ */
+export type BankScreen = {
+  phase: BankPhase;
+  setPhase: (phase: BankPhase) => void;
+  hold: BankHold | null;
+  setHold: (hold: BankHold | null) => void;
+};
+
+/** Where the account starts: saved when the file holds one, or as the twin opens it. */
+export function useBankScreen(
+  data: FileScreenData,
+  preset?: BankPreset,
+): BankScreen {
+  const [phase, setPhase] = useState<BankPhase>(
+    preset?.phase ?? (data.file?.has.bank_account ? "saved" : "edit"),
+  );
+  const [hold, setHold] = useState<BankHold | null>(
+    preset?.heldUntil ? { day: preset.heldUntil, at: null } : null,
+  );
+  return { phase, setPhase, hold, setHold };
+}
+
+/**
+ * Whether a change waits: until the moment it opens when that is known (the
+ * step lets go then), and through the day it opens when only the day is, so
+ * the code's action never comes back while the server would still refuse.
+ */
+export const bankHeld = (hold: BankHold | null, today: string) =>
+  hold !== null && hold.day >= today;
+
+/**
+ * The week after a phone change in words while it holds, or null: by its
+ * time when it opens later today, so "today" never reads as now.
+ */
+export function useHoldWords(kit: Kit, hold: BankHold | null): ReactNode {
+  const day = useDay();
+  const { t, data } = kit;
+  if (hold === null || !bankHeld(hold, data.today)) return null;
+  return hold.at !== null && hold.day === data.today
+    ? t.rich("bank.phoneHoldToday", {
+        time: clockAt(new Date(hold.at), data.timeZone).time,
+        ltr,
+      })
+    : t("bank.phoneHold", { date: day(hold.day) });
+}
 
 type Problem =
   | { of: "code"; key: CodeKey }
@@ -66,27 +140,30 @@ type Problem =
  * above its action, and a press that can't go takes the person to the
  * first field it is about. Saved, the account shows by its bank, branch and
  * last digits; "החלפת החשבון" starts again, and "השארת החשבון הנוכחי" goes
- * back to the one saved.
+ * back to the one saved. While the code's boxes are up, the form's press
+ * (Enter in them, or a desktop's summary) goes to them: only "שליחה שוב"
+ * sends another code.
  */
 export function BankStep({
   kit,
   active,
+  screen,
   preset,
 }: {
   kit: Kit;
   active: boolean;
+  /** Where it stands, kept by the flow (`useBankScreen`). */
+  screen: BankScreen;
   preset?: BankPreset;
 }) {
   const { t, data } = kit;
   const tb = useTranslations("banks");
   const day = useDay();
-  const formId = useId();
+  const formId = formIdOf("bank");
   const holderNameId = useId();
   const form = useRef<HTMLFormElement>(null);
   const file = data.file;
-  const [phase, setPhase] = useState<"edit" | "code" | "saved">(
-    preset?.phase ?? (file?.has.bank_account ? "saved" : "edit"),
-  );
+  const { phase, setPhase, hold, setHold } = screen;
   const [value, setValue] = useState<BankFieldValue>(
     preset?.value ?? EMPTY_BANK,
   );
@@ -103,10 +180,6 @@ export function BankStep({
   // digits' fault they start again, empty.
   const [attempt, setAttempt] = useState(0);
   const [problem, setProblem] = useState<Problem | null>(null);
-  // The week after a phone change: no code goes until the day it opens.
-  const [heldUntil, setHeldUntil] = useState<string | null>(
-    preset?.heldUntil ?? null,
-  );
   const [review, setReview] = useState<"new" | "warned" | null>(null);
   // The account just confirmed, shown until the server's answer has it.
   const [confirmed, setConfirmed] = useState<{
@@ -161,7 +234,23 @@ export function BankStep({
     warning: warning !== null,
     kept: value.kept,
   });
-  const held = heldUntil !== null && heldUntil > data.today;
+  // The week after a phone change: no code goes until it opens, and a week
+  // known to the moment lets go then, its words with it.
+  const held = bankHeld(hold, data.today);
+  const holdAt = hold?.at ?? null;
+  useEffect(() => {
+    if (holdAt === null) return;
+    const timer = window.setTimeout(
+      () => {
+        setHold(null);
+        setProblem((was) =>
+          was?.of === "file" && was.failure === "phoneHold" ? null : was,
+        );
+      },
+      Math.max(0, Date.parse(holdAt) - Date.now()),
+    );
+    return () => window.clearTimeout(timer);
+  }, [holdAt, setHold]);
   const ready = block === null && !holderNameError && !held;
   // What keeps the account back, said above its action before it is pressed.
   const blockWords =
@@ -174,8 +263,7 @@ export function BankStep({
           : block === "warning"
             ? t("bank.checkFirst", { keep: t("bank.keep") })
             : null;
-  const holdWords =
-    held && heldUntil ? t("bank.phoneHold", { date: day(heldUntil) }) : null;
+  const holdWords = useHoldWords(kit, hold);
 
   /** The account as the server takes it, from what is typed. */
   const typedBank = () => ({
@@ -190,17 +278,21 @@ export function BankStep({
   function said(
     failure: CodeFailure | FileActionFailure,
     when: "send" | "confirm",
-    opensOn?: string,
+    opens: { opensOn?: string; opensAt?: string },
   ) {
     const key = codeKey(failure, when);
     setProblem(
       key
         ? { of: "code", key }
-        : { of: "file", failure: failure as FileActionFailure, opensOn },
+        : {
+            of: "file",
+            failure: failure as FileActionFailure,
+            opensOn: opens.opensOn,
+          },
     );
     if (failure === "phoneHold") {
-      // No code goes until the day it opens: back to the account, held.
-      setHeldUntil(opensOn ?? data.today);
+      // No code goes until it opens: back to the account, held.
+      setHold({ day: opens.opensOn ?? data.today, at: opens.opensAt ?? null });
       setStatus("idle");
       setPhase("edit");
       focusTitle("bank");
@@ -218,6 +310,11 @@ export function BankStep({
 
   async function askForCode(event?: FormEvent) {
     event?.preventDefault();
+    // The code's boxes are the form's only field while they are up.
+    if (event && phase === "code") {
+      focusFirstField(form);
+      return;
+    }
     setTried(true);
     if (sending) return;
     if (!ready) {
@@ -228,14 +325,10 @@ export function BankStep({
     setProblem(null);
     const answer = await kit.actions
       .sendBankCode({ bank: typedBank() })
-      .catch(() => ({ ok: false, failure: "failed" }) as const);
+      .catch((): SendCodeAnswer => ({ ok: false, failure: "failed" }));
     setSending(false);
     if (!answer.ok) {
-      said(
-        answer.failure,
-        "send",
-        "opensOn" in answer ? answer.opensOn : undefined,
-      );
+      said(answer.failure, "send", answer);
       return;
     }
     setTail(answer.tail);
@@ -249,7 +342,7 @@ export function BankStep({
     setProblem(null);
     const answer = await kit.actions
       .confirmBank({ code, bank: typedBank() })
-      .catch(() => ({ ok: false, failure: "failed" }) as const);
+      .catch((): ConfirmBankAnswer => ({ ok: false, failure: "failed" }));
     if (answer.ok) {
       setStatus("success");
       setReview(answer.review);
@@ -267,11 +360,7 @@ export function BankStep({
       focusTitle("bank");
       return;
     }
-    said(
-      answer.failure,
-      "confirm",
-      "opensOn" in answer ? answer.opensOn : undefined,
-    );
+    said(answer.failure, "confirm", answer);
     if (answer.failure === "phoneHold") return;
     if (answer.failure === "wrongCode") {
       setStatus("error");

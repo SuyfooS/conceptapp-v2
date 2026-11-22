@@ -27,7 +27,7 @@ import { DateField } from "@ui/date-field";
 import { IdField } from "@ui/id-field";
 import { MaskedValue } from "@ui/masked-value";
 import { TextField } from "@ui/text-field";
-import { type FormEvent, useId, useRef, useState } from "react";
+import { type FormEvent, useRef, useState } from "react";
 import { failureKey } from "../failure-words";
 import type { FileActionFailure } from "../file-types";
 import {
@@ -35,6 +35,7 @@ import {
   FileSection,
   firstProblem,
   focusFirstField,
+  formIdOf,
   type Kit,
   LaterLink,
   ltr,
@@ -81,7 +82,7 @@ const partEmpty = (parts: DateParts) =>
 export function IdentityStep({ kit, active }: { kit: Kit; active: boolean }) {
   const { t, data } = kit;
   const day = useDay();
-  const formId = useId();
+  const formId = formIdOf("identity");
   const numberCard = useRef<HTMLDivElement>(null);
   const file = data.file;
   const [kind, setKind] = useState<IdKind>(file?.id_kind ?? "il");

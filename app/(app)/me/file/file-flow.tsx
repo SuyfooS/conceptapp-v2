@@ -5,8 +5,10 @@ import {
   type FileStep,
   fileStepStates,
   isNewFile,
+  nextFileStep,
   pensionDue,
   resumeStep,
+  type SENT_WITH,
   type StepState,
   sendBlocker,
   stepsDone,
@@ -32,10 +34,16 @@ import type {
   FileActions,
   FileScreenData,
 } from "./file-types";
-import { focusTitle, type Kit, titleId, useDay, WhyButton } from "./flow-kit";
+import { formIdOf, type Kit, titleId, useDay, WhyButton } from "./flow-kit";
 import { NoticeSheet } from "./notice-sheet";
 import { AddressStep } from "./steps/address-step";
-import { type BankPreset, BankStep } from "./steps/bank-step";
+import {
+  type BankPreset,
+  BankStep,
+  bankHeld,
+  useBankScreen,
+  useHoldWords,
+} from "./steps/bank-step";
 import { Form101Step } from "./steps/form101-step";
 import { IdentityStep } from "./steps/identity-step";
 import { PensionStep } from "./steps/pension-step";
@@ -63,7 +71,10 @@ const desktop = () => window.matchMedia("(min-width: 80rem)").matches;
  * is an address (`?step=`), so "back" and a link from the profile work, and
  * a step opened takes the focus at its title. The file is sent only once
  * its details are in (`sendBlocker`): until then the send action leads to
- * the first one still open. Also drawn by the twin on /design/shell/me/file.
+ * the first one still open, and on a desktop, with that one on screen
+ * already, does its own action instead (it saves, sends the code, or says
+ * what is missing and goes there). Also drawn by the twin on
+ * /design/shell/me/file.
  */
 export function FileFlow({
   data,
@@ -103,6 +114,9 @@ export function FileFlow({
   const [sendFailure, setSendFailure] = useState<FileActionFailure | null>(
     null,
   );
+  // The account's step keeps its phase and hold here: a desktop's summary
+  // offers what its own action does now.
+  const bank = useBankScreen(data, preset?.bank);
 
   const states = fileStepStates({
     addressForm: data.addressForm,
@@ -140,19 +154,9 @@ export function FileFlow({
       go(current === "welcome" ? null : current, locale);
     }
   };
-  // A step to finish: opened, or, already the one on screen (a desktop's
-  // summary beside it), brought back into view with the focus at its title.
-  const finish = (next: FileStep) => {
-    if (current !== next) {
-      go(next);
-      return;
-    }
-    document.getElementById(`file-${next}`)?.scrollIntoView({ block: "start" });
-    focusTitle(next);
-  };
   // Where the welcome's way in leads: on where the person stopped (step 0
   // is the profile's, so a file can be new with it done).
-  const startFilling = () => finish(resume === "done" ? "start" : resume);
+  const startFilling = () => go(resume === "done" ? "start" : resume);
 
   // A step opened by its address, or picked up where the person stopped: a
   // phone and a tablet start at its top, a desktop scrolls to it among the
@@ -203,6 +207,7 @@ export function FileFlow({
     openNotice: () => setNotice(true),
     form: formArg(data.addressForm),
   };
+  const bankHoldWords = useHoldWords(kit, bank.hold);
 
   async function switchLanguage() {
     if (switching) return;
@@ -219,7 +224,7 @@ export function FileFlow({
   async function send() {
     if (sending) return;
     if (blocker) {
-      finish(blocker);
+      go(blocker);
       return;
     }
     setSending(true);
@@ -257,8 +262,9 @@ export function FileFlow({
 
   // The card over the hero's foot stays in the flow, so longer words (a
   // narrow phone, larger text) push down rather than up over the title. On
-  // a desktop it holds the welcome's way in, the page's one main action
-  // while nothing is in yet; a phone and a tablet have it in the dock.
+  // a desktop's welcome it holds the way in, the page's one main action
+  // while nothing is in yet; a phone and a tablet have it in the dock. On a
+  // step, where the way in would lead nowhere new, the summary holds it.
   const hero = (
     <div className="flex flex-col">
       <Card tone="hero" padding="none" className="px-5 pt-6 pb-16">
@@ -274,30 +280,91 @@ export function FileFlow({
         <CardText className="text-ink">
           {t("welcome.body", { count: FILE_STEPS.length })}
         </CardText>
-        <div className="hidden pt-3 xl:flex">
-          <Button size="lg" onClick={startFilling}>
-            <ArrowRight aria-hidden="true" className="rtl:-scale-x-100" />
-            {t("welcome.start")}
-          </Button>
-        </div>
+        {current === "welcome" ? (
+          <div className="hidden pt-3 xl:flex">
+            <Button size="lg" onClick={startFilling}>
+              <ArrowRight aria-hidden="true" className="rtl:-scale-x-100" />
+              {t("welcome.start")}
+            </Button>
+          </div>
+        ) : null}
       </Card>
     </div>
   );
 
+  // The step that keeps the file back, on screen already: the summary does
+  // what its own action does now, under the same words, rather than lead to
+  // where the person is. The account goes on once it is saved, and waits
+  // with its words in the week after a phone change.
+  const ownAction = (
+    s: (typeof SENT_WITH)[number],
+  ): {
+    label: string;
+    form?: string;
+    onClick?: () => void;
+    disabled?: boolean;
+  } => {
+    switch (s) {
+      case "identity":
+        return { label: t("actions.saveIdentity"), form: formIdOf(s) };
+      case "address":
+        return { label: t("actions.saveAddress"), form: formIdOf(s) };
+      case "pension":
+        return { label: t("actions.savePension"), form: formIdOf(s) };
+      case "bank":
+        return bank.phase === "saved"
+          ? {
+              label: t("actions.continue"),
+              onClick: () => go(nextFileStep("bank") ?? "done"),
+            }
+          : {
+              label: t("bank.confirm"),
+              form: formIdOf(s),
+              disabled: bankHeld(bank.hold, data.today),
+            };
+    }
+  };
+  const own =
+    blocker !== null && blocker === current ? ownAction(blocker) : null;
+  // Under it, why the file waits, or why the account's action does.
+  const summaryNote =
+    blocker === null
+      ? null
+      : own?.disabled && blocker === "bank"
+        ? bankHoldWords
+        : t("actions.sendWaits");
+
   // The summary's action on a desktop: the send once the details are in;
-  // until then the way to the first still open, the page's main action
-  // unless the welcome above holds it.
-  const summaryAction = blocker ? (
+  // until then that step's own action, or the way to it. The page's main
+  // action, but on the welcome, whose card holds it.
+  const quiet = current === "welcome";
+  const summaryAction = own ? (
     <Button
       size="lg"
-      variant={isNew ? "secondary" : "primary"}
-      onClick={() => finish(blocker)}
+      type={own.form ? "submit" : "button"}
+      form={own.form}
+      onClick={own.onClick}
+      disabled={own.disabled}
+    >
+      <ArrowRight aria-hidden="true" className="rtl:-scale-x-100" />
+      {own.label}
+    </Button>
+  ) : blocker ? (
+    <Button
+      size="lg"
+      variant={quiet ? "secondary" : "primary"}
+      onClick={() => go(blocker)}
     >
       <ArrowRight aria-hidden="true" className="rtl:-scale-x-100" />
       {t(`actions.finish.${blocker}`)}
     </Button>
   ) : (
-    <Button size="lg" loading={sending} onClick={send}>
+    <Button
+      size="lg"
+      variant={quiet ? "secondary" : "primary"}
+      loading={sending}
+      onClick={send}
+    >
       <Send aria-hidden="true" className="rtl:-scale-x-100" />
       {t("actions.send", { business })}
     </Button>
@@ -402,10 +469,8 @@ export function FileFlow({
               </div>
               <div className="hidden shrink-0 flex-col gap-3 xl:flex">
                 {summaryAction}
-                {blocker ? (
-                  <p className="px-1 text-ink-2 text-sm">
-                    {t("actions.sendWaits")}
-                  </p>
+                {summaryNote ? (
+                  <p className="px-1 text-ink-2 text-sm">{summaryNote}</p>
                 ) : null}
                 {sendWords ? (
                   <p role="alert" className="px-1 text-danger text-sm">
@@ -431,6 +496,7 @@ export function FileFlow({
               <BankStep
                 kit={kit}
                 active={step === "bank"}
+                screen={bank}
                 preset={preset?.bank}
               />
               <PensionStep kit={kit} active={step === "pension"} />

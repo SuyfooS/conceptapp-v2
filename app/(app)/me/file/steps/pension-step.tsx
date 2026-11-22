@@ -15,16 +15,18 @@ import { ChoiceList, ChoiceRow } from "@ui/choice-row";
 import { cn } from "@ui/cn";
 import { fieldInputClass } from "@ui/text-field";
 import { useTranslations } from "next-intl";
-import { type FormEvent, useId, useState } from "react";
+import { type FormEvent, useState } from "react";
 import { failureKey } from "../failure-words";
 import type { FileActionFailure } from "../file-types";
 import {
   Failure,
   FileSection,
+  formIdOf,
   type Kit,
   LaterLink,
   Reason,
   StepDock,
+  showFirstProblem,
   useDay,
 } from "../flow-kit";
 
@@ -38,13 +40,14 @@ const LATER = "later";
  * Step 4, "פנסיה": a fund the person is in already (by name, or "אין לי את
  * השם עכשיו"), one they choose, or the business's choice; a new one may wait,
  * "אבחר אחר כך", until the day the law gives (60 days from the start of the
- * work), after which the business chooses and the screen says so.
+ * work), after which the business chooses and the screen says so. A press
+ * with an answer or its fund still to choose marks it and goes to it.
  */
 export function PensionStep({ kit, active }: { kit: Kit; active: boolean }) {
   const { t, data } = kit;
   const tf = useTranslations("pensionFunds");
   const day = useDay();
-  const formId = useId();
+  const formId = formIdOf("pension");
   const stored = data.file?.pension_answer ?? null;
   const storedFund = data.file?.pension_fund ?? null;
   const [answer, setAnswer] = useState<Asked | null>(
@@ -78,10 +81,14 @@ export function PensionStep({ kit, active }: { kit: Kit; active: boolean }) {
     if (next !== answer) setFund(null);
   }
 
-  async function save(event: FormEvent) {
+  async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setTried(true);
-    if (empty > 0 || pending || answer === null) return;
+    if (pending) return;
+    if (empty > 0 || answer === null) {
+      showFirstProblem(event.currentTarget);
+      return;
+    }
     setPending(true);
     setFailure(null);
     const sent: { answer: PensionAnswer; fund?: PensionFundKey } =
@@ -128,6 +135,8 @@ export function PensionStep({ kit, active }: { kit: Kit; active: boolean }) {
             title={t("pension.yes")}
             checked={answer === "existing"}
             onChange={() => pick("existing")}
+            // A press with no answer comes here.
+            aria-invalid={tried && answer === null ? true : undefined}
           />
           <ChoiceRow
             name={`${formId}-answer`}
@@ -155,6 +164,7 @@ export function PensionStep({ kit, active }: { kit: Kit; active: boolean }) {
                 options={options}
                 onChange={setFund}
                 placeholder={t("pension.pick")}
+                invalid={tried && !chosen}
                 className={cn(
                   fieldInputClass,
                   "justify-between font-normal",

@@ -68,6 +68,12 @@ export const formArgs = (kit: Kit) => ({
 export const titleId = (step: FileStep | "done") => `file-${step}-title`;
 
 /**
+ * A step's form: its own save, the dock's main action and, on a desktop, the
+ * summary's (`FileFlow`) all send it, so each press does what the step does.
+ */
+export const formIdOf = (step: FileStep) => `file-${step}-form`;
+
+/**
  * One step of the file, drawn once: on a phone and a tablet only while it is
  * the step on screen, on a desktop always, one under the other. `?step=`
  * scrolls a desktop to it. Its title takes the focus when it opens, so a
