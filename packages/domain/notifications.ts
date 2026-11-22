@@ -95,9 +95,9 @@ type KindInfo = {
    * (`/schedule/build?week=<params.startsOn>`, the running-week plan's R4),
    * "area" the screen of the area `params.area` names (`AREA_HREF`) while
    * the reader still reaches it (`params.to`), "order" the order a ticket
-   * is of, at its place `/orders/place/<params.place>` or the takeaway
-   * `/orders/takeaway/<params.order>` (waiter mode P8b), and `href` is where
-   * it leads otherwise.
+   * is of, by its id `/orders/takeaway/<params.order>`, which goes on to
+   * wherever it is now: its place, the takeaway itself, or the till once it
+   * closed (waiter mode P8b), and `href` is where it leads otherwise.
    */
   to?:
     | "list"
@@ -712,19 +712,13 @@ export function linkFor(
     }
   }
   if (info.to === "order") {
-    // The order at its place, or the takeaway itself; a place the line
-    // names by no real id leads to one's own orders.
-    const where = z
-      .object({ order: z.string(), place: z.string().nullable().optional() })
-      .safeParse(params);
-    if (where.success) {
-      const order = where.data.order;
-      const place = where.data.place ?? null;
-      if (place !== null) {
-        if (isUuid(place)) return `/orders/place/${place.toLowerCase()}`;
-      } else if (isUuid(order)) {
-        return `/orders/takeaway/${order.toLowerCase()}`;
-      }
+    // The order by its id, never the place the line names: the order's page
+    // goes on to where it is now (its place, moved or not, the takeaway, or
+    // the till once it closed), so a line written before a move doesn't open
+    // the table it left, or a newer order at it.
+    const order = z.object({ order: z.string() }).safeParse(params);
+    if (order.success && isUuid(order.data.order)) {
+      return `/orders/takeaway/${order.data.order.toLowerCase()}`;
     }
   }
   return info.href;
