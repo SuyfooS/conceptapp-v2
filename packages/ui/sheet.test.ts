@@ -34,7 +34,10 @@ vi.mock("./use-keyboard-lift", async (importOriginal) => {
 
 const { Sheet } = await import("./sheet");
 
-/** The sheet's own element: the dialog, with its style and classes. */
+/**
+ * The sheet's own element, the dialog, with its style and classes, and the
+ * classes of its body, what holds the field.
+ */
 function drawn(lift: KeyboardLift) {
   reported.lift = lift;
   const props: Omit<SheetProps, "children"> = {
@@ -42,6 +45,7 @@ function drawn(lift: KeyboardLift) {
     onOpenChange: () => {},
     title: "Title",
     closeLabel: "Close",
+    footer: createElement("button", { type: "button" }, "Save"),
   };
   const html = renderToString(
     createElement(
@@ -52,9 +56,12 @@ function drawn(lift: KeyboardLift) {
   );
   const dialog = html.match(/<div[^>]*role="dialog"[^>]*>/)?.[0];
   if (!dialog) throw new Error(`no dialog in ${html}`);
+  const body = html.match(/<div class="([^"]*)"><input/)?.[1];
+  if (!body) throw new Error(`no body in ${html}`);
   return {
     style: dialog.match(/style="([^"]*)"/)?.[1] ?? null,
     classes: dialog.match(/class="([^"]*)"/)?.[1]?.split(" ") ?? [],
+    body: body.split(" "),
   };
 }
 
@@ -82,5 +89,27 @@ describe("Sheet over the keyboard", () => {
     expect(classes).toContain(
       "data-[state=open]:animate-[sheet-in_550ms_var(--ease-spring)]",
     );
+  });
+
+  it("keeps its header and footer in place and scrolls its body, upright or with no keyboard", () => {
+    for (const lift of [NO_KEYBOARD, { inset: 336, room: 508 }]) {
+      const { classes, body } = drawn(lift);
+      expect(classes).not.toContain("overflow-y-auto");
+      expect(body).toContain("min-h-0");
+      expect(body).toContain("overflow-y-auto");
+      expect(body).not.toContain("shrink-0");
+    }
+  });
+
+  // Sideways, 114px on screen over the keyboard: kept in place, the header
+  // and footer would leave the body no height and the field would vanish.
+  it("scrolls whole sideways, its body keeping its height, within what is on screen", () => {
+    const { style, classes, body } = drawn({ inset: 230, room: 130 });
+    expect(style).toBe(
+      "--sheet-bottom:238px;--sheet-max:calc(114px - env(safe-area-inset-top))",
+    );
+    expect(classes).toContain("overflow-y-auto");
+    expect(classes).toContain("overscroll-contain");
+    expect(body).toContain("shrink-0");
   });
 });

@@ -11,7 +11,11 @@ import {
 } from "react";
 import { Button } from "./button";
 import { cn } from "./cn";
-import { sheetLiftStyle, useKeyboardLift } from "./use-keyboard-lift";
+import {
+  sheetLiftStyle,
+  sheetScrollsWhole,
+  useKeyboardLift,
+} from "./use-keyboard-lift";
 
 export type SheetProps = {
   open: boolean;
@@ -59,8 +63,10 @@ function onScreen(element: Element | null | undefined): element is HTMLElement {
  * inside the nearest [data-accent] wrapper, so it keeps the business's colour.
  * Closed, it gives the keyboard's focus back (`returnFocus`), never to the
  * top of the page. On a phone it stands over the keyboard, never behind it
- * (`useKeyboardLift`): lifted as the keyboard opens, no taller than what is
- * on screen above it, and the field typed in kept in sight in its body.
+ * (`useKeyboardLift`): lifted as the keyboard opens for a field inside it, no
+ * taller than what is on screen above it, and the field typed in kept in
+ * sight in its body. Where that is too short for its header and footer (a
+ * phone turned sideways), it scrolls whole instead, so the field still shows.
  */
 export function Sheet({
   open,
@@ -85,12 +91,17 @@ export function Sheet({
   // The scrim covers the layout viewport, which the sheet stands at the
   // foot of: its height says where that foot is while a keyboard is up.
   const [scrim, setScrim] = useState<HTMLDivElement | null>(null);
+  // The sheet itself: it lifts only while a field inside it has the focus.
+  const [content, setContent] = useState<HTMLDivElement | null>(null);
   const body = useRef<HTMLElement | null>(null);
   const setBody = (node: HTMLElement | null) => {
     body.current = node;
   };
-  const lift = useKeyboardLift(scrim, body);
+  const lift = useKeyboardLift(scrim, content, body);
   const lifted = sheetLiftStyle(lift);
+  // Too short over the keyboard for its header and footer to stay in place:
+  // the sheet scrolls whole, and its body keeps its height.
+  const whole = sheetScrollsWhole(lift);
 
   function onPointerDown(event: PointerEvent<HTMLDivElement>) {
     pull.current = event.clientY;
@@ -120,6 +131,7 @@ export function Sheet({
             className="fixed inset-0 z-40 bg-[var(--scrim)] data-[state=closed]:animate-[fade-out_200ms] data-[state=open]:animate-[fade-in_200ms]"
           />
           <Dialog.Content
+            ref={setContent}
             aria-describedby={undefined}
             onCloseAutoFocus={(event) => {
               const chosen = returnFocus ? returnFocus() : opener.current;
@@ -146,7 +158,10 @@ export function Sheet({
                 ? { ...lifted, transform: `translateY(${offset}px)` }
                 : lifted
             }
-            className="glass fixed inset-x-2 bottom-[var(--sheet-bottom,calc(env(safe-area-inset-bottom)+8px))] z-50 mx-auto flex max-h-[min(82dvh,var(--sheet-max,82dvh))] max-w-[560px] flex-col rounded-sheet bg-[var(--glass-strong)] transition-[bottom,max-height] duration-200 ease-calm motion-reduce:transition-none data-[state=closed]:animate-[sheet-out_220ms_ease-in] data-[state=open]:animate-[sheet-in_550ms_var(--ease-spring)]"
+            className={cn(
+              "glass fixed inset-x-2 bottom-[var(--sheet-bottom,calc(env(safe-area-inset-bottom)+8px))] z-50 mx-auto flex max-h-[min(82dvh,var(--sheet-max,82dvh))] max-w-[560px] flex-col rounded-sheet bg-[var(--glass-strong)] transition-[bottom,max-height] duration-200 ease-calm motion-reduce:transition-none data-[state=closed]:animate-[sheet-out_220ms_ease-in] data-[state=open]:animate-[sheet-in_550ms_var(--ease-spring)]",
+              whole && "overflow-y-auto overscroll-contain",
+            )}
           >
             <div
               onPointerDown={onPointerDown}
@@ -192,6 +207,7 @@ export function Sheet({
                 tabIndex={0}
                 className={cn(
                   "relative min-h-0 overflow-y-auto px-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent",
+                  whole && "shrink-0",
                   footer ? "pb-2" : "rounded-b-sheet pb-3",
                 )}
               >
@@ -202,6 +218,7 @@ export function Sheet({
                 ref={setBody}
                 className={cn(
                   "relative min-h-0 overflow-y-auto px-2",
+                  whole && "shrink-0",
                   footer ? "pb-2" : "rounded-b-sheet pb-3",
                 )}
               >

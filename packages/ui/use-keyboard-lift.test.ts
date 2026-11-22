@@ -3,13 +3,18 @@ import { renderToString } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import {
   KEYBOARD_MIN,
+  type KeyboardScope,
   type KeyboardWindow,
+  keepFocusInSheet,
   keepFocusInView,
   keyboardLift,
   NO_KEYBOARD,
   nearestScroll,
+  opensKeyboard,
   SETTLE_MS,
+  SHEET_FRAME_MIN,
   sheetLiftStyle,
+  sheetScrollsWhole,
   useKeyboardLift,
   watchKeyboard,
 } from "./use-keyboard-lift";
@@ -139,6 +144,41 @@ describe("sheetLiftStyle", () => {
   it("gives nothing with no keyboard, so the sheet stays where it was", () => {
     expect(sheetLiftStyle(NO_KEYBOARD)).toBeUndefined();
   });
+
+  // A phone turned sideways, its keyboard up: some 130px left over it.
+  it("keeps a sideways sheet on screen over the keyboard", () => {
+    const sideways = keyboardLift({
+      layoutHeight: 360,
+      height: 130,
+      offsetTop: 0,
+      scale: 1,
+    });
+    expect(sideways).toEqual({ inset: 230, room: 130 });
+    expect(sheetLiftStyle(sideways)).toEqual({
+      "--sheet-bottom": "238px",
+      "--sheet-max": "calc(114px - env(safe-area-inset-top))",
+    });
+  });
+});
+
+describe("sheetScrollsWhole", () => {
+  it("scrolls a sheet whole sideways, where its header and footer would leave its body no height", () => {
+    // 114px on screen: the grabber and header (71px) and a footer (76px)
+    // kept in place would leave the field typed in nothing.
+    expect(sheetScrollsWhole({ inset: 230, room: 130 })).toBe(true);
+    expect(sheetScrollsWhole({ inset: 0, room: 130 })).toBe(true);
+    expect(sheetScrollsWhole({ inset: 200, room: SHEET_FRAME_MIN + 15 })).toBe(
+      true,
+    );
+  });
+
+  it("keeps the header and footer in place upright, and with no keyboard", () => {
+    expect(sheetScrollsWhole({ inset: 336, room: 508 })).toBe(false);
+    expect(sheetScrollsWhole({ inset: 200, room: SHEET_FRAME_MIN + 16 })).toBe(
+      false,
+    );
+    expect(sheetScrollsWhole(NO_KEYBOARD)).toBe(false);
+  });
 });
 
 describe("nearestScroll", () => {
@@ -159,9 +199,40 @@ describe("nearestScroll", () => {
     expect(nearestScroll(view, { top: 105, bottom: 150 }, 12)).toBe(-7);
   });
 
-  it("shows the top of a field taller than the view", () => {
+  it("a field taller than the view: its top when below, its bottom when above", () => {
+    // Below, 300..700: its top comes to the view's top, 100..500.
     expect(nearestScroll(view, { top: 300, bottom: 700 })).toBe(200);
+    // Above, -300..200: its bottom comes to the view's bottom, -100..400,
+    // as CSSOM's "nearest" does.
     expect(nearestScroll(view, { top: -300, bottom: 200 })).toBe(-200);
+  });
+});
+
+describe("opensKeyboard", () => {
+  it("takes a field to type in: an input, a textarea, anything contenteditable", () => {
+    for (const type of ["text", "search", "number", "tel", "email"]) {
+      expect(opensKeyboard({ tagName: "INPUT", type })).toBe(true);
+    }
+    expect(opensKeyboard({ tagName: "TEXTAREA" })).toBe(true);
+    expect(opensKeyboard({ tagName: "DIV", isContentEditable: true })).toBe(
+      true,
+    );
+  });
+
+  it("takes no button, box to tick, file, field that only reads, or nothing", () => {
+    for (const type of ["checkbox", "radio", "button", "submit", "file"]) {
+      expect(opensKeyboard({ tagName: "INPUT", type })).toBe(false);
+    }
+    expect(opensKeyboard({ tagName: "BUTTON" })).toBe(false);
+    expect(opensKeyboard({ tagName: "DIV", isContentEditable: false })).toBe(
+      false,
+    );
+    expect(
+      opensKeyboard({ tagName: "INPUT", type: "text", readOnly: true }),
+    ).toBe(false);
+    expect(opensKeyboard({ tagName: "TEXTAREA", readOnly: true })).toBe(false);
+    expect(opensKeyboard(null)).toBe(false);
+    expect(opensKeyboard(undefined)).toBe(false);
   });
 });
 
@@ -241,6 +312,55 @@ class Win extends EventTarget {
 }
 
 const asWin = (win: Win) => win as unknown as KeyboardWindow;
+
+/** A sheet the focus moves into and out of, as a browser says it. */
+class Scope extends EventTarget {
+  readonly ownerDocument: { activeElement: unknown } = { activeElement: null };
+  readonly drawn = new Set<unknown>();
+  listening = 0;
+
+  /** A field or a button in the sheet. */
+  draw<T>(element: T): T {
+    this.drawn.add(element);
+    return element;
+  }
+
+  contains(node: unknown) {
+    return node === this || this.drawn.has(node);
+  }
+
+  /**
+   * The focus moves to `next`, in the sheet or out of it (null: nowhere).
+   * Leaving, it is nowhere yet and `relatedTarget` says where it goes;
+   * coming in, it is already there.
+   */
+  focus(next: unknown) {
+    if (this.contains(this.ownerDocument.activeElement)) {
+      this.ownerDocument.activeElement = null;
+      this.dispatchEvent(
+        Object.assign(new Event("focusout"), { relatedTarget: next }),
+      );
+    }
+    this.ownerDocument.activeElement = next;
+    if (this.contains(next)) this.dispatchEvent(new Event("focusin"));
+  }
+
+  override addEventListener(
+    ...args: Parameters<EventTarget["addEventListener"]>
+  ) {
+    this.listening += 1;
+    super.addEventListener(...args);
+  }
+
+  override removeEventListener(
+    ...args: Parameters<EventTarget["removeEventListener"]>
+  ) {
+    this.listening -= 1;
+    super.removeEventListener(...args);
+  }
+}
+
+const asScope = (scope: Scope) => scope as unknown as KeyboardScope;
 
 describe("watchKeyboard", () => {
   it("reads the keyboard at once, and as it opens and closes", () => {
@@ -374,6 +494,79 @@ describe("watchKeyboard", () => {
   });
 });
 
+// A sheet lifts only while a field inside it holds the focus: a keyboard up
+// for anything else is one about to close.
+describe("watchKeyboard within a sheet", () => {
+  const text = () => ({ tagName: "INPUT", type: "text" });
+
+  it("lifts nothing for a keyboard up for a field outside as the sheet opens, as its close button takes the focus and the keyboard closes", () => {
+    // Typing in the chat's composer, then the attach button: iOS leaves the
+    // keyboard up, and Radix gives the sheet's close button the focus.
+    const win = new Win(TALL);
+    const view = win.visualViewport as View;
+    view.height = 508;
+    const sheet = new Scope();
+    sheet.ownerDocument.activeElement = { tagName: "TEXTAREA" };
+    const close = sheet.draw({ tagName: "BUTTON" });
+    const onLift = vi.fn();
+    watchKeyboard(asWin(win), { onLift, within: asScope(sheet) });
+    expect(onLift).not.toHaveBeenCalled();
+    sheet.focus(close);
+    view.set({ height: TALL });
+    expect(onLift).not.toHaveBeenCalled();
+    expect(win.timers.size).toBe(0);
+  });
+
+  it("lifts at once for a field that has the focus as the sheet opens (CodeSlots)", () => {
+    const win = new Win(TALL);
+    (win.visualViewport as View).height = 508;
+    const sheet = new Scope();
+    sheet.ownerDocument.activeElement = sheet.draw(text());
+    const onLift = vi.fn();
+    watchKeyboard(asWin(win), { onLift, within: asScope(sheet) });
+    expect(onLift).toHaveBeenCalledWith({ inset: 336, room: 508 });
+  });
+
+  it("lifts for a field in the sheet, goes from one to the next without a drop, and drops once no field has the focus", () => {
+    const win = new Win(TALL);
+    const view = win.visualViewport as View;
+    const sheet = new Scope();
+    const name = sheet.draw(text());
+    const price = sheet.draw({ tagName: "INPUT", type: "number" });
+    const save = sheet.draw({ tagName: "BUTTON" });
+    const onLift = vi.fn();
+    watchKeyboard(asWin(win), { onLift, within: asScope(sheet) });
+    sheet.focus(name);
+    // No keyboard yet.
+    expect(onLift).not.toHaveBeenCalled();
+    view.set({ height: 508 });
+    expect(onLift).toHaveBeenLastCalledWith({ inset: 336, room: 508 });
+    sheet.focus(price);
+    expect(onLift).toHaveBeenCalledTimes(1);
+    sheet.focus(save);
+    expect(onLift).toHaveBeenLastCalledWith(NO_KEYBOARD);
+    sheet.focus(price);
+    expect(onLift).toHaveBeenLastCalledWith({ inset: 336, room: 508 });
+    sheet.focus(null);
+    expect(onLift).toHaveBeenLastCalledWith(NO_KEYBOARD);
+    expect(onLift).toHaveBeenCalledTimes(4);
+  });
+
+  it("hears the focus no more once stopped", () => {
+    const win = new Win(TALL);
+    (win.visualViewport as View).height = 508;
+    const sheet = new Scope();
+    const field = sheet.draw(text());
+    const onLift = vi.fn();
+    const stop = watchKeyboard(asWin(win), { onLift, within: asScope(sheet) });
+    expect(sheet.listening).toBe(2);
+    stop();
+    expect(sheet.listening).toBe(0);
+    sheet.focus(field);
+    expect(onLift).not.toHaveBeenCalled();
+  });
+});
+
 describe("keepFocusInView", () => {
   /** A sheet's body from 100 to 400 on screen, and what has the focus in it. */
   function body(field: { top: number; bottom: number } | null, inside = true) {
@@ -410,9 +603,55 @@ describe("keepFocusInView", () => {
   });
 });
 
+describe("keepFocusInSheet", () => {
+  /** A scroller from `top` to `bottom` on screen, holding the field. */
+  function scroller(
+    field: { getBoundingClientRect: () => unknown },
+    top: number,
+    bottom: number,
+  ) {
+    return {
+      scrollTop: 0,
+      ownerDocument: { activeElement: field },
+      contains: (node: unknown) => node === field,
+      getBoundingClientRect: () => ({ top, bottom }),
+    };
+  }
+  const as = (element: ReturnType<typeof scroller>) =>
+    element as unknown as HTMLElement;
+
+  it("scrolls a sheet scrolling whole to the field, its body not scrolling", () => {
+    // Sideways: the sheet 8..122 on screen, its body its whole height.
+    const field = { getBoundingClientRect: () => ({ top: 200, bottom: 248 }) };
+    const body = scroller(field, 79, 400);
+    const sheet = scroller(field, 8, 122);
+    keepFocusInSheet(as(body), as(sheet));
+    expect(body.scrollTop).toBe(0);
+    expect(sheet.scrollTop).toBe(248 - (122 - 12));
+  });
+
+  it("scrolls the body alone while the header and footer stay in place", () => {
+    // The field moves up as the body scrolls: in sight in the body, it is in
+    // sight in the sheet, which has nothing left to do.
+    const field = {
+      scrolled: () => 0,
+      getBoundingClientRect() {
+        const by = this.scrolled();
+        return { top: 420 - by, bottom: 468 - by };
+      },
+    };
+    const body = scroller(field, 100, 400);
+    field.scrolled = () => body.scrollTop;
+    const sheet = scroller(field, 30, 470);
+    keepFocusInSheet(as(body), as(sheet));
+    expect(body.scrollTop).toBe(80);
+    expect(sheet.scrollTop).toBe(0);
+  });
+});
+
 /** What the hook gives a sheet not drawn yet. */
 function Probe() {
-  const lift = useKeyboardLift(null, createRef<HTMLElement>());
+  const lift = useKeyboardLift(null, null, createRef<HTMLElement>());
   return createElement("p", null, `${lift.inset} ${lift.room}`);
 }
 
