@@ -56,11 +56,13 @@
 1. ב-GitHub, במאגר: `Settings → Environments → New environment`, שם בדיוק `conceptapp-prod`. **קודם הכללים, אחר כך הסודות.** אם הסביבה כבר מופיעה ברשימה (GitHub יוצר אותה בלי כללים כשמריצים את התהליך לפני שהיא קיימת), פותחים אותה ומוסיפים את הכללים.
    - `Required reviewers`: את עצמך.
    - `Prevent self-review`: לא לסמן, כי אתה גם מריץ וגם מאשר.
-   - `Allow administrators to bypass configured protection rules`: לא לסמן.
+   - `Allow administrators to bypass configured protection rules`: GitHub מסמן אותה מראש. **להוריד את הסימון.** אחרת מנהל של המאגר יכול להריץ בלי האישור, וזה החשבון שלך, שגם הסוכן כותב דרכו.
    - `Wait timer`: 0.
+   - שומרים: `Save protection rules`.
    - `Deployment branches and tags`: `Selected branches and tags`, וכלל אחד: `main`.
-   - `Environment secrets`: `SUPABASE_DB_PASSWORD` (סיסמת מסד הנתונים מב2) ו-`SUPABASE_PROJECT_REF` (המזהה של הפרויקט, שמופיע בכתובת שלו בלוח). רק כאן, ואף פעם לא ב-`Repository secrets`.
-2. **הרצת ניסיון:** `Actions → Migrate conceptapp-prod → Run workflow`, ענף `main`, ו-`apply` כבוי. ההרצה מחכה לך: `Review deployments`, מסמנים `conceptapp-prod`, `Approve and deploy`. קוראים את הצעד "What would run": כל קובצי המבנה מהתיקייה `supabase/migrations`, מהראשון ועד האחרון. אם הצעד "Not the demo's project" נכשל, הסודות שהוכנסו הם של פרויקט הפיתוח: מתקנים אותם ולא ממשיכים.
+   - `Environment secrets`: `PROD_SUPABASE_DB_PASSWORD` (סיסמת מסד הנתונים מב2) ו-`PROD_SUPABASE_PROJECT_REF` (המזהה של הפרויקט, שמופיע בכתובת שלו בלוח), בשמות האלה בדיוק, עם `PROD_` בהתחלה. רק כאן, ואף פעם לא ב-`Repository secrets`: שם יש כבר שני סודות בשמות דומים בלי `PROD_`, של פרויקט הפיתוח, ולא נוגעים בהם.
+   - **בדיקה:** בדף של הסביבה מופיעים ב-`Required reviewers` השם שלך וב-`Deployment branches and tags` הכלל `main`, והתיבה `Allow administrators to bypass configured protection rules` ריקה. ב-`Settings → Secrets and variables → Actions`, ב-`Repository secrets` אין אף שם שמתחיל ב-`PROD_`.
+2. **הרצת ניסיון:** `Actions → Migrate conceptapp-prod → Run workflow`, ענף `main`, ו-`apply` כבוי. ההרצה מחכה לך: `Review deployments`, מסמנים `conceptapp-prod`, `Approve and deploy`. קוראים את הצעד "What would run": כל קובצי המבנה מהתיקייה `supabase/migrations`, מהראשון ועד האחרון. אם הצעד "Find the connection" נעצר כי אין `PROD_SUPABASE_DB_PASSWORD` או `PROD_SUPABASE_PROJECT_REF`, הם לא בסביבה בשמות האלה בדיוק: מתקנים ומריצים שוב. אם הצעד "Not the demo's project" נכשל, הסודות שהוכנסו הם של פרויקט הפיתוח: מתקנים אותם ולא ממשיכים.
 3. **הרצה אמיתית:** שוב `Run workflow`, הפעם עם `apply` דלוק, ואישור.
 4. **בדיקה אחרי:**
    - `Storage → Policies`: אין אף מדיניות ל-`documents`. מדיניות שנוספת שם ביד פותחת את המסמכים הרשמיים לכל מי שמחובר, בלי שהפתיחה נרשמת.
@@ -88,7 +90,16 @@
 2. `Authentication → Sign In / Providers → Phone`: דלוק, ספק `Twilio Verify`, עם שלושת הערכים.
 3. `Allow new users to sign up`: כבוי. חשבונות נוצרים רק מהזמנות.
 4. **בלי מספרי בדיקה.** מי שיש לו מספר בדיקה והקוד שלו נכנס בלי SMS.
-5. `Authentication → Rate Limits`: לא רופפות יותר ממה שהאפליקציה מרשה. האפליקציה מרשה בכל 15 דקות 20 שליחות קוד ו-40 בדיקות קוד מכל כתובת רשת, ו-5 שליחות ו-10 בדיקות לכל מספר.
+5. `Authentication → Rate Limits` (שמות ההגדרות וברירות המחדל: לבדוק). כל קוד נשלח ונבדק מהשרת של האפליקציה, לא מהטלפון, וכל כניסה מתחדשת שם. לכן Supabase רואה את הכתובות של השרת, שמשותפות לכולם, ולא את מי שביקש: מגבלה שלו "לכל כתובת" היא בפועל מגבלה אחת לכל האתר יחד. השמירה על כל מספר ועל כל רשת היא של האפליקציה עצמה: בכל 15 דקות 5 שליחות קוד ו-10 בדיקות לכל מספר, ו-20 שליחות ו-40 בדיקות מכל כתובת רשת. אז לא מורידים את המגבלות של Supabase למספרים האלה: זה היה עוצר את כולם יחד. מי שפונה ל-Supabase ישירות, בלי האפליקציה, נעצר רק במגבלות האלה ובאלה של Twilio (סעיף 8), ולכן גם לא מגדילים אותן יותר מהטבלה. המספרים מספיקים לעסק של עד כ-100 עובדים. לעסק גדול יותר, או כשנוספים עסקים, מעלים את כולם באותו יחס.
+
+   | הגדרה | בכל | ערך | למה |
+   |---|---|---|---|
+   | `Rate limit for sending SMS messages` | שעה, לכל הפרויקט | 150 | בערך 100 אנשים בשעה ביום ההצטרפות, עם קוד שני לחצי מהם (ב12). זו גם התקרה להוצאה על SMS. ברירת המחדל, 30, לא מספיקה ליום הזה |
+   | `Rate limit for sign ups and sign ins` | 5 דקות, לכל כתובת: כל האתר | 100 | כל העובדים מבקשים קוד יחד, בחדר אחד. ברירת המחדל, 30, עוצרת את מי שאחרי השלושים |
+   | `Rate limit for token verifications` | 5 דקות, לכל כתובת: כל האתר | 150 | אותם אנשים בודקים את הקוד, חלקם פעמיים |
+   | `Rate limit for token refreshes` | 5 דקות, לכל כתובת: כל האתר | 300 | כל כניסה מתחדשת בערך פעם בשעה (`JWT expiry`, ב3), ובתחילת משמרת, כשכולם פותחים את האפליקציה יחד, כמה פעמים לאדם. ברירת המחדל, 150, עלולה להוציא אנשים מהאפליקציה באותן דקות |
+   | השאר: מיילים, משתמשים אנונימיים ו-Web3 | | בלי שינוי | לא בשימוש |
+
 6. `Authentication → URL Configuration`: `Site URL` הוא `https://www.conceptapp.co.il`, ובכתובות החזרה הכתובת הזו בלבד.
 7. CAPTCHA: **רק אחרי** שהשינוי של Turnstile עלה לאוויר. הוא עוד לא בקוד. כשהוא שם: `Authentication → Attack Protection`, ספק Turnstile, עם ה-`Secret key` שאצלך. לפני זה כל קוד נעצר.
 8. ב-Twilio עצמו: הגבלה של בקשות לכל מספר ו-`Fraud Guard` דלוק; הרשאות מדינה לישראל בלבד; התראה על הוצאה (`Usage Triggers`, לבדוק); ותקרה לטעינה האוטומטית של היתרה.
@@ -133,13 +144,24 @@ returning user_id;
 2. **ההדגמה בכתובת משלה:**
    - פרויקט Vercel שני, מאותו מאגר.
    - `Settings → Domains`: `demo.conceptapp.co.il`, ואת רשומת ה-DNS ש-Vercel מראה מוסיפים אצל רשם הדומיין.
-   - המשתנים שיש היום באתר הראשי (של `conceptapp-dev`, כולל זוג ה-VAPID וה-`CRON_SECRET` של הפיתוח), ל-`Production` בלבד, ועוד `DEMO_DOOR` = `on`.
+   - המשתנים, עם הערכים של `conceptapp-dev`, ל-`Production` בלבד. Vercel לא מראה שוב ערך שנשמר כ-`Sensitive`, ולכן את אלה לא מעתיקים מהאתר הראשי:
+
+     | משתנה | מאיפה |
+     |---|---|
+     | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | מהאתר הראשי ב-Vercel, שם הם גלויים. או מ-`conceptapp-dev`: הכפתור `Connect` ו-`Project Settings → API Keys` |
+     | `SUPABASE_SECRET_KEY` | ממנהל הסיסמאות. אם הוא לא שם: מפתח סודי חדש ב-`Project Settings → API Keys` של `conceptapp-dev`, בלי למחוק את הישן, שהאתר הראשי משתמש בו עד צעד ב. `Sensitive` |
+     | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | ממנהל הסיסמאות, שני החצאים מאותו זוג. אם אחד מהם לא שם: זוג חדש, בפקודה שבסעיף 4 למטה. בעסקי ההדגמה אף התראה לא מגיעה לטלפון, ולכן זוג חדש לא מפסיק שם כלום. `VAPID_PRIVATE_KEY` הוא `Sensitive` |
+     | `VAPID_SUBJECT` | מהאתר הראשי, שם הוא גלוי |
+     | `CRON_SECRET` | ממנהל הסיסמאות. אם הוא לא שם: ערך חדש בפקודה שבסעיף 4 למטה, וגם ב-Vault של `conceptapp-dev`, ב-`cron_secret`, אותו ערך בדיוק. אחרת המשימות של המסד נדחות (נספח). `Sensitive` |
+     | `DEMO_DOOR` | `on` |
+     | `EMPLOYEE_DATA_KEKS`, `EMPLOYEE_DATA_KEK_ACTIVE` | לא בהדגמה: הם נכנסים רק לייצור, בב9 |
+
    - ב-`conceptapp-dev`: `app_url` ב-Vault ו-`Site URL` (ב-`Authentication → URL Configuration`) עוברים לכתובת החדשה, `https://demo.conceptapp.co.il`.
    - ב-Cloudflare Turnstile: ב-`Hostnames` מוסיפים את הכתובת החדשה.
    - לבדוק: לכבות בפרויקט הזה את גרסאות הניסיון (`Preview`), כדי שכל שינוי לא ייבנה פעמיים.
    - **בדיקה:** נכנסים להדגמה בכתובת החדשה, ו-`https://demo.conceptapp.co.il/health` עונה.
 3. **האתר הראשי, צעד א (עדיין על פרויקט הפיתוח):** `DEMO_DOOR` = `off`, ל-`Production` בלבד, ואז `Redeploy`.
-   - **בדיקה:** `www.conceptapp.co.il/enter` עובר ל-`/sign-in`; אין "כניסה להדגמה, בלי טלפון"; `/health` עונה 200.
+   - **בדיקה, בחלון פרטי** (`InPrivate` ב-Edge, `Incognito` ב-Chrome), כדי להיות מחוץ לחשבון: למי שמחובר, גם כאיש הדגמה, `/enter` עובר ל-`/home` בכל מקרה, והבדיקה לא אומרת כלום. בחלון הפרטי: `www.conceptapp.co.il/enter` עובר ל-`/sign-in`; אין "כניסה להדגמה, בלי טלפון"; `/health` עונה 200.
    - אם הבנייה נכשלת על `DEMO_DOOR`, הערך הוא לא `on` ולא `off`. האתר הקודם נשאר באוויר עד שמתקנים.
 4. **האתר הראשי, צעד ב (לייצור):** מחליפים את המשתנים, ל-`Production` בלבד ואף פעם לא ל-`Preview`, ואז `Redeploy`.
 
@@ -228,8 +250,7 @@ update private.auth_limits set max_count = 20 where kind = 'send' and scope = 'c
 update private.auth_limits set max_count = 40 where kind = 'verify' and scope = 'caller';
 ```
 
-- גם המגבלה של Supabase על SMS בשעה (ב4) צריכה להספיק לאותו יום.
-- לבדוק לפני היום: Supabase רואה את הבקשות מהשרת ב-Vercel, אולי ככמה כתובות בלבד, ואז המגבלה שלו לכל כתובת נגמרת מהר יותר.
+- Supabase סופר את כל האתר יחד, כי כל קוד נשלח מהשרת (ב4, סעיף 5): `Rate limit for sending SMS messages` הוא 150 בשעה לכל הפרויקט, בערך 100 אנשים בשעה עם קוד שני לחצי מהם. ההעלאה ב-SQL כאן עוזרת עד שם ולא יותר. יותר אנשים באותה שעה: מעלים ליום את כל המגבלות שבטבלה של ב4, סעיף 5, באותו יחס, ומחזירים אחרי.
 - ניסיון SMS אמיתי לכמה חברות סלולר לפני היום.
 - עמדות שעון: `docs/clock-station.md`.
 - מבחן הקבלה: העובד הכי פחות טכני מצליח להיכנס בלי עזרה.
@@ -244,6 +265,6 @@ update private.auth_limits set max_count = 40 where kind = 'verify' and scope = 
 | `SUPABASE_SECRET_KEY` | יוצרים חדש ב-`Project Settings → API Keys`, מכניסים ל-Vercel, `Redeploy`, ואז מוחקים את הישן | קודי השעון בני 6 הספרות ואישור הכניסה לתיק נגזרים ממנו: קוד שמוצג באותו רגע ורבע השעה הפתוחה של תיק נפסקים, וזהו |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | זוג חדש (ב7), ל-Vercel, `Redeploy` | ההתראות לטלפון נפסקות בכל הטלפונים, עד שכל אחד פותח שוב את האפליקציה |
 | `CRON_SECRET` | ב-Vercel וב-`cron_secret` ב-Vault יחד | עד ששניהם שווים, המשימות של המסד נדחות והתראות לטלפון מחכות |
-| `SUPABASE_DB_PASSWORD` | ב-Supabase (`Project Settings → Database`), ואז הסוד בסביבה `conceptapp-prod` ב-GitHub | שום דבר באפליקציה. רק ההרצה הבאה של Migrate conceptapp-prod צריכה את החדשה |
+| `PROD_SUPABASE_DB_PASSWORD` (סיסמת מסד הנתונים של הייצור) | ב-Supabase (`Project Settings → Database`), ואז הסוד `PROD_SUPABASE_DB_PASSWORD` בסביבה `conceptapp-prod` ב-GitHub, ולא אחד מ-`Repository secrets`, שהם של פרויקט הפיתוח | שום דבר באפליקציה. רק ההרצה הבאה של Migrate conceptapp-prod צריכה את החדשה |
 | `EMPLOYEE_DATA_KEKS` | מפתח חדש אחרי הישנים (`node tooling/employee-data-key.mjs --id 2`), ו-`EMPLOYEE_DATA_KEK_ACTIVE` עובר למספר החדש. ב-Vercel, `Redeploy` | אף פעם לא מוחקים מפתח ישן: בלעדיו התיקים שנשמרו בו לא נקראים (`.env.example`) |
 | `Auth Token` של Twilio | ב-Twilio, ואז ב-Supabase (ב4) | עד שהחדש ב-Supabase, קודים לא נשלחים |

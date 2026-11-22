@@ -2,9 +2,10 @@
 # (docs/production.md, B3). By hand only, from main only, and only once Orel
 # approves the run: the job runs in the GitHub environment conceptapp-prod,
 # which takes main alone, waits for its required reviewer and holds the
-# database's two secrets (Orel sets all three in GitHub). With "apply" off it
-# shows what would run and changes nothing. Nothing here adds demo data or
-# runs a SQL file: the demo stays in conceptapp-dev
+# database's two secrets, PROD_SUPABASE_DB_PASSWORD and
+# PROD_SUPABASE_PROJECT_REF (Orel sets all three in GitHub). With "apply"
+# off it shows what would run and changes nothing. Nothing here adds demo
+# data or runs a SQL file: the demo stays in conceptapp-dev
 # (tooling/migrate-prod.test.ts keeps it so).
 name: Migrate conceptapp-prod
 
@@ -49,23 +50,29 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       # The two secrets reach this step alone (#80); from here on the steps
-      # read DB_URL, masked. Through the session pooler, trying each shard, as
-      # migrate-dev.yml does: the runners have no IPv6. The CLI is given the
-      # address, so it needs no access token.
+      # read DB_URL, masked. Their names are their own, never those of
+      # migrate-dev.yml's repository secrets: GitHub hands a job the
+      # repository secret of the same name when its environment has none, and
+      # makes the environment, with no rules, the first time a job asks for
+      # it. So a secret missing here is empty, the check below stops the run
+      # before any connection, and entering these never overwrites the
+      # development project's. Through the session pooler, trying each shard,
+      # as migrate-dev.yml does: the runners have no IPv6. The CLI is given
+      # the address, so it needs no access token.
       - name: Find the connection
         env:
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          PROD_SUPABASE_DB_PASSWORD: ${{ secrets.PROD_SUPABASE_DB_PASSWORD }}
+          PROD_SUPABASE_PROJECT_REF: ${{ secrets.PROD_SUPABASE_PROJECT_REF }}
           SUPABASE_REGION: eu-central-1
         run: |
-          if [ -z "$SUPABASE_DB_PASSWORD" ] || [ -z "$SUPABASE_PROJECT_REF" ]; then
-            echo "::error::The conceptapp-prod environment has no SUPABASE_DB_PASSWORD or SUPABASE_PROJECT_REF (docs/production.md, B3)"
+          if [ -z "$PROD_SUPABASE_DB_PASSWORD" ] || [ -z "$PROD_SUPABASE_PROJECT_REF" ]; then
+            echo "::error::The conceptapp-prod environment has no PROD_SUPABASE_DB_PASSWORD or PROD_SUPABASE_PROJECT_REF (docs/production.md, B3)"
             exit 1
           fi
-          PASSWORD=$(node -p 'encodeURIComponent(process.env.SUPABASE_DB_PASSWORD)')
+          PASSWORD=$(node -p 'encodeURIComponent(process.env.PROD_SUPABASE_DB_PASSWORD)')
           echo "::add-mask::$PASSWORD"
           for SHARD in aws-1 aws-0; do
-            URL="postgresql://postgres.$SUPABASE_PROJECT_REF:$PASSWORD@$SHARD-$SUPABASE_REGION.pooler.supabase.com:5432/postgres"
+            URL="postgresql://postgres.$PROD_SUPABASE_PROJECT_REF:$PASSWORD@$SHARD-$SUPABASE_REGION.pooler.supabase.com:5432/postgres"
             echo "::add-mask::$URL"
             if pnpm exec supabase migration list --db-url "$URL"; then
               echo "DB_URL=$URL" >> "$GITHUB_ENV"

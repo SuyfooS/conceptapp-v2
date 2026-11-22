@@ -44,9 +44,12 @@ three Supabase variables in `.env.example` in Vercel and nothing else.
 Migrations reach `conceptapp-prod` only through "Migrate conceptapp-prod"
 (`.github/workflows/migrate-prod.yml`), the same way: by hand, with "apply" off first. It runs
 from `main` only, in the GitHub environment `conceptapp-prod`, which waits for Orel's approval
-on every run and alone holds the project's two secrets. Before anything else it checks that the
-project holds no demo business (one that does is `conceptapp-dev`, its secrets entered by
-mistake), and it never adds the demo or the seed, and never runs a SQL file
+on every run and alone holds the project's two secrets, `PROD_SUPABASE_DB_PASSWORD` and
+`PROD_SUPABASE_PROJECT_REF`. Their names are their own: GitHub hands a job the repository
+secret of the same name when its environment has none, and `conceptapp-dev`'s are repository
+secrets, so a missing one stops the run before it connects anywhere. Before anything else it
+checks that the project holds no demo business (one that does is `conceptapp-dev`, its secrets
+entered by mistake), and it never adds the demo or the seed, and never runs a SQL file
 (`tooling/migrate-prod.test.ts`). A nightly run and a live session never run or approve it.
 The setup of the environment and of the project: [`docs/production.md`](../docs/production.md),
 B2 and B3.
@@ -194,8 +197,11 @@ The site of real businesses has `DEMO_DOOR=off` in Vercel: `/enter` goes straigh
 `app/(auth)/enter`). The dashboard's half, which `config.toml` never carries since it is
 never pushed, is in [`docs/production.md`](../docs/production.md): B3 for the API, session and
 storage settings, B4 for sign-in (phone with Twilio Verify, new signups off, no test numbers,
-rate limits no looser than `private.auth_limits`, the site URL, CAPTCHA only once the app
-sends its token) and B6 for the first platform admin.
+the rate limits, the site URL, CAPTCHA only once the app sends its token) and B6 for the first
+platform admin. The app's server sends and checks every code and refreshes every session, and
+passes on no caller's address, so Supabase's limits per address are one limit for the whole
+site: B4 sizes them for the site's traffic together, and `private.auth_limits` alone counts each
+number and each caller.
 
 On `conceptapp-dev` test numbers, without the `+` and with a code kept out of the repo, need
 Test OTPs Valid Until set, and Supabase won't save them without an SMS provider, even though

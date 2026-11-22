@@ -13,14 +13,18 @@ import {
 // real businesses (docs/production.md, B3). Read as text, as GitHub reads it:
 // it never adds the demo or any SQL file, starts only by hand, runs only in
 // the protected environment (main alone, Orel's approval, its two secrets),
-// keeps those secrets in the one step that connects, checks the project
-// holds no demo business and shows what would run before it applies, and
-// stays apart from the development project's workflow.
+// keeps those secrets in the one step that connects, stops there when one is
+// missing, checks the project holds no demo business and shows what would
+// run before it applies, and stays apart from the development project's
+// workflow, its secrets' names included.
 
 const prod = readRepoFile(".github/workflows/migrate-prod.yml");
 const dev = readRepoFile(".github/workflows/migrate-dev.yml");
 
 const SECRET = /\$\{\{\s*secrets\.([A-Za-z0-9_]+)\s*\}\}/g;
+/** The secrets a workflow reads, each once, sorted. */
+const secretsOf = (text: string) =>
+  [...new Set([...text.matchAll(SECRET)].map(([, name = ""]) => name))].sort();
 const PROTECTED = /^ {4}environment: conceptapp-prod$/m;
 const FROM_MAIN = /^ {4}if: github\.ref == 'refs\/heads\/main'$/m;
 const ON_APPLY = /^ {8}if: inputs\.apply\b/m;
@@ -75,9 +79,9 @@ describe("Migrate conceptapp-prod", () => {
 
   it("keeps the two secrets in that job, in the step that connects", () => {
     const named = [...prod.matchAll(SECRET)].map(([, name]) => name);
-    expect([...new Set(named)].sort()).toEqual([
-      "SUPABASE_DB_PASSWORD",
-      "SUPABASE_PROJECT_REF",
+    expect(secretsOf(prod)).toEqual([
+      "PROD_SUPABASE_DB_PASSWORD",
+      "PROD_SUPABASE_PROJECT_REF",
     ]);
     let inSteps = 0;
     for (const job of jobs(prod)) {
@@ -96,6 +100,32 @@ describe("Migrate conceptapp-prod", () => {
     expect(topLevel(prod, "env")).toBe("");
     for (const job of jobs(prod)) {
       expect(job.body, job.key).not.toMatch(/^ {4}env:/m);
+    }
+  });
+
+  it("stops before it connects when the environment lacks a secret", () => {
+    const connect =
+      allSteps.find((s) => stepName(s) === "Find the connection") ?? "";
+    const mapped = [
+      ...connect.matchAll(
+        /^ {10}([A-Z0-9_]+): \$\{\{\s*secrets\.([A-Za-z0-9_]+)\s*\}\}$/gm,
+      ),
+    ];
+    expect(mapped.map(([, , secret]) => secret).sort()).toEqual(
+      secretsOf(prod),
+    );
+    const script = connect.slice(connect.indexOf("run: |"));
+    const stop = script.indexOf("exit 1");
+    expect(stop).toBeGreaterThan(0);
+    // Each one asked for first, and nothing reads the password or reaches
+    // a database until both are there.
+    for (const [, name] of mapped) {
+      const check = script.indexOf(`[ -z "$${name}" ]`);
+      expect(check, name).toBeGreaterThan(0);
+      expect(check, name).toBeLessThan(stop);
+    }
+    for (const use of ["node -p", "supabase "]) {
+      expect(script.indexOf(use), use).toBeGreaterThan(stop);
     }
   });
 
@@ -159,5 +189,15 @@ describe("Migrate conceptapp-prod", () => {
     expect(group(prod)).toBe("migrate-prod");
     expect(group(dev)).toBeDefined();
     expect(group(dev)).not.toBe(group(prod));
+    // migrate-dev.yml's secrets are the repository's, and GitHub hands a job
+    // the repository secret of the same name when its environment has none:
+    // under a shared name, a secret missing here would be development's, and
+    // entering production's would overwrite it.
+    const devSecrets = secretsOf(dev);
+    expect(devSecrets.length).toBeGreaterThan(0);
+    for (const name of secretsOf(prod)) {
+      expect(name).toMatch(/^PROD_/);
+      expect(devSecrets, name).not.toContain(name);
+    }
   });
 });
