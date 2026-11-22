@@ -655,6 +655,7 @@ const DepartureRow = z.object({
  */
 export async function ownDepartures(): Promise<Departure[]> {
   const supabase = await createClient();
+  // bounded: the businesses one person was taken off.
   const { data, error } = await supabase.rpc("own_departures");
   if (error) {
     if (isMissingFunction(error)) return [];

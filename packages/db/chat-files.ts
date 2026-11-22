@@ -1024,6 +1024,7 @@ export async function cleanChatFiles(at?: Date): Promise<number> {
   const when = at ? { at_time: at.toISOString() } : {};
   let removed = 0;
   for (let batch = 0; batch < CLEAN_BATCHES; batch += 1) {
+    // bounded: max_rows, CLEAN_BATCH (500) a batch.
     const { data, error } = await admin.rpc("expired_files", {
       max_rows: CLEAN_BATCH,
       ...when,

@@ -2741,10 +2741,12 @@ read as messages/he.json. Console reads and writes are in `@db/wording`;
   `allPagesIn(ids, page)` and `readAllPagesIn` read ids in parts of `IDS_PER_READ` (100, so
   an address stays near 3.7 KB), each part page by page, in the parts' order; `inParts`.
   The rule (bigger teams, the first fixes): a read in packages/db of a table that grows
-  with time or with everyone who ever joined pages, ordered by its key last so no row falls
-  between two pages, or says beside its `.from(` why it can't pass the cap
-  (`// bounded: …`). `tooling/bounded-reads.test.ts` holds every read to it, and names the
-  files kept out for now (taking orders', the hiring file's). The paging is proved by
+  with time or with everyone who ever joined, and a call of a function that answers rows
+  (as `team_phones` and `announcement_readers` do, one a person on the staff), pages,
+  ordered by its key last so no row falls between two pages, or says beside its `.from(`
+  or `.rpc(` why it can't pass the cap (`// bounded: …`). `tooling/bounded-reads.test.ts`
+  holds every read to it (the functions from database.types.ts, those whose `Returns` is
+  rows), and names the files kept out for now (taking orders', the hiring file's). The paging is proved by
   `packages/db/paged-reads.test.ts`, a stand-in for PostgREST that serves at most 1000 rows
   a request: CI's database job has no PostgREST.
 

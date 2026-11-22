@@ -139,7 +139,9 @@ const { memberNames } = await import("./member-names");
 const { getEmploymentPeriods, getPayrollDetails } = await import(
   "./payroll-details"
 );
-const { getChatAuthors, getChatDirectory } = await import("./chat");
+const { announcementReaders, getChatAuthors, getChatDirectory } = await import(
+  "./chat"
+);
 const { getColleagues, getTeam } = await import("./team");
 const { getBusinessLists, getListReadings, getListTemplates, getReadings } =
   await import("./lists");
@@ -169,6 +171,7 @@ const KEYS: Record<string, string> = {
   profiles: "id",
   invites: "id",
   team_phones: "user_id",
+  announcement_readers: "person",
   department_members: "user_id",
   availability_submissions: "user_id",
   lists: "id",
@@ -342,6 +345,20 @@ describe("reads past PostgREST's 1000 rows", () => {
     const authors = await getChatAuthors(BUSINESS, many(250, person));
     expect(authors.filter((author) => author.name !== null)).toHaveLength(250);
     expect(inSizes("profiles")).toEqual([100, 100, 50]);
+  });
+
+  it("who of the whole team's group confirmed an announcement", async () => {
+    // One row a member but the author, confirmed or not.
+    db.tables.announcement_readers = many(1100, (n) => ({
+      person: person(n),
+      acked_at: n % 2 === 0 ? minute(n) : null,
+    }));
+    const readers = await announcementReaders(id(1, "c"));
+    expect(readers).toHaveLength(1100);
+    expect(readers.filter((reader) => reader.ackedAt !== null)).toHaveLength(
+      550,
+    );
+    expect(asked("announcement_readers")).toHaveLength(2);
   });
 
   it("the team, its numbers and every invite nobody claimed (B1, B2, A11)", async () => {

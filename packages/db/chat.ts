@@ -109,6 +109,7 @@ export async function getChatInbox(
   businessId: string,
 ): Promise<ChatInboxRow[] | "notYet"> {
   const supabase = await createClient();
+  // bounded: one person's chats in one business, in the list's order.
   const { data, error } = await supabase.rpc("chat_inbox", {
     business: businessId,
   });
@@ -497,6 +498,7 @@ export async function getMessages({
 }): Promise<ChatMessage[]> {
   if (!isUuid(conversationId)) return [];
   const supabase = await createClient();
+  // bounded: page_limit, at most CHAT_PAGE_SIZE (50).
   const { data, error } = await supabase.rpc("chat_page", {
     business: businessId,
     conversation: conversationId.toLowerCase(),
@@ -852,21 +854,26 @@ export async function chatSeen(conversationId: string): Promise<string | null> {
 /**
  * Who of the group confirmed an announcement, and when (null: not yet), for
  * its author and the moderators (`public.announcement_readers`); nobody for
- * anyone else.
+ * anyone else. One row a member of the group but its author, confirmed or
+ * not, and the whole team's group holds everyone on the staff: page by page.
  */
 export async function announcementReaders(
   messageId: string,
 ): Promise<{ person: string; ackedAt: string | null }[]> {
   if (!isUuid(messageId)) return [];
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("announcement_readers", {
-    message: messageId.toLowerCase(),
-  });
-  if (error) {
-    if (isMissingFunction(error)) return [];
-    throw error;
+  const message = messageId.toLowerCase();
+  const readers = await readAllPages((first, last) =>
+    supabase
+      .rpc("announcement_readers", { message })
+      .order("person")
+      .range(first, last),
+  );
+  if (readers.error) {
+    if (isMissingFunction(readers.error)) return [];
+    throw readers.error;
   }
-  return (data ?? []).map((row) => ({
+  return readers.data.map((row) => ({
     person: row.person,
     ackedAt: row.acked_at ?? null,
   }));

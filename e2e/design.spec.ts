@@ -3846,7 +3846,8 @@ test("the documents demo keeps what a manager sent once she no longer sends", as
 });
 
 // Bigger teams, on the twins: the space for documents full, told once above
-// whichever shape the width shows; "כל הצוות" of 1,203 more than one document
+// whichever shape the width shows, and on the send screen above the way's
+// switch whichever way is chosen; "כל הצוות" of 1,203 more than one document
 // takes, said in the count and, once pressed, in an alert, with nothing sent;
 // and chat's settings saying how full both spaces are, and whom to ask.
 test("the twins say when a document can't reach everyone and when space runs out", async ({
@@ -3859,6 +3860,25 @@ test("the twins say when a document can't reach everyone and when space runs out
       .getByRole("heading", { name: d.space.full.title })
       .filter({ visible: true }),
   ).toHaveCount(1);
+  await expectCleanPage(page);
+
+  // A sender's own document to the business takes from the same space, so
+  // the card stays when the way changes, and the switch doesn't move.
+  await page.goto("/design/chat/documents/send?to=people&space=full");
+  await page.waitForLoadState("networkidle");
+  const full = page.getByRole("heading", { name: d.space.full.title });
+  const way = page.getByRole("group", { name: d.send.way });
+  await expect(full).toBeVisible();
+  const toBusiness = way.getByRole("button", {
+    name: d.send.toBusiness,
+    exact: true,
+  });
+  await toBusiness.click();
+  await expect(toBusiness).toHaveAttribute("aria-pressed", "true");
+  await expect(full).toBeVisible();
+  const card = await full.boundingBox();
+  const ways = await way.boundingBox();
+  expect(card?.y ?? Number.POSITIVE_INFINITY).toBeLessThan(ways?.y ?? 0);
   await expectCleanPage(page);
 
   const path = "/design/chat/documents/send?to=people&state=tooMany";

@@ -127,6 +127,7 @@ function matrixOf(rows: readonly MatrixRowOf[]): RoleMatrix {
  * reaches it). An admin read: callers check the team member first.
  */
 async function readMatrix(businessId: string): Promise<RoleMatrix | null> {
+  // bounded: 22 roles at most (20 named) times the keys, about 20.
   const { data, error } = await createAdminClient().rpc(
     "role_permission_matrix",
     { business: businessId },

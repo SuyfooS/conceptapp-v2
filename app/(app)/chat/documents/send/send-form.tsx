@@ -405,8 +405,10 @@ export function SendDocumentForm({
       />
       <div className="flex min-w-0 flex-col gap-8 md:max-w-2xl">
         <div className="flex min-w-0 flex-col gap-8">
-          {/* Before a file is picked; the database still decides. */}
-          {toPeople ? <DocumentSpaceNote space={data.space} /> : null}
+          {/* Before a file is picked, whichever way: the space is the
+              business's, a sender's own document to it takes from it too,
+              and the way's switch stays put. The database still decides. */}
+          <DocumentSpaceNote space={data.space} />
           {ways.length > 1 ? (
             <section className="flex flex-col gap-3">
               <h2 className="px-1 font-bold text-lg">{t("send.way")}</h2>

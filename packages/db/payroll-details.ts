@@ -100,6 +100,7 @@ export async function getTeamYouth(
   businessId: string,
 ): Promise<Map<string, string>> {
   const supabase = await createClient();
+  // bounded: the minors on the staff alone.
   const { data, error } = await supabase.rpc("team_youth", {
     business: businessId,
   });
