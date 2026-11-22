@@ -815,6 +815,68 @@ test("the chat demo opens a group's details from its title, and posts as managem
   ).toHaveCount(0);
 });
 
+/**
+ * A phone's keyboard, faked: Playwright opens none, so this shrinks
+ * `window.visualViewport` by `height` (0 gives it back) and sends the resize
+ * a keyboard sends. Nothing else changes: the layout viewport stays as iOS
+ * leaves it, and Android Chrome by default.
+ */
+async function fakeKeyboard(page: Page, height: number) {
+  await page.evaluate((keyboard) => {
+    const view = window.visualViewport;
+    if (!view) throw new Error("no visualViewport");
+    Reflect.deleteProperty(view, "height");
+    if (keyboard > 0) {
+      const left = view.height - keyboard;
+      Object.defineProperty(view, "height", {
+        configurable: true,
+        get: () => left,
+      });
+    }
+    view.dispatchEvent(new Event("resize"));
+  }, height);
+}
+
+// Sheets stand over the phone's keyboard (Orel, 22 November 2026): with a
+// keyboard faked over the foot of the screen, the chat's new message sheet
+// stands 8px over it, no taller than what is left above it, with its search
+// field in sight and the page behind it where it was; once the keyboard
+// closes, the sheet is back at the foot.
+test("a sheet stands over the phone's keyboard (faked), its field in sight", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "phone", "a phone's keyboard");
+  const c = he.app.chat;
+  const keyboard = 320;
+  await page.goto("/design/chat");
+  await page
+    .getByRole("button", { name: c.list.newMessage, exact: true })
+    .filter({ visible: true })
+    .click();
+  const sheet = page.getByRole("dialog", { name: c.list.newMessage });
+  await expect(sheet).toBeVisible();
+  const height = page.viewportSize()?.height ?? 0;
+  const foot = async () => {
+    const box = await sheet.boundingBox();
+    return box ? Math.round(box.y + box.height) : null;
+  };
+  await expect.poll(foot).toBe(height - 8);
+
+  const field = sheet.getByRole("searchbox", { name: c.newMessage.search });
+  await field.focus();
+  const scrolled = await page.evaluate(() => window.scrollY);
+  await fakeKeyboard(page, keyboard);
+  const above = height - keyboard;
+  await expect.poll(foot).toBe(above - 8);
+  expect((await sheet.boundingBox())?.y ?? -1).toBeGreaterThanOrEqual(7);
+  const typed = await field.boundingBox();
+  expect((typed?.y ?? 0) + (typed?.height ?? 0)).toBeLessThanOrEqual(above);
+  expect(await page.evaluate(() => window.scrollY)).toBe(scrolled);
+
+  await fakeKeyboard(page, 0);
+  await expect.poll(foot).toBe(height - 8);
+});
+
 // A shift that has begun is no longer given away, as the database refuses
 // it: Noa's Tuesday evening offers it at noon, and at 17:30, an hour and a
 // half into it, neither its hero nor its sheet does.
