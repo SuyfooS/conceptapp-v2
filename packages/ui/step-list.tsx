@@ -5,9 +5,9 @@ import { cn } from "./cn";
 
 /**
  * Steps toward something being ready, one row each, worked out from data
- * rather than ticked: the console's checklist of a new business and the
- * owner's first steps on Today. Floats over the card that says how far
- * along it is.
+ * rather than ticked: the console's checklist of a new business, the
+ * owner's first steps on Today and the steps of a worker's own file. Floats
+ * over the card that says how far along it is.
  */
 export function StepList({ className, ...props }: ComponentProps<"ul">) {
   return (
@@ -34,10 +34,16 @@ const MARKS = {
 const rowClass =
   "relative flex min-h-16 items-center gap-3 px-4 py-2.5 not-first:before:absolute not-first:before:end-0 not-first:before:start-[56px] not-first:before:top-0 not-first:before:h-px not-first:before:bg-line not-first:before:content-['']";
 
+// The step on screen now, beside the list: a ring around its mark and a bar
+// at its start, in the business's colour.
+const currentClass =
+  "after:absolute after:inset-y-2 after:start-0 after:w-1 after:rounded-full after:bg-accent after:content-['']";
+
 /**
  * One step: its mark, what it is and where it stands. `state` says the mark
  * in words for screen readers, after the title. With `href` the row leads to
- * where the step is done.
+ * where the step is done. `current` marks the step shown beside the list
+ * (`aria-current="step"`).
  */
 export function StepRow({
   mark,
@@ -46,6 +52,7 @@ export function StepRow({
   state,
   badge,
   href,
+  current = false,
 }: {
   mark: keyof typeof MARKS;
   title: ReactNode;
@@ -54,6 +61,7 @@ export function StepRow({
   /** Beside the words, such as a step that is optional. */
   badge?: ReactNode;
   href?: string | null;
+  current?: boolean;
 }) {
   const { icon, tone } = MARKS[mark];
   const content = (
@@ -63,6 +71,7 @@ export function StepRow({
         className={cn(
           "grid size-7 shrink-0 place-items-center rounded-full [&_svg]:size-4 [&_svg]:stroke-3",
           tone,
+          current && "ring-2 ring-accent ring-offset-2 ring-offset-surface",
         )}
       >
         {icon}
@@ -82,11 +91,21 @@ export function StepRow({
       {badge ? <span className="shrink-0">{badge}</span> : null}
     </>
   );
-  if (!href) return <li className={rowClass}>{content}</li>;
+  if (!href) {
+    return (
+      <li
+        aria-current={current ? "step" : undefined}
+        className={cn(rowClass, current && currentClass)}
+      >
+        {content}
+      </li>
+    );
+  }
   return (
-    <li className={cn(rowClass, "p-0")}>
+    <li className={cn(rowClass, "p-0", current && currentClass)}>
       <Link
         href={href}
+        aria-current={current ? "step" : undefined}
         className="flex min-h-16 w-full items-center gap-3 px-4 py-2.5 transition-colors duration-150 ease-calm hover:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent active:bg-surface-3"
       >
         {content}

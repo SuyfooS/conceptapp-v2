@@ -5285,3 +5285,95 @@ export async function clearFileRows(ids: readonly number[]): Promise<void> {
       where a.business_id = ${DEMO_RESTAURANT} and a.id in ${tx([...ids])}`;
   });
 }
+
+/*
+ * The worker's own file (profile H5a). The local demo restaurant takes file
+ * writes ("fileWrites": true in supabase/seed.sql), and e2e/employee-file.spec.ts
+ * switches the module on for its tests alone. Each test starts the person's
+ * file empty and puts the made-up one back after (`private.seed_demo_files`,
+ * which writes only what is missing). Local database only, as postgres; what
+ * is read back is the plain columns, never a sealed value.
+ */
+
+/**
+ * The person's file in the demo restaurant gone, as if they had never filled
+ * it: its years, the emergency contact, the file and its key, their step-up,
+ * the file's log rows about them, the minor's day payroll keeps, and their
+ * form of address and language. The file's rows and the log are kept, so
+ * only a purge that names the business deletes them, for this transaction.
+ */
+export async function clearDemoFile(userId: string): Promise<void> {
+  await sql.begin(async (tx) => {
+    await tx`select set_config('ca.records_purge', ${DEMO_RESTAURANT}, true)`;
+    await tx`delete from public.employee_tax_years
+      where business_id = ${DEMO_RESTAURANT} and user_id = ${userId}`;
+    await tx`delete from public.member_emergency_contacts
+      where business_id = ${DEMO_RESTAURANT} and user_id = ${userId}`;
+    await tx`delete from public.employee_details
+      where business_id = ${DEMO_RESTAURANT} and user_id = ${userId}`;
+    await tx`delete from private.person_keys
+      where business_id = ${DEMO_RESTAURANT} and user_id = ${userId}`;
+    await tx`delete from private.step_ups where user_id = ${userId}`;
+    await tx`delete from public.audit_log
+      where business_id = ${DEMO_RESTAURANT}
+        and action like 'employee.%'
+        and (actor_id = ${userId} or details ->> 'person' = ${userId})`;
+    await tx`update public.member_payroll_details set youth_until = null
+      where business_id = ${DEMO_RESTAURANT} and user_id = ${userId}`;
+    await tx`update public.profiles set address_form = null, locale = 'he'
+      where id = ${userId}`;
+  });
+}
+
+/** The person's made-up file back, as the demo starts with it. */
+export async function restoreDemoFile(userId: string): Promise<void> {
+  await clearDemoFile(userId);
+  await sql`select private.seed_demo_files(${DEMO_RESTAURANT})`;
+}
+
+export type DemoFileFacts = {
+  idKind: string | null;
+  /** The first byte of the sealed ID: 1 for a value sealed in server code. */
+  idByte: number | null;
+  bankCode: number | null;
+  bankBranch: number | null;
+  bankReview: string | null;
+  bankByte: number | null;
+  pensionAnswer: string | null;
+  submitted: boolean;
+  /** This year's 101, as the person marked it. */
+  form101: string | null;
+};
+
+/** What the person's file holds, by its plain columns only. Null for none. */
+export async function demoFileFacts(
+  userId: string,
+): Promise<DemoFileFacts | null> {
+  const rows = await sql<DemoFileFacts[]>`
+    select e.id_kind as "idKind",
+      case when e.id_enc is null then null else get_byte(e.id_enc, 0) end as "idByte",
+      e.bank_code::int as "bankCode",
+      e.bank_branch::int as "bankBranch",
+      e.bank_review as "bankReview",
+      case when e.bank_account_enc is null then null
+        else get_byte(e.bank_account_enc, 0) end as "bankByte",
+      e.pension_answer as "pensionAnswer",
+      e.submitted_at is not null as submitted,
+      (select y.status from public.employee_tax_years y
+        where y.business_id = e.business_id and y.user_id = e.user_id
+        order by y.tax_year desc limit 1) as "form101"
+    from public.employee_details e
+    where e.business_id = ${DEMO_RESTAURANT} and e.user_id = ${userId}`;
+  return rows[0] ?? null;
+}
+
+/** The file's change rows about the person in the log: what they name. */
+export async function demoFileLog(userId: string): Promise<unknown[]> {
+  const rows = await sql<{ details: unknown }[]>`
+    select details from public.audit_log
+    where business_id = ${DEMO_RESTAURANT}
+      and action = 'employee.details'
+      and details ->> 'person' = ${userId}
+    order by id`;
+  return rows.map((row) => row.details);
+}

@@ -12,7 +12,14 @@ hiring file (`employee-file.ts`, profile H4) builds on them: what a write
 sends, group by group (`employeeDetailsInput`), what of it is sealed and what
 stays plain (`identityParts`, `addressText`, `bankParts`), the emergency
 contact, the database's replies as schemas that fail closed, and its refusals
-(`fileFailureOf`).
+(`fileFailureOf`). The worker's own flow (H5a) is `employee-file-steps.ts`:
+where each step stands, worked out from the file, where the person picks up,
+the minor's card and the pension's due date. Two more dated lists feed it:
+`pension-funds.ts` (the comprehensive funds as the Capital Market
+Authority's pension data names them, by report period) and `cities-data.ts`
+(Israel's settlements by CBS code, made by `tooling/cities.mjs` from
+data.gov.il and never edited by hand), searched by `cities.ts` in either
+language with spellings that meet (קריית and קרית, Kiryat and Qiryat).
 
 Payroll keeps money in whole agorot (`money.ts`), and the minimum wage is a
 dated list too (`minimum-wage.ts`, every figure as published): each April's is

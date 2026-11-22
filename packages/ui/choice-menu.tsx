@@ -47,7 +47,8 @@ export function choiceShown(
  * Choosing one of a short list: a quiet button with the current value, and a
  * menu that floats beside it. Takes the place of a native select where a choice
  * sits inside a row. In a sheet the menu stays inside it, so it belongs to the
- * dialog for screen readers and keeps the business's colour.
+ * dialog for screen readers and keeps the business's colour. A longer list
+ * (the banks, the pension funds) scrolls within the room the screen has.
  */
 export function ChoiceMenu({
   label,
@@ -89,7 +90,7 @@ export function ChoiceMenu({
           align="start"
           sideOffset={4}
           collisionPadding={12}
-          className="z-[60] min-w-44 rounded-[20px] bg-elevated p-1.5 shadow-float data-[state=open]:animate-[fade-in_150ms]"
+          className="z-[60] max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-44 overflow-y-auto rounded-[20px] bg-elevated p-1.5 shadow-float data-[state=open]:animate-[fade-in_150ms]"
         >
           <DropdownMenu.RadioGroup value={value} onValueChange={onChange}>
             {options.map((option) => (

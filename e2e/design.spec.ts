@@ -149,7 +149,30 @@ const PAGES = [
   "/design/shell/me",
   "/design/shell/me?state=empty",
   "/design/shell/me?state=demo",
+  // The hiring file's way in from the profile (H5a): the card and the rows,
+  // and every part in.
+  "/design/shell/me?file=missing",
+  "/design/shell/me?file=done",
   "/design/shell/me/businesses",
+  // The worker's own file (H5a) on Noa's twin: stopped at the account, each
+  // step, a minor's birth date, an account the check warns about and its
+  // code, an account saved, everything sent, nothing yet (the welcome), and
+  // in English.
+  "/design/shell/me/file",
+  "/design/shell/me/file?step=start",
+  "/design/shell/me/file?step=identity",
+  "/design/shell/me/file?step=identity&state=minor",
+  "/design/shell/me/file?step=address",
+  "/design/shell/me/file?step=bank",
+  "/design/shell/me/file?step=bank&state=warning",
+  "/design/shell/me/file?step=bank&state=code",
+  "/design/shell/me/file?step=bank&state=saved",
+  "/design/shell/me/file?step=pension",
+  "/design/shell/me/file?step=form101",
+  "/design/shell/me/file?state=done",
+  "/design/shell/me/file?state=new",
+  "/design/shell/me/file?lang=en",
+  "/design/shell/me/file?lang=en&step=bank",
   "/design/shell/manage",
   // Someone at view on the management page (roles R7), and a module's
   // settings without the module's own edit.
@@ -5441,4 +5464,101 @@ test("the owner's line counts the day's fixes", async ({ page }) => {
   await expect(line.filter({ visible: true })).toBeVisible();
   await expect(line).toHaveAttribute("href", "/design/shell/manage/activity");
   await expect(line).not.toContainText("₪");
+});
+
+// The worker's own file on Noa's twin (profile H5a). An account number the
+// check doubts is said in words, kept with "המספר נכון, לשמור", and saved
+// past the twin's code; the twin keeps nothing.
+test("the file demo warns about an account number in words and saves past it", async ({
+  page,
+}) => {
+  const f = he.app.file;
+  await page.goto("/design/shell/me/file?step=bank&state=warning");
+  const bank = page.getByRole("region", { name: f.steps.name.bank });
+  await expect(bank.getByText(f.bank.warning.checkDigit)).toBeVisible();
+  const confirm = page
+    .getByRole("button", { name: f.bank.confirm, exact: true })
+    .filter({ visible: true });
+  await expect(confirm).toBeDisabled();
+  await bank.getByRole("button", { name: f.bank.keep }).click();
+  await expect(
+    bank.getByText(heT("app.file.bank.kept", { business: "מסעדת הדגמה" })),
+  ).toBeVisible();
+  await confirm.click();
+  const code = page.getByLabel(f.bank.code.label);
+  await expect(code).toBeVisible();
+  await code.fill("123456");
+  await expect(
+    bank.getByText(
+      heT("app.file.bank.savedWarned", { business: "מסעדת הדגמה" }),
+    ),
+  ).toBeVisible();
+  await expect(bank.getByText("•••0002")).toBeVisible();
+  await expectCleanPage(page);
+});
+
+test("the file demo's own ID shows for a minute", async ({ page }) => {
+  const f = he.app.file;
+  await page.clock.install();
+  await page.goto("/design/shell/me/file?step=identity");
+  const identity = page.getByRole("region", { name: f.steps.name.identity });
+  await expect(identity.getByText("•••0018")).toBeVisible();
+  await identity.getByRole("button", { name: f.masked.show }).click();
+  await expect(identity.getByText("000000018")).toBeVisible();
+  await page.clock.fastForward(60_000);
+  await expect(identity.getByText("•••0018")).toBeVisible();
+  await expect(identity.getByText("000000018")).toHaveCount(0);
+});
+
+// One step at a time under the steps bar on a phone, the steps beside the
+// one on screen on a tablet, and every step with the summary's one main
+// action on a desktop: the same file, the same words.
+test("the file demo reads the same in each device's shape", async ({
+  page,
+}, testInfo) => {
+  const f = he.app.file;
+  const project = testInfo.project.name;
+  await page.goto("/design/shell/me/file");
+  await expect(
+    page.getByRole("heading", {
+      level: 1,
+      name: heT("app.file.title", { business: "מסעדת הדגמה" }),
+    }),
+  ).toBeVisible();
+  // The steps' own sections, by their titles.
+  const sections = page
+    .getByRole("region", {
+      name: new RegExp(`^(${Object.values(f.steps.name).join("|")})$`),
+    })
+    .filter({ visible: true });
+  const steps = page
+    .getByRole("complementary", { name: f.steps.title })
+    .filter({ visible: true });
+  const send = page
+    .getByRole("button", {
+      name: heT("app.file.actions.send", { business: "מסעדת הדגמה" }),
+    })
+    .filter({ visible: true });
+  if (project === "phone") {
+    await expect(
+      page.getByText(heT("app.file.steps.count", { current: 4, count: 6 })),
+    ).toBeVisible();
+    await expect(sections).toHaveCount(1);
+    await expect(steps).toHaveCount(0);
+  } else if (project === "tablet") {
+    await expect(steps).toHaveCount(1);
+    await expect(sections).toHaveCount(1);
+    await expect(
+      steps.getByRole("link", {
+        name: `${f.steps.name.bank} · ${f.steps.state.open}`,
+      }),
+    ).toHaveAttribute("aria-current", "step");
+  } else {
+    await expect(steps).toHaveCount(1);
+    await expect(sections).toHaveCount(6);
+    await expect(send).toHaveCount(1);
+  }
+  await expect(
+    page.getByRole("region", { name: f.steps.name.bank }),
+  ).toBeVisible();
 });

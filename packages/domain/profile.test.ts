@@ -12,6 +12,8 @@ import {
   formArg,
   mayClearBio,
   normalizeBio,
+  PROFILE_LOCALES,
+  profileLocaleOf,
   seenBioOf,
 } from "./profile";
 
@@ -77,6 +79,16 @@ describe("the line about yourself", () => {
   });
 });
 
+describe("the app's language", () => {
+  it("reads what the database stores, Hebrew for anything else", () => {
+    for (const locale of PROFILE_LOCALES) {
+      expect(profileLocaleOf(locale)).toBe(locale);
+    }
+    expect(profileLocaleOf(null)).toBe("he");
+    expect(profileLocaleOf("fr")).toBe("he");
+  });
+});
+
 describe("checkProfileChange", () => {
   it("turns the screen's names into the database's", () => {
     expect(checkProfileChange({ cover: "dots", addressForm: "f" })).toEqual({
@@ -86,6 +98,10 @@ describe("checkProfileChange", () => {
     expect(checkProfileChange({ addressForm: null })).toEqual({
       ok: true,
       patch: { address_form: null },
+    });
+    expect(checkProfileChange({ addressForm: "m", locale: "en" })).toEqual({
+      ok: true,
+      patch: { address_form: "m", locale: "en" },
     });
   });
 
@@ -126,6 +142,9 @@ describe("checkProfileChange", () => {
       { cover: "Waves!" },
       { cover: "nope" },
       { addressForm: "n" },
+      // The column always holds a language: none, or one the app lacks, is no change.
+      { locale: null },
+      { locale: "fr" },
       { bio: 5 },
       "bio",
       null,

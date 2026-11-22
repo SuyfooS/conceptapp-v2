@@ -73,6 +73,23 @@ describe("proxy", () => {
     }
   });
 
+  it("guards every module's own page, under a screen it guards already", () => {
+    // A module with no tab keeps its screen under one (the hiring file's
+    // /me/file, profile H5a), so the matcher's `/:path*` holds it.
+    const pages = manifests.flatMap((m) => (m.page ? [m.page.href] : []));
+    expect(pages).toEqual(["/me/file"]);
+    const privateBlock =
+      /export const PRIVATE = \[([\s\S]*?)\];/.exec(source)?.[1] ?? "";
+    const guarded = [...privateBlock.matchAll(/"(\/[^"]*)"/g)].map(
+      ([, path = ""]) => path,
+    );
+    for (const page of pages) {
+      const under = guarded.find((path) => page.startsWith(`${path}/`));
+      expect(under, page).toBeDefined();
+      expect(source).toContain(`"${under}/:path*"`);
+    }
+  });
+
   it("refreshes a session left on a station, without guarding it, but never on its poll and writes", () => {
     // /station is for a device with nobody signed in, so never PRIVATE; in
     // the matcher, a session left on it is renewed and seen as one, and

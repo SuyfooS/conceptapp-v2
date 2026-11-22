@@ -15,6 +15,11 @@ show, gate or configure the module comes from it:
 - `homeWidget`: the module's part of the Today screen, for roles from `minRole`
   up. Until it has a part of its own, as scheduling does, that is one quiet row
   (`modules.<key>.description` under the name)
+- `page`: for a module with no tab and no mode, where its own screen is and
+  the lowest role that opens it (the hiring file's `/me/file`, profile H5a).
+  `canOpenModule` reads it as it reads `nav`, still never for someone off the
+  staff, and Today's part, when it has one, leads there. It sits under a
+  screen `proxy.ts` guards already (`tooling/proxy.test.ts`).
 - `permissions` (e.g. `schedule.publish`), each in the module's own `area`,
   with the lowest role that holds it by default and what it `requires`
   (`schedule.edit`). With the team's and the management page's

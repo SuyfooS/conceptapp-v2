@@ -7,9 +7,10 @@ import { z } from "zod";
  * kept sealed per business and person, with every view logged, a refused one
  * too. H4 is the database and the server alone
  * (supabase/migrations/20261126000200_employee_files.sql, @db/crypto,
- * @db/employee-files, @domain/employee-file): no screen. H5 brings the
- * worker's /me/file, H6 the owner's and the accountant's view, H7 Form 101,
- * H8 retention.
+ * @db/employee-files, @domain/employee-file). H5a built the worker's own
+ * /me/file, the module's page (no tab: the profile leads there); H5b brings
+ * what each business asks and Today's cards, H6 the owner's and the
+ * accountant's view, H7 Form 101, H8 retention.
  *
  * Off in every template and every business, the demo ones included (their
  * files are made up), until Orel approves the screens. Even switched on, a
@@ -26,7 +27,9 @@ export const manifest = defineManifest({
   requires: [],
   nav: null,
   icon: "documents",
+  // Today's card while something is missing comes with H5b.
   homeWidget: null,
+  page: { href: "/me/file", minRole: "worker" },
   permissions: [
     {
       key: "people.files",
@@ -35,7 +38,7 @@ export const manifest = defineManifest({
       byOwner: true,
     },
   ],
-  // H5 brings what each business asks (bank, address, the contact, the 101's
-  // way); nothing yet.
+  // H5b brings what each business asks (bank, address, the contact, the
+  // 101's way); nothing yet.
   settings: z.object({}),
 });

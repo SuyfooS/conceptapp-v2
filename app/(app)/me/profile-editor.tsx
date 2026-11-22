@@ -128,6 +128,7 @@ export function ProfileEditor({
   businesses,
   documents,
   modes,
+  file,
 }: {
   name: string;
   photo: string | null;
@@ -149,6 +150,11 @@ export function ProfileEditor({
   documents?: ReactNode;
   /** The ways into the modes the person is in (waiter mode, P4). */
   modes?: ReactNode;
+  /**
+   * The person's own hiring file (profile H5a): first in the end column, so
+   * every shape reads it in the same order.
+   */
+  file?: ReactNode;
 }) {
   const t = useTranslations("app");
   const tp = useTranslations("ui.photoPicker");
@@ -341,6 +347,8 @@ export function ProfileEditor({
           </>
         }
       >
+        {file}
+
         <PageSection title={t("me.about.title")}>
           <div className="-mt-1 flex flex-col gap-1 px-1">
             <VisibilityNote>{t("me.about.visible")}</VisibilityNote>

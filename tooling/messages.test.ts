@@ -1,5 +1,8 @@
+import { PENSION_FUND_KEYS } from "@domain/pension-funds";
+import { PROFILE_LOCALES } from "@domain/profile";
 import { describe, expect, it } from "vitest";
 import { globalErrorCopy } from "../app/global-error-copy";
+import { locales } from "../i18n/config";
 import en from "../messages/en.json";
 import he from "../messages/he.json";
 
@@ -43,6 +46,22 @@ describe("messages", () => {
     for (const [key, value] of [...heLeaves, ...enLeaves]) {
       expect(value.trim(), key).not.toBe("");
     }
+  });
+
+  it("name every pension fund on the list, in both languages", () => {
+    for (const key of PENSION_FUND_KEYS) {
+      expect(he.pensionFunds[key], key).toBeTruthy();
+      expect(en.pensionFunds[key], key).toBeTruthy();
+    }
+    expect(Object.keys(he.pensionFunds).sort()).toEqual(
+      [...PENSION_FUND_KEYS].sort(),
+    );
+  });
+
+  it("are in the languages a person may choose", () => {
+    // The profile's languages (@domain/profile) are the app's, which the
+    // domain can't import.
+    expect([...PROFILE_LOCALES]).toEqual([...locales]);
   });
 
   it("give global-error the same words as the error screen", () => {

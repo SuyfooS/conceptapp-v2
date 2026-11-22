@@ -10,7 +10,8 @@ import {
   type NamespaceKeys,
   type NestedKeyOf,
 } from "next-intl";
-import { defaultLocale } from "@/i18n/config";
+import { defaultLocale, type Locale } from "@/i18n/config";
+import en from "@/messages/en.json";
 import he from "@/messages/he.json";
 
 /**
@@ -24,10 +25,24 @@ import he from "@/messages/he.json";
 export type AppWording = {
   readonly messages: typeof he;
   readonly overrides: Wording;
+  /** The language they are in: Hebrew unless said (`englishWording`). */
+  readonly locale?: Locale;
 };
 
 /** The app's own words: for screens outside a business, titles and demos. */
 export const baseWording: AppWording = { messages: he, overrides: {} };
+
+/**
+ * The app's words in English, for the screens that follow a person's own
+ * language (only the hiring file so far, H5a). A business's sentences are
+ * Hebrew, so none apply here. tooling/messages.test.ts keeps the two files
+ * the same shape.
+ */
+export const englishWording: AppWording = {
+  messages: en as typeof he,
+  overrides: {},
+  locale: "en",
+};
 
 /**
  * A business's stored sentences and its template's, each checked against
@@ -62,7 +77,7 @@ export function translator<N extends Namespace = never>(
   namespace?: N,
 ) {
   return createTranslator<Messages, N>({
-    locale: defaultLocale,
+    locale: wording.locale ?? defaultLocale,
     messages: wording.messages,
     namespace,
   });

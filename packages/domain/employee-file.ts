@@ -11,6 +11,7 @@ import {
   identityDocumentSchema,
 } from "./identity-documents";
 import { israeliIdHint } from "./israeli-id";
+import { PENSION_FUND_KEYS } from "./pension-funds";
 import { normalizeIsraeliMobile } from "./phone";
 import { type DateParts, parseTypedDate } from "./typed-date";
 import { oneLineSchema } from "./typed-text";
@@ -117,8 +118,12 @@ export type ReturnedReason = (typeof RETURNED_REASONS)[number];
 export const BANK_REVIEWS = ["new", "warned", "disputed"] as const;
 export type BankReview = (typeof BANK_REVIEWS)[number];
 
-/** A pension fund's key, by shape only until H5 brings the dated list. */
-const fundKey = z.string().regex(/^[a-z0-9_]{1,40}$/);
+/**
+ * A pension fund's key from the dated list, or "unknown" (@domain/pension-funds).
+ * The database checks the shape only, so a list that changes needs no
+ * migration.
+ */
+const fundKey = z.enum(PENSION_FUND_KEYS);
 
 const day = z.iso.date();
 

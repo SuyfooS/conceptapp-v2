@@ -75,9 +75,17 @@ export type FileReadFailure =
   | { ok: false; failure: "denied"; reason: DenialReason }
   | { ok: false; failure: "keys" | "unavailable" | "failed" };
 
-export type FileWriteResult =
-  | { ok: true }
-  | { ok: false; failure: FileFailure };
+/**
+ * A write refused, in the screens' terms. In the week after a phone change
+ * (`phoneHold`) it says the day a bank change opens again, a date only.
+ */
+export type FileWriteFailure = {
+  ok: false;
+  failure: FileFailure;
+  opensOn?: string;
+};
+
+export type FileWriteResult = { ok: true } | FileWriteFailure;
 
 /** A file as its screens show it: the plain part, and the sealed values opened. */
 export type EmployeeFile = {
@@ -116,13 +124,29 @@ const fileTable = (column: SealedColumn, place: Place) => ({
   user: place.user,
 });
 
+/** The phone hold's DETAIL: the day a bank change opens again, and nothing else. */
+const OPENS_ON = /^\d{4}-\d{2}-\d{2}$/;
+
 function failedWith(
   what: string,
-  error: { code?: string; message: string; hint?: string | null },
-): { ok: false; failure: FileFailure } {
+  error: {
+    code?: string;
+    message: string;
+    hint?: string | null;
+    details?: string | null;
+  },
+): FileWriteFailure {
   if (isMissingFunction(error)) return { ok: false, failure: "unavailable" };
   const failure = fileFailureOf(error.code, error.hint);
   if (failure === "failed") console.error(what, error.code, error.message);
+  // Only a date passes: whatever else a DETAIL might hold stays here.
+  if (
+    failure === "phoneHold" &&
+    typeof error.details === "string" &&
+    OPENS_ON.test(error.details)
+  ) {
+    return { ok: false, failure, opensOn: error.details };
+  }
   return { ok: false, failure };
 }
 
@@ -466,7 +490,7 @@ async function dataKeyFor(
   actorId: string,
   businessId: string,
   personId: string,
-): Promise<{ ok: true; dek: Buffer } | { ok: false; failure: FileFailure }> {
+): Promise<{ ok: true; dek: Buffer } | FileWriteFailure> {
   const offered = wrapDataKey(ring, newDataKey(), businessId, personId);
   const { data, error } = await createAdminClient().rpc("employee_data_key", {
     actor: actorId,
@@ -536,7 +560,9 @@ async function storedOfOwn(
  * value said), the account checked by Masav's rules (a warning goes through
  * and waits for a holder), each sealed group sealed with the person's key, and
  * for the person's own write, a sealed group typed again as stored left out,
- * so it doesn't make the 101 due again. `today` is the business's day.
+ * so it doesn't make the 101 due again. `today` is the business's day. In
+ * the week after a phone change a bank change is refused with the day it
+ * opens again (`opensOn`).
  */
 export async function saveEmployeeDetails(
   actorId: string,
@@ -546,7 +572,7 @@ export async function saveEmployeeDetails(
   today: string,
 ): Promise<
   | { ok: true; changed: FileDetailField[]; changeDueBy: string | null }
-  | { ok: false; failure: FileFailure }
+  | FileWriteFailure
 > {
   const ring = employeeKeyRing();
   if (!ring) return { ok: false, failure: "keys" };

@@ -1728,7 +1728,10 @@ per role: owners always hold it, accountants by `private.accountant_perms`
 - **Server.** `@db/employee-files` parses every reply with
   `@domain/employee-file`'s schemas, opens the sealed values, and seals what a
   write sends (a sealed group typed again as stored is left out of the
-  person's own write); refusals read by `fileFailureOf`. Covered by
+  person's own write); refusals read by `fileFailureOf`, and in the week
+  after a phone change a bank write's says the day it opens again
+  (`opensOn`, from the refusal's DETAIL, a date only: H5a's bank step says
+  it). Covered by
   `employee_files.test.sql`, `employee_files_writes.test.sql`,
   `employee_files_demo.test.sql`, `employee-files.db.test.ts` (the real
   sealing against the database), `payroll_access`, `roles_catalogue`,

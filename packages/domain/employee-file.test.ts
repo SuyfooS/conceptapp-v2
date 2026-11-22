@@ -180,6 +180,11 @@ describe("employeeDetailsInput", () => {
     expect(tried({ pension: { answer: "existing", fund: "Fund A" } })).not.toBe(
       "ok",
     );
+    // A key of the shape the database takes, but not on the dated list.
+    expect(tried({ pension: { answer: "new", fund: "fund_a" } })).not.toBe(
+      "ok",
+    );
+    expect(tried({ pension: { answer: "new", fund: "harel" } })).toBe("ok");
   });
 
   it("dates a change on or before today, within a year", () => {

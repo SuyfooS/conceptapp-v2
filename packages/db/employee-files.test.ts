@@ -9,7 +9,12 @@ vi.mock("server-only", () => ({}));
  * the run's own key (tooling/vitest-setup.ts), and nothing sent or logged
  * holds a value in the clear.
  */
-type Failure = { code?: string; hint?: string | null; message: string };
+type Failure = {
+  code?: string;
+  hint?: string | null;
+  message: string;
+  details?: string | null;
+};
 type Call = {
   fn: string;
   args: Record<string, unknown>;
@@ -388,6 +393,59 @@ describe("saveEmployeeDetails", () => {
       "XX000",
       "Something broke",
     ]);
+  });
+
+  it("says the day a bank change opens again after a phone change, a date only", async () => {
+    const hold = (details: string | null): Failure => ({
+      code: "55000",
+      hint: "phone_hold",
+      message: "Bank details wait a week after a phone change",
+      details,
+    });
+    const saveBank = () =>
+      files.saveEmployeeDetails(
+        NOA,
+        BUSINESS,
+        NOA,
+        {
+          bank: {
+            bank: 12,
+            branch: 600,
+            account: "100001",
+            holder: "self",
+            instruction: "v1",
+          },
+        },
+        TODAY,
+      );
+    db.answers.set_employee_details = () => ({
+      data: null,
+      error: hold("2026-11-30"),
+    });
+    expect(await saveBank()).toEqual({
+      ok: false,
+      failure: "phoneHold",
+      opensOn: "2026-11-30",
+    });
+    // Anything else a DETAIL might hold never comes up.
+    for (const details of ["100001", "2026-11-30 and more", null]) {
+      db.answers.set_employee_details = () => ({
+        data: null,
+        error: hold(details),
+      });
+      expect(await saveBank()).toEqual({ ok: false, failure: "phoneHold" });
+    }
+    // Another refusal's DETAIL is no day.
+    db.answers.set_employee_details = () => ({
+      data: null,
+      error: {
+        code: "55000",
+        hint: "step_up",
+        message: "A fresh code first",
+        details: "2026-11-30",
+      },
+    });
+    expect(await saveBank()).toEqual({ ok: false, failure: "stepUp" });
   });
 
   it("fails closed on a reply that doesn't parse", async () => {

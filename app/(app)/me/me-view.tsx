@@ -56,6 +56,7 @@ export async function MeView({
   businesses,
   documents,
   modes,
+  file,
   home = "/home",
 }: {
   data: MeData;
@@ -72,6 +73,8 @@ export async function MeView({
   documents?: ReactNode;
   /** The ways into the modes the person is in (waiter mode, P4). */
   modes?: ReactNode;
+  /** The person's own hiring file (profile H5a), where it is on for them. */
+  file?: ReactNode;
   home?: string;
 }) {
   const t = translator(wording, "app");
@@ -105,6 +108,7 @@ export async function MeView({
       businesses={businesses}
       documents={documents}
       modes={modes}
+      file={file}
     />
   );
 }

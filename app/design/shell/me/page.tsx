@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { MyDocumentsSection } from "../../../(app)/chat/documents/my-documents";
+import { FileSummary } from "../../../(app)/me/file-summary";
 import { MeView } from "../../../(app)/me/me-view";
 import { ModeRows } from "../../../(app)/mode-rows";
 import { NotificationSettingsLink } from "../../../(app)/notifications/settings-link";
@@ -11,15 +12,17 @@ import {
   demoSaveProfileAction,
   demoSetPhotoAction,
 } from "./actions";
+import { fileScreenDemo } from "./file/data";
 
-type Props = { searchParams: Promise<{ state?: string }> };
+type Props = { searchParams: Promise<{ state?: string; file?: string }> };
 
 // The real profile with mock data: Shiran, the shift manager, with her photo,
 // a line about herself, the "dots" cover and the feminine form. ?state=empty
 // has none of them yet; ?state=demo is a demo business, where photos stay as
 // they are and there's no line, but a cover and a form can be chosen. The
 // way to the notification settings stays in the demo, and a demo business
-// has none.
+// has none. ?file=missing adds her hiring file as Noa's twin has it, stopped
+// at the account (the card and the five rows); ?file=done, every part in.
 export default function ShellMe({ searchParams }: Props) {
   return (
     <Suspense>
@@ -29,7 +32,7 @@ export default function ShellMe({ searchParams }: Props) {
 }
 
 async function Demo({ searchParams }: Props) {
-  const { state } = await searchParams;
+  const { state, file } = await searchParams;
   const shiran = teamMembers.find((m) => m.userId === "shiran");
   const profile = teamProfiles.shiran;
   const empty = state === "empty";
@@ -46,6 +49,17 @@ async function Demo({ searchParams }: Props) {
         saveProfile: demoSaveProfileAction,
       }}
       home="/design/shell"
+      file={
+        file === "missing" || file === "done" ? (
+          <FileSummary
+            data={
+              fileScreenDemo(file === "done" ? "done" : "stopped", "he").data
+            }
+            wording={baseWording}
+            base="/design/shell"
+          />
+        ) : null
+      }
       documents={
         <MyDocumentsSection
           wording={baseWording}

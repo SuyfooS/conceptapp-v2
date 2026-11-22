@@ -1,0 +1,208 @@
+"use client";
+
+import {
+  type FileStep,
+  previousFileStep,
+  type StepState,
+} from "@domain/employee-file-steps";
+import { type AddressForm, formArg } from "@domain/profile";
+import { cn } from "@ui/cn";
+import { DockButton, FloatingDock } from "@ui/floating-dock";
+import { ArrowRight, ChevronRight, Info } from "lucide-react";
+import Link from "next/link";
+import { useFormatter, type useTranslations } from "next-intl";
+import type { ReactNode } from "react";
+import type { FileActions, FileScreenData } from "./file-types";
+
+/** The flow's words: `app.file`, in the person's language. */
+export type FileT = ReturnType<typeof useTranslations<"app.file">>;
+
+/** What every step of the flow shares: the file, the words, the way on. */
+export type Kit = {
+  data: FileScreenData;
+  states: Record<FileStep, StepState>;
+  actions: FileActions;
+  t: FileT;
+  /** Opens a step (or the done screen) by its address, so "back" works. */
+  go: (step: FileStep | "done") => void;
+  /** Where "אמשיך אחר כך" leads: the profile. */
+  profileHref: string;
+  /** A short line in the toast. */
+  say: (message: string) => void;
+  /** "למה מבקשים את הפרטים האלה". */
+  openNotice: () => void;
+  /** The form of address the ICU selects read: "x" until one is chosen. */
+  form: AddressForm;
+};
+
+/** Numbers and dates inside words, left to right (`<ltr>` in the messages). */
+export const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
+
+/** A day, `YYYY-MM-DD`, with its month in words: never read the wrong way round. */
+export function useDay(): (day: string) => string {
+  const format = useFormatter();
+  return (day) =>
+    format.dateTime(new Date(`${day}T12:00:00Z`), {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+}
+
+/** The words a choice of form reads, with the business: `{form}` and `{business}`. */
+export const formArgs = (kit: Kit) => ({
+  form: formArg(kit.form),
+  business: kit.data.businessName,
+});
+
+/**
+ * One step of the file, drawn once: on a phone and a tablet only while it is
+ * the step on screen, on a desktop always, one under the other. `?step=`
+ * scrolls a desktop to it.
+ */
+export function FileSection({
+  step,
+  active,
+  kit,
+  children,
+}: {
+  step: FileStep;
+  active: boolean;
+  kit: Kit;
+  children: ReactNode;
+}) {
+  return (
+    <section
+      id={`file-${step}`}
+      aria-labelledby={`file-${step}-title`}
+      className={cn(
+        "min-w-0 scroll-mt-8 flex-col gap-4",
+        active ? "flex" : "hidden xl:flex",
+      )}
+    >
+      <h2
+        id={`file-${step}-title`}
+        className="text-balance px-1 font-bold text-xl"
+      >
+        {kit.t(`steps.name.${step}`)}
+      </h2>
+      {children}
+      <div className="flex flex-wrap items-center gap-x-4 px-1">
+        <WhyButton kit={kit} />
+      </div>
+    </section>
+  );
+}
+
+/** "למה מבקשים את זה": the notice, one tap away on every step. */
+export function WhyButton({ kit, label }: { kit: Kit; label?: string }) {
+  return (
+    <button
+      type="button"
+      aria-haspopup="dialog"
+      onClick={kit.openNotice}
+      className="pressable flex min-h-11 items-center gap-1.5 self-start rounded-full font-medium text-base text-ink-2 focus-visible:outline-2 focus-visible:outline-accent"
+    >
+      <Info aria-hidden="true" className="size-4 shrink-0" />
+      {label ?? kit.t("why")}
+    </button>
+  );
+}
+
+/** A field's reason under it, quiet. */
+export function Reason({ children }: { children: ReactNode }) {
+  return <p className="px-1 text-ink-2 text-sm">{children}</p>;
+}
+
+/**
+ * A step's main action on a phone and a tablet, floating above the tab bar,
+ * with "חזרה" beside it; on a desktop each section has its own quiet save
+ * and the summary holds the page's one main action. A main action that
+ * can't go yet says why in words above it. Room is kept under the page so
+ * nothing hides behind it.
+ */
+export function StepDock({
+  kit,
+  step,
+  main,
+  notice,
+}: {
+  kit: Kit;
+  step: FileStep;
+  main?: {
+    label: string;
+    /** The form it sends, or what it does. */
+    form?: string;
+    onClick?: () => void;
+    disabled?: boolean;
+    pending?: boolean;
+  };
+  notice?: ReactNode;
+}) {
+  const back = previousFileStep(step);
+  return (
+    <div className="xl:hidden">
+      <div aria-hidden="true" className={notice ? "h-36" : "h-28"} />
+      <FloatingDock
+        notice={
+          notice ? (
+            <p
+              role="status"
+              className="glass mx-auto w-fit rounded-[22px] px-4 py-2 text-center font-medium text-base"
+            >
+              {notice}
+            </p>
+          ) : undefined
+        }
+      >
+        {back ? (
+          <DockButton
+            tone="quiet"
+            icon={
+              <ChevronRight aria-hidden="true" className="ltr:-scale-x-100" />
+            }
+            onClick={() => kit.go(back)}
+          >
+            {kit.t("actions.back")}
+          </DockButton>
+        ) : null}
+        {main ? (
+          <DockButton
+            type={main.form ? "submit" : "button"}
+            form={main.form}
+            onClick={main.onClick}
+            disabled={main.disabled}
+            loading={main.pending}
+            icon={
+              <ArrowRight aria-hidden="true" className="rtl:-scale-x-100" />
+            }
+          >
+            {main.label}
+          </DockButton>
+        ) : null}
+      </FloatingDock>
+    </div>
+  );
+}
+
+/** "אמשיך אחר כך": the quiet way back to the profile, the step kept. */
+export function LaterLink({ kit }: { kit: Kit }) {
+  return (
+    <Link
+      href={kit.profileHref}
+      className="pressable flex min-h-11 items-center self-start rounded-full font-medium text-base text-ink-2 focus-visible:outline-2 focus-visible:outline-accent"
+    >
+      {kit.t("actions.later")}
+    </Link>
+  );
+}
+
+/** A refusal in words, beside the action it refused. */
+export function Failure({ children }: { children: ReactNode }) {
+  return children ? (
+    <p role="alert" className="px-1 text-danger text-sm">
+      {children}
+    </p>
+  ) : null;
+}

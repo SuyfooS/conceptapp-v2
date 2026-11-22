@@ -65,6 +65,22 @@ export function formArg(form: AddressForm | null | undefined): AddressForm {
 }
 
 /**
+ * The languages a person may read the app in (`profiles.locale`, checked
+ * there too). The same as the app's locales in i18n/config.ts, which the
+ * domain can't import (tooling/messages.test.ts holds the two equal). Only the
+ * hiring file follows it so far (H5a); the rest of the app speaks Hebrew.
+ */
+export const PROFILE_LOCALES = ["he", "en"] as const;
+export type ProfileLocale = (typeof PROFILE_LOCALES)[number];
+
+/** A stored language, or Hebrew for one the app doesn't speak. */
+export function profileLocaleOf(value: unknown): ProfileLocale {
+  return (PROFILE_LOCALES as readonly unknown[]).includes(value)
+    ? (value as ProfileLocale)
+    : "he";
+}
+
+/**
  * A line about yourself as it is kept: NFC, every run of white space (line
  * breaks included) one space, other control characters dropped, trimmed.
  */
@@ -86,11 +102,13 @@ export type ProfileChange = {
   bio?: string | null;
   cover?: CoverPreset | null;
   addressForm?: AddressForm | null;
+  /** Never cleared: the column always holds one. */
+  locale?: ProfileLocale;
 };
 
 /** The same change as set_own_profile takes it: keys are column names. */
 export type ProfilePatch = Partial<
-  Record<"bio" | "cover" | "address_form", string | null>
+  Record<"bio" | "cover" | "address_form" | "locale", string | null>
 >;
 
 export type ProfileProblem = "empty" | "bioTooLong" | "invalid";
@@ -121,6 +139,7 @@ const changeSchema = z
     bio: z.string().max(4000).nullable().optional(),
     cover: z.enum(COVER_PRESETS).nullable().optional(),
     addressForm: z.enum(ADDRESS_FORMS).nullable().optional(),
+    locale: z.enum(PROFILE_LOCALES).optional(),
   })
   .strict();
 
@@ -130,7 +149,7 @@ export function checkProfileChange(
 ): { ok: true; patch: ProfilePatch } | { ok: false; problem: ProfileProblem } {
   const parsed = changeSchema.safeParse(change);
   if (!parsed.success) return { ok: false, problem: "invalid" };
-  const { bio, cover, addressForm } = parsed.data;
+  const { bio, cover, addressForm, locale } = parsed.data;
   const patch: ProfilePatch = {};
   if (bio !== undefined) {
     const line = bio === null ? "" : normalizeBio(bio);
@@ -139,6 +158,7 @@ export function checkProfileChange(
   }
   if (cover !== undefined) patch.cover = cover;
   if (addressForm !== undefined) patch.address_form = addressForm;
+  if (locale !== undefined) patch.locale = locale;
   if (Object.keys(patch).length === 0) return { ok: false, problem: "empty" };
   return { ok: true, patch };
 }

@@ -345,6 +345,80 @@ describe("a mode (P4)", () => {
   });
 });
 
+describe("a module with a page and no tab", () => {
+  // The hiring file's shape (H5a): no tab, no mode, a screen of its own.
+  const files = defineManifest({
+    key: "employee_files",
+    requires: [],
+    nav: null,
+    icon: "documents",
+    homeWidget: null,
+    page: { href: "/me/file", minRole: "worker" },
+    permissions: [],
+    settings: z.object({}),
+  });
+
+  it("opens for everyone on the staff its page reaches, while it is on", () => {
+    for (const role of STAFF_ROLES) {
+      expect(canOpenModule(files, ["employee_files"], as(role)), role).toBe(
+        true,
+      );
+    }
+    expect(canOpenModule(files, [], as("owner"))).toBe(false);
+    const managers = defineManifest({
+      ...files,
+      page: { href: "/me/file", minRole: "manager" },
+    });
+    expect(canOpenModule(managers, ["employee_files"], as("worker"))).toBe(
+      false,
+    );
+  });
+
+  it("never opens for an accountant, whatever they hold", () => {
+    expect(
+      canOpenModule(
+        files,
+        ["employee_files"],
+        as("accountant", ["people.files"]),
+      ),
+    ).toBe(false);
+  });
+
+  it("shows on Today by its page only with a part there", () => {
+    expect(moduleWidgets([files], ["employee_files"], as("worker"))).toEqual(
+      [],
+    );
+    const withPart = defineManifest({
+      ...files,
+      homeWidget: { minRole: "worker" },
+    });
+    expect(
+      moduleWidgets(
+        [schedule, withPart],
+        ["scheduling", "employee_files"],
+        as("worker"),
+      ),
+    ).toEqual([
+      {
+        key: "scheduling",
+        href: "/schedule",
+        icon: "calendar",
+        outside: false,
+      },
+      {
+        key: "employee_files",
+        href: "/me/file",
+        icon: "documents",
+        outside: false,
+      },
+    ]);
+    expect(moduleWidgets([withPart], [], as("worker"))).toEqual([]);
+    expect(
+      moduleWidgets([withPart], ["employee_files"], as("accountant")),
+    ).toEqual([]);
+  });
+});
+
 describe("canOpenModule", () => {
   it("needs the module on and the role in reach", () => {
     expect(canOpenModule(storefront, ["storefront"], as("manager"))).toBe(true);

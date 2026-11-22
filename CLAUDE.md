@@ -116,7 +116,11 @@ Only `app/` imports app code (`@/…`).
   mock screens at `/design/order-taking`) and the menu editor's MenuEditRow (its name opens
   it, "נגמר" switched or said, a warning when it reaches no department), and the order's
   DraftLineRow (a line not sent yet: how many, its note and allergy, held, a mark when it
-  can't go) and SendOrderButton (what goes, counted, and where it goes).
+  can't go) and SendOrderButton (what goes, counted, and where it goes), and the hiring
+  file's Steps (a step of a flow, in words and segments), IdField, BankField (paste and
+  split, the check in words, "המספר נכון, לשמור"), SearchField with CityField and
+  CountryField, and MaskedValue (shown for a minute); StepRow takes `current` (mock screens
+  at `/design/shell/me/file`).
 - ConceptApp's logo (`@ui/logo`, files in `docs/brand`) appears only where
   ConceptApp itself speaks: sign-in, the console, marketing.
 - A business accent is applied with `{...accentProps(accentTokens(hex))}` on a
