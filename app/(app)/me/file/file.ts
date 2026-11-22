@@ -3,7 +3,7 @@ import { getEmployeeFile } from "@db/employee-files";
 import { cityOf } from "@domain/cities";
 import {
   BANK_CHANGE_SEEN_COOKIE,
-  bankChangeSeen,
+  bankChangeSeenAs,
   bankChangeToTell,
 } from "@domain/employee-file-settings";
 import { phoneTail } from "@domain/employee-file-steps";
@@ -24,7 +24,8 @@ import type { FileScreen, FileToday } from "./file-types";
  * `public.employee_file`, which logs nothing for a person's own read. A view
  * session never reads it: the database would only log a refusal. What the
  * business asks, and how it takes Form 101, are its settings (H5b), read
- * here, never from the browser. Never cached: the answer is the person's,
+ * here, never from the browser, and how this device saw the account's
+ * last change, from its cookie. Never cached: the answer is the person's,
  * for this request alone. Nothing here logs a value; @db/employee-files logs
  * a failure's code.
  */
@@ -59,11 +60,18 @@ export async function currentFileScreen(): Promise<FileScreen> {
   const now = new Date();
   const today = clockAt(now, timeZone).date;
   const year = Number(today.slice(0, 4));
-  const changedOn = bankChangeToTell(
-    read.file?.bank_changed_at ?? null,
-    now,
-    timeZone,
-  );
+  const changedAt = read.file?.bank_changed_at ?? null;
+  const changedOn = bankChangeToTell(changedAt, now, timeZone);
+  // How this device saw the change told, if at all: only by this person, of
+  // this very change, so on a shared device what someone else saw hides
+  // nothing of theirs.
+  const seen =
+    changedOn !== null && changedAt !== null
+      ? bankChangeSeenAs(
+          (await cookies()).get(BANK_CHANGE_SEEN_COOKIE)?.value,
+          { business: business.id, person: member.userId, changedAt },
+        )
+      : null;
   return {
     kind: "file",
     data: {
@@ -93,7 +101,11 @@ export async function currentFileScreen(): Promise<FileScreen> {
       taxYear: read.taxYears.find((row) => row.year === year) ?? null,
       phoneTail: phoneTail(member.phone),
       bankChange: changedOn
-        ? { on: changedOn, disputed: read.file?.bank_review === "disputed" }
+        ? {
+            on: changedOn,
+            disputed: read.file?.bank_review === "disputed",
+            seen,
+          }
         : null,
     },
   };
@@ -116,19 +128,7 @@ export async function currentFileToday(): Promise<FileToday | null> {
     const screen = await currentFileScreen();
     if (screen.kind !== "file") return null;
     const { data } = screen;
-    // The session's person, as the screen was read for (one read a request).
-    const person = (await currentMember())?.userId ?? null;
     const changedAt = data.file?.bank_changed_at ?? null;
-    // Seen only by this person, of this very change: on a shared device,
-    // what someone else said they saw hides nothing of theirs.
-    const seen =
-      changedAt !== null &&
-      person !== null &&
-      bankChangeSeen((await cookies()).get(BANK_CHANGE_SEEN_COOKIE)?.value, {
-        business: data.businessId,
-        person,
-        changedAt,
-      });
     return {
       businessId: data.businessId,
       businessName: data.businessName,
@@ -136,9 +136,14 @@ export async function currentFileToday(): Promise<FileToday | null> {
       asked: data.asked.length,
       missing: data.missing.length,
       pension: pensionLeftOf(data),
+      // Seen on this device, made here or said seen: not told here again.
       bank:
-        data.bankChange && changedAt !== null && !seen
-          ? { ...data.bankChange, changedAt }
+        data.bankChange && changedAt !== null && data.bankChange.seen === null
+          ? {
+              on: data.bankChange.on,
+              disputed: data.bankChange.disputed,
+              changedAt,
+            }
           : null,
     };
   } catch (error) {

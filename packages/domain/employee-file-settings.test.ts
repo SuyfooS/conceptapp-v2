@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   BANK_CHANGE_SEEN_MOST,
   bankChangeSeen,
+  bankChangeSeenAs,
   bankChangeToTell,
   DEDUCTIONS_FILE,
   type EmployeeFileSettings,
@@ -285,6 +286,7 @@ describe("the bank changes seen on this device", () => {
       // A business without its person names nobody's change.
       `${SHOP}.${Date.parse(AT)}`,
       `${SHOP}.${NOA}.abc`,
+      `${SHOP}.${NOA}.${Date.parse(AT)}.there`,
       "a.1,,b",
     ]) {
       expect(bankChangeSeen(cookie, noa(AT)), cookie).toBe(false);
@@ -304,6 +306,31 @@ describe("the bank changes seen on this device", () => {
     );
     expect(bankChangeSeen(cookie, noa(LATER))).toBe(true);
     expect(bankChangeSeen(cookie, noa(AT))).toBe(false);
+  });
+
+  // The bank step asks "לא שיניתי" of a change only said seen (Today's
+  // "אני שיניתי"), never of one made on this device (H5b's last check).
+  it("tells a change made here from one said seen", () => {
+    const made = withBankChangeSeen(null, noa(AT), "made");
+    expect(made).toBe(`${SHOP}.${NOA}.${Date.parse(AT)}.here`);
+    expect(bankChangeSeenAs(made, noa(AT))).toBe("made");
+    expect(bankChangeSeen(made, noa(AT))).toBe(true);
+    const said = withBankChangeSeen(null, noa(AT));
+    expect(said).toBe(`${SHOP}.${NOA}.${Date.parse(AT)}`);
+    expect(bankChangeSeenAs(said, noa(AT))).toBe("said");
+    expect(bankChangeSeenAs(said, noa(LATER))).toBeNull();
+    // Said seen again, a change made here stays made here; a newer one
+    // said seen is only said seen.
+    expect(bankChangeSeenAs(withBankChangeSeen(made, noa(AT)), noa(AT))).toBe(
+      "made",
+    );
+    expect(
+      bankChangeSeenAs(withBankChangeSeen(made, noa(LATER)), noa(LATER)),
+    ).toBe("said");
+    // One person's made here is nothing of another's.
+    expect(
+      bankChangeSeenAs(made, { business: SHOP, person: DANA, changedAt: AT }),
+    ).toBeNull();
   });
 
   it("drops the oldest after the twentieth", () => {

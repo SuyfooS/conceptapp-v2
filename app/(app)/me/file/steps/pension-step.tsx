@@ -24,6 +24,7 @@ import {
   formIdOf,
   type Kit,
   LaterLink,
+  pensionDueWords,
   Reason,
   StepDock,
   showFirstProblem,
@@ -111,15 +112,7 @@ export function PensionStep({ kit, active }: { kit: Kit; active: boolean }) {
     if (active) kit.go(kit.next("pension"));
   }
 
-  const dueWords =
-    due.kind === "open"
-      ? t("pension.dueOn", {
-          date: day(due.dueOn),
-          business: data.businessName,
-        })
-      : due.kind === "passed"
-        ? t("pension.duePassed", { business: data.businessName })
-        : t("pension.dueNone", { business: data.businessName });
+  const dueWords = pensionDueWords(t, day, due, data.businessName);
   const shown = choiceShown(options, fund ?? "", t("pension.pick"));
 
   return (

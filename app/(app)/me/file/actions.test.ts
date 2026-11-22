@@ -427,13 +427,14 @@ describe("the bank's code", () => {
     const at = mocks.saveEmployeeDetails.mock.calls[0]?.[5]?.atTime as Date;
     expect(at.getTime()).toBeGreaterThanOrEqual(before);
     expect(at.getTime()).toBeLessThanOrEqual(Date.now());
-    expect(mocks.rememberBankChangeSeen).toHaveBeenCalledWith({
-      business: SHOP,
-      person: NOA,
-      changedAt: at.toISOString(),
-    });
+    // Made here: the bank step on this device doesn't ask "לא שיניתי" of it.
+    expect(mocks.rememberBankChangeSeen).toHaveBeenCalledWith(
+      { business: SHOP, person: NOA, changedAt: at.toISOString() },
+      "made",
+    );
     expect(mocks.rememberBankChangeSeen).not.toHaveBeenCalledWith(
       expect.objectContaining({ changedAt: CHANGED_AT }),
+      expect.anything(),
     );
   });
 

@@ -9,6 +9,7 @@ import type {
   TaxYearStatus,
 } from "@domain/employee-file";
 import type {
+  BankChangeSeenAs,
   FileAsks,
   Form101Setup,
   NoticeNames,
@@ -93,11 +94,17 @@ export type FileScreenData = {
   phoneTail: string | null;
   /**
    * The account's last change while it is still told (`bankChangeToTell`,
-   * 14 days), by its day in the business's zone, and whether the person
-   * said it wasn't theirs: the bank step offers "לא שיניתי" all that time,
-   * on every device, so hiding Today's card never takes the way to say it.
+   * 14 days), by its day in the business's zone, whether the person said it
+   * wasn't theirs, and how this device saw it (`BankChangeSeenAs`): Today
+   * tells it where it wasn't seen, and the bank step offers "לא שיניתי" all
+   * that time on every device but the one it was made on, so hiding
+   * Today's card never takes the way to say it.
    */
-  bankChange: { on: string; disputed: boolean } | null;
+  bankChange: {
+    on: string;
+    disputed: boolean;
+    seen: BankChangeSeenAs;
+  } | null;
 };
 
 /** Why the screen can't show a file, or the file. */

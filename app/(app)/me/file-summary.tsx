@@ -24,6 +24,7 @@ import { type AppWording, translator } from "../wording";
 import { currentFileScreen } from "./file/file";
 import {
   completeHref,
+  completeWords,
   fileStepInputOf,
   pensionLeftOf,
 } from "./file/file-parts";
@@ -59,8 +60,9 @@ const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
  * The way into the file from the profile: while something is missing, the
  * screen's one accent card says how much, with "השלמת הפרטים" (not for an
  * owner, who isn't counted, and may still fill a file for themselves), or,
- * when a fund chosen "later" is all a sent file lacks, by when, with "בחירת
- * קרן פנסיה" to the pension's step, as Today's card does; then
+ * when a fund chosen "later" is all a sent file lacks, by when (or that the
+ * day passed and a fund can still be chosen), with "בחירת קרן פנסיה" to the
+ * pension's step, in the words Today's card has (`completeWords`); then
  * "התיק שלי ב{business}", who sees it, and a row for each part the business
  * asks or the file holds (H5b): the identity and the pension always, the
  * address, the account and the emergency contact where they show, and Form
@@ -152,9 +154,12 @@ export async function FileSummary({
           <div className="flex items-center gap-3">
             <ProgressRing value={asked - missing} max={asked} />
             <CardText className="text-pretty font-medium text-ink">
-              {pensionLeft?.kind === "open"
-                ? t("pensionLeft", { date: day(pensionLeft.dueOn) })
-                : t("missing", { count: missing })}
+              {completeWords(
+                translator(wording, "app"),
+                missing,
+                pensionLeft,
+                day,
+              )}
             </CardText>
           </div>
           <Button asChild size="lg" className="w-full md:w-auto md:self-start">

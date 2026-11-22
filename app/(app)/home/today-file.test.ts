@@ -23,7 +23,9 @@ const { NextIntlClientProvider, createTranslator } = await import("next-intl");
 const { todayFilePart } = await import("./today-file");
 const { FileTodayCard } = await import("./today-file-card");
 const { BankChangeCard } = await import("./bank-change-card");
-const { completeHref, pensionLeftOf } = await import("../me/file/file-parts");
+const { completeHref, completeWords, pensionLeftOf } = await import(
+  "../me/file/file-parts"
+);
 const { fileScreenDemo } = await import("../../design/shell/me/file/data");
 const { baseWording, translator } = await import("../wording");
 const he = (await import("@/messages/he.json")).default;
@@ -180,11 +182,35 @@ describe("the file's card", () => {
     const link = linkOf(html);
     expect(link.words).toBe(he.app.file.actions.choosePension);
     expect(link.attributes).toContain('href="/me/file?step=pension"');
-    // Its day passed: the count, and still the pension's step.
+    // Its day passed: said so, a fund can still be chosen, and still the
+    // pension's step, as the flow says it there (H5b's last check).
     const passed = card(noa({ missing: 1, pension: { kind: "passed" } }));
-    expect(passed).toContain(heT("app.me.file.missing", { count: 1 }));
+    expect(passed).toContain(he.app.me.file.pensionPassed);
+    expect(passed).not.toContain(heT("app.me.file.missing", { count: 1 }));
+    expect(linkOf(passed).words).toBe(he.app.file.actions.choosePension);
     expect(linkOf(passed).attributes).toContain('href="/me/file?step=pension"');
     expect(completeHref("/design/shell", null)).toBe("/design/shell/me/file");
+  });
+
+  it("says what the profile's card says, from the same file", () => {
+    const t = translator(baseWording, "app");
+    const { data } = fileScreenDemo("later", "he");
+    // By its day, then with the day passed: Today's card and the profile's
+    // take the same words of the same file (`completeWords`).
+    for (const [pensionDueOn, words] of [
+      [
+        "2026-12-24",
+        heT("app.me.file.pensionLeft", { date: longDay("2026-12-24") }),
+      ],
+      ["2026-11-23", he.app.me.file.pensionPassed],
+    ] as const) {
+      const pension = pensionLeftOf({ ...data, pensionDueOn });
+      expect(completeWords(t, 1, pension, longDay)).toBe(words);
+      expect(card(noa({ missing: 1, pension }))).toContain(words);
+    }
+    expect(completeWords(t, 3, null, longDay)).toBe(
+      heT("app.me.file.missing", { count: 3 }),
+    );
   });
 
   it("leads to the file, not the pension, while the file isn't sent yet", () => {

@@ -15,6 +15,7 @@ import {
   type PensionDue,
   pensionDue,
 } from "@domain/employee-file-steps";
+import type { Translator } from "../../wording";
 import type { FileScreenData } from "./file-types";
 
 /*
@@ -94,6 +95,42 @@ export function pensionLeftOf(data: FileScreenData): PensionDue | null {
   )
     ? pensionDue(data.pensionDueOn, data.today)
     : null;
+}
+
+/**
+ * A fund chosen "later" that the file still counts missing, though the
+ * pension's step is behind the person: by its day, with the day passed
+ * (`private.pension_due_on` keeps the day for a "later" answer), or with
+ * none to say. Null once a real answer is in. The flow says it in each of
+ * these on the pension's row, in a desktop's summary and on its done
+ * screen, which is never "סיימת" while it is left, as Today's card and the
+ * profile's say it (`completeWords`).
+ */
+export function pensionLaterOf(data: FileScreenData): PensionDue | null {
+  return data.file?.pension_answer === "later" &&
+    data.missing.includes("pension")
+    ? pensionDue(data.pensionDueOn, data.today)
+    : null;
+}
+
+/**
+ * What a way in that asks to complete the file says (Today's card, the
+ * profile's): a fund still to choose by its day, or with its day passed,
+ * when that is all a sent file lacks (`pensionLeftOf`); else how much is
+ * missing. The same words in both places, so neither says what the other
+ * doesn't.
+ */
+export function completeWords(
+  t: Translator<"app">,
+  missing: number,
+  pension: PensionDue | null,
+  day: (date: string) => string,
+): string {
+  return pension?.kind === "open"
+    ? t("me.file.pensionLeft", { date: day(pension.dueOn) })
+    : pension?.kind === "passed"
+      ? t("me.file.pensionPassed")
+      : t("me.file.missing", { count: missing });
 }
 
 /**

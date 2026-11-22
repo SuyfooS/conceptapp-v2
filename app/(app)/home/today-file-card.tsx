@@ -3,6 +3,7 @@ import { Card, CardText, CardTitle } from "@ui/card";
 import { cn } from "@ui/cn";
 import { ProgressRing } from "@ui/progress-ring";
 import Link from "next/link";
+import { completeWords } from "../me/file/file-parts";
 import type { FileToday } from "../me/file/file-types";
 import type { Translator } from "../wording";
 
@@ -10,8 +11,10 @@ import type { Translator } from "../wording";
  * The person's own hiring file while something in it is missing (profile
  * H5b): how much, and "השלמת הפרטים", which opens it where they stopped.
  * When a fund still to choose is all a sent file lacks ("אבחר אחר כך"), it
- * says by when and "בחירת קרן פנסיה" opens the pension's step, since the
- * flow, with no step open, would open on its done screen; a file not sent
+ * says by when, or that the day passed and a fund can still be chosen
+ * (`completeWords`, as the profile's card), and "בחירת קרן פנסיה" opens
+ * the pension's step, since the flow, with no step open, would open on its
+ * done screen, which says the same (`pensionLaterOf`); a file not sent
  * yet is sent from there, so the card keeps "השלמת הפרטים". The screen's one
  * accent card, with its one accent action, unless the owner's first steps
  * or an open mode hold it: then flat, and its action secondary. Never for
@@ -50,9 +53,7 @@ export function FileTodayCard({
           <CardText
             className={cn("text-pretty", tone === "accent" && "text-ink")}
           >
-            {pension?.kind === "open"
-              ? t("me.file.pensionLeft", { date: day(pension.dueOn) })
-              : t("me.file.missing", { count: file.missing })}
+            {completeWords(t, file.missing, pension, day)}
           </CardText>
         </span>
       </div>

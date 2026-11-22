@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fileScreenDemo } from "../../../design/shell/me/file/data";
-import { completeHref, pensionLeftOf } from "./file-parts";
+import { completeHref, pensionLaterOf, pensionLeftOf } from "./file-parts";
 import type { FileScreenData } from "./file-types";
 
 // Where the ways that ask to complete the file (Today's card, the
@@ -34,6 +34,33 @@ describe("a fund chosen 'later' all that is left", () => {
   it("is nothing while a step is still open, or once nothing is missing", () => {
     expect(pensionLeftOf(fileScreenDemo("stopped", "he").data)).toBeNull();
     expect(pensionLeftOf(fileScreenDemo("done", "he").data)).toBeNull();
+  });
+});
+
+// The flow says a fund chosen "later" wherever the file still counts it
+// missing, sent or not, by its day or with it passed (H5b's last check), as
+// Today's card and the profile's do once the file is sent.
+describe("a fund chosen 'later', as the flow tells it", () => {
+  it("is by its day, sent or not", () => {
+    const { data } = fileScreenDemo("later", "he");
+    const open = { kind: "open", dueOn: "2026-12-24" };
+    expect(pensionLaterOf(data)).toEqual(open);
+    expect(pensionLaterOf(unsent(data))).toEqual(open);
+  });
+
+  it("is still there with its day passed, as Today's is", () => {
+    const { data } = fileScreenDemo("later", "he");
+    const passed = { ...data, pensionDueOn: "2026-11-23" };
+    expect(pensionLaterOf(passed)).toEqual({ kind: "passed" });
+    expect(pensionLeftOf(passed)).toEqual({ kind: "passed" });
+    expect(pensionLaterOf(unsent(passed))).toEqual({ kind: "passed" });
+  });
+
+  it("is nothing once a real answer is in, or while the pension isn't counted", () => {
+    expect(pensionLaterOf(fileScreenDemo("done", "he").data)).toBeNull();
+    expect(pensionLaterOf(fileScreenDemo("stopped", "he").data)).toBeNull();
+    const { data } = fileScreenDemo("later", "he");
+    expect(pensionLaterOf({ ...data, missing: [] })).toBeNull();
   });
 });
 

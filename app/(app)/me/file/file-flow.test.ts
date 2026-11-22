@@ -32,9 +32,8 @@ vi.mock("next/link", () => ({
 const { NextIntlClientProvider, createTranslator, useTranslations } =
   await import("next-intl");
 const { FileFlow, SummaryFoot } = await import("./file-flow");
-const { BankStep, bankHeld, bankToSend, useHoldWords } = await import(
-  "./steps/bank-step"
-);
+const { BankStep, bankHeld, bankMoves, bankToSend, useHoldWords } =
+  await import("./steps/bank-step");
 const { FileFrame } = await import("./file-frame");
 const { FileView, fileViewOf } = await import("./file-view");
 const { NoticeBody } = await import("./notice-sheet");
@@ -402,6 +401,9 @@ describe("the summary's main action, with the open step on screen", () => {
   });
 });
 
+/** A last day to choose a fund before the twin's day (24 November 2026): passed. */
+const PASSED_DAY = "2026-11-23";
+
 describe("the done screen", () => {
   it("says 'סיימת' only with nothing open, and leads back to the profile", () => {
     const missing: string[] = [];
@@ -438,21 +440,66 @@ describe("the done screen", () => {
     expect(buttonWith(html, f.done.profile)).toHaveLength(0);
   });
 
-  it("still sends first when the file isn't sent, a fund chosen 'later' or not", () => {
+  // H5b's last check: with the day passed, the database still counts the
+  // pension missing and Today still asks, so the done screen does too.
+  it("leads to the pension all the same once the day to choose passed", () => {
     const missing: string[] = [];
-    const { data } = fileScreenDemo("later", "he", { form101: "off" });
-    const unsent: Data = {
-      ...data,
-      file: data.file ? { ...data.file, submitted_at: null } : null,
-    };
-    const html = drawData(unsent, "he", "done", missing);
+    const { data } = fileScreenDemo("later", "he");
+    const passed: Data = { ...data, pensionDueOn: PASSED_DAY };
+    const html = drawData(passed, "he", null, missing);
     expect(missing).toEqual([]);
+    expect(html).not.toContain(`>${f.done.title}</h2>`);
     expect(html).toContain(`>${f.done.titlePension}</h2>`);
-    expect(html).toContain(heT("app.file.done.readyPension", { business }));
-    expect(
-      buttonWith(html, heT("app.file.actions.send", { business })),
-    ).toHaveLength(2);
-    expect(buttonWith(html, f.actions.choosePension)).toHaveLength(0);
+    expect(html).toContain(heT("app.file.pension.duePassed", { business }));
+    expect(buttonWith(html, f.actions.choosePension)).toHaveLength(2);
+    expect(buttonWith(html, f.done.profile)).toHaveLength(0);
+  });
+
+  it("still sends first when the file isn't sent, a fund chosen 'later' or not", () => {
+    const { data } = fileScreenDemo("later", "he", { form101: "off" });
+    // By its day, and with the day passed: never "סיימת" nor "הכול מוכן".
+    for (const [pensionDueOn, line] of [
+      [
+        "2026-12-24",
+        heT("app.file.pension.dueOn", { date: "24 בדצמבר 2026", business }),
+      ],
+      [PASSED_DAY, heT("app.file.pension.duePassed", { business })],
+    ] as const) {
+      const missing: string[] = [];
+      const unsent: Data = {
+        ...data,
+        pensionDueOn,
+        file: data.file ? { ...data.file, submitted_at: null } : null,
+      };
+      const html = drawData(unsent, "he", "done", missing);
+      expect(missing).toEqual([]);
+      expect(html).toContain(`>${f.done.titlePension}</h2>`);
+      expect(html).not.toContain(`>${f.done.title}</h2>`);
+      expect(html).toContain(heT("app.file.done.readyPension", { business }));
+      expect(html).not.toContain(heT("app.file.done.ready", { business }));
+      expect(html).toContain(line);
+      expect(
+        buttonWith(html, heT("app.file.actions.send", { business })),
+      ).toHaveLength(2);
+      expect(buttonWith(html, f.actions.choosePension)).toHaveLength(0);
+    }
+  });
+
+  it("says the fund left beside a step still open, its day passed too", () => {
+    const missing: string[] = [];
+    const { data } = fileScreenDemo("later", "he");
+    const html = drawData(
+      { ...data, pensionDueOn: PASSED_DAY, missing: ["bank", "pension"] },
+      "he",
+      "done",
+      missing,
+    );
+    expect(missing).toEqual([]);
+    // The account's step is open again: the pension isn't the title.
+    expect(html).toContain(heT("app.file.done.titleLeft", { count: 1 }));
+    expect(html).toContain(
+      heT("app.file.done.left", { what: f.done.leftPensionPassed }),
+    );
   });
 });
 
@@ -479,6 +526,43 @@ describe("the pension's row, a fund chosen 'later'", () => {
       expect(html).toContain(heT("app.file.progress", { done: 6, count: 6 }));
     }
     expect(missing).toEqual([]);
+  });
+
+  it("says the day passed once it did, a fund still to choose", () => {
+    const missing: string[] = [];
+    const { data } = fileScreenDemo("later", "he");
+    const passed: Data = { ...data, pensionDueOn: PASSED_DAY };
+    for (const view of ["done", "pension"] as const) {
+      const html = drawData(passed, "he", view, missing);
+      const rows = pensionRows(html);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toContain(`text-sm">${f.done.leftPensionPassed}</span>`);
+      expect(rows[0]).toContain("bg-success-soft");
+    }
+    expect(missing).toEqual([]);
+  });
+
+  it("is still missing in a desktop's summary, by its day or with it passed", () => {
+    const { data } = fileScreenDemo("later", "he");
+    for (const [pensionDueOn, line] of [
+      [
+        "2026-12-24",
+        heT("app.file.pension.dueOn", { date: "24 בדצמבר 2026", business }),
+      ],
+      [PASSED_DAY, heT("app.file.pension.duePassed", { business })],
+    ] as const) {
+      const missing: string[] = [];
+      const html = drawData(
+        { ...data, pensionDueOn },
+        "he",
+        "pension",
+        missing,
+      );
+      expect(missing).toEqual([]);
+      expect(html).not.toContain(f.summary.none);
+      expect(html).toContain(`<li>${f.steps.name.pension}</li>`);
+      expect(html).toContain(`<p class="text-ink-2 text-sm">${line}</p>`);
+    }
   });
 
   it("says nothing more once a fund is chosen", () => {
@@ -523,7 +607,11 @@ describe("the account's change, in the bank step", () => {
   it("offers 'לא שיניתי' under the saved account while the change is told", () => {
     const missing: string[] = [];
     const { data } = fileScreenDemo("saved", "he");
-    expect(data.bankChange).toEqual({ on: "2026-11-24", disputed: false });
+    expect(data.bankChange).toEqual({
+      on: "2026-11-24",
+      disputed: false,
+      seen: null,
+    });
     const html = drawData(data, "he", "bank", missing);
     expect(missing).toEqual([]);
     expect(html).toContain(heT("app.file.bank.changed", { date: changedOn }));
@@ -537,7 +625,7 @@ describe("the account's change, in the bank step", () => {
     const missing: string[] = [];
     const { data } = fileScreenDemo("saved", "he");
     const html = drawData(
-      { ...data, bankChange: { on: "2026-11-24", disputed: true } },
+      { ...data, bankChange: { on: "2026-11-24", disputed: true, seen: null } },
       "he",
       "bank",
       missing,
@@ -553,6 +641,64 @@ describe("the account's change, in the bank step", () => {
     const html = drawData({ ...data, bankChange: null }, "he", "bank", missing);
     expect(html).not.toContain(f.bank.changed.split("{")[0] ?? "");
     expect(buttonWith(html, f.bank.dispute)).toHaveLength(0);
+  });
+
+  it("isn't asked of a change made on this device, and still is of one said seen on Today", () => {
+    const missing: string[] = [];
+    const { data } = fileScreenDemo("saved", "he");
+    const told = data.bankChange;
+    if (!told) throw new Error("a change told");
+    const as = (bankChange: NonNullable<Data["bankChange"]>) =>
+      drawData({ ...data, bankChange }, "he", "bank", missing);
+    const made = as({ ...told, seen: "made" });
+    expect(made).not.toContain(f.bank.changed.split("{")[0] ?? "");
+    expect(buttonWith(made, f.bank.dispute)).toHaveLength(0);
+    // "אני שיניתי" on Today hid the card here: the step keeps the way.
+    expect(
+      buttonWith(as({ ...told, seen: "said" }), f.bank.dispute),
+    ).toHaveLength(1);
+    // Marked since, on another device: it says so, with nothing to press.
+    const marked = as({ ...told, seen: "made", disputed: true });
+    expect(marked).toContain(heT("app.file.bank.disputed", { business }));
+    expect(buttonWith(marked, f.bank.dispute)).toHaveLength(0);
+    expect(missing).toEqual([]);
+  });
+
+  // H5b's last check: "לא שיניתי" came back under the person's own account
+  // once "החלפת החשבון" let go of the one confirmed and "השארת החשבון
+  // הנוכחי" brought the saved one back.
+  it("isn't asked under the person's own change, through 'החלפת החשבון' and back", () => {
+    // The server's answer, after the code, tells this very change.
+    const { data } = fileScreenDemo("saved", "he");
+    let state: BankScreenState = screenOf({ phase: "code" });
+    const press = (move: Partial<BankScreenState>) => {
+      state = { ...state, ...move };
+      return drawHe(
+        createElement(Bank, { data, screen: { ...state, set: () => {} } }),
+      );
+    };
+    const changed = f.bank.changed.split("{")[0] ?? "";
+    const confirmed = press(
+      bankMoves.confirmed("new", { bank: 12, branch: 600, masked: "•••0002" }),
+    );
+    expect(state.phase).toBe("saved");
+    expect(confirmed).not.toContain(changed);
+    expect(buttonWith(confirmed, f.bank.dispute)).toHaveLength(0);
+    // "החלפת החשבון": a new account to type, the one confirmed let go.
+    const changing = press(bankMoves.change());
+    expect(state.confirmed).toBeNull();
+    expect(changing).toContain('id="file-bank-form"');
+    // "השארת החשבון הנוכחי": the saved account again, and still not asked.
+    const kept = press(bankMoves.keep());
+    expect(state.phase).toBe("saved");
+    expect(buttonWith(kept, f.bank.change)).toHaveLength(1);
+    expect(kept).not.toContain(changed);
+    expect(buttonWith(kept, f.bank.dispute)).toHaveLength(0);
+    // The same account on a screen that made no change: asked.
+    const fresh = drawHe(
+      createElement(Bank, { data, screen: screenOf({ phase: "saved" }) }),
+    );
+    expect(buttonWith(fresh, f.bank.dispute)).toHaveLength(1);
   });
 });
 
@@ -755,6 +901,7 @@ function screenOf(over: Partial<BankScreenState>): BankScreen {
     hold: null,
     confirmed: null,
     review: null,
+    changedHere: false,
     set: () => {},
     ...over,
   };

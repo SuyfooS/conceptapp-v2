@@ -1,6 +1,10 @@
 "use client";
 
-import type { FileStep, StepState } from "@domain/employee-file-steps";
+import type {
+  FileStep,
+  PensionDue,
+  StepState,
+} from "@domain/employee-file-steps";
 import { type AddressForm, formArg, type ProfileLocale } from "@domain/profile";
 import { cn } from "@ui/cn";
 import { DockButton, FloatingDock } from "@ui/floating-dock";
@@ -82,6 +86,41 @@ export function useDay(): (day: string) => string {
       year: "numeric",
       timeZone: "UTC",
     });
+}
+
+/**
+ * The time to choose a pension fund, as the pension's step says it under
+ * its question and the done screen beside a fund still to choose: by its
+ * day, its day passed (a fund can still be chosen), or within 60 days.
+ */
+export function pensionDueWords(
+  t: FileT,
+  day: (day: string) => string,
+  due: PensionDue,
+  business: string,
+): string {
+  return due.kind === "open"
+    ? t("pension.dueOn", { date: day(due.dueOn), business })
+    : due.kind === "passed"
+      ? t("pension.duePassed", { business })
+      : t("pension.dueNone", { business });
+}
+
+/**
+ * A fund chosen "later" still to choose (`pensionLaterOf`), as the steps'
+ * row of the pension and the done screen's "נשאר:" say it: by its day, or
+ * with the day passed, as Today's card and the profile's do.
+ */
+export function pensionLaterWords(
+  t: FileT,
+  day: (day: string) => string,
+  later: PensionDue,
+): string {
+  return later.kind === "open"
+    ? t("done.leftPension", { date: day(later.dueOn) })
+    : later.kind === "passed"
+      ? t("done.leftPensionPassed")
+      : t("done.leftPensionNone");
 }
 
 /** The words a choice of form reads, with the business: `{form}` and `{business}`. */

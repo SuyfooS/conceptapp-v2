@@ -35,7 +35,8 @@ import { sendHide } from "./hide-request";
  * when the account changed again meanwhile, nothing is kept and Today,
  * drawn again, tells the newer change (Today keys the card by it, so it
  * comes back whole). Another phone tells it all the same, and the bank
- * step on /me/file keeps "לא שיניתי" for the 14 days. A refusal keeps the
+ * step on /me/file keeps "לא שיניתי" for the 14 days, on this one too
+ * (only a change made on a device isn't asked there). A refusal keeps the
  * card, or brings it back, and says so beside its buttons.
  */
 export function BankChangeCard({

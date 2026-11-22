@@ -194,11 +194,12 @@ export function bankChangeToTell(
  * The cookie that remembers, on this device, the bank changes people said
  * they saw ("אני שיניתי", "הבנתי", and the account just added here):
  * "<business>.<person>.<ms>" entries, comma-separated, each the database's
- * moment of that person's change in that business, the latest last. A
- * change is seen only by its own person and its own moment, so on a shared
- * device one person's seen never hides another's change, nor an earlier
- * change of their own. Kept as long as the business cookie, and forgotten
- * with it on signing out.
+ * moment of that person's change in that business, the latest last, and
+ * ".here" after it for an account added on this device. A change is seen
+ * only by its own person and its own moment, so on a shared device one
+ * person's seen never hides another's change, nor an earlier change of
+ * their own. Kept as long as the business cookie, and forgotten with it on
+ * signing out.
  */
 export const BANK_CHANGE_SEEN_COOKIE = "ca_bank_seen";
 
@@ -212,27 +213,47 @@ export type BankChange = {
   changedAt: string;
 };
 
-type SeenEntry = { business: string; person: string; at: number };
+/**
+ * How a change was seen on this device: `made` on it (the account added
+ * here), `said` seen on Today ("אני שיניתי", "הבנתי"), or null. Today tells
+ * neither again; the bank step still asks "לא שיניתי" of one only said
+ * seen, so hiding Today's card never takes the way to dispute it.
+ */
+export type BankChangeSeenAs = "made" | "said" | null;
 
-const SEEN_ENTRY = /^([0-9a-f-]{36})\.([0-9a-f-]{36})\.(\d{1,15})$/;
+type SeenEntry = {
+  business: string;
+  person: string;
+  at: number;
+  here: boolean;
+};
+
+const SEEN_ENTRY = /^([0-9a-f-]{36})\.([0-9a-f-]{36})\.(\d{1,15})(\.here)?$/;
 
 function seenIn(cookie: string | null | undefined): SeenEntry[] {
   return (cookie ?? "").split(",").flatMap((entry) => {
     const found = SEEN_ENTRY.exec(entry);
     return found?.[1] && found[2] && found[3]
-      ? [{ business: found[1], person: found[2], at: Number(found[3]) }]
+      ? [
+          {
+            business: found[1],
+            person: found[2],
+            at: Number(found[3]),
+            here: found[4] !== undefined,
+          },
+        ]
       : [];
   });
 }
 
-/** Whether this very change was said seen on this device: its person's, at its moment. */
-export function bankChangeSeen(
-  cookie: string | null | undefined,
+/** This very change's entry: its person's, at its moment. */
+function entryOf(
+  entries: readonly SeenEntry[],
   change: BankChange,
-): boolean {
+): SeenEntry | undefined {
   const at = Date.parse(change.changedAt);
-  if (Number.isNaN(at)) return false;
-  return seenIn(cookie).some(
+  if (Number.isNaN(at)) return undefined;
+  return entries.find(
     (entry) =>
       entry.business === change.business &&
       entry.person === change.person &&
@@ -240,25 +261,52 @@ export function bankChangeSeen(
   );
 }
 
+/** How this very change was seen on this device (`BankChangeSeenAs`). */
+export function bankChangeSeenAs(
+  cookie: string | null | undefined,
+  change: BankChange,
+): BankChangeSeenAs {
+  const entry = entryOf(seenIn(cookie), change);
+  return entry === undefined ? null : entry.here ? "made" : "said";
+}
+
+/** Whether this very change was seen on this device, made here or said seen. */
+export function bankChangeSeen(
+  cookie: string | null | undefined,
+  change: BankChange,
+): boolean {
+  return bankChangeSeenAs(cookie, change) !== null;
+}
+
 /**
- * The cookie's value once this change is seen too: its entry last,
- * replacing an older one of the same person in the same business, and no
- * more than `BANK_CHANGE_SEEN_MOST`, the oldest dropped.
+ * The cookie's value once this change is seen too, `made` here or `said`
+ * seen: its entry last, replacing an older one of the same person in the
+ * same business, and no more than `BANK_CHANGE_SEEN_MOST`, the oldest
+ * dropped. Said seen again, a change made here stays made here.
  */
 export function withBankChangeSeen(
   cookie: string | null | undefined,
   change: BankChange,
+  as: "made" | "said" = "said",
 ): string {
   const at = Date.parse(change.changedAt);
-  const others = seenIn(cookie).filter(
+  const kept = seenIn(cookie);
+  const here = as === "made" || entryOf(kept, change)?.here === true;
+  const others = kept.filter(
     (entry) =>
       entry.business !== change.business || entry.person !== change.person,
   );
   const entries: SeenEntry[] = Number.isNaN(at)
     ? others
-    : [...others, { business: change.business, person: change.person, at }];
+    : [
+        ...others,
+        { business: change.business, person: change.person, at, here },
+      ];
   return entries
     .slice(-BANK_CHANGE_SEEN_MOST)
-    .map((entry) => `${entry.business}.${entry.person}.${entry.at}`)
+    .map(
+      (entry) =>
+        `${entry.business}.${entry.person}.${entry.at}${entry.here ? ".here" : ""}`,
+    )
     .join(",");
 }

@@ -338,9 +338,10 @@ export function fileScreenDemo(
         : null,
     phoneTail: "0003",
     // Her account went in on the twin's day, so its change is still told,
-    // as the app tells it for 14 days: the bank step has "לא שיניתי".
+    // as the app tells it for 14 days, on a device that didn't see it: the
+    // bank step has "לא שיניתי" (the twin keeps nothing seen).
     bankChange: row?.bank_changed_at
-      ? { on: FILE_DEMO_TODAY, disputed: false }
+      ? { on: FILE_DEMO_TODAY, disputed: false, seen: null }
       : null,
   };
   const preset =

@@ -30,7 +30,7 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { failureKey } from "./failure-words";
-import { fileStepInputOf } from "./file-parts";
+import { fileStepInputOf, pensionLaterOf } from "./file-parts";
 import type {
   FileActionFailure,
   FileActions,
@@ -40,6 +40,8 @@ import {
   focusTitle,
   formIdOf,
   type Kit,
+  pensionDueWords,
+  pensionLaterWords,
   titleId,
   useDay,
   WhyButton,
@@ -265,20 +267,25 @@ export function FileFlow({
   }
 
   const done = stepsDone(states, steps);
-  const missingSteps = steps.filter((s) => states[s] === "open");
   const due = pensionDue(data.pensionDueOn, data.today);
+  // The pension answered "אבחר אחר כך" is behind the person, so the file
+  // can go, but the file still counts it missing (`pensionLaterOf`): a
+  // fund is still theirs to choose, by its day or with the day passed.
+  const later = pensionLaterOf(data);
+  // What a desktop's summary says is still missing: the steps open, and
+  // the pension while a fund is still to choose, as Today's card says.
+  const missingSteps = steps.filter(
+    (s) => states[s] === "open" || (s === "pension" && later !== null),
+  );
   const sendWords = sendFailure
     ? t(`failures.${failureKey(sendFailure)}`)
     : null;
   // A step handed in directly is done, and says how under its name; an
   // optional one says so beside it: the words a screen reader hears after
-  // the name are said once. The pension answered "אבחר אחר כך" is behind
-  // the person, so the file can go, but a fund is still theirs to choose:
-  // its row says by when, as the profile's does.
-  const pensionLater =
-    data.file?.pension_answer === "later" && due.kind === "open"
-      ? t("done.leftPension", { date: day(due.dueOn) })
-      : undefined;
+  // the name are said once. A fund chosen "later" still to choose: the
+  // pension's row says by when, or that the day passed, as the profile's
+  // does.
+  const pensionLater = later ? pensionLaterWords(t, day, later) : undefined;
   const stepRow = (s: FileStep, link: boolean) => (
     <StepRow
       key={s}
@@ -429,9 +436,9 @@ export function FileFlow({
                         ))}
                       </ul>
                     )}
-                    {due.kind === "open" ? (
+                    {due.kind !== "none" || later ? (
                       <p className="text-ink-2 text-sm">
-                        {t("pension.dueOn", { date: day(due.dueOn), business })}
+                        {pensionDueWords(t, day, due, business)}
                       </p>
                     ) : null}
                   </Card>
@@ -657,10 +664,12 @@ export function SummaryFoot({
  * action leads to the first. With nothing open and the file not sent yet,
  * its main action sends it, and a refusal is said under it: with Form 101
  * not taken in the app (H5b) this is where the file goes, so a fund chosen
- * "later" never keeps it back. Sent, with a fund still to choose by its day
- * (the pension answered "אבחר אחר כך", which the file counts missing), it
- * says so and "בחירת קרן פנסיה" opens the pension's step; else the way back
- * to the profile.
+ * "later" never keeps it back. A fund still to choose (the pension answered
+ * "אבחר אחר כך", which the file counts missing: `pensionLaterOf`) is never
+ * "סיימת" nor "הכול מוכן", by its day or with the day passed: it is titled
+ * so, says the day (or that it passed and a fund can still be chosen), and,
+ * sent, "בחירת קרן פנסיה" opens the pension's step; else the way back to
+ * the profile.
  */
 function DoneView({
   kit,
@@ -683,8 +692,11 @@ function DoneView({
   const open = kit.steps.filter((s) => states[s] === "open");
   const next = open[0] ?? null;
   const sent = data.file?.submitted_at != null;
-  // No step open, and a fund chosen "later" still to choose by its day.
-  const pensionLeft = next === null && due.kind === "open";
+  // A fund chosen "later", which the file still counts missing: by its day,
+  // or with the day passed.
+  const later = pensionLaterOf(data);
+  // No step open, and that fund still to choose: never "סיימת".
+  const pensionLeft = next === null && later !== null;
   const main = next
     ? {
         label: t(`actions.finish.${next}`),
@@ -731,13 +743,13 @@ function DoneView({
                 : t("done.ready", { business })}
           </p>
         ) : null}
-        {due.kind === "open" ? (
+        {pensionLeft ? (
           <p className="text-base">
-            {pensionLeft
-              ? t("pension.dueOn", { date: day(due.dueOn), business })
-              : t("done.left", {
-                  what: t("done.leftPension", { date: day(due.dueOn) }),
-                })}
+            {pensionDueWords(t, day, later, business)}
+          </p>
+        ) : later || due.kind === "open" ? (
+          <p className="text-base">
+            {t("done.left", { what: pensionLaterWords(t, day, later ?? due) })}
           </p>
         ) : null}
         {open.map((s) => (

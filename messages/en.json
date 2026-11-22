@@ -4002,6 +4002,7 @@
       "file": {
         "missing": "So your wages arrive on time, {count, plural, one {one more detail is} other {# more details are}} needed",
         "pensionLeft": "Choose a pension fund by {date}",
+        "pensionPassed": "The time to choose a pension fund has passed, and you can still choose one",
         "complete": "Complete the details",
         "title": "My file at {business}",
         "visible": "You, the owner and whoever prepares the payroll can see these details",
@@ -4241,7 +4242,7 @@
         "later": "I'll choose later",
         "dueOn": "You can choose until {date}. After that, {business} chooses a fund for you.",
         "dueNone": "You can choose within 60 days of starting work. After that, {business} chooses a fund for you.",
-        "duePassed": "The time to choose a fund has passed, and {business} chooses one for you.",
+        "duePassed": "The time to choose a fund has passed. You can still choose one, and if you don't, {business} chooses one for you.",
         "law": "By law you can choose a fund within 60 days of starting work."
       },
       "form101": {
@@ -4273,6 +4274,8 @@
         "sent": "The details were sent to {business}.",
         "left": "Still to do: {what}",
         "leftPension": "choose a pension fund by {date}",
+        "leftPensionPassed": "choose a pension fund. The time to choose has passed",
+        "leftPensionNone": "choose a pension fund",
         "change": "You can go back to any step",
         "profile": "Back to the profile",
         "ready": "Everything's in. Once you send it, {business} will see your details are complete.",

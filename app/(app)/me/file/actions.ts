@@ -60,18 +60,22 @@ function bankOf(bank: unknown, today: string) {
  * change's own (`set_employee_details` dates `bank_changed_at` by its
  * `at_time`): never read again afterwards, so a change someone else made a
  * moment later is never the one kept, and never the screen's. The device
- * the change was made on doesn't ask "was it you?", and every other one
- * still does, so after a SIM swap the account's owner is still asked on
- * their own phone. The account is in either way: a cookie that can't be
- * kept leaves Today asking, and is logged by its code.
+ * the change was made on doesn't ask "was it you?", neither Today nor the
+ * bank step (kept `made`), and every other one still does, so after a SIM
+ * swap the account's owner is still asked on their own phone. The account
+ * is in either way: a cookie that can't be kept leaves Today asking, and
+ * is logged by its code.
  */
 async function keepOwnChangeSeen(who: FileWriter, at: Date): Promise<void> {
   try {
-    await rememberBankChangeSeen({
-      business: who.businessId,
-      person: who.userId,
-      changedAt: at.toISOString(),
-    });
+    await rememberBankChangeSeen(
+      {
+        business: who.businessId,
+        person: who.userId,
+        changedAt: at.toISOString(),
+      },
+      "made",
+    );
   } catch (error) {
     logged("keeping a new account seen failed", error);
   }

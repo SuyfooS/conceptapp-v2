@@ -114,6 +114,13 @@ export type BankScreenState = {
   /** The account just confirmed, shown until the server's answer has it. */
   confirmed: ShownAccount | null;
   review: "new" | "warned" | null;
+  /**
+   * An account was confirmed on this screen: the account's last change is
+   * the person's own, whatever account shows now. Kept apart from
+   * `confirmed`, which "החלפת החשבון" lets go, so "השארת החשבון הנוכחי"
+   * never brings back "לא שיניתי" under it (`bankChangeShown`).
+   */
+  changedHere: boolean;
 };
 
 export type BankScreen = BankScreenState & {
@@ -144,6 +151,7 @@ export function useBankScreen(
     hold: preset?.heldUntil ? { day: preset.heldUntil, at: null } : null,
     confirmed: null,
     review: null,
+    changedHere: false,
   }));
   const set = useCallback<BankScreen["set"]>(
     (change) =>
@@ -154,6 +162,57 @@ export function useBankScreen(
     [],
   );
   return { ...state, set };
+}
+
+/**
+ * What the step's presses make of where the account stands, each a phase
+ * with what it shows (`BankScreen.set`), so the order they come in can be
+ * tested: confirmed here, the change is the person's own from then on,
+ * through "החלפת החשבון" and "השארת החשבון הנוכחי" back.
+ */
+export const bankMoves = {
+  /** The code took: everything typed goes, and the account shows saved. */
+  confirmed: (
+    review: "new" | "warned",
+    shown: ShownAccount | null,
+  ): Partial<BankScreenState> => ({
+    review,
+    ...(shown ? { confirmed: shown } : {}),
+    typed: NOTHING_TYPED,
+    phase: "saved",
+    changedHere: true,
+  }),
+  /** "החלפת החשבון": a new account to type; a change made here stays so. */
+  change: (): Partial<BankScreenState> => ({
+    phase: "edit",
+    review: null,
+    confirmed: null,
+  }),
+  /** "השארת החשבון הנוכחי": everything typed goes, back to the saved one. */
+  keep: (): Partial<BankScreenState> => ({
+    typed: NOTHING_TYPED,
+    phase: "saved",
+  }),
+};
+
+/**
+ * Whether the saved account has its last change under it (`BankChangeNote`)
+ * while the change is told: "לא שיניתי" on every device, so hiding Today's
+ * card never takes the way to say it, but never for a change that is the
+ * person's own for sure: made on this screen (`changedHere`, whatever
+ * account shows since), or on this device before (`seen: "made"`), unless
+ * it was marked since, which it then says. Said seen on Today ("אני
+ * שיניתי"), it is still asked here.
+ */
+export function bankChangeShown(
+  change: FileScreenData["bankChange"],
+  changedHere: boolean,
+): change is NonNullable<FileScreenData["bankChange"]> {
+  return (
+    change !== null &&
+    !changedHere &&
+    (change.disputed || change.seen !== "made")
+  );
 }
 
 /** The account as the server takes it, from what is typed. */
@@ -216,7 +275,9 @@ type Problem =
  * be kept or changed here. Taking it out of the file isn't on screen yet
  * (docs/ROADMAP.md's known issues). While the account's last change is
  * told (14 days), the saved account has "לא שיניתי" under it
- * (`BankChangeNote`), so hiding Today's card never takes the way to say it.
+ * (`BankChangeNote`), so hiding Today's card never takes the way to say it;
+ * never under a change made on this screen or on this device
+ * (`bankChangeShown`).
  */
 export function BankStep({
   kit,
@@ -235,7 +296,16 @@ export function BankStep({
   const holderNameId = useId();
   const form = useRef<HTMLFormElement>(null);
   const file = data.file;
-  const { phase, typed: entered, tail, hold, confirmed, review, set } = screen;
+  const {
+    phase,
+    typed: entered,
+    tail,
+    hold,
+    confirmed,
+    review,
+    changedHere,
+    set,
+  } = screen;
   const { value, holder, holderName, instruction } = entered;
   const type = (change: Partial<BankTyped>) =>
     set((was) => ({ typed: { ...was.typed, ...change } }));
@@ -387,21 +457,20 @@ export function BankStep({
     if (answer.ok) {
       setStatus("success");
       setTried(false);
-      // Everything typed goes with its save; the account shows saved.
-      set({
-        review: answer.review,
-        ...(check && check.status !== "unusable"
-          ? {
-              confirmed: {
+      // Everything typed goes with its save; the account shows saved, and
+      // its change is the person's own.
+      set(
+        bankMoves.confirmed(
+          answer.review,
+          check && check.status !== "unusable"
+            ? {
                 bank: check.account.bank,
                 branch: check.account.branch,
                 masked: maskedHint(accountHint(check.account.account)),
-              },
-            }
-          : {}),
-        typed: NOTHING_TYPED,
-        phase: "saved",
-      });
+              }
+            : null,
+        ),
+      );
       kit.say(t("saved"));
       // The code's boxes went: the step, saved, takes the focus.
       focusTitle("bank");
@@ -446,7 +515,7 @@ export function BankStep({
       disabled={status === "pending"}
       onClick={() => {
         // Everything typed goes, and with it what was said about it.
-        set({ typed: NOTHING_TYPED, phase: "saved" });
+        set(bankMoves.keep());
         setTried(false);
         setProblem(null);
         setStatus("idle");
@@ -509,7 +578,7 @@ export function BankStep({
           <Button
             variant="secondary"
             onClick={() => {
-              set({ phase: "edit", review: null, confirmed: null });
+              set(bankMoves.change());
               setProblem(null);
               // The button goes: the first field of the new account takes
               // the focus.
@@ -522,9 +591,9 @@ export function BankStep({
         </Card>
       ) : null}
       {/* The account's last change while it is told: "לא שיניתי" stays
-          here after Today's card is hidden. Not for an account just
-          confirmed on this screen: that change is the person's own. */}
-      {phase === "saved" && data.bankChange && confirmed === null ? (
+          here after Today's card is hidden. Not for a change made on this
+          screen or this device: that change is the person's own. */}
+      {phase === "saved" && bankChangeShown(data.bankChange, changedHere) ? (
         <BankChangeNote kit={kit} change={data.bankChange} />
       ) : null}
       {phase === "saved" ? null : (
@@ -725,7 +794,8 @@ export function BankStep({
  * The account's last change, while Today tells it (H5b): when, and "לא
  * שיניתי", which marks the account for the owner and the accountant at once
  * (as on Today: no undo, it destroys nothing). On every device all those 14
- * days, whether or not Today's card was hidden on this one. Once marked it
+ * days, whether or not Today's card was hidden on this one, but the one the
+ * change was made on (`bankChangeShown`). Once marked it
  * says what follows, and its words take the focus, since the button went;
  * shown at once, before the server's answer has it (the twin keeps
  * nothing). A refusal is said under the button. A quiet card under the
