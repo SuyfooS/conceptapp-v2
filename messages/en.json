@@ -1401,6 +1401,14 @@
           "hidden": "Card hidden on this device",
           "failed": "Not saved. Try again."
         }
+      },
+      "fileReviews": {
+        "title": "{count, plural, one {A bank account to check} other {# bank accounts to check}}",
+        "body": "Until it's checked, the account stays out of the payroll file.",
+        "new": "The account was changed and isn't checked yet",
+        "warned": "The account number didn't pass the bank's check",
+        "disputed": "{form, select, f {She marked “I didn't change it”} m {He marked “I didn't change it”} other {Marked “I didn't change it”}}",
+        "more": "{count, plural, one {And one more on the team screen} other {And # more on the team screen}}"
       }
     },
     "moduleSoon": {
@@ -1624,14 +1632,17 @@
           "missingCount": "{count, plural, one {One payroll detail missing} other {# payroll details missing}}",
           "bankReview": "Bank account to check",
           "form101Holder": "Form 101 for {year}: {status, select, handed_in {handed in} accepted {accepted by payroll} returned {sent back} change_due {update by <ltr>{date}</ltr>} other {not handed in}}",
-          "form101Team": "Form 101: {state, select, in {handed in} other {not in yet}}"
+          "form101Team": "Form 101: {state, select, in {handed in} other {not in yet}}",
+          "bankDisputed": "“I didn't change it” on the bank account"
         },
         "columns": {
           "details": "Payroll details",
-          "form101": "Form 101 for {year}"
+          "form101": "Form 101 for {year}",
+          "changed": "Last change"
         },
         "cells": {
-          "form101": "{status, select, handed_in {Handed in} accepted {Accepted by payroll} returned {Sent back} change_due {Update by <ltr>{date}</ltr>} in {Handed in} missing {Not in yet} other {Not handed in}}"
+          "form101": "{status, select, handed_in {Handed in} accepted {Accepted by payroll} returned {Sent back} change_due {Update by <ltr>{date}</ltr>} in {Handed in} missing {Not in yet} other {Not handed in}}",
+          "neverChanged": "Not filled yet"
         },
         "filesOnly": {
           "subtitle": "{count, plural, =0 {No staff files yet} one {One staff file} other {# staff files}}",
@@ -1651,7 +1662,8 @@
           "shareTitle": "Link to complete the file",
           "shareMessage": "{first}, a few details are still missing from your file at {business}. You can complete them in the app, in about 5 minutes:",
           "open": "Open the file",
-          "completeRow": "Payroll file · complete"
+          "completeRow": "Payroll file · complete",
+          "bankDisputed": "{form, select, f {{first} marked “I didn't change it” on her bank account.} m {{first} marked “I didn't change it” on his bank account.} other {{first}'s file is marked “I didn't change it” on the bank account.}}"
         },
         "page": {
           "metaTitle": "Staff file",
@@ -1739,7 +1751,15 @@
         "review": {
           "new": "{first}'s bank account was changed on <ltr>{date}</ltr>, and hasn't been checked yet.",
           "warned": "{first}'s account number didn't pass the bank's check. {form, select, f {Worth checking with her.} m {Worth checking with him.} other {Worth checking.}}",
-          "disputed": "{form, select, f {{first} marked that she didn't change the account.} m {{first} marked that he didn't change the account.} other {{first}'s file is marked “I didn't change it” on the account.}} It stays out of the payroll file until you check."
+          "disputed": "{form, select, f {{first} marked that she didn't change the account.} m {{first} marked that he didn't change the account.} other {{first}'s file is marked “I didn't change it” on the account.}} It stays out of the payroll file until you check.",
+          "confirmNew": "I've seen the new account",
+          "confirmWarned": "I've checked the account number",
+          "confirmDisputed": "I checked with {first}, the account is right",
+          "held": "Until it's checked, the account stays out of the payroll file.",
+          "notTheirs": "{form, select, f {If the account isn't hers, {first} replaces it in her file, with an SMS code.} m {If the account isn't his, {first} replaces it in his file, with an SMS code.} other {If the account isn't {first}'s, it's replaced in {first}'s file, with an SMS code.}}",
+          "confirmed": "{first}'s account is confirmed.",
+          "moved": "The account was changed again meanwhile, and this is the new one. Take a look before confirming.",
+          "settled": "The account was already confirmed meanwhile."
         },
         "reveal": {
           "limit": "Numbers of 30 people were already shown in the last hour. You can show more later.",
@@ -1757,7 +1777,64 @@
           "businessChanged": "You switched to another business meanwhile. Reload the screen.",
           "off": "The payroll file is off in this business.",
           "noAccess": "You don't have access to the files.",
-          "failed": "Something didn't work. You can try again."
+          "failed": "Something didn't work. You can try again.",
+          "demo": "In a demo business the files stay as they are.",
+          "closed": "Files can't be changed here yet.",
+          "notInTeam": "No longer on the team, so the file can't be changed."
+        },
+        "direct": {
+          "mark": "Mark as handed directly to payroll",
+          "markHint": "For example, when the details were handed in on paper.",
+          "pension": "Mark that {business} chose a fund",
+          "unmark": "Remove the mark",
+          "marked": "Marked as handed directly to payroll: {group}",
+          "pensionMarked": "Marked that {business} chose a fund",
+          "unmarked": "Mark removed: {group}",
+          "undo": "Undo",
+          "groups": {
+            "identity": "the ID details",
+            "address": "the address",
+            "bank": "the bank account",
+            "pension": "the pension"
+          }
+        },
+        "history": {
+          "title": "What happened in the file",
+          "note": "Who changed or showed what, and when. Never the values.",
+          "columns": {
+            "what": "What",
+            "who": "Who",
+            "when": "When"
+          },
+          "details": "Updated {fields}",
+          "detailsPlain": "Updated the file",
+          "reveal": "Viewed {fields}",
+          "submit": "Sent the file",
+          "bankAck": "Confirmed the bank account",
+          "bankDisputed": "“I didn't change it” on the bank account",
+          "taxYear": "Form 101 for {year}: {status, select, handed_in {handed in} accepted {was accepted} returned {was returned} change_due {an updated form is due} other {mark removed}}",
+          "direct": "Marked “handed directly to payroll”: {groups}",
+          "directCleared": "The “handed directly to payroll” mark was removed",
+          "empty": "Nothing changed or shown here yet.",
+          "more": "Showing the last {count} actions here.",
+          "failed": "We couldn't show what happened in the file just now."
+        },
+        "minor": {
+          "title": "Employing a minor",
+          "before": "Before work starts: see a medical certificate and an ID, and keep a copy at the business until a year after the work ends.",
+          "notice": "Notice of the terms of work by <ltr>{date}</ltr>.",
+          "noticePassed": "The notice of the terms of work was due by <ltr>{date}</ltr>.",
+          "noticeNoStart": "Notice of the terms of work within a week of starting.",
+          "under15": "Under 15, work is allowed only in school holidays, in light work and from age 14."
+        },
+        "filter": {
+          "label": "Which files to show",
+          "all": "All",
+          "missing": "Missing details",
+          "form101": "101 open",
+          "emptyMissing": "Nobody is missing payroll details.",
+          "emptyForm101": "No Form 101 open for {year}.",
+          "showAll": "Show all"
         }
       }
     },

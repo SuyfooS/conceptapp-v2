@@ -111,6 +111,8 @@ export type EmployeeFile = {
   missing: FileGroup[];
   youthUntil: string | null;
   pensionDueOn: string | null;
+  /** The open employment period's first day, or null for none (H6b-2). */
+  startedOn: string | null;
   taxYears: {
     year: number;
     status: TaxYearStatus;
@@ -251,6 +253,7 @@ export async function getEmployeeFile(
       missing: answer.missing,
       youthUntil: answer.youth_until,
       pensionDueOn: answer.pension_due_on,
+      startedOn: answer.started_on,
       taxYears: answer.tax_years.map((year) => ({
         year: year.year,
         status: year.status,
@@ -266,6 +269,41 @@ export async function getEmployeeFile(
     }
     throw error;
   }
+}
+
+/**
+ * The parts of someone's file marked "נמסר ישירות לשכר", read fresh for a
+ * holder's press (H6b-1): `set_direct_groups` takes the whole set, so a set
+ * a screen drew earlier would take back another holder's mark. The same
+ * read the holder's screen makes (`employee_file`, under the session,
+ * logged once a day), but nothing sealed is opened and no key unwrapped.
+ * Without the keys it asks nothing, as every read of a file.
+ */
+export async function getDirectGroups(
+  businessId: string,
+  personId: string,
+): Promise<{ ok: true; groups: FileGroup[] } | FileReadFailure> {
+  if (!employeeKeyRing()) return { ok: false, failure: "keys" };
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("employee_file", {
+    business: businessId,
+    person: personId,
+  });
+  if (error) {
+    if (isMissingFunction(error)) return { ok: false, failure: "unavailable" };
+    console.error("reading a file's marks failed", error.code, error.message);
+    return { ok: false, failure: "failed" };
+  }
+  const reply = fileReply.safeParse(data);
+  if (!reply.success) return { ok: false, failure: "failed" };
+  const answer = reply.data;
+  if (answer.access === "denied") {
+    return { ok: false, failure: "denied", reason: answer.reason };
+  }
+  if (answer.access !== "holder") {
+    return { ok: false, failure: "denied", reason: "not_holder" };
+  }
+  return { ok: true, groups: answer.file?.direct_groups ?? [] };
 }
 
 /**
@@ -881,7 +919,12 @@ export async function noteStepUp(
   return error ? failedWith("noting a code failed", error) : { ok: true };
 }
 
-/** A holder confirms someone's new account, as the screen read it. */
+/**
+ * A holder confirms someone's new account, as the screen read it:
+ * `seenChangedAt` is the file's `bank_changed_at` exactly as the database
+ * gave it, microseconds and all, never a date written again, since any
+ * other moment answers 40001 (`moved`), as a change since does.
+ */
 export async function acknowledgeBank(
   actorId: string,
   businessId: string,

@@ -1,3 +1,4 @@
+import { type FileTag, fileFilterTags } from "@domain/file-holders";
 import type { Role, Viewer } from "@domain/modules";
 import { displayIsraeliMobile } from "@domain/phone";
 import {
@@ -20,7 +21,18 @@ import Link from "next/link";
 import { createFormatter } from "next-intl";
 import type { ComponentProps } from "react";
 import { type AppWording, type Translator, translator } from "../wording";
-import { type Format, fileCells, fileLineWords } from "./file-lines";
+import {
+  FileFilter,
+  FileFilterChoice,
+  FileFiltered,
+  FileShown,
+} from "./file-filter";
+import {
+  changedCell,
+  type Format,
+  fileCells,
+  fileLineWords,
+} from "./file-lines";
 import type { TeamFiles } from "./file-status";
 import {
   CancelInviteButton,
@@ -59,6 +71,8 @@ type ViewProps = {
   /** Reads the files without seeing the team: the files alone, no invites. */
   filesOnly: boolean;
   format: Format;
+  /** Which of the filter's choices each member's file shows under (H6b-2). */
+  tags: (userId: string) => FileTag[];
 };
 
 /**
@@ -85,8 +99,10 @@ type ViewProps = {
  * leading to the file (`fileHref`), and on a tablet one list across, since
  * there is no second; with no manager or worker yet, in every shape, a line
  * saying so and that their files come here once they join, instead of an
- * empty list and a table of headers. Also rendered with mock data on
- * /design/shell/team.
+ * empty list and a table of headers. H6b-2 added a filter over every shape
+ * (כולם · חסרים פרטים · 101 פתוח, from what the viewer sees, not kept on
+ * reload) and, for a holder, the desktop's "שינוי אחרון". Also rendered
+ * with mock data on /design/shell/team.
  */
 export function TeamView({
   team,
@@ -146,6 +162,14 @@ export function TeamView({
   const t = translator(wording, "app");
   const invites = inviteHref !== undefined && !filesOnly;
   const edits = canEditTeam(viewer) && !filesOnly;
+  const tagsOf = new Map(
+    files
+      ? Object.values(files.byPerson).map((status) => [
+          status.user_id,
+          fileFilterTags(status, files.form101),
+        ])
+      : [],
+  );
   const view: ViewProps = {
     t,
     team,
@@ -163,7 +187,24 @@ export function TeamView({
       locale: wording.locale ?? "he",
       timeZone: "UTC",
     }),
+    tags: (userId) => tagsOf.get(userId) ?? [],
   };
+  // The filter, while any file shows (H6b-2): counted from the members
+  // drawn, so a choice that shows nobody says so.
+  const filtered = files !== null && tagsOf.size > 0;
+  const counted = (tag: FileTag) =>
+    team.members.filter((m) => view.tags(m.userId).includes(tag)).length;
+  const body =
+    filesOnly && team.members.length === 0 ? (
+      <EmptyState
+        icon={<FolderLock />}
+        headingLevel="h2"
+        title={t("team.file.filesOnly.empty.title")}
+        body={t("team.file.filesOnly.empty.body")}
+      />
+    ) : (
+      <TeamBody view={view} cancel={cancel} />
+    );
   return (
     <PageBody className={pageGlowClass}>
       <PageHeader
@@ -194,15 +235,39 @@ export function TeamView({
       ) : edits ? null : (
         <p className="text-ink-2 md:max-w-2xl">{t("team.readOnly")}</p>
       )}
-      {filesOnly && team.members.length === 0 ? (
-        <EmptyState
-          icon={<FolderLock />}
-          headingLevel="h2"
-          title={t("team.file.filesOnly.empty.title")}
-          body={t("team.file.filesOnly.empty.body")}
-        />
+      {filtered ? (
+        <FileFilter
+          counts={{ missing: counted("missing"), form101: counted("form101") }}
+        >
+          <FileFilterChoice
+            label={t("team.file.filter.label")}
+            options={[
+              { value: "all", label: t("team.file.filter.all") },
+              { value: "missing", label: t("team.file.filter.missing") },
+              ...(files.form101
+                ? [
+                    {
+                      value: "form101" as const,
+                      label: t("team.file.filter.form101"),
+                    },
+                  ]
+                : []),
+            ]}
+          />
+          <FileFiltered
+            empty={{
+              missing: t("team.file.filter.emptyMissing"),
+              form101: t("team.file.filter.emptyForm101", {
+                year: files.year,
+              }),
+            }}
+            showAll={t("team.file.filter.showAll")}
+          >
+            {body}
+          </FileFiltered>
+        </FileFilter>
       ) : (
-        <TeamBody view={view} cancel={cancel} />
+        body
       )}
     </PageBody>
   );
@@ -317,26 +382,27 @@ function fileLine({ t, files, format }: ViewProps, userId: string) {
 }
 
 function Members(view: ViewProps) {
-  const { t, team } = view;
+  const { t, team, tags } = view;
   return (
     <PageSection title={t("team.members.title")}>
       <PersonList aria-label={t("team.members.title")}>
         {team.members.map((m) => (
-          <PersonRow
-            key={m.userId}
-            name={m.name}
-            photo={m.photo}
-            href={memberHref(view, m.userId)}
-            title={name(t, m.name)}
-            subtitle={
-              <>
-                {roleLabel(t, m.role, m.namedRole)}
-                {m.phone ? " · " : null}
-                {phone(m.phone)}
-                {fileLine(view, m.userId)}
-              </>
-            }
-          />
+          <FileShown key={m.userId} tags={tags(m.userId)}>
+            <PersonRow
+              name={m.name}
+              photo={m.photo}
+              href={memberHref(view, m.userId)}
+              title={name(t, m.name)}
+              subtitle={
+                <>
+                  {roleLabel(t, m.role, m.namedRole)}
+                  {m.phone ? " · " : null}
+                  {phone(m.phone)}
+                  {fileLine(view, m.userId)}
+                </>
+              }
+            />
+          </FileShown>
         ))}
       </PersonList>
     </PageSection>
@@ -384,39 +450,42 @@ function Invites(view: ViewProps) {
   const { t, team, invites } = view;
   const note = invitesNote(view);
   return (
-    <PageSection title={t("team.invites.title")}>
-      {team.invites.length === 0 ? (
-        <Card tone="flat" padding="lg">
-          <CardText>{invites ? noInvites(view) : closedNote(view)}</CardText>
-        </Card>
-      ) : (
-        <>
-          <WhileAnyInvite ids={team.invites.map((i) => i.id)}>
-            <PersonList aria-label={t("team.invites.title")}>
-              {team.invites.map((i) => (
-                <UnlessCancelled key={i.id} id={i.id}>
-                  <PersonRow
-                    name={i.name}
-                    title={name(t, i.name)}
-                    subtitle={
-                      <>
-                        {roleLabel(t, i.role, i.namedRole)}
-                        {" · "}
-                        {phone(i.phone)}
-                      </>
-                    }
-                    trailing={<InviteBadge t={t} state={i.state} />}
-                    below={inviteActions(view, i)}
-                  />
-                </UnlessCancelled>
-              ))}
-            </PersonList>
-          </WhileAnyInvite>
-          <InviteCancelUndo />
-          {note ? <p className="px-1 text-ink-2 text-sm">{note}</p> : null}
-        </>
-      )}
-    </PageSection>
+    // No invite has a file: shown under "כולם" only (H6b-2).
+    <FileShown tags={[]}>
+      <PageSection title={t("team.invites.title")}>
+        {team.invites.length === 0 ? (
+          <Card tone="flat" padding="lg">
+            <CardText>{invites ? noInvites(view) : closedNote(view)}</CardText>
+          </Card>
+        ) : (
+          <>
+            <WhileAnyInvite ids={team.invites.map((i) => i.id)}>
+              <PersonList aria-label={t("team.invites.title")}>
+                {team.invites.map((i) => (
+                  <UnlessCancelled key={i.id} id={i.id}>
+                    <PersonRow
+                      name={i.name}
+                      title={name(t, i.name)}
+                      subtitle={
+                        <>
+                          {roleLabel(t, i.role, i.namedRole)}
+                          {" · "}
+                          {phone(i.phone)}
+                        </>
+                      }
+                      trailing={<InviteBadge t={t} state={i.state} />}
+                      below={inviteActions(view, i)}
+                    />
+                  </UnlessCancelled>
+                ))}
+              </PersonList>
+            </WhileAnyInvite>
+            <InviteCancelUndo />
+            {note ? <p className="px-1 text-ink-2 text-sm">{note}</p> : null}
+          </>
+        )}
+      </PageSection>
+    </FileShown>
   );
 }
 
@@ -458,7 +527,9 @@ function NameCell({
 }
 
 function Everyone(view: ViewProps) {
-  const { t, team, invites, edits, files, filesOnly, format } = view;
+  const { t, team, invites, edits, files, filesOnly, format, tags } = view;
+  // When each file last changed, for a holder (H6b-2): the desktop's extra.
+  const changed = files?.reader === "holder";
   const note = filesOnly ? null : invitesNote(view);
   // The column of new links, for someone who may send them.
   const links = invites && edits;
@@ -498,6 +569,11 @@ function Everyone(view: ViewProps) {
                   {t("team.file.columns.form101", { year: files.year })}
                 </th>
               ) : null}
+              {changed ? (
+                <th scope="col" className={th}>
+                  {t("team.file.columns.changed")}
+                </th>
+              ) : null}
               {filesOnly ? null : (
                 <th scope="col" className={th}>
                   {t("team.columns.status")}
@@ -513,49 +589,61 @@ function Everyone(view: ViewProps) {
           <tbody>
             {shownInvites.map((i) => (
               <UnlessCancelled key={i.id} id={i.id}>
-                <tr>
-                  <NameCell person={i.name} label={name(t, i.name)} />
-                  <td className={cn(td, "text-ink-2")}>{phone(i.phone)}</td>
-                  <td className={td}>{roleLabel(t, i.role, i.namedRole)}</td>
-                  {files ? <td className={td} /> : null}
-                  {files?.form101 ? <td className={td} /> : null}
-                  <td className={td}>
-                    <InviteBadge t={t} state={i.state} />
-                  </td>
-                  {links ? (
-                    <td className={cn(td, "w-[28rem]")}>
-                      {inviteActions(view, i)}
+                <FileShown tags={[]}>
+                  <tr>
+                    <NameCell person={i.name} label={name(t, i.name)} />
+                    <td className={cn(td, "text-ink-2")}>{phone(i.phone)}</td>
+                    <td className={td}>{roleLabel(t, i.role, i.namedRole)}</td>
+                    {files ? <td className={td} /> : null}
+                    {files?.form101 ? <td className={td} /> : null}
+                    {changed ? <td className={td} /> : null}
+                    <td className={td}>
+                      <InviteBadge t={t} state={i.state} />
                     </td>
-                  ) : null}
-                </tr>
+                    {links ? (
+                      <td className={cn(td, "w-[28rem]")}>
+                        {inviteActions(view, i)}
+                      </td>
+                    ) : null}
+                  </tr>
+                </FileShown>
               </UnlessCancelled>
             ))}
             {team.members.map((m) => {
               const status = files?.byPerson[m.userId];
               const cells = status ? fileCells(t, format, status) : null;
               return (
-                <tr key={m.userId}>
-                  <NameCell
-                    person={m.name}
-                    photo={m.photo}
-                    label={name(t, m.name)}
-                    href={memberHref(view, m.userId)}
-                  />
-                  {phones ? (
-                    <td className={cn(td, "text-ink-2")}>{phone(m.phone)}</td>
-                  ) : null}
-                  <td className={td}>{roleLabel(t, m.role, m.namedRole)}</td>
-                  {files ? <td className={td}>{cells?.details}</td> : null}
-                  {files?.form101 ? (
-                    <td className={td}>{cells?.form101}</td>
-                  ) : null}
-                  {filesOnly ? null : (
-                    <td className={cn(td, "text-ink-2")}>
-                      {t("team.state.member")}
-                    </td>
-                  )}
-                  {links ? <td className={td} /> : null}
-                </tr>
+                <FileShown key={m.userId} tags={tags(m.userId)}>
+                  <tr>
+                    <NameCell
+                      person={m.name}
+                      photo={m.photo}
+                      label={name(t, m.name)}
+                      href={memberHref(view, m.userId)}
+                    />
+                    {phones ? (
+                      <td className={cn(td, "text-ink-2")}>{phone(m.phone)}</td>
+                    ) : null}
+                    <td className={td}>{roleLabel(t, m.role, m.namedRole)}</td>
+                    {files ? <td className={td}>{cells?.details}</td> : null}
+                    {files?.form101 ? (
+                      <td className={td}>{cells?.form101}</td>
+                    ) : null}
+                    {changed ? (
+                      <td className={td}>
+                        {status
+                          ? changedCell(t, format, status, files.timeZone)
+                          : null}
+                      </td>
+                    ) : null}
+                    {filesOnly ? null : (
+                      <td className={cn(td, "text-ink-2")}>
+                        {t("team.state.member")}
+                      </td>
+                    )}
+                    {links ? <td className={td} /> : null}
+                  </tr>
+                </FileShown>
               );
             })}
           </tbody>

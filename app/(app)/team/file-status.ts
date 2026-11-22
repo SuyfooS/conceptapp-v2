@@ -2,7 +2,13 @@ import "server-only";
 import { getEmployeeFileStatus } from "@db/employee-files";
 import type { FileStatus } from "@domain/employee-file";
 import { form101SetupOf } from "@domain/employee-file-settings";
-import { type FilesHome, filesHomeOf, seesFiles } from "@domain/file-holders";
+import {
+  type FileReview,
+  type FilesHome,
+  fileReviewsOf,
+  filesHomeOf,
+  seesFiles,
+} from "@domain/file-holders";
 import { canSeeTeam } from "@domain/team";
 import { clockAt } from "@domain/today";
 import { canWrite } from "@domain/view-as";
@@ -32,6 +38,8 @@ export type TeamFiles = {
   year: number;
   /** The business takes Form 101 in the app. */
   form101: boolean;
+  /** The business's zone, for the day a file last changed (H6b-2). */
+  timeZone: string;
   /** By person; a plain object, so a page's props can carry it. */
   byPerson: Record<string, FileStatus>;
 };
@@ -74,6 +82,7 @@ export const currentTeamFiles = cache(async (): Promise<TeamFiles | null> => {
       filesOnly: !team,
       year: Number(today.slice(0, 4)),
       form101: form101SetupOf(settings).way !== "off",
+      timeZone: membership.business.place.timeZone,
       byPerson: Object.fromEntries(statuses),
     };
   } catch (error) {
@@ -96,4 +105,17 @@ export async function currentFilesHome(): Promise<
     ...filesHomeOf(Object.values(files.byPerson), files.form101),
     form101: files.form101,
   };
+}
+
+/**
+ * The accounts to look at, for Today's owner card (H6b-1): only for a
+ * holder who sees the team and isn't viewing (an owner), since the
+ * accountant has a card of their own and a view reads no detail. "לא
+ * שיניתי" first, then a number the check doubts, then new ones; Today
+ * orders each kind by name. Null otherwise, and when the read failed.
+ */
+export async function currentFileReviews(): Promise<FileReview[] | null> {
+  const files = await currentTeamFiles();
+  if (files?.reader !== "holder" || files.filesOnly) return null;
+  return fileReviewsOf(Object.values(files.byPerson));
 }

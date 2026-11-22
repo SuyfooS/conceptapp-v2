@@ -23,9 +23,11 @@ import { z } from "zod";
  * what each business asks, Today's cards and the landing after joining
  * (20261126000400_employee_files_settings.sql); H6a brought the owners' and
  * the accountant's view (the status on /team, /team/[person]/file), the
- * duties and the SMS step-up (20261126000500_file_holder_state.sql); H6b to
- * H6d follow (bank reviews, who sees the files, the payroll export), H7
- * Form 101, H8 retention.
+ * duties and the SMS step-up (20261126000500_file_holder_state.sql); H6b-1
+ * the holders' writes (bank reviews, handed directly, the pension whose day
+ * passed) and "מה קרה בתיק"; H6b-2 the minors' checklist and the team's
+ * filter (20261126000600_file_started_and_changed.sql); H6c and H6d follow
+ * (who sees the files, the payroll export), H7 Form 101, H8 retention.
  *
  * Off in every template and every business, the demo ones included (their
  * files are made up), until Orel approves the screens. Even switched on, a

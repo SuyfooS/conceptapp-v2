@@ -42,6 +42,7 @@ const files = (
   filesOnly: false,
   year: 2026,
   form101: true,
+  timeZone: "Asia/Jerusalem",
   byPerson: teamFileStatusFor(reader),
   ...over,
 });
@@ -250,5 +251,56 @@ describe("the team's file lines", () => {
     const page = text(draw(null, { role: "owner", perms: [] }));
     expect(page).not.toContain(he.app.team.file.columns.details);
     expect(page).not.toContain(he.app.team.file.line.complete);
+  });
+});
+
+// Profile H6b: the person's own "לא שיניתי" said apart, the desktop's last
+// change for a holder, and the filter over every shape.
+describe("the team's files after H6b", () => {
+  const owner = { role: "owner" as const, perms: [] };
+  const manager = { role: "manager" as const, perms: ["team.view"] };
+
+  it("says the person's own “לא שיניתי” apart, to a holder only", () => {
+    const holder = text(draw(files("holder"), owner));
+    expect(holder).toContain(he.app.team.file.line.bankDisputed);
+    expect(holder).toContain(he.app.team.file.line.bankReview);
+    expect(text(table(draw(files("holder"), owner)))).toContain(
+      he.app.team.file.line.bankDisputed,
+    );
+    const team = text(draw(files("team"), manager));
+    expect(team).not.toContain(he.app.team.file.line.bankDisputed);
+    expect(team).not.toContain(he.app.team.file.line.bankReview);
+  });
+
+  it("shows a holder the day each file last changed, on the desktop only", () => {
+    const html = draw(files("holder"), owner);
+    const desktop = text(table(html));
+    expect(desktop).toContain(he.app.team.file.columns.changed);
+    expect(desktop).toContain("22.11.2026");
+    expect(desktop).toContain(he.app.team.file.cells.neverChanged);
+    const lists = html.slice(0, html.indexOf("<table"));
+    expect(text(lists)).not.toContain(he.app.team.file.columns.changed);
+    expect(text(table(draw(files("team"), manager)))).not.toContain(
+      he.app.team.file.columns.changed,
+    );
+  });
+
+  it("filters by what each reader sees, the 101 only while it is in the app", () => {
+    const f = he.app.team.file.filter;
+    for (const viewer of [owner, manager]) {
+      const page = text(
+        draw(files(viewer === owner ? "holder" : "team"), viewer),
+      );
+      for (const words of [f.all, f.missing, f.form101]) {
+        expect(page).toContain(words);
+      }
+    }
+    const outside = draw(files("holder", { form101: false }), owner);
+    expect(text(outside)).toContain(f.missing);
+    expect(text(outside)).not.toContain(f.form101);
+    expect(outside).toContain(`<legend class="sr-only">${f.label}</legend>`);
+    // Everyone shows to begin with: the choice isn't kept.
+    expect(text(draw(files("holder"), owner))).toContain("דנה אברהם");
+    expect(text(draw(null, owner))).not.toContain(f.label);
   });
 });

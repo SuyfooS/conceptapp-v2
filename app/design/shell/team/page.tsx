@@ -50,6 +50,7 @@ function filesFor(file: string | undefined): TeamFiles | null {
     filesOnly: file === "accountant",
     year: 2026,
     form101: true,
+    timeZone: "Asia/Jerusalem",
     byPerson: teamFileStatusFor(reader),
   };
 }

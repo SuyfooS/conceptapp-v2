@@ -1714,6 +1714,26 @@ per role: owners always hold it, accountants by `private.accountant_perms`
   (`getFileHolderState`), so the duties show without an
   `employee.view_denied` row. Covered by
   `employee_files_holder_state.test.sql`.
+- **What a holder writes** (H6b-1): `acknowledgeBank` with the moment the
+  screen read, exactly as the database gave it (40001 when it changed
+  since); `setDirectGroups` with the whole set, after `getDirectGroups`
+  read it fresh under the session (the same logged `employee_file` read,
+  opening nothing), so a stale screen never takes back another holder's
+  mark.
+- **What happened in a file** (`@db/file-history`, H6b-1): the person's
+  `employee.*` rows read from `audit_log` under RLS (holders read them,
+  a view never does), a number's reveal included and the daily read of the
+  file (`fields` exactly `["file"]`) left out, the newest 40 with the
+  actors' names in the business. Field names only: the rows never held a
+  value.
+- **The open period and the last change**
+  (`20261126000600_file_started_and_changed.sql`, H6b-2):
+  `private.file_answer` gives `started_on`, the open employment period's
+  first day, for a minor's checklist; `employee_file_status` gives a
+  holder `detail.changed_at`, the newer of the file's `updated_at` and
+  its 101s' (never a read, never the emergency contact), for the team's
+  desktop. The schemas default both to null, so the app reads a database
+  before it. Covered by `employee_files_changes.test.sql`.
 - **The step-up** (`@db/file-step-up`, H6a): a signed cookie `ca_file_open`
   (`v1.<business>.<holder>.<ms>.<mac>`, an HMAC with a key HKDF derives from
   `SUPABASE_SECRET_KEY`, as the punch key is; `path=/team`, httpOnly,

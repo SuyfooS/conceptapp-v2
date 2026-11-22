@@ -931,3 +931,153 @@ describe("a holder's state", () => {
     }
   });
 });
+
+// Profile H6b: what a holder writes, and the marks read fresh first.
+describe("a holder's writes", () => {
+  const holderReply = (direct: string[]) => ({
+    data: {
+      access: "holder",
+      demo: false,
+      file: storedFile({ direct_groups: direct }),
+      sealed: {
+        address: null,
+        email: null,
+        work_language: null,
+        id_name: null,
+        bank_holder: null,
+        emergency: null,
+      },
+      key: null,
+      missing: [],
+      youth_until: null,
+      pension_due_on: null,
+      tax_years: [],
+    },
+    error: null,
+  });
+
+  it("read the marks under the session, opening nothing", async () => {
+    db.answers.employee_file = () => holderReply(["bank", "pension"]);
+    expect(await files.getDirectGroups(BUSINESS, NOA)).toEqual({
+      ok: true,
+      groups: ["bank", "pension"],
+    });
+    expect(callsTo("employee_file")).toEqual([
+      {
+        fn: "employee_file",
+        args: { business: BUSINESS, person: NOA },
+        as: "session",
+      },
+    ]);
+    expect(callsTo("employee_data_key")).toEqual([]);
+  });
+
+  it("say why the marks weren't read, and fail closed", async () => {
+    db.answers.employee_file = () => ({
+      data: { access: "denied", reason: "ack" },
+      error: null,
+    });
+    expect(await files.getDirectGroups(BUSINESS, NOA)).toEqual({
+      ok: false,
+      failure: "denied",
+      reason: "ack",
+    });
+    db.answers.employee_file = () => ({
+      ...holderReply([]),
+      data: { ...holderReply([]).data, access: "self" },
+    });
+    expect(await files.getDirectGroups(BUSINESS, NOA)).toEqual({
+      ok: false,
+      failure: "denied",
+      reason: "not_holder",
+    });
+    db.answers.employee_file = () => ({
+      data: null,
+      error: { code: "PGRST202", message: "no such function" },
+    });
+    expect(await files.getDirectGroups(BUSINESS, NOA)).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
+    db.answers.employee_file = () => ({ data: { access: "x" }, error: null });
+    expect(await files.getDirectGroups(BUSINESS, NOA)).toEqual({
+      ok: false,
+      failure: "failed",
+    });
+  });
+
+  it("ask nothing without the keys", async () => {
+    const saved = process.env.EMPLOYEE_DATA_KEKS;
+    delete process.env.EMPLOYEE_DATA_KEKS;
+    try {
+      expect(await files.getDirectGroups(BUSINESS, NOA)).toEqual({
+        ok: false,
+        failure: "keys",
+      });
+      expect(db.calls).toEqual([]);
+    } finally {
+      process.env.EMPLOYEE_DATA_KEKS = saved ?? "";
+    }
+  });
+
+  it("send the account's moment as the read gave it, and say a change or a confirmation since", async () => {
+    const moment = "2026-11-20T08:00:00.123456+00:00";
+    expect(await files.acknowledgeBank(OWNER, BUSINESS, NOA, moment)).toEqual({
+      ok: true,
+    });
+    expect(callsTo("acknowledge_bank")).toEqual([
+      {
+        fn: "acknowledge_bank",
+        args: {
+          actor: OWNER,
+          business: BUSINESS,
+          person: NOA,
+          seen_changed_at: moment,
+        },
+        as: "admin",
+      },
+    ]);
+    db.answers.acknowledge_bank = () => ({
+      data: null,
+      error: { code: "22023", message: "Nothing to confirm" },
+    });
+    expect(await files.acknowledgeBank(OWNER, BUSINESS, NOA, moment)).toEqual({
+      ok: false,
+      failure: "invalid",
+    });
+  });
+
+  it("send the whole set of marks as given", async () => {
+    expect(
+      await files.setDirectGroups(OWNER, BUSINESS, NOA, ["bank", "pension"]),
+    ).toEqual({ ok: true });
+    expect(callsTo("set_direct_groups")).toEqual([
+      {
+        fn: "set_direct_groups",
+        args: {
+          actor: OWNER,
+          business: BUSINESS,
+          person: NOA,
+          groups: ["bank", "pension"],
+        },
+        as: "admin",
+      },
+    ]);
+  });
+
+  it("read the open period's start, and none from a database before it", async () => {
+    db.answers.employee_file = () => ({
+      ...holderReply([]),
+      data: { ...holderReply([]).data, started_on: "2026-09-01" },
+    });
+    expect(await files.getEmployeeFile(BUSINESS, NOA)).toMatchObject({
+      ok: true,
+      startedOn: "2026-09-01",
+    });
+    db.answers.employee_file = () => holderReply([]);
+    expect(await files.getEmployeeFile(BUSINESS, NOA)).toMatchObject({
+      ok: true,
+      startedOn: null,
+    });
+  });
+});

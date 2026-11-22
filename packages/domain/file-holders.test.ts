@@ -1,12 +1,19 @@
 import { describe, expect, it } from "vitest";
+import { buildActivity } from "./activity";
 import type { FileStatus } from "./employee-file";
 import {
+  directGroupsAfter,
+  FILE_HISTORY_ACTIONS,
   FILE_IDLE_MS,
+  fileFilterTags,
   fileLineOf,
+  fileReviewsOf,
   fileStaff,
   filesHomeOf,
   form101LineOf,
   idleLocksAt,
+  minorChecklistOf,
+  pensionPassed,
   seesFiles,
   stepUpFresh,
   stepUpLeft,
@@ -33,6 +40,7 @@ const detail = (over: Partial<NonNullable<FileStatus["detail"]>> = {}) => ({
   bank_review: null,
   youth_until: null,
   submitted_at: null,
+  changed_at: null,
   ...over,
 });
 
@@ -208,5 +216,177 @@ describe("a files-only reader's staff", () => {
       { id: "4", role: "accountant" },
     ] as const;
     expect(fileStaff(people).map((p) => p.id)).toEqual(["2", "3"]);
+  });
+});
+
+// Profile H6b: what a holder does in a file.
+
+describe("a part handed directly", () => {
+  const all = ["identity", "address", "bank", "pension"] as const;
+
+  it("is added in the groups' order, or taken away", () => {
+    expect(directGroupsAfter(["pension"], "bank", true, all)).toEqual([
+      "bank",
+      "pension",
+    ]);
+    expect(directGroupsAfter(["bank", "pension"], "bank", false, all)).toEqual([
+      "pension",
+    ]);
+  });
+
+  it("gives the same set for a part already marked, or already not", () => {
+    expect(directGroupsAfter(["bank"], "bank", true, all)).toEqual(["bank"]);
+    expect(directGroupsAfter([], "bank", false, all)).toEqual([]);
+    expect(directGroupsAfter(["bank", "bank"], "bank", true, all)).toEqual([
+      "bank",
+    ]);
+  });
+
+  it("marks only what the business asks, and drops a mark on a part it stopped asking", () => {
+    const asked = ["identity", "bank", "pension"] as const;
+    expect(directGroupsAfter([], "address", true, asked)).toBeNull();
+    expect(directGroupsAfter(["address"], "bank", true, asked)).toEqual([
+      "bank",
+    ]);
+    expect(directGroupsAfter(["address"], "address", false, asked)).toEqual([]);
+  });
+});
+
+describe("a pension whose day passed", () => {
+  it("passed the day after its day, and only while it is missing", () => {
+    expect(pensionPassed(["pension"], "2026-11-21", "2026-11-22")).toBe(true);
+    expect(pensionPassed(["pension"], "2026-11-22", "2026-11-22")).toBe(false);
+    expect(pensionPassed(["pension"], "2026-11-23", "2026-11-22")).toBe(false);
+    expect(pensionPassed(["pension"], null, "2026-11-22")).toBe(false);
+    expect(pensionPassed(["bank"], "2026-11-01", "2026-11-22")).toBe(false);
+  });
+});
+
+describe("the accounts to look at", () => {
+  it("puts “לא שיניתי” first, then a doubted number, then new ones, by name", () => {
+    const people = [
+      row({ user_id: "a", detail: detail({ bank_review: "new" }) }),
+      row({ user_id: "b", detail: detail({ bank_review: "disputed" }) }),
+      row({ user_id: "c", detail: detail({ bank_review: "warned" }) }),
+      row({ user_id: "d", detail: detail({ bank_review: "new" }) }),
+      row({ user_id: "e", detail: detail() }),
+    ];
+    const names = new Map([
+      ["a", "יואב לוי"],
+      ["d", "אורי מזרחי"],
+    ]);
+    expect(fileReviewsOf(people, names)).toEqual([
+      { userId: "b", review: "disputed" },
+      { userId: "c", review: "warned" },
+      { userId: "d", review: "new" },
+      { userId: "a", review: "new" },
+    ]);
+  });
+
+  it("has none without a holder's detail", () => {
+    expect(fileReviewsOf([row(), row({ detail: detail() })])).toEqual([]);
+  });
+});
+
+describe("what happened in a file", () => {
+  it("lists only rows the log knows, each as its own line", () => {
+    const person = "f6000000-0000-4000-a000-000000000003";
+    const details: Record<string, unknown> = {
+      "employee.details": { person, fields: ["bank"] },
+      "employee.submit": { person },
+      "employee.tax_year": { person, year: 2026, status: "accepted" },
+      "employee.bank_ack": { person },
+      "employee.bank_disputed": { person },
+      "employee.direct": { person, groups: ["bank"] },
+    };
+    const entries = buildActivity(
+      FILE_HISTORY_ACTIONS.map((action, at) => ({
+        id: at + 1,
+        action,
+        details: details[action],
+        createdAt: `2026-11-22T0${at}:00:00Z`,
+        actorId: null,
+      })),
+      {
+        members: new Map(),
+        invites: new Map(),
+        shifts: new Map(),
+        swaps: new Map(),
+        departments: new Map(),
+        stations: new Map(),
+      },
+    );
+    expect(entries.map((entry) => entry.line.action)).toEqual([
+      ...FILE_HISTORY_ACTIONS,
+    ]);
+  });
+});
+
+describe("a minor's checklist", () => {
+  it("says the notice's day, a week from the start, and whether it passed", () => {
+    expect(
+      minorChecklistOf("2010-05-01", "2028-05-01", "2026-11-10", "2026-11-15"),
+    ).toEqual({ noticeBy: "2026-11-17", noticePassed: false, under15: false });
+    expect(
+      minorChecklistOf("2010-05-01", "2028-05-01", "2026-11-10", "2026-11-18"),
+    ).toMatchObject({ noticeBy: "2026-11-17", noticePassed: true });
+    expect(
+      minorChecklistOf("2010-05-01", "2028-05-01", null, "2026-11-18"),
+    ).toMatchObject({ noticeBy: null, noticePassed: false });
+  });
+
+  it("says under 15 until the 15th birthday, by the 18th when there is no birth date", () => {
+    expect(
+      minorChecklistOf("2011-11-23", "2029-11-23", null, "2026-11-22")?.under15,
+    ).toBe(true);
+    expect(
+      minorChecklistOf("2011-11-22", "2029-11-22", null, "2026-11-22")?.under15,
+    ).toBe(false);
+    expect(
+      minorChecklistOf(null, "2029-11-23", null, "2026-11-22")?.under15,
+    ).toBe(true);
+  });
+
+  it("is nothing for an adult, or from the 18th birthday", () => {
+    expect(
+      minorChecklistOf("1995-01-01", null, "2026-11-10", "2026-11-22"),
+    ).toBeNull();
+    expect(
+      minorChecklistOf("2008-11-22", "2026-11-22", "2026-11-10", "2026-11-22"),
+    ).toBeNull();
+  });
+});
+
+describe("the team's filter", () => {
+  it("tags a file missing details, and an open 101 for a holder", () => {
+    expect(
+      fileFilterTags(
+        row({ complete: false, missing: 1, detail: detail({ status: null }) }),
+        true,
+      ),
+    ).toEqual(["missing", "form101"]);
+    for (const status of ["returned", "change_due"] as const) {
+      expect(fileFilterTags(row({ detail: detail({ status }) }), true)).toEqual(
+        ["form101"],
+      );
+    }
+    for (const status of ["handed_in", "accepted"] as const) {
+      expect(fileFilterTags(row({ detail: detail({ status }) }), true)).toEqual(
+        [],
+      );
+    }
+  });
+
+  it("tags by what anyone else sees: a count and whether the 101 is in", () => {
+    expect(fileFilterTags(row({ form101_in: false }), true)).toEqual([
+      "form101",
+    ]);
+    expect(fileFilterTags(row({ form101_in: true }), true)).toEqual([]);
+  });
+
+  it("has no 101 tag while the business takes it outside the app", () => {
+    expect(
+      fileFilterTags(row({ form101_in: false, detail: detail() }), false),
+    ).toEqual([]);
   });
 });

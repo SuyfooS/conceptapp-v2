@@ -1,13 +1,23 @@
 import { expect, type Page, type TestInfo, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
+  bumpDemoBankChange,
   clearDemoFileAcks,
+  clearDemoMinor,
+  clearDemoTaxYears,
+  demoDirectGroups,
+  demoFileActions,
+  demoFileFacts,
   demoFileReadsBy,
   demoFileViews,
+  logDemoFileRow,
   restoreDemoFile,
+  restoreDemoPeriodStart,
   setDemoBankReview,
   setDemoFileGaps,
+  setDemoMinor,
   setDemoModuleSettings,
+  setDemoPeriodStart,
 } from "./db";
 import { enterAs, expectCleanPage } from "./orders-parts";
 import { SMS_COOLDOWN_MS, secondPage } from "./session";
@@ -21,12 +31,18 @@ import { heT } from "./t";
 // and starts with no holder having confirmed the duties. People come in
 // through the demo door, so no sign-in SMS precedes the file's own code.
 // From supabase/seed.sql: Uri, the owner; Shiran, a manager; Noa and Yoav,
-// workers; Galit, the accountant.
+// workers; Galit, the accountant. What a holder does there (H6b): an account
+// confirmed after a change meanwhile, a disputed one from Today to the file,
+// a part handed directly with its undo, a pension whose day passed, a write
+// without a fresh step-up, what happened in the file, a minor's checklist
+// and the team's filter.
 const URI = {
   id: "00000000-0000-4000-a000-000000000001",
   e164: "+972500000001",
 };
 const SHIRAN = { id: "00000000-0000-4000-a000-000000000002" };
+const people = he.auth.enter.people;
+const business = he.auth.enter.businesses.restaurant.name;
 const NOA = { id: "00000000-0000-4000-a000-000000000003", name: "נועה כהן" };
 const YOAV = { id: "00000000-0000-4000-a000-000000000004", name: "יואב לוי" };
 const GALIT = {
@@ -391,22 +407,350 @@ test("with the module off, nothing of the file shows", async ({
   await uri.context().close();
 });
 
-test("a disputed account shows to the holder, with no action yet", async ({
+/** A region's words, in the shape that shows them (a list, or the desktop's table). */
+const shownIn = (region: ReturnType<Page["getByRole"]>, words: string) =>
+  region.getByText(words, { exact: false }).filter({ visible: true }).first();
+
+test("the owner confirms Noa's new account, after a change meanwhile is said", async ({
   page,
 }, testInfo) => {
-  await setDemoBankReview(NOA.id, "disputed");
+  await setDemoBankReview(NOA.id, "new");
   await enterAs(page, "owner");
-  await open(page, "/team");
-  await expect(fileWords(page, testInfo, f.line.bankReview)).toBeVisible();
-
   await open(page, `/team/${NOA.id}/file`);
   await openFile(page, URI.e164);
   const bank = main(page).getByRole("region", { name: f.sections.bank });
+  const confirm = bank.getByRole("button", { name: f.review.confirmNew });
+  await expect(confirm).toBeVisible();
+  await expect(bank.getByText(f.review.held)).toBeVisible();
+  await expectCleanPage(page);
+
+  // Changed again while the screen was open: said, with the focus on it,
+  // and the newer change drawn under the same button.
+  await bumpDemoBankChange(NOA.id);
+  await confirm.click();
+  const moved = bank.getByRole("alert");
+  await expect(moved).toHaveText(f.review.moved);
+  await expect(moved).toBeFocused();
+  await expect(confirm).toBeVisible();
+  await page.waitForLoadState("networkidle");
+
+  await confirm.click();
+  await expect(
+    page.getByText(heT("app.team.file.review.confirmed", { first: "נועה" })),
+  ).toBeVisible();
+  await expect(confirm).toHaveCount(0);
+  await expect(
+    main(page).getByRole("heading", { name: f.sections.bank }),
+  ).toBeFocused();
+  expect((await demoFileFacts(NOA.id))?.bankReview).toBeNull();
+  expect(
+    (await demoFileActions(NOA.id)).filter(
+      (row) => row.action === "employee.bank_ack",
+    ),
+  ).toEqual([{ action: "employee.bank_ack", actor: URI.id }]);
+
+  const history = main(page).getByRole("region", { name: f.history.title });
+  await expect(shownIn(history, f.history.bankAck)).toBeVisible();
+  await expect(shownIn(history, people.owner.name)).toBeVisible();
+  await expectCleanPage(page);
+
+  await open(page, "/team");
+  await expect(fileWords(page, testInfo, f.line.bankReview)).toHaveCount(0);
+  await expectCleanPage(page);
+});
+
+test("a disputed account shows on Today, on the team and in the file, and is confirmed there", async ({
+  page,
+}, testInfo) => {
+  await setDemoBankReview(NOA.id, "disputed");
+  await logDemoFileRow(NOA.id, "employee.bank_disputed", { person: NOA.id });
+  await enterAs(page, "owner");
+
+  await open(page, "/team");
+  await expect(fileWords(page, testInfo, f.line.bankDisputed)).toBeVisible();
+  await expectCleanPage(page);
+
+  await open(page, "/home");
+  const reviews = main(page).getByRole("region", {
+    name: heT("app.home.fileReviews.title", { count: 1 }),
+  });
+  await expect(reviews.getByText(he.app.home.fileReviews.body)).toBeVisible();
   // Noa's form of address is cleared with her file (`restoreDemoFile`).
+  const row = reviews.getByRole("link", { name: new RegExp(NOA.name) });
+  await expect(row).toContainText(
+    heT("app.home.fileReviews.disputed", { form: "x" }),
+  );
+  await expectCleanPage(page);
+  await row.click();
+  await expect(page).toHaveURL(new RegExp(`/team/${NOA.id}/file$`));
+  await page.waitForLoadState("networkidle");
+
+  await openFile(page, URI.e164);
+  const bank = main(page).getByRole("region", { name: f.sections.bank });
   await expect(
     bank.getByText(
       heT("app.team.file.review.disputed", { first: "נועה", form: "x" }),
     ),
   ).toBeVisible();
+  await expect(
+    bank.getByText(
+      heT("app.team.file.review.notTheirs", { first: "נועה", form: "x" }),
+    ),
+  ).toBeVisible();
+  const history = main(page).getByRole("region", { name: f.history.title });
+  await expect(shownIn(history, f.history.bankDisputed)).toBeVisible();
+  await expect(shownIn(history, NOA.name)).toBeVisible();
   await expectCleanPage(page);
+
+  await bank
+    .getByRole("button", {
+      name: heT("app.team.file.review.confirmDisputed", { first: "נועה" }),
+    })
+    .click();
+  await expect(
+    page.getByText(heT("app.team.file.review.confirmed", { first: "נועה" })),
+  ).toBeVisible();
+  await expect
+    .poll(async () => (await demoFileFacts(NOA.id))?.bankReview)
+    .toBe(null);
+  await open(page, "/home");
+  await expect(
+    main(page).getByRole("region", {
+      name: heT("app.home.fileReviews.title", { count: 1 }),
+    }),
+  ).toHaveCount(0);
+});
+
+test("the accountant marks Yoav's account handed directly, undoes it, and marks it again", async ({
+  page,
+}, testInfo) => {
+  await enterAs(page, "accountant");
+  await open(page, `/team/${YOAV.id}/file`);
+  await openFile(page, GALIT.e164);
+  const bank = main(page).getByRole("region", { name: f.sections.bank });
+  const marked = heT("app.team.file.direct.marked", {
+    group: f.direct.groups.bank,
+  });
+
+  await bank.getByRole("button", { name: f.direct.mark }).click();
+  await expect(page.getByText(marked)).toBeVisible();
+  // The button pressed went with its row: the focus is on "ביטול".
+  const undo = page.getByRole("button", { name: f.direct.undo });
+  await expect(undo).toBeFocused();
+  await expect(bank.getByText(f.rows.direct, { exact: true })).toBeVisible();
+  expect(await demoDirectGroups(YOAV.id)).toEqual(["bank"]);
+  await expectCleanPage(page);
+
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByText(
+      heT("app.team.file.direct.unmarked", { group: f.direct.groups.bank }),
+    ),
+  ).toBeVisible();
+  await expect(bank.getByText(f.rows.missing, { exact: true })).toBeVisible();
+  await expect.poll(() => demoDirectGroups(YOAV.id)).toEqual([]);
+  await expect(
+    main(page).getByRole("heading", { name: f.sections.bank }),
+  ).toBeFocused();
+
+  await bank.getByRole("button", { name: f.direct.mark }).click();
+  await expect(page.getByText(marked)).toBeVisible();
+  await expect.poll(() => demoDirectGroups(YOAV.id)).toEqual(["bank"]);
+  // Let the toast go: the way back is offered for its time only.
+  await main(page).getByRole("heading", { level: 1 }).click();
+  await expect(page.getByText(marked)).toHaveCount(0, { timeout: 15_000 });
+
+  const direct = (await demoFileActions(YOAV.id)).filter(
+    (row) => row.action === "employee.direct",
+  );
+  expect(direct).toEqual([
+    { action: "employee.direct", actor: GALIT.id },
+    { action: "employee.direct", actor: GALIT.id },
+    { action: "employee.direct", actor: GALIT.id },
+  ]);
+
+  await open(page, "/team");
+  await expect(
+    fileWords(
+      page,
+      testInfo,
+      heT("app.team.file.line.missingGroups", { groups: f.groups.pension }),
+    ),
+  ).toBeVisible();
+
+  // The step-up is still fresh: the file opens with no code.
+  await open(page, `/team/${YOAV.id}/file`);
+  const history = main(page).getByRole("region", { name: f.history.title });
+  await expect(
+    shownIn(
+      history,
+      heT("app.team.file.history.direct", {
+        groups: he.app.manage.activity.actions.employee.groups.bank,
+      }),
+    ),
+  ).toBeVisible();
+  await expect(shownIn(history, f.history.directCleared)).toBeVisible();
+});
+
+test("a pension whose day passed is marked as the business's choice", async ({
+  page,
+}) => {
+  const was = await setDemoPeriodStart(YOAV.id, 70);
+  try {
+    await enterAs(page, "owner");
+    await open(page, `/team/${YOAV.id}/file`);
+    await openFile(page, URI.e164);
+    const pension = main(page).getByRole("region", {
+      name: f.sections.pension,
+    });
+    const passed = heT("app.team.file.rows.pensionPassed", { business });
+    await expect(pension.getByText(passed)).toBeVisible();
+    await pension
+      .getByRole("button", {
+        name: heT("app.team.file.direct.pension", { business }),
+      })
+      .click();
+    await expect(
+      page.getByText(heT("app.team.file.direct.pensionMarked", { business })),
+    ).toBeVisible();
+    await expect(
+      pension.getByText(f.rows.direct, { exact: true }),
+    ).toBeVisible();
+    await expect(pension.getByText(passed)).toHaveCount(0);
+    expect(await demoDirectGroups(YOAV.id)).toContain("pension");
+    await expectCleanPage(page);
+  } finally {
+    await restoreDemoPeriodStart(YOAV.id, was);
+  }
+});
+
+test("a write without a fresh step-up asks for the code and changes nothing", async ({
+  page,
+  context,
+}) => {
+  await enterAs(page, "accountant");
+  await open(page, `/team/${YOAV.id}/file`);
+  await openFile(page, GALIT.e164);
+  await context.clearCookies({ name: "ca_file_open" });
+  await main(page)
+    .getByRole("region", { name: f.sections.bank })
+    .getByRole("button", { name: f.direct.mark })
+    .click();
+  await expect(main(page).getByText(f.locked.title)).toBeVisible();
+  expect(await demoDirectGroups(YOAV.id)).toEqual([]);
+  expect(
+    (await demoFileActions(YOAV.id)).some(
+      (row) => row.action === "employee.direct",
+    ),
+  ).toBe(false);
+});
+
+test("what happened in a file shows a reveal and never its number", async ({
+  page,
+}, testInfo) => {
+  await enterAs(page, "accountant");
+  await open(page, `/team/${NOA.id}/file`);
+  await openFile(page, GALIT.e164);
+  const bank = main(page).getByRole("region", { name: f.sections.bank });
+  await bank.getByRole("button", { name: he.app.file.masked.show }).click();
+  const digits = bank.getByText(/^\d{5,}$/);
+  await expect(digits).toBeVisible();
+  const shown = (await digits.textContent()) ?? "";
+
+  // Drawn again: the step-up is fresh, so no code.
+  await open(page, `/team/${NOA.id}/file`);
+  const history = main(page).getByRole("region", { name: f.history.title });
+  await expect(
+    shownIn(
+      history,
+      heT("app.team.file.history.reveal", {
+        fields: he.app.manage.activity.actions.employee.viewFields.bank_account,
+      }),
+    ),
+  ).toBeVisible();
+  await expect(shownIn(history, people.accountant.name)).toBeVisible();
+  // The daily read of the file itself isn't listed.
+  await expect(
+    history.getByText(
+      heT("app.team.file.history.reveal", {
+        fields: he.app.manage.activity.actions.employee.viewFields.file,
+      }),
+    ),
+  ).toHaveCount(0);
+  expect(await history.textContent()).not.toContain(shown);
+  if (isDesktop(testInfo)) {
+    for (const column of Object.values(f.history.columns)) {
+      await expect(
+        history.getByRole("columnheader", { name: column, exact: true }),
+      ).toBeVisible();
+    }
+  }
+  await expectCleanPage(page);
+});
+
+// Profile H6b-2.
+test("a minor's file says what the business owes before and after the start", async ({
+  page,
+}) => {
+  const born = new Date();
+  born.setUTCFullYear(born.getUTCFullYear() - 16);
+  const had = await setDemoMinor(NOA.id, born.toISOString().slice(0, 10));
+  const was = await setDemoPeriodStart(NOA.id, 3);
+  try {
+    await enterAs(page, "owner");
+    await open(page, `/team/${NOA.id}/file`);
+    await openFile(page, URI.e164);
+    const identity = main(page).getByRole("region", {
+      name: f.sections.identity,
+    });
+    await expect(
+      identity.getByRole("heading", { name: f.minor.title }),
+    ).toBeVisible();
+    await expect(identity.getByText(f.minor.before)).toBeVisible();
+    await expect(
+      identity.getByText(/הודעה על תנאי העבודה עד \d{1,2}\.\d{1,2}\.\d{4}/),
+    ).toBeVisible();
+    await expect(identity.getByText(f.minor.under15)).toHaveCount(0);
+    await expectCleanPage(page);
+  } finally {
+    await restoreDemoPeriodStart(NOA.id, was);
+    await clearDemoMinor(NOA.id, had);
+  }
+});
+
+test("the team filters to missing details and an open 101, and the desktop shows the last change", async ({
+  page,
+}, testInfo) => {
+  await clearDemoTaxYears(NOA.id);
+  await enterAs(page, "owner");
+  await open(page, "/team");
+  const person = (name: string) =>
+    main(page)
+      .getByRole("link", { name: new RegExp(name) })
+      .filter({ visible: true });
+  const choose = (name: string) =>
+    main(page).getByRole("button", { name, exact: true }).click();
+
+  await choose(f.filter.missing);
+  await expect(person(YOAV.name).first()).toBeVisible();
+  await expect(person(NOA.name)).toHaveCount(0);
+  await expectCleanPage(page);
+
+  await choose(f.filter.form101);
+  await expect(person(NOA.name).first()).toBeVisible();
+  await expect(
+    main(page).getByRole("button", { name: f.filter.form101, exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+
+  await choose(f.filter.all);
+  await expect(person(NOA.name).first()).toBeVisible();
+  await expect(person(YOAV.name).first()).toBeVisible();
+
+  if (isDesktop(testInfo)) {
+    await expect(
+      main(page).getByRole("columnheader", { name: f.columns.changed }),
+    ).toBeVisible();
+    const noa = main(page).getByRole("row", { name: new RegExp(NOA.name) });
+    await expect(noa).toContainText(/\d{1,2}\.\d{1,2}\.\d{4}/);
+  }
 });

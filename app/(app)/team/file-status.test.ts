@@ -24,7 +24,9 @@ vi.mock("@db/employee-files", () => ({
   getEmployeeFileStatus: mocks.getEmployeeFileStatus,
 }));
 
-const { currentFilesHome, currentTeamFiles } = await import("./file-status");
+const { currentFileReviews, currentFilesHome, currentTeamFiles } = await import(
+  "./file-status"
+);
 
 const SHOP = "11111111-1111-4111-a111-111111111111";
 const NOA = "44444444-4444-4444-a444-444444444444";
@@ -79,6 +81,7 @@ describe("the team's file status", () => {
       filesOnly: false,
       year: expect.any(Number),
       form101: true,
+      timeZone: "Asia/Jerusalem",
       byPerson: { [NOA]: row },
     });
   });
@@ -157,5 +160,33 @@ describe("the accountant's Home card", () => {
     mocks.currentModules.mockResolvedValue([]);
     mocks.currentMember.mockResolvedValue(member("owner"));
     expect(await currentFilesHome()).toBeNull();
+  });
+});
+
+// Profile H6b-1: Today's accounts to look at, for an owner.
+describe("the owner's accounts to look at", () => {
+  it("lists an owner's, from the holder's detail", async () => {
+    mocks.currentMember.mockResolvedValue(member("owner"));
+    expect(await currentFileReviews()).toEqual([
+      { userId: NOA, review: "new" },
+    ]);
+  });
+
+  it("is nothing for the accountant, a manager, a view, or a read that failed", async () => {
+    mocks.currentMember.mockResolvedValue(
+      member("accountant", ["clock.payroll", "people.files"]),
+    );
+    expect(await currentFileReviews()).toBeNull();
+    mocks.currentMember.mockResolvedValue(member("manager", ["team.view"]));
+    expect(await currentFileReviews()).toBeNull();
+    mocks.currentMember.mockResolvedValue(
+      member("owner", [], { role: "owner" }),
+    );
+    expect(await currentFileReviews()).toBeNull();
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.currentMember.mockResolvedValue(member("owner"));
+    mocks.getEmployeeFileStatus.mockRejectedValue(new Error("down"));
+    expect(await currentFileReviews()).toBeNull();
+    logged.mockRestore();
   });
 });
