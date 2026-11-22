@@ -4,10 +4,15 @@ import type { FileGroup, FileRow } from "@domain/employee-file";
 import type { EmployeeFileSettings } from "@domain/employee-file-settings";
 import { addYears } from "@domain/youth";
 import type { BankFieldValue } from "@ui/bank-field";
+import type {
+  PastBack,
+  PastFileData,
+  PastJob,
+} from "../../../../(account)/me/past/past-file-types";
 import { fileSettingsParts } from "../../../../(app)/me/file/file-parts";
 import type { FileScreenData } from "../../../../(app)/me/file/file-types";
 import type { BankPreset } from "../../../../(app)/me/file/steps/bank-step";
-import { business } from "../../data";
+import { business, leftBusiness } from "../../data";
 
 /*
  * Noa's hiring file on the twin (profile H5a), made up, in each state the
@@ -29,8 +34,16 @@ import { business } from "../../data";
 /** The twin's day: fixed, so its dates read the same on every visit. */
 export const FILE_DEMO_TODAY = "2026-11-24";
 
-/** What the twin's "הצגה" shows: the test range's ID and an account that checks valid. */
-export const FILE_DEMO_NUMBERS = { id: "000000018", bankAccount: "100001" };
+/**
+ * What the twin's "הצגה" shows: the test range's ID, a made-up passport in
+ * the demo seed's shape (the old file's `passport`), and an account that
+ * checks valid.
+ */
+export const FILE_DEMO_NUMBERS = {
+  id: "000000018",
+  passport: "P0002468",
+  bankAccount: "100001",
+};
 
 /** The account the twin's check warns about (Hapoalim 12, branch 600). */
 export const FILE_DEMO_WARNED: BankFieldValue = {
@@ -367,4 +380,73 @@ export function fileScreenDemo(
           }
         : undefined;
   return { data, preset };
+}
+
+/*
+ * A former worker's old file on the twin (profile H5c): Noa's sent file, as
+ * she left it in the layout demo's café, read-only. `passport` has a
+ * passport instead of her ID (its country, its expiry and its own number,
+ * which "הצגה" shows), `returned` this year's 101 returned for its
+ * signature. Nothing here is kept either.
+ */
+
+/** The business she left on the twin, a month before its day. */
+export const pastJobDemo: PastJob = {
+  businessId: "demo-cafe",
+  name: leftBusiness.name,
+  accent: "#0f766e",
+  leftAt: "2026-10-12T08:00:00.000Z",
+};
+
+export type PastDemoState = "file" | "passport" | "returned";
+
+export function pastDemoStateOf(param: unknown): PastDemoState {
+  return param === "passport" || param === "returned" ? param : "file";
+}
+
+/** Her old file, in her language, with the way back from the profile or from the screen with no business. */
+export function pastFileDemo(
+  lang: "he" | "en",
+  state: PastDemoState = "file",
+  back: PastBack = "profile",
+): PastFileData {
+  const { data } = fileScreenDemo("done", lang);
+  const passport = state === "passport";
+  // Its own last digits, never the account's.
+  const passportHint = FILE_DEMO_NUMBERS.passport.slice(-4);
+  const year = data.taxYear;
+  return {
+    job: pastJobDemo,
+    locale: lang,
+    back,
+    demo: false,
+    file:
+      data.file && passport
+        ? {
+            ...data.file,
+            id_kind: "passport",
+            id_country: "PH",
+            id_expires_on: "2031-06-30",
+            id_hint: passportHint,
+          }
+        : data.file,
+    address: data.address,
+    city: data.city,
+    email: data.email,
+    workLanguage: data.workLanguage,
+    documentName: null,
+    holderName: null,
+    // Kept in the file after leaving, though managers read it no more.
+    emergency: FILE_DEMO_CONTACT,
+    masked: passport
+      ? { ...data.masked, id: `•••${passportHint}` }
+      : data.masked,
+    taxYears: year
+      ? [
+          state === "returned"
+            ? { ...year, status: "returned", returnedReason: "signature" }
+            : year,
+        ]
+      : [],
+  };
 }

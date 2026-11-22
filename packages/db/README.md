@@ -1698,9 +1698,10 @@ per role: owners always hold it, accountants by `private.accountant_perms`
   101 as in or not: a returned one not in, one due again in; owners left out)
   and `team_emergency_contacts` (`team.view` or `people.files`, never a
   view). Who reads a file (`private.file_reader`): a view session never
-  (`viewing`), the person their own in any state (unlogged), then an active
-  holder who confirmed the duties (`employee.view` once a day per person; a
-  reveal every call), else `not_member`, `not_holder` or `ack`. A refusal is
+  (`viewing`), the person their own in any state (unlogged: a former worker
+  reads theirs, revealed numbers included, at `/me/past/<business>`, H5c),
+  then an active holder who confirmed the duties (`employee.view` once a day
+  per person; a reveal every call), else `not_member`, `not_holder` or `ack`. A refusal is
   returned, never raised, and logged as `employee.view_denied` (20 a day per
   caller in each business, then one `many` there; none for nobody signed in, the module off, or a
   person who isn't in the business; someone outside is told `not_member`).

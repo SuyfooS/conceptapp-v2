@@ -18,7 +18,7 @@
 -- or another test. The files are written straight into the tables here
 -- (their writes are employee_files_writes.test.sql's), with stand-in bytes.
 begin;
-select plan(77);
+select plan(79);
 
 -- A: 1 its owner, 2 a manager, 3 Noa and 4 Yoav, workers, 5 the accountant,
 -- 6 a worker who left, 12 a manager given the files, 101 to 131 workers. B:
@@ -339,9 +339,11 @@ select is(pg_temp.read(pg_temp.a(), pg_temp.p(3)), 'self', 'Noa reads her own fi
 select is(pg_temp.read(pg_temp.a(), pg_temp.p(4)), 'not_holder', 'and not Yoav''s');
 select pg_temp.sign_in(pg_temp.p(6));
 select is(pg_temp.read(pg_temp.a(), pg_temp.p(6)), 'self', 'someone who left still reads their own');
+select is(pg_temp.reveal(pg_temp.p(6), '{id}'), 'self', 'and reveals their own number');
 reset role;
 select is(pg_temp.logged('employee.view', pg_temp.p(3)), 0, 'a person''s own read is not logged');
 select is(pg_temp.logged('employee.view_denied', pg_temp.p(3)), 1, 'their refused one is');
+select is(pg_temp.logged('employee.view', pg_temp.p(6)), 0, 'nor the own read and reveal of someone who left');
 
 ------------------------------------------------------------------------------
 -- Outside the business, a view, nobody

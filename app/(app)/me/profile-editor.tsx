@@ -129,6 +129,7 @@ export function ProfileEditor({
   documents,
   modes,
   file,
+  past,
 }: {
   name: string;
   photo: string | null;
@@ -155,6 +156,11 @@ export function ProfileEditor({
    * every shape reads it in the same order.
    */
   file?: ReactNode;
+  /**
+   * "עבודות קודמות" (profile H5c): the businesses they left whose file they
+   * can still read, after "העסקים שלי", on every shape.
+   */
+  past?: ReactNode;
 }) {
   const t = useTranslations("app");
   const tp = useTranslations("ui.photoPicker");
@@ -412,6 +418,8 @@ export function ProfileEditor({
         {documents}
 
         {businesses}
+
+        {past}
 
         {notifications}
 

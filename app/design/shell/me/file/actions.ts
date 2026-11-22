@@ -22,6 +22,8 @@ import {
   FILE_DEMO_NUMBERS,
   FILE_DEMO_TODAY,
   type FileDemoState,
+  type PastDemoState,
+  pastDemoStateOf,
 } from "./data";
 
 // Stand-ins for the file's writes on the twin, where nobody is signed in:
@@ -79,6 +81,21 @@ export async function demoRevealAction(
     value:
       field === "id" ? FILE_DEMO_NUMBERS.id : FILE_DEMO_NUMBERS.bankAccount,
   };
+}
+
+/**
+ * "הצגה" in the old file's twin (profile H5c), bound to its state: on
+ * `passport`, the passport its last digits are from, never the ID.
+ */
+export async function demoRevealPastAction(
+  state: PastDemoState,
+  field: "id" | "bank_account",
+): Promise<RevealAnswer> {
+  if (pastDemoStateOf(state) !== "passport" || field !== "id") {
+    return demoRevealAction(field);
+  }
+  await pause();
+  return { ok: true, value: FILE_DEMO_NUMBERS.passport };
 }
 
 export async function demoSendBankCodeAction(input: {

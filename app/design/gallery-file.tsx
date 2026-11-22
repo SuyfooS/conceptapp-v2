@@ -163,6 +163,10 @@ export function GalleryFile() {
       <Button asChild variant="secondary" className="w-full">
         <Link href="/design/shell/me/file">{t("fileDemo")}</Link>
       </Button>
+      {/* A former worker's old file, read-only (H5c). */}
+      <Button asChild variant="secondary" className="w-full">
+        <Link href="/design/screens/past-file">{t("filePastDemo")}</Link>
+      </Button>
     </div>
   );
 }

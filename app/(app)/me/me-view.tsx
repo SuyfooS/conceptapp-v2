@@ -57,6 +57,7 @@ export async function MeView({
   documents,
   modes,
   file,
+  past,
   home = "/home",
 }: {
   data: MeData;
@@ -75,6 +76,8 @@ export async function MeView({
   modes?: ReactNode;
   /** The person's own hiring file (profile H5a), where it is on for them. */
   file?: ReactNode;
+  /** The businesses they left whose file they can still read (profile H5c). */
+  past?: ReactNode;
   home?: string;
 }) {
   const t = translator(wording, "app");
@@ -109,6 +112,7 @@ export async function MeView({
       documents={documents}
       modes={modes}
       file={file}
+      past={past}
     />
   );
 }

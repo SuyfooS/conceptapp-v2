@@ -2,9 +2,18 @@ import "server-only";
 import { type Departure, ownDepartures } from "@db/team";
 import { DEPARTURE_SEEN_COOKIE, departureToTell } from "@domain/businesses";
 import { cookies } from "next/headers";
+import { cache } from "react";
 import type { currentMember } from "./member";
 
 type Member = NonNullable<Awaited<ReturnType<typeof currentMember>>>;
+
+/**
+ * The businesses the signed-in person was taken off the team of, read once
+ * per request however many parts ask (the notice, the screen with no
+ * business, the previous jobs and their old files, profile H5c). A failure
+ * is kept for the request too: each caller says what it does then.
+ */
+export const currentDepartures = cache(() => ownDepartures());
 
 /**
  * The business the signed-in person was taken off the team of, when the app
@@ -24,7 +33,10 @@ export async function currentDeparture(
   if (member.viewing) return null;
   const open = member.membership?.business.id ?? null;
   try {
-    const [departures, jar] = await Promise.all([ownDepartures(), cookies()]);
+    const [departures, jar] = await Promise.all([
+      currentDepartures(),
+      cookies(),
+    ]);
     return departureToTell(
       open,
       departures,

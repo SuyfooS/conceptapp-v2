@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { demoSaveFileStepAction } from "./actions";
-import { FILE_DEMO_ADDRESS, FILE_DEMO_CHANGE_DUE } from "./data";
+import { demoRevealPastAction, demoSaveFileStepAction } from "./actions";
+import {
+  FILE_DEMO_ADDRESS,
+  FILE_DEMO_CHANGE_DUE,
+  FILE_DEMO_NUMBERS,
+  pastFileDemo,
+} from "./data";
 
 /*
  * The twin's stand-in for saving a step (profile H5a): on `done`, whose 101
@@ -64,5 +69,39 @@ describe("the twin's address save", () => {
     expect(
       await saveAddress("done", { ...FILE_DEMO_ADDRESS, zip: "61000" }),
     ).toEqual({ ok: false, failure: "invalid" });
+  });
+});
+
+// The old file's twin (profile H5c): each "הצגה" shows the number whose
+// last digits it showed before, and no two of a screen's look alike.
+describe("the old file twin's numbers", () => {
+  /** "הצגה" for one field, past the twin's moment. */
+  async function revealed(
+    state: Parameters<typeof demoRevealPastAction>[0],
+    field: Parameters<typeof demoRevealPastAction>[1],
+  ) {
+    const answer = demoRevealPastAction(state, field);
+    await vi.advanceTimersByTimeAsync(400);
+    const got = await answer;
+    return got.ok ? got.value : null;
+  }
+
+  it("shows the number its last digits are from, in every state", async () => {
+    for (const state of ["file", "passport", "returned"] as const) {
+      const { masked } = pastFileDemo("he", state);
+      const id = await revealed(state, "id");
+      const account = await revealed(state, "bank_account");
+      expect(masked.id, state).toBe(`•••${id?.slice(-4)}`);
+      expect(masked.bankAccount, state).toBe(`•••${account?.slice(-4)}`);
+      expect(masked.id, state).not.toBe(masked.bankAccount);
+    }
+  });
+
+  it("shows a passport on the passport's, never the ID", async () => {
+    expect(await revealed("passport", "id")).toBe(FILE_DEMO_NUMBERS.passport);
+    expect(await revealed("file", "id")).toBe(FILE_DEMO_NUMBERS.id);
+    expect(await revealed("passport", "bank_account")).toBe(
+      FILE_DEMO_NUMBERS.bankAccount,
+    );
   });
 });
