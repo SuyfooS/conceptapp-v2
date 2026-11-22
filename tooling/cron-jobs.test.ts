@@ -74,4 +74,11 @@ describe("the scheduled jobs", () => {
     const count = COUNTS[jobs.length] ?? String(jobs.length);
     expect(readme).toMatch(new RegExp(`switches all\\s+${count}\\s+off`));
   });
+
+  it("are each named in docs/production.md, where the first apply is checked", () => {
+    // B3's check after the first Migrate conceptapp-prod run lists them, so
+    // a job a migration adds is looked for there too.
+    const doc = read("docs/production.md");
+    for (const job of jobs) expect(doc, job).toContain(`\`${job}\``);
+  });
 });

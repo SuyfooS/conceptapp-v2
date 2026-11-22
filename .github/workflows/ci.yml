@@ -94,8 +94,20 @@ jobs:
       - name: Unit tests
         run: pnpm test
 
+      # This build is the site of real businesses: the demo door closed
+      # (packages/db/env.ts). The e2e jobs build it open, so every pull
+      # request builds both.
       - name: Build
+        env:
+          DEMO_DOOR: "off"
         run: pnpm build
+
+      # The build above, served with no Supabase settings (everyone signed
+      # out), answers as the site of real businesses must: /health, /enter
+      # and the app on to real sign-in, and no way to the demo there. About
+      # 15 seconds.
+      - name: The closed door, served
+        run: bash .github/scripts/door-closed.sh
 
       # Evidence for the push to main (read by .github/scripts/tested-tree.sh):
       # this job passed on exactly this tree, the test merge commit checked out above.

@@ -57,6 +57,24 @@ Production only (previews stay in the app only): add `VAPID_PUBLIC_KEY`, `VAPID_
 app is opened there again, so make it once. The database half (Vault) is in
 `supabase/README.md`.
 
+### Production
+
+The step-by-step setup for a first real business, in Hebrew for Orel, is
+[`docs/production.md`](docs/production.md): the project, its secrets, the sign-in settings,
+Vercel and what to watch. The code's side of it:
+
+| Variable | What | Where |
+| --- | --- | --- |
+| `DEMO_DOOR` | The demo door on this site: `on` (the default when unset) offers the demo people at `/enter`; `off` closes them, their one-press sign-in and the demo reset, and `/enter` goes straight to `/sign-in`. Read when the site is built, so a change takes a Redeploy, and anything else fails the build | Vercel: `on` on the demo's own project, `off` on the site of real businesses |
+
+- Migrations reach each hosted project only by hand: "Migrate conceptapp-dev"
+  (`.github/workflows/migrate-dev.yml`) for the demo's project, and "Migrate conceptapp-prod"
+  (`.github/workflows/migrate-prod.yml`) for real businesses, from `main` only, in the GitHub
+  environment `conceptapp-prod` that waits for Orel's approval, never with the demo
+  (`supabase/README.md`).
+- `GET /health` (or `HEAD`) answers 200 with `{"status":"ok"}` from the running server, for an
+  uptime monitor. It doesn't ask the database.
+
 ## Scripts
 
 | Script | What it does |
@@ -72,9 +90,11 @@ app is opened there again, so make it once. The database half (Vault) is in
 | `pnpm db:types` | Regenerate `packages/db/database.types.ts` |
 
 CI runs three jobs on every pull request: `check` (Biome, the typecheck, the unit tests and a
-build), `database` (a local Supabase database with the migrations and seed, the pgTAP tests,
+build with the demo door closed, `DEMO_DOOR=off`, which `.github/scripts/door-closed.sh` then
+serves and asks for `/health`, `/enter` and `/home` going on to `/sign-in`, and no way to the
+demo there), `database` (a local Supabase database with the migrations and seed, the pgTAP tests,
 the database lint and the generated types) and `e2e` (Playwright at 390, 820 and 1440 against
-a build and a local Supabase, once the other two pass). A push to `main` runs them again, unless that exact tree already
+a build with the demo door open and a local Supabase, once the other two pass). A push to `main` runs them again, unless that exact tree already
 passed all three in a pull request run created the same day in Israel
 (`.github/scripts/tested-tree.sh`). Actions → CI → Run workflow forces a full run on `main`.
 

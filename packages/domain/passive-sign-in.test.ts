@@ -1,13 +1,36 @@
 import { describe, expect, it } from "vitest";
+import * as door from "./passive-sign-in";
 import {
   DEMO_BUSINESSES,
   DEMO_PEOPLE,
   demoBusinessesOf,
   demoBusinessOf,
   demoEmailOf,
+  doorPath,
   isDemoBusiness,
+  phoneSignInPath,
   renewsDemoWeek,
+  signInPath,
 } from "./passive-sign-in";
+
+describe("the door's addresses", () => {
+  // The demo door per site (Orel, 22 November 2026): the same address on
+  // both, and the proxy's one hop to whichever door this site has.
+  it("keeps /enter as the door on every site", () => {
+    expect(signInPath).toBe("/enter");
+    expect(phoneSignInPath).toBe("/sign-in");
+  });
+
+  it("sends a signed-out person to the demo's door only where it is open", () => {
+    expect(doorPath(true)).toBe("/enter");
+    expect(doorPath(false)).toBe("/sign-in");
+  });
+
+  it("has no constant left that closes the door in code", () => {
+    // The setting is DEMO_DOOR, read in @db/env alone.
+    expect(Object.keys(door)).not.toContain("PASSIVE_SIGN_IN");
+  });
+});
 
 describe("demoEmailOf", () => {
   it("knows the people on offer, at an address that can't receive mail", () => {

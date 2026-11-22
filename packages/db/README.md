@@ -2720,7 +2720,9 @@ read as messages/he.json. Console reads and writes are in `@db/wording`;
   the business, applies its template and writes `business.create` to the
   audit log in one transaction, and refuses an actor who is not platform
   staff. A taken slug comes back as `slugTaken`.
-- `@db/env`: the public settings and the secret key, checked with Zod.
+- `@db/env`: the public settings and the secret key, checked with Zod, and
+  this site's demo door (`DEMO_DOOR`: `demoDoorOpen`, read here alone, for
+  server code and the proxy only).
 
 Sign-in is phone + SMS code. Accounts are never created at sign-in
 (`[auth] enable_signup = false`); people arrive through the seed now and

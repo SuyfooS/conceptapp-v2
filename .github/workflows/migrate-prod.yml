@@ -1,0 +1,109 @@
+# Applies migrations to conceptapp-prod, the project of real businesses
+# (docs/production.md, B3). By hand only, from main only, and only once Orel
+# approves the run: the job runs in the GitHub environment conceptapp-prod,
+# which takes main alone, waits for its required reviewer and holds the
+# database's two secrets (Orel sets all three in GitHub). With "apply" off it
+# shows what would run and changes nothing. Nothing here adds demo data or
+# runs a SQL file: the demo stays in conceptapp-dev
+# (tooling/migrate-prod.test.ts keeps it so).
+name: Migrate conceptapp-prod
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Apply the migrations. Off shows what would run and changes nothing.
+        type: boolean
+        default: false
+
+concurrency:
+  group: migrate-prod
+  cancel-in-progress: false
+
+# Read the code and nothing more (#80). Every action is pinned to a commit,
+# with its version beside it for Dependabot.
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    # Started from another branch, the job doesn't run, so it never asks for
+    # the environment, whose own rule (main only) holds as well.
+    if: github.ref == 'refs/heads/main'
+    environment: conceptapp-prod
+    runs-on: ubuntu-latest
+    # The first apply runs every migration there is.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # The two secrets reach this step alone (#80); from here on the steps
+      # read DB_URL, masked. Through the session pooler, trying each shard, as
+      # migrate-dev.yml does: the runners have no IPv6. The CLI is given the
+      # address, so it needs no access token.
+      - name: Find the connection
+        env:
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_REGION: eu-central-1
+        run: |
+          if [ -z "$SUPABASE_DB_PASSWORD" ] || [ -z "$SUPABASE_PROJECT_REF" ]; then
+            echo "::error::The conceptapp-prod environment has no SUPABASE_DB_PASSWORD or SUPABASE_PROJECT_REF (docs/production.md, B3)"
+            exit 1
+          fi
+          PASSWORD=$(node -p 'encodeURIComponent(process.env.SUPABASE_DB_PASSWORD)')
+          echo "::add-mask::$PASSWORD"
+          for SHARD in aws-1 aws-0; do
+            URL="postgresql://postgres.$SUPABASE_PROJECT_REF:$PASSWORD@$SHARD-$SUPABASE_REGION.pooler.supabase.com:5432/postgres"
+            echo "::add-mask::$URL"
+            if pnpm exec supabase migration list --db-url "$URL"; then
+              echo "DB_URL=$URL" >> "$GITHUB_ENV"
+              echo "Connected through $SHARD"
+              exit 0
+            fi
+          done
+          echo "::error::No session pooler address worked"
+          exit 1
+
+      # Before anything is applied: the project these secrets reach holds no
+      # demo business. One that does is the development project, its secrets
+      # put here by mistake. A new project has no such table yet, and a query
+      # naming a missing table fails before it runs, so two queries.
+      - name: Not the demo's project
+        run: |
+          table=$(psql "$DB_URL" -v ON_ERROR_STOP=1 -tAc "select to_regclass('private.demo_businesses') is not null")
+          if [ "$table" = "t" ]; then
+            demos=$(psql "$DB_URL" -v ON_ERROR_STOP=1 -tAc "select count(*) from private.demo_businesses")
+            if [ "$demos" != "0" ]; then
+              echo "::error::This project holds demo businesses: these are not conceptapp-prod's secrets. Nothing was applied."
+              exit 1
+            fi
+          fi
+          echo "No demo business here"
+
+      - name: What the project has now
+        run: pnpm exec supabase migration list --db-url "$DB_URL"
+
+      # `db push` applies migrations alone: it adds seed data only when told
+      # to, and nothing here tells it.
+      - name: What would run
+        run: pnpm exec supabase db push --db-url "$DB_URL" --dry-run
+
+      - name: Apply
+        if: inputs.apply && github.ref == 'refs/heads/main'
+        run: pnpm exec supabase db push --db-url "$DB_URL"
+
+      - name: What the project has after
+        if: inputs.apply && github.ref == 'refs/heads/main'
+        run: pnpm exec supabase migration list --db-url "$DB_URL"
