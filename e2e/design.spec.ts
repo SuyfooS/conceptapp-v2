@@ -6028,7 +6028,8 @@ test("the file demo sends only a file with its details in", async ({
     .getByRole("button", { name: f.done.profile })
     .filter({ visible: true })
     .click();
-  await expect(page).toHaveURL(/\/design\/shell\/me\?file=missing$/);
+  // Back to the profile's twin that tells this same file: everything in.
+  await expect(page).toHaveURL(/\/design\/shell\/me\?file=done$/);
 });
 
 // A number shown and the screen left: Next keeps the screen to show again,
