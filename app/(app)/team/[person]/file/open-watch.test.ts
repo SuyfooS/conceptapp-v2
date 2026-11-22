@@ -1,7 +1,7 @@
 import {
   FILE_IDLE_MS,
   FILE_TOUCH_EVERY_MS,
-  stepUpFresh,
+  stepUpLeft,
 } from "@domain/file-holders";
 import { describe, expect, it, vi } from "vitest";
 import type { FileTabNews, FileTabs } from "./file-tabs";
@@ -20,8 +20,9 @@ import {
  * How long an open hiring file shows in a tab (profile H6a, plan §3.5), on a
  * device of tabs and a stand-in for the server's one step-up, against a
  * clock of their own: the rule's six points, one test each (the rule is in
- * ./open-watch), then the three cases the final check found, then the
- * screen's own mechanics and `closeAndDraw`.
+ * ./open-watch), then the three cases the final check found, then tabs left
+ * alone, which never keep each other open, then the screen's own mechanics
+ * and `closeAndDraw`.
  */
 
 const MINUTE = 60_000;
@@ -31,6 +32,9 @@ const MINUTE = 60_000;
  * answer, end after the server's.
  */
 const TRIP_MS = 100;
+
+/** An answer that the file is open, with its 15 minutes just slid. */
+const OPEN: KeepOpenAnswer = { open: true, leftMs: FILE_IDLE_MS };
 
 /** What waits on promises, done. */
 const settle = () => new Promise((resolve) => setImmediate(resolve));
@@ -131,15 +135,25 @@ class Clock {
     this.at = end;
     await settle();
   }
+
+  /** Time passes until `at`. */
+  async to(at: number) {
+    if (at < this.at) throw new Error("the clock only runs forward");
+    await this.pass(at - this.at);
+  }
 }
 
 /**
- * The device's one step-up on the server (the cookie), as `keepFileOpen`
- * keeps it: whose files it opens (a business and a holder), and its moment,
- * fresh for 15 minutes and slid by each check that finds it so.
+ * The device's one step-up on the server (the cookie), as
+ * `keepFileOpenAction` keeps it: whose files it opens (a business and a
+ * holder), and its moment, fresh for 15 minutes. A check for activity
+ * (`slide`) that finds it so slides it, and says 15 minutes are left; any
+ * other check only reads how long is.
  */
 class Server {
   stepUp: { whose: string; at: number } | null;
+  /** The moments a check slid the step-up. */
+  readonly slid: number[] = [];
   readonly lock = vi.fn(async (): Promise<LockAnswer> => {
     this.stepUp = null;
     return { ok: true };
@@ -155,16 +169,22 @@ class Server {
   }
 
   /** A tab's check on `whose` file, answered a trip later. */
-  keepOpenFor(whose: string): () => Promise<KeepOpenAnswer> {
-    return () => {
+  keepOpenFor(whose: string): (slide: boolean) => Promise<KeepOpenAnswer> {
+    return (slide) => {
+      const at = this.clock.now();
       const step = this.stepUp;
-      const open =
-        step !== null &&
-        step.whose === whose &&
-        stepUpFresh(step.at, this.clock.now());
-      if (open) this.stepUp = { whose, at: this.clock.now() };
+      const left =
+        step !== null && step.whose === whose ? stepUpLeft(step.at, at) : null;
+      let answer: KeepOpenAnswer = { open: false };
+      if (left !== null && slide) {
+        this.stepUp = { whose, at };
+        this.slid.push(at);
+        answer = { open: true, leftMs: FILE_IDLE_MS };
+      } else if (left !== null) {
+        answer = { open: true, leftMs: left };
+      }
       return new Promise((resolve) => {
-        this.clock.server.setTimeout(() => resolve({ open }), TRIP_MS);
+        this.clock.server.setTimeout(() => resolve(answer), TRIP_MS);
       });
     };
   }
@@ -223,6 +243,7 @@ class Line implements FileTabs {
 /**
  * One tab of the device with a file open for `whose`, closing as the
  * screen does (`closeAndDraw`); `keepOpen` stands in for its checks.
+ * `apart`, its channel is blocked: it hears no other tab, and none hears it.
  */
 function tabOf(
   device: Device,
@@ -231,11 +252,16 @@ function tabOf(
   {
     whose = "b1",
     keepOpen,
-  }: { whose?: string; keepOpen?: () => Promise<KeepOpenAnswer> } = {},
+    apart = false,
+  }: {
+    whose?: string;
+    keepOpen?: (slide: boolean) => Promise<KeepOpenAnswer>;
+    apart?: boolean;
+  } = {},
 ) {
   const page = new Page();
   const win = new Timers(clock);
-  const line = device.line(win);
+  const line = (apart ? new Device() : device).line(win);
   const memory: OpenFileMemory = { shown: false };
   const keep = vi.fn(keepOpen ?? server.keepOpenFor(whose));
   const hold = vi.fn();
@@ -245,7 +271,9 @@ function tabOf(
     lock: server.lock,
     draw,
   };
+  let closedAt: number | null = null;
   const close = vi.fn((why: WatchClose) => {
+    closedAt = clock.now();
     void closeAndDraw(why, parts);
   });
   let stop = () => {};
@@ -257,6 +285,10 @@ function tabOf(
     hold,
     draw,
     close,
+    /** When the file closed in this tab. */
+    closedAt: () => closedAt,
+    /** Whether each of its checks, in order, was for activity here, which slides the step-up. */
+    slides: () => keep.mock.calls.map(([slide]) => slide),
     /** Whether the file is hidden now, by the last word the watch gave. */
     held: () => hold.mock.lastCall?.[0] === true,
     /** Whether it told any tab that the files closed. */
@@ -311,7 +343,7 @@ function closedAlone(tab: Tab, server: Server, why: WatchClose) {
 }
 
 describe("watchOpenFile, by the rule", () => {
-  it("1. only the server says whether the file is open: past its own 15 minutes a tab asks, shows the file again while the server says so, and closes when it says not", async () => {
+  it("1. only the server says whether the file is open: past its own 15 minutes a tab asks, shows the file again for as long as the server says, and closes when it says not", async () => {
     const { clock, server, tab } = setup();
     const a = tab();
     a.watch();
@@ -319,22 +351,28 @@ describe("watchOpenFile, by the rule", () => {
     // Another tab in use at 10 minutes, whose word never came here (its
     // channel blocked): the server's 15 minutes slid all the same.
     await clock.pass(10 * MINUTE);
-    void server.keepOpenFor("b1")();
+    void server.keepOpenFor("b1")(true);
+    const used = clock.now();
     await clock.pass(5 * MINUTE - 1);
     expect(a.held()).toBe(false);
     await clock.pass(1);
-    // Its own 15 minutes passed: hidden, and the server asked.
+    // Its own 15 minutes passed: hidden, and the server asked, only to read.
     expect(a.held()).toBe(true);
-    expect(a.keep).toHaveBeenCalledTimes(2);
+    expect(a.slides()).toEqual([true, false]);
     await clock.pass(TRIP_MS);
     expect(a.held()).toBe(false);
     expect(a.close).not.toHaveBeenCalled();
-    // The clock's own check said nothing to the other tabs.
+    // The clock's own check slid nothing, and said nothing to the other tabs.
+    expect(server.stepUp?.at).toBe(used);
     expect(a.line.told).toEqual([{ kind: "active" }]);
 
-    // Nobody since: 15 minutes from that answer the server's step-up has
-    // gone by itself, and the file closes here, forgetting nothing.
-    await clock.pass(FILE_IDLE_MS);
+    // Shown again for the 10 minutes the server had left, not 15: nobody
+    // since, so its step-up has gone by itself when they pass, and the file
+    // closes here, forgetting nothing.
+    await clock.to(used + FILE_IDLE_MS + TRIP_MS - 1);
+    expect(a.held()).toBe(false);
+    await clock.pass(1);
+    expect(a.held()).toBe(true);
     await clock.pass(TRIP_MS);
     closedAlone(a, server, "closed");
     expect(server.stepUp).not.toBeNull();
@@ -449,10 +487,11 @@ describe("watchOpenFile, by the rule", () => {
     }
   });
 
-  it("4. starts its 15 minutes again only when its own check answers open, counted from the answer; another tab's word asks the server at most once a minute, one kept for the minute's end", async () => {
+  it("4. ends its 15 minutes when the server's end, each open answer saying how long is left, counted from the answer; another tab's word asks the server at most once a minute, one kept for the minute's end", async () => {
     const { clock, server, tab, bare } = setup();
     const a = tab();
     const other = bare();
+    const start = clock.now();
     a.watch();
     await clock.pass(TRIP_MS);
     // Two words within the minute of its check: nothing asked yet.
@@ -460,7 +499,7 @@ describe("watchOpenFile, by the rule", () => {
     other.tell({ kind: "active" });
     await clock.pass(20_000);
     other.tell({ kind: "active" });
-    await clock.pass(FILE_TOUCH_EVERY_MS - 40_000 - TRIP_MS - 1);
+    await clock.to(start + FILE_TOUCH_EVERY_MS - 1);
     expect(a.keep).toHaveBeenCalledTimes(1);
     // One check at the minute's end, for both.
     await clock.pass(1);
@@ -472,40 +511,47 @@ describe("watchOpenFile, by the rule", () => {
     await clock.pass(0);
     expect(a.keep).toHaveBeenCalledTimes(3);
     await clock.pass(TRIP_MS);
-    // 15 minutes from that answer, and none sooner, it asks again; nobody
-    // slid the server since, so the file closes.
-    await clock.pass(FILE_IDLE_MS - 1);
+    // Each answer said what the step-up had left, never a fresh 15 minutes:
+    // nobody slid it since the file opened, so the tab asks again as the
+    // server's 15 minutes end, and none sooner, and the file closes.
+    expect(a.slides()).toEqual([true, false, false]);
+    await clock.to(start + FILE_IDLE_MS + TRIP_MS - 1);
     expect(a.held()).toBe(false);
     expect(a.keep).toHaveBeenCalledTimes(3);
     await clock.pass(1);
     expect(a.held()).toBe(true);
     await clock.pass(TRIP_MS);
     closedAlone(a, server, "closed");
+    expect(server.slid).toEqual([start]);
   });
 
-  it("5. tells the other tabs a file is in use only after its own check, for activity here, answers open", async () => {
+  it("5. slides the step-up only on a check for activity here, telling the other tabs once it answers open; a check for another tab's word only reads it, and tells nothing", async () => {
     const { clock, server, tab, bare } = setup();
     const a = tab();
     const other = bare();
     a.watch();
-    // Asked as it opens, not answered yet: nothing told.
+    // Asked as it opens, for activity here, not answered yet: nothing told.
+    expect(a.slides()).toEqual([true]);
     expect(a.line.told).toEqual([]);
     await clock.pass(TRIP_MS);
     expect(a.line.told).toEqual([{ kind: "active" }]);
-    // Another tab's word: asked, answered open, nothing told back.
+    // Another tab's word: asked only to read, answered open, nothing told back.
     await clock.pass(2 * MINUTE);
     other.tell({ kind: "active" });
     await clock.pass(TRIP_MS);
-    expect(a.keep).toHaveBeenCalledTimes(2);
+    expect(a.slides()).toEqual([true, false]);
+    expect(server.slid).toHaveLength(1);
     expect(a.line.told).toHaveLength(1);
-    // A press within that minute: kept for its end, told once answered.
+    // A press within that minute: kept for its end, where it slides, told
+    // once answered.
     await clock.pass(10_000);
     a.page.press();
     await clock.pass(0);
     expect(a.keep).toHaveBeenCalledTimes(2);
     expect(a.line.told).toHaveLength(1);
     await clock.pass(MINUTE);
-    expect(a.keep).toHaveBeenCalledTimes(3);
+    expect(a.slides()).toEqual([true, false, true]);
+    expect(server.slid).toHaveLength(2);
     expect(a.line.told).toEqual([{ kind: "active" }, { kind: "active" }]);
     // A press whose check the server answers closed: nothing told.
     server.stepUp = null;
@@ -521,8 +567,8 @@ describe("watchOpenFile, by the rule", () => {
     let silent = false;
     const keepOpen = server.keepOpenFor("b1");
     const a = tab({
-      keepOpen: () =>
-        silent ? new Promise<KeepOpenAnswer>(() => {}) : keepOpen(),
+      keepOpen: (slide) =>
+        silent ? new Promise<KeepOpenAnswer>(() => {}) : keepOpen(slide),
     });
     a.watch();
     await clock.pass(TRIP_MS);
@@ -556,7 +602,9 @@ describe("watchOpenFile, the final check's cases", () => {
       const { clock, server, tab } = setup();
       let stale = false;
       const keepOpen = server.keepOpenFor("b1");
-      const idle = tab({ keepOpen: () => (stale ? fails() : keepOpen()) });
+      const idle = tab({
+        keepOpen: (slide) => (stale ? fails() : keepOpen(slide)),
+      });
       idle.watch();
       await clock.pass(TRIP_MS);
       stale = true;
@@ -650,6 +698,135 @@ describe("watchOpenFile, the final check's cases", () => {
   });
 });
 
+describe("watchOpenFile, tabs left alone", () => {
+  // Each tab's own 15 minutes ask the server, and so does each word heard:
+  // if those checks slid the step-up, two idle tabs whose checks come under
+  // 15 minutes apart would keep the files open for good, with nobody there.
+  it("two idle tabs never keep each other open: both close within 16 minutes of the last press, the step-up over 15 minutes old", async () => {
+    for (const heard of [true, false]) {
+      const { clock, server, tab } = setup();
+      const a = tab();
+      const b = tab({ apart: !heard });
+      a.watch();
+      b.watch();
+      await clock.pass(2 * MINUTE);
+      a.page.press();
+      await clock.pass(30_000);
+      b.page.press();
+      const last = clock.now();
+      // Nobody at the device since.
+      await clock.pass(40 * MINUTE);
+      for (const t of [a, b]) {
+        closedAlone(t, server, "closed");
+        const closedAt = t.closedAt() ?? Number.POSITIVE_INFINITY;
+        expect(closedAt, `heard: ${heard}`).toBeLessThanOrEqual(
+          last + 16 * MINUTE,
+        );
+        // Asked a trip before: the step-up was over 15 minutes old then.
+        expect(
+          closedAt - TRIP_MS - (server.stepUp?.at ?? closedAt),
+          `heard: ${heard}`,
+        ).toBeGreaterThan(FILE_IDLE_MS);
+        // Their last checks, for their own 15 minutes, only read it.
+        expect(t.slides().at(-1), `heard: ${heard}`).toBe(false);
+      }
+      // Slid for the last press (at its minute's end at most), never after.
+      expect(server.stepUp?.at).toBeLessThanOrEqual(last + FILE_TOUCH_EVERY_MS);
+      expect(server.slid.at(-1)).toBe(server.stepUp?.at);
+    }
+  });
+
+  it("a check for the clock or for another tab's word never slides the step-up, and shows the file only for what the server has left", async () => {
+    const { clock, server, tab, bare } = setup();
+    const a = tab();
+    const other = bare();
+    const start = clock.now();
+    a.watch();
+    await clock.pass(TRIP_MS);
+    // A word at 5 minutes, with no slide of its own: read, 10 minutes left,
+    // so its 15 minutes still end with the step-up's first.
+    await clock.pass(5 * MINUTE);
+    other.tell({ kind: "active" });
+    await clock.pass(TRIP_MS);
+    // Another tab in use at 10 minutes, whose word never came here.
+    await clock.to(start + 10 * MINUTE);
+    void server.keepOpenFor("b1")(true);
+    const used = clock.now();
+    await clock.to(start + FILE_IDLE_MS + TRIP_MS - 1);
+    expect(a.keep).toHaveBeenCalledTimes(2);
+    expect(a.held()).toBe(false);
+    // Its 15 minutes: read again, 10 minutes left, shown again for those.
+    await clock.pass(1);
+    expect(a.held()).toBe(true);
+    expect(a.keep).toHaveBeenCalledTimes(3);
+    await clock.pass(TRIP_MS);
+    expect(a.held()).toBe(false);
+    // Put away, its next 15 minutes end with the other tab's: read once
+    // more, closed.
+    a.page.set("hidden");
+    await clock.to(used + FILE_IDLE_MS + TRIP_MS - 1);
+    expect(a.keep).toHaveBeenCalledTimes(3);
+    await clock.pass(1);
+    expect(a.keep).toHaveBeenCalledTimes(4);
+    await clock.pass(TRIP_MS);
+    closedAlone(a, server, "closed");
+    // Only its opening and the other tab's use slid it.
+    expect(a.slides()).toEqual([true, false, false, false]);
+    expect(server.slid).toEqual([start, used]);
+    expect(a.line.told).toEqual([{ kind: "active" }]);
+  });
+
+  it("a lone tab still closes 15 minutes after its last press", async () => {
+    const { clock, server, tab } = setup();
+    const a = tab();
+    a.watch();
+    await clock.pass(3 * MINUTE);
+    a.page.press();
+    const last = clock.now();
+    await clock.to(last + FILE_IDLE_MS + TRIP_MS - 1);
+    expect(a.held()).toBe(false);
+    await clock.pass(1);
+    expect(a.held()).toBe(true);
+    await clock.pass(TRIP_MS);
+    closedAlone(a, server, "closed");
+    expect(a.closedAt()).toBe(last + FILE_IDLE_MS + 2 * TRIP_MS);
+    expect(server.slid.at(-1)).toBe(last);
+  });
+
+  it("the tab in use keeps itself open, and the idle tab beside it, for as long as it is used", async () => {
+    const { clock, server, tab } = setup();
+    const used = tab();
+    const idle = tab();
+    used.watch();
+    idle.watch();
+    // A press a minute for 30 minutes.
+    for (let minute = 0; minute < 30; minute += 1) {
+      await clock.pass(MINUTE);
+      used.page.press();
+    }
+    const last = clock.now();
+    await clock.pass(TRIP_MS);
+    for (const t of [used, idle]) {
+      expect(t.close).not.toHaveBeenCalled();
+      expect(t.held()).toBe(false);
+    }
+    expect(server.slid.length).toBeGreaterThan(30);
+    // The idle tab slid it only as it opened; after, it only read.
+    expect(idle.slides()[0]).toBe(true);
+    expect(idle.slides().slice(1)).not.toContain(true);
+    expect(idle.slides().length).toBeGreaterThan(25);
+    // Nobody after the last press: both close, the press's minute and 15
+    // minutes after it at most.
+    await clock.pass(20 * MINUTE);
+    for (const t of [used, idle]) {
+      closedAlone(t, server, "closed");
+      expect(t.closedAt()).toBeLessThanOrEqual(
+        last + FILE_TOUCH_EVERY_MS + FILE_IDLE_MS + 2 * TRIP_MS,
+      );
+    }
+  });
+});
+
 describe("watchOpenFile, the screen", () => {
   // Next hides a screen it leaves (its effects stopped) and shows it again
   // on Back (started again), and its own clock heard nothing meanwhile.
@@ -662,15 +839,33 @@ describe("watchOpenFile, the screen", () => {
     // 20 minutes on another screen, which slid the server's 15 minutes.
     for (let minute = 0; minute < 20; minute += 1) {
       await clock.pass(MINUTE);
-      void server.keepOpenFor("b1")();
+      void server.keepOpenFor("b1")(true);
     }
     t.watch();
     expect(t.held()).toBe(true);
-    expect(t.keep).toHaveBeenCalledTimes(2);
+    // Shown again is the person's doing: it slides.
+    expect(t.slides()).toEqual([true, true]);
     await clock.pass(TRIP_MS);
     expect(t.held()).toBe(false);
     expect(t.close).not.toHaveBeenCalled();
     expect(t.line.told).toEqual([{ kind: "active" }, { kind: "active" }]);
+  });
+
+  it("counts no more than 15 minutes from any answer, and closes the file on a time left that isn't one", async () => {
+    const { clock, server, tab } = setup();
+    const answers: KeepOpenAnswer[] = [{ open: true, leftMs: 120 * MINUTE }];
+    const t = tab({
+      keepOpen: async () =>
+        answers.shift() ?? { open: true, leftMs: Number.NaN },
+    });
+    const start = clock.now();
+    t.watch();
+    await clock.to(start + FILE_IDLE_MS - 1);
+    expect(t.keep).toHaveBeenCalledTimes(1);
+    await clock.pass(1);
+    expect(t.keep).toHaveBeenCalledTimes(2);
+    await clock.pass(0);
+    closedAlone(t, server, "failed");
   });
 
   it("shows the file only on the answer to the latest look", async () => {
@@ -683,17 +878,17 @@ describe("watchOpenFile, the screen", () => {
         }),
     });
     t.watch();
-    answers[0]?.({ open: true });
+    answers[0]?.(OPEN);
     await clock.pass(0);
     t.page.set("hidden");
     t.page.set("visible");
     t.page.set("hidden");
     // The first look answers while the page is away again: still hidden.
-    answers[1]?.({ open: true });
+    answers[1]?.(OPEN);
     await clock.pass(0);
     expect(t.held()).toBe(true);
     t.page.set("visible");
-    answers[2]?.({ open: true });
+    answers[2]?.(OPEN);
     await clock.pass(0);
     expect(t.held()).toBe(false);
   });

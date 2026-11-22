@@ -9,8 +9,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // module off or someone without the files; the code only to the number the
 // holder signs in with now and only after the duties; the files opened only
 // by a right code for the holder's own number; a reveal that never reaches
-// the database without a fresh step-up; keeping open that never opens; and
-// nothing typed or shown in a log.
+// the database without a fresh step-up; keeping open that never opens,
+// under the same gate both ways, and slides only for activity (a tab's clock
+// and another tab's word only read how long is left); and nothing typed or
+// shown in a log. Each is a POST, which Next answers no-store.
 
 vi.mock("server-only", () => ({}));
 
@@ -74,7 +76,9 @@ const {
   sendFileCodeAction,
 } = await import("./actions");
 const { fileStepUpAt, sealFileStepUp } = await import("@db/file-step-up");
-const { FILE_STEP_UP_COOKIE } = await import("@domain/file-holders");
+const { FILE_IDLE_MS, FILE_STEP_UP_COOKIE } = await import(
+  "@domain/file-holders"
+);
 
 const SHOP = "11111111-1111-4111-a111-111111111111";
 const OTHER = "22222222-2222-4222-a222-222222222222";
@@ -141,6 +145,12 @@ beforeEach(() => {
   mocks.signInPhoneOf.mockReset().mockResolvedValue(URI_PHONE);
 });
 
+/** Keeping open, for activity here and only to read, as the watch asks: closed both ways. */
+const keepsClosed = async (business = SHOP) => {
+  expect(await keepFileOpenAction(business, true)).toEqual({ open: false });
+  expect(await keepFileOpenAction(business, false)).toEqual({ open: false });
+};
+
 /** Every action that acts for a holder, bound as the page binds them. */
 const actions = {
   acknowledge: (business: string) => acknowledgeDutiesAction(business),
@@ -169,7 +179,8 @@ describe("who may act on a file", () => {
       "viewOnly",
       "viewOnly",
     ]);
-    expect(await keepFileOpenAction(SHOP)).toEqual({ open: false });
+    await keepsClosed();
+    expect(mocks.set).not.toHaveBeenCalled();
   });
 
   it("only in the business the screen was drawn for", async () => {
@@ -180,12 +191,16 @@ describe("who may act on a file", () => {
       "businessChanged",
       "businessChanged",
     ]);
-    expect(await keepFileOpenAction(OTHER)).toEqual({ open: false });
+    await keepsClosed(OTHER);
+    expect(mocks.set).not.toHaveBeenCalled();
   });
 
   it("nothing with the module off", async () => {
     mocks.currentModules.mockResolvedValue(["scheduling"]);
+    opened();
     expect(await refused()).toEqual(["off", "off", "off", "off"]);
+    await keepsClosed();
+    expect(mocks.set).not.toHaveBeenCalled();
   });
 
   it("nothing for someone without the files", async () => {
@@ -209,6 +224,8 @@ describe("who may act on a file", () => {
       "noAccess",
       "noAccess",
     ]);
+    await keepsClosed();
+    expect(mocks.set).not.toHaveBeenCalled();
     expect(mocks.acknowledgeFileDuties).not.toHaveBeenCalled();
     expect(mocks.sendCode).not.toHaveBeenCalled();
     expect(mocks.checkCode).not.toHaveBeenCalled();
@@ -415,12 +432,54 @@ describe("a reveal", () => {
 });
 
 describe("keeping a file open and locking it", () => {
-  it("keeps open only a fresh step-up, and never makes one", async () => {
-    expect(await keepFileOpenAction(SHOP)).toEqual({ open: false });
+  it("slides only a fresh step-up, for activity, and never makes one", async () => {
+    await keepsClosed();
     expect(mocks.set).not.toHaveBeenCalled();
-    opened(Date.now() - 60_000);
-    expect(await keepFileOpenAction(SHOP)).toEqual({ open: true });
+    opened(Date.now() - 16 * 60_000);
+    await keepsClosed();
+    expect(mocks.set).not.toHaveBeenCalled();
+
+    const earlier = Date.now() - 60_000;
+    opened(earlier);
+    expect(await keepFileOpenAction(SHOP, true)).toEqual({
+      open: true,
+      leftMs: FILE_IDLE_MS,
+    });
     expect(mocks.set).toHaveBeenCalledTimes(1);
+    expect(openedAt()).toBeGreaterThan(earlier);
+  });
+
+  it("only reads the step-up for a tab's clock or another tab's word, saying how long it has left", async () => {
+    const earlier = Date.now() - 10 * 60_000;
+    opened(earlier);
+    const before = mocks.cookies.get(FILE_STEP_UP_COOKIE);
+    const answer = await keepFileOpenAction(SHOP, false);
+    expect(answer.open).toBe(true);
+    const left = answer.open ? answer.leftMs : Number.NaN;
+    // 5 minutes left, less the moment the test took.
+    expect(left).toBeLessThanOrEqual(5 * 60_000);
+    expect(left).toBeGreaterThan(4 * 60_000);
+    expect(mocks.set).not.toHaveBeenCalled();
+    expect(mocks.cookies.get(FILE_STEP_UP_COOKIE)).toBe(before);
+    expect(openedAt()).toBe(earlier);
+
+    // A moment a little ahead (another server's clock): 15 minutes, no more.
+    opened(Date.now() + 30_000);
+    expect(await keepFileOpenAction(SHOP, false)).toEqual({
+      open: true,
+      leftMs: FILE_IDLE_MS,
+    });
+    expect(mocks.set).not.toHaveBeenCalled();
+  });
+
+  it("refuses a slide that isn't true or false, sliding nothing", async () => {
+    opened(Date.now() - 60_000);
+    for (const slide of ["true", 1, null, undefined, { slide: true }]) {
+      expect(
+        await keepFileOpenAction(SHOP, slide as unknown as boolean),
+      ).toEqual({ open: false });
+    }
+    expect(mocks.set).not.toHaveBeenCalled();
   });
 
   it("locks by deleting the cookie, on the team's path", async () => {

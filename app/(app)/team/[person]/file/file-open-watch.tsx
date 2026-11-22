@@ -108,7 +108,7 @@ export function FileOpenWatch({
   }
 
   const closeFromWatch = useEffectEvent((why: FileClose) => close(why));
-  const keepOpen = useEffectEvent(() => actions.keepOpen());
+  const keepOpen = useEffectEvent((slide: boolean) => actions.keepOpen(slide));
   const hold = useEffectEvent((next: boolean) => {
     const active = document.activeElement;
     if (
@@ -135,7 +135,7 @@ export function FileOpenWatch({
     tabs.current = device;
     const stop = watchOpenFile({
       memory: memory.current,
-      keepOpen: () => keepOpen(),
+      keepOpen: (slide) => keepOpen(slide),
       close: (why) => closeFromWatch(why),
       hold: (next) => hold(next),
       page: document,

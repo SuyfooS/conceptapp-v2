@@ -152,7 +152,11 @@ export type RevealHolderAnswer =
       failure: HolderFailure | HolderFileFailure | "stepUp" | "limit";
     };
 
-export type KeepOpenAnswer = { open: boolean };
+/**
+ * Whether the file is still open on this device, and while it is, how long
+ * the server's step-up has left with no activity (15 minutes once slid).
+ */
+export type KeepOpenAnswer = { open: true; leftMs: number } | { open: false };
 
 export type LockAnswer = { ok: true };
 
@@ -162,6 +166,7 @@ export type HolderFileActions = {
   sendCode: () => Promise<SendFileCodeAnswer>;
   confirmCode: (code: string) => Promise<ConfirmFileCodeAnswer>;
   reveal: (field: RevealField) => Promise<RevealHolderAnswer>;
-  keepOpen: () => Promise<KeepOpenAnswer>;
+  /** Sliding the step-up (`slide`) for the person's activity here only. */
+  keepOpen: (slide: boolean) => Promise<KeepOpenAnswer>;
   lock: () => Promise<LockAnswer>;
 };

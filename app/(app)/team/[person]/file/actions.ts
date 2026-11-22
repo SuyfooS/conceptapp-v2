@@ -8,6 +8,7 @@ import {
 } from "@db/employee-files";
 import { REVEAL_FIELDS } from "@domain/employee-file";
 import { phoneTail } from "@domain/employee-file-steps";
+import { FILE_IDLE_MS } from "@domain/file-holders";
 import { normalizeOtpCode } from "@domain/otp";
 import { refresh } from "next/cache";
 import { z } from "zod";
@@ -24,6 +25,7 @@ import type {
 } from "./holder-file-types";
 import {
   fileOpenFor,
+  fileOpenLeft,
   forgetFileOpen,
   keepFileOpen,
   openFileFor,
@@ -189,16 +191,30 @@ export async function revealHolderFieldAction(
 }
 
 /**
- * Activity on the open file: its 15 minutes start again, while it is still
- * open on this device. It never opens one.
+ * Whether the open file is still open on this device, and how long it has
+ * left; it never opens one. Only for the person's activity in the tab that
+ * asks (`slide`: the file opening or shown again, a press or a key, coming
+ * back to it) do its 15 minutes start again. A tab's own clock and another tab's word only
+ * read them, so tabs left alone never keep each other open, and the files
+ * close 15 minutes after the last activity in any tab. Anything but a plain
+ * `slide` true or false is refused.
  */
 export async function keepFileOpenAction(
   business: string,
+  slide: boolean,
 ): Promise<KeepOpenAnswer> {
   const who = await fileHolder(business);
   if ("failure" in who) return { open: false };
+  const sliding = z.boolean().safeParse(slide);
+  if (!sliding.success) return { open: false };
   try {
-    return { open: await keepFileOpen(who.businessId, who.userId) };
+    if (sliding.data) {
+      return (await keepFileOpen(who.businessId, who.userId))
+        ? { open: true, leftMs: FILE_IDLE_MS }
+        : { open: false };
+    }
+    const left = await fileOpenLeft(who.businessId, who.userId);
+    return left === null ? { open: false } : { open: true, leftMs: left };
   } catch (error) {
     logged("keeping a file open failed", error);
     return { open: false };
@@ -209,7 +225,7 @@ export async function keepFileOpenAction(
  * "נעילת התיק", the one lock a screen asks for: the files close on this
  * device for whoever presses it, since closing opens nothing. A file that
  * closes in one tab for any other reason forgets nothing: the step-up goes
- * by itself 15 minutes after the last check.
+ * by itself 15 minutes after the last activity.
  */
 export async function lockFileAction(_business: string): Promise<LockAnswer> {
   try {

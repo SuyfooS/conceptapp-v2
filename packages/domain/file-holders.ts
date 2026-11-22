@@ -54,6 +54,16 @@ export function stepUpFresh(at: number | null, now: number): boolean {
   return since <= FILE_IDLE_MS && since >= -FILE_CLOCK_SKEW_MS;
 }
 
+/**
+ * How long a step-up at `at` still counts at `now`: the 15 minutes less its
+ * age, never more than 15 minutes (a moment a little ahead counts as now);
+ * null once it doesn't count.
+ */
+export function stepUpLeft(at: number | null, now: number): number | null {
+  if (at === null || !stepUpFresh(at, now)) return null;
+  return Math.min(FILE_IDLE_MS, FILE_IDLE_MS - (now - at));
+}
+
 /** When an idle screen locks, from its last activity. */
 export function idleLocksAt(lastActivity: number): number {
   return lastActivity + FILE_IDLE_MS;

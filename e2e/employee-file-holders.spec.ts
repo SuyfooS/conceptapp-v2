@@ -264,8 +264,9 @@ test("a locked file asks for a code again, and the duties only once", async ({
   expect(await stepUp()).toBe(true);
 
   // The tab's own 15 minutes pass, not the server's (only the page's clock
-  // runs ahead): asked, the server says the file is open, so it shows again,
-  // and nothing was forgotten.
+  // runs ahead): asked only to read, since nobody did anything, the server
+  // says the file is open, so it shows again for the time its step-up has
+  // left, and nothing was forgotten.
   const asked = page.waitForResponse(
     (response) =>
       response.request().method() === "POST" &&

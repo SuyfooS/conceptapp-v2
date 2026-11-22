@@ -1,5 +1,6 @@
 "use server";
 
+import { FILE_IDLE_MS } from "@domain/file-holders";
 import type {
   AcknowledgeAnswer,
   ConfirmFileCodeAnswer,
@@ -53,7 +54,7 @@ export async function demoRevealHolderAction(
 }
 
 export async function demoKeepFileOpenAction(): Promise<KeepOpenAnswer> {
-  return { open: true };
+  return { open: true, leftMs: FILE_IDLE_MS };
 }
 
 export async function demoLockFileAction(): Promise<LockAnswer> {

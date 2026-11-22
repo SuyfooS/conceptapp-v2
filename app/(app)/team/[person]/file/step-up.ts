@@ -4,7 +4,7 @@ import {
   FILE_IDLE_MS,
   FILE_STEP_UP_COOKIE,
   FILE_STEP_UP_PATH,
-  stepUpFresh,
+  stepUpLeft,
 } from "@domain/file-holders";
 import { cookies } from "next/headers";
 import { requestOrigin } from "@/app/origin";
@@ -31,13 +31,25 @@ async function stepUpCookieOptions() {
   };
 }
 
+/**
+ * How long the holder's files in the business stay open on this device,
+ * with no activity before then: null while they are closed. Reads the
+ * step-up and never seals it again, so it slides nothing.
+ */
+export async function fileOpenLeft(
+  business: string,
+  holder: string,
+): Promise<number | null> {
+  const value = (await cookies()).get(FILE_STEP_UP_COOKIE)?.value;
+  return stepUpLeft(fileStepUpAt(value, { business, holder }), Date.now());
+}
+
 /** Whether the holder's files in the business are open on this device now. */
 export async function fileOpenFor(
   business: string,
   holder: string,
 ): Promise<boolean> {
-  const value = (await cookies()).get(FILE_STEP_UP_COOKIE)?.value;
-  return stepUpFresh(fileStepUpAt(value, { business, holder }), Date.now());
+  return (await fileOpenLeft(business, holder)) !== null;
 }
 
 /** A right code was just taken: the files open for 15 minutes. Actions only. */
@@ -53,9 +65,10 @@ export async function openFileFor(
 }
 
 /**
- * Activity on an open file: its 15 minutes start again, for a step-up that
- * is still fresh only, so this never opens anything. Whether it was open.
- * Actions only.
+ * The person's own activity on an open file: its 15 minutes start again,
+ * for a step-up that is still fresh only, so this never opens anything.
+ * Whether it was open. Actions only, and never for a screen's clock or for
+ * another tab's word (`fileOpenLeft`).
  */
 export async function keepFileOpen(
   business: string,

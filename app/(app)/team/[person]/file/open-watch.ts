@@ -1,4 +1,5 @@
 import {
+  FILE_IDLE_MS,
   FILE_TOUCH_EVERY_MS,
   idleLocksAt,
   touchDue,
@@ -11,8 +12,9 @@ import type { KeepOpenAnswer, LockAnswer } from "./holder-file-types";
  * apart from React so it runs against a clock of its own in the tests.
  *
  * 1. Only the server says whether the files are open on this device: its
- *    step-up cookie, which a tab's check (`keepOpen`) slides, and which goes
- *    by itself 15 minutes after the last check from any tab.
+ *    step-up cookie, which only a check for the person's activity in a tab
+ *    slides (`keepOpen(true)`, by point 5), and which goes by itself 15
+ *    minutes after the last.
  * 2. Only a deliberate act closes them on the whole device: "נעילת התיק"
  *    (`closeAndDraw`, `pressed`) or signing out (`closeFilesOnDevice`). Each
  *    tells every tab, which closes its file at once, and forgets the step-up.
@@ -22,15 +24,22 @@ import type { KeepOpenAnswer, LockAnswer } from "./holder-file-types";
  *    This tab's own 15 minutes passing, a page coming back and a screen Next
  *    shows again close nothing by themselves: the server is asked once, the
  *    file hidden meanwhile, and its answer decides.
- * 4. A tab's 15 minutes start again only when its own check answers open,
- *    counted from that answer, which comes after the server's own moment: so
- *    when they pass, the server finds the step-up gone unless another tab
- *    slid it since. A press or a key here, and another tab's word that a file
- *    is in use there, ask the server at most once a minute, one within the
- *    minute kept for its end, never dropped. The word itself extends nothing.
- * 5. A tab says a file is in use only after its own check, for the person's
- *    activity here, answered open. A check for another tab's word or for the
- *    clock says nothing, so no two tabs keep each other open.
+ * 4. A tab's 15 minutes end when the server's do: its own check, answered
+ *    open, says how long the step-up has left (15 minutes once slid, never
+ *    more), counted here from the answer, which comes after the server's own
+ *    moment; so when they pass, the server finds the step-up gone unless
+ *    activity in some tab slid it since. A press or a key here, and another
+ *    tab's word that a file is in use there, ask the server at most once a
+ *    minute, one within the minute kept for its end, never dropped. The word
+ *    itself extends nothing.
+ * 5. Only a check for the person's activity in this tab slides the step-up:
+ *    the file opening, a press or a key, coming back to the page, a screen
+ *    Next shows again. Answered open, it tells the other tabs a file is in
+ *    use. A check for this tab's own clock or for another tab's word only
+ *    reads the step-up, and tells nothing. So tabs left alone never keep
+ *    each other open: the files close on the device 15 minutes after the
+ *    last activity in any tab, a minute more at most for a press kept for
+ *    the minute's end.
  * 6. While the file is hidden for an answer, a line says the server is being
  *    asked (`FileOpenWatch`), and no answer within 10 seconds closes the file
  *    in this tab.
@@ -73,8 +82,12 @@ export type WatchedWindow = Pick<Window, "setTimeout" | "clearTimeout">;
 
 export type OpenFileWatch = {
   memory: OpenFileMemory;
-  /** Asks the server whether the file is still open here, sliding its 15 minutes if so. */
-  keepOpen: () => Promise<KeepOpenAnswer>;
+  /**
+   * Asks the server whether the file is still open here and how long it has
+   * left, sliding its 15 minutes only when `slide`: for the person's
+   * activity in this tab.
+   */
+  keepOpen: (slide: boolean) => Promise<KeepOpenAnswer>;
   /** Called once, as the file closes in this tab; the watch has stopped. */
   close: (why: WatchClose) => void;
   /**
@@ -107,14 +120,16 @@ export function watchOpenFile({
   let stopped = false;
   let listening = false;
   let unhear: (() => void) | null = null;
-  // When this tab's 15 minutes pass, unless a check answers open first.
+  // When this tab's 15 minutes pass: the step-up's end, as the server's last
+  // open answer said (until its first, 15 minutes from now).
   let shownUntil = idleLocksAt(now());
   let timer: number | undefined;
   // The answers still waited for, each by the timer that gives up on it.
   const waits = new Set<number>();
   let lastCheck: number | null = null;
   // The one check kept for the minute's end, and whether it is for activity
-  // here, which the other tabs hear of once it answers open.
+  // here: then it slides the step-up, and the other tabs hear of it once it
+  // answers open.
   let later: number | undefined;
   let laterTells = false;
   // The latest hold: only its own answer shows the file again, and putting
@@ -154,10 +169,12 @@ export function watchOpenFile({
   }
 
   /**
-   * The server asked. Open: this tab's 15 minutes start again from the
-   * answer, the other tabs told if it was for activity here (`tell`, or a
-   * press kept for the minute's end), then `open`. Closed, failed, or no
-   * answer within `KEEP_OPEN_WAIT_MS`: the file closes in this tab.
+   * The server asked, sliding its 15 minutes only for activity here (`tell`,
+   * or a press kept for the minute's end). Open: this tab's 15 minutes end
+   * when the server says the step-up's do, counted from the answer, the
+   * other tabs told if it slid, then `open`. Closed, failed, no answer
+   * within `KEEP_OPEN_WAIT_MS`, or a time left that isn't one: the file
+   * closes in this tab.
    */
   function check(tell: boolean, open?: () => void) {
     const tells = tell || laterTells;
@@ -167,7 +184,7 @@ export function watchOpenFile({
     lastCheck = now();
     let answer: Promise<KeepOpenAnswer>;
     try {
-      answer = keepOpen();
+      answer = keepOpen(tells);
     } catch (error) {
       answer = Promise.reject(error);
     }
@@ -188,7 +205,14 @@ export function watchOpenFile({
           return;
         }
         if (stopped) return;
-        shownUntil = idleLocksAt(now());
+        // Never a fresh 15 minutes on a check that only read the step-up,
+        // and never more than 15 on any.
+        const left = Math.min(kept.leftMs, FILE_IDLE_MS);
+        if (!Number.isFinite(left) || left < 0) {
+          finish("failed");
+          return;
+        }
+        shownUntil = now() + left;
         arm();
         if (tells) tabs.tell({ kind: "active" });
         open?.();
@@ -232,7 +256,10 @@ export function watchOpenFile({
     });
   }
 
-  /** This tab's 15 minutes passed: the server asked once before anything closes. */
+  /**
+   * This tab's 15 minutes passed: the server asked once before anything
+   * closes, sliding nothing unless a press here waits for the minute's end.
+   */
   function lapse() {
     if (page.visibilityState === "visible") lookAgain(false);
     else check(false);

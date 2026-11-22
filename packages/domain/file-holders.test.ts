@@ -9,6 +9,7 @@ import {
   idleLocksAt,
   seesFiles,
   stepUpFresh,
+  stepUpLeft,
   touchDue,
 } from "./file-holders";
 
@@ -77,6 +78,18 @@ describe("a step-up", () => {
     expect(stepUpFresh(Number.NaN, NOW)).toBe(false);
     expect(stepUpFresh(NOW + 30_000, NOW)).toBe(true);
     expect(stepUpFresh(NOW + 2 * MINUTE, NOW)).toBe(false);
+  });
+
+  it("says how long it still counts, never more than 15 minutes", () => {
+    expect(stepUpLeft(NOW, NOW)).toBe(FILE_IDLE_MS);
+    expect(stepUpLeft(NOW, NOW + 10 * MINUTE)).toBe(5 * MINUTE);
+    expect(stepUpLeft(NOW, NOW + FILE_IDLE_MS)).toBe(0);
+    expect(stepUpLeft(NOW, NOW + FILE_IDLE_MS + 1)).toBeNull();
+    // A moment a little ahead, from another clock: 15 minutes, no more.
+    expect(stepUpLeft(NOW + 30_000, NOW)).toBe(FILE_IDLE_MS);
+    expect(stepUpLeft(NOW + 2 * MINUTE, NOW)).toBeNull();
+    expect(stepUpLeft(null, NOW)).toBeNull();
+    expect(stepUpLeft(Number.NaN, NOW)).toBeNull();
   });
 
   it("locks 15 minutes after the last activity", () => {
