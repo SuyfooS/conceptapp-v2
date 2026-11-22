@@ -11,10 +11,11 @@ import {
 
 /*
  * The device's tabs told about its open hiring files (profile H6a): a file
- * locked in one tab is heard closed in every other at once, and activity in
- * one is heard in the others, on a BroadcastChannel or, where there is
- * none, through a storage event; never by the tab that told, never on
- * another channel (the twin's), and never with a throw.
+ * locked in one tab is heard closed in every other at once, and a file in
+ * use in one is heard of in the others, which then ask the server, on a
+ * BroadcastChannel or, where there is none, through a storage event; never
+ * by the tab that told, never on another channel (the twin's), never with
+ * more than which of the two it was, and never with a throw.
  */
 
 /** The answers asked for so far, all in. */
@@ -129,25 +130,42 @@ describe("deviceFileTabs", () => {
     expect(a.heard).toEqual([]);
   });
 
-  it("says when a file was last used, and nothing else", async () => {
+  it("says that a file is in use, and nothing else", async () => {
     const phone = device();
     const a = line(phone.tab().win);
     const b = line(phone.tab().win);
-    a.tabs.tell({ kind: "active", at: 1_700_000_000_000 });
+    a.tabs.tell({ kind: "active" });
     await settle();
-    expect(b.heard).toEqual([{ kind: "active", at: 1_700_000_000_000 }]);
+    expect(b.heard).toEqual([{ kind: "active" }]);
+
+    // Where there is no channel: the kind, whose tab it is, and a count.
+    const sent: unknown[] = [];
+    const bare = {
+      addEventListener() {},
+      removeEventListener() {},
+      localStorage: {
+        setItem: (_key: string, value: string) => sent.push(JSON.parse(value)),
+      },
+    } as unknown as TabsWindow;
+    deviceFileTabs(bare).tell({ kind: "active" });
+    expect(sent).toHaveLength(1);
+    expect(Object.keys(sent[0] as object).sort()).toEqual([
+      "from",
+      "kind",
+      "n",
+    ]);
   });
 
   it("tells through a storage event where there is no BroadcastChannel, each time", async () => {
     const phone = device();
     const a = line(phone.tab({ channel: false }).win);
     const b = line(phone.tab({ channel: false }).win);
-    a.tabs.tell({ kind: "active", at: 5 });
+    a.tabs.tell({ kind: "active" });
     a.tabs.tell({ kind: "closed" });
     a.tabs.tell({ kind: "closed" });
     await settle();
     expect(b.heard).toEqual([
-      { kind: "active", at: 5 },
+      { kind: "active" },
       { kind: "closed" },
       { kind: "closed" },
     ]);
@@ -160,16 +178,13 @@ describe("deviceFileTabs", () => {
     const broken = line(phone.tab({ channelThrows: true }).win);
     const today = line(phone.tab().win);
     old.tabs.tell({ kind: "closed" });
-    broken.tabs.tell({ kind: "active", at: 9 });
-    today.tabs.tell({ kind: "active", at: 10 });
+    broken.tabs.tell({ kind: "active" });
+    today.tabs.tell({ kind: "active" });
     await settle();
-    expect(today.heard).toEqual([
-      { kind: "closed" },
-      { kind: "active", at: 9 },
-    ]);
+    expect(today.heard).toEqual([{ kind: "closed" }, { kind: "active" }]);
     // A channel's message reaches channels only: a tab that can't open one
     // hears the storage's (a browser's tabs all have one, or none).
-    expect(old.heard).toEqual([{ kind: "active", at: 9 }]);
+    expect(old.heard).toEqual([{ kind: "active" }]);
     expect(broken.heard).toEqual([{ kind: "closed" }]);
   });
 
@@ -270,22 +285,21 @@ describe("closeFilesOnDevice", () => {
 });
 
 describe("newsOf", () => {
-  it("reads another tab's news, and nothing of its own or of no known shape", () => {
+  it("reads another tab's news by its kind alone, and nothing of its own or of no known kind", () => {
     expect(newsOf({ kind: "closed", from: "b" }, "a")).toEqual({
       kind: "closed",
     });
-    expect(newsOf({ kind: "active", at: 7, from: "b", n: 3 }, "a")).toEqual({
+    expect(newsOf({ kind: "active", from: "b", n: 3 }, "a")).toEqual({
       kind: "active",
-      at: 7,
+    });
+    // An older build's tab sends a moment too: it is left.
+    expect(newsOf({ kind: "active", at: 7, from: "b" }, "a")).toEqual({
+      kind: "active",
     });
     expect(newsOf({ kind: "closed", from: "a" }, "a")).toBeNull();
     expect(newsOf({ kind: "closed" }, "a")).toBeNull();
     expect(newsOf({ kind: "opened", from: "b" }, "a")).toBeNull();
-    expect(newsOf({ kind: "active", from: "b" }, "a")).toBeNull();
-    expect(
-      newsOf({ kind: "active", at: Number.NaN, from: "b" }, "a"),
-    ).toBeNull();
-    expect(newsOf({ kind: "active", at: "7", from: "b" }, "a")).toBeNull();
+    expect(newsOf({ kind: 1, from: "b" }, "a")).toBeNull();
     expect(newsOf("closed", "a")).toBeNull();
     expect(newsOf(null, "a")).toBeNull();
   });

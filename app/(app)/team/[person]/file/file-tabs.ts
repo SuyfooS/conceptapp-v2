@@ -1,14 +1,15 @@
 /*
  * The device's tabs, told about its open hiring files (profile H6a, plan
- * §3.5). The files open on the device, not in a tab (one step-up cookie), so
- * a file locked in one tab, by "נעילת התיק", by its 15 minutes idle or for
- * want of an answer from the server, closes in every other tab at once, and
- * activity on an open file in one tab starts the 15 minutes again in the
- * others, as it slides them on the server. On a BroadcastChannel; where
- * there is none (Safari before 15.4), or it can't be opened, through a
- * storage event, which every other tab of the app hears. A tab never hears
- * itself. Only that a file closed, or when one was last used, travels:
- * never whose file it was, never a value.
+ * §3.5; the rule is in ./open-watch). The files open on the device, not in a
+ * tab (one step-up cookie), so "נעילת התיק" in one tab, or signing out,
+ * closes the file in every other tab at once (`closed`). A tab whose own
+ * check for activity there answered open says a file is in use (`active`),
+ * and the others ask the server whether theirs is still open: the word
+ * itself keeps nothing open. On a BroadcastChannel; where there is none
+ * (Safari before 15.4), or it can't be opened, through a storage event,
+ * which every other tab of the app hears. A tab never hears itself. Only
+ * which of the two happened travels: never whose file, never a moment,
+ * never a value.
  */
 
 /** The app's channel, and the storage key of its fallback. */
@@ -19,10 +20,10 @@ export const FILE_TABS_TWIN_CHANNEL = "conceptapp-file-open-design";
 
 /** What one tab tells the device's others about its open file. */
 export type FileTabNews =
-  /** The files were locked there: every open file on the device is closed. */
+  /** "נעילת התיק" there, or signing out: every open file on the device closes. */
   | { kind: "closed" }
-  /** Activity on an open file there at `at` (ms), which the server was told of. */
-  | { kind: "active"; at: number };
+  /** A file is in use there, and the server just said it is open: ask it too. */
+  | { kind: "active" };
 
 export type FileTabs = {
   /** Tells every other tab of the device. Never throws. */
@@ -42,17 +43,15 @@ export type TabsWindow = Pick<
 };
 
 /**
- * A message from another tab, read: null for one of this tab's own (`self`),
- * or of a shape it doesn't know.
+ * A message from another tab, read: its kind alone, whatever else it holds
+ * (a tab of an older build sends a moment too); null for one of this tab's
+ * own (`self`), or of a kind it doesn't know.
  */
 export function newsOf(data: unknown, self: string): FileTabNews | null {
   if (!data || typeof data !== "object") return null;
-  const { from, kind, at } = data as Record<string, unknown>;
+  const { from, kind } = data as Record<string, unknown>;
   if (typeof from !== "string" || from === self) return null;
-  if (kind === "closed") return { kind };
-  if (kind === "active" && typeof at === "number" && Number.isFinite(at)) {
-    return { kind, at };
-  }
+  if (kind === "closed" || kind === "active") return { kind };
   return null;
 }
 
@@ -150,8 +149,8 @@ export function deviceFileTabs(
  * as a station), which forgot the files' step-up on the server: every open
  * file on the device closes now, in every tab and window, which nothing
  * else would tell a window that is in sight (it asks the server only on a
- * press, a minute after the last, or on coming back). Each locks too, which
- * is harmless. Never throws, so it never stands in the way of signing out.
+ * press, another tab's word, coming back, or its 15 minutes passing). Never
+ * throws, so it never stands in the way of signing out.
  */
 export function closeFilesOnDevice(win: TabsWindow): void {
   try {

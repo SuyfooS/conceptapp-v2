@@ -259,19 +259,31 @@ test("a locked file asks for a code again, and the duties only once", async ({
   await enterAs(page, "accountant");
   await open(page, `/team/${NOA.id}/file`);
   await openFile(page, GALIT.e164);
-  expect(
-    (await context.cookies()).some((cookie) => cookie.name === "ca_file_open"),
-  ).toBe(true);
+  const stepUp = async () =>
+    (await context.cookies()).some((cookie) => cookie.name === "ca_file_open");
+  expect(await stepUp()).toBe(true);
 
+  // The tab's own 15 minutes pass, not the server's (only the page's clock
+  // runs ahead): asked, the server says the file is open, so it shows again,
+  // and nothing was forgotten.
+  const asked = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      response.request().headers()["next-action"] !== undefined,
+  );
+  await page.clock.fastForward("15:01");
+  await asked;
+  await expect(
+    main(page).getByRole("heading", { name: f.sections.identity }),
+  ).toBeVisible();
+  await expect(main(page).getByText(f.locked.title)).toHaveCount(0);
+  expect(await stepUp()).toBe(true);
+
+  // The server's 15 minutes pass too (its cookie gone by itself): the next
+  // look finds the file closed.
+  await context.clearCookies({ name: "ca_file_open" });
   await page.clock.fastForward("15:01");
   await expect(main(page).getByText(f.locked.title)).toBeVisible();
-  await expect
-    .poll(async () =>
-      (await context.cookies()).some(
-        (cookie) => cookie.name === "ca_file_open",
-      ),
-    )
-    .toBe(false);
 
   // A code opens it again, with no duties on the way.
   const code = await sendFileCode(page, f.locked.send, GALIT.e164);

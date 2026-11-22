@@ -1,58 +1,66 @@
-import { idleLocksAt, touchDue } from "@domain/file-holders";
+import {
+  FILE_TOUCH_EVERY_MS,
+  idleLocksAt,
+  touchDue,
+} from "@domain/file-holders";
 import type { FileTabNews, FileTabs } from "./file-tabs";
 import type { KeepOpenAnswer, LockAnswer } from "./holder-file-types";
 
 /*
- * The idle lock of an open hiring file (profile H6a, plan §3.5), apart from
- * React so it runs against a clock of its own in the tests. It fails
- * closed: a file stops showing when its 15 minutes pass with no activity,
- * when the server says it is closed, when another tab of the device locked
- * the files, and also when the server can't be asked (offline, the action
- * failed, or no answer within `KEEP_OPEN_WAIT_MS`), since then nobody knows
- * it is still open. A page put away hides the file at once, and on coming
- * back the server is asked straight away, the file hidden until it says the
- * file is still open: locked in another tab, or signed out there, it never
- * shows again. Next keeps a screen it leaves (hidden in an <Activity>, its
- * state kept, its effects stopped) and shows it again on Back. Stopped, it
- * heard nothing of the device's other screens and tabs, so its own clock
- * decides nothing then: it is hidden before it is drawn until the server,
- * whose 15 minutes every tab's and screen's activity slides, says it is
- * open, whatever time its own last activity was. The files open on the
- * device, so its tabs keep one 15 minutes: each time one slides the
- * server's, the others are told, and their 15 minutes start again, each
- * asking the server in turn at most once a minute (`FileTabs`), so a tab
- * whose step-up is gone (signed out, another person's or business's now)
- * closes rather than staying up on another's activity.
+ * How long an open hiring file shows in a tab (profile H6a, plan §3.5),
+ * apart from React so it runs against a clock of its own in the tests.
+ *
+ * 1. Only the server says whether the files are open on this device: its
+ *    step-up cookie, which a tab's check (`keepOpen`) slides, and which goes
+ *    by itself 15 minutes after the last check from any tab.
+ * 2. Only a deliberate act closes them on the whole device: "נעילת התיק"
+ *    (`closeAndDraw`, `pressed`) or signing out (`closeFilesOnDevice`). Each
+ *    tells every tab, which closes its file at once, and forgets the step-up.
+ * 3. Anything else closes the file in this tab only, telling no other tab
+ *    and forgetting nothing: the server answering closed, a check that fails
+ *    or isn't answered within `KEEP_OPEN_WAIT_MS`, another tab's lock heard.
+ *    This tab's own 15 minutes passing, a page coming back and a screen Next
+ *    shows again close nothing by themselves: the server is asked once, the
+ *    file hidden meanwhile, and its answer decides.
+ * 4. A tab's 15 minutes start again only when its own check answers open,
+ *    counted from that answer, which comes after the server's own moment: so
+ *    when they pass, the server finds the step-up gone unless another tab
+ *    slid it since. A press or a key here, and another tab's word that a file
+ *    is in use there, ask the server at most once a minute, one within the
+ *    minute kept for its end, never dropped. The word itself extends nothing.
+ * 5. A tab says a file is in use only after its own check, for the person's
+ *    activity here, answered open. A check for another tab's word or for the
+ *    clock says nothing, so no two tabs keep each other open.
+ * 6. While the file is hidden for an answer, a line says the server is being
+ *    asked (`FileOpenWatch`), and no answer within 10 seconds closes the file
+ *    in this tab.
  */
 
 /**
  * How long the server's answer is waited for: past it, nobody knows the
- * file is still open, and it closes (`failed`), never left hidden with
- * nothing said.
+ * file is still open, and it closes in this tab (`failed`), never left
+ * hidden with nothing said.
  */
 export const KEEP_OPEN_WAIT_MS = 10_000;
 
-/** Why the watch closes an open file here. */
+/** Why the file closed in this tab, and in this tab only. */
 export type WatchClose =
-  /** 15 minutes passed with no activity on any of the device's open files. */
-  | "idle"
+  /** The server said it is closed: its 15 minutes passed, it was locked, or the step-up is another's now. */
+  | "closed"
   /** The server couldn't say it is still open: offline, the action failed, or no answer came. */
   | "failed"
-  /** The server said it is closed: its step-up gone, or another business's now. */
-  | "closed"
-  /** Another tab of the device locked the files, and said so. */
+  /** Another tab locked the files ("נעילת התיק", or signing out), and said so. */
   | "elsewhere";
 
-/** Why a file closes here: the watch's reasons, or "נעילת התיק" pressed. */
+/** Why a file closes in a tab: the watch's reasons, or "נעילת התיק" pressed there. */
 export type FileClose = WatchClose | "pressed";
 
 /**
  * What an open file's screen keeps while Next hides it and shows it again:
- * the moment of its last activity, null until it first opens. Shown again,
- * that it is set says the screen was shown before, so the file is held
- * until the server answers; the moment itself decides nothing then.
+ * whether it showed the file before. Shown again, the file is held until the
+ * server answers.
  */
-export type OpenFileMemory = { lastActivity: number | null };
+export type OpenFileMemory = { shown: boolean };
 
 /** The page an open file is on: whether it shows, and its presses and keys. */
 export type WatchedPage = Pick<
@@ -60,19 +68,18 @@ export type WatchedPage = Pick<
   "visibilityState" | "addEventListener" | "removeEventListener"
 >;
 
-/** The window, for the timer of the 15 minutes. */
+/** The window, for the timers of the 15 minutes and of the answers. */
 export type WatchedWindow = Pick<Window, "setTimeout" | "clearTimeout">;
 
 export type OpenFileWatch = {
   memory: OpenFileMemory;
-  /** Asks the server whether the file is still open here, sliding its 15 minutes. */
+  /** Asks the server whether the file is still open here, sliding its 15 minutes if so. */
   keepOpen: () => Promise<KeepOpenAnswer>;
-  /** Called once, as the file closes here; the watch has stopped. */
+  /** Called once, as the file closes in this tab; the watch has stopped. */
   close: (why: WatchClose) => void;
   /**
-   * Hides the file (true) while the page is put away and until the server,
-   * asked as it comes back, says the file is still open; shows it (false)
-   * then.
+   * Hides the file (true) while the page is put away or the server is asked
+   * on coming back; shows it (false) when the server answers open.
    */
   hold: (held: boolean) => void;
   page: WatchedPage;
@@ -83,23 +90,9 @@ export type OpenFileWatch = {
 };
 
 /**
- * Watch an open file while its screen shows, and return the stop for when
- * it hides or goes. As it opens it asks the server to keep the file open
- * (`keepOpen`, which also slides the server's 15 minutes), and again on a
- * press or a key at most once a minute, telling the device's other tabs
- * each time; a press or a key also starts the 15 minutes again, and so does
- * another tab's activity, which asks the server too, at most once a minute,
- * telling nobody back. Put away, the file is held (hidden); back, or shown
- * again by Next, it is held until the server, asked at once, says it is
- * open, and its 15 minutes start then, as the server's did, the other tabs
- * told. It calls `close` once, and stops: the 15 minutes passed (by the
- * timer, on a press or key after them, or on coming back to the page after
- * them, a clock that heard the other tabs throughout), the server answered
- * closed, its answer failed or didn't come within `KEEP_OPEN_WAIT_MS`, or
- * another tab locked the files. A screen shown again is never closed by its
- * own clock, which heard nothing while it was hidden: the server decides.
- * An answer that comes after the stop is left for the next start, which
- * asks again.
+ * Watch an open file while its screen shows, by the rule above, and return
+ * the stop for when it hides or goes. An answer that comes after the stop is
+ * left for the next start, which asks again.
  */
 export function watchOpenFile({
   memory,
@@ -114,21 +107,25 @@ export function watchOpenFile({
   let stopped = false;
   let listening = false;
   let unhear: (() => void) | null = null;
+  // When this tab's 15 minutes pass, unless a check answers open first.
+  let shownUntil = idleLocksAt(now());
   let timer: number | undefined;
   // The answers still waited for, each by the timer that gives up on it.
   const waits = new Set<number>();
-  let lastTouch: number | null = null;
-  // The latest look at the server on coming back: only its answer shows
-  // the file again, and putting the page away makes any other stale.
+  let lastCheck: number | null = null;
+  // The one check kept for the minute's end, and whether it is for activity
+  // here, which the other tabs hear of once it answers open.
+  let later: number | undefined;
+  let laterTells = false;
+  // The latest hold: only its own answer shows the file again, and putting
+  // the page away makes any other stale.
   let look = 0;
-
-  function lastActivity(): number {
-    return memory.lastActivity ?? now();
-  }
+  let held = false;
 
   function stop() {
     stopped = true;
     win.clearTimeout(timer);
+    win.clearTimeout(later);
     for (const wait of waits) win.clearTimeout(wait);
     waits.clear();
     unhear?.();
@@ -148,18 +145,26 @@ export function watchOpenFile({
 
   function arm() {
     win.clearTimeout(timer);
-    timer = win.setTimeout(
-      () => finish("idle"),
-      Math.max(0, idleLocksAt(lastActivity()) - now()),
-    );
+    timer = win.setTimeout(lapse, Math.max(0, shownUntil - now()));
+  }
+
+  function holdFile(next: boolean) {
+    held = next;
+    hold(next);
   }
 
   /**
-   * The server asked whether the file is still open here; `open` if so. An
-   * answer that doesn't come within `KEEP_OPEN_WAIT_MS` closes the file as
-   * one that failed would, so a file held for it never stays hidden.
+   * The server asked. Open: this tab's 15 minutes start again from the
+   * answer, the other tabs told if it was for activity here (`tell`, or a
+   * press kept for the minute's end), then `open`. Closed, failed, or no
+   * answer within `KEEP_OPEN_WAIT_MS`: the file closes in this tab.
    */
-  function ask(open?: () => void) {
+  function check(tell: boolean, open?: () => void) {
+    const tells = tell || laterTells;
+    win.clearTimeout(later);
+    later = undefined;
+    laterTells = false;
+    lastCheck = now();
     let answer: Promise<KeepOpenAnswer>;
     try {
       answer = keepOpen();
@@ -178,8 +183,15 @@ export function watchOpenFile({
     answer.then(
       (kept) => {
         answered();
-        if (!kept?.open) finish("closed");
-        else if (!stopped) open?.();
+        if (!kept?.open) {
+          finish("closed");
+          return;
+        }
+        if (stopped) return;
+        shownUntil = idleLocksAt(now());
+        arm();
+        if (tells) tabs.tell({ kind: "active" });
+        open?.();
       },
       () => {
         answered();
@@ -188,92 +200,66 @@ export function watchOpenFile({
     );
   }
 
-  /** Activity here: the server and the other tabs told, at most once a minute. */
-  function touch(at: number) {
-    if (!touchDue(lastTouch, at)) return;
-    lastTouch = at;
-    tabs.tell({ kind: "active", at });
-    ask();
+  /** Activity, here (`tell`) or in another tab: the server asked now, or at the minute's end. */
+  function due(tell: boolean) {
+    const at = now();
+    if (touchDue(lastCheck, at)) {
+      check(tell);
+      return;
+    }
+    laterTells ||= tell;
+    if (later !== undefined) return;
+    later = win.setTimeout(
+      () => check(false),
+      (lastCheck ?? at) + FILE_TOUCH_EVERY_MS - at,
+    );
   }
 
-  /** Put away: the file hidden, and any look already asked for stale. */
+  /** Put away: the file hidden, and any answer already asked for stale. */
   function putAway() {
     look += 1;
-    hold(true);
+    holdFile(true);
   }
 
-  /**
-   * Back, or shown again: the file hidden until the server, asked now, says
-   * it is open. Its 15 minutes then start from the answer, as the server's
-   * did when it was asked, and the device's other tabs are told, as they
-   * are of every slide.
-   */
-  function lookAgain() {
+  /** The file hidden until the server, asked now, answers open. */
+  function lookAgain(tell: boolean) {
     look += 1;
     const mine = look;
-    hold(true);
-    lastTouch = now();
-    ask(() => {
-      if (mine !== look) return;
-      const at = now();
-      memory.lastActivity = at;
-      arm();
-      tabs.tell({ kind: "active", at });
-      hold(false);
+    win.clearTimeout(timer);
+    holdFile(true);
+    check(tell, () => {
+      if (mine === look) holdFile(false);
     });
   }
 
+  /** This tab's 15 minutes passed: the server asked once before anything closes. */
+  function lapse() {
+    if (page.visibilityState === "visible") lookAgain(false);
+    else check(false);
+  }
+
   function active() {
-    const at = now();
-    // Back after the 15 minutes: closed before anything else happens.
-    if (at >= idleLocksAt(lastActivity())) {
-      finish("idle");
-      return;
-    }
-    memory.lastActivity = at;
-    arm();
-    touch(at);
+    // Held, the answer it waits for decides.
+    if (held) return;
+    // Past its 15 minutes, its timer held back while the device slept.
+    if (now() >= shownUntil) lookAgain(true);
+    else due(true);
   }
 
   function shown() {
-    if (page.visibilityState !== "visible") {
-      putAway();
-      return;
-    }
-    if (now() >= idleLocksAt(lastActivity())) {
-      finish("idle");
-      return;
-    }
-    lookAgain();
+    if (page.visibilityState === "visible") lookAgain(true);
+    else putAway();
   }
 
   function heard(news: FileTabNews) {
-    if (news.kind === "closed") {
-      finish("elsewhere");
-      return;
-    }
-    // Another tab's activity, never later than now: the device's 15
-    // minutes start again here too, as long as the server, asked at most
-    // once a minute, says this file is still open. Its step-up may be gone
-    // while the other tab's is good (signed out here, or another person's
-    // or business's there): then it closes as the server said, telling
-    // nobody. Not told back: the tab that was active told the others.
-    const at = Math.min(news.at, now());
-    if (at <= lastActivity()) return;
-    memory.lastActivity = at;
-    arm();
-    if (!touchDue(lastTouch, at)) return;
-    lastTouch = at;
-    ask();
+    if (news.kind === "closed") finish("elsewhere");
+    else due(false);
   }
 
-  // Opened now, or shown again by Next: either way the 15 minutes start
-  // now. Shown again, the screen heard nothing of the device's other tabs
-  // and screens while it was hidden, so its own last activity says nothing
-  // of the device's: the file is held, before it is painted, until the
-  // server, which heard them all, says it is open (`lookAgain`).
-  const again = memory.lastActivity !== null;
-  memory.lastActivity = now();
+  // Shown again by Next, the screen heard nothing while it was hidden: the
+  // file is held, before it is painted, until the server answers open.
+  const again = memory.shown;
+  memory.shown = true;
   listening = true;
   page.addEventListener("pointerdown", active);
   page.addEventListener("keydown", active);
@@ -281,20 +267,20 @@ export function watchOpenFile({
   unhear = tabs.hear(heard);
   arm();
   if (page.visibilityState !== "visible") putAway();
-  else if (again) lookAgain();
-  else touch(now());
+  else if (again) lookAgain(true);
+  else check(true);
   return stop;
 }
 
 /**
- * After a file closed here, which it already shows locked: unless another
- * tab said so already, or the server did, the device's other tabs are told
- * at once (`tell`), before the server answers; the files are locked on the
- * device (`lock`, which forgets the step-up) unless the server said they
- * were closed already; then the screen is drawn again from the server
- * (`draw`). A lock that fails still draws; the screen stays locked.
+ * After a file closed in this tab, which already shows it locked. Only
+ * "נעילת התיק" (`pressed`) closes the files on the whole device: the other
+ * tabs are told at once (`tell`), before the server answers, and the step-up
+ * is forgotten (`lock`). Any other close was this tab's alone, and tells and
+ * forgets nothing. Then the screen is drawn again from the server (`draw`),
+ * even when telling or the lock failed.
  */
-export async function lockAndDraw(
+export async function closeAndDraw(
   why: FileClose,
   {
     tell,
@@ -306,20 +292,16 @@ export async function lockAndDraw(
     draw: () => void;
   },
 ): Promise<void> {
-  // A close the server answered may be another business's step-up now, so
-  // it closes nothing elsewhere; one heard from another tab was told there.
-  if (why !== "closed" && why !== "elsewhere") {
+  if (why === "pressed") {
     try {
       tell();
     } catch {
-      // No other tab could be told: theirs ask the server on their own.
+      // No other tab could be told: each closes when the server says so.
     }
-  }
-  if (why !== "closed") {
     try {
       await lock();
     } catch {
-      // Offline, or the action failed: the screen stays locked all the same.
+      // Offline, or the action failed: this tab stays locked all the same.
     }
   }
   draw();

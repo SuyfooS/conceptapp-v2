@@ -23,15 +23,15 @@ import {
 } from "./file-tabs";
 import type { HolderFileActions } from "./holder-file-types";
 import {
+  closeAndDraw,
   type FileClose,
-  lockAndDraw,
   type OpenFileMemory,
   watchOpenFile,
 } from "./open-watch";
 
 type Watched = Pick<HolderFileActions, "keepOpen" | "lock">;
 
-/** "נעילת התיק" inside the open file: closes it here, as the idle lock does. */
+/** "נעילת התיק" inside the open file: closes it on the whole device. */
 const FileClosing = createContext<(() => void) | null>(null);
 
 /**
@@ -42,27 +42,26 @@ const FileClosing = createContext<(() => void) | null>(null);
 const CHECKING_AFTER_MS = 300;
 
 /**
- * An open file, watched (profile H6a, `watchOpenFile`): as it opens or is
- * shown again it tells the server, and activity on it (a press, a key)
- * tells it again at most once a minute, so its 15 minutes start again. 15
- * minutes with none on any of the device's open files, coming back to it
- * after them, the server saying it is closed, no answer from the server, or
- * another tab locking the files, and the file stops showing here at once
- * (`onClosed`: its place draws the locked card), without waiting for the
- * server; then the device's other tabs are told (`FileTabs`), the files are
- * locked (`lockFileAction`) and the page is drawn again. A page put away
- * hides the file, and coming back to it, or Next showing the screen again,
- * keeps it hidden (invisible, inert) until the server, asked at once, says
- * it is still open, and the focus held in it goes back where it was. While
- * it is hidden for longer than a moment, a quiet line with a spinner says
- * so in its place ("בודקים שהתיק עדיין פתוח"), so the file never just
- * vanishes; an answer that doesn't come closes it within seconds. The watch
- * starts in a layout effect, so a screen Next shows again is hidden before
- * it is painted, whatever its own clock says: the server decides. Opened by
- * a code here (`focusOnOpen`), the focus, which was on the code's boxes,
- * goes to the file's first heading. The twin, which keeps nothing, goes to
- * its locked state instead (`lockedHref`), and its tabs talk among
- * themselves only.
+ * An open file, watched (profile H6a, `watchOpenFile`, whose comment has the
+ * rule): only the server says whether it is open, and only "נעילת התיק" (or
+ * signing out) closes it on the whole device, telling every tab
+ * (`FileTabs`) and forgetting the step-up (`lockFileAction`). Anything else
+ * closes it in this tab only: the server saying it is closed, a check that
+ * fails or gets no answer, another tab's lock. Either way the file stops
+ * showing here at once (`onClosed`: its place draws the locked card),
+ * without waiting for the server, and the page is drawn again. A page put
+ * away hides the file; coming back to it, Next showing the screen again, or
+ * its own 15 minutes passing keep it hidden (invisible, inert) until the
+ * server, asked at once, says it is still open, and the focus held in it
+ * goes back where it was. While it is hidden for longer than a moment, a
+ * quiet line with a spinner says so in its place ("בודקים שהתיק עדיין
+ * פתוח"), so the file never just vanishes; an answer that doesn't come
+ * closes it here within seconds. The watch starts in a layout effect, so a
+ * screen Next shows again is hidden before it is painted. Opened by a code
+ * here (`focusOnOpen`), the focus, which was on the code's boxes, goes to
+ * the file's first heading. The twin, which keeps nothing, goes to its
+ * locked state instead (`lockedHref`), and its tabs talk among themselves
+ * only.
  */
 export function FileOpenWatch({
   actions,
@@ -81,7 +80,7 @@ export function FileOpenWatch({
 }) {
   const router = useRouter();
   const t = useTranslations("app.team.file");
-  const memory = useRef<OpenFileMemory>({ lastActivity: null });
+  const memory = useRef<OpenFileMemory>({ shown: false });
   const closing = useRef(false);
   const tabs = useRef<FileTabs | null>(null);
   const place = useRef<HTMLDivElement>(null);
@@ -98,7 +97,7 @@ export function FileOpenWatch({
     if (closing.current) return;
     closing.current = true;
     onClosed();
-    void lockAndDraw(why, {
+    void closeAndDraw(why, {
       tell: () => tabs.current?.tell({ kind: "closed" }),
       lock: actions.lock,
       draw: () => {
@@ -192,7 +191,7 @@ export function FileOpenWatch({
   );
 }
 
-/** "נעילת התיק": the file closes here at once, and on this device. */
+/** "נעילת התיק": the file closes here at once, and in every tab of the device. */
 export function LockFileButton() {
   const t = useTranslations("app.team.file.lock");
   const close = use(FileClosing);

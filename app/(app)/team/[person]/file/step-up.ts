@@ -66,7 +66,7 @@ export async function keepFileOpen(
   return true;
 }
 
-/** Locked by hand, idle, or on signing out: the files close on this device. */
+/** Locked by hand ("נעילת התיק"), or on signing out: the files close on this device. */
 export async function forgetFileOpen(): Promise<void> {
   (await cookies()).delete({
     name: FILE_STEP_UP_COOKIE,

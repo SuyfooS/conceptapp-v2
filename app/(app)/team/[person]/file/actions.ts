@@ -206,8 +206,10 @@ export async function keepFileOpenAction(
 }
 
 /**
- * "נעילת התיק", and the idle screen's own lock: the files close on this
- * device for whoever presses it, since closing opens nothing.
+ * "נעילת התיק", the one lock a screen asks for: the files close on this
+ * device for whoever presses it, since closing opens nothing. A file that
+ * closes in one tab for any other reason forgets nothing: the step-up goes
+ * by itself 15 minutes after the last check.
  */
 export async function lockFileAction(_business: string): Promise<LockAnswer> {
   try {

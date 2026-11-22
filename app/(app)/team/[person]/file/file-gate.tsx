@@ -246,13 +246,14 @@ export function FileGate({
 /**
  * The file's place on its screen, as the server drew it: the gate (the
  * duties, or locked) or the file itself, watched (`FileOpenWatch`). A file
- * that closes here (15 minutes idle, no answer from the server, "נעילת
- * התיק") shows the locked card at once, without waiting for the server or
- * its network; the server's next drawing, locked, lands on the same card in
- * the same place, so a code already asked for there stays asked for. Once
- * a file was open here, the card that takes its place takes the focus
- * ("התיק נעול" is heard), whatever closed it; a right code there opens the
- * file again, its first heading taking the focus from the code's boxes.
+ * that closes here (the server saying it is closed, no answer from it,
+ * another tab's lock, "נעילת התיק") shows the locked card at once, without
+ * waiting for the server or its network; the server's next drawing lands on
+ * the same card in the same place, even while the file is still open in
+ * another tab, so a code already asked for there stays asked for. Once a
+ * file was open here, the card that takes its place takes the focus ("התיק
+ * נעול" is heard), whatever closed it; a right code there opens the file
+ * again, its first heading taking the focus from the code's boxes.
  */
 export function GatedFile({
   kind,
