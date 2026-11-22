@@ -224,15 +224,16 @@ const departmentName = (key: string) =>
 const orderLine = (n: number) => `a0000000-0000-4000-8000-0000000000f${n}`;
 
 /**
- * Where an order line leads in the order twin: table 4 with its kitchen
- * screen not connected, table 11 as the evening runs, and one's own orders.
+ * Where an order line leads in the order twin, by its order: table 4's with
+ * its kitchen screen not connected, table 11's as the evening runs, and one's
+ * own orders.
  */
 export function orderTwinLead(href: `/${string}`): string | null {
   const base = "/design/order-taking";
-  if (href === `/orders/place/${ORDER_IDS.table4}`) {
+  if (href === `/orders/takeaway/${ORDER_IDS.order4}`) {
     return `${base}/floor/order?place=table-4&state=screenOff`;
   }
-  if (href === `/orders/place/${ORDER_IDS.table11}`) {
+  if (href === `/orders/takeaway/${ORDER_IDS.order11}`) {
     return `${base}/floor/order?place=table-11&state=service`;
   }
   if (href.startsWith("/orders")) return `${base}/mine?state=service`;

@@ -204,24 +204,31 @@ describe("the lines about orders", () => {
     expect(alwaysOnPhone("worker", ["order_taking"])).toEqual([]);
   });
 
-  it("lead to the order at its place, or the takeaway, and only by a real id", () => {
+  it("lead to the order by its id, wherever it is now, and only by a real id", () => {
     for (const kind of ["order.ready", "order.unseen"]) {
-      expect(linkFor(kind, { ...facts, place: PLACE.toUpperCase() })).toBe(
-        `/orders/place/${PLACE}`,
+      // The order's page goes on to its place now: a line written before
+      // the order moved never opens the table it left.
+      expect(linkFor(kind, facts), kind).toBe(`/orders/takeaway/${ORDER}`);
+      expect(linkFor(kind, { ...facts, order: ORDER.toUpperCase() })).toBe(
+        `/orders/takeaway/${ORDER}`,
       );
       expect(linkFor(kind, { ...facts, place: null, takeaway: 12 }), kind).toBe(
         `/orders/takeaway/${ORDER}`,
       );
-      // A place by no real id never leads to the takeaway's screen.
+      // The place the line names is never where it leads.
       expect(linkFor(kind, { ...facts, place: "table-4" })).toBe(
+        `/orders/takeaway/${ORDER}`,
+      );
+      expect(linkFor(kind, { ...facts, order: "../admin", place: PLACE })).toBe(
         "/orders/mine",
       );
       expect(linkFor(kind, { order: "../admin", place: null })).toBe(
         "/orders/mine",
       );
+      expect(linkFor(kind, { place: PLACE })).toBe("/orders/mine");
       expect(linkFor(kind)).toBe("/orders/mine");
-      // Served, the order still opens: the table.
-      expect(linkFor(kind, facts, true)).toBe(`/orders/place/${PLACE}`);
+      // Served, the order still opens.
+      expect(linkFor(kind, facts, true)).toBe(`/orders/takeaway/${ORDER}`);
     }
   });
 

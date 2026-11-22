@@ -3,6 +3,14 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-22 · nightly run · an order's notice opens the order where it is now
+
+- Guessed: Orel left no work (no `orel`, `question` or `urgent` issue). What merged since the last run is waiter mode P5 to P8b and the demo switch, Orel's own work of the last days, and his PR #218 (the hiring file, open when the run began, merged during it) was not touched; this branch was rebased on it. So the smallest item from "תקלות ידועות": 56, a "מוכן" or "המסך לא מחובר" line written before its order moved tables opened the table it left (or a newer order there).
+- `linkFor` (`packages/domain/notifications.ts`): `order.ready` and `order.unseen` lead by the order's id to `/orders/takeaway/<order>`, which already goes on to the order's place now, the takeaway itself, or the till once it closed (as "ההזמנות שלי" does). The place in the line is no longer read; no real order id still leads to `/orders/mine`. The line's words still name the old table (ROADMAP 56 says so).
+- Tests: the unit test fails on the old code and passes now; the e2e flows still end on `/orders/place/…` after the redirect. The /design twin maps the new links to the same mock screens. Security review: nothing held (an off-shift waiter now sees a table order's page as a takeaway's does, already the case for takeaways).
+- Restore point: branch `backup/before-night-2026-11-22` at `5a15077` (the tag push was cut off).
+- Next: the hiring file's H5 and H6 with Orel, then the small fixes, real SMS sign-in and the P9 preparation, in his order of 21.11. Defaults applied: none.
+
 ## 2026-11-21 · chat · the hiring file in the database (profile H4, #82)
 
 - On chat/hiring-file-db from origin/main 7fe690b (waiter mode P1 to P8 merged). The design's §0, §1, §2, §4 and §5's H4 row, Orel's decisions of 8 November on #1, and §6's decision 4 answered א (a manager helps on the worker's own phone; what can't be done in the app goes on paper and a holder marks it "נמסר ישירות לשכר"). No screen: H5 is the worker's `/me/file`, H6 the owner's and accountant's view, H7 Form 101, H8 retention.
