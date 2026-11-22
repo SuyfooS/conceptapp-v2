@@ -39,6 +39,7 @@ import { NoticeSheet } from "./notice-sheet";
 import { AddressStep } from "./steps/address-step";
 import {
   type BankPreset,
+  type BankScreen,
   BankStep,
   bankHeld,
   useBankScreen,
@@ -73,7 +74,8 @@ const desktop = () => window.matchMedia("(min-width: 80rem)").matches;
  * its details are in (`sendBlocker`): until then the send action leads to
  * the first one still open, and on a desktop, with that one on screen
  * already, does its own action instead (it saves, sends the code, or says
- * what is missing and goes there). Also drawn by the twin on
+ * what is missing and goes there), showing its save on its way, and none
+ * while the code's boxes are up (`SummaryFoot`). Also drawn by the twin on
  * /design/shell/me/file.
  */
 export function FileFlow({
@@ -114,9 +116,12 @@ export function FileFlow({
   const [sendFailure, setSendFailure] = useState<FileActionFailure | null>(
     null,
   );
-  // The account's step keeps its phase and hold here: a desktop's summary
-  // offers what its own action does now.
+  // The account's step keeps where it stands here, its phase with what the
+  // phase shows: drawn again after the done screen, it opens as it was,
+  // and a desktop's summary offers what its own action does now.
   const bank = useBankScreen(data, preset?.bank);
+  // Each step's save on its way (`stepPending`): the summary shows it too.
+  const [busy, setBusy] = useState<Kit["busy"]>({});
 
   const states = fileStepStates({
     addressForm: data.addressForm,
@@ -206,8 +211,9 @@ export function FileFlow({
     say: (message) => setToast({ message, stamp: Date.now().toString() }),
     openNotice: () => setNotice(true),
     form: formArg(data.addressForm),
+    busy,
+    setBusy: (s, on) => setBusy((was) => ({ ...was, [s]: on })),
   };
-  const bankHoldWords = useHoldWords(kit, bank.hold);
 
   async function switchLanguage() {
     if (switching) return;
@@ -290,84 +296,6 @@ export function FileFlow({
         ) : null}
       </Card>
     </div>
-  );
-
-  // The step that keeps the file back, on screen already: the summary does
-  // what its own action does now, under the same words, rather than lead to
-  // where the person is. The account goes on once it is saved, and waits
-  // with its words in the week after a phone change.
-  const ownAction = (
-    s: (typeof SENT_WITH)[number],
-  ): {
-    label: string;
-    form?: string;
-    onClick?: () => void;
-    disabled?: boolean;
-  } => {
-    switch (s) {
-      case "identity":
-        return { label: t("actions.saveIdentity"), form: formIdOf(s) };
-      case "address":
-        return { label: t("actions.saveAddress"), form: formIdOf(s) };
-      case "pension":
-        return { label: t("actions.savePension"), form: formIdOf(s) };
-      case "bank":
-        return bank.phase === "saved"
-          ? {
-              label: t("actions.continue"),
-              onClick: () => go(nextFileStep("bank") ?? "done"),
-            }
-          : {
-              label: t("bank.confirm"),
-              form: formIdOf(s),
-              disabled: bankHeld(bank.hold, data.today),
-            };
-    }
-  };
-  const own =
-    blocker !== null && blocker === current ? ownAction(blocker) : null;
-  // Under it, why the file waits, or why the account's action does.
-  const summaryNote =
-    blocker === null
-      ? null
-      : own?.disabled && blocker === "bank"
-        ? bankHoldWords
-        : t("actions.sendWaits");
-
-  // The summary's action on a desktop: the send once the details are in;
-  // until then that step's own action, or the way to it. The page's main
-  // action, but on the welcome, whose card holds it.
-  const quiet = current === "welcome";
-  const summaryAction = own ? (
-    <Button
-      size="lg"
-      type={own.form ? "submit" : "button"}
-      form={own.form}
-      onClick={own.onClick}
-      disabled={own.disabled}
-    >
-      <ArrowRight aria-hidden="true" className="rtl:-scale-x-100" />
-      {own.label}
-    </Button>
-  ) : blocker ? (
-    <Button
-      size="lg"
-      variant={quiet ? "secondary" : "primary"}
-      onClick={() => go(blocker)}
-    >
-      <ArrowRight aria-hidden="true" className="rtl:-scale-x-100" />
-      {t(`actions.finish.${blocker}`)}
-    </Button>
-  ) : (
-    <Button
-      size="lg"
-      variant={quiet ? "secondary" : "primary"}
-      loading={sending}
-      onClick={send}
-    >
-      <Send aria-hidden="true" className="rtl:-scale-x-100" />
-      {t("actions.send", { business })}
-    </Button>
   );
 
   return (
@@ -468,15 +396,15 @@ export function FileFlow({
                 </div>
               </div>
               <div className="hidden shrink-0 flex-col gap-3 xl:flex">
-                {summaryAction}
-                {summaryNote ? (
-                  <p className="px-1 text-ink-2 text-sm">{summaryNote}</p>
-                ) : null}
-                {sendWords ? (
-                  <p role="alert" className="px-1 text-danger text-sm">
-                    {sendWords}
-                  </p>
-                ) : null}
+                <SummaryFoot
+                  kit={kit}
+                  bank={bank}
+                  blocker={blocker}
+                  current={current}
+                  sending={sending}
+                  sendWords={sendWords}
+                  onSend={send}
+                />
               </div>
             </aside>
 
@@ -493,12 +421,7 @@ export function FileFlow({
               <StartStep kit={kit} active={step === "start"} />
               <IdentityStep kit={kit} active={step === "identity"} />
               <AddressStep kit={kit} active={step === "address"} />
-              <BankStep
-                kit={kit}
-                active={step === "bank"}
-                screen={bank}
-                preset={preset?.bank}
-              />
+              <BankStep kit={kit} active={step === "bank"} screen={bank} />
               <PensionStep kit={kit} active={step === "pension"} />
               <Form101Step
                 kit={kit}
@@ -532,6 +455,136 @@ export function FileFlow({
       <NoticeSheet open={notice} onOpenChange={setNotice} business={business} />
       <StatusToast message={toast?.message ?? null} stamp={toast?.stamp} />
     </PageBody>
+  );
+}
+
+/** The summary's own action: a step's, under its words, doing what it does. */
+type OwnAction = {
+  label: string;
+  /** The step's form it sends, or what it does. */
+  form?: string;
+  onClick?: () => void;
+  /** The week after a phone change: it waits, with its words under it. */
+  held?: boolean;
+  /** The step's save (or the account's code) on its way. */
+  pending?: boolean;
+};
+
+/**
+ * What the step that keeps the file back, on screen already, offers in the
+ * summary: what its own action does now, under the same words, rather than
+ * a way to where the person is. Its save on its way shows on it, as on the
+ * dock's. The account goes on once it is saved, waits in the week after a
+ * phone change, and offers nothing while the code's boxes are up, as the
+ * dock doesn't: the code confirms itself once its boxes fill.
+ */
+function ownAction(
+  step: (typeof SENT_WITH)[number],
+  kit: Kit,
+  bank: BankScreen,
+): OwnAction | null {
+  const { t, data } = kit;
+  const pending = kit.busy[step] === true;
+  switch (step) {
+    case "identity":
+      return {
+        label: t("actions.saveIdentity"),
+        form: formIdOf(step),
+        pending,
+      };
+    case "address":
+      return { label: t("actions.saveAddress"), form: formIdOf(step), pending };
+    case "pension":
+      return { label: t("actions.savePension"), form: formIdOf(step), pending };
+    case "bank":
+      return bank.phase === "saved"
+        ? {
+            label: t("actions.continue"),
+            onClick: () => kit.go(nextFileStep("bank") ?? "done"),
+          }
+        : bank.phase === "code"
+          ? null
+          : {
+              label: t("bank.confirm"),
+              form: formIdOf(step),
+              held: bankHeld(bank.hold, data.today),
+              pending,
+            };
+  }
+}
+
+/**
+ * The foot of a desktop's summary: the page's one main action, and under it
+ * why the file waits (or why the account's action does) and a send refused.
+ * The send once the details are in; until then the open step's own action
+ * when it is on screen already (`ownAction`), or the way to it. Quiet on the
+ * welcome, whose card holds the main action.
+ */
+export function SummaryFoot({
+  kit,
+  bank,
+  blocker,
+  current,
+  sending,
+  sendWords,
+  onSend,
+}: {
+  kit: Kit;
+  bank: BankScreen;
+  blocker: (typeof SENT_WITH)[number] | null;
+  current: FileStep | "welcome" | "done";
+  sending: boolean;
+  sendWords: string | null;
+  onSend: () => void;
+}) {
+  const { t, data } = kit;
+  const holdWords = useHoldWords(kit, bank.hold);
+  const quiet = current === "welcome";
+  const onScreen = blocker !== null && blocker === current;
+  const own = onScreen ? ownAction(blocker, kit, bank) : null;
+  const note =
+    blocker === null ? null : own?.held ? holdWords : t("actions.sendWaits");
+  return (
+    <>
+      {own ? (
+        <Button
+          size="lg"
+          type={own.form ? "submit" : "button"}
+          form={own.form}
+          onClick={own.onClick}
+          disabled={own.held}
+          loading={own.pending}
+        >
+          <ArrowRight aria-hidden="true" className="rtl:-scale-x-100" />
+          {own.label}
+        </Button>
+      ) : onScreen ? null : blocker ? (
+        <Button
+          size="lg"
+          variant={quiet ? "secondary" : "primary"}
+          onClick={() => kit.go(blocker)}
+        >
+          <ArrowRight aria-hidden="true" className="rtl:-scale-x-100" />
+          {t(`actions.finish.${blocker}`)}
+        </Button>
+      ) : (
+        <Button
+          size="lg"
+          variant={quiet ? "secondary" : "primary"}
+          loading={sending}
+          onClick={onSend}
+        >
+          <Send aria-hidden="true" className="rtl:-scale-x-100" />
+          {t("actions.send", { business: data.businessName })}
+        </Button>
+      )}
+      {note ? <p className="px-1 text-ink-2 text-sm">{note}</p> : null}
+      {sendWords ? (
+        <p role="alert" className="px-1 text-danger text-sm">
+          {sendWords}
+        </p>
+      ) : null}
+    </>
   );
 }
 

@@ -6,7 +6,8 @@
 -- owner, never an accountant's); the sealed values checked; the data key
 -- made once; the bank, a new account or one withdrawn, behind a fresh code,
 -- never in the week after a phone change (and that week read on its own,
--- before a code goes), every new account waiting for a holder; the 101 due again when a detail is replaced; youth_until from the
+-- before a code goes, its day in the business's zone), every new account
+-- waiting for a holder; the 101 due again when a detail is replaced; youth_until from the
 -- birth date, and payroll's birth date closed once the file holds one and
 -- takes writes; nothing written for what is stored
 -- already; the contact, the sending, the bank's confirmation and dispute,
@@ -14,7 +15,7 @@
 -- file, a key or the log. Every write at 10:00 on 26 November 2026 in
 -- Israel. Fixed ids (f2…), numbers (050-075-xxxx) and slugs (efw-…).
 begin;
-select plan(96);
+select plan(97);
 
 -- A: 1 its owner, 2 a manager holding the files who confirmed the duties,
 -- 3 Noa and 4 Yoav, workers, 5 the accountant, 6 a worker who left, 7 a
@@ -98,6 +99,18 @@ begin
 exception when others then
   get stacked diagnostics code = returned_sqlstate, why = pg_exception_hint;
   return code || case when coalesce(why, '') = '' then '' else ':' || why end;
+end;
+$$;
+-- The refusal's DETAIL (a phone_hold's day), or null when nothing refused.
+create function pg_temp.refused_on(query text) returns text language plpgsql as $$
+declare
+  said text;
+begin
+  execute query;
+  return null;
+exception when others then
+  get stacked diagnostics said = pg_exception_detail;
+  return said;
 end;
 $$;
 -- An account as the person's own write sends it.
@@ -270,6 +283,20 @@ select is(
 select is(
   public.bank_change_hold(pg_temp.a(), pg_temp.p(3), pg_temp.at() + interval '4 days'),
   null::jsonb, 'and nothing once it has, as the write measures it');
+-- A week ending between midnight and 02:00 in Israel, on another date in
+-- UTC: its day there, the one the write's refusal names, with the session
+-- in UTC so a day read without the business's zone would differ.
+set local timezone = 'UTC';
+update private.phone_changes set changed_at = '2026-11-24 00:30+02'::timestamptz
+where user_id = pg_temp.p(3);
+select is(
+  array[
+    public.bank_change_hold(pg_temp.a(), pg_temp.p(3), pg_temp.at()) ->> 'opens_on',
+    pg_temp.refused_on($$select pg_temp.set(3, 3, pg_temp.bank('valid'))$$)
+  ],
+  array['2026-12-01', '2026-12-01'],
+  'the day in Israel, not in UTC (22:30 UTC on the 30th), as the refusal names it');
+reset timezone;
 update private.phone_changes set changed_at = pg_temp.at() - interval '8 days'
 where user_id = pg_temp.p(3);
 select is(pg_temp.try($$select pg_temp.set(3, 3, pg_temp.bank('valid'))$$), 'ok',

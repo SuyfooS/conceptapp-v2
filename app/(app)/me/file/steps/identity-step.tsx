@@ -42,6 +42,7 @@ import {
   Reason,
   StepDock,
   showFirstProblem,
+  stepPending,
   useDay,
 } from "../flow-kit";
 import { documentChanged } from "../flow-rules";
@@ -105,7 +106,7 @@ export function IdentityStep({ kit, active }: { kit: Kit; active: boolean }) {
   const [birthLeft, setBirthLeft] = useState(false);
   const [expiresLeft, setExpiresLeft] = useState(false);
   const [tried, setTried] = useState(false);
-  const [pending, setPending] = useState(false);
+  const [pending, setPending] = stepPending(kit, "identity");
   const [failure, setFailure] = useState<FileActionFailure | null>(null);
   // A change that makes this year's 101 due again: said, and the step stays.
   const [changeDueBy, setChangeDueBy] = useState<string | null>(null);

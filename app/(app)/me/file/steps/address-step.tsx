@@ -32,6 +32,7 @@ import {
   Reason,
   StepDock,
   showFirstProblem,
+  stepPending,
   useDay,
 } from "../flow-kit";
 
@@ -82,7 +83,7 @@ export function AddressStep({ kit, active }: { kit: Kit; active: boolean }) {
   const [zipLeft, setZipLeft] = useState(false);
   const [mail, setMail] = useState(data.email ?? "");
   const [tried, setTried] = useState(false);
-  const [pending, setPending] = useState(false);
+  const [pending, setPending] = stepPending(kit, "address");
   const [failure, setFailure] = useState<FileActionFailure | null>(null);
   // A move that makes this year's 101 due again: said, and the step stays,
   // with what that save sent.

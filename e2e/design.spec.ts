@@ -5582,8 +5582,9 @@ test("the file demo reads the same in each device's shape", async ({
 // On a desktop the step that keeps the file back is on screen already: the
 // summary's accent action does what that step's own does, so a press always
 // shows something (H5a's check of the second review): it says what is
-// missing and goes there, sends the code, goes to the code's boxes while
-// they are up, and goes on once the account is in.
+// missing and goes there, sends the code, offers nothing while the code's
+// boxes are up (as the dock doesn't: the code confirms itself), and goes on
+// once the account is in (H5a's last check).
 test("the file demo's summary does the open step's own action on a desktop", async ({
   page,
 }, testInfo) => {
@@ -5616,10 +5617,11 @@ test("the file demo's summary does the open step's own action on a desktop", asy
   await own.click();
   const code = page.getByLabel(f.bank.code.label);
   await expect(code).toBeVisible();
-  // Pressed with the boxes up: to them, the digits kept, no other code.
+  // With the boxes up, no press named for a confirmation that only moves
+  // the focus: why the file waits is said, and the digits stay.
   await code.pressSequentially("12");
-  await own.click();
-  await expect(code).toBeFocused();
+  await expect(own).toHaveCount(0);
+  await expect(summary.getByText(f.actions.sendWaits)).toBeVisible();
   await expect(bank.locator('input[name="code"]')).toHaveValue("12");
 
   await code.pressSequentially("3456");

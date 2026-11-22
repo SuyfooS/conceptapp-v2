@@ -27,6 +27,7 @@ import {
   Reason,
   StepDock,
   showFirstProblem,
+  stepPending,
   useDay,
 } from "../flow-kit";
 
@@ -57,7 +58,7 @@ export function PensionStep({ kit, active }: { kit: Kit; active: boolean }) {
     stored === "later" ? LATER : isPensionFund(storedFund) ? storedFund : null,
   );
   const [tried, setTried] = useState(false);
-  const [pending, setPending] = useState(false);
+  const [pending, setPending] = stepPending(kit, "pension");
   const [failure, setFailure] = useState<FileActionFailure | null>(null);
 
   const due = pensionDue(data.pensionDueOn, data.today);

@@ -1,7 +1,11 @@
+import { BANK_INSTRUCTION_VERSION } from "@domain/employee-file";
+import { fileStepStates, type SENT_WITH } from "@domain/employee-file-steps";
+import { formArg } from "@domain/profile";
 import { createElement, type ReactElement } from "react";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { Kit } from "./flow-kit";
+import type { BankScreen, BankScreenState } from "./steps/bank-step";
 
 // The worker's own file drawn whole (profile H5a), on the server as a page
 // first is: every state of Noa's twin, at every step and done, in Hebrew
@@ -21,8 +25,10 @@ vi.mock("next/link", () => ({
 
 const { NextIntlClientProvider, createTranslator, useTranslations } =
   await import("next-intl");
-const { FileFlow } = await import("./file-flow");
-const { bankHeld, useHoldWords } = await import("./steps/bank-step");
+const { FileFlow, SummaryFoot } = await import("./file-flow");
+const { BankStep, bankHeld, bankToSend, useHoldWords } = await import(
+  "./steps/bank-step"
+);
 const { FileFrame } = await import("./file-frame");
 const { FileView } = await import("./file-view");
 const { fileMessages } = await import("./file-messages");
@@ -317,14 +323,19 @@ describe("the summary's main action, with the open step on screen", () => {
     expect(own[0]).toContain(ACCENT);
   });
 
-  it("goes to the code's boxes while they are up, and waits with the hold", () => {
+  it("offers nothing while the code's boxes are up, as the dock doesn't, and waits with the hold", () => {
     const missing: string[] = [];
     const code = draw("code", "he", "bank", missing);
-    const asked = buttonWith(code, f.bank.confirm).filter((button) =>
-      button.includes('form="file-bank-form"'),
-    );
-    expect(asked).toHaveLength(1);
-    expect(asked[0]).not.toMatch(DISABLED);
+    // The code confirms itself once its boxes fill: no press named for a
+    // confirmation that only moves the focus, in the summary or the dock,
+    // and no way to where the person is.
+    expect(dockButtons(code)).toHaveLength(0);
+    expect(buttonWith(code, f.bank.confirm)).toHaveLength(0);
+    expect(code).not.toContain(f.actions.finish.bank);
+    // Why the file waits is still said, and the code's own buttons stay.
+    expect(code).toContain(f.actions.sendWaits);
+    expect(buttonWith(code, f.bank.code.resend)).toHaveLength(1);
+    expect(buttonWith(code, f.bank.code.edit)).toHaveLength(1);
     const held = draw("hold", "he", "bank", missing);
     const waiting = buttonWith(held, f.bank.confirm).filter((button) =>
       button.includes('form="file-bank-form"'),
@@ -508,25 +519,7 @@ describe("the week after a phone change, on the screen", () => {
     expect(bankHeld(null, today)).toBe(false);
   });
 
-  function wordsOf(hold: Hold): string {
-    const missing: string[] = [];
-    const html = renderToString(
-      createElement(
-        NextIntlClientProvider,
-        {
-          locale: "he",
-          timeZone: "Asia/Jerusalem",
-          messages: he,
-          onError: (error: Error) => {
-            missing.push(error.message);
-          },
-        } as unknown as Parameters<typeof NextIntlClientProvider>[0],
-        createElement(HoldWords, { hold }),
-      ),
-    );
-    expect(missing).toEqual([]);
-    return html;
-  }
+  const wordsOf = (hold: Hold) => drawHe(createElement(HoldWords, { hold }));
 
   it("says a week ending later today by its time, in the business's zone", () => {
     expect(wordsOf({ day: today, at: `${today}T12:05:00Z` })).toBe(
@@ -542,6 +535,202 @@ describe("the week after a phone change, on the screen", () => {
       `<p>${heT("app.file.bank.phoneHold", { date: "24 בנובמבר 2026" })}</p>`,
     );
     expect(wordsOf(null)).toBe("<p></p>");
+  });
+});
+
+/** Drawn in Hebrew with the app's words, not one of them missing. */
+function drawHe(element: ReactElement): string {
+  const missing: string[] = [];
+  const html = renderToString(
+    createElement(
+      NextIntlClientProvider,
+      {
+        locale: "he",
+        timeZone: "Asia/Jerusalem",
+        messages: he,
+        onError: (error: Error) => {
+          missing.push(error.message);
+        },
+      } as unknown as Parameters<typeof NextIntlClientProvider>[0],
+      element,
+    ),
+  );
+  expect(missing).toEqual([]);
+  return html;
+}
+
+/** The flow's kit on Noa's twin, with the steps' saves on their way as given. */
+function useKit(data: Data, busy: Kit["busy"] = {}): Kit {
+  const t = useTranslations("app.file");
+  return {
+    data,
+    states: fileStepStates({
+      addressForm: data.addressForm,
+      asked: data.asked,
+      missing: data.missing,
+      directGroups: data.file?.direct_groups ?? [],
+      pensionAnswer: data.file?.pension_answer ?? null,
+      form101: data.taxYear
+        ? { status: data.taxYear.status, route: data.taxYear.route }
+        : null,
+    }),
+    actions,
+    t,
+    go: () => {},
+    showLocale: () => {},
+    profileHref: "/me",
+    say: () => {},
+    openNotice: () => {},
+    form: formArg(data.addressForm),
+    busy,
+    setBusy: () => {},
+  };
+}
+
+/**
+ * The account's screen as the flow keeps it, nothing else holding it: the
+ * twin's account typed (Hapoalim, branch 600), its code to the number
+ * ending 0003.
+ */
+function screenOf(over: Partial<BankScreenState>): BankScreen {
+  const typed = fileScreenDemo("code", "he").preset?.bank;
+  if (!typed) throw new Error("an account typed");
+  return {
+    phase: "edit",
+    typed: {
+      value: typed.value,
+      holder: typed.holder,
+      holderName: "",
+      instruction: typed.instruction,
+    },
+    tail: "0003",
+    hold: null,
+    confirmed: null,
+    review: null,
+    set: () => {},
+    ...over,
+  };
+}
+
+/** The account's step on screen, drawn anew from what the flow kept. */
+function Bank({ data, screen }: { data: Data; screen: BankScreen }) {
+  return createElement(BankStep, { kit: useKit(data), active: true, screen });
+}
+
+/** A desktop's summary foot, with its open step on screen. */
+function Foot({
+  data,
+  screen,
+  step,
+  busy,
+}: {
+  data: Data;
+  screen: BankScreen;
+  step: (typeof SENT_WITH)[number];
+  busy: Kit["busy"];
+}) {
+  return createElement(SummaryFoot, {
+    kit: useKit(data, busy),
+    bank: screen,
+    blocker: step,
+    current: step,
+    sending: false,
+    sendWords: null,
+    onSend: () => {},
+  });
+}
+
+// The account's phase is the flow's, with everything it shows (H5a's last
+// check): the done screen draws no step, so an account the step kept itself
+// went there while the flow still held the code's boxes, which then sent no
+// account and were refused as invalid.
+describe("the account's code, left for the done screen and opened again", () => {
+  it("shows the code's boxes over the account they confirm", () => {
+    const missing: string[] = [];
+    // The code asked for, then the done screen: no step is drawn under it.
+    const done = draw("code", "he", "done", missing);
+    expect(missing).toEqual([]);
+    expect(done).toContain(heT("app.file.done.titleLeft", { count: 3 }));
+    expect(done).not.toContain('id="file-bank-form"');
+    expect(done).not.toContain(f.bank.code.label);
+    // The account's step again, drawn anew from what the flow kept.
+    const { data } = fileScreenDemo("stopped", "he");
+    const screen = screenOf({ phase: "code" });
+    const html = drawHe(createElement(Bank, { data, screen }));
+    expect(html).toContain(f.bank.code.label);
+    expect(html).toContain(
+      f.bank.code.sent
+        .replace("<ltr>", '<span dir="ltr">')
+        .replace("{tail}", "0003")
+        .replace("</ltr>", "</span>"),
+    );
+    const line =
+      html.match(
+        /<p class="font-medium text-md">(?:(?!<\/p>)[\s\S])*<\/p>/,
+      )?.[0] ?? "";
+    expect(line).toContain(he.banks["12"]);
+    expect(line).toContain('<span dir="ltr">600</span>');
+    // What the code confirms is that account, never an empty one.
+    expect(bankToSend(screen.typed)).toEqual({
+      bank: 12,
+      branch: 600,
+      account: "100002",
+      holder: "self",
+      instruction: BANK_INSTRUCTION_VERSION,
+    });
+  });
+});
+
+// On a desktop the summary's own action is the open step's, so its save on
+// its way shows on it, as on the dock's, and it can't send it twice (H5a's
+// last check). With the code's boxes up it offers nothing, as the dock.
+describe("the summary's own action", () => {
+  const { data } = fileScreenDemo("stopped", "he");
+
+  it("shows its step's save on its way, and can't send it twice", () => {
+    const screen = screenOf({});
+    for (const [step, words] of [
+      ["identity", f.actions.saveIdentity],
+      ["address", f.actions.saveAddress],
+      ["bank", f.bank.confirm],
+      ["pension", f.actions.savePension],
+    ] as const) {
+      const idle = buttonWith(
+        drawHe(createElement(Foot, { data, screen, step, busy: {} })),
+        words,
+      );
+      expect(idle).toHaveLength(1);
+      expect(idle[0]).toContain(`form="file-${step}-form"`);
+      expect(idle[0]).not.toContain('aria-busy="true"');
+      expect(idle[0]).not.toMatch(DISABLED);
+      const busy: Kit["busy"] = {};
+      busy[step] = true;
+      const saving = buttonWith(
+        drawHe(createElement(Foot, { data, screen, step, busy })),
+        words,
+      );
+      expect(saving).toHaveLength(1);
+      expect(saving[0]).toContain('aria-busy="true"');
+      expect(saving[0]).toMatch(DISABLED);
+      expect(saving[0]).toContain("animate-spin");
+    }
+  });
+
+  it("offers nothing while the code's boxes are up, and says why the file waits", () => {
+    for (const busy of [{}, { bank: true }] satisfies Kit["busy"][]) {
+      const html = drawHe(
+        createElement(Foot, {
+          data,
+          screen: screenOf({ phase: "code" }),
+          step: "bank",
+          busy,
+        }),
+      );
+      expect(html).not.toContain("<button");
+      expect(html).toBe(
+        `<p class="px-1 text-ink-2 text-sm">${f.actions.sendWaits}</p>`,
+      );
+    }
   });
 });
 

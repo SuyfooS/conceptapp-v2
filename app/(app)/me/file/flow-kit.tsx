@@ -41,7 +41,26 @@ export type Kit = {
   openNotice: () => void;
   /** The form of address the ICU selects read: "x" until one is chosen. */
   form: AddressForm;
+  /**
+   * The steps whose save (or the account's code) is on its way, kept by the
+   * flow (`stepPending`): a desktop's summary shows it on its own action.
+   */
+  busy: Partial<Record<FileStep, boolean>>;
+  /** A step's save went, or came back. */
+  setBusy: (step: FileStep, busy: boolean) => void;
 };
+
+/**
+ * A step's save on its way, as `useState` gives it, kept by the flow: the
+ * step's own save, the dock's main action and a desktop's summary all show
+ * it on the button pressed, and none of them can send it twice.
+ */
+export function stepPending(
+  kit: Kit,
+  step: FileStep,
+): [boolean, (pending: boolean) => void] {
+  return [kit.busy[step] === true, (pending) => kit.setBusy(step, pending)];
+}
 
 /** Numbers and dates inside words, left to right (`<ltr>` in the messages). */
 export const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;

@@ -21,6 +21,7 @@ import { useTranslations } from "next-intl";
 import {
   type FormEvent,
   type ReactNode,
+  useCallback,
   useEffect,
   useId,
   useRef,
@@ -47,6 +48,7 @@ import {
   Reason,
   StepDock,
   showFirstProblem,
+  stepPending,
   useDay,
 } from "../flow-kit";
 import { bankBlock } from "../flow-rules";
@@ -74,15 +76,52 @@ export type BankPreset = {
  */
 export type BankHold = { day: string; at: string | null };
 
+/** The account as typed, before its code: what the code's phase sends. */
+export type BankTyped = {
+  value: BankFieldValue;
+  holder: Holder | null;
+  holderName: string;
+  instruction: boolean;
+};
+
+/** Nothing typed yet, or what was typed gone with its save. */
+export const NOTHING_TYPED: BankTyped = {
+  value: EMPTY_BANK,
+  holder: null,
+  holderName: "",
+  instruction: false,
+};
+
+/** An account by its bank, branch and last digits. */
+type ShownAccount = { bank: number; branch: number; masked: string };
+
 /**
- * Where the account stands on screen. The flow keeps it (`useBankScreen`),
- * so a desktop's summary offers what the step's own action does now.
+ * Where the account stands on screen, with everything its phase shows:
+ * what is typed, the number the code went to, the week after a phone
+ * change, and the account just confirmed with what the business will check.
+ * The flow keeps it (`useBankScreen`), since the step is drawn only while
+ * it can be seen (never under the done screen): a phase kept apart from
+ * what it shows outlived it there (the code's boxes over no account). And a
+ * desktop's summary offers what the step's own action does now.
  */
-export type BankScreen = {
+export type BankScreenState = {
   phase: BankPhase;
-  setPhase: (phase: BankPhase) => void;
+  typed: BankTyped;
+  /** The last digits of the number the code goes to. */
+  tail: string | null;
   hold: BankHold | null;
-  setHold: (hold: BankHold | null) => void;
+  /** The account just confirmed, shown until the server's answer has it. */
+  confirmed: ShownAccount | null;
+  review: "new" | "warned" | null;
+};
+
+export type BankScreen = BankScreenState & {
+  /** Changes what is given at once: a phase together with what it shows. */
+  set: (
+    change:
+      | Partial<BankScreenState>
+      | ((was: BankScreenState) => Partial<BankScreenState>),
+  ) => void;
 };
 
 /** Where the account starts: saved when the file holds one, or as the twin opens it. */
@@ -90,14 +129,41 @@ export function useBankScreen(
   data: FileScreenData,
   preset?: BankPreset,
 ): BankScreen {
-  const [phase, setPhase] = useState<BankPhase>(
-    preset?.phase ?? (data.file?.has.bank_account ? "saved" : "edit"),
+  const [state, setState] = useState<BankScreenState>(() => ({
+    phase: preset?.phase ?? (data.file?.has.bank_account ? "saved" : "edit"),
+    typed: preset
+      ? {
+          value: preset.value,
+          holder: preset.holder,
+          holderName: "",
+          instruction: preset.instruction,
+        }
+      : NOTHING_TYPED,
+    tail: preset?.tail ?? data.phoneTail,
+    hold: preset?.heldUntil ? { day: preset.heldUntil, at: null } : null,
+    confirmed: null,
+    review: null,
+  }));
+  const set = useCallback<BankScreen["set"]>(
+    (change) =>
+      setState((was) => ({
+        ...was,
+        ...(typeof change === "function" ? change(was) : change),
+      })),
+    [],
   );
-  const [hold, setHold] = useState<BankHold | null>(
-    preset?.heldUntil ? { day: preset.heldUntil, at: null } : null,
-  );
-  return { phase, setPhase, hold, setHold };
+  return { ...state, set };
 }
+
+/** The account as the server takes it, from what is typed. */
+export const bankToSend = ({ value, holder, holderName }: BankTyped) => ({
+  bank: value.bank,
+  branch: Number(value.branch),
+  account: value.account,
+  holder,
+  ...(holder === "family" ? { holderName } : {}),
+  instruction: BANK_INSTRUCTION_VERSION,
+});
 
 /**
  * Whether a change waits: until the moment it opens when that is known (the
@@ -141,20 +207,20 @@ type Problem =
  * first field it is about. Saved, the account shows by its bank, branch and
  * last digits; "החלפת החשבון" starts again, and "השארת החשבון הנוכחי" goes
  * back to the one saved. While the code's boxes are up, the form's press
- * (Enter in them, or a desktop's summary) goes to them: only "שליחה שוב"
- * sends another code.
+ * (Enter in them) goes to them, and a desktop's summary offers none, as the
+ * dock doesn't: only "שליחת קוד חדש" sends another code. What it stands on
+ * is the flow's (`useBankScreen`), so the step left for the done screen and
+ * opened again shows the code's boxes over the account they confirm.
  */
 export function BankStep({
   kit,
   active,
   screen,
-  preset,
 }: {
   kit: Kit;
   active: boolean;
   /** Where it stands, kept by the flow (`useBankScreen`). */
   screen: BankScreen;
-  preset?: BankPreset;
 }) {
   const { t, data } = kit;
   const tb = useTranslations("banks");
@@ -163,30 +229,17 @@ export function BankStep({
   const holderNameId = useId();
   const form = useRef<HTMLFormElement>(null);
   const file = data.file;
-  const { phase, setPhase, hold, setHold } = screen;
-  const [value, setValue] = useState<BankFieldValue>(
-    preset?.value ?? EMPTY_BANK,
-  );
-  const [holder, setHolder] = useState<Holder | null>(preset?.holder ?? null);
-  const [holderName, setHolderName] = useState("");
-  const [instruction, setInstruction] = useState(preset?.instruction ?? false);
-  const [tail, setTail] = useState<string | null>(
-    preset?.tail ?? data.phoneTail,
-  );
+  const { phase, typed: entered, tail, hold, confirmed, review, set } = screen;
+  const { value, holder, holderName, instruction } = entered;
+  const type = (change: Partial<BankTyped>) =>
+    set((was) => ({ typed: { ...was.typed, ...change } }));
   const [tried, setTried] = useState(false);
-  const [sending, setSending] = useState(false);
+  const [sending, setSending] = stepPending(kit, "bank");
   const [status, setStatus] = useState<CodeSlotsStatus>("idle");
   // The slots send only when they fill up, so after a refusal that isn't the
   // digits' fault they start again, empty.
   const [attempt, setAttempt] = useState(0);
   const [problem, setProblem] = useState<Problem | null>(null);
-  const [review, setReview] = useState<"new" | "warned" | null>(null);
-  // The account just confirmed, shown until the server's answer has it.
-  const [confirmed, setConfirmed] = useState<{
-    bank: number;
-    branch: number;
-    masked: string;
-  } | null>(null);
 
   const bankName = (code: number) => {
     const key = String(code) as Parameters<typeof tb>[0];
@@ -242,7 +295,7 @@ export function BankStep({
     if (holdAt === null) return;
     const timer = window.setTimeout(
       () => {
-        setHold(null);
+        set({ hold: null });
         setProblem((was) =>
           was?.of === "file" && was.failure === "phoneHold" ? null : was,
         );
@@ -250,7 +303,7 @@ export function BankStep({
       Math.max(0, Date.parse(holdAt) - Date.now()),
     );
     return () => window.clearTimeout(timer);
-  }, [holdAt, setHold]);
+  }, [holdAt, set]);
   const ready = block === null && !holderNameError && !held;
   // What keeps the account back, said above its action before it is pressed.
   const blockWords =
@@ -264,16 +317,6 @@ export function BankStep({
             ? t("bank.checkFirst", { keep: t("bank.keep") })
             : null;
   const holdWords = useHoldWords(kit, hold);
-
-  /** The account as the server takes it, from what is typed. */
-  const typedBank = () => ({
-    bank: value.bank,
-    branch: Number(value.branch),
-    account: value.account,
-    holder,
-    ...(holder === "family" ? { holderName } : {}),
-    instruction: BANK_INSTRUCTION_VERSION,
-  });
 
   function said(
     failure: CodeFailure | FileActionFailure,
@@ -292,20 +335,13 @@ export function BankStep({
     );
     if (failure === "phoneHold") {
       // No code goes until it opens: back to the account, held.
-      setHold({ day: opens.opensOn ?? data.today, at: opens.opensAt ?? null });
+      set({
+        hold: { day: opens.opensOn ?? data.today, at: opens.opensAt ?? null },
+        phase: "edit",
+      });
       setStatus("idle");
-      setPhase("edit");
       focusTitle("bank");
     }
-  }
-
-  /** Everything typed goes, and with it what was said about it. */
-  function clearTyped() {
-    setValue(EMPTY_BANK);
-    setHolder(null);
-    setHolderName("");
-    setInstruction(false);
-    setTried(false);
   }
 
   async function askForCode(event?: FormEvent) {
@@ -324,37 +360,42 @@ export function BankStep({
     setSending(true);
     setProblem(null);
     const answer = await kit.actions
-      .sendBankCode({ bank: typedBank() })
+      .sendBankCode({ bank: bankToSend(entered) })
       .catch((): SendCodeAnswer => ({ ok: false, failure: "failed" }));
     setSending(false);
     if (!answer.ok) {
       said(answer.failure, "send", answer);
       return;
     }
-    setTail(answer.tail);
     setStatus("idle");
     setAttempt((n) => n + 1);
-    setPhase("code");
+    set({ tail: answer.tail, phase: "code" });
   }
 
   async function confirm(code: string) {
     setStatus("pending");
     setProblem(null);
     const answer = await kit.actions
-      .confirmBank({ code, bank: typedBank() })
+      .confirmBank({ code, bank: bankToSend(entered) })
       .catch((): ConfirmBankAnswer => ({ ok: false, failure: "failed" }));
     if (answer.ok) {
       setStatus("success");
-      setReview(answer.review);
-      if (check && check.status !== "unusable") {
-        setConfirmed({
-          bank: check.account.bank,
-          branch: check.account.branch,
-          masked: maskedHint(accountHint(check.account.account)),
-        });
-      }
-      clearTyped();
-      setPhase("saved");
+      setTried(false);
+      // Everything typed goes with its save; the account shows saved.
+      set({
+        review: answer.review,
+        ...(check && check.status !== "unusable"
+          ? {
+              confirmed: {
+                bank: check.account.bank,
+                branch: check.account.branch,
+                masked: maskedHint(accountHint(check.account.account)),
+              },
+            }
+          : {}),
+        typed: NOTHING_TYPED,
+        phase: "saved",
+      });
       kit.say(t("saved"));
       // The code's boxes went: the step, saved, takes the focus.
       focusTitle("bank");
@@ -398,10 +439,11 @@ export function BankStep({
       variant="ghost"
       disabled={status === "pending"}
       onClick={() => {
-        clearTyped();
+        // Everything typed goes, and with it what was said about it.
+        set({ typed: NOTHING_TYPED, phase: "saved" });
+        setTried(false);
         setProblem(null);
         setStatus("idle");
-        setPhase("saved");
         focusTitle("bank");
       }}
       className="self-start text-ink-2"
@@ -455,9 +497,7 @@ export function BankStep({
           <Button
             variant="secondary"
             onClick={() => {
-              setPhase("edit");
-              setReview(null);
-              setConfirmed(null);
+              set({ phase: "edit", review: null, confirmed: null });
               setProblem(null);
               // The button goes: the first field of the new account takes
               // the focus.
@@ -493,7 +533,7 @@ export function BankStep({
                 }}
                 banks={banks}
                 value={value}
-                onChange={setValue}
+                onChange={(next) => type({ value: next })}
                 warning={warning}
                 error={unusable ? t("bank.accountInvalid") : null}
                 marked={tried}
@@ -521,7 +561,7 @@ export function BankStep({
                     name={`${formId}-holder`}
                     title={t(`bank.${option}`)}
                     checked={holder === option}
-                    onChange={() => setHolder(option)}
+                    onChange={() => type({ holder: option })}
                     // A press with nobody chosen comes here.
                     aria-invalid={
                       tried && holder === null && at === 0 ? true : undefined
@@ -535,7 +575,9 @@ export function BankStep({
                     id={holderNameId}
                     label={t("bank.holderName")}
                     value={holderName}
-                    onChange={(event) => setHolderName(event.target.value)}
+                    onChange={(event) =>
+                      type({ holderName: event.target.value })
+                    }
                     error={holderNameError}
                     {...(tried && holderNameShort
                       ? { "aria-invalid": true }
@@ -553,7 +595,9 @@ export function BankStep({
                 <input
                   type="checkbox"
                   checked={instruction}
-                  onChange={(event) => setInstruction(event.target.checked)}
+                  onChange={(event) =>
+                    type({ instruction: event.target.checked })
+                  }
                   aria-invalid={tried && !instruction ? true : undefined}
                   className="mt-0.5 size-6 shrink-0 cursor-pointer accent-accent"
                 />
@@ -610,7 +654,7 @@ export function BankStep({
                   variant="ghost"
                   disabled={status === "pending" || status === "success"}
                   onClick={() => {
-                    setPhase("edit");
+                    set({ phase: "edit" });
                     setProblem(null);
                     // The code's boxes go: the account's first field
                     // takes the focus.
