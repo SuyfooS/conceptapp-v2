@@ -147,7 +147,17 @@ ids alone; 30 days after someone sent a round, opened, moved, reopened, closed o
 order, called, made ready or served a ticket, or took back, cancelled or gave a line on the
 house, it forgets who; and it deletes a demo business's orders two days after they opened,
 leaving alone one a reset holds. It never deletes an order of a real business and writes no log
-row. `seed.sql` switches all seven off locally and in CI, and only a demo definition that says
+row.
+`20261126000200_employee_files.sql` (the hiring file, H4) adds an eighth, `audit-guard`, daily at
+02:41 UTC: pure SQL (`private.audit_guard_tick`), with no pg_net and no Vault secret. It checks
+that the activity log is still append-only (its two triggers on, and no update, delete or
+truncate for `service_role`, `authenticated` or `anon`) and that the hiring file's tables are
+still shut (row-level security on, no privilege for those roles, the triggers that keep files
+and keys on), records what it found in `private.audit_guard_runs` (read with the secret key by
+`public.audit_guard_status()`; the console's card is H6's) and raises a warning naming anything
+missing, never an error. It also deletes runs older than 400 days and the counts of refused
+views (`private.file_denials`) older than 2 days.
+`seed.sql` switches all eight off locally and in CI, and only a demo definition that says
 `"scheduledLists": true` (the hosted ones) opens today's lists when it is reset; the tests call
 what the jobs run, at times they choose.
 

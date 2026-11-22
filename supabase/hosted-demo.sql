@@ -58,7 +58,9 @@ begin
   -- switch between businesses (20261110000900_several_businesses.sql). Both
   -- start with last month's hours, the wages from the first of last month and
   -- the details for payroll, with the same cases as there, and both show the
-  -- pay estimate. Both open today's scheduled lists when they are reset
+  -- pay estimate. Both have made-up hiring files ("files"), with the same cases
+  -- as there, the module off and their writes closed until Orel approves the
+  -- screens (tooling/demo-files.test.ts). Both open today's scheduled lists when they are reset
   -- ("scheduledLists": true, 20261110001300_list_schedules.sql), and the
   -- minute job keeps them coming; the local seed's don't.
   insert into private.demo_businesses (business_id, definition)
@@ -78,6 +80,11 @@ begin
         { "user_id": "10000000-0000-4000-a000-000000000105", "case": "none" }
       ] },
       "details": { "since": "2026-03-01", "numbers": 101, "cases": [] },
+      "files": { "cases": [
+        { "user_id": "10000000-0000-4000-a000-000000000104", "case": "emergency" },
+        { "user_id": "10000000-0000-4000-a000-000000000105", "case": "no_bank" },
+        { "user_id": "10000000-0000-4000-a000-000000000105", "case": "form101_missing" }
+      ] },
       "people": [
         { "user_id": "10000000-0000-4000-a000-000000000102", "role": "owner", "name": "אורי הדגמה" },
         { "user_id": "10000000-0000-4000-a000-000000000103", "role": "manager", "name": "שירן הדגמה", "departments": ["floor", "bar"] },
@@ -110,6 +117,14 @@ begin
         { "user_id": "10000000-0000-4000-a000-000000000111", "case": "no_number" },
         { "user_id": "10000000-0000-4000-a000-000000000110", "case": "rest_friday" },
         { "user_id": "10000000-0000-4000-a000-000000000109", "case": "started" }
+      ] },
+      "files": { "cases": [
+        { "user_id": "10000000-0000-4000-a000-000000000108", "case": "bank_new" },
+        { "user_id": "10000000-0000-4000-a000-000000000109", "case": "passport" },
+        { "user_id": "10000000-0000-4000-a000-000000000109", "case": "form101_returned" },
+        { "user_id": "10000000-0000-4000-a000-000000000110", "case": "form101_change_due" },
+        { "user_id": "10000000-0000-4000-a000-000000000110", "case": "emergency" },
+        { "user_id": "10000000-0000-4000-a000-000000000111", "case": "direct_pension" }
       ] },
       "people": [
         { "user_id": "10000000-0000-4000-a000-000000000106", "role": "owner", "name": "מיכל הדגמה" },

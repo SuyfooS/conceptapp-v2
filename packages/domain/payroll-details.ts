@@ -206,6 +206,7 @@ export type DetailsFailure =
   | "numberTaken"
   | "overlap"
   | "unknownPeriod"
+  | "birthInFile"
   | "invalid"
   | "failed";
 
@@ -226,7 +227,10 @@ export function detailsFailureOf(
     case "P0002":
       return /period/i.test(message) ? "unknownPeriod" : "notInTeam";
     case "22023":
-      return /accountant/i.test(message) ? "notStaff" : "invalid";
+      if (/accountant/i.test(message)) return "notStaff";
+      // Once the hiring file holds a birth date, it is the file's (H4).
+      if (/employee file/i.test(message)) return "birthInFile";
+      return "invalid";
     case "23505":
       return "numberTaken";
     case "23P01":

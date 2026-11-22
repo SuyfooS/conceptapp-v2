@@ -190,8 +190,9 @@ select set_eq(
     ('team.edit', null, 'team', 'team.view', true, '{manager}'::text[], false),
     ('manage.view', null, 'manage', null, true, '{manager}'::text[], false),
     ('manage.edit', null, 'manage', 'manage.view', true, '{manager}'::text[], false),
-    ('order_taking.edit', 'order_taking', 'order_taking', null, true, '{manager}'::text[], false)$$,
-  'every permission has its module''s area, or the team''s or the management page''s, what it requires, and a switch per role only in scheduling (R3), the time clock (R4), lists (R5, sending requiring running them, and fixing a closed list requiring nothing since L6b-2), on the team (R6), on the management page (R7) and in taking orders (waiter mode P1)'
+    ('order_taking.edit', 'order_taking', 'order_taking', null, true, '{manager}'::text[], false),
+    ('people.files', 'employee_files', 'employee_files', null, false, '{}'::text[], true)$$,
+  'every permission has its module''s area, or the team''s or the management page''s, what it requires, and a switch per role only in scheduling (R3), the time clock (R4), lists (R5, sending requiring running them, and fixing a closed list requiring nothing since L6b-2), on the team (R6), on the management page (R7) and in taking orders (waiter mode P1); the hiring file''s an owner gives (H4)'
 );
 
 select throws_ok(

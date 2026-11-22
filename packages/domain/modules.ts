@@ -17,6 +17,7 @@ export const MODULE_KEYS = [
   "lists",
   "chat",
   "order_taking",
+  "employee_files",
 ] as const;
 
 export type ModuleKey = (typeof MODULE_KEYS)[number];
@@ -104,6 +105,10 @@ export const PERMISSION_AREAS = [
   "manage",
   "reservations",
   "storefront",
+  // The hiring file's (profile H4): its one key, an owner's to give. Not a
+  // roles screen's area (`MODULE_AREAS` in @domain/role-access): who holds
+  // it is the owner's own switch, on /manage/access in H6.
+  "employee_files",
 ] as const;
 
 export type PermissionArea = (typeof PERMISSION_AREAS)[number];
@@ -461,9 +466,13 @@ export function permissionInUse(
 
 /**
  * What an accountant always holds, and nothing else (`private.accountant_perms`
- * in the database; `modules/permissions.db.test.ts` keeps the two the same).
+ * in the database; `modules/permissions.db.test.ts` keeps the two the same):
+ * pay, and from the hiring file (H4) the files.
  */
-export const ACCOUNTANT_PERMISSIONS: readonly string[] = ["clock.payroll"];
+export const ACCOUNTANT_PERMISSIONS: readonly string[] = [
+  "clock.payroll",
+  "people.files",
+];
 
 /**
  * Whether the viewer holds a permission: an owner holds every one, and anyone

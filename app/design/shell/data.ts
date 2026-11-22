@@ -494,6 +494,21 @@ const demoRow = (
 const DEMO_FIXED_LIST = "00000000-0000-4000-8000-00000000f1a1";
 
 export const demoActivityRows: ActivityRow[] = [
+  // The hiring file (profile H4), as set_employee_details, a refused
+  // employee_file and set_emergency_contact log them: which parts changed,
+  // why a view was refused, whose contact, never a value or a hint.
+  demoRow(147, "2026-11-04T16:10:00+02:00", "noa", "member.emergency", {
+    person: "noa",
+  }),
+  demoRow(146, "2026-11-04T16:05:00+02:00", "yoav", "employee.view_denied", {
+    person: "noa",
+    fields: ["file"],
+    reason: "not_holder",
+  }),
+  demoRow(145, "2026-11-04T16:00:00+02:00", "shiran", "employee.details", {
+    person: "noa",
+    fields: ["identity", "address"],
+  }),
   // Two lines of table 12 fixed (waiter mode P3), as cancel_order_line and
   // comp_order_line log them: the line as it was sent, its quantity and unit
   // price in agorot and never a total, where it went, why, and who sent it.

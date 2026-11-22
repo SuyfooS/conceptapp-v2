@@ -27,6 +27,7 @@ const manifests: ModuleManifest[] = [
   manifest("lists"),
   manifest("chat"),
   manifest("order_taking"),
+  manifest("employee_files"),
 ];
 
 const template = (overrides: Record<string, unknown> = {}) => ({
@@ -100,6 +101,7 @@ describe("validateTemplate", () => {
     fewer.modules.lists = { enabled: false, settings: {} };
     fewer.modules.chat = { enabled: false, settings: {} };
     fewer.modules.order_taking = { enabled: false, settings: {} };
+    fewer.modules.employee_files = { enabled: false, settings: {} };
     expect(() => validateTemplate(tabbed, fewer)).not.toThrow();
   });
 

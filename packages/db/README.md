@@ -35,10 +35,15 @@ through helpers in the `private` schema (not exposed by the Data API):
 | `private.can_read_list_photo(object_name)` | may read that file of the `list-photos` bucket: an item of a list they see (or view as a role that holds `lists.manage`) points at it, in its business, with lists on |
 | `private.chat_reads_from(conversation, person)` | (that person) reads the chat, and from when: one of a private chat's two people while on the staff, the active staff in the team's group from when each came onto the staff this time (`memberships.staff_since`, which moves when someone comes back after leaving or from being an accountant), a live department's members on the staff from when each was added or came back, whichever is later, and moderators (`chat.moderate`) all of every group; null for anyone else, with chat off, and for a view session |
 | `private.can_read_chat_file(object_name)` | may read that file of the `chat-files` bucket: a message of the path's conversation and business points at it (its picture or thumbnail), not removed and its file still kept, and they read that message (`private.reads_chat_message`, no branch for owners, the team or a view session); a name of the wrong shape is false, never an error |
-| `private.is_private_action(action)` | (any user) a log row about chats or documents (`chat.*`, `document.*`), which no view session reads |
+| `private.is_private_action(action)` | (any user) a log row about chats, documents or the hiring file (`chat.*`, `document.*`, `employee.*`), which no view session reads |
 | `private.log_perm(action)` | (any user) the permission a log row is read with besides `manage.view`: its own area's (`clock.edit`, `schedule.edit`, `lists.manage`, `team.view`, `chat.moderate`), `manage.view` for the management page's own families, and null for a family it doesn't name, which no one reads through it (`tooling/log-families.test.ts` makes each family the migrations write name its area) |
 | `private.held_perms()` | the rows (business, permission) of every key they hold as an active member, for a policy's `(business_id, key) in (select …)` |
 | `private.viewed_perms()` | the same for their open view session: what the viewed role holds by role (a role the business named: its own rules, else its base's), every key but pay as the owner, pay only as an accountant |
+| `private.holds_files(business, person)` | (that person) holds `people.files` (`private.holds_perm`: owners always, accountants by their grant, anyone an owner gave it; active members only) |
+| `private.file_ready_holder(business, person)` | (that person) holds the files and confirmed the duties screen in its wording now (`private.file_acknowledgements`) |
+| `private.viewing_business(business)` | has an open view session in the business, as any role: every file read refuses it |
+| `private.keeps_demo_files(business)` | (any user) a demo business whose definition doesn't open its files (`"fileWrites": true`, which no definition says in H4) |
+| `private.file_open_for(business)` | (any user) null when the business takes file writes, else why not: `off`, `demo` (a closed demo) or `not_open` (not a demo while `private.file_settings.real_values` is false) |
 
 Writes to businesses' structure (memberships, modules, invites, templates,
 audit log) go through server code with `SUPABASE_SECRET_KEY`. So do a
@@ -278,7 +283,9 @@ read their own business's rows, each only while they also hold its own area's
 permission (since the roles plan's R7, below; owners and managers by default,
 as before), and so does the team while viewing it as a role that does, but for
 the pay rows (`wage.*`, `payroll.*`): only pay holders read those, and a pay
-holder reads the clock's and the permissions' rows too.
+holder reads the clock's and the permissions' rows too. The hiring file's rows
+(`employee.*`) are read by holders of `people.files` alone, through a side of
+their own, and never by a view session; `member.emergency` is the team's.
 Publishing a week's schedule logs its first day, the number of shifts, whether it
 was the first time, and how many waiting swap requests it ended
 (`activity_log.test.sql`), and, for notifications, whose shifts changed
@@ -1557,7 +1564,11 @@ with the secret key (`setHourlyWage`, refusals read by `wageFailureOf` in
 
 Details for payroll (`20261110000600_payroll_details.sql`, payroll P5),
 reconciled with the hiring file's design: no ID number, address, bank account
-or birth date here. `public.member_payroll_details` (one row per person, the
+or birth date here (they are the hiring file's, below; since H4 its
+`set_payroll_details` takes a birth date while the file holds none or takes no
+writes (the module off, a demo keeping its made-up files, real values not
+open), under the file's lock, and refuses one once the file holds one and takes
+writes: 22023, hint `in_file`). `public.member_payroll_details` (one row per person, the
 table's defaults standing for none) holds the payroll system's number
 (`^[0-9A-Za-z-]{1,20}$`, one person's in a business), the weekly rest day
 (6 Saturday, 5 Friday or 0 Sunday: a day, never a religion), whether the Hours
@@ -1618,6 +1629,110 @@ session and `team_youth`, and writes both with the secret key (refusals read by
 `detailsFailureOf` in `@domain/payroll-details`). Covered by
 `payroll_details.test.sql`, `demo_reset`, `hours_kept`, `wages`, `lists` and
 `rls_enabled`.
+
+The hiring file (`20261126000200_employee_files.sql`, profile H4, #82): what
+a business needs of a worker to pay them, in the database with no screen yet
+(H5 is the worker's, H6 the owner's and the accountant's). The module
+`employee_files` is off in every business, the demos included, and its key
+`people.files` (area `employee_files`) is an owner's to give, never switched
+per role: owners always hold it, accountants by `private.accountant_perms`
+(`{clock.payroll,people.files}`).
+
+- **Tables.** `public.employee_details` (one file per business and person:
+  the legal names, birth date, the ID's kind, country, expiry and hint, the
+  city, the bank's code, branch, hint and holder kind, the instruction's time
+  and wording, `bank_review` (`new`, `warned`, `disputed`), the pension's
+  answer and fund, `direct_groups` ("נמסר ישירות לשכר"), `submitted_at` in
+  the clear; `id_enc`, `id_name_enc` (another document's name, apart),
+  `address_enc`, `email_enc`, `work_language_enc`, `bank_account_enc`,
+  `bank_holder_enc` sealed), `public.employee_tax_years` (each year's 101:
+  `handed_in`, `accepted`, `returned` with a reason, `change_due` with its
+  day, never what changed) and `public.member_emergency_contacts` (sealed
+  `{"name","phone"}`, kept apart so managers needn't hold the files). RLS on,
+  no policy, and every privilege revoked, `service_role`'s included: nothing
+  selects them, every read goes through a logged function. In `private`:
+  `person_keys` (each person's data key wrapped, `kek_id`, `shredded_at`
+  for H8), `file_acknowledgements`, `step_ups`, `phone_changes`,
+  `file_denials`, `file_settings`, `audit_guard_runs`. Keys to the
+  membership `restrict`; a trigger refuses deleting a file or a key but in
+  the purge (`private.refuse_file_record_delete`).
+- **Sealed.** In server code alone (`@db/crypto`): AES-256-GCM, `0x01 ‖ IV
+  12 ‖ tag 16 ‖ ciphertext` with the AAD `ca|v1|<table>|<column>|<business>|<user>`;
+  one data key per business and person, wrapped with the key
+  `EMPLOYEE_DATA_KEKS` names (`id:base64`, the active one
+  `EMPLOYEE_DATA_KEK_ACTIVE`; AAD `ca|dek|<business>|<user>`, 61 bytes),
+  parsed by `parseEmployeeDataKeys` (`./env`), which throws naming the setting,
+  never a value. Without both, every read and write of a file is `keys`
+  before the database, and only the status reads. A trigger
+  (`private.check_file_sealed`, `check_contact_sealed`) refuses any sealed
+  column but `0x01` for someone with a key, or `0x00` (a demo's made-up
+  UTF-8) in a demo business (22023 'Not sealed').
+- **Writes**, with the secret key for `actor`, each refused with the module
+  off (42501 `off`), in a demo that keeps its files (55000 `demo`), and in a
+  business that isn't a demo while real values aren't open (55000
+  `not_open`): `employee_data_key` (the first key offered is kept and comes
+  back), `set_employee_details` (a patch of groups; the person their own, a
+  ready holder the names, birth date and identity, 42501 `own` for the rest,
+  an owner's only an owner, `owner`; an accountant's 22023 `not_staff`; the
+  bank the person's, a new account or the one there withdrawn (`bank: null`),
+  after `note_step_up` within 10 minutes, 55000 `step_up`,
+  used once, never in the 7 days after a phone change, 55000 `phone_hold`
+  with the day it opens as DETAIL; every new account `new`, `warned` when its
+  check warned; a name, ID or address that replaces one makes this year's 101
+  `change_due` 7 days after `change_on`; the birth date writes
+  `member_payroll_details.youth_until`; a constraint's error raised again
+  without its DETAIL, which would print the row), `set_emergency_contact`,
+  `submit_employee_file`, `note_step_up`, `acknowledge_bank` (a holder,
+  never their own, as read: 40001), `dispute_bank_change`, `set_direct_groups`
+  and `set_tax_year_status`. The log names groups and reasons, never a value
+  or a hint (`employee.details`, `employee.tax_year`, `employee.submit`,
+  `employee.bank_ack`, `employee.bank_disputed`, `employee.direct`,
+  `member.emergency`).
+- **Reads**, under the person's own session, security definer and volatile:
+  `employee_file`, `reveal_employee_fields` (`id`, `bank_account`; 30 other
+  people an hour for a holder, counted under an advisory lock per holder and
+  business, so parallel calls can't pass it), `export_employee_files` (ready holders; an
+  unconfirmed account held back; one `employee.export {people, recipient,
+  held}` first), `acknowledge_file_duties` (`employee.ack`),
+  `employee_file_status` (holders the details, `team.view` a count and the
+  101 as in or not: a returned one not in, one due again in; owners left out)
+  and `team_emergency_contacts` (`team.view` or `people.files`, never a
+  view). Who reads a file (`private.file_reader`): a view session never
+  (`viewing`), the person their own in any state (unlogged), then an active
+  holder who confirmed the duties (`employee.view` once a day per person; a
+  reveal every call), else `not_member`, `not_holder` or `ack`. A refusal is
+  returned, never raised, and logged as `employee.view_denied` (20 a day per
+  caller in each business, then one `many` there; none for nobody signed in, the module off, or a
+  person who isn't in the business; someone outside is told `not_member`).
+- **Real values.** `private.file_settings.real_values` stays false until Orel
+  opens it on the production project, after the lawyer:
+  `update private.file_settings set real_values = true, changed_at = now();`.
+- **The log's guard.** The nightly job `audit-guard` (02:41 UTC, off locally)
+  writes `private.audit_guard_runs`: `private.audit_guard_problems()` names a
+  missing or disabled `audit_log_kept`, `audit_log_unchanged` or file "kept"
+  trigger, an update, delete or truncate on the log for `service_role`,
+  `authenticated` or `anon`, and RLS off or any privilege on the file tables
+  and the keys. `public.audit_guard_status()` (secret key; `@db/audit-guard`)
+  gives the newest run, for H6's console card.
+- **Locks.** `private.file_lock` (an advisory lock per business and person)
+  first, then `employee_details`, `member_payroll_details`,
+  `employee_tax_years`, `private.person_keys`, by every writer of a file and
+  by payroll's birth date.
+- **The demo.** `private.seed_demo_files`, last in the reset, gives every
+  active manager and worker of a definition with `"files"` a file of made-up
+  `0x00` values (IDs from the test range, emails at `demo.conceptapp.invalid`,
+  Hapoalim accounts that check valid), with its cases (`no_file`, `no_bank`,
+  `bank_new`, `bank_warned`, `passport`, `direct_pension`,
+  `form101_missing`, `form101_returned`, `form101_change_due`, `emergency`),
+  no log row and no key. The purge deletes the file's rows before the log.
+- **Server.** `@db/employee-files` parses every reply with
+  `@domain/employee-file`'s schemas, opens the sealed values, and seals what a
+  write sends (a sealed group typed again as stored is left out of the
+  person's own write); refusals read by `fileFailureOf`. Covered by
+  `employee_files.test.sql`, `employee_files_writes.test.sql`,
+  `employee_files_demo.test.sql`, `employee-files.db.test.ts` (the real
+  sealing against the database), `payroll_access`, `roles_catalogue`,
+  `rls_enabled` and `roles_manage`.
 
 The pay rules (`20261110000700_pay_rules.sql`, payroll P6). No new table: the
 hours engine is pure code (`@domain/payroll`), and its rules are time clock

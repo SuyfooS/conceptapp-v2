@@ -215,6 +215,11 @@ if a reverted migration reached one, open an `urgent` issue.
   hosted project (C4). No console page or script reads them (the console's storage
   card gets sizes per business from `public.admin_storage`, never a file or a row);
   a test reads only its own rows, locally or in CI.
+- Read anyone's hiring file (profile H4). Never select from `employee_details`,
+  `employee_tax_years`, `member_emergency_contacts` or `private.person_keys` on a
+  hosted project, never print their rows in a log, an issue or a PR, and never
+  hold `EMPLOYEE_DATA_KEKS`: the keys are Orel's, in Vercel only. A test reads
+  only its own rows, with a key of its own, locally or in CI.
 - Contact the pilot restaurant or anyone else outside this repo.
 - Delete the repository, other people's branches, or data outside the dev
   project. Never rewrite published history.

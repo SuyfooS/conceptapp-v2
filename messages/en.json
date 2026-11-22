@@ -2780,7 +2780,8 @@
           "unknownPeriod": "This period no longer exists. Refresh the page.",
           "invalid": "The details weren't saved. Check what is marked.",
           "viewOnly": "In a view the details can't be changed.",
-          "failed": "The details weren't saved. Check the connection and try again."
+          "failed": "The details weren't saved. Check the connection and try again.",
+          "birthInFile": "The birth date is in the employee file now, and is updated there."
         },
         "period": {
           "title": "A period of work: {name}",
@@ -3165,7 +3166,8 @@
         "notifications": "When to remind about availability and clocking out",
         "lists": "When to remind, and when a list is late",
         "chat": "Who writes in the whole team's group",
-        "order_taking": "Who takes orders, and when"
+        "order_taking": "Who takes orders, and when",
+        "employee_files": "What the file asks of the staff"
       },
       "orderFixes": {
         "today": "Today: {takenBack, plural, one {1 take-back} other {# take-backs}}, {cancelled, plural, one {1 cancel} other {# cancels}}, {comped, plural, other {# on the house}}",
@@ -3329,7 +3331,8 @@
             "name": "Fixed the name of {person}",
             "shiftsOff": "{count, plural, one {One shift ahead was} other {# shifts ahead were}} freed in the schedule",
             "swapsOff": "{count, plural, one {One swap request was cancelled} other {# swap requests were cancelled}}",
-            "swapsReopened": "{count, plural, one {One swap request was opened again} other {# swap requests were opened again}}"
+            "swapsReopened": "{count, plural, one {One swap request was opened again} other {# swap requests were opened again}}",
+            "emergency": "Updated {person}'s emergency contact"
           },
           "view_as": {
             "start": "Viewed the app as {role}",
@@ -3440,8 +3443,8 @@
             "restore": "The role {name} was brought back"
           },
           "permission": {
-            "grant": "{perm, select, payroll {Access to hours and pay given} other {Permission given}} {to}",
-            "revoke": "{perm, select, payroll {Access to hours and pay taken back} other {Permission taken back}} {from}",
+            "grant": "{perm, select, payroll {Access to hours and pay given} files {Access to employee files given} other {Permission given}} {to}",
+            "revoke": "{perm, select, payroll {Access to hours and pay taken back} files {Access to employee files taken back} other {Permission taken back}} {from}",
             "to": {
               "role": "{role, select, manager {to managers} worker {to workers} other {to a role}}",
               "person": "to {person}"
@@ -3573,6 +3576,44 @@
             "stationRestart": "Brought the screen “{name}” back after a stop",
             "stationRestartPlain": "Brought a stopped screen back",
             "allDepartments": "Every department"
+          },
+          "employee": {
+            "details": "Updated {fields} in {person}'s file",
+            "detailsPlain": "Updated {person}'s file",
+            "fields": {
+              "names": "the name as on the ID",
+              "birth_date": "the birth date",
+              "identity": "the ID number",
+              "address": "the address",
+              "email": "the email",
+              "work_language": "the language for work instructions",
+              "bank": "the bank account",
+              "pension": "the pension"
+            },
+            "view": "Viewed {fields} of {person}",
+            "viewPlain": "Viewed {person}'s file",
+            "viewFields": {
+              "file": "the file",
+              "id": "the ID number",
+              "bank_account": "the account number"
+            },
+            "viewDenied": "A view of {person}'s file was refused: {reason, select, ack {the rules weren't confirmed yet} viewing {viewing as the ConceptApp team} limit {too many views in an hour} many {and more attempts today} other {no access}}",
+            "viewDeniedPlain": "A view of the files was refused: {reason, select, ack {the rules weren't confirmed yet} viewing {viewing as the ConceptApp team} limit {too many views in an hour} many {and more attempts today} other {no access}}",
+            "submit": "Sent {person}'s file",
+            "taxYear": "Form 101 for {year} of {person}: {status, select, handed_in {handed in} accepted {was accepted} returned {was returned} change_due {an updated form is due} other {mark removed}}",
+            "ack": "Confirmed what may and may not be done with the details, before viewing files",
+            "bankAck": "Confirmed {person}'s new bank account",
+            "bankDisputed": "“I didn't change it” on {person}'s bank account",
+            "direct": "Marked “handed directly to payroll” for {groups} in {person}'s file",
+            "directCleared": "Removed the “handed directly to payroll” mark in {person}'s file",
+            "groups": {
+              "identity": "the ID details",
+              "address": "the address",
+              "bank": "the bank account",
+              "pension": "the pension"
+            },
+            "export": "Downloaded details for payroll from the files: {people, plural, one {one person} other {# people}}, {recipient, select, provider {for whoever does payroll} other {for own use}}",
+            "exportHeld": "{held, plural, one {One bank account waits for confirmation and was left out} other {# bank accounts wait for confirmation and were left out}}"
           }
         }
       },
@@ -6745,6 +6786,10 @@
         "prep": "Preparing",
         "menu": "Menu"
       }
+    },
+    "employee_files": {
+      "name": "Employee file",
+      "description": "What the business needs to pay wages: ID, address, bank account and pension. Kept encrypted, and every view is logged."
     }
   },
   "admin": {

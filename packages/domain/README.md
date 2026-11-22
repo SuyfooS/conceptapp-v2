@@ -7,7 +7,12 @@ availability, hours and overtime maths. Nothing here may import from
 
 The profile's checks (Israeli ID, passports and other documents, banks and
 Masav's account rules, the pasted-number splitter, address) take their rules
-from dated lists: a new source is a new date and a new entry, by PR.
+from dated lists: a new source is a new date and a new entry, by PR. The
+hiring file (`employee-file.ts`, profile H4) builds on them: what a write
+sends, group by group (`employeeDetailsInput`), what of it is sealed and what
+stays plain (`identityParts`, `addressText`, `bankParts`), the emergency
+contact, the database's replies as schemas that fail closed, and its refusals
+(`fileFailureOf`).
 
 Payroll keeps money in whole agorot (`money.ts`), and the minimum wage is a
 dated list too (`minimum-wage.ts`, every figure as published): each April's is

@@ -1,8 +1,8 @@
 -- Payroll details and employment periods (20261110000600_payroll_details.sql):
 -- who sets them (a pay holder, never their own, an owner's only an owner,
 -- never an accountant's; a birth date only an owner or the accountant), that
--- a birth date is never kept (only the 18th birthday, 29 February to 28
--- February), that the log names fields and never a value, that periods never
+-- payroll never keeps a birth date (only the 18th birthday, 29 February to 28
+-- February; the employee file is the one place for it), that the log names fields and never a value, that periods never
 -- overlap, follow joining, leaving and coming back, and leave a holder's own
 -- alone, that a wage can't start before a holder's start and logs the
 -- minimum of the person's age, who reads them, who sees a minor's "until"
@@ -267,12 +267,15 @@ select is(
   0,
   'and never a number, a day or a rest day''s value'
 );
-select ok(
-  not exists (
-    select 1 from information_schema.columns
-    where table_schema in ('public', 'private') and column_name ~ 'birth'
-  ),
-  'no table has a place for a birth date'
+-- Payroll keeps no birth date: the only place for one is the employee file
+-- (H4, 20261126000200_employee_files.sql), read through its functions only.
+select is(
+  (select count(*)::integer from information_schema.columns
+   where table_schema in ('public', 'private') and column_name ~ 'birth'
+     and not (table_schema = 'public' and table_name = 'employee_details'
+              and column_name = 'birth_date')),
+  0,
+  'no table but the employee file has a place for a birth date'
 );
 
 -- c is a minor until 15 April 2027: 16 from 15 April 2025, 17 from 15 April

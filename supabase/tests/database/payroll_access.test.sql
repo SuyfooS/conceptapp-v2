@@ -447,14 +447,14 @@ select ok(
 select pg_temp.sign_in('77000000-0000-4000-a000-00000000000a');
 select is(
   public.my_permissions('77000000-0000-4000-b000-000000000001'),
-  '{chat.announce,chat.moderate,chat.send_documents,clock.edit,clock.payroll,lists.fix,lists.manage,lists.send,manage.edit,manage.view,order_taking.edit,reservations.edit,schedule.edit,schedule.publish,storefront.edit,team.edit,team.view}'::text[],
+  '{chat.announce,chat.moderate,chat.send_documents,clock.edit,clock.payroll,lists.fix,lists.manage,lists.send,manage.edit,manage.view,order_taking.edit,people.files,reservations.edit,schedule.edit,schedule.publish,storefront.edit,team.edit,team.view}'::text[],
   'an owner holds every permission'
 );
 select pg_temp.sign_in('77000000-0000-4000-a000-00000000000d');
 select is(
   public.my_permissions('77000000-0000-4000-b000-000000000001'),
-  '{clock.payroll}'::text[],
-  'an accountant holds pay access alone'
+  '{clock.payroll,people.files}'::text[],
+  'an accountant holds pay access and the hiring files alone (H4)'
 );
 select is(
   public.my_permissions('77000000-0000-4000-b000-000000000002'),
@@ -488,8 +488,8 @@ select is(
 select pg_temp.sign_in('77000000-0000-4000-a000-000000000011');
 select is(
   public.my_permissions('77000000-0000-4000-b000-000000000001'),
-  '{clock.payroll}'::text[],
-  'while a view as an accountant holds pay access'
+  '{clock.payroll,people.files}'::text[],
+  'while a view as an accountant holds pay access and the files'
 );
 reset role;
 

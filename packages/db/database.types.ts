@@ -917,6 +917,177 @@ export type Database = {
           },
         ];
       };
+      employee_details: {
+        Row: {
+          address_enc: string | null;
+          bank_account_enc: string | null;
+          bank_account_hint: string | null;
+          bank_branch: number | null;
+          bank_changed_at: string | null;
+          bank_code: number | null;
+          bank_holder_enc: string | null;
+          bank_holder_kind: string | null;
+          bank_instruction_at: string | null;
+          bank_instruction_version: string | null;
+          bank_review: string | null;
+          birth_date: string | null;
+          business_id: string;
+          city_code: number | null;
+          direct_groups: string[];
+          email_enc: string | null;
+          id_country: string | null;
+          id_enc: string | null;
+          id_expires_on: string | null;
+          id_hint: string | null;
+          id_kind: string | null;
+          id_name_enc: string | null;
+          legal_first_name: string | null;
+          legal_last_name: string | null;
+          pension_answer: string | null;
+          pension_answered_at: string | null;
+          pension_fund: string | null;
+          submitted_at: string | null;
+          updated_at: string;
+          updated_by: string | null;
+          user_id: string;
+          work_language_enc: string | null;
+        };
+        Insert: {
+          address_enc?: string | null;
+          bank_account_enc?: string | null;
+          bank_account_hint?: string | null;
+          bank_branch?: number | null;
+          bank_changed_at?: string | null;
+          bank_code?: number | null;
+          bank_holder_enc?: string | null;
+          bank_holder_kind?: string | null;
+          bank_instruction_at?: string | null;
+          bank_instruction_version?: string | null;
+          bank_review?: string | null;
+          birth_date?: string | null;
+          business_id: string;
+          city_code?: number | null;
+          direct_groups?: string[];
+          email_enc?: string | null;
+          id_country?: string | null;
+          id_enc?: string | null;
+          id_expires_on?: string | null;
+          id_hint?: string | null;
+          id_kind?: string | null;
+          id_name_enc?: string | null;
+          legal_first_name?: string | null;
+          legal_last_name?: string | null;
+          pension_answer?: string | null;
+          pension_answered_at?: string | null;
+          pension_fund?: string | null;
+          submitted_at?: string | null;
+          updated_at?: string;
+          updated_by?: string | null;
+          user_id: string;
+          work_language_enc?: string | null;
+        };
+        Update: {
+          address_enc?: string | null;
+          bank_account_enc?: string | null;
+          bank_account_hint?: string | null;
+          bank_branch?: number | null;
+          bank_changed_at?: string | null;
+          bank_code?: number | null;
+          bank_holder_enc?: string | null;
+          bank_holder_kind?: string | null;
+          bank_instruction_at?: string | null;
+          bank_instruction_version?: string | null;
+          bank_review?: string | null;
+          birth_date?: string | null;
+          business_id?: string;
+          city_code?: number | null;
+          direct_groups?: string[];
+          email_enc?: string | null;
+          id_country?: string | null;
+          id_enc?: string | null;
+          id_expires_on?: string | null;
+          id_hint?: string | null;
+          id_kind?: string | null;
+          id_name_enc?: string | null;
+          legal_first_name?: string | null;
+          legal_last_name?: string | null;
+          pension_answer?: string | null;
+          pension_answered_at?: string | null;
+          pension_fund?: string | null;
+          submitted_at?: string | null;
+          updated_at?: string;
+          updated_by?: string | null;
+          user_id?: string;
+          work_language_enc?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "employee_details_business_id_user_id_fkey";
+            columns: ["business_id", "user_id"];
+            isOneToOne: true;
+            referencedRelation: "memberships";
+            referencedColumns: ["business_id", "user_id"];
+          },
+          {
+            foreignKeyName: "employee_details_updated_by_fkey";
+            columns: ["updated_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      employee_tax_years: {
+        Row: {
+          business_id: string;
+          change_due_by: string | null;
+          returned_reason: string | null;
+          route: string | null;
+          status: string;
+          tax_year: number;
+          updated_at: string;
+          updated_by: string | null;
+          user_id: string;
+        };
+        Insert: {
+          business_id: string;
+          change_due_by?: string | null;
+          returned_reason?: string | null;
+          route?: string | null;
+          status: string;
+          tax_year: number;
+          updated_at?: string;
+          updated_by?: string | null;
+          user_id: string;
+        };
+        Update: {
+          business_id?: string;
+          change_due_by?: string | null;
+          returned_reason?: string | null;
+          route?: string | null;
+          status?: string;
+          tax_year?: number;
+          updated_at?: string;
+          updated_by?: string | null;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "employee_tax_years_business_id_user_id_fkey";
+            columns: ["business_id", "user_id"];
+            isOneToOne: false;
+            referencedRelation: "memberships";
+            referencedColumns: ["business_id", "user_id"];
+          },
+          {
+            foreignKeyName: "employee_tax_years_updated_by_fkey";
+            columns: ["updated_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       employment_periods: {
         Row: {
           business_id: string;
@@ -1797,6 +1968,35 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: "list_templates";
             referencedColumns: ["id", "business_id"];
+          },
+        ];
+      };
+      member_emergency_contacts: {
+        Row: {
+          business_id: string;
+          contact_enc: string;
+          updated_at: string;
+          user_id: string;
+        };
+        Insert: {
+          business_id: string;
+          contact_enc: string;
+          updated_at?: string;
+          user_id: string;
+        };
+        Update: {
+          business_id?: string;
+          contact_enc?: string;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "member_emergency_contacts_business_id_user_id_fkey";
+            columns: ["business_id", "user_id"];
+            isOneToOne: true;
+            referencedRelation: "memberships";
+            referencedColumns: ["business_id", "user_id"];
           },
         ];
       };
@@ -3714,6 +3914,20 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      acknowledge_bank: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          business: string;
+          person: string;
+          seen_changed_at: string;
+        };
+        Returns: undefined;
+      };
+      acknowledge_file_duties: {
+        Args: { business: string; duties_version: string };
+        Returns: boolean;
+      };
       add_time_break: {
         Args: {
           actor: string;
@@ -3803,6 +4017,7 @@ export type Database = {
         };
         Returns: undefined;
       };
+      audit_guard_status: { Args: Record<PropertyKey, never>; Returns: Json };
       cancel_list: {
         Args: { actor: string; at_time?: string; list: string };
         Returns: undefined;
@@ -4041,6 +4256,10 @@ export type Database = {
         };
         Returns: Database["public"]["Enums"]["swap_status"];
       };
+      dispute_bank_change: {
+        Args: { actor: string; at_time?: string; business: string };
+        Returns: undefined;
+      };
       document_upload_place: {
         Args: {
           actor: string;
@@ -4051,6 +4270,30 @@ export type Database = {
         Returns: Json;
       };
       documents_closed: { Args: { business: string }; Returns: boolean };
+      employee_data_key: {
+        Args: {
+          actor: string;
+          business: string;
+          offered_dek: string;
+          offered_kek: number;
+          person: string;
+        };
+        Returns: Json;
+      };
+      employee_file: {
+        Args: { business: string; person: string };
+        Returns: Json;
+      };
+      employee_file_status: {
+        Args: { business: string };
+        Returns: {
+          complete: boolean;
+          detail: Json;
+          form101_in: boolean;
+          missing: number;
+          user_id: string;
+        }[];
+      };
       end_break: {
         Args: { actor: string; at_time?: string; business: string };
         Returns: string;
@@ -4069,6 +4312,10 @@ export type Database = {
           item: string;
           path: string;
         }[];
+      };
+      export_employee_files: {
+        Args: { business: string; recipient: string };
+        Returns: Json;
       };
       finish_list: {
         Args: { actor: string; at_time?: string; list: string };
@@ -4207,6 +4454,10 @@ export type Database = {
       };
       note_push_signed_out: {
         Args: { push_endpoint: string };
+        Returns: undefined;
+      };
+      note_step_up: {
+        Args: { actor: string; at_time?: string; step_purpose: string };
         Returns: undefined;
       };
       open_document: {
@@ -4434,6 +4685,10 @@ export type Database = {
         Args: { actor: string; at_time?: string; entry: string };
         Returns: undefined;
       };
+      reveal_employee_fields: {
+        Args: { business: string; fields: string[]; person: string };
+        Returns: Json;
+      };
       role_permission_matrix: {
         Args: { business: string };
         Returns: {
@@ -4594,6 +4849,35 @@ export type Database = {
       set_departments: {
         Args: { actor: string; business: string; departments: Json };
         Returns: undefined;
+      };
+      set_direct_groups: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          business: string;
+          groups: string[];
+          person: string;
+        };
+        Returns: undefined;
+      };
+      set_emergency_contact: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          business: string;
+          sealed_contact?: string;
+        };
+        Returns: undefined;
+      };
+      set_employee_details: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          business: string;
+          patch: Json;
+          person: string;
+        };
+        Returns: Json;
       };
       set_employment_period: {
         Args: {
@@ -4786,6 +5070,20 @@ export type Database = {
         };
         Returns: undefined;
       };
+      set_tax_year_status: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          business: string;
+          changed_on?: string;
+          for_year: number;
+          new_status?: string;
+          person: string;
+          via_route?: string;
+          why?: string;
+        };
+        Returns: undefined;
+      };
       set_template_wording: {
         Args: {
           actor: string;
@@ -4873,6 +5171,10 @@ export type Database = {
         Args: { actor: string; note?: string; ranges: Json; week: string };
         Returns: string;
       };
+      submit_employee_file: {
+        Args: { actor: string; at_time?: string; business: string };
+        Returns: undefined;
+      };
       take_back_order_line: {
         Args: { actor: string; at_time?: string; line: string };
         Returns: undefined;
@@ -4880,6 +5182,16 @@ export type Database = {
       take_shift_swap: {
         Args: { actor: string; at_time?: string; swap: string };
         Returns: undefined;
+      };
+      team_emergency_contacts: {
+        Args: { business: string };
+        Returns: {
+          contact: string;
+          demo: boolean;
+          kek_id: number;
+          user_id: string;
+          wrapped_dek: string;
+        }[];
       };
       team_invite: {
         Args: {
@@ -4935,7 +5247,8 @@ export type Database = {
         | "notifications"
         | "lists"
         | "chat"
-        | "order_taking";
+        | "order_taking"
+        | "employee_files";
       platform_role: "platform_admin" | "onboarder";
       swap_status: "open" | "taken" | "approved" | "declined" | "cancelled";
       time_entry_source: "punch" | "manager";
@@ -5079,6 +5392,7 @@ export const Constants = {
         "lists",
         "chat",
         "order_taking",
+        "employee_files",
       ],
       platform_role: ["platform_admin", "onboarder"],
       swap_status: ["open", "taken", "approved", "declined", "cancelled"],

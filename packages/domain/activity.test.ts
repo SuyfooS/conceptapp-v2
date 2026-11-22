@@ -1876,6 +1876,166 @@ describe("buildActivity: each action", () => {
     }
   });
 
+  it("reads which parts of a hiring file changed, in their order, never a value (H4)", () => {
+    expect(
+      lineOf(
+        row("employee.details", {
+          person: NOA,
+          fields: ["address", "identity", "religion", "4821"],
+        }),
+      ),
+    ).toEqual({
+      action: "employee.details",
+      person: { kind: "member", name: "Noa" },
+      fields: ["identity", "address"],
+    });
+    // A value somewhere it isn't expected still never shows.
+    const odd = lineOf(
+      row("employee.details", {
+        person: NOA,
+        fields: ["bank"],
+        account: "100001",
+        hint: "0001",
+      }),
+    );
+    expect(JSON.stringify(odd)).not.toMatch(/\d/);
+    expect(lineOf(row("employee.details", { fields: ["bank"] }))).toEqual({
+      action: "other",
+    });
+  });
+
+  it("reads a view of a file, and keeps it out of the list as routine (H4)", () => {
+    expect(
+      lineOf(row("employee.view", { person: YOAV, fields: ["id", "file"] })),
+    ).toEqual({
+      action: "employee.view",
+      person: { kind: "member", name: "Yoav" },
+      fields: ["file", "id"],
+    });
+    expect(ROUTINE_ACTIONS).toContain("employee.view");
+    expect(ROUTINE_ACTIONS as readonly string[]).not.toContain(
+      "employee.view_denied",
+    );
+  });
+
+  it("reads a refused view with its reason, a person outside the business as none", () => {
+    expect(
+      lineOf(
+        row("employee.view_denied", {
+          person: NOA,
+          fields: ["file"],
+          reason: "not_holder",
+        }),
+      ),
+    ).toEqual({
+      action: "employee.view_denied",
+      person: { kind: "member", name: "Noa" },
+      reason: "not_holder",
+    });
+    expect(lineOf(row("employee.view_denied", { reason: "viewing" }))).toEqual({
+      action: "employee.view_denied",
+      person: null,
+      reason: "viewing",
+    });
+    expect(
+      lineOf(row("employee.view_denied", { person: NOA, reason: "curious" })),
+    ).toEqual({
+      action: "employee.view_denied",
+      person: { kind: "member", name: "Noa" },
+      reason: null,
+    });
+  });
+
+  it("reads a file sent, an account confirmed or disputed, and the duties confirmed", () => {
+    for (const action of [
+      "employee.submit",
+      "employee.bank_ack",
+      "employee.bank_disputed",
+    ] as const) {
+      expect(lineOf(row(action, { person: YOAV })), action).toEqual({
+        action,
+        person: { kind: "member", name: "Yoav" },
+      });
+      expect(lineOf(row(action, {})), action).toEqual({ action: "other" });
+    }
+    expect(lineOf(row("employee.ack", { version: "2026-11-v1" }))).toEqual({
+      action: "employee.ack",
+    });
+  });
+
+  it("reads a year's 101 marked, or its mark taken off", () => {
+    expect(
+      lineOf(
+        row("employee.tax_year", {
+          person: NOA,
+          year: 2026,
+          status: "change_due",
+        }),
+      ),
+    ).toEqual({
+      action: "employee.tax_year",
+      person: { kind: "member", name: "Noa" },
+      year: 2026,
+      status: "change_due",
+    });
+    expect(
+      lineOf(
+        row("employee.tax_year", {
+          person: NOA,
+          year: 2026,
+          status: "cleared",
+        }),
+      ),
+    ).toMatchObject({ status: "cleared" });
+    expect(
+      lineOf(
+        row("employee.tax_year", { person: NOA, year: 2026, status: "lost" }),
+      ),
+    ).toEqual({ action: "other" });
+  });
+
+  it("reads parts handed directly to payroll, and an export's counts", () => {
+    expect(
+      lineOf(
+        row("employee.direct", {
+          person: NOA,
+          groups: ["pension", "identity", "health"],
+        }),
+      ),
+    ).toEqual({
+      action: "employee.direct",
+      person: { kind: "member", name: "Noa" },
+      groups: ["identity", "pension"],
+    });
+    expect(
+      lineOf(
+        row("employee.export", { people: 4, recipient: "provider", held: 1 }),
+      ),
+    ).toEqual({
+      action: "employee.export",
+      people: 4,
+      recipient: "provider",
+      held: 1,
+    });
+    expect(
+      lineOf(row("employee.export", { people: 4, recipient: "own" })),
+    ).toMatchObject({ held: 0 });
+    expect(
+      lineOf(row("employee.export", { people: 4, recipient: "the bank" })),
+    ).toEqual({ action: "other" });
+  });
+
+  it("reads an emergency contact set, never who it is", () => {
+    expect(
+      lineOf(
+        row("member.emergency", { person: NOA, name: "דוד", phone: "+97250" }),
+      ),
+    ).toEqual({
+      action: "member.emergency",
+      person: { kind: "member", name: "Noa" },
+    });
+  });
+
   it("reads an item added to the menu or saved, with its prices before and after (waiter mode P1)", () => {
     // As public.save_menu_item writes them: the item as it was then, what
     // changed, its price's agorot, and each option whose price moved.

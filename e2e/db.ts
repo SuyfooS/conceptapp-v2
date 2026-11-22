@@ -5246,3 +5246,42 @@ export async function closeOrderPushBusiness(): Promise<void> {
     where user_id in ${sql(Object.values(ORDER_PUSH_PEOPLE).map((p) => p.id))}`;
   await deleteRealBusiness(ORDER_PUSH_BUSINESS);
 }
+
+/*
+ * The hiring file's lines in the activity log (profile H4). The module is off
+ * in the demo restaurant and its files are made up, so the spec writes the
+ * log's rows as the file's functions would: a holder's change of Noa's ID
+ * and a refused view of her file, never a value.
+ */
+const FILE_ROWS = {
+  noa: "00000000-0000-4000-a000-000000000003",
+  shiran: "00000000-0000-4000-a000-000000000002",
+  galit: "00000000-0000-4000-a000-000000000014",
+};
+
+/** Two of the file's rows in the demo restaurant's log: their ids, to take away. */
+export async function logFileRows(): Promise<number[]> {
+  const rows = await sql<{ id: number }[]>`
+    insert into public.audit_log (business_id, actor_id, action, details)
+    values
+      (${DEMO_RESTAURANT}, ${FILE_ROWS.galit}, 'employee.details',
+        ${sql.json({ person: FILE_ROWS.noa, fields: ["identity"] })}),
+      (${DEMO_RESTAURANT}, ${FILE_ROWS.shiran}, 'employee.view_denied',
+        ${sql.json({ person: FILE_ROWS.noa, fields: ["file"], reason: "not_holder" })})
+    returning id`;
+  return rows.map((row) => row.id);
+}
+
+/**
+ * Takes those rows away again: the log is kept
+ * (20261110000100_hours_kept.sql), so only a purge that names the business
+ * deletes from it, for this transaction.
+ */
+export async function clearFileRows(ids: readonly number[]): Promise<void> {
+  if (ids.length === 0) return;
+  await sql.begin(async (tx) => {
+    await tx`select set_config('ca.records_purge', ${DEMO_RESTAURANT}, true)`;
+    await tx`delete from public.audit_log a
+      where a.business_id = ${DEMO_RESTAURANT} and a.id in ${tx([...ids])}`;
+  });
+}

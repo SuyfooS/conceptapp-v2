@@ -40,7 +40,8 @@ select set_eq(
     'document_notices',
     'notification_preferences',
     'order_places', 'menu_categories', 'menu_items',
-    'orders', 'order_rounds', 'order_tickets', 'order_lines'
+    'orders', 'order_rounds', 'order_tickets', 'order_lines',
+    'employee_details', 'employee_tax_years', 'member_emergency_contacts'
   ],
   'the tenancy tables exist (update this list with each new table)'
 );

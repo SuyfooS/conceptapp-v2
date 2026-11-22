@@ -15,5 +15,7 @@ export default defineConfig({
     // Database tests run on their own: `pnpm test:db`.
     exclude: ["**/*.db.test.ts", "node_modules/**"],
     environment: "node",
+    // A hiring-file key of the run's own, never a real one.
+    setupFiles: ["tooling/vitest-setup.ts"],
   },
 });

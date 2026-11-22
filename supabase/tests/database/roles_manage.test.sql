@@ -289,7 +289,8 @@ select results_eq(
     from unnest(enum_range(null::public.module_key)) as m
     order by 1$$,
   $$values
-    ('chat'::text, 'chat.moderate'::text), ('lists'::text, 'lists.manage'::text),
+    ('chat'::text, 'chat.moderate'::text), ('employee_files'::text, null::text),
+    ('lists'::text, 'lists.manage'::text),
     ('notifications'::text, null::text), ('order_taking'::text, 'order_taking.edit'::text),
     ('reservations'::text, null::text),
     ('scheduling'::text, 'schedule.edit'::text), ('storefront'::text, null::text),
