@@ -10,6 +10,7 @@ import { ProgressRing } from "@ui/progress-ring";
 import { VisibilityNote } from "@ui/visibility-note";
 import { FileText, IdCard, Landmark, MapPin, PiggyBank } from "lucide-react";
 import Link from "next/link";
+import { unstable_rethrow } from "next/navigation";
 import { getFormatter } from "next-intl/server";
 import type { ReactNode } from "react";
 import { type AppWording, translator } from "../wording";
@@ -26,11 +27,16 @@ export async function currentFileSummary(): Promise<FileScreenData | null> {
     const screen = await currentFileScreen();
     return screen.kind === "file" ? screen.data : null;
   } catch (error) {
+    // Next's own throws (a prefetch's render stopping at a request-time
+    // read, a redirect) go on to Next: they are no failure of the file.
+    unstable_rethrow(error);
     const code =
       error && typeof error === "object" && "code" in error
         ? String((error as { code: unknown }).code)
         : "without a code";
-    console.error("reading the file for the profile failed", code);
+    // The error's kind, never its message: a message could carry a value.
+    const kind = error instanceof Error ? error.name : typeof error;
+    console.error("reading the file for the profile failed", code, kind);
     return null;
   }
 }

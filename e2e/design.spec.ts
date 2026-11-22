@@ -5468,6 +5468,13 @@ test("the owner's line counts the day's fixes", async ({ page }) => {
   await expect(line).not.toContainText("₪");
 });
 
+// The file demo, hydrated: its buttons answer and its boxes are laid out
+// (CI pressed and measured before it was, twice).
+async function openFileDemo(page: Page, url: string) {
+  await page.goto(url);
+  await page.waitForLoadState("networkidle");
+}
+
 // The worker's own file on Noa's twin (profile H5a). An account number the
 // check doubts is said in words, kept with "המספר נכון, לשמור", and saved
 // past the twin's code; the twin keeps nothing.
@@ -5475,7 +5482,7 @@ test("the file demo warns about an account number in words and saves past it", a
   page,
 }) => {
   const f = he.app.file;
-  await page.goto("/design/shell/me/file?step=bank&state=warning");
+  await openFileDemo(page, "/design/shell/me/file?step=bank&state=warning");
   const bank = page.getByRole("region", { name: f.steps.name.bank });
   await expect(bank.getByText(f.bank.warning.checkDigit)).toBeVisible();
   // The step's own: the dock's on a phone and a tablet, the section's on a
@@ -5514,7 +5521,7 @@ test("the file demo warns about an account number in words and saves past it", a
 test("the file demo's own ID shows for a minute", async ({ page }) => {
   const f = he.app.file;
   await page.clock.install();
-  await page.goto("/design/shell/me/file?step=identity");
+  await openFileDemo(page, "/design/shell/me/file?step=identity");
   const identity = page.getByRole("region", { name: f.steps.name.identity });
   await expect(identity.getByText("•••0018")).toBeVisible();
   await identity.getByRole("button", { name: f.masked.show }).click();
@@ -5532,7 +5539,7 @@ test("the file demo reads the same in each device's shape", async ({
 }, testInfo) => {
   const f = he.app.file;
   const project = testInfo.project.name;
-  await page.goto("/design/shell/me/file");
+  await openFileDemo(page, "/design/shell/me/file");
   await expect(
     page.getByRole("heading", {
       level: 1,
@@ -5590,7 +5597,7 @@ test("the file demo's summary does the open step's own action on a desktop", asy
 }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "The summary is a desktop's.");
   const f = he.app.file;
-  await page.goto("/design/shell/me/file");
+  await openFileDemo(page, "/design/shell/me/file");
   const bank = page.getByRole("region", { name: f.steps.name.bank });
   const summary = page.getByRole("complementary", { name: f.steps.title });
   const own = summary.getByRole("button", { name: f.bank.confirm });
@@ -5639,7 +5646,7 @@ test("the file demo's summary marks the pension's answer on a desktop", async ({
 }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "The summary is a desktop's.");
   const f = he.app.file;
-  await page.goto("/design/shell/me/file?state=saved&step=pension");
+  await openFileDemo(page, "/design/shell/me/file?state=saved&step=pension");
   const pension = page.getByRole("region", { name: f.steps.name.pension });
   await page
     .getByRole("complementary", { name: f.steps.title })
@@ -5672,7 +5679,7 @@ test("the file demo says under each field what keeps a step from saving", async 
 }, testInfo) => {
   const f = he.app.file;
   const project = testInfo.project.name;
-  await page.goto("/design/shell/me/file?step=address");
+  await openFileDemo(page, "/design/shell/me/file?step=address");
   const address = page.getByRole("region", { name: f.steps.name.address });
   const apartment = address.getByLabel(
     heT("app.file.optionalField", { field: f.address.apartment }),
@@ -5698,7 +5705,7 @@ test("the file demo says under each field what keeps a step from saving", async 
   await expect(address.getByText(f.address.zipInvalid)).toBeVisible();
   await expect(page).toHaveURL(/step=address/);
 
-  await page.goto("/design/shell/me/file?step=identity");
+  await openFileDemo(page, "/design/shell/me/file?step=identity");
   const identity = page.getByRole("region", { name: f.steps.name.identity });
   const year = identity
     .getByRole("group", { name: f.identity.birthDate })
@@ -5721,7 +5728,7 @@ test("the file demo never takes a town typed for one chosen", async ({
   page,
 }) => {
   const f = he.app.file;
-  await page.goto("/design/shell/me/file?step=address");
+  await openFileDemo(page, "/design/shell/me/file?step=address");
   const address = page.getByRole("region", { name: f.steps.name.address });
   const town = address.getByRole("combobox", { name: f.address.city });
   await expect(town).toHaveValue("תל אביב - יפו");
@@ -5759,7 +5766,7 @@ test("the file demo in English keeps its dock beside the shrunk tab bar", async 
 }, testInfo) => {
   test.skip(testInfo.project.name !== "phone", "Only a phone's bar shrinks.");
   await page.setViewportSize({ width: 390, height: 600 });
-  await page.goto("/design/shell/me/file?lang=en&step=address");
+  await openFileDemo(page, "/design/shell/me/file?lang=en&step=address");
   const next = page
     .getByRole("button", { name: en.app.file.actions.next, exact: true })
     .filter({ visible: true });
@@ -5791,7 +5798,7 @@ test("the file demo keeps its main action in view on a laptop", async ({
 }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "The summary is a desktop's.");
   await page.setViewportSize({ width: 1440, height: 780 });
-  await page.goto("/design/shell/me/file?state=new");
+  await openFileDemo(page, "/design/shell/me/file?state=new");
   const f = he.app.file;
   await expect(
     page
@@ -5818,13 +5825,15 @@ test("the file demo's welcome keeps its card under the title", async ({
 }, testInfo) => {
   test.skip(testInfo.project.name !== "phone", "A narrow phone's.");
   await page.setViewportSize({ width: 320, height: 700 });
-  await page.goto("/design/shell/me/file?state=new");
+  await openFileDemo(page, "/design/shell/me/file?state=new");
   const title = page.getByText(
     heT("app.file.welcome.title", { business: "מסעדת הדגמה" }),
   );
   const card = page
     .getByText(heT("app.file.welcome.body", { count: 6 }))
     .locator("..");
+  await expect(title).toBeVisible();
+  await expect(card).toBeVisible();
   const [titleBox, cardBox] = await Promise.all([
     title.boundingBox(),
     card.boundingBox(),
@@ -5842,7 +5851,7 @@ test("the file demo switches language with the button, and step 0 follows", asyn
 }) => {
   const f = he.app.file;
   const e = en.app.file;
-  await page.goto("/design/shell/me/file?step=start");
+  await openFileDemo(page, "/design/shell/me/file?step=start");
   await page.getByRole("button", { name: f.language.switch }).click();
   await expect(page).toHaveURL(/[?&]lang=en/);
   const english = page.locator('[dir="ltr"][lang="en"]');
@@ -5870,7 +5879,7 @@ test("the file demo puts the focus on the step it opens", async ({
     "The dock is a phone's and a tablet's.",
   );
   const f = he.app.file;
-  await page.goto("/design/shell/me/file?step=start");
+  await openFileDemo(page, "/design/shell/me/file?step=start");
   await page
     .getByRole("button", { name: f.actions.next, exact: true })
     .filter({ visible: true })
@@ -5888,7 +5897,7 @@ test("the file demo's account on a desktop says what is missing", async ({
 }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "A desktop's own save.");
   const f = he.app.file;
-  await page.goto("/design/shell/me/file?step=bank");
+  await openFileDemo(page, "/design/shell/me/file?step=bank");
   const bank = page.getByRole("region", { name: f.steps.name.bank });
   const confirm = bank.getByRole("button", { name: f.bank.confirm });
   await expect(confirm).toBeEnabled();
@@ -5907,7 +5916,7 @@ test("the file demo's steps keep their shadow whole", async ({
   page,
 }, testInfo) => {
   test.skip(testInfo.project.name === "phone", "A phone has no list beside.");
-  await page.goto("/design/shell/me/file");
+  await openFileDemo(page, "/design/shell/me/file");
   const box = page
     .getByRole("complementary", { name: he.app.file.steps.title })
     .getByRole("list")
@@ -5936,7 +5945,7 @@ test("the file demo says 'later' and a step's 'why' only below a desktop", async
   page,
 }, testInfo) => {
   const f = he.app.file;
-  await page.goto("/design/shell/me/file?step=address");
+  await openFileDemo(page, "/design/shell/me/file?step=address");
   const later = page
     .getByRole("link", { name: f.actions.later })
     .filter({ visible: true });
@@ -5955,7 +5964,7 @@ test("the file demo sends only a file with its details in", async ({
   page,
 }) => {
   const f = he.app.file;
-  await page.goto("/design/shell/me/file?step=form101");
+  await openFileDemo(page, "/design/shell/me/file?step=form101");
   await expect(
     page.getByRole("button", {
       name: heT("app.file.actions.send", { business: "מסעדת הדגמה" }),
@@ -5967,7 +5976,7 @@ test("the file demo sends only a file with its details in", async ({
     .click();
   await expect(page).toHaveURL(/step=bank/);
 
-  await page.goto("/design/shell/me/file?step=done");
+  await openFileDemo(page, "/design/shell/me/file?step=done");
   await expect(
     page.getByRole("heading", {
       name: heT("app.file.done.titleLeft", { count: 3 }),
@@ -5977,7 +5986,7 @@ test("the file demo sends only a file with its details in", async ({
     page.getByRole("heading", { name: f.done.title, exact: true }),
   ).toHaveCount(0);
 
-  await page.goto("/design/shell/me/file?state=done");
+  await openFileDemo(page, "/design/shell/me/file?state=done");
   await expect(
     page.getByRole("heading", { name: f.done.title, exact: true }),
   ).toBeVisible();
@@ -5994,7 +6003,7 @@ test("the file demo's own ID is hidden again after leaving the screen", async ({
   page,
 }) => {
   const f = he.app.file;
-  await page.goto("/design/shell/me/file?step=identity");
+  await openFileDemo(page, "/design/shell/me/file?step=identity");
   const identity = page.getByRole("region", { name: f.steps.name.identity });
   await identity.getByRole("button", { name: f.masked.show }).click();
   await expect(identity.getByText("000000018")).toBeVisible();
@@ -6009,7 +6018,7 @@ test("the file demo's own ID is hidden again after leaving the screen", async ({
 // "החלפת החשבון" by mistake: "השארת החשבון הנוכחי" goes back to the saved one.
 test("the file demo goes back to the saved account", async ({ page }) => {
   const f = he.app.file;
-  await page.goto("/design/shell/me/file?step=bank&state=saved");
+  await openFileDemo(page, "/design/shell/me/file?step=bank&state=saved");
   const bank = page.getByRole("region", { name: f.steps.name.bank });
   await bank.getByRole("button", { name: f.bank.change }).click();
   await expect(bank.getByLabel(f.bank.paste)).toBeFocused();
@@ -6023,7 +6032,7 @@ test("the file demo holds the account's code after a phone change", async ({
   page,
 }, testInfo) => {
   const f = he.app.file;
-  await page.goto("/design/shell/me/file?step=bank&state=hold");
+  await openFileDemo(page, "/design/shell/me/file?step=bank&state=hold");
   const words = heT("app.file.bank.phoneHold", { date: "27 בנובמבר 2026" });
   const bank = page.getByRole("region", { name: f.steps.name.bank });
   await expect(bank.getByText(words).filter({ visible: true })).toBeVisible();
@@ -6050,7 +6059,7 @@ test("the file demo says an updated 101 is due after a move", async ({
 }, testInfo) => {
   const f = he.app.file;
   const project = testInfo.project.name;
-  await page.goto("/design/shell/me/file?state=done&step=address");
+  await openFileDemo(page, "/design/shell/me/file?state=done&step=address");
   const address = page.getByRole("region", { name: f.steps.name.address });
   const save = fileStepAction(page, address, project, f.actions.saveAddress);
   const due = address.getByText(
@@ -6063,7 +6072,7 @@ test("the file demo says an updated 101 is due after a move", async ({
   await save.click();
   await expect(page).toHaveURL(/step=bank/);
 
-  await page.goto("/design/shell/me/file?state=done&step=address");
+  await openFileDemo(page, "/design/shell/me/file?state=done&step=address");
   await save.click();
   await expect(page).toHaveURL(/step=bank/);
   await expect(due).toHaveCount(0);
@@ -6074,7 +6083,7 @@ test("the file demo says how long a document's number needs to be", async ({
   page,
 }, testInfo) => {
   const f = he.app.file;
-  await page.goto("/design/shell/me/file?step=identity");
+  await openFileDemo(page, "/design/shell/me/file?step=identity");
   const identity = page.getByRole("region", { name: f.steps.name.identity });
   await identity
     .getByRole("radio", { name: f.identity.other, exact: true })
