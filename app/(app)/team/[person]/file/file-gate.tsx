@@ -7,7 +7,14 @@ import { EmptyState } from "@ui/empty-state";
 import { Lock, MessageSquareLock } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import { focusIfLost } from "./file-focus";
 import { FileOpenWatch } from "./file-open-watch";
 import { type HolderWordsKey, holderWordsOf } from "./holder-failure-words";
 import type {
@@ -26,8 +33,11 @@ const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
  * ("שליחת קוד"); then the code's boxes, which send on the last digit, and
  * on a right code the server opens the files on this device and the
  * screen is drawn again, open. One main action at a time. Every refusal is
- * said in words, with the focus on it while no boxes are up. The twin,
- * which keeps nothing, goes to its open state instead (`openedHref`).
+ * said in words, with the focus on it while no boxes are up; the line that
+ * says where the code went is a status, so a new code sent is heard. Drawn
+ * where an open file just closed (`focusTitle`), its title ("התיק נעול")
+ * takes the focus, which went with the file. The twin, which keeps
+ * nothing, goes to its open state instead (`openedHref`).
  */
 export function FileGate({
   kind,
@@ -35,6 +45,7 @@ export function FileGate({
   code,
   openedHref,
   onOpened,
+  focusTitle = false,
   children,
 }: {
   kind: "duties" | "locked";
@@ -45,6 +56,8 @@ export function FileGate({
   openedHref?: string;
   /** The files opened on this device, before the page is drawn again. */
   onOpened?: () => void;
+  /** Drawn where an open file closed: its title takes the focus, if lost. */
+  focusTitle?: boolean;
   /** The duties' lines, drawn on the server. */
   children?: ReactNode;
 }) {
@@ -58,7 +71,17 @@ export function FileGate({
   // the digits' fault they start again, empty.
   const [attempt, setAttempt] = useState(0);
   const [problem, setProblem] = useState<HolderWordsKey | null>(null);
+  // How many codes went: the second and on say so, and each is heard.
+  const [sends, setSends] = useState(code ? 1 : 0);
   const said = useRef<HTMLParagraphElement>(null);
+  const title = useRef<HTMLHeadingElement>(null);
+
+  // Where an open file just closed, the focus went with it (the file's
+  // "נעילת התיק", a number's "הצגה"): its title takes it, so what happened
+  // is heard. Focus put elsewhere stays.
+  useLayoutEffect(() => {
+    if (focusTitle && phase === "start") focusIfLost(title.current, document);
+  }, [focusTitle, phase]);
 
   // A refusal said with no boxes up takes the focus, so it is heard.
   useEffect(() => {
@@ -90,6 +113,7 @@ export function FileGate({
       return;
     }
     setTail(answer.tail);
+    setSends((n) => n + 1);
     setStatus("idle");
     setAttempt((n) => n + 1);
     setPhase("code");
@@ -150,7 +174,12 @@ export function FileGate({
       <Card padding="lg" className="flex flex-col gap-4">
         {/* From the duties too: the file stays locked until the code is in. */}
         <CardTitle as="h2">{t("locked.title")}</CardTitle>
-        <p className="text-ink-2">{t.rich("code.sent", { tail, ltr })}</p>
+        {/* A status: a new code sent is heard, its line new each time. */}
+        <p role="status" className="text-ink-2">
+          <span key={sends}>
+            {t.rich(sends > 1 ? "code.resent" : "code.sent", { tail, ltr })}
+          </span>
+        </p>
         <CodeSlots
           key={attempt}
           name="code"
@@ -179,7 +208,9 @@ export function FileGate({
   if (kind === "duties") {
     return (
       <Card padding="lg" className="flex flex-col gap-4">
-        <CardTitle as="h2">{t("duties.title")}</CardTitle>
+        <CardTitle as="h2" ref={title} tabIndex={-1} className="outline-none">
+          {t("duties.title")}
+        </CardTitle>
         {children}
         {problemLine}
         <Button
@@ -199,6 +230,7 @@ export function FileGate({
     <EmptyState
       icon={<Lock />}
       headingLevel="h2"
+      headingRef={title}
       title={t("locked.title")}
       body={t("locked.body")}
     >
@@ -217,8 +249,10 @@ export function FileGate({
  * that closes here (15 minutes idle, no answer from the server, "נעילת
  * התיק") shows the locked card at once, without waiting for the server or
  * its network; the server's next drawing, locked, lands on the same card in
- * the same place, so a code already asked for there stays asked for. A
- * right code there opens the file again.
+ * the same place, so a code already asked for there stays asked for. Once
+ * a file was open here, the card that takes its place takes the focus
+ * ("התיק נעול" is heard), whatever closed it; a right code there opens the
+ * file again, its first heading taking the focus from the code's boxes.
  */
 export function GatedFile({
   kind,
@@ -239,12 +273,19 @@ export function GatedFile({
   children?: ReactNode;
 }) {
   const [closedHere, setClosedHere] = useState(false);
-  if (kind === "open" && !closedHere) {
+  // Opened by a code on this screen: the file's first heading takes the focus.
+  const [openedHere, setOpenedHere] = useState(false);
+  // The file was open on this screen: the gate in its place takes the focus.
+  const [wasOpen, setWasOpen] = useState(kind === "open");
+  const open = kind === "open" && !closedHere;
+  if (open && !wasOpen) setWasOpen(true);
+  if (open) {
     return (
       <FileOpenWatch
         actions={actions}
         lockedHref={twin?.locked}
         onClosed={() => setClosedHere(true)}
+        focusOnOpen={openedHere}
       >
         {children}
       </FileOpenWatch>
@@ -261,7 +302,11 @@ export function GatedFile({
         actions={actions}
         code={code}
         openedHref={twin?.opened}
-        onOpened={() => setClosedHere(false)}
+        onOpened={() => {
+          setClosedHere(false);
+          setOpenedHere(true);
+        }}
+        focusTitle={wasOpen}
       >
         {gate === "duties" ? duties : null}
       </FileGate>

@@ -277,12 +277,41 @@ test("a locked file asks for a code again, and the duties only once", async ({
   const code = await sendFileCode(page, f.locked.send, GALIT.e164);
   await expect(main(page).getByText(f.duties.title)).toHaveCount(0);
   await page.getByLabel(f.code.label).fill(code);
+  // The code's boxes went with the gate: the file's first heading has the
+  // focus, so where the person is is heard.
   await expect(
     main(page).getByRole("heading", { name: f.sections.identity }),
+  ).toBeFocused();
+
+  // "נעילת התיק" went with the file: "התיק נעול" has the focus.
+  await visible(page, "button", f.lock.action).click();
+  await expect(
+    main(page).getByRole("heading", { name: f.locked.title }),
+  ).toBeFocused();
+});
+
+test("a file locked in one tab closes at once in another", async ({
+  page,
+  context,
+}) => {
+  await enterAs(page, "accountant");
+  await open(page, `/team/${NOA.id}/file`);
+  await openFile(page, GALIT.e164);
+  const other = await context.newPage();
+  await open(other, `/team/${YOAV.id}/file`);
+  await expect(
+    main(other).getByRole("heading", { name: f.sections.identity }),
   ).toBeVisible();
 
+  await page.bringToFront();
   await visible(page, "button", f.lock.action).click();
   await expect(main(page).getByText(f.locked.title)).toBeVisible();
+  // Told by the first tab, with no press there and no minute waited.
+  await expect(main(other).getByText(f.locked.title)).toBeVisible();
+  await expect(
+    main(other).getByRole("heading", { name: f.sections.identity }),
+  ).toHaveCount(0);
+  await other.close();
 });
 
 test("the file answers no-store and never puts a number in an address", async ({

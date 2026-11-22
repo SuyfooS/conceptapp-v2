@@ -150,12 +150,32 @@ describe("a holder's file screen", () => {
     mocks.currentFilesReader.mockResolvedValue({
       kind: "team",
       viewing: true,
+      seesTeam: true,
       businessId: SHOP,
       businessName: "Shop",
       timeZone: "Asia/Jerusalem",
     });
-    expect((await currentHolderFile(NOA)).kind).toBe("viewing");
+    const screen = await currentHolderFile(NOA);
+    expect(screen.kind).toBe("viewing");
+    if (screen.kind === "viewing") expect(screen.head.seesTeam).toBe(true);
     expect(mocks.getFileHolderState).not.toHaveBeenCalled();
+    expect(mocks.getEmployeeFile).not.toHaveBeenCalled();
+  });
+
+  // The second review: a view as the accountant reads the files alone, and
+  // /team/<id> sends whoever doesn't see the team to the file again.
+  it("leads a view as the accountant back to the team's files, not the profile", async () => {
+    mocks.currentFilesReader.mockResolvedValue({
+      kind: "team",
+      viewing: true,
+      seesTeam: false,
+      businessId: SHOP,
+      businessName: "Shop",
+      timeZone: "Asia/Jerusalem",
+    });
+    const screen = await currentHolderFile(NOA);
+    expect(screen.kind).toBe("viewing");
+    if (screen.kind === "viewing") expect(screen.head.seesTeam).toBe(false);
     expect(mocks.getEmployeeFile).not.toHaveBeenCalled();
   });
 
@@ -163,6 +183,7 @@ describe("a holder's file screen", () => {
     mocks.currentFilesReader.mockResolvedValue({
       kind: "team",
       viewing: false,
+      seesTeam: true,
       businessId: SHOP,
       businessName: "Shop",
       timeZone: "Asia/Jerusalem",

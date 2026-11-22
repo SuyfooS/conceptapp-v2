@@ -78,8 +78,9 @@ export async function fileHolder(
 /**
  * For the pages: who reads the files here, and how. A holder (not viewing);
  * whoever sees the team without the files, or anyone in a view session who
- * would see either, as `team` (counts, never a file); anyone else, or the
- * module off, `none`.
+ * would see either, as `team` (counts, never a file), with whether they see
+ * the team (a view as the accountant reads the files alone, so its way back
+ * is the team's files); anyone else, or the module off, `none`.
  */
 export type FilesReader =
   | { kind: "none" }
@@ -87,6 +88,8 @@ export type FilesReader =
   | {
       kind: "team";
       viewing: boolean;
+      /** They see the team too: a file leads back to the profile. */
+      seesTeam: boolean;
       businessId: string;
       businessName: string;
       timeZone: string;
@@ -111,6 +114,7 @@ export async function currentFilesReader(): Promise<FilesReader> {
   return {
     kind: "team",
     viewing: !canWrite(member.viewing),
+    seesTeam: team,
     businessId: membership.business.id,
     businessName: membership.business.name,
     timeZone: membership.business.place.timeZone,

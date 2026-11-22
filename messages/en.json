@@ -1382,6 +1382,7 @@
         "files": {
           "title": "Staff files",
           "missing": "{count, plural, =0 {All files are complete} one {Details missing in one file} other {Details missing in # files}}",
+          "none": "No one is on the staff yet. Once people join, their files show up here.",
           "form101": "{count, plural, =0 {Every Form 101 is in} one {One Form 101 not handed in yet} other {# Forms 101 not handed in yet}}",
           "reviews": "{count, plural, =0 {No bank account to check} one {One bank account to check} other {# bank accounts to check}}",
           "open": "To the files"
@@ -1633,8 +1634,12 @@
           "form101": "{status, select, handed_in {Handed in} accepted {Accepted by payroll} returned {Sent back} change_due {Update by <ltr>{date}</ltr>} in {Handed in} missing {Not in yet} other {Not handed in}}"
         },
         "filesOnly": {
-          "subtitle": "{count, plural, one {One staff file} other {# staff files}}",
-          "note": "Here you see the staff's payroll files. The owners manage the team itself."
+          "subtitle": "{count, plural, =0 {No staff files yet} one {One staff file} other {# staff files}}",
+          "note": "Here you see the staff's payroll files. The owners manage the team itself.",
+          "empty": {
+            "title": "No one is on the staff yet",
+            "body": "Once people join, their files show up here."
+          }
         },
         "card": {
           "title": "{name}'s payroll file",
@@ -1673,6 +1678,7 @@
         },
         "code": {
           "sent": "We sent a code by SMS to the number ending in <ltr>{tail}</ltr>",
+          "resent": "We sent a new code by SMS to the number ending in <ltr>{tail}</ltr>",
           "label": "The code from the SMS",
           "resend": "Send a new code",
           "wrongCode": "That code isn't right. You can try again.",

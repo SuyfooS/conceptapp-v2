@@ -238,7 +238,9 @@ export async function AccountantHome({
 /**
  * The staff's hiring files: how many miss anything, the 101s not in while
  * the business takes them in the app, the accounts to look at, and the way
- * to them. A quiet card: the pay hero keeps the page's one main action.
+ * to them. With no manager or worker yet there are no files: one line says
+ * so and when they come, with no "complete" line and no way to an empty
+ * list. A quiet card: the pay hero keeps the page's one main action.
  */
 export function FilesCard({
   files,
@@ -250,13 +252,18 @@ export function FilesCard({
   className?: string;
 }) {
   const t = translator(wording, "app.home.accountant.files");
-  const lines = [
-    t("missing", { count: files.missing }),
-    files.form101 && files.form101Open > 0
-      ? t("form101", { count: files.form101Open })
-      : null,
-    files.bankReviews > 0 ? t("reviews", { count: files.bankReviews }) : null,
-  ].filter((line): line is string => line !== null);
+  const none = files.files === 0;
+  const lines = none
+    ? [t("none")]
+    : [
+        t("missing", { count: files.missing }),
+        files.form101 && files.form101Open > 0
+          ? t("form101", { count: files.form101Open })
+          : null,
+        files.bankReviews > 0
+          ? t("reviews", { count: files.bankReviews })
+          : null,
+      ].filter((line): line is string => line !== null);
   return (
     <section aria-labelledby="files-home-title" className={className}>
       <Card padding="lg" className="flex flex-col gap-3">
@@ -266,12 +273,14 @@ export function FilesCard({
         {lines.map((line) => (
           <CardText key={line}>{line}</CardText>
         ))}
-        <Button asChild variant="secondary" className="self-start">
-          <Link href={files.href}>
-            <FolderLock aria-hidden="true" />
-            {t("open")}
-          </Link>
-        </Button>
+        {none ? null : (
+          <Button asChild variant="secondary" className="self-start">
+            <Link href={files.href}>
+              <FolderLock aria-hidden="true" />
+              {t("open")}
+            </Link>
+          </Button>
+        )}
       </Card>
     </section>
   );

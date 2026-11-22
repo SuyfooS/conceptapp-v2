@@ -58,7 +58,10 @@ export async function currentHolderFile(
       namedRole: data.namedRole ?? null,
       addressForm: data.addressForm,
       since: data.since,
-      seesTeam: reader.kind === "holder" ? reader.holder.seesTeam : true,
+      // A view as the accountant reads the files alone: back to the team's
+      // files, never to a profile that sends it here again.
+      seesTeam:
+        reader.kind === "holder" ? reader.holder.seesTeam : reader.seesTeam,
       ...place,
     };
     if (reader.kind === "team") return { kind: "viewing", head };

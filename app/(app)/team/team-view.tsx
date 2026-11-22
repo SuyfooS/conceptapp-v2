@@ -11,10 +11,11 @@ import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { Card, CardText } from "@ui/card";
 import { cn } from "@ui/cn";
+import { EmptyState } from "@ui/empty-state";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
 import { PersonAvatar, PersonList, PersonRow } from "@ui/person-row";
-import { UserPlus } from "lucide-react";
+import { FolderLock, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { createFormatter } from "next-intl";
 import type { ComponentProps } from "react";
@@ -82,7 +83,10 @@ type ViewProps = {
  * Someone who reads the files without seeing the team (the accountant) gets
  * the files alone: managers and workers, no numbers, no invites, each row
  * leading to the file (`fileHref`), and on a tablet one list across, since
- * there is no second. Also rendered with mock data on /design/shell/team.
+ * there is no second; with no manager or worker yet, in every shape, a line
+ * saying so and that their files come here once they join, instead of an
+ * empty list and a table of headers. Also rendered with mock data on
+ * /design/shell/team.
  */
 export function TeamView({
   team,
@@ -190,34 +194,57 @@ export function TeamView({
       ) : edits ? null : (
         <p className="text-ink-2 md:max-w-2xl">{t("team.readOnly")}</p>
       )}
-      <InviteCancels cancel={cancel ?? null}>
-        {/* The files alone are one list: across the tablet, capped, with no
-            empty column beside it. */}
-        <div
-          className={cn(
-            "grid gap-6 md:items-start md:gap-8 xl:hidden",
-            filesOnly ? "md:max-w-2xl" : "md:grid-cols-2",
-          )}
-        >
-          {filesOnly ? (
-            <Members {...view} />
-          ) : team.invites.length > 0 ? (
-            <>
-              <Invites {...view} />
-              <Members {...view} />
-            </>
-          ) : (
-            <>
-              <Members {...view} />
-              <Invites {...view} />
-            </>
-          )}
-        </div>
-        <div className="hidden xl:block">
-          <Everyone {...view} />
-        </div>
-      </InviteCancels>
+      {filesOnly && team.members.length === 0 ? (
+        <EmptyState
+          icon={<FolderLock />}
+          headingLevel="h2"
+          title={t("team.file.filesOnly.empty.title")}
+          body={t("team.file.filesOnly.empty.body")}
+        />
+      ) : (
+        <TeamBody view={view} cancel={cancel} />
+      )}
     </PageBody>
+  );
+}
+
+/** Who is in and who is invited, in each shape: the lists, or the table. */
+function TeamBody({
+  view,
+  cancel,
+}: {
+  view: ViewProps;
+  cancel: CancelInvite | undefined;
+}) {
+  const { team, filesOnly } = view;
+  return (
+    <InviteCancels cancel={cancel ?? null}>
+      {/* The files alone are one list: across the tablet, capped, with no
+          empty column beside it. */}
+      <div
+        className={cn(
+          "grid gap-6 md:items-start md:gap-8 xl:hidden",
+          filesOnly ? "md:max-w-2xl" : "md:grid-cols-2",
+        )}
+      >
+        {filesOnly ? (
+          <Members {...view} />
+        ) : team.invites.length > 0 ? (
+          <>
+            <Invites {...view} />
+            <Members {...view} />
+          </>
+        ) : (
+          <>
+            <Members {...view} />
+            <Invites {...view} />
+          </>
+        )}
+      </div>
+      <div className="hidden xl:block">
+        <Everyone {...view} />
+      </div>
+    </InviteCancels>
   );
 }
 

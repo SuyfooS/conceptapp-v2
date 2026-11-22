@@ -72,4 +72,27 @@ describe("the accountant's files card", () => {
       heT("app.home.accountant.files.reviews", { count: 0 }),
     );
   });
+
+  // The second review: an owner who brought the accountant in before any
+  // staff. No file is no complete file, and the way leads to nothing yet.
+  it("says there is no one on the staff yet, never that every file is complete", () => {
+    const html = draw({
+      files: 0,
+      missing: 0,
+      form101Open: 0,
+      bankReviews: 0,
+      form101: true,
+      href: "/team",
+    });
+    const page = text(html);
+    expect(page).toContain(he.app.home.accountant.files.title);
+    expect(page).toContain(he.app.home.accountant.files.none);
+    expect(page).not.toContain(
+      heT("app.home.accountant.files.missing", { count: 0 }),
+    );
+    expect(page).not.toContain(
+      heT("app.home.accountant.files.form101", { count: 0 }),
+    );
+    expect(html).not.toContain('href="/team"');
+  });
 });

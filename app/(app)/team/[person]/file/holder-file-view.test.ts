@@ -234,4 +234,54 @@ describe("a holder's file screen", () => {
     expect(text(unavailable)).toContain(f.unavailable);
     expect(unavailable).not.toMatch(/<button/);
   });
+
+  // The second review: a view as the accountant reads the files alone, and
+  // its profile would send it back here.
+  it("leads a view as the accountant back to the team's files", () => {
+    const html = draw({ kind: "viewing", head: head({ seesTeam: false }) });
+    expect(html).toContain('href="/team"');
+    expect(html).not.toContain('href="/team/noa"');
+    expect(text(html)).toContain(f.page.backTeam);
+    expect(draw({ kind: "viewing", head: head() })).toContain(
+      'href="/team/noa"',
+    );
+  });
+
+  // Where the focus goes is the gate's and the watch's (file-focus.test.ts):
+  // here, that each place it goes to can take it.
+  it("lets the locked card's title, the duties' and each part of the file take the focus", () => {
+    const heading = (html: string, words: string) =>
+      html.match(new RegExp(`<h2[^>]*>${words}</h2>`))?.[0] ?? "";
+    expect(
+      heading(draw({ kind: "locked", head: head() }), f.locked.title),
+    ).toContain('tabindex="-1"');
+    expect(
+      heading(draw({ kind: "duties", head: head() }), f.duties.title),
+    ).toContain('tabindex="-1"');
+    const open = draw({
+      kind: "open",
+      head: head(),
+      data: demoHolderFile("noa"),
+    });
+    expect(heading(open, f.sections.identity)).toContain('tabindex="-1"');
+    // The open file's first heading, which a right code's focus goes to, is
+    // its first part's.
+    expect(open.match(/<h2[^>]*>[^<]*<\/h2>/)?.[0]).toContain(
+      'id="file-identity"',
+    );
+  });
+
+  it("says where the code went in a status, so a new code sent is heard", () => {
+    const html = draw({ kind: "locked", head: head() }, { tail: "0014" });
+    const status = html.match(/<p role="status"[^>]*>.*?<\/p>/s)?.[0] ?? "";
+    const words = (key: "sent" | "resent") =>
+      heT.markup(`app.team.file.code.${key}`, {
+        tail: "0014",
+        ltr: (chunks) => chunks,
+      });
+    expect(text(status)).toBe(words("sent"));
+    // A second code says so, so the line is new and is heard.
+    expect(words("resent")).not.toBe(words("sent"));
+    expect(words("resent")).toContain("0014");
+  });
 });

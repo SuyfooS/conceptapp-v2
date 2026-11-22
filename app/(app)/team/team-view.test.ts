@@ -52,6 +52,7 @@ function draw(
   shown: TeamFiles | null,
   viewer: { role: "owner" | "manager" | "accountant"; perms: string[] },
   fileHref?: (userId: string) => string,
+  staff = teamMembers,
 ): string {
   const missing: string[] = [];
   const provider = {
@@ -70,7 +71,7 @@ function draw(
       createElement(TeamView, {
         team: filesOnly
           ? buildTeam(
-              fileStaff(teamMembers).map((m) => ({ ...m, phone: null })),
+              fileStaff(staff).map((m) => ({ ...m, phone: null })),
               [],
               teamToday,
             )
@@ -214,6 +215,35 @@ describe("the team's file lines", () => {
     expect(off).not.toContain(
       heT("app.team.file.columns.form101", { year: 2026 }),
     );
+  });
+
+  // The second review: an owner who brought the accountant in before any
+  // staff gets them an empty list and a table of headers no more.
+  it("tell the accountant there is no one on the staff yet, in every shape", () => {
+    const owners = teamMembers.filter(
+      (m) => m.role === "owner" || m.role === "accountant",
+    );
+    const html = draw(
+      files("holder", { filesOnly: true, byPerson: {} }),
+      accountant,
+      undefined,
+      owners,
+    );
+    const page = text(html);
+    expect(page).toContain(
+      heT("app.team.file.filesOnly.subtitle", { count: 0 }),
+    );
+    expect(page).toContain(he.app.team.file.filesOnly.note);
+    expect(page).toContain(he.app.team.file.filesOnly.empty.title);
+    expect(page).toContain(he.app.team.file.filesOnly.empty.body);
+    expect(html).toMatch(
+      new RegExp(`<h2[^>]*>${he.app.team.file.filesOnly.empty.title}</h2>`),
+    );
+    expect(html).not.toContain("<table");
+    expect(html).not.toContain(`aria-label="${he.app.team.members.title}"`);
+    // Shown at every width: no shape hides it.
+    expect(listsClass(html)).toBe("");
+    expect(html).not.toContain("hidden xl:block");
   });
 
   it("draws nothing of the file without its status", () => {

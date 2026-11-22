@@ -215,6 +215,8 @@ function Notice({ children }: { children: ReactNode }) {
 /**
  * One part of the file, named by its title, so it is a region of its own (a
  * screen reader's, and the browser tests'): PageSection's look, labelled.
+ * Its title takes the focus from the code's boxes once a code opened the
+ * file (`FileOpenWatch`), so the first one is where the person lands.
  */
 function Section({
   id,
@@ -230,7 +232,11 @@ function Section({
       aria-labelledby={`file-${id}`}
       className="flex min-w-0 flex-col gap-3"
     >
-      <h2 id={`file-${id}`} className="px-1 font-bold text-lg">
+      <h2
+        id={`file-${id}`}
+        tabIndex={-1}
+        className="px-1 font-bold text-lg outline-none"
+      >
         {title}
       </h2>
       <Card padding="none" className="overflow-hidden">
