@@ -9,6 +9,7 @@ import { memberNames, nameIn } from "./member-names";
 import { isMissingFunction } from "./missing";
 import { type Written, written } from "./module-settings";
 import { isMissingTable } from "./notifications";
+import { readAllPages } from "./pages";
 import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
 
@@ -36,10 +37,16 @@ export async function getDepartments(
       .eq("business_id", businessId)
       .order("position")
       .order("key"),
-    supabase
-      .from("department_members")
-      .select("department_id, user_id")
-      .eq("business_id", businessId),
+    // People times departments: 500 people in two each is already 1000.
+    readAllPages((first, last) =>
+      supabase
+        .from("department_members")
+        .select("department_id, user_id")
+        .eq("business_id", businessId)
+        .order("department_id")
+        .order("user_id")
+        .range(first, last),
+    ),
   ]);
   for (const { error } of [departments, members]) {
     if (error) {
@@ -132,17 +139,26 @@ export async function getDepartmentsForTeam(
       .is("archived_at", null)
       .order("position")
       .order("key"),
-    admin
-      .from("department_members")
-      .select("department_id, user_id")
-      .eq("business_id", businessId),
+    readAllPages((first, last) =>
+      admin
+        .from("department_members")
+        .select("department_id, user_id")
+        .eq("business_id", businessId)
+        .order("department_id")
+        .order("user_id")
+        .range(first, last),
+    ),
     // People on the staff only: an accountant is in no department.
-    admin
-      .from("memberships")
-      .select("user_id, profiles (full_name, avatar_path)")
-      .eq("business_id", businessId)
-      .eq("active", true)
-      .neq("role", "accountant"),
+    readAllPages((first, last) =>
+      admin
+        .from("memberships")
+        .select("user_id, profiles (full_name, avatar_path)")
+        .eq("business_id", businessId)
+        .eq("active", true)
+        .neq("role", "accountant")
+        .order("user_id")
+        .range(first, last),
+    ),
     memberNames(admin, businessId),
   ]);
   for (const { error } of [departments, members]) {

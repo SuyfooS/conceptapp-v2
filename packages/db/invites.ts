@@ -343,6 +343,7 @@ export async function onAnotherStaff(
   ];
   if (phones.length === 0) return [];
   const { data, error } = await createAdminClient()
+    // bounded: one wizard's numbers (at most 60), a few businesses each.
     .from("memberships")
     .select("profiles!inner(phone)")
     .eq("active", true)

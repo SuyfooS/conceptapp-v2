@@ -7,11 +7,12 @@ import { fieldsFor } from "@domain/settings-form";
 import { manifestFor } from "@modules/registry";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
+import { FileSpaceSummary } from "../../../../(app)/manage/file-space-summary";
 import { modulesToManage } from "../../../../(app)/manage/manage";
 import { ModuleSettingsView } from "../../../../(app)/manage/module-settings-view";
 import { OrderFixesLine } from "../../../../(app)/manage/order-fixes-line";
 import { baseWording } from "../../../../(app)/wording";
-import { demoModuleRows } from "../../data";
+import { demoFileSpace, demoModuleRows } from "../../data";
 import { demoSaveSettings } from "../actions";
 
 // As the owner reads them: the hiring file's are an owner's alone (H5b).
@@ -20,7 +21,7 @@ export const generateStaticParams = () =>
 
 type Props = {
   params: Promise<{ module: string }>;
-  searchParams: Promise<{ state?: string }>;
+  searchParams: Promise<{ state?: string; space?: string }>;
 };
 
 // The real settings screen with mock settings and a stand-in for saving: what
@@ -31,7 +32,8 @@ type Props = {
 // /design/shell/manage/scheduling). Taking orders says the day's fixes above
 // its settings, as an owner reads them (P5). The hiring file's are drawn as
 // its owner reads them, its link, phone and deductions file typed left to
-// right (H5b).
+// right (H5b). Chat says how full the spaces for files are above its settings
+// (bigger teams): `?space=near` filling, `?space=full` the documents' full.
 export default function ShellManageModule({ params, searchParams }: Props) {
   return (
     <Suspense>
@@ -41,7 +43,10 @@ export default function ShellManageModule({ params, searchParams }: Props) {
 }
 
 async function Demo({ params, searchParams }: Props) {
-  const [{ module }, { state }] = await Promise.all([params, searchParams]);
+  const [{ module }, { state, space }] = await Promise.all([
+    params,
+    searchParams,
+  ]);
   const key = moduleKeyOf(module);
   if (!key || !modulesToManage(demoModuleRows, "owner").includes(key)) {
     notFound();
@@ -68,6 +73,13 @@ async function Demo({ params, searchParams }: Props) {
           <OrderFixesLine
             fixes={{ takenBack: 3, cancelled: 2, comped: 1 }}
             activityHref="/design/shell/manage/activity"
+            wording={baseWording}
+          />
+        ) : key === "chat" ? (
+          <FileSpaceSummary
+            space={demoFileSpace(
+              space === "near" || space === "full" ? space : "quiet",
+            )}
             wording={baseWording}
           />
         ) : undefined

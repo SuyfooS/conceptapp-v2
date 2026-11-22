@@ -3,7 +3,12 @@ import { type DocumentsDemoReader, documentsDemoScreen } from "./data";
 import { DemoDocuments } from "./demo-screens";
 
 type Props = {
-  searchParams: Promise<{ as?: string; state?: string; person?: string }>;
+  searchParams: Promise<{
+    as?: string;
+    state?: string;
+    person?: string;
+    space?: string;
+  }>;
 };
 
 // The documents (chat C7) with mock rows. By default the owner's, the
@@ -14,7 +19,9 @@ type Props = {
 // Shiran's with what she sent ("שלחת"), and `?as=manager&state=noSend` hers
 // once her switch for sending documents is off (the roles plan's R8): what
 // she sent still there, and who sends now instead of the way to send.
-// `?state=empty` has nothing yet.
+// `?state=empty` has nothing yet. `?space=near` and `?space=full` tell the
+// office and a sender that the space for documents is filling or full
+// (bigger teams), above every shape.
 export default function DocumentsDemoPage({ searchParams }: Props) {
   return (
     <Suspense>
@@ -24,7 +31,7 @@ export default function DocumentsDemoPage({ searchParams }: Props) {
 }
 
 async function Demo({ searchParams }: Props) {
-  const { as, state, person } = await searchParams;
+  const { as, state, person, space } = await searchParams;
   const reader: DocumentsDemoReader =
     as === "staff" || as === "manager" ? as : "office";
   return (
@@ -34,6 +41,7 @@ async function Demo({ searchParams }: Props) {
         notice: state !== "seen",
         person: typeof person === "string" ? person : null,
         sends: state !== "noSend",
+        space: space === "near" || space === "full" ? space : null,
       })}
     />
   );

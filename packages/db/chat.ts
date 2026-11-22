@@ -32,6 +32,7 @@ import type { Database } from "./database.types";
 import { memberNames, nameIn } from "./member-names";
 import { isMissingFunction } from "./missing";
 import { isMissingTable } from "./notifications";
+import { allPagesIn, readAllPages } from "./pages";
 import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
 
@@ -132,10 +133,15 @@ export async function getChatDirectory(
 ): Promise<ChatDirectory> {
   const supabase = await createClient();
   const [members, names, departments] = await Promise.all([
-    supabase
-      .from("memberships")
-      .select("user_id, role, active, profiles (full_name, avatar_path)")
-      .eq("business_id", businessId),
+    // Everyone who ever joined, so page by page.
+    readAllPages((first, last) =>
+      supabase
+        .from("memberships")
+        .select("user_id, role, active, profiles (full_name, avatar_path)")
+        .eq("business_id", businessId)
+        .order("user_id")
+        .range(first, last),
+    ),
     memberNames(supabase, businessId),
     supabase
       .from("departments")
@@ -350,15 +356,20 @@ export async function getChatAuthors(
   const wanted = [...new Set(ids.filter(isUuid).map((id) => id.toLowerCase()))];
   if (wanted.length === 0) return [];
   const supabase = await createClient();
-  const [{ data, error }, names] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select("id, full_name, avatar_path")
-      .in("id", wanted),
+  // A document's recipients can be hundreds: in parts, so the address stays
+  // short, each one row an id.
+  const [data, names] = await Promise.all([
+    allPagesIn(wanted, (part, first, last) =>
+      supabase
+        .from("profiles")
+        .select("id, full_name, avatar_path")
+        .in("id", part)
+        .order("id")
+        .range(first, last),
+    ),
     memberNames(supabase, businessId, wanted),
   ]);
-  if (error) throw error;
-  const found = new Map((data ?? []).map((row) => [row.id.toLowerCase(), row]));
+  const found = new Map(data.map((row) => [row.id.toLowerCase(), row]));
   return wanted.map((id) => {
     const row = found.get(id);
     return {
@@ -521,6 +532,7 @@ export async function withOwnDrafts(
   if (own.length === 0) return [...messages];
   const supabase = await createClient();
   const { data, error } = await supabase
+    // bounded: the reader's own among the messages of one screen's page.
     .from("chat_messages")
     .select("id, draft_id")
     .eq("author_id", reader)
@@ -599,6 +611,7 @@ export async function getMessagesById(
   if (!isUuid(conversationId) || wanted.length === 0) return [];
   const supabase = await createClient();
   const { data, error } = await supabase
+    // bounded: the ids a screen sends, at most REMOVED_SENT_MAX.
     .from("chat_messages")
     .select(MESSAGE_COLUMNS)
     .eq("business_id", businessId)
@@ -653,6 +666,7 @@ export async function getOwnConfirmations(
   if (wanted.length === 0) return new Set();
   const supabase = await createClient();
   const { data, error } = await supabase
+    // bounded: the reader's own, of the announcements on one screen.
     .from("chat_acks")
     .select("message_id")
     .in("message_id", wanted);

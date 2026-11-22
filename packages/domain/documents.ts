@@ -12,8 +12,9 @@ import { tidyLine } from "./typed-text";
  * - **to people** (`to_people`): an owner, a holder of `chat.send_documents`
  *   (managers by default) or someone in the office sends a payslip, a
  *   contract, a procedure, a form or another document to people the screen
- *   picks (one, a department or everyone, at most 200), asking them for
- *   "קראתי" or not. Its recipients, its sender and the office read it.
+ *   picks (one, a department or everyone, at most 1,000:
+ *   `DOCUMENT_RECIPIENTS_MAX`), asking them for "קראתי" or not. Its
+ *   recipients, its sender and the office read it.
  *
  * The office is the business's active members who hold `clock.payroll`:
  * owners and accountants always, managers when the owner gives it. A manager
@@ -131,8 +132,11 @@ export const DOCUMENT_UNDO_MINUTES = 10;
 export const DOCUMENT_TITLE_MAX = 80;
 /** Its note, in characters. */
 export const DOCUMENT_NOTE_MAX = 300;
-/** People one document goes to, at most. */
-export const DOCUMENT_RECIPIENTS_MAX = 200;
+/**
+ * People one document goes to, at most (public.send_document): enough for a
+ * business of a few hundred people, sent in one write.
+ */
+export const DOCUMENT_RECIPIENTS_MAX = 1000;
 
 /** The private bucket documents' files are kept in. */
 export const DOCUMENT_BUCKET = "documents";

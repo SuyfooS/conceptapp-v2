@@ -16,6 +16,7 @@ import type {
   DocumentPageData,
   DocumentPeople,
   DocumentSendData,
+  DocumentSpace,
   DocumentsScreenData,
 } from "../../../(app)/chat/documents/document-screen-types";
 import { demoAccountantName } from "../../shell/clock/pay/data";
@@ -23,11 +24,31 @@ import {
   CHAT_DEMO_NOW,
   CHAT_DEMO_TODAY,
   CHAT_DEMO_ZONE,
+  type ChatDemoPerson,
   chatDemoPeople,
 } from "../data";
 
 /** Who reads each version of the demo. */
 export type DocumentsDemoReader = "office" | "staff" | "manager";
+
+/** How full the demo business's space for documents is (`?space=`). */
+export type DocumentsDemoSpace = "near" | "full";
+
+/**
+ * The space for documents as the office and a sender are told of it (bigger
+ * teams): `near`, 42 of 50 MB; `full`, 49.6 (less than a page's photo left).
+ */
+export function documentsDemoSpace(
+  level: DocumentsDemoSpace | null,
+): DocumentSpace | null {
+  if (level === null) return null;
+  const MB = 1024 * 1024;
+  return {
+    state: level,
+    usedBytes: Math.round((level === "full" ? 49.6 : 42) * MB),
+    spaceBytes: 50 * MB,
+  };
+}
 
 const READERS: Record<DocumentsDemoReader, { id: string; office: boolean }> = {
   office: { id: "uri", office: true },
@@ -226,16 +247,19 @@ export function documentsDemoScreen(
     person?: string | null;
     /** False: Shiran's switch for sending documents turned off (R8). */
     sends?: boolean;
+    /** The space for documents filling or full, told to the office and a sender. */
+    space?: DocumentsDemoSpace | null;
   } = {},
 ): DocumentsScreenData {
   const read = readBy(reader);
   const documents = options.empty ? [] : read.documents;
+  const sends = reader !== "staff" && (options.sends ?? true);
   return {
     business: "demo",
     reader: READERS[reader],
     clock: documentsDemoClock,
     mode: reader === "office" ? "office" : "staff",
-    sends: reader !== "staff" && (options.sends ?? true),
+    sends,
     documents,
     // Outside the office, what each sent, as the app reads it.
     sent: reader === "office" ? null : read.sent,
@@ -250,6 +274,10 @@ export function documentsDemoScreen(
         : null,
     months: documentMonths(documents, CHAT_DEMO_ZONE),
     notYet: false,
+    space:
+      reader === "office" || sends
+        ? documentsDemoSpace(options.space ?? null)
+        : null,
   };
 }
 
@@ -312,21 +340,56 @@ export function documentsDemoPage(
   };
 }
 
+/** How many people `?state=tooMany` has on the staff, Shiran with them. */
+export const DOCUMENTS_DEMO_CROWD = 1204;
+
+/**
+ * A staff of DOCUMENTS_DEMO_CROWD (bigger teams): the demo's people, then
+ * more by the same names with a number, so "כל הצוות" is more than one
+ * document takes.
+ */
+function crowdOf(staff: readonly ChatDemoPerson[]) {
+  const more = Array.from(
+    { length: DOCUMENTS_DEMO_CROWD - 1 - staff.length },
+    (_, n) => {
+      const like = staff[n % staff.length];
+      return {
+        id: `00000000-0000-4000-c000-${n.toString(16).padStart(12, "0")}`,
+        name: `${like?.name ?? ""} ${Math.floor(n / staff.length) + 2}`,
+        photo: null,
+      };
+    },
+  );
+  return [
+    ...staff.map((p) => ({ id: p.id, name: p.name, photo: p.photo })),
+    ...more,
+  ];
+}
+
 /** `/design/chat/documents/send`, for Noa (to the business) or Shiran (both ways). */
 export function documentsDemoSend(
   reader: "staff" | "manager",
   samples: boolean,
+  options: {
+    /** The space for documents filling or full, told to a sender. */
+    space?: DocumentsDemoSpace | null;
+    /** A staff of DOCUMENTS_DEMO_CROWD, more than one document takes. */
+    crowd?: boolean;
+  } = {},
 ): DocumentSendData {
   const me = READERS[reader].id;
   const staff = chatDemoPeople.filter((p) => p.id !== me);
+  const toPeople = reader === "manager";
   return {
     business: "demo",
     me,
     demo: samples,
     files: samples ? "demo" : "yes",
     toBusiness: true,
-    toPeople: reader === "manager",
-    people: staff.map((p) => ({ id: p.id, name: p.name, photo: p.photo })),
+    toPeople,
+    people: options.crowd
+      ? crowdOf(staff)
+      : staff.map((p) => ({ id: p.id, name: p.name, photo: p.photo })),
     departments: [
       { id: "dep-kitchen", name: "מטבח", members: ["noa", "itay", "omer"] },
       { id: "dep-bar", name: "בר", members: ["yoav", "ron"] },
@@ -336,5 +399,6 @@ export function documentsDemoSend(
         members: ["maya", "dana", "shira"],
       },
     ],
+    space: toPeople ? documentsDemoSpace(options.space ?? null) : null,
   };
 }

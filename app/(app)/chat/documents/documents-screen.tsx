@@ -53,6 +53,7 @@ import {
 import type { DocumentsScreenData } from "./document-screen-types";
 import type { DocumentActionResult } from "./document-types";
 import { type DocumentsPaths, documentsPathsAt } from "./documents-paths";
+import { DocumentSpaceNote } from "./space-note";
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 
@@ -66,8 +67,10 @@ const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
  * time; on a tablet the people at the start and the chosen one's documents
  * at the end; on a desktop one table with filters and a preview beside it.
  * The office is told once that the business should keep its own copy, and
- * downloads a person's documents or a month's. A list opens no file: only a
- * document's page, or the desktop's preview of the row chosen, does.
+ * downloads a person's documents or a month's. The office and a sender are
+ * told when the space for documents is filling or full, above every shape
+ * (bigger teams). A list opens no file: only a document's page, or the
+ * desktop's preview of the row chosen, does.
  */
 export function DocumentsScreen({
   data,
@@ -156,52 +159,55 @@ function StaffDocuments({
       />
     );
   return (
-    <div
-      className={
-        sent
-          ? "flex flex-col gap-6 md:grid md:grid-cols-2 md:items-start md:gap-8"
-          : "flex flex-col gap-6 md:max-w-2xl"
-      }
-    >
-      {/* With "שלחת" beside them, their own get a title of their own. */}
-      {sent ? <PageSection title={t("mine")}>{mine}</PageSection> : mine}
-      {sent ? (
-        <PageSection
-          title={t("sent.title")}
-          action={
-            data.sends ? (
-              <Link
-                href={paths.send("people")}
-                className="-my-2.5 inline-flex min-h-11 items-center font-medium text-ink-2 underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-accent"
-              >
-                {t("sendToPeople")}
-              </Link>
-            ) : undefined
-          }
-        >
-          {data.sends ? null : (
-            <p className="px-1 text-ink-2">{t("sent.noSend")}</p>
-          )}
-          {sent.length > 0 ? (
-            <ListGroup>
-              {sent.map((document) => (
-                <DocumentListRow
-                  key={document.id}
-                  document={document}
-                  reader={data.reader}
-                  words={words}
-                  href={paths.document(document.id)}
-                />
-              ))}
-            </ListGroup>
-          ) : (
-            <Card>
-              <CardText>{t("sent.empty")}</CardText>
-            </Card>
-          )}
-        </PageSection>
-      ) : null}
-    </div>
+    <>
+      {data.sends ? <DocumentSpaceNote space={data.space} /> : null}
+      <div
+        className={
+          sent
+            ? "flex flex-col gap-6 md:grid md:grid-cols-2 md:items-start md:gap-8"
+            : "flex flex-col gap-6 md:max-w-2xl"
+        }
+      >
+        {/* With "שלחת" beside them, their own get a title of their own. */}
+        {sent ? <PageSection title={t("mine")}>{mine}</PageSection> : mine}
+        {sent ? (
+          <PageSection
+            title={t("sent.title")}
+            action={
+              data.sends ? (
+                <Link
+                  href={paths.send("people")}
+                  className="-my-2.5 inline-flex min-h-11 items-center font-medium text-ink-2 underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-accent"
+                >
+                  {t("sendToPeople")}
+                </Link>
+              ) : undefined
+            }
+          >
+            {data.sends ? null : (
+              <p className="px-1 text-ink-2">{t("sent.noSend")}</p>
+            )}
+            {sent.length > 0 ? (
+              <ListGroup>
+                {sent.map((document) => (
+                  <DocumentListRow
+                    key={document.id}
+                    document={document}
+                    reader={data.reader}
+                    words={words}
+                    href={paths.document(document.id)}
+                  />
+                ))}
+              </ListGroup>
+            ) : (
+              <Card>
+                <CardText>{t("sent.empty")}</CardText>
+              </Card>
+            )}
+          </PageSection>
+        ) : null}
+      </div>
+    </>
   );
 }
 
@@ -257,10 +263,13 @@ function OfficeDocuments({
     />
   );
 
+  const space = <DocumentSpaceNote space={data.space} />;
+
   if (data.documents.length === 0 && people.length === 0) {
     return (
       <>
         {notice}
+        {space}
         <EmptyState
           headingLevel="h2"
           icon={<FileText />}
@@ -346,6 +355,7 @@ function OfficeDocuments({
   return (
     <>
       {notice}
+      {space}
 
       {/* Phone: one thing at a time, what waits or everyone by person. */}
       <div className="flex flex-col gap-6 md:hidden">

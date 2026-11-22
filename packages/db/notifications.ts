@@ -143,6 +143,7 @@ async function lookupsFor(
   const [members, names, chats, documents] = await Promise.all([
     people.length
       ? supabase
+          // bounded: the people one page of the bell names.
           .from("memberships")
           .select("user_id, active, profiles (full_name)")
           .eq("business_id", businessId)
@@ -158,6 +159,7 @@ async function lookupsFor(
       : null,
     documentIds.length
       ? supabase
+          // bounded: the documents one page of the bell names.
           .from("documents")
           .select("id, category")
           .eq("business_id", businessId)

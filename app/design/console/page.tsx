@@ -9,7 +9,8 @@ type Props = { searchParams: Promise<{ storage?: string }> };
 // The console's real first screen, with mock businesses and how full the
 // free plan is (`?storage=high`: past 700 MB, the businesses' space adding up
 // past the 900 MB where new chat files stop; `?storage=full`: past those
-// 900 MB, new chat files refused now).
+// 900 MB, new chat files refused now; `?storage=quota`: a quiet project where
+// businesses near their own spaces, one's documents full).
 export default function ConsoleDemo({ searchParams }: Props) {
   return (
     <Suspense>
@@ -31,7 +32,9 @@ async function Demo({ searchParams }: Props) {
       account={{ name: consoleUser.name, role: t("platform_admin") }}
       signOut={demoSignOut}
       storage={demoStorage(
-        storage === "high" || storage === "full" ? storage : "low",
+        storage === "high" || storage === "full" || storage === "quota"
+          ? storage
+          : "low",
       )}
     />
   );

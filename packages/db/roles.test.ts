@@ -82,6 +82,8 @@ function namesQuery(key: "publishable" | "secret") {
     select: () => query,
     eq: () => query,
     in: () => query,
+    order: () => query,
+    range: () => query,
     // biome-ignore lint/suspicious/noThenProperty: a stand-in for the query builder, which is awaited.
     then: (
       resolve: (value: ReturnType<typeof answer>) => unknown,
@@ -118,6 +120,8 @@ function listsQuery(table: "list_templates" | "list_schedules") {
       keep.push((row) => (row[column] ?? null) !== value);
       return query;
     },
+    order: () => query,
+    range: () => query,
     // biome-ignore lint/suspicious/noThenProperty: a stand-in for the query builder, which is awaited.
     then: (
       resolve: (value: ReturnType<typeof answer>) => unknown,
@@ -146,6 +150,8 @@ function membershipsQuery(key: "publishable" | "secret") {
       read.filters[column] = value;
       return query;
     },
+    order: () => query,
+    range: () => query,
     // biome-ignore lint/suspicious/noThenProperty: a stand-in for the query builder, which is awaited.
     then: (
       resolve: (value: ReturnType<typeof answer>) => unknown,
@@ -185,6 +191,8 @@ function invitesQuery(key: "publishable" | "secret") {
     is: narrow("is"),
     gt: narrow(">"),
     not: narrow("not"),
+    order: () => query,
+    range: () => query,
     // biome-ignore lint/suspicious/noThenProperty: a stand-in for the query builder, which is awaited.
     then: (
       resolve: (value: ReturnType<typeof answer>) => unknown,

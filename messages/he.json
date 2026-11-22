@@ -3365,6 +3365,18 @@
         "today": "היום: {takenBack, plural, one {החזרה אחת} other {# החזרות}}, {cancelled, plural, one {ביטול אחד} other {# ביטולים}}, {comped, plural, other {# על חשבון הבית}}",
         "details": "פירוט ביומן הפעולות"
       },
+      "fileSpace": {
+        "title": "מקום לקבצים",
+        "documents": "מסמכים",
+        "chat": "קבצי צ'אט",
+        "usedOf": "<ltr>{used}</ltr> מתוך <ltr>{space}</ltr> מגה",
+        "documentsOk": "כשהמקום נגמר, לא שולחים מסמכים חדשים. מסמכים לא נמחקים בגלל מקום.",
+        "documentsNear": "המקום מתמלא. כשהוא נגמר, לא יהיה אפשר לשלוח מסמכים חדשים.",
+        "documentsFull": "המקום מלא, ולכן מסמכים חדשים לא נשלחים עכשיו.",
+        "chatOk": "כשהמקום מתמלא, הקבצים הישנים ביותר נמחקים ראשונים. ההודעות עצמן נשארות.",
+        "chatNear": "המקום כמעט מלא, ולכן בקרוב הקבצים הישנים ביותר יימחקו, עוד לפני הזמן שלהם. ההודעות עצמן נשארות.",
+        "more": "כדי לקבל עוד מקום, פונים לצוות ConceptApp."
+      },
       "team": {
         "title": "צוות",
         "subtitle": "מי עובד בעסק, והזמנה של אנשים חדשים"
@@ -6089,12 +6101,26 @@
           "demoSample": "בעסק הדגמה לא מצרפים קבצים: יוצא מסמך לדוגמה מהסוג שבחרת.",
           "needsFile": "צריך לצרף את הקובץ",
           "needsPeople": "צריך לבחור למי",
+          "tooMany": "{count, plural, other {נבחרו # אנשים}}, ומסמך אחד יוצא לעד {max, number} אנשים.",
+          "tooManyDepartments": "אפשר לשלוח אותו לכל מחלקה בנפרד.",
+          "tooManySplit": "כדי שיגיע לכולם, אפשר לחלק את הצוות למחלקות ולשלוח לכל מחלקה בנפרד.",
+          "needsFewer": "צריך לבחור עד {max, number} אנשים",
           "needsTitle": "צריך לכתוב כותרת",
           "titleInvalid": "הכותרת צריכה להיות בשורה אחת, עד <ltr>{max}</ltr> תווים",
           "photoFailure": {
             "unreadable": "אי אפשר לקרוא את התמונה. אפשר לבחור אחרת.",
             "tooBig": "התמונה גדולה מדי גם אחרי ההקטנה. אפשר לצלם שוב.",
             "type": "אפשר לצרף תמונה או קובץ PDF."
+          }
+        },
+        "space": {
+          "near": {
+            "title": "המקום למסמכים מתמלא",
+            "body": "המסמכים של העסק תופסים <ltr>{used}</ltr> מתוך <ltr>{space}</ltr> מגה. כשהמקום נגמר, אי אפשר לשלוח מסמכים חדשים, ומסמכים לא נמחקים בגלל מקום. כדי לקבל עוד מקום, פונים לצוות ConceptApp."
+          },
+          "full": {
+            "title": "המקום למסמכים מלא",
+            "body": "המסמכים של העסק תופסים <ltr>{used}</ltr> מתוך <ltr>{space}</ltr> מגה, ולכן מסמכים חדשים לא נשלחים עכשיו. כדי לקבל עוד מקום, פונים לצוות ConceptApp."
           }
         },
         "failure": {
@@ -7740,11 +7766,13 @@
         "other": "קבצים אחרים"
       },
       "filesCount": "{count, plural, =0 {אין קבצים} one {קובץ אחד} other {# קבצים}}",
-      "byBusiness": "קבצי צ'אט לפי עסק",
-      "businessLabel": "המקום של כל עסק לקבצי צ'אט",
+      "byBusiness": "המקום של כל עסק",
+      "businessLabel": "המקום של כל עסק לקבצי צ'אט ולמסמכים",
       "business": "עסק",
-      "chatUsed": "בשימוש",
-      "chatCap": "מקום לעסק",
+      "chatColumn": "קבצי צ'אט",
+      "documentsColumn": "מסמכים",
+      "chatLine": "צ'אט: <ltr>{used}</ltr> {usedUnit} מתוך <ltr>{plan}</ltr> {planUnit}",
+      "documentsLine": "מסמכים: <ltr>{used}</ltr> {usedUnit} מתוך <ltr>{plan}</ltr> {planUnit}",
       "closed": "לא מקבל קבצים",
       "noBusinesses": "עוד אין עסקים",
       "caps": "המקום של כל העסקים יחד",
@@ -7753,7 +7781,11 @@
         "filesRefused": "הקבצים עברו את <ltr>{guard}</ltr> {guardUnit}, אז קבצי צ'אט חדשים לא נשמרים עכשיו. ההודעות עצמן נשלחות.",
         "storageHigh": "הקבצים עברו את <ltr>{limit}</ltr> {limitUnit}. כדאי להחליט מה הלאה לפני שיגיעו ל-<ltr>{guard}</ltr> {guardUnit}, ששם נעצרים קבצים חדשים.",
         "capsOver": "המקום של כל העסקים יחד עובר את <ltr>{guard}</ltr> {guardUnit}: אם כולם ימלאו אותו, קבצים חדשים ייעצרו לפני שעסק יגיע למקום שלו. כדאי לתת לעסקים חדשים פחות מקום.",
-        "databaseHigh": "מסד הנתונים עבר את <ltr>{limit}</ltr> {limitUnit} מתוך <ltr>{plan}</ltr> {planUnit} של התוכנית החינמית."
+        "databaseHigh": "מסד הנתונים עבר את <ltr>{limit}</ltr> {limitUnit} מתוך <ltr>{plan}</ltr> {planUnit} של התוכנית החינמית.",
+        "documentsNear": "{name}: המסמכים תופסים <ltr>{used}</ltr> {usedUnit} מתוך <ltr>{cap}</ltr> {capUnit}. כשהמקום נגמר, מסמכים חדשים לא נשלחים.",
+        "documentsFull": "{name}: המקום למסמכים מלא (<ltr>{used}</ltr> {usedUnit} מתוך <ltr>{cap}</ltr> {capUnit}), ולכן מסמכים חדשים לא נשלחים.",
+        "chatNear": "{name}: קבצי הצ'אט תופסים <ltr>{used}</ltr> {usedUnit} מתוך <ltr>{cap}</ltr> {capUnit}, ולכן הקבצים הישנים ביותר יימחקו ראשונים, עוד לפני הזמן שלהם.",
+        "raise": "אפשר לתת לו עד <ltr>{max}</ltr> מגה בהגדרות העסק."
       }
     }
   },

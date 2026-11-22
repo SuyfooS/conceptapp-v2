@@ -9,6 +9,7 @@ import {
   periodsOf,
 } from "@domain/payroll-details";
 import { isMissingFunction } from "./missing";
+import { readAllPages } from "./pages";
 import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
 
@@ -39,14 +40,17 @@ export async function getPayrollDetails(
   userId?: string,
 ): Promise<Map<string, PayrollDetails>> {
   const supabase = await createClient();
-  let query = supabase
-    .from("member_payroll_details")
-    .select(
-      "user_id, payroll_number, rest_day, hours_law, youth_until, compulsory_education",
-    )
-    .eq("business_id", businessId);
-  if (userId) query = query.eq("user_id", userId);
-  const { data, error } = await query;
+  // One row a person who ever had details, so page by page.
+  const { data, error } = await readAllPages((first, last) => {
+    let query = supabase
+      .from("member_payroll_details")
+      .select(
+        "user_id, payroll_number, rest_day, hours_law, youth_until, compulsory_education",
+      )
+      .eq("business_id", businessId);
+    if (userId) query = query.eq("user_id", userId);
+    return query.order("user_id").range(first, last);
+  });
   if (error) {
     if (isMissingTable(error)) return new Map();
     throw error;
@@ -63,12 +67,15 @@ export async function getEmploymentPeriods(
   userId?: string,
 ): Promise<Map<string, EmploymentPeriod[]>> {
   const supabase = await createClient();
-  let query = supabase
-    .from("employment_periods")
-    .select("id, user_id, started_on, ended_on, last_paid_on, source")
-    .eq("business_id", businessId);
-  if (userId) query = query.eq("user_id", userId);
-  const { data, error } = await query.order("started_on");
+  // Every period of everyone who ever joined, so page by page.
+  const { data, error } = await readAllPages((first, last) => {
+    let query = supabase
+      .from("employment_periods")
+      .select("id, user_id, started_on, ended_on, last_paid_on, source")
+      .eq("business_id", businessId);
+    if (userId) query = query.eq("user_id", userId);
+    return query.order("started_on").order("id").range(first, last);
+  });
   if (error) {
     if (isMissingTable(error)) return new Map();
     throw error;

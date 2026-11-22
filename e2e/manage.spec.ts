@@ -316,6 +316,30 @@ test("a manager changes the business's own details", async ({
   });
 });
 
+// Bigger teams: chat's settings say how full the business's spaces for
+// documents and chat files are, to whoever sees the management page. Only
+// read: the used part moves with what other specs send, so the spaces are
+// matched (the seed's defaults, 50 and 100 MB).
+test("a manager sees how full the business's spaces for files are", async ({
+  page,
+}) => {
+  const f = m.fileSpace;
+  await signIn(page, MANAGER);
+  await page.goto("/manage/chat");
+  await expect(
+    page.getByRole("heading", { level: 1, name: he.modules.chat.name }),
+  ).toBeVisible();
+  const section = page.locator("section").filter({
+    has: page.getByRole("heading", { level: 2, name: f.title }),
+  });
+  await expect(section).toBeVisible();
+  await expect(section.getByText(f.documents, { exact: true })).toBeVisible();
+  await expect(section.getByText(f.chat, { exact: true })).toBeVisible();
+  await expect(section.getByText(/מתוך 50 מגה/)).toBeVisible();
+  await expect(section.getByText(/מתוך 100 מגה/)).toBeVisible();
+  await expectCleanPage(page);
+});
+
 test("availability closes at the business's own city's candle lighting", async ({
   page,
 }) => {

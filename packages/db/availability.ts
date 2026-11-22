@@ -4,6 +4,7 @@ import {
   availabilitySubmission,
 } from "@domain/availability";
 import { z } from "zod";
+import { allPages } from "./pages";
 import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
 
@@ -104,13 +105,17 @@ export async function getWeekAvailability(
   weekId: string,
 ): Promise<Availability[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("availability_submissions")
-    .select(
-      "user_id, note, submitted_at, updated_at, availability_ranges (day, starts_at, ends_at)",
-    )
-    .eq("week_id", weekId);
-  if (error) throw error;
+  // One row a person a week, and nothing caps a business's people.
+  const data = await allPages((first, last) =>
+    supabase
+      .from("availability_submissions")
+      .select(
+        "user_id, note, submitted_at, updated_at, availability_ranges (day, starts_at, ends_at)",
+      )
+      .eq("week_id", weekId)
+      .order("user_id")
+      .range(first, last),
+  );
   return data.map((row) => ({
     userId: row.user_id,
     note: row.note,

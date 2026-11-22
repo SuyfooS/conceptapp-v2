@@ -248,6 +248,11 @@ const PAGES = [
   "/design/shell/manage/time_clock",
   "/design/shell/manage/lists",
   "/design/shell/manage/notifications",
+  // How full the spaces for files are, above chat's settings (bigger
+  // teams): quiet, filling, and the documents' full.
+  "/design/shell/manage/chat",
+  "/design/shell/manage/chat?space=near",
+  "/design/shell/manage/chat?space=full",
   // What the hiring file asks, as its owner sets it (H5b).
   "/design/shell/manage/employee_files",
   "/design/shell/manage/departments",
@@ -366,9 +371,18 @@ const PAGES = [
   "/design/chat/documents?as=staff&state=empty",
   "/design/chat/documents?as=manager",
   "/design/chat/documents?as=manager&state=noSend",
+  // The space for documents filling or full (bigger teams): told to the
+  // office and a sender above every shape.
+  "/design/chat/documents?space=near",
+  "/design/chat/documents?space=full",
+  "/design/chat/documents?as=manager&space=near",
   "/design/chat/documents/send",
   "/design/chat/documents/send?to=people",
   "/design/chat/documents/send?state=demo",
+  // To people with the space full, and "כל הצוות" more than one document
+  // takes (bigger teams).
+  "/design/chat/documents/send?to=people&space=full",
+  "/design/chat/documents/send?to=people&state=tooMany",
   "/design/chat/documents/sick-note",
   "/design/chat/documents/sick-note?state=remove",
   "/design/chat/documents/sick-note?state=removed",
@@ -3829,6 +3843,65 @@ test("the documents demo keeps what a manager sent once she no longer sends", as
   await expect(
     page.getByRole("link", { name: d.sendToPeople, exact: true }),
   ).toHaveCount(0);
+});
+
+// Bigger teams, on the twins: the space for documents full, told once above
+// whichever shape the width shows; "כל הצוות" of 1,203 more than one document
+// takes, said in the count and, once pressed, in an alert, with nothing sent;
+// and chat's settings saying how full both spaces are, and whom to ask.
+test("the twins say when a document can't reach everyone and when space runs out", async ({
+  page,
+}) => {
+  const d = he.app.chat.documents;
+  await page.goto("/design/chat/documents?space=full");
+  await expect(
+    page
+      .getByRole("heading", { name: d.space.full.title })
+      .filter({ visible: true }),
+  ).toHaveCount(1);
+  await expectCleanPage(page);
+
+  const path = "/design/chat/documents/send?to=people&state=tooMany";
+  await page.goto(path);
+  await expect(
+    page
+      .getByRole("status")
+      .filter({
+        hasText: heT("app.chat.documents.send.tooMany", {
+          count: 1203,
+          max: 1000,
+        }),
+      })
+      .filter({ hasText: d.send.tooManyDepartments })
+      .filter({ visible: true }),
+  ).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  // A file first, so the count is what stops it.
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: d.send.pdf }).click();
+  await (await chooser).setFiles({
+    name: "נוהל.pdf",
+    mimeType: "application/pdf",
+    buffer: minimalPdf("ConceptApp bigger teams"),
+  });
+  await page.getByRole("button", { name: d.send.submitPeople }).click();
+  await expect(
+    page.getByRole("alert").filter({
+      hasText: heT("app.chat.documents.send.needsFewer", { max: 1000 }),
+    }),
+  ).toBeVisible();
+  // The stand-in was never asked: no demo's answer, and still here.
+  await expect(page.getByText(d.failure.demo)).toHaveCount(0);
+  await expect(page).toHaveURL(/\/send\?to=people&state=tooMany$/);
+  await expectCleanPage(page);
+
+  const f = he.app.manage.fileSpace;
+  await page.goto("/design/shell/manage/chat?space=near");
+  await expect(page.getByText(f.documents, { exact: true })).toBeVisible();
+  await expect(page.getByText(f.chat, { exact: true })).toBeVisible();
+  await expect(page.getByText(f.documentsNear)).toBeVisible();
+  await expect(page.getByText(f.more)).toBeVisible();
+  await expectCleanPage(page);
 });
 
 // The documents' mock screens (chat C7): the office's three shapes, one thing

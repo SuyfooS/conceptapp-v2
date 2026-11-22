@@ -6,11 +6,16 @@ import {
   checkDocumentTitle,
   DOCUMENT_CATEGORIES,
   DOCUMENT_NOTE_MAX,
+  DOCUMENT_RECIPIENTS_MAX,
   DOCUMENT_TITLE_MAX,
   type DocumentCategory,
   type DocumentDirection,
 } from "@domain/documents";
-import { audienceOf, type DocumentAudience } from "@domain/documents-screen";
+import {
+  audienceFits,
+  audienceOf,
+  type DocumentAudience,
+} from "@domain/documents-screen";
 import { Avatar } from "@ui/avatar";
 import { Button } from "@ui/button";
 import { ChoiceMenu } from "@ui/choice-menu";
@@ -47,6 +52,7 @@ import type {
   DocumentSentResult,
 } from "../document-types";
 import { documentsPathsAt } from "../documents-paths";
+import { DocumentSpaceNote } from "../space-note";
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 const PDF_ACCEPT = "application/pdf,.pdf";
@@ -61,7 +67,7 @@ type Picked =
 type Problem =
   | { of: "failure"; key: DocumentActionFailure }
   | { of: "photo"; key: "unreadable" | "tooBig" | "type" }
-  | { of: "send"; key: "needsFile" | "needsPeople" }
+  | { of: "send"; key: "needsFile" | "needsPeople" | "needsFewer" }
   /** Its title, checked as the database will before any file goes up. */
   | { of: "title"; key: "needsTitle" | "titleInvalid" };
 
@@ -82,21 +88,28 @@ type Going = {
  * Storage by its signed upload; who sees it, and for a sick note to send that
  * alone. To people: to whom (a person, a department or the whole team, said
  * as a count), the document and its file, and whether to ask for "קראתי".
- * In a demo business the title is the kind's words and there is no note; one
- * that takes no file sends its kind's sample. Once sent, the document's page
- * opens with "ביטול" in a toast.
+ * Past the most one document takes (`DOCUMENT_RECIPIENTS_MAX`), the count
+ * says how many were chosen and how to reach them all, and nothing goes up
+ * or out (bigger teams: never a silent cut). A sender is told first when the
+ * space for documents is filling or full. In a demo business the title is
+ * the kind's words and there is no note; one that takes no file sends its
+ * kind's sample. Once sent, the document's page opens with "ביטול" in a
+ * toast.
  */
 export function SendDocumentForm({
   data,
   base,
   actions,
   initial,
+  initialAudience,
 }: {
   data: DocumentSendData;
   base: string;
   actions: DocumentSendActions;
   /** Where it goes first (`?to=`). */
   initial: DocumentDirection;
+  /** To whom it goes first: the design twin's; the app starts at one person. */
+  initialAudience?: DocumentAudience;
 }) {
   const t = useTranslations("app.chat.documents");
   const router = useRouter();
@@ -122,10 +135,9 @@ export function SendDocumentForm({
   const [picked, setPicked] = useState<Picked | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [going, setGoing] = useState<Going | null>(null);
-  const [audience, setAudience] = useState<DocumentAudience>({
-    kind: "person",
-    person: null,
-  });
+  const [audience, setAudience] = useState<DocumentAudience>(
+    initialAudience ?? { kind: "person", person: null },
+  );
   const [asks, setAsks] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [sending, setSending] = useState(false);
@@ -142,6 +154,7 @@ export function SendDocumentForm({
         data.me,
       )
     : [];
+  const fit = toPeople ? audienceFits(people) : "fits";
   const nameOf = (person: string | null) =>
     data.people.find((p) => p.id === person)?.name ?? null;
   const chosenDepartment =
@@ -289,6 +302,11 @@ export function SendDocumentForm({
       setProblem({ of: "send", key: "needsPeople" });
       return;
     }
+    // More than one document takes: said before any file goes up.
+    if (toPeople && fit === "tooMany") {
+      setProblem({ of: "send", key: "needsFewer" });
+      return;
+    }
     // The title as the database will check it, before any file goes up.
     if (typed) {
       const checked = checkDocumentTitle(shownTitle);
@@ -360,7 +378,9 @@ export function SendDocumentForm({
         ? t(`send.photoFailure.${problem.key}`)
         : problem.of === "title"
           ? null
-          : t(`send.${problem.key}`)
+          : problem.key === "needsFewer"
+            ? t("send.needsFewer", { max: DOCUMENT_RECIPIENTS_MAX })
+            : t(`send.${problem.key}`)
     : null;
 
   const chosen: FileFieldChosen | null =
@@ -385,6 +405,8 @@ export function SendDocumentForm({
       />
       <div className="flex min-w-0 flex-col gap-8 md:max-w-2xl">
         <div className="flex min-w-0 flex-col gap-8">
+          {/* Before a file is picked; the database still decides. */}
+          {toPeople ? <DocumentSpaceNote space={data.space} /> : null}
           {ways.length > 1 ? (
             <section className="flex flex-col gap-3">
               <h2 className="px-1 font-bold text-lg">{t("send.way")}</h2>
@@ -476,14 +498,34 @@ export function SendDocumentForm({
                   </FieldRow>
                 </FieldGroup>
               ) : null}
-              <p role="status" className="px-1 text-ink-2">
-                {audience.kind === "person" && audience.person
-                  ? nameOf(audience.person) === null
-                    ? t("row.toNoName")
-                    : t("row.toPerson", {
-                        name: nameOf(audience.person) ?? "",
-                      })
-                  : t("send.count", { count: people.length })}
+              {/* One live line, so a change of count is said as it happens. */}
+              <p
+                role="status"
+                className={
+                  fit === "tooMany"
+                    ? "px-1 font-medium text-danger"
+                    : "px-1 text-ink-2"
+                }
+              >
+                {fit === "tooMany" ? (
+                  <>
+                    {t("send.tooMany", {
+                      count: people.length,
+                      max: DOCUMENT_RECIPIENTS_MAX,
+                    })}{" "}
+                    {audience.kind === "everyone" && data.departments.length > 0
+                      ? t("send.tooManyDepartments")
+                      : t("send.tooManySplit")}
+                  </>
+                ) : audience.kind === "person" && audience.person ? (
+                  nameOf(audience.person) === null ? (
+                    t("row.toNoName")
+                  ) : (
+                    t("row.toPerson", { name: nameOf(audience.person) ?? "" })
+                  )
+                ) : (
+                  t("send.count", { count: people.length })
+                )}
               </p>
             </section>
           ) : null}

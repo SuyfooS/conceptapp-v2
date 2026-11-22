@@ -1,6 +1,7 @@
 "use client";
 
 import type { DocumentRemoveReason } from "@domain/documents";
+import type { DocumentAudience } from "@domain/documents-screen";
 import { useState } from "react";
 import { DocumentScreen } from "../../../(app)/chat/documents/[id]/document-screen";
 import type {
@@ -124,9 +125,11 @@ export function DemoDocument({
 export function DemoSend({
   data,
   initial,
+  initialAudience,
 }: {
   data: DocumentSendData;
   initial: "from_person" | "to_people";
+  initialAudience?: DocumentAudience;
 }) {
   const sent = (direction: "from_person" | "to_people") => ({
     ok: true as const,
@@ -139,6 +142,7 @@ export function DemoSend({
       data={data}
       base={DOCUMENTS_DEMO_BASE}
       initial={initial}
+      initialAudience={initialAudience}
       actions={{
         photo: async (form) => {
           await wait();
