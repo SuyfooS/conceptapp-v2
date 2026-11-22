@@ -1,9 +1,15 @@
 import { BANK_INSTRUCTION_VERSION } from "@domain/employee-file";
-import { fileStepStates, type SENT_WITH } from "@domain/employee-file-steps";
+import {
+  fileStepStates,
+  nextFileStep,
+  previousFileStep,
+  type SENT_WITH,
+} from "@domain/employee-file-steps";
 import { formArg } from "@domain/profile";
 import { createElement, type ReactElement } from "react";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+import { fileStepInputOf } from "./file-parts";
 import type { Kit } from "./flow-kit";
 import type { BankScreen, BankScreenState } from "./steps/bank-step";
 
@@ -30,7 +36,8 @@ const { BankStep, bankHeld, bankToSend, useHoldWords } = await import(
   "./steps/bank-step"
 );
 const { FileFrame } = await import("./file-frame");
-const { FileView } = await import("./file-view");
+const { FileView, fileViewOf } = await import("./file-view");
+const { NoticeBody } = await import("./notice-sheet");
 const { fileMessages } = await import("./file-messages");
 const { fileScreenDemo } = await import("../../../design/shell/me/file/data");
 const he = (await import("@/messages/he.json")).default;
@@ -55,6 +62,7 @@ const STATES = [
   "code",
   "hold",
   "saved",
+  "ready",
   "done",
 ] as const;
 const VIEWS = [
@@ -564,16 +572,11 @@ function useKit(data: Data, busy: Kit["busy"] = {}): Kit {
   const t = useTranslations("app.file");
   return {
     data,
-    states: fileStepStates({
-      addressForm: data.addressForm,
-      asked: data.asked,
-      missing: data.missing,
-      directGroups: data.file?.direct_groups ?? [],
-      pensionAnswer: data.file?.pension_answer ?? null,
-      form101: data.taxYear
-        ? { status: data.taxYear.status, route: data.taxYear.route }
-        : null,
-    }),
+    states: fileStepStates(fileStepInputOf(data)),
+    steps: data.steps,
+    next: (from) => nextFileStep(from, data.steps) ?? "done",
+    previous: (from) => previousFileStep(from, data.steps),
+    stepName: (of) => t(`steps.name.${of}`),
     actions,
     t,
     go: () => {},
@@ -797,5 +800,178 @@ describe("the file's frame", () => {
       );
       expect(html.includes('dir="ltr" lang="en"')).toBe(lang === "en");
     }
+  });
+});
+
+// What each business asks (H5b): the twin's ways, each drawn whole.
+const SETUPS = [
+  { ask: "lean", form101: "print" },
+  { ask: "contact", form101: "print" },
+  { ask: "all", form101: "link" },
+  { ask: "all", form101: "off" },
+  { ask: "contact", form101: "off" },
+] as const;
+
+describe("the file by the business's settings", () => {
+  it("draws each way at every step on screen and done, in both languages, every word there", () => {
+    const missing: string[] = [];
+    for (const lang of ["he", "en"] as const) {
+      for (const setup of SETUPS) {
+        for (const state of ["stopped", "new", "ready", "done"] as const) {
+          const { data } = fileScreenDemo(state, lang, setup);
+          for (const view of [null, ...data.steps, "done"] as const) {
+            expect(drawData(data, lang, view, missing)).toContain("<main");
+          }
+        }
+      }
+    }
+    expect(missing).toEqual([]);
+  }, 60_000);
+
+  it("leaves out the address and the account when neither is asked", () => {
+    const missing: string[] = [];
+    const lean = fileScreenDemo("stopped", "he", { ask: "lean" }).data;
+    expect(lean.steps).toEqual(["start", "identity", "pension", "form101"]);
+    const html = drawData(lean, "he", null, missing);
+    expect(missing).toEqual([]);
+    expect(html).toContain(
+      heT("app.file.steps.count", { current: 3, count: 4 }),
+    );
+    expect(html).not.toContain('id="file-bank"');
+    expect(html).not.toContain('id="file-address"');
+    const welcome = drawData(
+      fileScreenDemo("new", "he", { ask: "lean" }).data,
+      "he",
+      null,
+      missing,
+    );
+    expect(welcome).toContain(heT("app.file.welcome.body", { count: 4 }));
+  });
+
+  it("names step 2 by the ways to reach the person, optional until something is in", () => {
+    const missing: string[] = [];
+    const { data } = fileScreenDemo("stopped", "he", { ask: "contact" });
+    const html = drawData(data, "he", "address", missing);
+    expect(missing).toEqual([]);
+    expect(html).toMatch(
+      new RegExp(
+        `<h2 id="file-address-title"[^>]*>${f.steps.name.contact}</h2>`,
+      ),
+    );
+    expect(html).toContain(f.address.emergencyTitle);
+    expect(html).toContain(f.address.workLanguage);
+    expect(html).not.toContain(f.address.city);
+    // Its row: "לא חובה" beside the name, said once to a screen reader.
+    expect(html).toMatch(
+      new RegExp(
+        `${f.steps.name.contact}<span class="sr-only"> · (<!-- -->)?${f.optional}</span>`,
+      ),
+    );
+    expect(html).toMatch(
+      new RegExp(`<span [^>]*aria-hidden="true"[^>]*>${f.optional}</span>`),
+    );
+    const done = drawData(
+      fileScreenDemo("done", "he", { ask: "contact" }).data,
+      "he",
+      "address",
+      missing,
+    );
+    // Hers, in: the contact's number as people write it.
+    expect(done).toContain('value="050-000-0099"');
+    expect(done).toMatch(
+      new RegExp(
+        `${f.steps.name.contact}<span class="sr-only"> · (<!-- -->)?${f.steps.state.done}</span>`,
+      ),
+    );
+  });
+
+  it("opens the approved system's link in a new window that knows nothing of this one", () => {
+    const missing: string[] = [];
+    const { data } = fileScreenDemo("stopped", "he", { form101: "link" });
+    const html = drawData(data, "he", "form101", missing);
+    expect(missing).toEqual([]);
+    const link = html.match(
+      /<a [^>]*href="https:\/\/101\.example\/noa"[^>]*>/,
+    )?.[0];
+    expect(link).toContain('target="_blank"');
+    expect(link).toContain('rel="noopener noreferrer"');
+    expect(html).toContain(
+      heT("app.file.form101.open", { provider: "משרד השכר" }),
+    );
+    expect(html).toContain(
+      f.form101.opensAt
+        .replace("<ltr>", '<span dir="ltr">')
+        .replace("{domain}", "101.example")
+        .replace("</ltr>", "</span>"),
+    );
+    expect(html).not.toContain(f.form101.handOver);
+    expect(buttonWith(html, f.form101.handedIn)).toHaveLength(1);
+  });
+
+  it("sends from the done screen when Form 101 isn't taken in the app", () => {
+    const missing: string[] = [];
+    const { data } = fileScreenDemo("ready", "he", { form101: "off" });
+    expect(data.steps).not.toContain("form101");
+    const html = drawData(data, "he", null, missing);
+    expect(missing).toEqual([]);
+    expect(html).not.toContain('id="file-form101"');
+    expect(html).toContain(heT("app.file.done.ready", { business }));
+    // The screen's main action: in the dock, and inline on a desktop.
+    expect(
+      buttonWith(html, heT("app.file.actions.send", { business })),
+    ).toHaveLength(2);
+    // Once sent, the way back to the profile.
+    const sent = drawData(
+      fileScreenDemo("done", "he", { form101: "off" }).data,
+      "he",
+      "done",
+      missing,
+    );
+    expect(buttonWith(sent, f.done.profile)).toHaveLength(2);
+  });
+
+  it("opens a step the business doesn't ask where the person stopped", () => {
+    const { data } = fileScreenDemo("stopped", "he", { ask: "lean" });
+    expect(fileViewOf("bank", data.steps)).toBeNull();
+    expect(fileViewOf("pension", data.steps)).toBe("pension");
+    expect(fileViewOf("done", data.steps)).toBe("done");
+  });
+});
+
+describe("the notice", () => {
+  it("names who the business set, and leaves out what it didn't", () => {
+    const missing: string[] = [];
+    const { data } = fileScreenDemo("stopped", "he", { form101: "link" });
+    const named = drawHe(
+      createElement(NoticeBody, {
+        business,
+        names: data.notice,
+        form101: data.form101,
+      }),
+    );
+    expect(named).toContain(
+      heT("app.file.notice.employer", { employer: "מסעדת הדגמה בע״מ" }),
+    );
+    expect(named).toContain(
+      heT("app.file.notice.whoProvider", {
+        business,
+        provider: "משרד רואי החשבון",
+      }),
+    );
+    expect(named).toContain(
+      heT("app.file.notice.form101Vendor", { business, provider: "משרד השכר" }),
+    );
+    expect(named).toContain('<span dir="ltr">03-123-4567</span>');
+    const bare = drawHe(
+      createElement(NoticeBody, {
+        business,
+        names: { payrollProvider: null, employer: null, phone: null },
+        form101: { way: "print" },
+      }),
+    );
+    expect(bare).toContain(heT("app.file.notice.who", { business }));
+    expect(bare).toContain(heT("app.file.notice.rights", { business }));
+    expect(bare).not.toContain(f.notice.employer.split("{")[0] ?? "");
+    expect(missing).toEqual([]);
   });
 });

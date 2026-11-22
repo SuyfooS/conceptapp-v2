@@ -1,7 +1,7 @@
 "use client";
 
 import type { PensionAnswer } from "@domain/employee-file";
-import { nextFileStep, pensionDue } from "@domain/employee-file-steps";
+import { pensionDue } from "@domain/employee-file-steps";
 import {
   isPensionFund,
   PENSION_FUNDS,
@@ -108,7 +108,7 @@ export function PensionStep({ kit, active }: { kit: Kit; active: boolean }) {
     }
     setTried(false);
     kit.say(t("saved"));
-    if (active) kit.go(nextFileStep("pension") ?? "done");
+    if (active) kit.go(kit.next("pension"));
   }
 
   const dueWords =

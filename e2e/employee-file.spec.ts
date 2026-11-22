@@ -8,9 +8,15 @@ import {
   codesSentSince,
   demoFileFacts,
   demoFileLog,
+  demoModuleSettings,
+  forgetDemoJoin,
+  inviteToDemoLink,
   notePhoneChange,
   restoreDemoFile,
+  setDemoBankChanged,
+  setDemoModuleSettings,
 } from "./db";
+import { enterAs } from "./orders-parts";
 import { SMS_COOLDOWN_MS, secondPage, signIn } from "./session";
 import { latestCode, setDemoModule } from "./sms";
 import { heT } from "./t";
@@ -20,7 +26,9 @@ import { heT } from "./t";
 // module is off there, so each test switches it on and off again, starts
 // Noa's file empty and gives her the made-up one back after. Noa signs in
 // with her own number, which the bank's code goes to. People from
-// supabase/seed.sql: Noa, a worker; Galit, the accountant.
+// supabase/seed.sql: Noa, a worker; Galit, the accountant; Uri, the owner;
+// Shiran, a manager. What the business asks (H5b) is its settings: each
+// test that changes them sets its own, and the hooks put the defaults back.
 const NOA = {
   id: "00000000-0000-4000-a000-000000000003",
   local: "050-000-0003",
@@ -154,6 +162,7 @@ test.beforeEach(async () => {
 
 test.afterEach(async () => {
   await restoreDemoFile(NOA.id);
+  await setDemoModuleSettings("employee_files", {});
   await setDemoModule("employee_files", false);
 });
 
@@ -568,4 +577,376 @@ test("the file answers no-store and stays closed to others", async ({
       name: heT("app.me.file.title", { business: BUSINESS }),
     }),
   ).toHaveCount(0);
+});
+
+// What each business asks (profile H5b). Each test sets its own settings;
+// the hooks put the defaults back before the module goes off.
+
+/** Step 2 named by the ways to reach the person, the address not asked. */
+const contactSection = (page: Page) =>
+  page.getByRole("region", { name: f.steps.name.contact, exact: true });
+
+test("the business's settings decide the steps", async ({ page }, testInfo) => {
+  await setDemoModuleSettings("employee_files", {
+    askBank: false,
+    askAddress: false,
+    askEmergencyContact: true,
+    askWorkLanguage: true,
+    form101: "off",
+  });
+  await signIn(page, NOA);
+  await page.goto("/me");
+  await page.waitForLoadState("networkidle");
+  // The identity and the pension are what the file counts now.
+  await expect(
+    main(page).getByText(heT("app.me.file.missing", { count: 2 })),
+  ).toBeVisible();
+  const form101Row = mf.rows.form101.split("<ltr>")[0]?.trim() ?? "";
+  for (const row of [mf.rows.address, mf.rows.bank, form101Row]) {
+    await expect(
+      main(page).getByRole("link", { name: new RegExp(row) }),
+    ).toHaveCount(0);
+  }
+  await expect(
+    main(page).getByRole("link", { name: new RegExp(mf.rows.emergency) }),
+  ).toBeVisible();
+  await expectCleanPage(page);
+
+  await visible(page, "link", mf.complete).click();
+  await expect(page).toHaveURL(/\/me\/file$/);
+  await page.waitForLoadState("networkidle");
+  await expect(
+    main(page)
+      .getByText(heT("app.file.welcome.body", { count: 4 }))
+      .filter({ visible: true }),
+  ).toBeVisible();
+  await start(page, testInfo);
+  await section(page, "start").getByRole("radio", { name: f.start.f }).check();
+  await save(page, testInfo, "start", f.actions.saveStart);
+  const identity = section(page, "identity");
+  await identity.getByLabel(f.identity.idNumber).fill("000000018");
+  await identity.getByLabel(f.identity.firstName).fill("נועה");
+  await identity.getByLabel(f.identity.lastName).fill("כהן");
+  const birth = identity.getByRole("group", { name: f.identity.birthDate });
+  await birth.getByLabel(f.date.day).fill("1");
+  await birth.getByLabel(f.date.month).fill("1");
+  await birth.getByLabel(f.date.year).fill("1995");
+  await save(page, testInfo, "identity", f.actions.saveIdentity);
+
+  // "דרכי קשר": the language and the contact, no address.
+  const contact = contactSection(page);
+  await expect(contact).toBeVisible();
+  await expect(contact.getByLabel(f.address.city)).toHaveCount(0);
+  await contact
+    .getByLabel(
+      heT("app.file.optionalField", { field: f.address.workLanguage }),
+    )
+    .fill("ערבית");
+  await contact.getByLabel(f.address.emergencyName).fill("דוד כהן");
+  await contact.getByLabel(f.address.emergencyPhone).fill("052-000-0099");
+  if (testInfo.project.name === "phone") {
+    await expect(
+      main(page).getByText(
+        heT("app.file.steps.count", { current: 3, count: 4 }),
+      ),
+    ).toBeVisible();
+  } else {
+    await expect(
+      page
+        .getByRole("complementary", { name: f.steps.title })
+        .getByRole("list")
+        .first()
+        .getByRole("listitem"),
+    ).toHaveCount(4);
+  }
+  if (isDesktop(testInfo)) {
+    await expect(
+      page.getByRole("region", { name: f.steps.name.bank, exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("region", { name: f.steps.name.form101, exact: true }),
+    ).toHaveCount(0);
+    await contact.getByRole("button", { name: f.actions.saveContact }).click();
+    await expect(
+      visible(page, "link", `${f.steps.name.contact} · ${f.steps.state.done}`),
+    ).toBeVisible();
+  } else {
+    await visible(page, "button", f.actions.next).click();
+    await expect(page).toHaveURL(/step=pension$/);
+  }
+
+  // The pension, then the done screen sends the file: no Form 101 here.
+  const pension = section(page, "pension");
+  await pension
+    .getByRole("radio", {
+      name: heT("app.file.pension.employer", { business: BUSINESS }),
+    })
+    .check();
+  if (isDesktop(testInfo)) {
+    await pension.getByRole("button", { name: f.actions.savePension }).click();
+    await expect(stepRow(page, "pension", "done")).toBeVisible();
+  } else {
+    await visible(page, "button", f.actions.next).click();
+    await expect(page).toHaveURL(/step=done$/);
+  }
+  await visible(
+    page,
+    "button",
+    heT("app.file.actions.send", { business: BUSINESS }),
+  )
+    .first()
+    .click();
+  await expect(page).toHaveURL(/step=done$/);
+  await expect
+    .poll(async () => (await demoFileFacts(NOA.id))?.submitted)
+    .toBe(true);
+  const facts = await demoFileFacts(NOA.id);
+  // Sealed in server code, never the demo's made-up format.
+  expect(facts?.emergencyByte).toBe(1);
+  expect(facts?.workLanguageByte).toBe(1);
+  expect(facts?.bankCode).toBeNull();
+  // The log names what changed, and holds no value.
+  const log = JSON.stringify(await demoFileLog(NOA.id));
+  expect(log).toContain("work_language");
+  for (const value of ["ערבית", "0099", "דוד"]) {
+    expect(log).not.toContain(value);
+  }
+  await expectCleanPage(page);
+});
+
+test("the owner sets Form 101's link, and the worker hands it in there", async ({
+  page,
+  browser,
+}, testInfo) => {
+  const s = he.modules.employee_files.settings;
+  if (testInfo.project.name === "phone") {
+    // The owner's part on one width: the settings screen is /manage's.
+    const uri = await secondPage(browser, testInfo);
+    await enterAs(uri, "owner");
+    await uri.goto("/manage/employee_files");
+    await uri.waitForLoadState("networkidle");
+    await uri
+      .getByRole("button", { name: new RegExp(`^${s.form101.label}`) })
+      .click();
+    await uri
+      .getByRole("menuitemradio", { name: s.form101.options.link })
+      .click();
+    await uri
+      .getByLabel(new RegExp(s.form101Provider.label))
+      .fill("משרד השכר הדגמה");
+    await uri.getByLabel(new RegExp(s.form101Provider.label)).blur();
+    const link = uri.getByLabel(new RegExp(s.form101Link.label));
+    await expect(link).toHaveAttribute("dir", "ltr");
+    await expect(link).toHaveAttribute("inputmode", "url");
+    await link.fill("http://101.example/x");
+    await link.blur();
+    await expect(
+      uri.getByRole("alert").filter({ hasText: he.app.manage.failed.invalid }),
+    ).toBeVisible();
+    await link.fill("https://101.example/noa");
+    await link.blur();
+    await expect
+      .poll(async () => await demoModuleSettings("employee_files"))
+      .toMatchObject({
+        form101: "link",
+        form101Provider: "משרד השכר הדגמה",
+        form101Link: "https://101.example/noa",
+      });
+    await expectCleanPage(uri);
+    await uri.context().close();
+
+    // A manager who edits the management page has none of it.
+    const shiran = await secondPage(browser, testInfo);
+    await enterAs(shiran, "manager");
+    await shiran.goto("/manage/employee_files");
+    await expect(
+      shiran.getByRole("heading", { level: 1, name: he.app.notFound.title }),
+    ).toBeVisible();
+    await shiran.context().close();
+  } else {
+    await setDemoModuleSettings("employee_files", {
+      form101: "link",
+      form101Provider: "משרד השכר הדגמה",
+      form101Link: "https://101.example/noa",
+    });
+  }
+  await setDemoModuleSettings("employee_files", {
+    ...(await demoModuleSettings("employee_files")),
+    payrollProvider: "משרד רואי החשבון",
+    employerPhone: "+97231234567",
+  });
+
+  await signIn(page, NOA);
+  await page.goto("/me/file?step=form101");
+  await page.waitForLoadState("networkidle");
+  const form = section(page, "form101");
+  const open = form.getByRole("link", {
+    name: heT("app.file.form101.open", { provider: "משרד השכר הדגמה" }),
+  });
+  await expect(open).toHaveAttribute("href", "https://101.example/noa");
+  await expect(open).toHaveAttribute("target", "_blank");
+  await expect(open).toHaveAttribute("rel", /noopener/);
+  await expect(open).toHaveAttribute("rel", /noreferrer/);
+  await expect(
+    form.getByText("נפתח באתר 101.example, בחלון חדש"),
+  ).toBeVisible();
+  await form.getByRole("button", { name: f.form101.handedIn }).click();
+  await expect(
+    page.getByRole("status").filter({
+      hasText: heT("app.file.form101.handedInSaved", { business: BUSINESS }),
+    }),
+  ).toBeVisible();
+  const facts = await demoFileFacts(NOA.id);
+  expect(facts?.form101).toBe("handed_in");
+  expect(facts?.form101Route).toBe("link");
+
+  // The notice names who prepares the payroll, the system and the phone.
+  // A desktop's is in the summary; a phone's and a tablet's in the step.
+  await visible(page, "button", isDesktop(testInfo) ? f.notice.title : f.why)
+    .first()
+    .click();
+  const sheet = page.getByRole("dialog", { name: f.notice.title });
+  await expect(sheet.getByText(/משרד רואי החשבון/)).toBeVisible();
+  await expect(sheet.getByText(/משרד השכר הדגמה/)).toBeVisible();
+  await expect(sheet.getByText("03-123-4567")).toBeVisible();
+  await expectCleanPage(page);
+});
+
+test("Today asks for what is missing, and tells of a bank change", async ({
+  page,
+  browser,
+}, testInfo) => {
+  const b = he.app.home.file.bank;
+  await signIn(page, NOA);
+  await page.goto("/home");
+  await page.waitForLoadState("networkidle");
+  await expect(
+    main(page).getByText(heT("app.me.file.missing", { count: 4 })),
+  ).toBeVisible();
+  await expectCleanPage(page);
+  // The database's groups, end to end: two when neither the address nor the
+  // account is asked.
+  await setDemoModuleSettings("employee_files", {
+    askBank: false,
+    askAddress: false,
+  });
+  await page.reload();
+  await expect(
+    main(page).getByText(heT("app.me.file.missing", { count: 2 })),
+  ).toBeVisible();
+  await visible(page, "link", mf.complete).click();
+  await expect(page).toHaveURL(/\/me\/file$/);
+  await expect(
+    main(page).getByText(heT("app.file.welcome.title", { business: BUSINESS })),
+  ).toBeVisible();
+
+  // Her made-up file back, its account changed two days ago.
+  await setDemoModuleSettings("employee_files", {});
+  await restoreDemoFile(NOA.id);
+  await setDemoBankChanged(NOA.id, 2);
+  await page.goto("/home");
+  await page.waitForLoadState("networkidle");
+  const card = main(page).getByRole("region", { name: b.title });
+  await expect(card).toBeVisible();
+  await expect(card.getByText(/חשבון הבנק לשכר עודכן ב-/)).toBeVisible();
+  await expect(
+    main(page).getByText(heT("app.home.file.complete")),
+  ).toBeVisible();
+  await expectCleanPage(page);
+  await card.getByRole("button", { name: b.dispute }).click();
+  const disputed = main(page).getByRole("region", { name: b.disputedTitle });
+  await expect(disputed).toBeVisible();
+  await expect
+    .poll(async () => (await demoFileFacts(NOA.id))?.bankReview)
+    .toBe("disputed");
+  await disputed.getByRole("button", { name: b.seen }).click();
+  await expect(disputed).toHaveCount(0);
+  await page.reload();
+  await expect(
+    main(page).getByRole("region", { name: b.disputedTitle }),
+  ).toHaveCount(0);
+
+  // Hidden on this device only: another one still says it, disputed.
+  const other = await secondPage(browser, testInfo);
+  await signIn(other, NOA);
+  await other.goto("/home");
+  await expect(
+    other.getByRole("main").getByRole("region", { name: b.disputedTitle }),
+  ).toBeVisible();
+  await other.context().close();
+
+  // An owner isn't counted: no card, whatever their file holds.
+  const uri = await secondPage(browser, testInfo);
+  await enterAs(uri, "owner");
+  await uri.waitForLoadState("networkidle");
+  await expect(
+    uri.getByRole("main").getByRole("link", { name: mf.complete }),
+  ).toHaveCount(0);
+  await expect(
+    uri
+      .getByRole("main")
+      .getByRole("link", { name: new RegExp(he.modules.employee_files.name) }),
+  ).toBeVisible();
+  await uri.context().close();
+});
+
+/** One number a project, so the three can run at once. */
+const JOINING: Record<string, { name: string; e164: string }> = {
+  phone: { name: "עדי מצטרפת", e164: "+972500000811" },
+  tablet: { name: "עדי מצטרפת", e164: "+972500000812" },
+  desktop: { name: "עדי מצטרפת", e164: "+972500000813" },
+};
+
+test("a new worker who joins lands on the file's welcome", async ({
+  page,
+}, testInfo) => {
+  const person = JOINING[testInfo.project.name] ?? JOINING.phone;
+  if (!person) throw new Error("a number for the project");
+  const j = he.auth.join;
+  try {
+    const token = await inviteToDemoLink({
+      name: person.name,
+      phone: person.e164,
+      role: "worker",
+    });
+    await page.goto(`/join/${token}`);
+    const since = new Date(Date.now() - 1000);
+    await page.getByRole("button", { name: j.send }).click();
+    await expect(page.getByLabel(j.codeLabel)).toBeVisible();
+    await page
+      .getByLabel(j.codeLabel)
+      .fill(await latestCode(person.e164, since));
+    await expect(page).toHaveURL(/\/me\/file$/);
+    await expect(
+      main(page).getByText(
+        heT("app.file.welcome.title", { business: BUSINESS }),
+      ),
+    ).toBeVisible();
+    await expectCleanPage(page);
+
+    if (testInfo.project.name === "phone") {
+      // With the module off, Today, as before.
+      await page.context().clearCookies();
+      await setDemoModule("employee_files", false);
+      const again = await inviteToDemoLink({
+        name: person.name,
+        phone: person.e164,
+        role: "worker",
+      });
+      await page.goto(`/join/${again}`);
+      const next = new Date(Date.now() - 1000);
+      await page.getByRole("button", { name: j.send }).click();
+      const tooSoon = page.getByText(he.auth.signIn.errors.rateLimit);
+      const code = page.getByLabel(j.codeLabel);
+      await expect(code.or(tooSoon)).toBeVisible();
+      if (await tooSoon.isVisible()) {
+        await page.waitForTimeout(SMS_COOLDOWN_MS + 500);
+        await page.getByRole("button", { name: j.send }).click();
+      }
+      await code.fill(await latestCode(person.e164, next));
+      await expect(page).toHaveURL(/\/home$/);
+    }
+  } finally {
+    await forgetDemoJoin(person.e164);
+  }
 });

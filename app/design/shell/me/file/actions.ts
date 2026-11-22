@@ -2,7 +2,11 @@
 
 import { type Address, addressSchema } from "@domain/address";
 import { checkBankAccount } from "@domain/bank-account";
-import { addressText, employeeDetailsInput } from "@domain/employee-file";
+import {
+  addressText,
+  emergencyContactInput,
+  employeeDetailsInput,
+} from "@domain/employee-file";
 import type {
   ConfirmBankAnswer,
   FileWriteAnswer,
@@ -42,8 +46,20 @@ export async function demoSaveFileStepAction(
   input: unknown,
 ): Promise<SaveStepAnswer> {
   await pause();
-  const parsed = employeeDetailsInput(FILE_DEMO_TODAY).safeParse(input);
+  // The emergency contact goes apart from the file, as in the app (H5b).
+  const { emergency, ...rest } =
+    input && typeof input === "object"
+      ? (input as { emergency?: unknown })
+      : {};
+  const parsed = employeeDetailsInput(FILE_DEMO_TODAY).safeParse(rest);
   if (!parsed.success) return { ok: false, failure: "invalid" };
+  if (
+    emergency !== undefined &&
+    emergency !== null &&
+    !emergencyContactInput.safeParse(emergency).success
+  ) {
+    return { ok: false, failure: "invalid" };
+  }
   const moved =
     step === "address" &&
     parsed.data.address != null &&

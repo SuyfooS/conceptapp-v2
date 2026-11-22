@@ -15,6 +15,7 @@ import { currentStationHome } from "../clock/station/station";
 import { currentWording } from "../current-wording";
 import { renewDemoWeek } from "../demo";
 import { currentListsHome } from "../lists/lists";
+import { currentFileToday } from "../me/file/file";
 import { currentMember } from "../member";
 import { currentModeRows } from "../mode-rows";
 import { currentModules } from "../modules";
@@ -66,6 +67,7 @@ export default async function HomePage() {
     station,
     firstSteps,
     modes,
+    file,
   ] = await Promise.all([
     currentMember(),
     currentModules(),
@@ -85,6 +87,8 @@ export default async function HomePage() {
     currentFirstSteps(),
     // The modes the person is in: a card while open to them, else a row.
     currentWording().then((words) => currentModeRows("home", words)),
+    // The person's own hiring file, where it is on for them (H5b).
+    currentFileToday(),
   ]);
   const membership = member?.membership;
   // The layout has already sent these people elsewhere.
@@ -135,6 +139,8 @@ export default async function HomePage() {
         // An owner's business still being set up: what to do first.
         firstSteps,
         modes,
+        // What is missing of the person's own file, and an account changed.
+        file,
       }}
     />
   );

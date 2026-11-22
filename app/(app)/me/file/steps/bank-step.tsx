@@ -7,7 +7,6 @@ import {
   FILE_TEXT_MAX,
   maskedHint,
 } from "@domain/employee-file";
-import { nextFileStep } from "@domain/employee-file-steps";
 import { clockAt } from "@domain/today";
 import { tidyLine } from "@domain/typed-text";
 import { BankField, type BankFieldValue, EMPTY_BANK } from "@ui/bank-field";
@@ -682,7 +681,7 @@ export function BankStep({
             phase === "saved"
               ? {
                   label: t("actions.continue"),
-                  onClick: () => kit.go(nextFileStep("bank") ?? "done"),
+                  onClick: () => kit.go(kit.next("bank")),
                 }
               : editing
                 ? {

@@ -22,7 +22,10 @@ type Props = { searchParams: Promise<{ state?: string; file?: string }> };
 // they are and there's no line, but a cover and a form can be chosen. The
 // way to the notification settings stays in the demo, and a demo business
 // has none. ?file=missing adds her hiring file as Noa's twin has it, stopped
-// at the account (the card and the five rows); ?file=done, every part in.
+// at the account (the card and the five rows); ?file=done, every part in;
+// ?file=lean, a business that asks neither the address nor the account
+// (two rows fewer); ?file=contact, one that asks for an emergency contact
+// too (its row), each as Noa's twin has it (H5b).
 export default function ShellMe({ searchParams }: Props) {
   return (
     <Suspense>
@@ -50,10 +53,15 @@ async function Demo({ searchParams }: Props) {
       }}
       home="/design/shell"
       file={
-        file === "missing" || file === "done" ? (
+        file === "missing" ||
+        file === "done" ||
+        file === "lean" ||
+        file === "contact" ? (
           <FileSummary
             data={
-              fileScreenDemo(file === "done" ? "done" : "stopped", "he").data
+              fileScreenDemo(file === "done" ? "done" : "stopped", "he", {
+                ask: file === "lean" || file === "contact" ? file : "all",
+              }).data
             }
             wording={baseWording}
             base="/design/shell"

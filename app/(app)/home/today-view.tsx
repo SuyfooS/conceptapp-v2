@@ -75,6 +75,11 @@ import { TodayChat } from "../chat/today-chat";
 import type { LockAction, StationHome } from "../clock/station/station-types";
 import type { ListsHomeData } from "../lists/list-types";
 import { TodayLists } from "../lists/today-lists";
+import {
+  disputeBankChangeAction,
+  seenBankChangeAction,
+} from "../me/file/actions";
+import type { FileToday, FileTodayActions } from "../me/file/file-types";
 import type { ModeRow } from "../mode-rows";
 import { moduleIcons } from "../module-icons";
 import type {
@@ -84,10 +89,13 @@ import type {
   TeamAvailabilityWeek,
 } from "../schedule/week";
 import { type AppWording, type Translator, translator } from "../wording";
+import { BankChangeCard } from "./bank-change-card";
 import { FirstStepsCard } from "./first-steps-card";
 import { MyBusinesses } from "./my-businesses";
 import { RefreshOnReturn } from "./refresh-on-return";
 import { StationCard } from "./station-card";
+import { todayFilePart } from "./today-file";
+import { FileTodayCard } from "./today-file-card";
 
 /** What the schedule module brings to Today; null when it is off. */
 export type TodaySchedule = {
@@ -177,6 +185,13 @@ export type TodayData = {
    * anyone it has none for.
    */
   modes?: ModeRow[];
+  /**
+   * The person's own hiring file (H5b: `currentFileToday`): how much is
+   * missing, for its card while anything is (never an owner's), and the
+   * account's change while Today tells it. Null with the module off, off
+   * the staff, viewing as a role, or when it couldn't be read.
+   */
+  file?: FileToday | null;
 };
 
 type T = Translator<"app">;
@@ -273,8 +288,11 @@ function runningOf(schedule: TodaySchedule, now: string) {
  * (payroll P3b) has them listed last, on phones and tablets, to switch
  * between. An owner of a business still being set up has its first steps
  * under the greeting, the screen's one accent card, on the same columns as
- * what is under it. `base` prefixes links for the demo, which also renders
- * this with mock data on /design/shell.
+ * what is under it. The hiring file (H5b) has two cards there: its account's
+ * change for 14 days, and, while anything is missing, the way to complete it
+ * (the accent, unless the first steps or an open mode hold it), which then
+ * leaves a quiet row saying the file is complete. `base` prefixes links for
+ * the demo, which also renders this with mock data on /design/shell.
  */
 export async function TodayView({
   data,
@@ -285,6 +303,7 @@ export async function TodayView({
   lockStation,
   lockClearsDevice,
   signOut,
+  fileActions,
 }: {
   data: TodayData;
   /** The business's words; the app's own on the demo. */
@@ -312,6 +331,12 @@ export async function TodayView({
    * demo's stand-in, which goes to the station's twin.
    */
   signOut: SignOutAction;
+  /**
+   * The bank change's "לא שיניתי" and "אני שיניתי": the file's own actions,
+   * bound to its business, by default; the demo's stand-ins, which keep
+   * nothing.
+   */
+  fileActions?: FileTodayActions;
 }) {
   const t = translator(wording, "app");
   const tm = translator(wording, "modules");
@@ -344,6 +369,22 @@ export async function TodayView({
   const modeCards = modes.filter((mode) => mode.open);
   const modeRow = (key: string) =>
     modes.find((mode) => mode.key === key && !mode.open);
+  // The hiring file's part: its card while anything is missing, for anyone
+  // counted (an owner isn't), else its quiet row. One accent a screen: the
+  // first steps or an open mode keep it.
+  const filePart = todayFilePart({
+    widgets: data.widgets,
+    file: data.file,
+    accentTaken: Boolean(data.firstSteps) || modeCards.length > 0,
+  });
+  const file = filePart.file;
+  const fileCard = filePart.card !== null;
+  const bankActions: FileTodayActions | null = file?.bank
+    ? (fileActions ?? {
+        dispute: disputeBankChangeAction.bind(null, file.businessId),
+        seen: seenBankChangeAction.bind(null, file.businessId),
+      })
+    : null;
   // Modules with a part of their own aren't quiet rows, and a mode's row
   // stands for its module, or nothing does.
   const quiet = data.widgets.filter(
@@ -351,6 +392,7 @@ export async function TodayView({
       w.key !== "scheduling" &&
       !(w.key === "lists" && lists) &&
       !(w.key === "chat" && chat) &&
+      !(w.key === "employee_files" && fileCard) &&
       (!w.mode || modeRow(w.key) !== undefined),
   );
   const view = schedule ? { t, path, clock, role: data.role, schedule } : null;
@@ -416,7 +458,9 @@ export async function TodayView({
                                 time: data.clockLine.at,
                                 ltr,
                               })
-                        : tm(`${widget.key}.description`)
+                        : widget.key === "employee_files" && filePart.complete
+                          ? t("home.file.complete")
+                          : tm(`${widget.key}.description`)
                     }
                   />
                 );
@@ -536,6 +580,14 @@ export async function TodayView({
           />
         ) : null}
 
+        {file?.bank && bankActions ? (
+          <BankChangeCard
+            bank={file.bank}
+            business={file.businessName}
+            actions={bankActions}
+          />
+        ) : null}
+
         {modeCards.map((mode) => (
           <ModeCard
             key={mode.key}
@@ -544,6 +596,15 @@ export async function TodayView({
             tone={data.firstSteps ? "flat" : "accent"}
           />
         ))}
+
+        {file && filePart.card ? (
+          <FileTodayCard
+            file={file}
+            tone={filePart.card}
+            t={t}
+            href={path("/me/file")}
+          />
+        ) : null}
 
         {view ? (
           <div className="grid items-start gap-6 md:grid-cols-2 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] xl:gap-x-8">

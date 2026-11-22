@@ -9,6 +9,7 @@ import {
   DEFAULT_DOCUMENT_SPACE_MB,
   DOCUMENT_SPACE_MB,
 } from "@domain/documents";
+import type { EmployeeFileSettings } from "@domain/employee-file-settings";
 import { DEFAULT_LIST_PHOTO_DAYS, LIST_PHOTO_DAYS } from "@domain/list-photos";
 import {
   ACCOUNTANT_PERMISSIONS,
@@ -26,7 +27,11 @@ import {
   readModuleSettings,
 } from "@domain/modules";
 import { CORE_PERMISSIONS, permissionsByDefault } from "@domain/permissions";
-import { describeSettings, fieldsFor } from "@domain/settings-form";
+import {
+  checkSettingsChange,
+  describeSettings,
+  fieldsFor,
+} from "@domain/settings-form";
 import { describe, expect, it } from "vitest";
 import en from "../messages/en.json";
 import he from "../messages/he.json";
@@ -618,11 +623,13 @@ describe("module registry", () => {
     for (const p of byOwner) expect(p.defaultRole).toBe("owner");
   });
 
-  it("gives the hiring file one key an owner gives, no tab, no card and no settings yet", () => {
+  it("gives the hiring file one key an owner gives, no tab, Today's part for the staff, and its settings to owners", () => {
     // Profile H4 (20261126000200_employee_files.sql): owners always hold
     // people.files and accountants through their fixed grant
     // (private.accountant_perms); never switched per role, so the roles
-    // screen doesn't draw its area. Its screens come with H5 and H6.
+    // screen doesn't draw its area. H5b: Today's card for the staff, and
+    // what each business asks, an owner's and the team's
+    // (20261126000400_employee_files_settings.sql).
     const manifest = manifestFor("employee_files");
     expect(manifest.permissions).toEqual([
       {
@@ -633,9 +640,73 @@ describe("module registry", () => {
       },
     ]);
     expect(manifest.nav).toBeNull();
-    expect(manifest.homeWidget).toBeNull();
+    expect(manifest.homeWidget).toEqual({ minRole: "worker" });
     expect(manifest.mode).toBeUndefined();
-    expect(describeSettings(manifest.settings)).toEqual([]);
+    const fields = describeSettings(manifest.settings);
+    expect(fields.map((field) => field.key)).toEqual([
+      "askBank",
+      "askAddress",
+      "askEmergencyContact",
+      "askWorkLanguage",
+      "form101",
+      "form101Provider",
+      "form101Link",
+      "payrollProvider",
+      "employerName",
+      "employerPhone",
+      "deductionsFile",
+    ]);
+    for (const field of fields) expect(field.level, field.key).toBe("owner");
+    expect(fieldsFor(manifest.settings, "business")).toEqual([]);
+    expect(fields.find((field) => field.key === "form101")).toMatchObject({
+      kind: "choice",
+      options: ["print", "link", "off"],
+    });
+    expect(
+      Object.fromEntries(
+        fields.flatMap((field) =>
+          field.kind === "text" && field.entry
+            ? [[field.key, field.entry]]
+            : [],
+        ),
+      ),
+    ).toEqual({
+      form101Link: "link",
+      employerPhone: "phone",
+      deductionsFile: "digits",
+    });
+    const defaults: EmployeeFileSettings = manifest.settings.parse({});
+    expect(defaults).toEqual({
+      askBank: true,
+      askAddress: true,
+      askEmergencyContact: false,
+      askWorkLanguage: false,
+      form101: "print",
+      form101Provider: "",
+      form101Link: "",
+      payrollProvider: "",
+      employerName: "",
+      employerPhone: "",
+      deductionsFile: "",
+    });
+    // A stored link that isn't https reads as none; what is saved is tidied.
+    expect(
+      readModuleSettings(manifest, { form101Link: "http://x.co" }).form101Link,
+    ).toBe("");
+    expect(
+      checkSettingsChange(
+        manifest,
+        {},
+        { employerPhone: "03-123-4567", deductionsFile: "9-1234-5678" },
+        "owner",
+      ),
+    ).toEqual({
+      ok: true,
+      patch: { employerPhone: "+97231234567", deductionsFile: "912345678" },
+    });
+    expect(
+      checkSettingsChange(manifest, {}, { askBank: false }, "business"),
+    ).toEqual({ ok: false, problem: "notAllowed" });
     expect(moduleIcon(manifest)).toBe("documents");
     expect(ACCOUNTANT_PERMISSIONS).toEqual(["clock.payroll", "people.files"]);
     expect(permissions.find((p) => p.key === "people.files")).toMatchObject({

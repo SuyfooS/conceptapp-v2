@@ -48,3 +48,32 @@ export function displayIsraeliMobile(e164: string): string {
   if (!normalized) return e164;
   return formatIsraeliMobile(`0${normalized.slice(4)}`);
 }
+
+/**
+ * Any Israeli number in E.164, a mobile or a landline: the landlines' area
+ * codes 02, 03, 04, 08 and 09 with seven digits, the mobiles' 05x and the
+ * 07x numbers with seven more. For a business's own phone (the hiring file's
+ * "טלפון לשאלות על התיק"), never a person's sign-in, which stays a mobile.
+ */
+export const ISRAELI_PHONE_E164 = /^\+972([23489]\d{7}|[57]\d{8})$/;
+
+const LOCAL_PHONE = /^0?([23489]\d{7}|[57]\d{8})$/;
+
+/** Canonical E.164 form of a mobile or a landline, or null for anything else. */
+export function normalizeIsraeliPhone(input: string): string | null {
+  const found = LOCAL_PHONE.exec(toLocalDigits(input));
+  return found ? `+972${found[1]}` : null;
+}
+
+/**
+ * "+97231234567" → "03-123-4567", "+972501234567" → "050-123-4567",
+ * "+972771234567" → "077-123-4567". Anything that isn't one stays as it is.
+ */
+export function displayIsraeliPhone(e164: string): string {
+  const normalized = normalizeIsraeliPhone(e164);
+  if (!normalized) return e164;
+  const local = `0${normalized.slice(4)}`;
+  return local.length === 9
+    ? `${local.slice(0, 2)}-${local.slice(2, 5)}-${local.slice(5)}`
+    : `${local.slice(0, 3)}-${local.slice(3, 6)}-${local.slice(6)}`;
+}

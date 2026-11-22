@@ -1,8 +1,10 @@
 import type { Address } from "@domain/address";
 import { cityOf } from "@domain/cities";
-import type { FileRow } from "@domain/employee-file";
+import type { FileGroup, FileRow } from "@domain/employee-file";
+import type { EmployeeFileSettings } from "@domain/employee-file-settings";
 import { addYears } from "@domain/youth";
 import type { BankFieldValue } from "@ui/bank-field";
+import { fileSettingsParts } from "../../../../(app)/me/file/file-parts";
 import type { FileScreenData } from "../../../../(app)/me/file/file-types";
 import type { BankPreset } from "../../../../(app)/me/file/steps/bank-step";
 import { business } from "../../data";
@@ -14,7 +16,13 @@ import { business } from "../../data";
  * code, an account held in the week after a phone change, an account saved,
  * and everything sent. The ID and the account are
  * from the test ranges (tooling/demo-files.test.ts), and nothing typed on
- * the twin is kept.
+ * the twin is kept. `ready` is everything in and not sent yet (H5b). What
+ * the business asks is a choice of its own: everything, as by default;
+ * `lean`, neither the address nor the account, and none in the file;
+ * `contact`, the same with the ways to reach her asked instead, an
+ * emergency contact and a work language, hers in once she is done. And how
+ * it takes Form 101: on paper, by an approved system's link, or not in the
+ * app.
  */
 
 /** The twin's day: fixed, so its dates read the same on every visit. */
@@ -113,6 +121,15 @@ const SAVED_BANK: FileRow = {
   has: { ...STOPPED.has, bank_account: true },
 };
 
+/** Every part in, and not sent yet. */
+const READY: FileRow = {
+  ...SAVED_BANK,
+  bank_review: null,
+  pension_answer: "existing",
+  pension_fund: "harel",
+  pension_answered_at: "2026-11-24T09:05:00+02:00",
+};
+
 const SENT: FileRow = {
   ...SAVED_BANK,
   bank_review: null,
@@ -130,7 +147,57 @@ export type FileDemoState =
   | "code"
   | "hold"
   | "saved"
+  | "ready"
   | "done";
+
+/** What the business asks on the twin: everything, no address or account, or the ways to reach her instead. */
+export type FileDemoAsk = "all" | "lean" | "contact";
+
+export function fileDemoAskOf(param: unknown): FileDemoAsk {
+  return param === "lean" || param === "contact" ? param : "all";
+}
+
+/** How the business takes Form 101 on the twin. */
+export type FileDemoForm101 = "print" | "link" | "off";
+
+export function fileDemoForm101Of(param: unknown): FileDemoForm101 {
+  return param === "link" || param === "off" ? param : "print";
+}
+
+/** The twin restaurant's own words in the notice (shell/data.ts's business). */
+const DEMO_NOTICE = {
+  payrollProvider: "משרד רואי החשבון",
+  employerName: "מסעדת הדגמה בע״מ",
+  employerPhone: "+97231234567",
+};
+
+/** The approved system the twin's link opens: a made-up one, never followed. */
+export const FILE_DEMO_LINK = {
+  provider: "משרד השכר",
+  link: "https://101.example/noa",
+};
+
+function demoSettings(
+  ask: FileDemoAsk,
+  form101: FileDemoForm101,
+): EmployeeFileSettings {
+  return {
+    askBank: ask === "all",
+    askAddress: ask === "all",
+    askEmergencyContact: ask === "contact",
+    askWorkLanguage: ask === "contact",
+    form101,
+    form101Provider: form101 === "link" ? FILE_DEMO_LINK.provider : "",
+    form101Link: form101 === "link" ? FILE_DEMO_LINK.link : "",
+    payrollProvider: DEMO_NOTICE.payrollProvider,
+    employerName: DEMO_NOTICE.employerName,
+    employerPhone: DEMO_NOTICE.employerPhone,
+    deductionsFile: "",
+  };
+}
+
+/** Noa's emergency contact on the twin: a made-up name and a number no one has. */
+export const FILE_DEMO_CONTACT = { name: "דוד כהן", phone: "+972500000099" };
 
 export function fileDemoStateOf(param: unknown): FileDemoState {
   switch (param) {
@@ -140,6 +207,7 @@ export function fileDemoStateOf(param: unknown): FileDemoState {
     case "code":
     case "hold":
     case "saved":
+    case "ready":
     case "done":
       return param;
     default:
@@ -147,29 +215,64 @@ export function fileDemoStateOf(param: unknown): FileDemoState {
   }
 }
 
-/** Noa's file in a state, in her language. */
+/** Noa's file in a state, in her language, as the business asks it. */
 export function fileScreenDemo(
   state: FileDemoState,
   lang: "he" | "en",
+  {
+    ask = "all",
+    form101 = "print",
+  }: { ask?: FileDemoAsk; form101?: FileDemoForm101 } = {},
 ): { data: FileScreenData; preset?: { bank?: BankPreset } } {
-  const row =
+  const filled =
     state === "new"
       ? null
       : state === "minor"
         ? { ...STOPPED, birth_date: addYears(FILE_DEMO_TODAY, -16) }
         : state === "saved"
           ? SAVED_BANK
-          : state === "done"
-            ? SENT
-            : STOPPED;
-  const missing: FileScreenData["missing"] =
+          : state === "ready"
+            ? READY
+            : state === "done"
+              ? SENT
+              : STOPPED;
+  // Finished: everything she gives is in, sent or not yet.
+  const finished = state === "ready" || state === "done";
+  // A business that asks neither the address nor the account: none of
+  // either in her file.
+  const row: FileRow | null =
+    filled && ask !== "all"
+      ? {
+          ...filled,
+          city_code: null,
+          bank_code: null,
+          bank_branch: null,
+          bank_account_hint: null,
+          bank_holder_kind: null,
+          bank_instruction_at: null,
+          bank_instruction_version: null,
+          bank_changed_at: null,
+          bank_review: null,
+          has: {
+            ...filled.has,
+            address: false,
+            email: false,
+            bank_account: false,
+            work_language: ask === "contact" && finished,
+          },
+        }
+      : filled;
+  const contact = ask === "contact" && finished;
+  const settings = fileSettingsParts(demoSettings(ask, form101), row, contact);
+  const before: FileGroup[] =
     row === null
       ? ["identity", "address", "bank", "pension"]
-      : state === "done"
+      : finished
         ? []
         : state === "saved"
           ? ["pension"]
           : ["bank", "pension"];
+  const missing = before.filter((group) => settings.asked.includes(group));
   const data: FileScreenData = {
     businessId: "demo-restaurant",
     businessName: business.name,
@@ -182,9 +285,9 @@ export function fileScreenDemo(
     role: "worker",
     demo: false,
     file: row,
-    address: row === null ? null : FILE_DEMO_ADDRESS,
-    city: row === null ? null : cityOf(5000),
-    email: row === null ? null : "noa@demo.conceptapp.invalid",
+    address: row?.has.address ? FILE_DEMO_ADDRESS : null,
+    city: row?.has.address ? cityOf(5000) : null,
+    email: row?.has.email ? "noa@demo.conceptapp.invalid" : null,
     documentName: null,
     holderName: null,
     masked: {
@@ -194,16 +297,18 @@ export function fileScreenDemo(
         : null,
     },
     missing,
-    asked: ["identity", "address", "bank", "pension"],
+    ...settings,
+    workLanguage: row?.has.work_language ? "ערבית" : null,
+    emergency: contact ? FILE_DEMO_CONTACT : null,
     youthUntil: state === "minor" ? addYears(FILE_DEMO_TODAY, 2) : null,
     // 60 days from the start of the work, a month on.
-    pensionDueOn: state === "done" ? null : "2026-12-24",
+    pensionDueOn: finished ? null : "2026-12-24",
     taxYear:
       state === "done"
         ? {
             year: 2026,
             status: "handed_in",
-            route: "print",
+            route: form101 === "link" ? "link" : "print",
             returnedReason: null,
             changeDueBy: null,
           }

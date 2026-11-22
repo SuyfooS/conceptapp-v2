@@ -86,6 +86,29 @@ describe("the hiring file's code", () => {
     }
   });
 
+  it("draws Today's cards and lands someone who joined with no cache, and no value in a log", () => {
+    // Profile H5b: Today reads what is missing and the account's change, and
+    // /join reads the business's modules for where to land.
+    for (const path of [
+      "app/(app)/home/page.tsx",
+      "app/(app)/home/today-file.ts",
+      "app/(app)/home/today-file-card.tsx",
+      "app/(app)/home/bank-change-card.tsx",
+      "app/(auth)/join/landing.ts",
+      "app/(auth)/join/actions.ts",
+    ]) {
+      const source = read(path);
+      expect(source, path).not.toMatch(/["']use cache/);
+      expect(source, path).not.toMatch(/console\.log/);
+    }
+    // The 101's link opens in a window that knows nothing of the app's, and
+    // its route is the server's, from the business's settings.
+    expect(read("app/(app)/me/file/steps/form101-step.tsx")).toMatch(
+      /target="_blank"\s+rel="noopener noreferrer"/,
+    );
+    expect(read("app/(app)/me/file/actions.ts")).toMatch(/route: way \}/);
+  });
+
   it("puts no value of a file in a URL", () => {
     // The page reads the step's name from its address, and nothing else;
     // the flow builds its addresses from a step's name alone.

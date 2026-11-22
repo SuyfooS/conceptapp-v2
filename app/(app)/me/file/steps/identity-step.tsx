@@ -1,7 +1,7 @@
 "use client";
 
 import { birthDateSchema, FILE_TEXT_MAX } from "@domain/employee-file";
-import { minorOnFile, nextFileStep } from "@domain/employee-file-steps";
+import { minorOnFile } from "@domain/employee-file-steps";
 import {
   type Country,
   DOCUMENT_NAME_LENGTH,
@@ -267,7 +267,7 @@ export function IdentityStep({ kit, active }: { kit: Kit; active: boolean }) {
     setChangeDueBy(result.changeDueBy);
     kit.say(t("saved"));
     if (active && !result.changeDueBy) {
-      kit.go(nextFileStep("identity") ?? "done");
+      kit.go(kit.next("identity"));
     }
   }
 

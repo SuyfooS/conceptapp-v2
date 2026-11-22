@@ -22,6 +22,11 @@ const PAGES = [
   "/design/shell/today/availability-missing",
   "/design/shell/today/owner",
   "/design/shell/today/worker",
+  // The hiring file on Today (H5b): its card while something is missing, an
+  // account changed, and after "לא שיניתי".
+  "/design/shell/today/worker?file=missing",
+  "/design/shell/today/worker?file=bank",
+  "/design/shell/today/worker?file=disputed",
   "/design/shell/today/not-published",
   "/design/shell/today/worker-not-published",
   // A worker who builds the schedule without publishing it (roles R3).
@@ -154,6 +159,10 @@ const PAGES = [
   // and every part in.
   "/design/shell/me?file=missing",
   "/design/shell/me?file=done",
+  // What each business asks (H5b): neither the address nor the account,
+  // and the ways to reach her instead, with the contact's row.
+  "/design/shell/me?file=lean",
+  "/design/shell/me?file=contact",
   "/design/shell/me/businesses",
   // The worker's own file (H5a) on Noa's twin: stopped at the account, each
   // step, a minor's birth date, an account the check warns about and its
@@ -175,6 +184,19 @@ const PAGES = [
   "/design/shell/me/file?state=new",
   "/design/shell/me/file?lang=en",
   "/design/shell/me/file?lang=en&step=bank",
+  // What each business asks (H5b): the steps that leave out the address and
+  // the account; step 2 as the ways to reach her, filled and not; Form 101 by
+  // an approved system's link, in both languages; and not in the app, so the
+  // done screen sends the file.
+  "/design/shell/me/file?ask=lean",
+  "/design/shell/me/file?ask=lean&state=done",
+  "/design/shell/me/file?ask=contact&step=address",
+  "/design/shell/me/file?ask=contact&state=done",
+  "/design/shell/me/file?form101=link&step=form101",
+  "/design/shell/me/file?form101=link&lang=en&step=form101",
+  "/design/shell/me/file?form101=off",
+  "/design/shell/me/file?form101=off&state=ready",
+  "/design/shell/me/file?form101=off&state=done",
   "/design/shell/manage",
   // Someone at view on the management page (roles R7), and a module's
   // settings without the module's own edit.
@@ -193,6 +215,8 @@ const PAGES = [
   "/design/shell/manage/time_clock",
   "/design/shell/manage/lists",
   "/design/shell/manage/notifications",
+  // What the hiring file asks, as its owner sets it (H5b).
+  "/design/shell/manage/employee_files",
   "/design/shell/manage/departments",
   "/design/shell/manage/access",
   // Workers see pay too, and the shift lead still only by his own (R11e).
@@ -6105,4 +6129,136 @@ test("the file demo says how long a document's number needs to be", async ({
     ),
   ).toBeVisible();
   await expect(page).toHaveURL(/step=identity/);
+});
+
+// What each business asks of the hiring file (profile H5b), on Noa's twin:
+// steps left out, Form 101's link, the send on the done screen, Today's bank
+// change, and the owner's settings typed left to right. Nothing is kept.
+test("the file demo leaves out what the business doesn't ask", async ({
+  page,
+}, testInfo) => {
+  const f = he.app.file;
+  await openFileDemo(page, "/design/shell/me/file?ask=lean");
+  await expect(
+    page.getByRole("region", { name: f.steps.name.bank, exact: true }),
+  ).toHaveCount(0);
+  if (testInfo.project.name === "phone") {
+    await expect(
+      page.getByText(heT("app.file.steps.count", { current: 3, count: 4 })),
+    ).toBeVisible();
+  } else {
+    await expect(
+      page
+        .getByRole("complementary", { name: f.steps.title })
+        .getByRole("list")
+        .first()
+        .getByRole("listitem"),
+    ).toHaveCount(4);
+  }
+  if (testInfo.project.name === "desktop") {
+    const sections = page
+      .getByRole("region", {
+        name: new RegExp(`^(${Object.values(f.steps.name).join("|")})$`),
+      })
+      .filter({ visible: true });
+    await expect(sections).toHaveCount(4);
+    // The summary's main action is the open step's own: the pension's.
+    await expect(
+      page
+        .getByRole("complementary", { name: f.steps.title })
+        .getByRole("button", { name: f.actions.savePension }),
+    ).toBeVisible();
+  }
+  await expectCleanPage(page);
+});
+
+test("the file demo's 101 link opens the provider and shows its domain", async ({
+  page,
+}) => {
+  const f = he.app.file;
+  await openFileDemo(page, "/design/shell/me/file?form101=link&step=form101");
+  const form = page.getByRole("region", {
+    name: f.steps.name.form101,
+    exact: true,
+  });
+  const open = form.getByRole("link", {
+    name: heT("app.file.form101.open", { provider: "משרד השכר" }),
+  });
+  await expect(open).toHaveAttribute("href", "https://101.example/noa");
+  await expect(open).toHaveAttribute("target", "_blank");
+  await expect(open).toHaveAttribute("rel", "noopener noreferrer");
+  await expect(
+    form.getByText("נפתח באתר 101.example, בחלון חדש"),
+  ).toBeVisible();
+  await expect(form.getByText(f.form101.handOver)).toHaveCount(0);
+  await expectCleanPage(page);
+});
+
+test("the file demo sends from the done screen when Form 101 is off", async ({
+  page,
+}) => {
+  const f = he.app.file;
+  await openFileDemo(page, "/design/shell/me/file?form101=off&state=ready");
+  await expect(
+    page.getByText(heT("app.file.done.ready", { business: "מסעדת הדגמה" })),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: f.steps.name.form101, exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", {
+      name: heT("app.file.actions.send", { business: "מסעדת הדגמה" }),
+    })
+    .filter({ visible: true })
+    .first()
+    .click();
+  // The twin's stand-in answers, and the done screen stays.
+  await expect(page).toHaveURL(/step=done/);
+  await expectCleanPage(page);
+});
+
+test("the Today demo tells of a bank change, and 'לא שיניתי' marks it", async ({
+  page,
+}) => {
+  const b = he.app.home.file.bank;
+  await page.goto("/design/shell/today/worker?file=bank");
+  await page.waitForLoadState("networkidle");
+  const card = page.getByRole("main").getByRole("region", { name: b.title });
+  await expect(card).toBeVisible();
+  await expect(card.getByRole("button", { name: b.mine })).toBeVisible();
+  await card.getByRole("button", { name: b.dispute }).click();
+  await expect(page).toHaveURL(/file=disputed/);
+  const disputed = page
+    .getByRole("main")
+    .getByRole("region", { name: b.disputedTitle });
+  await expect(
+    disputed.getByText(
+      heT("app.home.file.bank.disputed", { business: "מסעדת הדגמה" }),
+    ),
+  ).toBeVisible();
+  await disputed.getByRole("button", { name: b.seen }).click();
+  await expect(page).toHaveURL(/\/design\/shell\/today\/worker$/);
+  await expectCleanPage(page);
+});
+
+test("the settings demo types the link and the phone left to right", async ({
+  page,
+}) => {
+  const s = he.modules.employee_files.settings;
+  await page.goto("/design/shell/manage/employee_files");
+  await page.waitForLoadState("networkidle");
+  for (const [label, mode] of [
+    [s.form101Link.label, "url"],
+    [s.employerPhone.label, "tel"],
+    [s.deductionsFile.label, "numeric"],
+  ] as const) {
+    const field = page.getByLabel(new RegExp(label));
+    await expect(field).toHaveAttribute("dir", "ltr");
+    await expect(field).toHaveAttribute("inputmode", mode);
+  }
+  // The stored phone reads as people write it.
+  await expect(page.getByLabel(new RegExp(s.employerPhone.label))).toHaveValue(
+    "03-123-4567",
+  );
+  await expectCleanPage(page);
 });

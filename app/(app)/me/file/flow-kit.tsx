@@ -1,10 +1,6 @@
 "use client";
 
-import {
-  type FileStep,
-  previousFileStep,
-  type StepState,
-} from "@domain/employee-file-steps";
+import type { FileStep, StepState } from "@domain/employee-file-steps";
 import { type AddressForm, formArg, type ProfileLocale } from "@domain/profile";
 import { cn } from "@ui/cn";
 import { DockButton, FloatingDock } from "@ui/floating-dock";
@@ -21,6 +17,17 @@ export type FileT = ReturnType<typeof useTranslations<"app.file">>;
 export type Kit = {
   data: FileScreenData;
   states: Record<FileStep, StepState>;
+  /** The steps on screen, by the business's settings (`data.steps`). */
+  steps: readonly FileStep[];
+  /** The step on screen after this one, or the done screen after the last. */
+  next: (step: FileStep) => FileStep | "done";
+  /** The step on screen before this one, or null before the first. */
+  previous: (step: FileStep) => FileStep | null;
+  /**
+   * A step's name: step 2 is "דרכי קשר" while the address isn't on screen,
+   * only the ways to reach the person.
+   */
+  stepName: (step: FileStep) => string;
   actions: FileActions;
   t: FileT;
   /**
@@ -125,7 +132,7 @@ export function FileSection({
         tabIndex={-1}
         className="text-balance px-1 font-bold text-xl outline-none"
       >
-        {kit.t(`steps.name.${step}`)}
+        {kit.stepName(step)}
       </h2>
       {children}
       <div className="flex flex-wrap items-center gap-x-4 px-1 xl:hidden">
@@ -211,7 +218,7 @@ export function StepDock({
   };
   notice?: ReactNode;
 }) {
-  const back = previousFileStep(step);
+  const back = kit.previous(step);
   return (
     <div className="xl:hidden">
       <div aria-hidden="true" className={notice ? "h-36" : "h-28"} />

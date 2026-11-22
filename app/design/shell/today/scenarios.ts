@@ -483,4 +483,29 @@ export const todayScenarios = {
         },
   /** The owner's first steps (`firstSteps` above). */
   firstSteps,
+  /**
+   * Noa in a business that uses the hiring file (H5b): `missing`, three of
+   * its four parts still to give, its card; `bank`, all of it in and her
+   * account changed two days ago, its card; `disputed`, after she said "לא
+   * שיניתי", what follows.
+   */
+  workerFile: (state: "missing" | "bank" | "disputed"): TodayData => ({
+    ...today(
+      "noa",
+      "worker",
+      scheduleFor("worker", published("noa", NOA_SWAPS), false, false),
+      { modules: [...DEMO_MODULES, "employee_files"] },
+    ),
+    file: {
+      businessId: "demo-restaurant",
+      businessName: business.name,
+      role: "worker",
+      asked: 4,
+      missing: state === "missing" ? 3 : 0,
+      bank:
+        state === "missing"
+          ? null
+          : { on: "2026-11-01", disputed: state === "disputed" },
+    },
+  }),
 };

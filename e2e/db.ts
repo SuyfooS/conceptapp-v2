@@ -49,8 +49,43 @@ export async function inviteToDemo(invite: {
   /** Days until it expires; negative for one that already has. */
   expiresInDays?: number;
 }): Promise<void> {
+  await forgetDemoJoin(invite.phone);
+  await sql`insert into public.invites
+      (business_id, phone, role, full_name, token_hash, expires_at)
+    values (${DEMO_RESTAURANT}, ${invite.phone}, ${invite.role},
+      ${invite.name}, md5(random()::text) || md5(random()::text),
+      now() + make_interval(days => ${invite.expiresInDays ?? 14}))`;
+}
+
+/**
+ * An open invite to the demo restaurant with a link of its own (H5b): its
+ * token, as /join/<token> takes it, the database keeping its SHA-256 as
+ * `hashInviteToken` does. Clears an earlier run's join first, as
+ * `inviteToDemo` does.
+ */
+export async function inviteToDemoLink(invite: {
+  name: string;
+  phone: string;
+  role: "manager" | "worker";
+}): Promise<string> {
+  await forgetDemoJoin(invite.phone);
+  const token = randomBytes(32).toString("base64url");
+  await sql`insert into public.invites
+      (business_id, phone, role, full_name, token_hash, expires_at)
+    values (${DEMO_RESTAURANT}, ${invite.phone}, ${invite.role},
+      ${invite.name}, ${createHash("sha256").update(token, "utf8").digest("hex")},
+      now() + interval '14 days')`;
+  return token;
+}
+
+/**
+ * The number's invite to the demo restaurant and its place there, gone with
+ * what the place keeps, so a spec that joins can run again on the same local
+ * database.
+ */
+export async function forgetDemoJoin(phone: string): Promise<void> {
   await sql`delete from public.invites
-    where business_id = ${DEMO_RESTAURANT} and phone = ${invite.phone}`;
+    where business_id = ${DEMO_RESTAURANT} and phone = ${phone}`;
   // A wage, payroll details and employment periods are kept
   // (20261110000500_hourly_wages.sql, 20261110000600_payroll_details.sql) and
   // hold their membership: only a purge that names the business deletes them,
@@ -59,22 +94,17 @@ export async function inviteToDemo(invite: {
     await tx`select set_config('ca.records_purge', ${DEMO_RESTAURANT}, true)`;
     await tx`delete from public.member_wages w using public.profiles p
       where w.business_id = ${DEMO_RESTAURANT} and w.user_id = p.id
-        and p.phone = ${invite.phone}`;
+        and p.phone = ${phone}`;
     await tx`delete from public.member_payroll_details d using public.profiles p
       where d.business_id = ${DEMO_RESTAURANT} and d.user_id = p.id
-        and p.phone = ${invite.phone}`;
+        and p.phone = ${phone}`;
     await tx`delete from public.employment_periods e using public.profiles p
       where e.business_id = ${DEMO_RESTAURANT} and e.user_id = p.id
-        and p.phone = ${invite.phone}`;
+        and p.phone = ${phone}`;
     await tx`delete from public.memberships m using public.profiles p
       where m.business_id = ${DEMO_RESTAURANT} and m.user_id = p.id
-        and p.phone = ${invite.phone}`;
+        and p.phone = ${phone}`;
   });
-  await sql`insert into public.invites
-      (business_id, phone, role, full_name, token_hash, expires_at)
-    values (${DEMO_RESTAURANT}, ${invite.phone}, ${invite.role},
-      ${invite.name}, md5(random()::text) || md5(random()::text),
-      now() + make_interval(days => ${invite.expiresInDays ?? 14}))`;
 }
 
 /**
@@ -5357,6 +5387,21 @@ export async function restoreDemoFile(userId: string): Promise<void> {
   await sql`select private.seed_demo_files(${DEMO_RESTAURANT})`;
 }
 
+/**
+ * When the person's account for wages last changed in the demo restaurant,
+ * `daysAgo`, waiting for nobody (H5b: Today tells a change for 14 days).
+ * `restoreDemoFile` puts the made-up file back, its change 60 days ago.
+ */
+export async function setDemoBankChanged(
+  userId: string,
+  daysAgo: number,
+): Promise<void> {
+  await sql`update public.employee_details
+    set bank_changed_at = now() - make_interval(days => ${daysAgo}::int),
+      bank_review = null
+    where business_id = ${DEMO_RESTAURANT} and user_id = ${userId}`;
+}
+
 export type DemoFileFacts = {
   idKind: string | null;
   /** The first byte of the sealed ID: 1 for a value sealed in server code. */
@@ -5369,6 +5414,11 @@ export type DemoFileFacts = {
   submitted: boolean;
   /** This year's 101, as the person marked it. */
   form101: string | null;
+  /** And the way it was marked by: on paper, or at an approved system's link. */
+  form101Route: string | null;
+  /** The first byte of the sealed emergency contact and work language: 1 when sealed in server code. */
+  emergencyByte: number | null;
+  workLanguageByte: number | null;
 };
 
 /** What the person's file holds, by its plain columns only. Null for none. */
@@ -5387,7 +5437,14 @@ export async function demoFileFacts(
       e.submitted_at is not null as submitted,
       (select y.status from public.employee_tax_years y
         where y.business_id = e.business_id and y.user_id = e.user_id
-        order by y.tax_year desc limit 1) as "form101"
+        order by y.tax_year desc limit 1) as "form101",
+      (select y.route from public.employee_tax_years y
+        where y.business_id = e.business_id and y.user_id = e.user_id
+        order by y.tax_year desc limit 1) as "form101Route",
+      (select get_byte(c.contact_enc, 0) from public.member_emergency_contacts c
+        where c.business_id = e.business_id and c.user_id = e.user_id) as "emergencyByte",
+      case when e.work_language_enc is null then null
+        else get_byte(e.work_language_enc, 0) end as "workLanguageByte"
     from public.employee_details e
     where e.business_id = ${DEMO_RESTAURANT} and e.user_id = ${userId}`;
   return rows[0] ?? null;

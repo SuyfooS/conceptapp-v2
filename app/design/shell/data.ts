@@ -425,6 +425,21 @@ export const demoModuleRows: ModuleRow[] = [
   // Taking orders, on as the local seed's restaurant has it (waiter mode
   // P2): its menu on /design/order-taking.
   { key: "order_taking", enabled: true, settings: {} },
+  // The hiring file (profile H5b), on the twin only, with what an owner set:
+  // Form 101 by an approved system's link, and the names the notice gives.
+  {
+    key: "employee_files",
+    enabled: true,
+    settings: {
+      form101: "link",
+      form101Provider: "משרד השכר",
+      form101Link: "https://101.example/demo",
+      payrollProvider: "משרד רואי החשבון",
+      employerName: "מסעדת הדגמה בע״מ",
+      employerPhone: "+97231234567",
+      deductionsFile: "912345678",
+    },
+  },
 ];
 
 // A shift a manager added by hand on the demo week's Sunday, overlapping both

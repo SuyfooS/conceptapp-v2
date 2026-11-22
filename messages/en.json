@@ -1378,6 +1378,19 @@
           "body": "The hours for payroll show here once the clock is switched on for the business."
         },
         "remarks": "{count, plural, one {One thing to check in the hours} other {# things to check in the hours}}"
+      },
+      "file": {
+        "complete": "Your file is complete",
+        "bank": {
+          "title": "Your account for wages changed",
+          "body": "Your account for wages was changed on {date}. Didn't change it? Tell {business} now.",
+          "dispute": "I didn't change it",
+          "mine": "I changed it",
+          "disputedTitle": "Marked as not changed by you",
+          "disputed": "No wages go to this account until {business} checks it. Talk to {business} too.",
+          "seen": "Got it",
+          "failed": "Not saved. Try again."
+        }
       }
     },
     "moduleSoon": {
@@ -3635,7 +3648,8 @@
             "export": "Downloaded details for payroll from the files: {people, plural, one {one person} other {# people}}, {recipient, select, provider {for whoever does payroll} other {for own use}}",
             "exportHeld": "{held, plural, one {One bank account waits for confirmation and was left out} other {# bank accounts wait for confirmation and were left out}}"
           }
-        }
+        },
+        "notSet": "Not set"
       },
       "access": {
         "title": "Who sees pay",
@@ -3994,7 +4008,8 @@
           "address": "Address",
           "bank": "Account for wages",
           "pension": "Pension",
-          "form101": "Form 101 for <ltr>{year}</ltr>"
+          "form101": "Form 101 for <ltr>{year}</ltr>",
+          "emergency": "Emergency contact"
         },
         "values": {
           "done": "Done",
@@ -4003,7 +4018,8 @@
           "bank": "{bank} <ltr>{masked}</ltr>",
           "employer": "{business} chooses",
           "dueOn": "Choose by {date}",
-          "duePassed": "The time to choose has passed"
+          "duePassed": "The time to choose has passed",
+          "none": "Not given"
         }
       }
     },
@@ -4033,7 +4049,8 @@
           "address": "Address and contact",
           "bank": "Where to pay your wages",
           "pension": "Pension",
-          "form101": "Form 101"
+          "form101": "Form 101",
+          "contact": "Contact"
         },
         "state": {
           "done": "Done",
@@ -4055,13 +4072,14 @@
           "pension": "Complete the pension answer",
           "form101": "Hand in Form 101"
         },
-        "sendWaits": "You can send your details once your ID details, address, account and pension are filled in.",
+        "sendWaits": "You can send your details once everything required is filled in.",
         "edit": "Change",
         "saveStart": "Save the choice",
         "saveIdentity": "Save your details",
         "saveAddress": "Save the address",
         "savePension": "Save the pension answer",
-        "close": "Close"
+        "close": "Close",
+        "saveContact": "Save these details"
       },
       "optional": "Optional",
       "optionalField": "{field} (optional)",
@@ -4138,7 +4156,19 @@
         "lineInvalid": "One line of text here, without special characters.",
         "email": "Email",
         "emailReason": "For {business} to contact you about your pay.",
-        "emailInvalid": "That isn't an email address."
+        "emailInvalid": "That isn't an email address.",
+        "workLanguage": "Language for work and safety instructions",
+        "workLanguageHint": "For example: Arabic, Russian, Amharic",
+        "workLanguageReason": "So safety instructions can be given in a language you understand.",
+        "workLanguageShort": "Write at least two letters.",
+        "emergencyTitle": "Emergency contact",
+        "emergencyName": "Name",
+        "emergencyPhone": "Mobile number",
+        "emergencyReason": "Managers can see it, to call if something happens at work.",
+        "emergencyBoth": "Fill in both a name and a number, or leave both empty.",
+        "emergencyPhoneInvalid": "That isn't an Israeli mobile number.",
+        "emergencyNameShort": "The name needs at least two letters.",
+        "notAsked": "{business} no longer asks for this. You can keep it or delete it."
       },
       "bank": {
         "paste": "Paste from your bank app",
@@ -4214,7 +4244,11 @@
         "year": "for <ltr>{year}</ltr>",
         "status": "{status, select, handed_in {Handed in, waiting for approval} accepted {Accepted by the business} returned {Returned to you} change_due {An updated form is due} other {Not handed in yet}}",
         "returned": "{business} returned the form: {reason, select, attachment {an attachment is missing} signature {a signature is missing} details {a detail doesn't match} other {ask them why}}. It needs handing in again.",
-        "dueBy": "by {date}"
+        "dueBy": "by {date}",
+        "linkBody": "{business} receives Form 101 through {provider}. You fill it in and sign it there.",
+        "open": "Fill in the form at {provider}",
+        "opensAt": "Opens <ltr>{domain}</ltr> in a new window",
+        "linkAfter": "Once you've handed it in there, mark it here."
       },
       "summary": {
         "title": "Still missing",
@@ -4228,7 +4262,8 @@
         "left": "Still to do: {what}",
         "leftPension": "choose a pension fund by {date}",
         "change": "You can go back to any step",
-        "profile": "Back to the profile"
+        "profile": "Back to the profile",
+        "ready": "Everything's in. Once you send it, {business} will see your details are complete."
       },
       "masked": {
         "show": "Show",
@@ -4242,7 +4277,11 @@
         "fields": "Next to each detail it says why it's needed and whether the law requires it. Anything marked \"Optional\" can stay empty, and it changes nothing at work.",
         "who": "You, the owner of {business} and the accountant can see these details. Managers see only whether they are complete. {business} passes them to whoever prepares the payroll, and to the Tax Authority, National Insurance and the pension fund when the law requires it.",
         "conceptapp": "ConceptApp keeps the details for {business} and uses them for nothing else. The servers are in Frankfurt, Germany, with the American companies Supabase and Vercel. Sign-in codes are sent through Twilio in the United States, which receives only the phone number.",
-        "rights": "You can see all your details here and ask to correct or delete one that is wrong, also after the work ends. Every view of your details by someone else is recorded. For questions, contact {business}."
+        "rights": "You can see all your details here and ask to correct or delete one that is wrong, also after the work ends. Every view of your details by someone else is recorded. For questions, contact {business}.",
+        "employer": "The employer by law: {employer}.",
+        "whoProvider": "You, the owner of {business} and the accountant can see these details. Managers see only whether they are complete. {business} passes them to {provider}, who prepares the payroll, and to the Tax Authority, National Insurance and the pension fund when the law requires it.",
+        "form101Vendor": "Form 101 is filled in at {provider}, which passes it to {business}.",
+        "rightsPhone": "You can see all your details here and ask to correct or delete one that is wrong, also after the work ends. Every view of your details by someone else is recorded. For questions, call {business} on <ltr>{phone}</ltr>."
       },
       "failures": {
         "off": "The employee file is off in this business.",
@@ -7082,7 +7121,58 @@
     },
     "employee_files": {
       "name": "Employee file",
-      "description": "What the business needs to pay wages: ID, address, bank account and pension. Kept encrypted, and every view is logged."
+      "description": "What the business needs to pay wages: ID, address, bank account and pension. Kept encrypted, and every view is logged.",
+      "settings": {
+        "askBank": {
+          "label": "Ask for a bank account for wages",
+          "hint": "Workers add the account themselves, with a code by SMS. Without one, wages are paid some other way."
+        },
+        "askAddress": {
+          "label": "Ask for the home address",
+          "hint": "For Form 101 and the notice of working conditions. An approved Form 101 system asks for it too."
+        },
+        "askEmergencyContact": {
+          "label": "Ask for an emergency contact",
+          "hint": "Optional for workers. Managers see it, to call if something happens at work."
+        },
+        "askWorkLanguage": {
+          "label": "Ask for a language for work instructions",
+          "hint": "Optional for workers. So work and safety instructions can be given in a language they understand."
+        },
+        "form101": {
+          "label": "Form 101",
+          "hint": "How workers fill in the form each year. For a link, add the name and the link below too.",
+          "options": {
+            "print": "On paper, handed to the business",
+            "link": "In an approved system, by a link",
+            "off": "Not through the app"
+          }
+        },
+        "form101Provider": {
+          "label": "Name of the Form 101 system",
+          "hint": "Workers see it on the button: \"Fill in the form at\" and this name."
+        },
+        "form101Link": {
+          "label": "Link to Form 101",
+          "hint": "An address starting with https://, of a system the Tax Authority approved for Form 101. Workers see which site it opens."
+        },
+        "payrollProvider": {
+          "label": "Who prepares the payroll",
+          "hint": "Shown in the notice to workers as who receives their details. For example: the accountant's office."
+        },
+        "employerName": {
+          "label": "Legal name of the employer",
+          "hint": "As registered with the Tax Authority. Shown in the notice to workers and on Form 101."
+        },
+        "employerPhone": {
+          "label": "Phone for questions about the file",
+          "hint": "A mobile or a landline. Workers see it in the notice, and it goes on Form 101."
+        },
+        "deductionsFile": {
+          "label": "Deductions file number",
+          "hint": "9 digits starting with 9. It goes on Form 101."
+        }
+      }
     }
   },
   "admin": {

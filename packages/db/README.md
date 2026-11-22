@@ -1745,6 +1745,20 @@ per role: owners always hold it, accountants by `private.accountant_perms`
   `employee_files_demo.test.sql`, `employee-files.db.test.ts` (the real
   sealing against the database), `payroll_access`, `roles_catalogue`,
   `rls_enabled` and `roles_manage`.
+- **What each business asks** (`20261126000400_employee_files_settings.sql`,
+  H5b). The module's eleven settings are an owner's and the team's alone:
+  `public.set_module_settings`' `employee_files` branch refuses anyone else
+  (42501), any key outside the manifest's, and each value the manifest
+  wouldn't output (22023: `private.file_setting_line`,
+  `private.file_setting_link`, the phone as E.164, the deductions file).
+  `private.employee_files_settings` defaults as the manifest does, and
+  `private.file_groups` reads `askAddress` and `askBank` through
+  `private.file_asks` (a stored value that isn't a boolean is the default),
+  so what a file counts missing follows them everywhere. Covered by
+  `employee_files_settings.test.sql` and
+  `modules/employee_files/settings.db.test.ts`, which holds the database to
+  the manifest. `getBusinessModulesForTeam` is also read right after a
+  join, for where the person lands.
 
 The pay rules (`20261110000700_pay_rules.sql`, payroll P6). No new table: the
 hours engine is pure code (`@domain/payroll`), and its rules are time clock

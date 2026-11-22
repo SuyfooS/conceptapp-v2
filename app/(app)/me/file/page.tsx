@@ -62,7 +62,7 @@ export default async function FilePage({
   return (
     <FileView
       data={data}
-      view={fileViewOf(step)}
+      view={fileViewOf(step, data.steps)}
       actions={{
         saveStep: saveFileStepAction.bind(null, business),
         reveal: revealOwnAction.bind(null, business),

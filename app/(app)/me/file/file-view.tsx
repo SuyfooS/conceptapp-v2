@@ -1,5 +1,5 @@
 import { accentTokens } from "@domain/color";
-import { fileStepOf } from "@domain/employee-file-steps";
+import { type FileStep, fileStepOf } from "@domain/employee-file-steps";
 import type { ProfileLocale } from "@domain/profile";
 import { accentProps } from "@ui/accent";
 import en from "@/messages/en.json";
@@ -10,9 +10,12 @@ import { fileMessages } from "./file-messages";
 import type { FileActions, FileScreenData } from "./file-types";
 import type { BankPreset } from "./steps/bank-step";
 
-/** The screen `?step=` names: a step, the done screen, or none. */
-export function fileViewOf(param: unknown): View {
-  return param === "done" ? "done" : fileStepOf(param);
+/**
+ * The screen `?step=` names: a step on screen, the done screen, or none (a
+ * step the business doesn't ask opens where the person stopped).
+ */
+export function fileViewOf(param: unknown, steps: readonly FileStep[]): View {
+  return param === "done" ? "done" : fileStepOf(param, steps);
 }
 
 /**

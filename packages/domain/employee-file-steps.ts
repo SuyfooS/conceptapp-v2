@@ -5,15 +5,20 @@ import type {
   PensionAnswer,
   TaxYearStatus,
 } from "./employee-file";
+import type { FileAsks, Form101Way } from "./employee-file-settings";
 import type { AddressForm } from "./profile";
 import { youthUntilOf } from "./youth";
 
 /*
  * The worker's own hiring file as a flow (profile H5a, /me/file): how to be
  * addressed, then a step for each group the business asks, then Form 101.
- * Where each step stands is worked out from the file, never ticked, so the
- * phone's bar, the tablet's list and the desktop's summary always agree, and
- * the person comes back to the first step still open.
+ * Which steps show is the business's settings' (H5b): the address step and
+ * the bank's while asked, or while the file holds what they keep, so it can
+ * be seen and changed; Form 101's unless it isn't taken in the app. Where
+ * each step stands is worked out from the file, never ticked, so the
+ * phone's bar, the tablet's list and the desktop's summary always agree,
+ * and the person comes back to the first step still open. Every helper
+ * below takes the steps on screen (`fileStepsOn`); all six by default.
  */
 
 export const FILE_STEPS = [
@@ -26,8 +31,12 @@ export const FILE_STEPS = [
 ] as const;
 export type FileStep = (typeof FILE_STEPS)[number];
 
-/** Done, still open, or handed to payroll directly (a holder's mark). */
-export type StepState = "done" | "open" | "direct";
+/**
+ * Done, still open, handed to payroll directly (a holder's mark), or not
+ * asked of the person at all and nothing given yet (`optional`: step 2 when
+ * the business asks only for ways to reach them).
+ */
+export type StepState = "done" | "open" | "direct" | "optional";
 
 /** The step each group of the file is filled in. */
 export const STEP_OF_GROUP: Record<FileGroup, FileStep> = {
@@ -37,26 +46,94 @@ export const STEP_OF_GROUP: Record<FileGroup, FileStep> = {
   pension: "pension",
 };
 
-/** The step a page's `?step=` names, or null for none it knows. */
-export function fileStepOf(param: unknown): FileStep | null {
-  return FILE_STEPS.find((step) => step === param) ?? null;
+/**
+ * What the flow shows: what the business asks, or what the file holds
+ * already, which the person can still see, change or delete (H5b's default
+ * 4). The email is never asked on its own: it shows with step 2, and keeps
+ * that step on screen while the file holds one.
+ */
+export type FileParts = {
+  address: boolean;
+  email: boolean;
+  bank: boolean;
+  workLanguage: boolean;
+  emergency: boolean;
+  form101: boolean;
+};
+
+export function fileParts(input: {
+  asks: FileAsks;
+  way: Form101Way;
+  held: {
+    address: boolean;
+    email: boolean;
+    bank: boolean;
+    workLanguage: boolean;
+    emergency: boolean;
+  };
+}): FileParts {
+  const { asks, held } = input;
+  return {
+    address: asks.address || held.address,
+    email: held.email,
+    bank: asks.bank || held.bank,
+    workLanguage: asks.workLanguage || held.workLanguage,
+    emergency: asks.emergencyContact || held.emergency,
+    form101: input.way !== "off",
+  };
 }
 
-/** The step after this one, or null after the last. */
-export function nextFileStep(step: FileStep): FileStep | null {
-  return FILE_STEPS[FILE_STEPS.indexOf(step) + 1] ?? null;
+/**
+ * The steps on screen, in FILE_STEPS' order: step 2 while any of its parts
+ * shows, the bank's while it does, Form 101's unless it is off.
+ */
+export function fileStepsOn(parts: FileParts): FileStep[] {
+  return FILE_STEPS.filter((step) => {
+    switch (step) {
+      case "address":
+        return (
+          parts.address || parts.email || parts.workLanguage || parts.emergency
+        );
+      case "bank":
+        return parts.bank;
+      case "form101":
+        return parts.form101;
+      default:
+        return true;
+    }
+  });
 }
 
-/** The step before this one, or null before the first. */
-export function previousFileStep(step: FileStep): FileStep | null {
-  const at = FILE_STEPS.indexOf(step);
-  return at > 0 ? (FILE_STEPS[at - 1] ?? null) : null;
+/** The step a page's `?step=` names, or null for none it knows or none on screen. */
+export function fileStepOf(
+  param: unknown,
+  steps: readonly FileStep[] = FILE_STEPS,
+): FileStep | null {
+  return steps.find((step) => step === param) ?? null;
+}
+
+const place = (step: FileStep) => FILE_STEPS.indexOf(step);
+
+/** The step on screen after this one, or null after the last. */
+export function nextFileStep(
+  step: FileStep,
+  steps: readonly FileStep[] = FILE_STEPS,
+): FileStep | null {
+  return steps.find((other) => place(other) > place(step)) ?? null;
+}
+
+/** The step on screen before this one, or null before the first. */
+export function previousFileStep(
+  step: FileStep,
+  steps: readonly FileStep[] = FILE_STEPS,
+): FileStep | null {
+  return steps.findLast((other) => place(other) < place(step)) ?? null;
 }
 
 export type FileStepInput = {
   /** The profile's form of address: chosen once, here or on /me. */
   addressForm: AddressForm | null;
-  /** The groups the business asks (every one until H5b's settings). */
+  /** The groups the business asks (`fileGroupsAsked`). */
   asked: readonly FileGroup[];
   /** The groups still missing, as the database counts them. */
   missing: readonly FileGroup[];
@@ -65,14 +142,20 @@ export type FileStepInput = {
   pensionAnswer: PensionAnswer | null;
   /** This year's Form 101, or null before anything was marked. */
   form101: { status: TaxYearStatus; route: Form101Route | null } | null;
+  /**
+   * Something of step 2 is in though the address isn't asked: the address
+   * itself, the email, the work language or the emergency contact.
+   */
+  contactHeld: boolean;
 };
 
 /**
  * Where each step stands. A group the business doesn't ask is done; one
- * handed directly is `direct`. "אבחר אחר כך" answers the pension step here,
- * though the file still counts the pension missing until a fund is chosen.
- * Form 101 is done once handed in or accepted, and open while it is
- * missing, returned or due again after a change.
+ * handed directly is `direct`. Step 2 without the address asked is
+ * `optional` until something of it is in, then done. "אבחר אחר כך" answers
+ * the pension step here, though the file still counts the pension missing
+ * until a fund is chosen. Form 101 is done once handed in or accepted, and
+ * open while it is missing, returned or due again after a change.
  */
 export function fileStepStates(
   input: FileStepInput,
@@ -84,10 +167,16 @@ export function fileStepStates(
     return input.missing.includes(name) ? "open" : "done";
   };
   const form101 = input.form101;
+  const address = group("address");
   return {
     start: input.addressForm === null ? "open" : "done",
     identity: group("identity"),
-    address: group("address"),
+    address:
+      address === "done" &&
+      !input.asked.includes("address") &&
+      !input.contactHeld
+        ? "optional"
+        : address,
     bank: group("bank"),
     pension: group("pension"),
     form101:
@@ -101,9 +190,12 @@ export function fileStepStates(
   };
 }
 
-/** How many steps are behind the person: done, or handed directly. */
-export function stepsDone(states: Record<FileStep, StepState>): number {
-  return FILE_STEPS.filter((step) => states[step] !== "open").length;
+/** How many of the steps on screen are behind the person: done, handed directly, or optional. */
+export function stepsDone(
+  states: Record<FileStep, StepState>,
+  steps: readonly FileStep[] = FILE_STEPS,
+): number {
+  return steps.filter((step) => states[step] !== "open").length;
 }
 
 /**
@@ -118,20 +210,26 @@ export const SENT_WITH = [
 ] as const satisfies readonly FileStep[];
 
 /**
- * What keeps the file from being sent: the first of its details still open,
- * which the send action leads to instead, or null once it can go.
+ * What keeps the file from being sent: the first of its details on screen
+ * still open, which the send action leads to instead, or null once it can
+ * go. An optional step never does.
  */
 export function sendBlocker(
   states: Record<FileStep, StepState>,
+  steps: readonly FileStep[] = FILE_STEPS,
 ): (typeof SENT_WITH)[number] | null {
-  return SENT_WITH.find((step) => states[step] === "open") ?? null;
+  return (
+    SENT_WITH.find((step) => steps.includes(step) && states[step] === "open") ??
+    null
+  );
 }
 
-/** Where the person picks up: the first step still open, or done. */
+/** Where the person picks up: the first step on screen still open, or done. */
 export function resumeStep(
   states: Record<FileStep, StepState>,
+  steps: readonly FileStep[] = FILE_STEPS,
 ): FileStep | "done" {
-  return FILE_STEPS.find((step) => states[step] === "open") ?? "done";
+  return steps.find((step) => states[step] === "open") ?? "done";
 }
 
 /**

@@ -1,6 +1,5 @@
 "use client";
 
-import { nextFileStep } from "@domain/employee-file-steps";
 import {
   ADDRESS_FORMS,
   type AddressForm,
@@ -71,7 +70,7 @@ export function StartStep({ kit, active }: { kit: Kit; active: boolean }) {
     }
     setTried(false);
     kit.say(t("saved"));
-    if (active) kit.go(nextFileStep("start") ?? "done", changed ?? undefined);
+    if (active) kit.go(kit.next("start"), changed ?? undefined);
     else if (changed) kit.showLocale(changed);
   }
 

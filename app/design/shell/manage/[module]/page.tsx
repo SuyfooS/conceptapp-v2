@@ -14,8 +14,9 @@ import { baseWording } from "../../../../(app)/wording";
 import { demoModuleRows } from "../../data";
 import { demoSaveSettings } from "../actions";
 
+// As the owner reads them: the hiring file's are an owner's alone (H5b).
 export const generateStaticParams = () =>
-  modulesToManage(demoModuleRows).map((module) => ({ module }));
+  modulesToManage(demoModuleRows, "owner").map((module) => ({ module }));
 
 type Props = {
   params: Promise<{ module: string }>;
@@ -28,7 +29,9 @@ type Props = {
 // the management page, `?state=module` for someone who edits it without the
 // module's own edit (a manager who doesn't build the schedule, on
 // /design/shell/manage/scheduling). Taking orders says the day's fixes above
-// its settings, as an owner reads them (P5).
+// its settings, as an owner reads them (P5). The hiring file's are drawn as
+// its owner reads them, its link, phone and deductions file typed left to
+// right (H5b).
 export default function ShellManageModule({ params, searchParams }: Props) {
   return (
     <Suspense>
@@ -40,7 +43,9 @@ export default function ShellManageModule({ params, searchParams }: Props) {
 async function Demo({ params, searchParams }: Props) {
   const [{ module }, { state }] = await Promise.all([params, searchParams]);
   const key = moduleKeyOf(module);
-  if (!key || !modulesToManage(demoModuleRows).includes(key)) notFound();
+  if (!key || !modulesToManage(demoModuleRows, "owner").includes(key)) {
+    notFound();
+  }
   const manifest: ModuleManifest = manifestFor(key);
   return (
     <ModuleSettingsView

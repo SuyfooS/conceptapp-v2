@@ -1,11 +1,13 @@
 "use server";
 
 import { claimInvite, ensurePhoneAccount, findInvite } from "@db/invites";
+import { getBusinessModulesForTeam } from "@db/module-settings";
 import { normalizeOtpCode } from "@domain/otp";
 import { redirect } from "next/navigation";
 import { rememberBusiness } from "../../(app)/business-cookie";
 import { pushSoon } from "../../push/server";
 import { type SignInError, sendCode, verifyCode } from "../otp";
+import { landingAfterJoin } from "./landing";
 
 /**
  * Joining also fails for someone with shifts left who joins as an accountant,
@@ -22,7 +24,9 @@ export type JoinState =
  * Joining from an invite link: send a code to the invited number (its
  * account is made first if it has none, once the code may go), check it,
  * then claim the invite on the server and open the app, in the business just
- * joined (someone in several opens it first). The number always
+ * joined (someone in several opens it first): a worker or a manager on their
+ * hiring file's welcome where the business uses it, anyone else on Today
+ * (`landingAfterJoin`, H5b). The number always
  * comes from the invite, never from the form. A link that stopped working on
  * the way goes back to its page, which says why.
  */
@@ -74,9 +78,15 @@ export async function join(
     await rememberBusiness(claim.businessId);
     // The owners and managers hear who joined.
     pushSoon();
+    // The business's modules, read with the secret key: this request's
+    // session can't read them yet under RLS. A read that fails lands on
+    // Today, as before.
+    const rows = await getBusinessModulesForTeam(claim.businessId).catch(
+      () => [],
+    );
     // Straight on: the page would now say the link was used, so nothing here
     // can stay on screen to show a check first.
-    redirect("/home");
+    redirect(landingAfterJoin(rows, invite.role));
   }
 
   return { step: "invite", error: "failed" };

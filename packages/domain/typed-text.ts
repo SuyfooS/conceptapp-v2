@@ -50,7 +50,7 @@ export function cleanTyped(text: string): string {
 }
 
 /** A line break or any other control character (C0, DEL, C1, NEL included). */
-const CONTROL_OR_BREAK = /[\p{Cc}\u2028\u2029]/u;
+export const CONTROL_OR_BREAK = /[\p{Cc}\u2028\u2029]/u;
 
 /** One line of typed text as stored: cleaned, trimmed, runs of spaces as one. */
 export function tidyLine(text: string): string {

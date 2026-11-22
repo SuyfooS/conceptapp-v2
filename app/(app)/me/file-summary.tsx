@@ -8,13 +8,21 @@ import { ListGroup, ListRow } from "@ui/list-row";
 import { PageSection } from "@ui/page";
 import { ProgressRing } from "@ui/progress-ring";
 import { VisibilityNote } from "@ui/visibility-note";
-import { FileText, IdCard, Landmark, MapPin, PiggyBank } from "lucide-react";
+import {
+  FileText,
+  IdCard,
+  Landmark,
+  MapPin,
+  PiggyBank,
+  Siren,
+} from "lucide-react";
 import Link from "next/link";
 import { unstable_rethrow } from "next/navigation";
 import { getFormatter } from "next-intl/server";
 import type { ReactNode } from "react";
 import { type AppWording, translator } from "../wording";
 import { currentFileScreen } from "./file/file";
+import { fileStepInputOf } from "./file/file-parts";
 import type { FileScreenData } from "./file/file-types";
 
 /**
@@ -47,8 +55,11 @@ const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
  * The way into the file from the profile: while something is missing, the
  * screen's one accent card says how much, with "השלמת הפרטים" (not for an
  * owner, who isn't counted, and may still fill a file for themselves); then
- * "התיק שלי ב{business}", who sees it, and a row for each part, each to its
- * step. Hebrew, as the profile is. Also drawn with mock data on the twin.
+ * "התיק שלי ב{business}", who sees it, and a row for each part the business
+ * asks or the file holds (H5b): the identity and the pension always, the
+ * address, the account and the emergency contact where they show, and Form
+ * 101 unless it is taken outside the app; each to its step. Hebrew, as the
+ * profile is. Also drawn with mock data on the twin.
  */
 export async function FileSummary({
   data,
@@ -75,16 +86,8 @@ export async function FileSummary({
   const file = data.file;
   const direct = (group: FileGroup) =>
     file?.direct_groups.includes(group) ?? false;
-  const states = fileStepStates({
-    addressForm: data.addressForm,
-    asked: data.asked,
-    missing: data.missing,
-    directGroups: file?.direct_groups ?? [],
-    pensionAnswer: file?.pension_answer ?? null,
-    form101: data.taxYear
-      ? { status: data.taxYear.status, route: data.taxYear.route }
-      : null,
-  });
+  const states = fileStepStates(fileStepInputOf(data));
+  const { parts } = data;
   const plain = (group: FileGroup) =>
     direct(group)
       ? t("values.direct")
@@ -151,36 +154,50 @@ export async function FileSummary({
             title={t("rows.identity")}
             subtitle={plain("identity")}
           />
-          <ListRow
-            href={href("address")}
-            leading={<MapPin />}
-            title={t("rows.address")}
-            subtitle={plain("address")}
-          />
-          <ListRow
-            href={href("bank")}
-            leading={<Landmark />}
-            title={t("rows.bank")}
-            subtitle={bank}
-          />
+          {parts.address ? (
+            <ListRow
+              href={href("address")}
+              leading={<MapPin />}
+              title={t("rows.address")}
+              subtitle={plain("address")}
+            />
+          ) : null}
+          {parts.emergency ? (
+            <ListRow
+              href={href("address")}
+              leading={<Siren />}
+              title={t("rows.emergency")}
+              subtitle={data.emergency?.name ?? t("values.none")}
+            />
+          ) : null}
+          {parts.bank ? (
+            <ListRow
+              href={href("bank")}
+              leading={<Landmark />}
+              title={t("rows.bank")}
+              subtitle={bank}
+            />
+          ) : null}
           <ListRow
             href={href("pension")}
             leading={<PiggyBank />}
             title={t("rows.pension")}
             subtitle={pension}
           />
-          <ListRow
-            href={href("form101")}
-            leading={<FileText />}
-            title={t.rich("rows.form101", { year: data.year, ltr })}
-            subtitle={
-              states.form101 === "direct"
-                ? t("values.direct")
-                : tf("form101.status", {
-                    status: data.taxYear?.status ?? "none",
-                  })
-            }
-          />
+          {parts.form101 ? (
+            <ListRow
+              href={href("form101")}
+              leading={<FileText />}
+              title={t.rich("rows.form101", { year: data.year, ltr })}
+              subtitle={
+                states.form101 === "direct"
+                  ? t("values.direct")
+                  : tf("form101.status", {
+                      status: data.taxYear?.status ?? "none",
+                    })
+              }
+            />
+          ) : null}
         </ListGroup>
       </PageSection>
     </>

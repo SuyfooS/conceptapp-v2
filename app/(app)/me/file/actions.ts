@@ -2,8 +2,11 @@
 
 import {
   checkBankChange,
+  disputeBankChange,
+  getEmployeeFile,
   noteStepUp,
   revealEmployeeFields,
+  saveEmergencyContact,
   saveEmployeeDetails,
   setTaxYearStatus,
   submitEmployeeFile,
@@ -14,6 +17,10 @@ import {
   PENSION_ANSWERS,
   REVEAL_FIELDS,
 } from "@domain/employee-file";
+import {
+  type EmployeeFileSettings,
+  form101SetupOf,
+} from "@domain/employee-file-settings";
 import { phoneTail } from "@domain/employee-file-steps";
 import { ID_KINDS } from "@domain/identity-documents";
 import { canOpenModule } from "@domain/modules";
@@ -24,8 +31,9 @@ import { manifestFor } from "@modules/registry";
 import { refresh } from "next/cache";
 import { z } from "zod";
 import { checkCode, sendCode, signInPhoneOf } from "../../../(auth)/otp";
+import { rememberBankChangeSeen } from "../../business-cookie";
 import { currentMember } from "../../member";
-import { currentModules } from "../../modules";
+import { currentModuleSettings, currentModules } from "../../modules";
 import type {
   ConfirmBankAnswer,
   FileActionFailure,
@@ -45,7 +53,9 @@ import type {
  * changes while viewing as a role; the module is on and the person on the
  * staff. What is typed is checked here for its shape and again, whole, by
  * @domain/employee-file before it is sealed (@db/employee-files), and by the
- * database. Nothing typed is logged, anywhere: a failure logs its code.
+ * database. What the business asks, and how it takes Form 101, are read
+ * from its settings here, never from the browser (H5b). Nothing typed is
+ * logged, anywhere: a failure logs its code.
  */
 
 type Self = {
@@ -53,14 +63,17 @@ type Self = {
   businessId: string;
   today: string;
   year: number;
+  /** The business's settings for the file, as stored (H5b). */
+  settings: EmployeeFileSettings;
 };
 
 async function self(
   business: unknown,
 ): Promise<Self | { failure: FileActionFailure }> {
-  const [member, enabled] = await Promise.all([
+  const [member, enabled, settings] = await Promise.all([
     currentMember(),
     currentModules(),
+    currentModuleSettings("employee_files"),
   ]);
   const membership = member?.membership;
   if (!member || !membership) return { failure: "failed" };
@@ -77,6 +90,7 @@ async function self(
     businessId: membership.business.id,
     today,
     year: Number(today.slice(0, 4)),
+    settings,
   };
 }
 
@@ -105,8 +119,10 @@ const typedDate = z.object({
 /**
  * Each step's groups and nothing else, by shape: the values are checked whole
  * by `employeeDetailsInput` in @db/employee-files. Identity with its names
- * and birth date (the number only when typed again), the address with its
- * email (null clears it), the pension's answer.
+ * and birth date (the number only when typed again); step 2's email (null
+ * clears it) with the address, the work language and the emergency contact
+ * where they show (H5b: null clears the language, and removes the contact);
+ * the pension's answer.
  */
 const STEP_INPUT = {
   identity: z
@@ -121,8 +137,14 @@ const STEP_INPUT = {
     .strict(),
   address: z
     .object({
-      address: z.object({ kind: z.string() }).loose(),
+      address: z.object({ kind: z.string() }).loose().nullable().optional(),
       email: z.string().nullable(),
+      workLanguage: z.string().nullable().optional(),
+      emergency: z
+        .object({ name: z.string(), phone: z.string() })
+        .strict()
+        .nullable()
+        .optional(),
     })
     .strict(),
   pension: z
@@ -130,7 +152,12 @@ const STEP_INPUT = {
     .strict(),
 } as const satisfies Record<SavedStep, z.ZodType>;
 
-/** The person saves one step of their file. */
+/**
+ * The person saves one step of their file. Step 2's emergency contact is
+ * kept apart from the file (`member_emergency_contacts`), so it is saved
+ * after the rest of the step, by its own write: a refusal of either is said,
+ * and a second press saves both again, which changes nothing twice.
+ */
 export async function saveFileStepAction(
   business: string,
   step: SavedStep,
@@ -143,15 +170,27 @@ export async function saveFileStepAction(
   if (!STEP_INPUT[schema.data].safeParse(input).success) {
     return { ok: false, failure: "invalid" };
   }
+  const { emergency, ...rest } = input as { emergency?: unknown };
   try {
     const saved = await saveEmployeeDetails(
       who.userId,
       who.businessId,
       who.userId,
-      input,
+      rest,
       who.today,
     );
     if (!saved.ok) return { ok: false, failure: saved.failure };
+    if (emergency !== undefined) {
+      const contact = await saveEmergencyContact(
+        who.userId,
+        who.businessId,
+        emergency,
+      );
+      if (!contact.ok) {
+        refresh();
+        return { ok: false, failure: contact.failure };
+      }
+    }
     refresh();
     return { ok: true, changeDueBy: saved.changeDueBy };
   } catch (error) {
@@ -307,18 +346,24 @@ export async function confirmBankAction(
   }
 }
 
-/** The person marks this year's Form 101 handed in, on paper (H5a's one route). */
+/**
+ * The person marks this year's Form 101 handed in, by the way the business
+ * takes it (its settings, never the browser's): on paper, or at the approved
+ * system its link opens. None while the business takes it outside the app.
+ */
 export async function handInForm101Action(
   business: string,
 ): Promise<FileWriteAnswer> {
   const who = await self(business);
   if ("failure" in who) return { ok: false, failure: who.failure };
+  const { way } = form101SetupOf(who.settings);
+  if (way === "off") return { ok: false, failure: "invalid" };
   try {
     const marked = await setTaxYearStatus(
       who.userId,
       who.businessId,
       who.userId,
-      { year: who.year, status: "handed_in", route: "print" },
+      { year: who.year, status: "handed_in", route: way },
     );
     if (!marked.ok) return { ok: false, failure: marked.failure };
     refresh();
@@ -341,5 +386,64 @@ export async function submitFileAction(
     return { ok: true };
   } catch (error) {
     return { ok: false, ...logged("sending a file failed", error) };
+  }
+}
+
+/**
+ * "לא שיניתי" on Today (H5b): the person says the account's last change
+ * wasn't theirs. The database marks it for a holder to look at
+ * (`bank_review` 'disputed'), and Today, drawn again, says so. Pressed on
+ * Today itself, never held for an undo: it destroys nothing.
+ */
+export async function disputeBankChangeAction(
+  business: string,
+): Promise<FileWriteAnswer> {
+  const who = await self(business);
+  if ("failure" in who) return { ok: false, failure: who.failure };
+  try {
+    const disputed = await disputeBankChange(who.userId, who.businessId);
+    if (!disputed.ok) return { ok: false, failure: disputed.failure };
+    refresh();
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, ...logged("disputing a bank change failed", error) };
+  }
+}
+
+/**
+ * "אני שיניתי" or "הבנתי" on Today (H5b): the account's last change is kept
+ * as seen on this device (`rememberBankChangeSeen`), by the moment the
+ * database gives it, read again here and never taken from the screen, so a
+ * later change is told again. A direct call from Today, so its cookie
+ * arrives (a forwarded action loses it). Nothing while viewing as a role.
+ */
+export async function seenBankChangeAction(
+  business: string,
+): Promise<FileWriteAnswer> {
+  const who = await self(business);
+  if ("failure" in who) return { ok: false, failure: who.failure };
+  try {
+    const read = await getEmployeeFile(who.businessId, who.userId);
+    if (!read.ok) {
+      return {
+        ok: false,
+        failure:
+          read.failure !== "denied"
+            ? read.failure
+            : read.reason === "off"
+              ? "off"
+              : read.reason === "viewing"
+                ? "viewOnly"
+                : "failed",
+      };
+    }
+    const changedAt = read.file?.bank_changed_at ?? null;
+    if (changedAt !== null) {
+      await rememberBankChangeSeen(who.businessId, changedAt);
+    }
+    refresh();
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, ...logged("keeping a bank change seen failed", error) };
   }
 }
