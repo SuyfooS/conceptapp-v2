@@ -123,7 +123,9 @@ describe("a holder's file screen", () => {
   });
 
   it("shows the locked file with its one action, and the code's boxes once sent", () => {
-    const locked = text(draw({ kind: "locked", head: head() }));
+    const lockedHtml = draw({ kind: "locked", head: head() });
+    expect(lockedHtml).toContain('data-file-gate="locked"');
+    const locked = text(lockedHtml);
     expect(locked).toContain(f.locked.title);
     expect(locked).toContain(f.locked.send);
     expect(locked).not.toContain(f.duties.title);
@@ -154,6 +156,35 @@ describe("a holder's file screen", () => {
     expect(html).toMatch(
       /data-file-grid="true" class="[^"]*md:grid-cols-2[^"]*xl:grid-cols-3/,
     );
+  });
+
+  // Plan §3.4: "תעודה", its number, then "בתוקף עד" and "תאריך לידה"; "בנק",
+  // "סניף", the account's number, then whose it is. A number's row names
+  // itself, so it sits between two lists of terms, never inside one.
+  it("puts each number where it is read, between lists of terms", () => {
+    const data = demoHolderFile("noa");
+    const html = draw({ kind: "open", head: head(), data });
+    const page = text(html);
+    const at = (part: string) => {
+      const found = page.indexOf(part);
+      expect(found, part).toBeGreaterThan(-1);
+      return found;
+    };
+    const idNumber = at(heT("app.team.file.rows.number", { kind: "il" }));
+    expect(
+      at(heT("app.team.file.rows.documentKind", { kind: "il" })),
+    ).toBeLessThan(idNumber);
+    expect(idNumber).toBeLessThan(at("•••0018"));
+    expect(at("•••0018")).toBeLessThan(at(f.rows.birthDate));
+    const account = at(f.rows.account);
+    expect(at(f.rows.branch)).toBeLessThan(account);
+    expect(account).toBeLessThan(at(data.bank?.masked ?? "none"));
+    expect(at(data.bank?.masked ?? "none")).toBeLessThan(at(f.rows.holder));
+    const lists = html.match(/<dl[^>]*>.*?<\/dl>/gs) ?? [];
+    expect(lists.length).toBeGreaterThan(0);
+    for (const list of lists) {
+      expect(list).not.toContain("<button");
+    }
   });
 
   it("says what is missing, with where to send a link from for someone who sees the team", () => {

@@ -44,6 +44,17 @@ const yoavMissing = heT("app.team.file.line.missingGroups", {
   groups: "חשבון בנק ופנסיה",
 });
 
+/**
+ * A file's words on /team, as each shape shows them: under the person on a
+ * phone and a tablet, in the table's details cell on a desktop, where the
+ * lists are hidden. The same words in each.
+ */
+const fileWords = (page: Page, testInfo: TestInfo, words: string) =>
+  (isDesktop(testInfo)
+    ? main(page).getByRole("cell", { name: words })
+    : main(page).getByText(words, { exact: false }).filter({ visible: true })
+  ).first();
+
 async function open(page: Page, path: string) {
   await page.goto(path);
   await page.waitForLoadState("networkidle");
@@ -51,8 +62,9 @@ async function open(page: Page, path: string) {
 
 /**
  * Press the gate's action ("אישור ושליחת קוד" or "שליחת קוד"), waiting out
- * the auth server's wait if a code went to this number just now, and give
- * the code that came.
+ * the auth server's wait if a code went to this number just now and then
+ * pressing the action the gate shows again (a refused send leaves the
+ * duties' card up when it started there), and give the code that came.
  */
 async function sendFileCode(
   page: Page,
@@ -67,7 +79,9 @@ async function sendFileCode(
   if (await tooSoon.isVisible()) {
     await page.waitForTimeout(SMS_COOLDOWN_MS + 500);
     since = new Date(Date.now() - 1000);
-    await visible(page, "button", f.locked.send).click();
+    await visible(page, "button", f.duties.confirm)
+      .or(visible(page, "button", f.locked.send))
+      .click();
   }
   await expect(boxes).toBeVisible();
   return latestCode(phone, since);
@@ -101,7 +115,7 @@ test.afterEach(async () => {
 
 test("the accountant opens Noa's file with a code, and her account shows for a minute", async ({
   page,
-}) => {
+}, testInfo) => {
   await page.clock.install();
   await enterAs(page, "accountant");
   await open(page, "/home");
@@ -119,12 +133,8 @@ test("the accountant opens Noa's file with a code, and her account shows for a m
 
   // The files alone: no numbers, Noa complete, Yoav's two parts named.
   await expect(main(page).getByText(f.filesOnly.note)).toBeVisible();
-  await expect(
-    main(page).getByText(yoavMissing).filter({ visible: true }).first(),
-  ).toBeVisible();
-  await expect(
-    main(page).getByText(f.line.complete).filter({ visible: true }).first(),
-  ).toBeVisible();
+  await expect(fileWords(page, testInfo, yoavMissing)).toBeVisible();
+  await expect(fileWords(page, testInfo, f.line.complete)).toBeVisible();
   await expect(main(page).getByText(/05\d-\d{3}-\d{4}/)).toHaveCount(0);
 
   await main(page)
@@ -171,12 +181,11 @@ test("a manager sees how many are missing, and nothing of the file", async ({
   await enterAs(page, "manager");
   await open(page, "/team");
   await expect(
-    main(page)
-      .getByText(heT("app.team.file.line.missingCount", { count: 2 }), {
-        exact: false,
-      })
-      .filter({ visible: true })
-      .first(),
+    fileWords(
+      page,
+      testInfo,
+      heT("app.team.file.line.missingCount", { count: 2 }),
+    ),
   ).toBeVisible();
   for (const group of Object.values(f.groups)) {
     await expect(main(page).getByText(group, { exact: false })).toHaveCount(0);
@@ -184,11 +193,6 @@ test("a manager sees how many are missing, and nothing of the file", async ({
   if (isDesktop(testInfo)) {
     await expect(
       main(page).getByRole("columnheader", { name: f.columns.details }),
-    ).toBeVisible();
-    await expect(
-      main(page).getByRole("cell", {
-        name: heT("app.team.file.cells.missingCount", { count: 2 }),
-      }),
     ).toBeVisible();
   }
   await expectCleanPage(page);
@@ -213,9 +217,7 @@ test("the owner sees who is missing what, and sends Yoav the link", async ({
 }, testInfo) => {
   await enterAs(page, "owner");
   await open(page, "/team");
-  await expect(
-    main(page).getByText(yoavMissing).filter({ visible: true }).first(),
-  ).toBeVisible();
+  await expect(fileWords(page, testInfo, yoavMissing)).toBeVisible();
   if (isDesktop(testInfo)) {
     await expect(
       main(page).getByRole("columnheader", {
@@ -349,16 +351,11 @@ test("with the module off, nothing of the file shows", async ({
 
 test("a disputed account shows to the holder, with no action yet", async ({
   page,
-}) => {
+}, testInfo) => {
   await setDemoBankReview(NOA.id, "disputed");
   await enterAs(page, "owner");
   await open(page, "/team");
-  await expect(
-    main(page)
-      .getByText(f.line.bankReview, { exact: false })
-      .filter({ visible: true })
-      .first(),
-  ).toBeVisible();
+  await expect(fileWords(page, testInfo, f.line.bankReview)).toBeVisible();
 
   await open(page, `/team/${NOA.id}/file`);
   await openFile(page, URI.e164);

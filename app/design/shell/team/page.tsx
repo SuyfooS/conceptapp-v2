@@ -30,7 +30,7 @@ type Props = { searchParams: Promise<{ state?: string; file?: string }> };
 // file lacks; ?file=manager as the demo's manager, who reads only how many;
 // ?file=accountant as the accountant, who holds the files without seeing
 // the team: managers and workers alone, no numbers, no invites, each row
-// leading to the file.
+// leading to the file's twin as the accountant reads it (`?as=accountant`).
 export default function ShellTeam({ searchParams }: Props) {
   return (
     <Suspense>
@@ -72,6 +72,7 @@ async function Demo({ searchParams }: Props) {
           perms: ["clock.payroll", "people.files"],
         }}
         peopleHref="/design/shell/team"
+        fileHref={(userId) => `/design/shell/team/${userId}/file?as=accountant`}
         resend={demoResendAction}
         files={files}
         wording={baseWording}

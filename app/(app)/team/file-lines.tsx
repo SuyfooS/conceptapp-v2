@@ -1,5 +1,5 @@
 import type { FileGroup, FileStatus } from "@domain/employee-file";
-import { fileLineOf, form101LineOf } from "@domain/file-holders";
+import { type FileLine, fileLineOf, form101LineOf } from "@domain/file-holders";
 import type { createFormatter } from "next-intl";
 import { Fragment, type ReactNode } from "react";
 import type { Translator } from "../wording";
@@ -12,7 +12,9 @@ import type { TeamFiles } from "./file-status";
  * בתיק: חשבון בנק ופנסיה"), an account to look at and this year's 101 as it
  * stands; anyone else's only count ("חסרים 2 פרטים לשכר") and say whether
  * the 101 is in, since `fileLineOf` gives no group without the holder's
- * detail. The same words in every shape.
+ * detail. The same words in every shape: the table's details cell says
+ * what the line says, and its 101 cell the line's status, under a column
+ * named for the form and the year as the line names them.
  */
 
 type T = Translator<"app">;
@@ -51,6 +53,17 @@ function joined(parts: [string, ReactNode][]): ReactNode {
   ));
 }
 
+/** What the file lacks, or that it is complete: the line's first part, and the table's cell. */
+function fileWords(t: T, format: Format, line: FileLine): string {
+  return line.kind === "complete"
+    ? t("team.file.line.complete")
+    : line.kind === "groups"
+      ? t("team.file.line.missingGroups", {
+          groups: groupsWords(t, format, line.groups),
+        })
+      : t("team.file.line.missingCount", { count: line.count });
+}
+
 /** The line under a person: the file, an account to look at, this year's 101. */
 export function fileLineWords(
   t: T,
@@ -59,18 +72,7 @@ export function fileLineWords(
   files: Pick<TeamFiles, "form101">,
 ): ReactNode {
   const line = fileLineOf(status);
-  const parts: [string, ReactNode][] = [
-    [
-      "file",
-      line.kind === "complete"
-        ? t("team.file.line.complete")
-        : line.kind === "groups"
-          ? t("team.file.line.missingGroups", {
-              groups: groupsWords(t, format, line.groups),
-            })
-          : t("team.file.line.missingCount", { count: line.count }),
-    ],
-  ];
+  const parts: [string, ReactNode][] = [["file", fileWords(t, format, line)]];
   if (line.kind !== "count" && line.bankReview) {
     parts.push(["bank", t("team.file.line.bankReview")]);
   }
@@ -93,21 +95,17 @@ export function fileLineWords(
   return joined(parts);
 }
 
-/** The desktop table's two cells: the details for payroll, and this year's 101. */
+/**
+ * The desktop table's two cells: the details for payroll in the line's own
+ * words, and this year's 101, whose column already says which form and year.
+ */
 export function fileCells(
   t: T,
   format: Format,
   status: FileStatus,
 ): { details: ReactNode; form101: ReactNode } {
   const line = fileLineOf(status);
-  const details =
-    line.kind === "complete"
-      ? t("team.file.cells.complete")
-      : line.kind === "groups"
-        ? t("team.file.cells.missingGroups", {
-            groups: groupsWords(t, format, line.groups),
-          })
-        : t("team.file.cells.missingCount", { count: line.count });
+  const details = fileWords(t, format, line);
   const form = form101LineOf(status);
   return {
     details:

@@ -51,6 +51,7 @@ const resend = async () => ({}) as never;
 function draw(
   shown: TeamFiles | null,
   viewer: { role: "owner" | "manager" | "accountant"; perms: string[] },
+  fileHref?: (userId: string) => string,
 ): string {
   const missing: string[] = [];
   const provider = {
@@ -77,6 +78,7 @@ function draw(
         viewer,
         inviteHref: filesOnly ? undefined : "/team/invite",
         peopleHref: "/team",
+        fileHref,
         resend,
         files: shown,
         wording: baseWording,
@@ -89,6 +91,17 @@ function draw(
 
 const text = (html: string) => html.replace(/<[^>]+>/g, "");
 const count = (page: string, part: string) => page.split(part).length - 1;
+/** The desktop's table, apart from the phone's and the tablet's lists. */
+const table = (html: string) =>
+  html.slice(html.indexOf("<table"), html.indexOf("</table>"));
+/** The class of the phone's and the tablet's lists, hidden on a desktop. */
+const listsClass = (html: string) =>
+  html.match(/class="(grid [^"]*xl:hidden[^"]*)"/)?.[1] ?? "";
+
+const accountant = {
+  role: "accountant" as const,
+  perms: ["clock.payroll", "people.files"],
+};
 
 describe("the team's file lines", () => {
   it("name what a holder's file lacks, an account to look at and the 101", () => {
@@ -139,6 +152,56 @@ describe("the team's file lines", () => {
     expect(html).not.toContain('href="/team/noa"');
     // No owner, no accountant: managers and workers only.
     expect(page).not.toContain("אורי בן דוד");
+  });
+
+  // The same words in every shape: the desktop's cells say what the line
+  // under each person says on a phone and a tablet.
+  it("say the same in the desktop's table as under each person", () => {
+    const holder = text(
+      table(draw(files("holder"), { role: "owner", perms: [] })),
+    );
+    expect(holder).toContain(
+      heT("app.team.file.line.missingGroups", { groups: "חשבון בנק ופנסיה" }),
+    );
+    expect(holder).toContain(he.app.team.file.line.complete);
+    expect(holder).toContain(he.app.team.file.line.bankReview);
+    const manager = text(
+      table(
+        draw(files("team"), {
+          role: "manager",
+          perms: ["team.view", "team.edit"],
+        }),
+      ),
+    );
+    expect(manager).toContain(
+      heT("app.team.file.line.missingCount", { count: 2 }),
+    );
+  });
+
+  it("give the accountant one list across a tablet, and a table named as its section", () => {
+    const html = draw(files("holder", { filesOnly: true }), accountant);
+    expect(listsClass(html)).toContain("md:max-w-2xl");
+    expect(listsClass(html)).not.toContain("md:grid-cols-2");
+    expect(html).toContain(
+      `<caption class="sr-only">${he.app.team.members.title}</caption>`,
+    );
+    expect(html).not.toContain(he.app.team.everyone);
+
+    const owner = draw(files("holder"), { role: "owner", perms: [] });
+    expect(listsClass(owner)).toContain("md:grid-cols-2");
+    expect(owner).toContain(
+      `<caption class="sr-only">${he.app.team.everyone}</caption>`,
+    );
+  });
+
+  it("lead the accountant's rows where `fileHref` says, as the twin reads them", () => {
+    const html = draw(
+      files("holder", { filesOnly: true }),
+      accountant,
+      (userId) => `/design/shell/team/${userId}/file?as=accountant`,
+    );
+    expect(html).toContain('href="/design/shell/team/noa/file?as=accountant"');
+    expect(html).not.toContain('href="/team/noa/file"');
   });
 
   it("draws the desktop's 101 column only while the business takes it in the app", () => {

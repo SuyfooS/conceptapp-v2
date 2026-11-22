@@ -43,6 +43,8 @@ type ViewProps = {
   resend: Resend;
   /** A member's own page, under this path. */
   peopleHref: string;
+  /** A member's file, for a files-only reader. */
+  fileHref: (userId: string) => string;
   /** Whether the business takes invites: a demo one doesn't (#80). */
   invites: boolean;
   /** Whether the viewer changes the team (`canEditTeam`), or only reads it. */
@@ -79,13 +81,15 @@ type ViewProps = {
  * anyone else who sees the team), and the desktop table two columns of it.
  * Someone who reads the files without seeing the team (the accountant) gets
  * the files alone: managers and workers, no numbers, no invites, each row
- * leading to the file. Also rendered with mock data on /design/shell/team.
+ * leading to the file (`fileHref`), and on a tablet one list across, since
+ * there is no second. Also rendered with mock data on /design/shell/team.
  */
 export function TeamView({
   team,
   viewer,
   inviteHref,
   peopleHref,
+  fileHref = (userId) => `${peopleHref}/${userId}/file`,
   resend,
   cancel,
   ownerOnly = [],
@@ -101,6 +105,11 @@ export function TeamView({
   inviteHref?: string;
   /** Where each member's profile lives: `/team`, or the demo's. */
   peopleHref: string;
+  /**
+   * Where a files-only reader's row leads: the member's file under
+   * `peopleHref`, or the twin's, which reads it as the accountant.
+   */
+  fileHref?: (userId: string) => string;
   resend: Resend;
   /**
    * `cancelInviteAction` bound to the business, or the demo's stand-in;
@@ -139,6 +148,7 @@ export function TeamView({
     viewer,
     resend,
     peopleHref,
+    fileHref,
     invites,
     edits,
     ownerOnly,
@@ -181,7 +191,14 @@ export function TeamView({
         <p className="text-ink-2 md:max-w-2xl">{t("team.readOnly")}</p>
       )}
       <InviteCancels cancel={cancel ?? null}>
-        <div className="grid gap-6 md:grid-cols-2 md:items-start md:gap-8 xl:hidden">
+        {/* The files alone are one list: across the tablet, capped, with no
+            empty column beside it. */}
+        <div
+          className={cn(
+            "grid gap-6 md:items-start md:gap-8 xl:hidden",
+            filesOnly ? "md:max-w-2xl" : "md:grid-cols-2",
+          )}
+        >
           {filesOnly ? (
             <Members {...view} />
           ) : team.invites.length > 0 ? (
@@ -257,8 +274,10 @@ function inviteActions(
 }
 
 /** Where a member's row leads: their profile, or for a files-only reader their file. */
-const memberHref = ({ peopleHref, filesOnly }: ViewProps, userId: string) =>
-  filesOnly ? `${peopleHref}/${userId}/file` : `${peopleHref}/${userId}`;
+const memberHref = (
+  { peopleHref, fileHref, filesOnly }: ViewProps,
+  userId: string,
+) => (filesOnly ? fileHref(userId) : `${peopleHref}/${userId}`);
 
 /** The file's line under a member, while there is one (managers and workers). */
 function fileLine({ t, files, format }: ViewProps, userId: string) {
@@ -419,16 +438,16 @@ function Everyone(view: ViewProps) {
   // The numbers, for whoever sees the team: a files-only reader has none.
   const phones = !filesOnly;
   const shownInvites = filesOnly ? [] : team.invites;
+  // The files alone list the staff only: the table is named as its section.
+  const title = filesOnly ? t("team.members.title") : t("team.everyone");
   return (
-    <PageSection
-      title={filesOnly ? t("team.members.title") : t("team.everyone")}
-    >
+    <PageSection title={title}>
       {/* Above the table, where the invites are its first rows: with a long
           team, under it would be out of sight while the undo waits. */}
       <InviteCancelUndo />
       <div className="overflow-hidden rounded-card bg-surface shadow-card">
         <table className="w-full border-collapse">
-          <caption className="sr-only">{t("team.everyone")}</caption>
+          <caption className="sr-only">{title}</caption>
           <thead>
             <tr>
               <th scope="col" className={th}>

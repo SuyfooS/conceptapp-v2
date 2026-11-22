@@ -8,6 +8,7 @@ import { Lock, MessageSquareLock } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import { FileOpenWatch } from "./file-open-watch";
 import { type HolderWordsKey, holderWordsOf } from "./holder-failure-words";
 import type {
   AcknowledgeAnswer,
@@ -33,6 +34,7 @@ export function FileGate({
   actions,
   code,
   openedHref,
+  onOpened,
   children,
 }: {
   kind: "duties" | "locked";
@@ -41,6 +43,8 @@ export function FileGate({
   code?: { tail: string };
   /** Where a right code leads on the twin; the app draws the page again. */
   openedHref?: string;
+  /** The files opened on this device, before the page is drawn again. */
+  onOpened?: () => void;
   /** The duties' lines, drawn on the server. */
   children?: ReactNode;
 }) {
@@ -62,6 +66,7 @@ export function FileGate({
   }, [problem, phase]);
 
   const opened = () => {
+    onOpened?.();
     if (openedHref) router.push(openedHref);
     else router.refresh();
   };
@@ -203,5 +208,63 @@ export function FileGate({
         {t("locked.send")}
       </Button>
     </EmptyState>
+  );
+}
+
+/**
+ * The file's place on its screen, as the server drew it: the gate (the
+ * duties, or locked) or the file itself, watched (`FileOpenWatch`). A file
+ * that closes here (15 minutes idle, no answer from the server, "נעילת
+ * התיק") shows the locked card at once, without waiting for the server or
+ * its network; the server's next drawing, locked, lands on the same card in
+ * the same place, so a code already asked for there stays asked for. A
+ * right code there opens the file again.
+ */
+export function GatedFile({
+  kind,
+  actions,
+  code,
+  twin,
+  duties,
+  children,
+}: {
+  kind: "duties" | "locked" | "open";
+  actions: HolderFileActions;
+  code?: { tail: string };
+  /** The twin's states for what the app does by drawing itself again. */
+  twin?: { opened: string; locked: string };
+  /** The duties' lines, drawn on the server. */
+  duties?: ReactNode;
+  /** The file, while it is open. */
+  children?: ReactNode;
+}) {
+  const [closedHere, setClosedHere] = useState(false);
+  if (kind === "open" && !closedHere) {
+    return (
+      <FileOpenWatch
+        actions={actions}
+        lockedHref={twin?.locked}
+        onClosed={() => setClosedHere(true)}
+      >
+        {children}
+      </FileOpenWatch>
+    );
+  }
+  const gate = kind === "duties" ? "duties" : "locked";
+  return (
+    <div
+      data-file-gate={gate}
+      className="flex w-full flex-col md:mx-auto md:max-w-xl"
+    >
+      <FileGate
+        kind={gate}
+        actions={actions}
+        code={code}
+        openedHref={twin?.opened}
+        onOpened={() => setClosedHere(false)}
+      >
+        {gate === "duties" ? duties : null}
+      </FileGate>
+    </div>
   );
 }

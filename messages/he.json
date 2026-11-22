@@ -1630,9 +1630,6 @@
           "form101": "טופס 101 לשנת {year}"
         },
         "cells": {
-          "complete": "הושלם",
-          "missingGroups": "חסר: {groups}",
-          "missingCount": "{count, plural, one {חסר אחד} other {חסרים #}}",
           "form101": "{status, select, handed_in {נמסר} accepted {התקבל} returned {הוחזר} change_due {עדכון עד <ltr>{date}</ltr>} in {נמסר} missing {חסר} other {לא נמסר}}"
         },
         "filesOnly": {

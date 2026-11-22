@@ -1630,9 +1630,6 @@
           "form101": "Form 101 for {year}"
         },
         "cells": {
-          "complete": "Complete",
-          "missingGroups": "Missing: {groups}",
-          "missingCount": "{count, plural, one {One missing} other {# missing}}",
           "form101": "{status, select, handed_in {Handed in} accepted {Accepted by payroll} returned {Sent back} change_due {Update by <ltr>{date}</ltr>} in {Handed in} missing {Not in yet} other {Not handed in}}"
         },
         "filesOnly": {

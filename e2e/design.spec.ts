@@ -5597,8 +5597,9 @@ async function openFileDemo(page: Page, url: string) {
 // The holders' view of the file on its twins (profile H6a): the duties, the
 // twin's code (123456) and the file open, its account shown for a minute;
 // the hour's limit in words; a manager's count with no way in; the
-// accountant's Home leading to the files; and a link to /me/file that names
-// nothing missing. The twins keep nothing.
+// accountant's Home leading to the files, and on to a file as the
+// accountant reads it; and a link to /me/file that names nothing missing.
+// The twins keep nothing.
 const hf = he.app.team.file;
 
 test("the file twin opens with the duties, then a code, and the account shows for a minute", async ({
@@ -5665,12 +5666,37 @@ test("the accountant's Today twin leads to the files", async ({ page }) => {
     .click();
   await expect(page).toHaveURL(/\/design\/shell\/team\?file=accountant$/);
   await expect(page.getByText(hf.filesOnly.note)).toBeVisible();
+  const yoav = page
+    .getByRole("link", { name: /יואב לוי/ })
+    .filter({ visible: true })
+    .first();
+  await expect(yoav).toHaveAttribute(
+    "href",
+    "/design/shell/team/yoav/file?as=accountant",
+  );
+
+  // The file as the accountant reads it: back to the files, and no link to
+  // send from a profile the accountant never sees.
+  await yoav.click();
+  await expect(page).toHaveURL(
+    /\/design\/shell\/team\/yoav\/file\?as=accountant$/,
+  );
+  await page.waitForLoadState("networkidle");
+  const main = page.getByRole("main");
   await expect(
-    page
-      .getByRole("link", { name: /יואב לוי/ })
-      .filter({ visible: true })
-      .first(),
-  ).toHaveAttribute("href", "/design/shell/team/yoav/file");
+    main.getByRole("link", { name: hf.page.backTeam, exact: true }),
+  ).toHaveAttribute("href", "/design/shell/team?file=accountant");
+  await main.getByRole("button", { name: hf.duties.confirm }).click();
+  await page.getByLabel(hf.code.label).fill("123456");
+  await expect(page).toHaveURL(
+    /\/design\/shell\/team\/yoav\/file\?state=open&as=accountant$/,
+  );
+  await expect(
+    main.getByText(hf.rows.missing, { exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    main.getByText(heT("app.team.file.rows.missingHint", { first: "יואב" })),
+  ).toHaveCount(0);
 });
 
 test("Yoav's twin shares a link to /me/file that names no detail", async ({

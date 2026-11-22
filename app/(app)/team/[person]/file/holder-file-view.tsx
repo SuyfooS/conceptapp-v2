@@ -14,8 +14,8 @@ import { createFormatter } from "next-intl";
 import type { ReactNode } from "react";
 import { type AppWording, type Translator, translator } from "../../../wording";
 import { roleLabel } from "../../role-label";
-import { FileGate } from "./file-gate";
-import { FileOpenWatch, LockFileButton } from "./file-open-watch";
+import { GatedFile } from "./file-gate";
+import { LockFileButton } from "./file-open-watch";
 import type {
   HolderFileActions,
   HolderFileData,
@@ -104,35 +104,31 @@ export function HolderFileView({
               : t("team.file.unavailable")
           }
         />
-      ) : screen.kind === "duties" || screen.kind === "locked" ? (
-        <div
-          data-file-gate={screen.kind}
-          className="flex w-full flex-col md:mx-auto md:max-w-xl"
-        >
-          <FileGate
-            kind={screen.kind}
-            actions={actions}
-            code={code}
-            openedHref={paths.twin?.opened}
-          >
-            {screen.kind === "duties" ? (
-              <Duties t={t} business={head.businessName} />
-            ) : null}
-          </FileGate>
-        </div>
       ) : (
-        <FileOpenWatch actions={actions} lockedHref={paths.twin?.locked}>
-          <OpenFile
-            t={t}
-            wording={wording}
-            format={format}
-            head={head}
-            data={screen.data}
-            actions={actions}
-            paths={paths}
-            first={first}
-          />
-        </FileOpenWatch>
+        <GatedFile
+          kind={screen.kind}
+          actions={actions}
+          code={code}
+          twin={paths.twin}
+          duties={
+            screen.kind === "duties" ? (
+              <Duties t={t} business={head.businessName} />
+            ) : undefined
+          }
+        >
+          {screen.kind === "open" ? (
+            <OpenFile
+              t={t}
+              wording={wording}
+              format={format}
+              head={head}
+              data={screen.data}
+              actions={actions}
+              paths={paths}
+              first={first}
+            />
+          ) : null}
+        </GatedFile>
       )}
     </PageBody>
   );
@@ -257,18 +253,17 @@ type OpenProps = {
 
 /**
  * A group missing from the file, or handed straight to payroll: said in its
- * section, with where to send a link from for a reader who sees the team.
+ * section, with where to send a link from for a reader who sees the team;
+ * nothing otherwise.
  */
-function GroupState({
-  t,
-  data,
-  group,
-  head,
-  first,
-}: Pick<OpenProps, "t" | "data" | "head" | "first"> & { group: FileGroup }) {
+function groupState(
+  { t, data, head, first }: Pick<OpenProps, "t" | "data" | "head" | "first">,
+  group: FileGroup,
+): ReactNode {
   if (data.missing.includes(group)) {
     return (
       <Field
+        key="group"
         label={t(`team.file.groups.${group}`)}
         hint={
           head.seesTeam ? t("team.file.rows.missingHint", { first }) : undefined
@@ -280,12 +275,45 @@ function GroupState({
   }
   if (data.direct.includes(group)) {
     return (
-      <Field label={t(`team.file.groups.${group}`)}>
+      <Field key="group" label={t(`team.file.groups.${group}`)}>
         {t("team.file.rows.direct")}
       </Field>
     );
   }
   return null;
+}
+
+/**
+ * A section's rows in the order they are read, a number behind "הצגה" in
+ * its place among them: a list of the rows before it, the number's own row
+ * (it names itself, so it is no term of a list), and a list of the rest.
+ * Rows that aren't there are left out, and so is an empty list.
+ */
+function Rows({
+  before,
+  number,
+  after,
+}: {
+  before: ReactNode[];
+  number: ReactNode;
+  after: ReactNode[];
+}) {
+  const first = before.filter(Boolean);
+  const rest = after.filter(Boolean);
+  if (!number) {
+    return first.length + rest.length > 0 ? (
+      <dl>{[...first, ...rest]}</dl>
+    ) : null;
+  }
+  return (
+    <>
+      {first.length > 0 ? <dl>{first}</dl> : null}
+      <Revealed>{number}</Revealed>
+      {rest.length > 0 ? (
+        <dl className="border-line border-t">{rest}</dl>
+      ) : null}
+    </>
+  );
 }
 
 /** An address in words: the street or place with its number, the apartment, the town, the zip. */
@@ -387,72 +415,77 @@ function OpenFile(props: OpenProps) {
         className="grid items-start gap-6 md:grid-cols-2 md:gap-8 xl:grid-cols-3"
       >
         <Section id="identity" title={t("team.file.sections.identity")}>
-          <dl>
-            <GroupState {...props} group="identity" />
-            {identity.legalName ? (
-              <Field label={t("team.file.rows.legalName")}>
-                {identity.legalName}
-              </Field>
-            ) : null}
-            {identity.kind ? (
-              <Field label={t("team.file.rows.document")}>
-                {identity.kind === "passport" && identity.country
-                  ? t("team.file.rows.passportOf", {
-                      country:
-                        countries.of(identity.country) ?? identity.country,
-                    })
-                  : identity.kind === "other" && identity.documentName
-                    ? identity.documentName
-                    : t("team.file.rows.documentKind", {
-                        kind: identity.kind,
-                      })}
-              </Field>
-            ) : null}
-            {identity.expiresOn && identity.kind !== "il" ? (
-              <Field label={t("team.file.rows.expires")}>
-                <span dir="ltr">{dayOf(format, identity.expiresOn)}</span>
-              </Field>
-            ) : null}
-            {identity.birthDate ? (
-              <Field
-                label={t("team.file.rows.birthDate")}
-                hint={
-                  identity.youthUntil
-                    ? t.rich("team.person.youth", {
-                        ltr,
-                        until: format.dateTime(
-                          new Date(`${identity.youthUntil}T12:00:00Z`),
-                          {
-                            month: "numeric",
-                            year: "numeric",
-                            timeZone: "UTC",
-                          },
-                        ),
+          <Rows
+            before={[
+              groupState(props, "identity"),
+              identity.legalName ? (
+                <Field key="legalName" label={t("team.file.rows.legalName")}>
+                  {identity.legalName}
+                </Field>
+              ) : null,
+              identity.kind ? (
+                <Field key="document" label={t("team.file.rows.document")}>
+                  {identity.kind === "passport" && identity.country
+                    ? t("team.file.rows.passportOf", {
+                        country:
+                          countries.of(identity.country) ?? identity.country,
                       })
-                    : undefined
-                }
-              >
-                <span dir="ltr">{dayOf(format, identity.birthDate)}</span>
-              </Field>
-            ) : null}
-          </dl>
-          {identity.masked && identity.kind ? (
-            <Revealed>
-              <HolderReveal
-                field="id"
-                label={t("team.file.rows.number", { kind: identity.kind })}
-                masked={identity.masked}
-                reveal={actions.reveal}
-                lockedHref={paths.twin?.locked}
-              />
-            </Revealed>
-          ) : null}
+                    : identity.kind === "other" && identity.documentName
+                      ? identity.documentName
+                      : t("team.file.rows.documentKind", {
+                          kind: identity.kind,
+                        })}
+                </Field>
+              ) : null,
+            ]}
+            number={
+              identity.masked && identity.kind ? (
+                <HolderReveal
+                  field="id"
+                  label={t("team.file.rows.number", { kind: identity.kind })}
+                  masked={identity.masked}
+                  reveal={actions.reveal}
+                  lockedHref={paths.twin?.locked}
+                />
+              ) : null
+            }
+            after={[
+              identity.expiresOn && identity.kind !== "il" ? (
+                <Field key="expires" label={t("team.file.rows.expires")}>
+                  <span dir="ltr">{dayOf(format, identity.expiresOn)}</span>
+                </Field>
+              ) : null,
+              identity.birthDate ? (
+                <Field
+                  key="birthDate"
+                  label={t("team.file.rows.birthDate")}
+                  hint={
+                    identity.youthUntil
+                      ? t.rich("team.person.youth", {
+                          ltr,
+                          until: format.dateTime(
+                            new Date(`${identity.youthUntil}T12:00:00Z`),
+                            {
+                              month: "numeric",
+                              year: "numeric",
+                              timeZone: "UTC",
+                            },
+                          ),
+                        })
+                      : undefined
+                  }
+                >
+                  <span dir="ltr">{dayOf(format, identity.birthDate)}</span>
+                </Field>
+              ) : null,
+            ]}
+          />
         </Section>
 
         {contact ? (
           <Section id="contact" title={t("team.file.sections.contact")}>
             <dl>
-              <GroupState {...props} group="address" />
+              {groupState(props, "address")}
               {contact.address ? (
                 <Field label={t("team.file.rows.address")}>
                   {addressWords(t, contact.address, locale)}
@@ -493,59 +526,64 @@ function OpenFile(props: OpenProps) {
         {bank ? (
           <Section id="bank" title={t("team.file.sections.bank")}>
             {review ? <Notice>{review}</Notice> : null}
-            <dl>
-              <GroupState {...props} group="bank" />
-              {bank.code !== null ? (
-                <Field label={t("team.file.rows.bankName")}>
-                  {t.rich("team.file.rows.bankOf", {
-                    name: bankName(bank.code),
-                    code: formatBankCode(bank.code),
-                    ltr,
-                  })}
-                </Field>
-              ) : null}
-              {bank.branch !== null ? (
-                <Field label={t("team.file.rows.branch")}>
-                  <span dir="ltr">{bank.branch}</span>
-                </Field>
-              ) : null}
-              {bank.holder ? (
-                <Field
-                  label={t("team.file.rows.holder")}
-                  hint={
-                    bank.instructionAt
-                      ? t.rich("team.file.rows.instruction", {
-                          date: momentOf(format, bank.instructionAt),
-                          ltr,
+            <Rows
+              before={[
+                groupState(props, "bank"),
+                bank.code !== null ? (
+                  <Field key="bankName" label={t("team.file.rows.bankName")}>
+                    {t.rich("team.file.rows.bankOf", {
+                      name: bankName(bank.code),
+                      code: formatBankCode(bank.code),
+                      ltr,
+                    })}
+                  </Field>
+                ) : null,
+                bank.branch !== null ? (
+                  <Field key="branch" label={t("team.file.rows.branch")}>
+                    <span dir="ltr">{bank.branch}</span>
+                  </Field>
+                ) : null,
+              ]}
+              number={
+                bank.masked ? (
+                  <HolderReveal
+                    field="bank_account"
+                    label={t("team.file.rows.account")}
+                    masked={bank.masked}
+                    reveal={actions.reveal}
+                    lockedHref={paths.twin?.locked}
+                  />
+                ) : null
+              }
+              after={[
+                bank.holder ? (
+                  <Field
+                    key="holder"
+                    label={t("team.file.rows.holder")}
+                    hint={
+                      bank.instructionAt
+                        ? t.rich("team.file.rows.instruction", {
+                            date: momentOf(format, bank.instructionAt),
+                            ltr,
+                          })
+                        : undefined
+                    }
+                  >
+                    {bank.holder === "family"
+                      ? t("team.file.rows.holderFamily", {
+                          holder: bank.holderName ?? "",
                         })
-                      : undefined
-                  }
-                >
-                  {bank.holder === "family"
-                    ? t("team.file.rows.holderFamily", {
-                        holder: bank.holderName ?? "",
-                      })
-                    : t("team.file.rows.holderSelf", { first })}
-                </Field>
-              ) : null}
-            </dl>
-            {bank.masked ? (
-              <Revealed>
-                <HolderReveal
-                  field="bank_account"
-                  label={t("team.file.rows.account")}
-                  masked={bank.masked}
-                  reveal={actions.reveal}
-                  lockedHref={paths.twin?.locked}
-                />
-              </Revealed>
-            ) : null}
+                      : t("team.file.rows.holderSelf", { first })}
+                  </Field>
+                ) : null,
+              ]}
+            />
           </Section>
         ) : null}
 
         <Section id="pension" title={t("team.file.sections.pension")}>
           <dl>
-            <GroupState {...props} group="pension" />
+            {groupState(props, "pension")}
             {pensionWords ? (
               <Field label={t("team.file.rows.fund")}>{pensionWords}</Field>
             ) : null}
@@ -599,7 +637,7 @@ function OpenFile(props: OpenProps) {
               })
             : t("team.file.rows.notSent", { first, form })}
         </p>
-        <LockFileButton lock={actions.lock} lockedHref={paths.twin?.locked} />
+        <LockFileButton />
         <p className="text-ink-2 text-sm">{t("team.file.lock.hint")}</p>
       </Card>
     </div>
