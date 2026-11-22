@@ -15,6 +15,7 @@ import {
 } from "react";
 import { UndoRow } from "../manage/undo-row";
 import { useHeldWrite } from "../use-held-write";
+import { sendHide } from "./hide-request";
 
 type Hides = {
   start: () => void;
@@ -22,32 +23,6 @@ type Hides = {
 };
 
 const HidesContext = createContext<Hides | null>(null);
-
-/**
- * Asks `url` to hide the first steps on this device, and says whether it
- * did. A route (/home/first-steps) rather than a server action: the hide is
- * held for its undo and goes once the screen is left inside the app, from the
- * page the person went to. Next sends an action posted there on to Today's
- * worker, which has it, and drops the Set-Cookie of a forwarded action's
- * answer, so the cookie that hides the card would never be kept. `keepalive`
- * lets it reach the server from a page being hidden or closed too. A
- * signed-out device gets the door's redirect, which `redirect: "manual"`
- * keeps as an answer that isn't ok instead of following it to a page.
- */
-async function sendHide(url: string): Promise<boolean> {
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      keepalive: true,
-      credentials: "same-origin",
-      cache: "no-store",
-      redirect: "manual",
-    });
-    return response.ok;
-  } catch {
-    return false;
-  }
-}
 
 /**
  * Hiding the first steps on Today: the card goes at once and "ביטול" takes
@@ -107,7 +82,7 @@ function HidesState({
   }, []);
 
   const held = useHeldWrite<true>(async () => {
-    if (!(await sendHide(url))) {
+    if (!(await sendHide(url))?.ok) {
       setGone(false);
       setFailure(true);
     } else if (shown.current) {

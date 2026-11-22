@@ -70,13 +70,18 @@ describe("the hiring file's code", () => {
         expect(source, path).not.toMatch(/console\.log/);
       }
     }
-    // A write logs what failed and its code, never what was typed.
+    // A write logs what failed and its code, never what was typed: its
+    // actions, and who may write (`fileWriter`, on the server only), whose
+    // `logged` they and Today's route share.
+    const writer = read("app/(app)/me/file/file-writer.ts");
+    expect(writer.startsWith('import "server-only";')).toBe(true);
     const calls = [
       ...read("app/(app)/me/file/actions.ts").matchAll(
         /console\.\w+\(([^)]*)\)/g,
       ),
+      ...writer.matchAll(/console\.\w+\(([^)]*)\)/g),
     ].map(([, args = ""]) => args);
-    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.length).toBeGreaterThan(1);
     for (const call of calls) {
       // Its words may name the bank; what it passes may not be typed.
       const args = call.replace(/"[^"]*"/g, "");
@@ -94,6 +99,8 @@ describe("the hiring file's code", () => {
       "app/(app)/home/today-file.ts",
       "app/(app)/home/today-file-card.tsx",
       "app/(app)/home/bank-change-card.tsx",
+      "app/(app)/home/bank-seen/route.ts",
+      "app/(app)/home/hide-request.ts",
       "app/(auth)/join/landing.ts",
       "app/(auth)/join/actions.ts",
     ]) {

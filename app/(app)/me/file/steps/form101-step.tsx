@@ -165,11 +165,12 @@ export function Form101Step({
           </p>
         ) : null}
         {canMark ? (
+          // As wide as the link's button on a phone, inline from a tablet.
           <Button
             variant="secondary"
             loading={pending}
             onClick={handIn}
-            className="self-start"
+            className="w-full md:w-auto md:self-start"
           >
             {t("form101.handedIn")}
           </Button>

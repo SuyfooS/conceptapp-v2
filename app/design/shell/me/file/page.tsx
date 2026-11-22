@@ -3,6 +3,7 @@ import { FileView, fileViewOf } from "../../../../(app)/me/file/file-view";
 import { demoSaveProfileAction } from "../actions";
 import {
   demoConfirmBankAction,
+  demoDisputeBankChangeAction,
   demoHandInForm101Action,
   demoRevealAction,
   demoSaveFileStepAction,
@@ -33,7 +34,9 @@ type Props = {
 // for (the twin takes 123456), `hold` an account held in the week after a
 // phone change, `saved` the account in, `done` everything sent (and a new
 // address there makes an updated 101 due), `ready` everything in and not
-// sent yet. `?lang=en` is her file in
+// sent yet, `later` sent with a pension fund still to choose (its done
+// screen leads to the pension). Wherever her account is in, its change is
+// told, with "לא שיניתי" in the bank step. `?lang=en` is her file in
 // English, as the app draws it for someone who chose English; the language
 // button and step 0 switch it there, since the twin keeps nothing. What the
 // business asks (H5b): `?ask=lean` neither the address nor the account,
@@ -92,7 +95,8 @@ async function Demo({ searchParams }: Props) {
       view={view}
       preset={preset}
       base="/design/shell"
-      profileHref="/design/shell/me?file=missing"
+      // Back to the profile as this business asks the file.
+      profileHref={`/design/shell/me?file=${asks === "lean" || asks === "contact" ? asks : "missing"}`}
       keep={keep}
       actions={{
         saveStep: demoSaveFileStepAction.bind(null, which),
@@ -102,6 +106,7 @@ async function Demo({ searchParams }: Props) {
         handInForm101: demoHandInForm101Action,
         submit: demoSubmitFileAction,
         saveProfile: demoSaveProfileAction,
+        disputeBankChange: demoDisputeBankChangeAction,
       }}
     />
   );

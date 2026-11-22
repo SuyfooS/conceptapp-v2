@@ -22,7 +22,11 @@ import { getFormatter } from "next-intl/server";
 import type { ReactNode } from "react";
 import { type AppWording, translator } from "../wording";
 import { currentFileScreen } from "./file/file";
-import { fileStepInputOf } from "./file/file-parts";
+import {
+  completeHref,
+  fileStepInputOf,
+  pensionLeftOf,
+} from "./file/file-parts";
 import type { FileScreenData } from "./file/file-types";
 
 /**
@@ -54,7 +58,9 @@ const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 /**
  * The way into the file from the profile: while something is missing, the
  * screen's one accent card says how much, with "השלמת הפרטים" (not for an
- * owner, who isn't counted, and may still fill a file for themselves); then
+ * owner, who isn't counted, and may still fill a file for themselves), or,
+ * when a fund chosen "later" is all that is left, by when, with "בחירת קרן
+ * פנסיה" to the pension's step, as Today's card does; then
  * "התיק שלי ב{business}", who sees it, and a row for each part the business
  * asks or the file holds (H5b): the identity and the pension always, the
  * address, the account and the emergency contact where they show, and Form
@@ -127,6 +133,9 @@ export async function FileSummary({
   const href = (step: string) => `${base}/me/file?step=${step}`;
   const asked = data.asked.length;
   const missing = data.missing.length;
+  // A fund chosen "later" all that is left: the card opens its step, as
+  // Today's does, rather than the flow's done screen.
+  const pensionLeft = pensionLeftOf(data);
 
   return (
     <>
@@ -135,11 +144,15 @@ export async function FileSummary({
           <div className="flex items-center gap-3">
             <ProgressRing value={asked - missing} max={asked} />
             <CardText className="text-pretty font-medium text-ink">
-              {t("missing", { count: missing })}
+              {pensionLeft?.kind === "open"
+                ? t("pensionLeft", { date: day(pensionLeft.dueOn) })
+                : t("missing", { count: missing })}
             </CardText>
           </div>
           <Button asChild size="lg" className="w-full md:w-auto md:self-start">
-            <Link href={`${base}/me/file`}>{t("complete")}</Link>
+            <Link href={completeHref(base, pensionLeft)}>
+              {pensionLeft ? tf("actions.choosePension") : t("complete")}
+            </Link>
           </Button>
         </Card>
       ) : null}

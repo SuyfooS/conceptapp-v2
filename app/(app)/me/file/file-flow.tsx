@@ -641,11 +641,14 @@ export function SummaryFoot({
  * Sent, or nothing left to fill: what the business sees now, what is still
  * the person's to do (a pension fund to choose by its day, a step still
  * open), and every step, to change any of them. "סיימת" only once nothing
- * is open; until then it says how many steps are left, and its main action
- * leads to the first. With nothing left and the file not sent yet, its main
- * action sends it, and a refusal is said under it: with Form 101 not taken
- * in the app (H5b) this is where the file goes. Once sent, the way back to
- * the profile.
+ * is left at all; until then it says how many steps are left, and its main
+ * action leads to the first. With nothing open and the file not sent yet,
+ * its main action sends it, and a refusal is said under it: with Form 101
+ * not taken in the app (H5b) this is where the file goes, so a fund chosen
+ * "later" never keeps it back. Sent, with a fund still to choose by its day
+ * (the pension answered "אבחר אחר כך", which the file counts missing), it
+ * says so and "בחירת קרן פנסיה" opens the pension's step; else the way back
+ * to the profile.
  */
 function DoneView({
   kit,
@@ -668,6 +671,8 @@ function DoneView({
   const open = kit.steps.filter((s) => states[s] === "open");
   const next = open[0] ?? null;
   const sent = data.file?.submitted_at != null;
+  // No step open, and a fund chosen "later" still to choose by its day.
+  const pensionLeft = next === null && due.kind === "open";
   const main = next
     ? {
         label: t(`actions.finish.${next}`),
@@ -680,11 +685,17 @@ function DoneView({
           go: onSend,
           pending: sending,
         }
-      : {
-          label: t("done.profile"),
-          go: () => router.push(kit.profileHref),
-          pending: false,
-        };
+      : pensionLeft
+        ? {
+            label: t("actions.choosePension"),
+            go: () => kit.go("pension"),
+            pending: false,
+          }
+        : {
+            label: t("done.profile"),
+            go: () => router.push(kit.profileHref),
+            pending: false,
+          };
   return (
     <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-start md:gap-8">
       <Card padding="lg" className="flex flex-col gap-2">
@@ -693,20 +704,28 @@ function DoneView({
           tabIndex={-1}
           className="font-bold text-xl outline-none"
         >
-          {next ? t("done.titleLeft", { count: open.length }) : t("done.title")}
+          {next
+            ? t("done.titleLeft", { count: open.length })
+            : pensionLeft
+              ? t("done.titlePension")
+              : t("done.title")}
         </h2>
         {sent || !next ? (
           <p className="text-md">
             {sent
               ? t("done.sent", { business })
-              : t("done.ready", { business })}
+              : pensionLeft
+                ? t("done.readyPension", { business })
+                : t("done.ready", { business })}
           </p>
         ) : null}
         {due.kind === "open" ? (
           <p className="text-base">
-            {t("done.left", {
-              what: t("done.leftPension", { date: day(due.dueOn) }),
-            })}
+            {pensionLeft
+              ? t("pension.dueOn", { date: day(due.dueOn), business })
+              : t("done.left", {
+                  what: t("done.leftPension", { date: day(due.dueOn) }),
+                })}
           </p>
         ) : null}
         {open.map((s) => (

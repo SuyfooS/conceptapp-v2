@@ -13,7 +13,11 @@ import type {
   Form101Setup,
   NoticeNames,
 } from "@domain/employee-file-settings";
-import type { FileParts, FileStep } from "@domain/employee-file-steps";
+import type {
+  FileParts,
+  FileStep,
+  PensionDue,
+} from "@domain/employee-file-steps";
 import type { Role } from "@domain/modules";
 import type {
   AddressForm,
@@ -87,6 +91,13 @@ export type FileScreenData = {
   taxYear: TaxYearRow | null;
   /** The last four digits of the person's own number, or null without one. */
   phoneTail: string | null;
+  /**
+   * The account's last change while it is still told (`bankChangeToTell`,
+   * 14 days), by its day in the business's zone, and whether the person
+   * said it wasn't theirs: the bank step offers "לא שיניתי" all that time,
+   * on every device, so hiding Today's card never takes the way to say it.
+   */
+  bankChange: { on: string; disputed: boolean } | null;
 };
 
 /** Why the screen can't show a file, or the file. */
@@ -154,12 +165,18 @@ export type FileActions = {
   handInForm101: () => Promise<FileWriteAnswer>;
   submit: () => Promise<FileWriteAnswer>;
   saveProfile: (change: ProfileChange) => Promise<ProfileSaveResult>;
+  /** "לא שיניתי" in the bank step, while the account's change is told. */
+  disputeBankChange: () => Promise<FileWriteAnswer>;
 };
 
 /**
  * What Today's cards need of the person's own file (H5b), never a value:
- * how many groups are asked and how many are missing, and the account's
- * last change while Today tells it, by its day in the business's zone.
+ * how many groups are asked and how many are missing, whether a fund still
+ * to choose is all that is left (`onlyPensionLeft`: the card then opens the
+ * pension's step and says by when), and the account's last change while
+ * Today tells it, by its day in the business's zone and by the database's
+ * moment of it, which "אני שיניתי" sends back so that only this very change
+ * is kept seen.
  */
 export type FileToday = {
   businessId: string;
@@ -167,7 +184,8 @@ export type FileToday = {
   role: Role;
   asked: number;
   missing: number;
-  bank: { on: string; disputed: boolean } | null;
+  pension: PensionDue | null;
+  bank: { on: string; changedAt: string; disputed: boolean } | null;
 };
 
 /**
@@ -181,8 +199,11 @@ export type FileTodayAnswer =
 
 /** Today's writes on a bank change, bound to the business drawn, or the twin's stand-ins. */
 export type FileTodayActions = {
-  /** "לא שיניתי". */
+  /** "לא שיניתי", pressed on Today itself. */
   dispute: () => Promise<FileTodayAnswer>;
-  /** "אני שיניתי", "הבנתי": kept on this device. */
-  seen: () => Promise<FileTodayAnswer>;
+  /**
+   * Where "אני שיניתי" and "הבנתי" are sent once their undo's time is up:
+   * /home/bank-seen, kept on this device, or the twin's stand-in.
+   */
+  seenUrl: string;
 };

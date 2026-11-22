@@ -16,7 +16,9 @@ contact, the database's replies as schemas that fail closed, and its refusals
 where each step stands, worked out from the file, where the person picks up,
 the minor's card and the pension's due date; since H5b it takes the steps the
 business's settings put on screen (`fileParts`, `fileStepsOn`), with step 2
-optional while only the ways to reach the person are asked. What each
+optional while only the ways to reach the person are asked (counted done
+only once something of it is in), and `onlyPensionLeft` for a file that
+lacks only a fund chosen "later", whose ways in open the pension's step. What each
 business asks is `employee-file-settings.ts`: the asks and the groups they
 count (`fileGroupsAsked`, as `private.file_groups`), Form 101's way
 (`form101SetupOf`, the link's check `FORM101_LINK` as the database's), the

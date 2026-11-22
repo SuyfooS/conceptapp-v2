@@ -23,6 +23,7 @@ const { NextIntlClientProvider, createTranslator } = await import("next-intl");
 const { todayFilePart } = await import("./today-file");
 const { FileTodayCard } = await import("./today-file-card");
 const { BankChangeCard } = await import("./bank-change-card");
+const { completeHref } = await import("../me/file/file-parts");
 const { baseWording, translator } = await import("../wording");
 const he = (await import("@/messages/he.json")).default;
 
@@ -35,6 +36,7 @@ const noa = (over: Partial<FileToday> = {}): FileToday => ({
   role: "worker",
   asked: 4,
   missing: 3,
+  pension: null,
   bank: null,
   ...over,
 });
@@ -120,30 +122,77 @@ function draw(element: ReactElement): string {
   return html;
 }
 
+/** A day as Today says it. */
+const longDay = (date: string) =>
+  new Intl.DateTimeFormat("he", {
+    day: "numeric",
+    month: "long",
+    timeZone: "UTC",
+  }).format(new Date(`${date}T12:00:00Z`));
+
+/** The card's one link: its classes and its words. */
+const linkOf = (html: string) => {
+  const found = /<a ([^>]*)>([^<]*)<\/a>/.exec(html);
+  return { attributes: found?.[1] ?? "", words: found?.[2] ?? "" };
+};
+
 describe("the file's card", () => {
-  it("says how much is missing, and leads to the file", () => {
-    const html = draw(
+  const card = (file: FileToday, tone: "accent" | "flat" = "accent") =>
+    draw(
       createElement(FileTodayCard, {
-        file: noa(),
-        tone: "accent",
+        file,
+        tone,
         t: translator(baseWording, "app"),
-        href: "/me/file",
+        day: longDay,
+        href: completeHref("", file.pension),
       }),
     );
+
+  it("says how much is missing, and leads to the file", () => {
+    const html = card(noa());
     expect(html).toContain(heT("app.me.file.missing", { count: 3 }));
     expect(html).toContain(heT("app.me.file.title", { business }));
-    expect(html).toMatch(
-      new RegExp(`<a [^>]*href="/me/file"[^>]*>${he.app.me.file.complete}</a>`),
-    );
+    const link = linkOf(html);
+    expect(link.words).toBe(he.app.me.file.complete);
+    expect(link.attributes).toContain('href="/me/file"');
     expect(html).toContain("bg-accent-soft");
+    // The screen's one main action, in the accent.
+    expect(link.attributes).toContain("bg-accent text-accent-ink");
+  });
+
+  it("keeps its action secondary while something above holds the accent", () => {
+    const html = card(noa(), "flat");
+    expect(html).not.toContain("bg-accent-soft");
+    const link = linkOf(html);
+    expect(link.attributes).not.toContain("bg-accent");
+    expect(link.attributes).toContain("bg-surface-2");
+  });
+
+  it("opens the pension's step when a fund chosen later is all that is left", () => {
+    const html = card(
+      noa({ missing: 1, pension: { kind: "open", dueOn: "2026-12-24" } }),
+    );
+    expect(html).toContain(
+      heT("app.me.file.pensionLeft", { date: longDay("2026-12-24") }),
+    );
+    expect(html).not.toContain(heT("app.me.file.missing", { count: 1 }));
+    const link = linkOf(html);
+    expect(link.words).toBe(he.app.file.actions.choosePension);
+    expect(link.attributes).toContain('href="/me/file?step=pension"');
+    // Its day passed: the count, and still the pension's step.
+    const passed = card(noa({ missing: 1, pension: { kind: "passed" } }));
+    expect(passed).toContain(heT("app.me.file.missing", { count: 1 }));
+    expect(linkOf(passed).attributes).toContain('href="/me/file?step=pension"');
+    expect(completeHref("/design/shell", null)).toBe("/design/shell/me/file");
   });
 });
 
 describe("the bank change's card", () => {
   const actions = {
     dispute: async () => ({ ok: true }) as const,
-    seen: async () => ({ ok: true }) as const,
+    seenUrl: "/home/bank-seen",
   };
+  const changedAt = "2026-11-01T08:00:00.123456+00:00";
   const day = new Intl.DateTimeFormat("he", {
     day: "numeric",
     month: "long",
@@ -158,8 +207,9 @@ describe("the bank change's card", () => {
   it("says when the account changed, and asks whether it was them", () => {
     const html = draw(
       createElement(BankChangeCard, {
-        bank: { on: "2026-11-01", disputed: false },
+        bank: { on: "2026-11-01", changedAt, disputed: false },
         business,
+        businessId: noa().businessId,
         actions,
       }),
     );
@@ -179,8 +229,9 @@ describe("the bank change's card", () => {
   it("says what follows once disputed, with one way to put it away", () => {
     const html = draw(
       createElement(BankChangeCard, {
-        bank: { on: "2026-11-01", disputed: true },
+        bank: { on: "2026-11-01", changedAt, disputed: true },
         business,
+        businessId: noa().businessId,
         actions,
       }),
     );

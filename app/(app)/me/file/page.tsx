@@ -16,6 +16,7 @@ import {
 import { saveMyProfileAction } from "../actions";
 import {
   confirmBankAction,
+  disputeBankChangeAction,
   handInForm101Action,
   revealOwnAction,
   saveFileStepAction,
@@ -71,6 +72,7 @@ export default async function FilePage({
         handInForm101: handInForm101Action.bind(null, business),
         submit: submitFileAction.bind(null, business),
         saveProfile: saveMyProfileAction,
+        disputeBankChange: disputeBankChangeAction.bind(null, business),
       }}
     />
   );

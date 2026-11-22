@@ -3,6 +3,7 @@ import { expect, type Page, type TestInfo, test } from "@playwright/test";
 import en from "../messages/en.json" with { type: "json" };
 import he from "../messages/he.json" with { type: "json" };
 import { checkBankAccount } from "../packages/domain/bank-account";
+import { HOLD_MS } from "./build-screen";
 import {
   clearDemoFile,
   codesSentSince,
@@ -819,6 +820,8 @@ test("Today asks for what is missing, and tells of a bank change", async ({
   page,
   browser,
 }, testInfo) => {
+  // A hide waits out its hold once, and a second device signs in.
+  test.setTimeout(120_000);
   const b = he.app.home.file.bank;
   await signIn(page, NOA);
   await page.goto("/home");
@@ -856,26 +859,104 @@ test("Today asks for what is missing, and tells of a bank change", async ({
     main(page).getByText(heT("app.home.file.complete")),
   ).toBeVisible();
   await expectCleanPage(page);
-  await card.getByRole("button", { name: b.dispute }).click();
-  const disputed = main(page).getByRole("region", { name: b.disputedTitle });
-  await expect(disputed).toBeVisible();
+
+  // "אני שיניתי" hides it at once, "ביטול" in its place with the focus;
+  // "ביטול" brings it back, the focus on the button again.
+  const mine = card.getByRole("button", { name: b.mine });
+  const undo = page
+    .getByRole("status")
+    .filter({ hasText: b.hidden })
+    .getByRole("button", { name: he.app.manage.undo });
+  await mine.click();
+  await expect(card).toHaveCount(0);
+  await expect(undo).toBeFocused();
+  await undo.click();
+  await expect(card).toBeVisible();
+  await expect(mine).toBeFocused();
+
+  // The account changes again while the card is on screen (someone with
+  // her number, a moment ago): the hide was for the change the card told,
+  // so nothing is kept, and Today, drawn again, tells the newer one.
+  await setDemoBankChanged(NOA.id, 1);
+  const answered = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === "/home/bank-seen",
+    { timeout: HOLD_MS + 15_000 },
+  );
+  await mine.click();
+  expect((await answered).status()).toBe(409);
+  const newer = new Intl.DateTimeFormat("he", {
+    day: "numeric",
+    month: "long",
+    timeZone: "Asia/Jerusalem",
+  }).format(new Date(Date.now() - 24 * 60 * 60 * 1000));
+  await expect(
+    card.getByText(
+      heT("app.home.file.bank.body", { date: newer, business: BUSINESS }),
+    ),
+  ).toBeVisible();
+  expect(
+    (await page.context().cookies()).find((one) => one.name === "ca_bank_seen"),
+  ).toBeUndefined();
+
+  // For real: leaving Today inside the app sends it, and this device keeps
+  // that very change seen.
+  await mine.click();
+  await expect(undo).toBeVisible();
+  await main(page)
+    .getByRole("link", { name: new RegExp(he.modules.employee_files.name) })
+    .click();
+  await expect(page).toHaveURL(/\/me\/file/);
+  await expect
+    .poll(
+      async () =>
+        (await page.context().cookies()).find(
+          (one) => one.name === "ca_bank_seen",
+        )?.value ?? "",
+    )
+    .toContain(`.${NOA.id}.`);
+
+  // "לא שיניתי" stays in the bank step all the same.
+  await page.goto("/me/file?step=bank");
+  await page.waitForLoadState("networkidle");
+  const bank = section(page, "bank");
+  await expect(bank.getByText(/החשבון עודכן ב-/)).toBeVisible();
+  await bank.getByRole("button", { name: f.bank.dispute }).click();
+  const marked = bank.getByText(
+    heT("app.file.bank.disputed", { business: BUSINESS }),
+  );
+  await expect(marked).toBeVisible();
+  await expect(marked).toBeFocused();
   await expect
     .poll(async () => (await demoFileFacts(NOA.id))?.bankReview)
     .toBe("disputed");
-  await disputed.getByRole("button", { name: b.seen }).click();
-  await expect(disputed).toHaveCount(0);
-  await page.reload();
+  await expectCleanPage(page);
+  // Seen on this device: Today doesn't tell it here again.
+  await page.goto("/home");
+  await page.waitForLoadState("networkidle");
+  await expect(main(page).getByRole("region", { name: b.title })).toHaveCount(
+    0,
+  );
   await expect(
     main(page).getByRole("region", { name: b.disputedTitle }),
   ).toHaveCount(0);
 
-  // Hidden on this device only: another one still says it, disputed.
+  // Hidden on this device only: another one still says it, disputed, and
+  // "הבנתי" hides it there the same way.
   const other = await secondPage(browser, testInfo);
   await signIn(other, NOA);
   await other.goto("/home");
+  const disputed = other
+    .getByRole("main")
+    .getByRole("region", { name: b.disputedTitle });
+  await expect(disputed).toBeVisible();
+  await disputed.getByRole("button", { name: b.seen }).click();
+  await expect(disputed).toHaveCount(0);
   await expect(
-    other.getByRole("main").getByRole("region", { name: b.disputedTitle }),
-  ).toBeVisible();
+    other
+      .getByRole("status")
+      .filter({ hasText: b.hidden })
+      .getByRole("button", { name: he.app.manage.undo }),
+  ).toBeFocused();
   await other.context().close();
 
   // An owner isn't counted: no card, whatever their file holds.

@@ -75,10 +75,8 @@ import { TodayChat } from "../chat/today-chat";
 import type { LockAction, StationHome } from "../clock/station/station-types";
 import type { ListsHomeData } from "../lists/list-types";
 import { TodayLists } from "../lists/today-lists";
-import {
-  disputeBankChangeAction,
-  seenBankChangeAction,
-} from "../me/file/actions";
+import { disputeBankChangeAction } from "../me/file/actions";
+import { completeHref } from "../me/file/file-parts";
 import type { FileToday, FileTodayActions } from "../me/file/file-types";
 import type { ModeRow } from "../mode-rows";
 import { moduleIcons } from "../module-icons";
@@ -332,9 +330,9 @@ export async function TodayView({
    */
   signOut: SignOutAction;
   /**
-   * The bank change's "לא שיניתי" and "אני שיניתי": the file's own actions,
-   * bound to its business, by default; the demo's stand-ins, which keep
-   * nothing.
+   * The bank change's "לא שיניתי" and "אני שיניתי": the file's own action,
+   * bound to its business, and /home/bank-seen, by default; the demo's
+   * stand-ins, which keep nothing.
    */
   fileActions?: FileTodayActions;
 }) {
@@ -382,9 +380,15 @@ export async function TodayView({
   const bankActions: FileTodayActions | null = file?.bank
     ? (fileActions ?? {
         dispute: disputeBankChangeAction.bind(null, file.businessId),
-        seen: seenBankChangeAction.bind(null, file.businessId),
+        seenUrl: "/home/bank-seen",
       })
     : null;
+  const day = (date: string) =>
+    format.dateTime(new Date(`${date}T12:00:00Z`), {
+      day: "numeric",
+      month: "long",
+      timeZone: "UTC",
+    });
   // Modules with a part of their own aren't quiet rows, and a mode's row
   // stands for its module, or nothing does.
   const quiet = data.widgets.filter(
@@ -581,9 +585,13 @@ export async function TodayView({
         ) : null}
 
         {file?.bank && bankActions ? (
+          // A newer change is a card of its own: hidden for the last one
+          // never hides it.
           <BankChangeCard
+            key={file.bank.changedAt}
             bank={file.bank}
             business={file.businessName}
+            businessId={file.businessId}
             actions={bankActions}
           />
         ) : null}
@@ -602,7 +610,8 @@ export async function TodayView({
             file={file}
             tone={filePart.card}
             t={t}
-            href={path("/me/file")}
+            day={day}
+            href={completeHref(base, file.pension)}
           />
         ) : null}
 

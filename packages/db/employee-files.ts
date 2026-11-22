@@ -566,7 +566,9 @@ async function storedOfOwn(
  * so it doesn't make the 101 due again. `today` is the business's day. In
  * the week after a phone change a bank change is refused with the day it
  * opens again (`opensOn`). `atTime` dates the write for the database (now,
- * unless `checkBankChange` tries one).
+ * unless `checkBankChange` tries one); a bank change keeps it as its own
+ * moment (`bank_changed_at`), so the person's own save can remember the
+ * change it made without reading the file again (H5b).
  */
 export async function saveEmployeeDetails(
   actorId: string,

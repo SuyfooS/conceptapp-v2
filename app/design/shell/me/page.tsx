@@ -25,7 +25,8 @@ type Props = { searchParams: Promise<{ state?: string; file?: string }> };
 // at the account (the card and the five rows); ?file=done, every part in;
 // ?file=lean, a business that asks neither the address nor the account
 // (two rows fewer); ?file=contact, one that asks for an emergency contact
-// too (its row), each as Noa's twin has it (H5b).
+// too (its row); ?file=later, sent with a pension fund still to choose (the
+// card leads to the pension), each as Noa's twin has it (H5b).
 export default function ShellMe({ searchParams }: Props) {
   return (
     <Suspense>
@@ -55,13 +56,16 @@ async function Demo({ searchParams }: Props) {
       file={
         file === "missing" ||
         file === "done" ||
+        file === "later" ||
         file === "lean" ||
         file === "contact" ? (
           <FileSummary
             data={
-              fileScreenDemo(file === "done" ? "done" : "stopped", "he", {
-                ask: file === "lean" || file === "contact" ? file : "all",
-              }).data
+              fileScreenDemo(
+                file === "done" || file === "later" ? file : "stopped",
+                "he",
+                { ask: file === "lean" || file === "contact" ? file : "all" },
+              ).data
             }
             wording={baseWording}
             base="/design/shell"

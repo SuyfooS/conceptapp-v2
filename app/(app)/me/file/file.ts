@@ -14,7 +14,7 @@ import { cookies } from "next/headers";
 import { unstable_rethrow } from "next/navigation";
 import { currentMember } from "../../member";
 import { currentModuleSettings, currentModules } from "../../modules";
-import { fileSettingsParts } from "./file-parts";
+import { fileSettingsParts, pensionLeftOf } from "./file-parts";
 import type { FileScreen, FileToday } from "./file-types";
 
 /**
@@ -56,8 +56,14 @@ export async function currentFileScreen(): Promise<FileScreen> {
     return { kind: "unavailable", reason: "failed" };
   }
   const timeZone = business.place.timeZone;
-  const today = clockAt(new Date(), timeZone).date;
+  const now = new Date();
+  const today = clockAt(now, timeZone).date;
   const year = Number(today.slice(0, 4));
+  const changedOn = bankChangeToTell(
+    read.file?.bank_changed_at ?? null,
+    now,
+    timeZone,
+  );
   return {
     kind: "file",
     data: {
@@ -86,15 +92,21 @@ export async function currentFileScreen(): Promise<FileScreen> {
       pensionDueOn: read.pensionDueOn,
       taxYear: read.taxYears.find((row) => row.year === year) ?? null,
       phoneTail: phoneTail(member.phone),
+      bankChange: changedOn
+        ? { on: changedOn, disputed: read.file?.bank_review === "disputed" }
+        : null,
     },
   };
 }
 
 /**
  * What Today's cards need of the person's own file (H5b), and never a
- * value: how much of it is missing, and the account's last change while
- * Today tells it (14 days), unless they said they saw that change on this
- * device, or added the account on it.
+ * value: how much of it is missing, whether a fund still to choose is all
+ * of it (`pensionLeftOf`), and the account's last change while Today tells
+ * it (14 days), unless they said they saw that change on this device, or
+ * added the account on it. The change goes with the database's moment of
+ * it, which "אני שיניתי" sends back (/home/bank-seen), so only the change
+ * the card told is kept seen, never one made while it was on screen.
  * Null where there is no file to show (the module off, off the staff,
  * viewing as a role) and when anything went wrong, which never takes Today
  * down with it.
@@ -107,7 +119,6 @@ export async function currentFileToday(): Promise<FileToday | null> {
     // The session's person, as the screen was read for (one read a request).
     const person = (await currentMember())?.userId ?? null;
     const changedAt = data.file?.bank_changed_at ?? null;
-    const on = bankChangeToTell(changedAt, new Date(), data.timeZone);
     // Seen only by this person, of this very change: on a shared device,
     // what someone else said they saw hides nothing of theirs.
     const seen =
@@ -124,9 +135,10 @@ export async function currentFileToday(): Promise<FileToday | null> {
       role: data.role,
       asked: data.asked.length,
       missing: data.missing.length,
+      pension: pensionLeftOf(data),
       bank:
-        on && !seen
-          ? { on, disputed: data.file?.bank_review === "disputed" }
+        data.bankChange && changedAt !== null && !seen
+          ? { ...data.bankChange, changedAt }
           : null,
     };
   } catch (error) {

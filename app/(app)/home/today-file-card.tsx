@@ -9,22 +9,30 @@ import type { Translator } from "../wording";
 /**
  * The person's own hiring file while something in it is missing (profile
  * H5b): how much, and "השלמת הפרטים", which opens it where they stopped.
- * The screen's one accent card unless the owner's first steps or an open
- * mode hold it. Never for an owner, who isn't counted. Words at the start
- * and the action at the end, from a tablet up, as the mode's card.
+ * When a fund still to choose is all that is left ("אבחר אחר כך"), it says
+ * by when and "בחירת קרן פנסיה" opens the pension's step, since the flow,
+ * with no step open, would open on its done screen. The screen's one
+ * accent card, with its one accent action, unless the owner's first steps
+ * or an open mode hold it: then flat, and its action secondary. Never for
+ * an owner, who isn't counted. Words at the start and the action at the
+ * end, from a tablet up, as the mode's card.
  */
 export function FileTodayCard({
   file,
   tone,
   t,
+  day,
   href,
 }: {
   file: FileToday;
   tone: "accent" | "flat";
   t: Translator<"app">;
-  /** /me/file, or the twin's. */
+  /** A `YYYY-MM-DD` day as Today says it ("24 בדצמבר"). */
+  day: (date: string) => string;
+  /** /me/file (its pension step when only a fund is left), or the twin's. */
   href: string;
 }) {
+  const pension = file.pension;
   return (
     <Card
       tone={tone}
@@ -41,12 +49,21 @@ export function FileTodayCard({
           <CardText
             className={cn("text-pretty", tone === "accent" && "text-ink")}
           >
-            {t("me.file.missing", { count: file.missing })}
+            {pension?.kind === "open"
+              ? t("me.file.pensionLeft", { date: day(pension.dueOn) })
+              : t("me.file.missing", { count: file.missing })}
           </CardText>
         </span>
       </div>
-      <Button asChild size="lg" className="md:shrink-0">
-        <Link href={href}>{t("me.file.complete")}</Link>
+      <Button
+        asChild
+        size="lg"
+        variant={tone === "accent" ? "primary" : "secondary"}
+        className="md:shrink-0"
+      >
+        <Link href={href}>
+          {pension ? t("file.actions.choosePension") : t("me.file.complete")}
+        </Link>
       </Button>
     </Card>
   );

@@ -76,8 +76,10 @@ export async function rememberFirstStepsHidden(
 
 /**
  * The person saw their account's last change in this business, at
- * `changedAt` as the database gave it ("אני שיניתי", "הבנתי" on Today, or
- * the account they just added here): on this device that change isn't
+ * `changedAt`, the change's own moment in the database ("אני שיניתי",
+ * "הבנתי" on Today, checked against the file by /home/bank-seen; or the
+ * account they just added here, by the moment its save was dated with,
+ * which the database keeps as the change's): on this device that change isn't
  * told to them again (`bankChangeSeen`), while a later one is, and so is
  * anyone else's who signs in here. What others saw here, and in other
  * businesses, stays seen. Kept as the business cookie is.

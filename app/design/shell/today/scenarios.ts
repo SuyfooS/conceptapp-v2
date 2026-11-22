@@ -485,11 +485,14 @@ export const todayScenarios = {
   firstSteps,
   /**
    * Noa in a business that uses the hiring file (H5b): `missing`, three of
-   * its four parts still to give, its card; `bank`, all of it in and her
-   * account changed two days ago, its card; `disputed`, after she said "לא
-   * שיניתי", what follows.
+   * its four parts still to give, its card; `pension`, everything in but a
+   * fund she chose to pick later, its card leading to the pension; `bank`,
+   * all of it in and her account changed two days ago, its card;
+   * `disputed`, after she said "לא שיניתי", what follows; `complete`,
+   * nothing missing and no change to tell, as Today is once the bank's card
+   * is hidden: the file's quiet row says so.
    */
-  workerFile: (state: "missing" | "bank" | "disputed"): TodayData => ({
+  workerFile: (state: WorkerFileState): TodayData => ({
     ...today(
       "noa",
       "worker",
@@ -501,11 +504,27 @@ export const todayScenarios = {
       businessName: business.name,
       role: "worker",
       asked: 4,
-      missing: state === "missing" ? 3 : 0,
+      missing: state === "missing" ? 3 : state === "pension" ? 1 : 0,
+      pension:
+        state === "pension" ? { kind: "open", dueOn: "2026-12-24" } : null,
       bank:
-        state === "missing"
-          ? null
-          : { on: "2026-11-01", disputed: state === "disputed" },
+        state === "bank" || state === "disputed"
+          ? {
+              on: "2026-11-01",
+              changedAt: "2026-11-01T08:00:00.000+00:00",
+              disputed: state === "disputed",
+            }
+          : null,
     },
   }),
 };
+
+/** The hiring file's states on the worker's Today twin (`workerFile`). */
+export const WORKER_FILE_STATES = [
+  "missing",
+  "pension",
+  "bank",
+  "disputed",
+  "complete",
+] as const;
+export type WorkerFileState = (typeof WORKER_FILE_STATES)[number];

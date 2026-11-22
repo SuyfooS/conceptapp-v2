@@ -9,7 +9,11 @@ import {
 import {
   type FileStepInput,
   fileParts,
+  fileStepStates,
   fileStepsOn,
+  onlyPensionLeft,
+  type PensionDue,
+  pensionDue,
 } from "@domain/employee-file-steps";
 import type { FileScreenData } from "./file-types";
 
@@ -71,4 +75,26 @@ export function fileStepInputOf(data: FileScreenData): FileStepInput {
       (file?.has.work_language ?? false) ||
       data.emergency !== null,
   };
+}
+
+/**
+ * A fund still to choose, when that is all the file lacks
+ * (`onlyPensionLeft`): by its day, or with the day passed. Null otherwise.
+ * The ways in that ask to complete the file (Today's card, the profile's)
+ * then open the pension's step and say so, rather than the flow's done
+ * screen.
+ */
+export function pensionLeftOf(data: FileScreenData): PensionDue | null {
+  return onlyPensionLeft(
+    data.missing,
+    fileStepStates(fileStepInputOf(data)),
+    data.steps,
+  )
+    ? pensionDue(data.pensionDueOn, data.today)
+    : null;
+}
+
+/** Where a way in that asks to complete the file opens it: the pension's step when only a fund is left. */
+export function completeHref(base: string, pensionLeft: PensionDue | null) {
+  return pensionLeft ? `${base}/me/file?step=pension` : `${base}/me/file`;
 }

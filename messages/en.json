@@ -1389,6 +1389,7 @@
           "disputedTitle": "Marked as not changed by you",
           "disputed": "No wages go to this account until {business} checks it. Talk to {business} too.",
           "seen": "Got it",
+          "hidden": "Card hidden on this device",
           "failed": "Not saved. Try again."
         }
       }
@@ -4000,6 +4001,7 @@
       },
       "file": {
         "missing": "So your wages arrive on time, {count, plural, one {one more detail is} other {# more details are}} needed",
+        "pensionLeft": "Choose a pension fund by {date}",
         "complete": "Complete the details",
         "title": "My file at {business}",
         "visible": "You, the owner and whoever prepares the payroll can see these details",
@@ -4080,6 +4082,7 @@
         "saveIdentity": "Save your details",
         "saveAddress": "Save the address",
         "savePension": "Save the pension answer",
+        "choosePension": "Choose a pension fund",
         "close": "Close",
         "saveContact": "Save these details"
       },
@@ -4222,6 +4225,9 @@
         "holderLine": "In the name of {name}",
         "change": "Change the account",
         "keepCurrent": "Keep the current account",
+        "changed": "The account was changed on {date}. Didn't change it? You can mark that here.",
+        "dispute": "I didn't change it",
+        "disputed": "Marked as not changed by you. No wages go to this account until {business} checks it.",
         "notAsked": "{business} no longer asks for an account for wages. You can keep this one or change it."
       },
       "pension": {
@@ -4262,13 +4268,15 @@
       "done": {
         "title": "All done",
         "titleLeft": "{count, plural, one {One step left} other {# steps left}}",
+        "titlePension": "A pension fund is still to choose",
         "body": "{business} will see that your details are complete.",
         "sent": "The details were sent to {business}.",
         "left": "Still to do: {what}",
         "leftPension": "choose a pension fund by {date}",
         "change": "You can go back to any step",
         "profile": "Back to the profile",
-        "ready": "Everything's in. Once you send it, {business} will see your details are complete."
+        "ready": "Everything's in. Once you send it, {business} will see your details are complete.",
+        "readyPension": "You can send your details to {business} now, and choose a pension fund later."
       },
       "masked": {
         "show": "Show",

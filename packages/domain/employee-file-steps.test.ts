@@ -11,6 +11,7 @@ import {
   isNewFile,
   minorOnFile,
   nextFileStep,
+  onlyPensionLeft,
   pensionDue,
   phoneTail,
   previousFileStep,
@@ -368,17 +369,74 @@ describe("the steps by the business's settings", () => {
     const lean = { ...EMPTY, asked: ["identity", "pension"] as const };
     const states = fileStepStates({ ...lean, missing: ["identity"] });
     expect(states.address).toBe("optional");
-    // Counted as behind the person, never where they pick up, never a blocker.
+    // Never where they pick up, never a blocker, and not counted as done
+    // until something of it is in: a new worker reads "0 מתוך 4".
     const steps = ["start", "identity", "address", "pension"] as const;
-    expect(stepsDone({ ...states, start: "done" }, steps)).toBe(3);
+    expect(
+      stepsDone(fileStepStates({ ...lean, missing: lean.asked }), steps),
+    ).toBe(0);
+    expect(stepsDone({ ...states, start: "done" }, steps)).toBe(2);
     expect(resumeStep({ ...states, start: "done" }, steps)).toBe("identity");
     expect(sendBlocker({ ...states, identity: "done" }, steps)).toBeNull();
-    expect(
-      fileStepStates({ ...lean, missing: [], contactHeld: true }).address,
-    ).toBe("done");
+    const held = fileStepStates({ ...lean, missing: [], contactHeld: true });
+    expect(held.address).toBe("done");
+    expect(stepsDone({ ...held, start: "done" }, steps)).toBe(4);
     // Asked, it is the address as before.
     expect(fileStepStates({ ...EMPTY, contactHeld: true }).address).toBe(
       "open",
     );
+  });
+});
+
+describe("onlyPensionLeft", () => {
+  const everythingIn = {
+    ...EMPTY,
+    addressForm: "f" as const,
+    missing: ["pension" as const],
+    form101: { status: "handed_in" as const, route: "print" as const },
+  };
+
+  it("is the pension answered 'later' with nothing else open", () => {
+    const states = fileStepStates({ ...everythingIn, pensionAnswer: "later" });
+    expect(resumeStep(states)).toBe("done");
+    expect(onlyPensionLeft(["pension"], states)).toBe(true);
+  });
+
+  it("isn't while the pension's step is open, or anything else is", () => {
+    // Not answered at all: the flow opens on its step by itself.
+    expect(onlyPensionLeft(["pension"], fileStepStates(everythingIn))).toBe(
+      false,
+    );
+    // Form 101 still to hand in: the flow opens there.
+    const form101Open = fileStepStates({
+      ...everythingIn,
+      pensionAnswer: "later",
+      form101: null,
+    });
+    expect(onlyPensionLeft(["pension"], form101Open)).toBe(false);
+    // ...unless Form 101 isn't on screen.
+    expect(
+      onlyPensionLeft(["pension"], form101Open, [
+        "start",
+        "identity",
+        "address",
+        "bank",
+        "pension",
+      ]),
+    ).toBe(true);
+    // Something else missing too.
+    const bankToo = fileStepStates({
+      ...everythingIn,
+      missing: ["bank", "pension"],
+      pensionAnswer: "later",
+    });
+    expect(onlyPensionLeft(["bank", "pension"], bankToo)).toBe(false);
+    // Nothing missing.
+    expect(
+      onlyPensionLeft(
+        [],
+        fileStepStates({ ...everythingIn, missing: [], pensionAnswer: "new" }),
+      ),
+    ).toBe(false);
   });
 });

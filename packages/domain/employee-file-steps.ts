@@ -34,7 +34,8 @@ export type FileStep = (typeof FILE_STEPS)[number];
 /**
  * Done, still open, handed to payroll directly (a holder's mark), or not
  * asked of the person at all and nothing given yet (`optional`: step 2 when
- * the business asks only for ways to reach them).
+ * the business asks only for ways to reach them, counted by `stepsDone`
+ * only once something of it is in, when it is done).
  */
 export type StepState = "done" | "open" | "direct" | "optional";
 
@@ -190,12 +191,39 @@ export function fileStepStates(
   };
 }
 
-/** How many of the steps on screen are behind the person: done, handed directly, or optional. */
+/**
+ * How many of the steps on screen are behind the person: done or handed
+ * directly. An optional step counts once something of it is in (it is
+ * done then), never before: a new worker's "0 מתוך 4 צעדים" agrees with
+ * the list, where that step's row is still open, "לא חובה".
+ */
 export function stepsDone(
   states: Record<FileStep, StepState>,
   steps: readonly FileStep[] = FILE_STEPS,
 ): number {
-  return steps.filter((step) => states[step] !== "open").length;
+  return steps.filter(
+    (step) => states[step] === "done" || states[step] === "direct",
+  ).length;
+}
+
+/**
+ * A fund still to choose is all the file lacks: the pension is the only
+ * group the database counts missing, though "אבחר אחר כך" put its step
+ * behind the person, and no step on screen is open. The flow, with nothing
+ * open, opens on its done screen, so the ways in that ask to complete the
+ * file (Today's card, the profile's) open the pension's step instead and
+ * say that is what is left (H5b).
+ */
+export function onlyPensionLeft(
+  missing: readonly FileGroup[],
+  states: Record<FileStep, StepState>,
+  steps: readonly FileStep[] = FILE_STEPS,
+): boolean {
+  return (
+    missing.length === 1 &&
+    missing[0] === "pension" &&
+    resumeStep(states, steps) === "done"
+  );
 }
 
 /**

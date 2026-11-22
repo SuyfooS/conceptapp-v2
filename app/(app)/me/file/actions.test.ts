@@ -9,9 +9,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // (never the profile's copy) and only for an account that could be kept,
 // checked without touching the browser's session, noted only once it was
 // right and theirs, and nothing typed in a log. H5b: step 2's work language
-// and emergency contact, the 101's route from the business's settings, and
-// Today's "לא שיניתי" and "אני שיניתי", whose seen moment is the
-// database's, never the screen's.
+// and emergency contact, the 101's route from the business's settings,
+// "לא שיניתי", and the account just added kept seen by its own save's
+// moment, never one read afterwards. Today's "אני שיניתי" is a route's
+// (home/bank-seen/route.test.ts).
 
 vi.mock("server-only", () => ({}));
 
@@ -67,7 +68,6 @@ const {
   handInForm101Action,
   revealOwnAction,
   saveFileStepAction,
-  seenBankChangeAction,
   sendBankCodeAction,
   submitFileAction,
 } = await import("./actions");
@@ -87,7 +87,7 @@ const DEFAULTS = {
   deductionsFile: "",
 };
 
-/** When the database says Noa's account last changed. */
+/** When the database says Noa's account last changed: someone else's change, read after hers. */
 const CHANGED_AT = "2026-11-20T08:00:00.123456+00:00";
 
 const SHOP = "11111111-1111-4111-a111-111111111111";
@@ -183,7 +183,6 @@ const everyWrite = (business: string) => [
   handInForm101Action(business),
   submitFileAction(business),
   disputeBankChangeAction(business),
-  seenBankChangeAction(business),
 ];
 
 const nothingCalled = () => {
@@ -406,42 +405,62 @@ describe("the bank's code", () => {
       NOA,
       { bank: account() },
       expect.any(String),
+      { atTime: expect.any(Date) },
     );
   });
 
-  it("keeps the account just added as seen on this device, by the database's moment", async () => {
-    mocks.getEmployeeFile.mockImplementation(async () => {
-      mocks.order.push("read");
-      return { ok: true, file: { bank_changed_at: CHANGED_AT } };
+  it("keeps the account just added as seen on this device, by its own save's moment", async () => {
+    // Read afterwards, the file would hold someone else's change made a
+    // moment later: it is never read.
+    mocks.getEmployeeFile.mockResolvedValue({
+      ok: true,
+      file: { bank_changed_at: CHANGED_AT },
+    });
+    const before = Date.now();
+    expect(
+      await confirmBankAction(SHOP, { code: "123456", bank: account() }),
+    ).toEqual({ ok: true, review: "new" });
+    expect(mocks.order).toEqual(["verify", "stepUp", "save"]);
+    expect(mocks.getEmployeeFile).not.toHaveBeenCalled();
+    // The moment the save was dated with, which the database keeps as the
+    // change's (`set_employee_details` dates it by `at_time`).
+    const at = mocks.saveEmployeeDetails.mock.calls[0]?.[5]?.atTime as Date;
+    expect(at.getTime()).toBeGreaterThanOrEqual(before);
+    expect(at.getTime()).toBeLessThanOrEqual(Date.now());
+    expect(mocks.rememberBankChangeSeen).toHaveBeenCalledWith({
+      business: SHOP,
+      person: NOA,
+      changedAt: at.toISOString(),
+    });
+    expect(mocks.rememberBankChangeSeen).not.toHaveBeenCalledWith(
+      expect.objectContaining({ changedAt: CHANGED_AT }),
+    );
+  });
+
+  it("keeps nothing seen when the save changed no account", async () => {
+    mocks.saveEmployeeDetails.mockResolvedValue({
+      ok: true,
+      changed: [],
+      changeDueBy: null,
     });
     expect(
       await confirmBankAction(SHOP, { code: "123456", bank: account() }),
     ).toEqual({ ok: true, review: "new" });
-    // Read again once the account is in, never taken from the screen.
-    expect(mocks.order).toEqual(["verify", "stepUp", "save", "read"]);
-    expect(mocks.getEmployeeFile).toHaveBeenCalledWith(SHOP, NOA);
-    expect(mocks.rememberBankChangeSeen).toHaveBeenCalledWith({
-      business: SHOP,
-      person: NOA,
-      changedAt: CHANGED_AT,
-    });
+    expect(mocks.rememberBankChangeSeen).not.toHaveBeenCalled();
   });
 
   it("says the account is in though its change couldn't be kept seen", async () => {
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
-    mocks.getEmployeeFile.mockResolvedValue({ ok: false, failure: "keys" });
-    expect(
-      await confirmBankAction(SHOP, { code: "123456", bank: account() }),
-    ).toEqual({ ok: true, review: "new" });
-    mocks.getEmployeeFile.mockRejectedValue(
+    mocks.rememberBankChangeSeen.mockRejectedValue(
       Object.assign(new Error("100001"), { code: "XX000" }),
     );
     expect(
       await confirmBankAction(SHOP, { code: "123456", bank: account() }),
     ).toEqual({ ok: true, review: "new" });
-    expect(mocks.rememberBankChangeSeen).not.toHaveBeenCalled();
-    expect(mocks.refresh).toHaveBeenCalledTimes(2);
-    expect(JSON.stringify(logged.mock.calls)).not.toContain("100001");
+    expect(mocks.refresh).toHaveBeenCalledTimes(1);
+    const said = JSON.stringify(logged.mock.calls);
+    expect(said).toContain("XX000");
+    expect(said).not.toContain("100001");
   });
 
   it("keeps nothing seen when the account wasn't saved", async () => {
@@ -628,8 +647,8 @@ describe("Form 101's route", () => {
   });
 });
 
-describe("a bank change on Today", () => {
-  it("is disputed for the session's own file", async () => {
+describe("a bank change said not theirs", () => {
+  it("is disputed for the session's own file, and keeps nothing seen", async () => {
     expect(await disputeBankChangeAction(SHOP)).toEqual({ ok: true });
     expect(mocks.disputeBankChange).toHaveBeenCalledWith(NOA, SHOP);
     expect(mocks.refresh).toHaveBeenCalled();
@@ -637,34 +656,6 @@ describe("a bank change on Today", () => {
     expect(await disputeBankChangeAction(SHOP)).toEqual({
       ok: false,
       failure: "demo",
-    });
-  });
-
-  it("is kept seen by the database's moment, read again, never the screen's", async () => {
-    // A moment the screen might send is no part of the call.
-    const seen = seenBankChangeAction as (
-      business: string,
-      moment?: string,
-    ) => ReturnType<typeof seenBankChangeAction>;
-    expect(await seen(SHOP, "2020-01-01T00:00:00Z")).toEqual({ ok: true });
-    expect(mocks.getEmployeeFile).toHaveBeenCalledWith(SHOP, NOA);
-    expect(mocks.rememberBankChangeSeen).toHaveBeenCalledWith({
-      business: SHOP,
-      person: NOA,
-      changedAt: CHANGED_AT,
-    });
-  });
-
-  it("keeps nothing without a change, or when the file can't be read", async () => {
-    mocks.getEmployeeFile.mockResolvedValue({
-      ok: true,
-      file: { bank_changed_at: null },
-    });
-    expect(await seenBankChangeAction(SHOP)).toEqual({ ok: true });
-    mocks.getEmployeeFile.mockResolvedValue({ ok: false, failure: "keys" });
-    expect(await seenBankChangeAction(SHOP)).toEqual({
-      ok: false,
-      failure: "keys",
     });
     expect(mocks.rememberBankChangeSeen).not.toHaveBeenCalled();
   });

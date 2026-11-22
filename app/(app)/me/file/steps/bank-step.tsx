@@ -16,6 +16,7 @@ import { ChoiceList, ChoiceRow } from "@ui/choice-row";
 import { CodeSlots, type CodeSlotsStatus } from "@ui/code-slots";
 import { MaskedValue } from "@ui/masked-value";
 import { TextField } from "@ui/text-field";
+import { ShieldAlert } from "lucide-react";
 import { useTranslations } from "next-intl";
 import {
   type FormEvent,
@@ -32,6 +33,7 @@ import type {
   ConfirmBankAnswer,
   FileActionFailure,
   FileScreenData,
+  FileWriteAnswer,
   SendCodeAnswer,
 } from "../file-types";
 import {
@@ -212,7 +214,9 @@ type Problem =
  * opened again shows the code's boxes over the account they confirm. An
  * account the business no longer asks for (H5b) stays, and says so: it can
  * be kept or changed here. Taking it out of the file isn't on screen yet
- * (docs/ROADMAP.md's known issues).
+ * (docs/ROADMAP.md's known issues). While the account's last change is
+ * told (14 days), the saved account has "לא שיניתי" under it
+ * (`BankChangeNote`), so hiding Today's card never takes the way to say it.
  */
 export function BankStep({
   kit,
@@ -516,7 +520,14 @@ export function BankStep({
             {t("bank.change")}
           </Button>
         </Card>
-      ) : (
+      ) : null}
+      {/* The account's last change while it is told: "לא שיניתי" stays
+          here after Today's card is hidden. Not for an account just
+          confirmed on this screen: that change is the person's own. */}
+      {phase === "saved" && data.bankChange && confirmed === null ? (
+        <BankChangeNote kit={kit} change={data.bankChange} />
+      ) : null}
+      {phase === "saved" ? null : (
         <form
           ref={form}
           id={formId}
@@ -707,5 +718,84 @@ export function BankStep({
         />
       ) : null}
     </FileSection>
+  );
+}
+
+/**
+ * The account's last change, while Today tells it (H5b): when, and "לא
+ * שיניתי", which marks the account for the owner and the accountant at once
+ * (as on Today: no undo, it destroys nothing). On every device all those 14
+ * days, whether or not Today's card was hidden on this one. Once marked it
+ * says what follows, and its words take the focus, since the button went;
+ * shown at once, before the server's answer has it (the twin keeps
+ * nothing). A refusal is said under the button. A quiet card under the
+ * saved account: the step's one main action stays the dock's.
+ */
+function BankChangeNote({
+  kit,
+  change,
+}: {
+  kit: Kit;
+  change: NonNullable<FileScreenData["bankChange"]>;
+}) {
+  const { t, data } = kit;
+  const day = useDay();
+  const words = useRef<HTMLParagraphElement>(null);
+  const [pending, setPending] = useState(false);
+  const [failure, setFailure] = useState<FileActionFailure | null>(null);
+  const [markedHere, setMarkedHere] = useState(false);
+  const disputed = markedHere || change.disputed;
+
+  useEffect(() => {
+    if (markedHere) words.current?.focus({ preventScroll: true });
+  }, [markedHere]);
+
+  async function dispute() {
+    if (pending) return;
+    setPending(true);
+    setFailure(null);
+    const answer = await kit.actions
+      .disputeBankChange()
+      .catch((): FileWriteAnswer => ({ ok: false, failure: "failed" }));
+    setPending(false);
+    if (answer.ok) setMarkedHere(true);
+    else setFailure(answer.failure);
+  }
+
+  return (
+    <Card padding="lg" className="flex flex-col gap-3">
+      <div className="flex items-start gap-3">
+        <span
+          aria-hidden="true"
+          className="flex size-11 shrink-0 items-center justify-center rounded-full bg-warning-soft text-warning [&_svg]:size-5"
+        >
+          <ShieldAlert />
+        </span>
+        <p
+          ref={words}
+          tabIndex={-1}
+          className="min-w-0 self-center text-pretty text-base outline-none"
+        >
+          {disputed
+            ? t("bank.disputed", { business: data.businessName })
+            : t("bank.changed", { date: day(change.on) })}
+        </p>
+      </div>
+      {disputed ? null : (
+        <>
+          <Button
+            variant="secondary"
+            loading={pending}
+            onClick={dispute}
+            className="w-full md:w-auto md:self-start"
+          >
+            {t("bank.dispute")}
+          </Button>
+          <Failure>
+            {failure ? t(`failures.${failureKey(failure)}`) : null}
+          </Failure>
+        </>
+      )}
+    </Card>
   );
 }

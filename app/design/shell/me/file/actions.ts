@@ -118,3 +118,9 @@ export async function demoSubmitFileAction(): Promise<FileWriteAnswer> {
   await pause();
   return { ok: true };
 }
+
+/** "לא שיניתי" in the bank step: nothing is marked; the step says it at once. */
+export async function demoDisputeBankChangeAction(): Promise<FileWriteAnswer> {
+  await pause();
+  return { ok: true };
+}

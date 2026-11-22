@@ -16,7 +16,8 @@ import { business } from "../../data";
  * code, an account held in the week after a phone change, an account saved,
  * and everything sent. The ID and the account are
  * from the test ranges (tooling/demo-files.test.ts), and nothing typed on
- * the twin is kept. `ready` is everything in and not sent yet (H5b). What
+ * the twin is kept. `ready` is everything in and not sent yet (H5b), and
+ * `later` everything sent with the pension answered "אבחר אחר כך". What
  * the business asks is a choice of its own: everything, as by default;
  * `lean`, neither the address nor the account, and none in the file;
  * `contact`, the same with the ways to reach her asked instead, an
@@ -139,6 +140,13 @@ const SENT: FileRow = {
   submitted_at: "2026-11-24T09:06:00+02:00",
 };
 
+/** Sent, with the pension answered "אבחר אחר כך": a fund is all that is left (H5b). */
+const LATER: FileRow = {
+  ...SENT,
+  pension_answer: "later",
+  pension_fund: null,
+};
+
 export type FileDemoState =
   | "stopped"
   | "new"
@@ -148,7 +156,8 @@ export type FileDemoState =
   | "hold"
   | "saved"
   | "ready"
-  | "done";
+  | "done"
+  | "later";
 
 /**
  * What the business asks on the twin: everything; no address or account;
@@ -216,6 +225,7 @@ export function fileDemoStateOf(param: unknown): FileDemoState {
     case "saved":
     case "ready":
     case "done":
+    case "later":
       return param;
     default:
       return "stopped";
@@ -242,9 +252,13 @@ export function fileScreenDemo(
             ? READY
             : state === "done"
               ? SENT
-              : STOPPED;
+              : state === "later"
+                ? LATER
+                : STOPPED;
+  // Sent, with a fund still to choose: the pension is all the file lacks.
+  const later = state === "later";
   // Finished: everything she gives is in, sent or not yet.
-  const finished = state === "ready" || state === "done";
+  const finished = state === "ready" || state === "done" || later;
   // A business that asks neither the address nor the account: none of
   // either in her file, unless it stopped asking after she gave them.
   const row: FileRow | null =
@@ -275,7 +289,9 @@ export function fileScreenDemo(
     row === null
       ? ["identity", "address", "bank", "pension"]
       : finished
-        ? []
+        ? later
+          ? ["pension"]
+          : []
         : state === "saved"
           ? ["pension"]
           : ["bank", "pension"];
@@ -309,9 +325,9 @@ export function fileScreenDemo(
     emergency: contact ? FILE_DEMO_CONTACT : null,
     youthUntil: state === "minor" ? addYears(FILE_DEMO_TODAY, 2) : null,
     // 60 days from the start of the work, a month on.
-    pensionDueOn: finished ? null : "2026-12-24",
+    pensionDueOn: finished && !later ? null : "2026-12-24",
     taxYear:
-      state === "done"
+      state === "done" || later
         ? {
             year: 2026,
             status: "handed_in",
@@ -321,6 +337,11 @@ export function fileScreenDemo(
           }
         : null,
     phoneTail: "0003",
+    // Her account went in on the twin's day, so its change is still told,
+    // as the app tells it for 14 days: the bank step has "לא שיניתי".
+    bankChange: row?.bank_changed_at
+      ? { on: FILE_DEMO_TODAY, disputed: false }
+      : null,
   };
   const preset =
     state === "warning" || state === "code"
