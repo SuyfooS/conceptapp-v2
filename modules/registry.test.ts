@@ -61,12 +61,30 @@ describe("module registry", () => {
     expect(hrefs).not.toContain("/home");
   });
 
-  it("only puts home cards on modules with a screen: a tab, or a mode shown on Home", () => {
-    for (const m of manifests) {
+  it("only puts home cards on modules with a screen: a tab, a mode shown on Home, or a page", () => {
+    const all: readonly ModuleManifest[] = manifests;
+    for (const m of all) {
       if (!m.homeWidget) continue;
-      expect(m.nav !== null || m.mode?.entries.includes("home"), m.key).toBe(
-        true,
-      );
+      expect(
+        m.nav !== null ||
+          m.mode?.entries.includes("home") ||
+          m.page !== undefined,
+        m.key,
+      ).toBe(true);
+    }
+  });
+
+  it("gives a page only to a module with no tab and no mode, at a place of its own", () => {
+    // The hiring file's /me/file (H5a): no tab, so its page is what opens it
+    // (`canOpenModule`); proxy.test.ts holds it under a guarded screen.
+    const all: readonly ModuleManifest[] = manifests;
+    const pages = all.flatMap((m) => (m.page ? [m] : []));
+    expect(pages.map((m) => m.key)).toEqual(["employee_files"]);
+    const tabs = all.flatMap((m) => [m.nav?.href, m.mode?.href]);
+    for (const m of pages) {
+      expect(m.nav, m.key).toBeNull();
+      expect(m.mode, m.key).toBeUndefined();
+      expect(tabs).not.toContain(m.page?.href);
     }
   });
 

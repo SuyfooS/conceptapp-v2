@@ -4018,6 +4018,10 @@ export type Database = {
         Returns: undefined;
       };
       audit_guard_status: { Args: Record<PropertyKey, never>; Returns: Json };
+      bank_change_hold: {
+        Args: { at_time?: string; business: string; person: string };
+        Returns: Json;
+      };
       cancel_list: {
         Args: { actor: string; at_time?: string; list: string };
         Returns: undefined;

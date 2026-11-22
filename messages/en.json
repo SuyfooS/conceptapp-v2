@@ -160,6 +160,18 @@
     "79": "Monox",
     "94": "Phoenix Gamma"
   },
+  "pensionFunds": {
+    "meitav": "Meitav Comprehensive Pension",
+    "migdal_makefet": "Migdal Makefet Ishit",
+    "menora_mivtachim": "Menora Mivtachim Pension",
+    "harel": "Harel Pension",
+    "clal": "Clal Pension",
+    "phoenix": "The Phoenix Comprehensive Pension",
+    "altshuler_shaham": "Altshuler Shaham Comprehensive Pension",
+    "mor": "Mor Comprehensive Pension",
+    "infinity": "Infinity Comprehensive Pension",
+    "unknown": "I don't have the name now"
+  },
   "design": {
     "metaTitle": "Design system",
     "title": "Design system",
@@ -956,7 +968,15 @@
         "on": "The sound is on",
         "off": "This device has no sound"
       }
-    }
+    },
+    "fileTitle": "The employee file",
+    "fileText": "The employee file's parts: the steps bar, an ID number, a bank account with its check in words, a town and country search, and a hidden number shown for a minute. Nothing typed here is kept.",
+    "fileStepsCurrent": "The current step in the list",
+    "fileId": "ID number",
+    "fileIdHint": "9 digits, left to right in Hebrew too",
+    "fileCity": "Town",
+    "fileCountry": "Country",
+    "fileDemo": "The employee file, as mock screens"
   },
   "shell": {
     "metaTitle": "Layout demo",
@@ -3963,7 +3983,280 @@
         "officeHint": "What people sent the business, and what it sent them",
         "toConfirm": "{count, plural, one {# document waits for your confirmation} other {# documents wait for your confirmation}}",
         "all": "Every document of the business"
+      },
+      "file": {
+        "missing": "So your wages arrive on time, {count, plural, one {one more detail is} other {# more details are}} needed",
+        "complete": "Complete the details",
+        "title": "My file at {business}",
+        "visible": "You, the owner and whoever prepares the payroll can see these details",
+        "rows": {
+          "identity": "Identity details",
+          "address": "Address",
+          "bank": "Account for wages",
+          "pension": "Pension",
+          "form101": "Form 101 for <ltr>{year}</ltr>"
+        },
+        "values": {
+          "done": "Done",
+          "missing": "Missing",
+          "direct": "Handed to payroll directly",
+          "bank": "{bank} <ltr>{masked}</ltr>",
+          "employer": "{business} chooses",
+          "dueOn": "Choose by {date}",
+          "duePassed": "The time to choose has passed"
+        }
       }
+    },
+    "file": {
+      "metaTitle": "Employee file",
+      "title": "My file at {business}",
+      "progress": "{done} of {count} steps",
+      "back": "Profile",
+      "language": {
+        "switch": "עברית",
+        "failed": "The language didn't change. Try again."
+      },
+      "welcome": {
+        "title": "Glad you joined the team at {business}",
+        "body": "{count, plural, one {One short step} other {# short steps}}, about 5 minutes. You can stop and carry on later.",
+        "start": "Start filling in"
+      },
+      "why": "Why we ask",
+      "visible": "You, the owner and whoever prepares the payroll can see these details",
+      "saved": "Saved",
+      "steps": {
+        "title": "The steps",
+        "count": "Step {current} of {count}",
+        "name": {
+          "start": "How to address you",
+          "identity": "Your details as on your document",
+          "address": "Address and contact",
+          "bank": "Where to pay your wages",
+          "pension": "Pension",
+          "form101": "Form 101"
+        },
+        "state": {
+          "done": "Done",
+          "open": "Not yet",
+          "direct": "Handed to payroll directly"
+        }
+      },
+      "actions": {
+        "next": "Save and continue",
+        "continue": "Continue",
+        "back": "Back",
+        "later": "I'll carry on later",
+        "send": "Send the details to {business}",
+        "finish": {
+          "start": "Choose how to address you",
+          "identity": "Complete your ID details",
+          "address": "Complete your address",
+          "bank": "Complete the account for your wages",
+          "pension": "Complete the pension answer",
+          "form101": "Hand in Form 101"
+        },
+        "sendWaits": "You can send your details once your ID details, address, account and pension are filled in.",
+        "edit": "Change",
+        "saveStart": "Save the choice",
+        "saveIdentity": "Save your details",
+        "saveAddress": "Save the address",
+        "savePension": "Save the pension answer",
+        "close": "Close"
+      },
+      "optional": "Optional",
+      "optionalField": "{field} (optional)",
+      "missingRequired": "{count, plural, one {One more field} other {# more fields}} to continue",
+      "tooLong": "Up to <ltr>{max}</ltr> characters here.",
+      "changeDue": "An updated Form 101 is due within a week of the change, by {date}",
+      "search": {
+        "placeholder": "Start typing"
+      },
+      "start": {
+        "language": "Language",
+        "he": "עברית",
+        "en": "English",
+        "languageNote": "For now only the employee file shows in English. The rest of the app is in Hebrew.",
+        "form": "How the app writes about you",
+        "formNote": "Your team sees this in how the app writes about you in Hebrew",
+        "f": "Feminine",
+        "m": "Masculine",
+        "x": "No gender"
+      },
+      "identity": {
+        "kind": "Which document do you have?",
+        "il": "Israeli ID card",
+        "passport": "Passport",
+        "other": "Another official document",
+        "idNumber": "ID number",
+        "passportNumber": "Passport number",
+        "otherNumber": "Document number",
+        "otherName": "Document name",
+        "otherNameHint": "For example: a stay permit",
+        "country": "Issuing country",
+        "countryNone": "No country by that name. Try another spelling.",
+        "countryUnpicked": "Choose a country from the list.",
+        "expires": "Valid until",
+        "expiresInvalid": "That isn't a valid expiry. Check the day, month and year.",
+        "idReason": "Required by law: for your payslip, Form 101, your pension and the safety training record.",
+        "idInvalid": "This ID number isn't valid. Check the digits again.",
+        "documentInvalid": "The number can hold only English letters and digits.",
+        "documentShort": "That number is too short: it needs at least <ltr>{min}</ltr> characters.",
+        "keepStored": "Leave it empty to keep the number already saved.",
+        "retypeToChange": "To change the document's details, type its number again.",
+        "firstName": "First name as on the document",
+        "lastName": "Last name as on the document",
+        "namesReason": "Required by law: for your payslip and Form 101.",
+        "birthDate": "Date of birth",
+        "birthReason": "Required by law: for Form 101 and the rules and pay for young workers.",
+        "birthInvalid": "That isn't a date. Check the day, month and year.",
+        "birthRange": "The date of birth has to be in the past.",
+        "minorTitle": "Before you start work",
+        "minorBody": "Before you start work, bring {business} a medical certificate from your family doctor and your ID card. {business} keeps a copy until a year after the work ends."
+      },
+      "date": {
+        "day": "Day",
+        "month": "Month",
+        "year": "Year",
+        "yearShort": "Write the year with all four digits."
+      },
+      "address": {
+        "city": "Town",
+        "cityNone": "No town by that name. Try another spelling.",
+        "cityUnpicked": "Choose a town from the list.",
+        "reason": "Required by law: for Form 101 and the notice of your working conditions.",
+        "street": "Street",
+        "noStreet": "No street name",
+        "instead": "Instead of a street",
+        "area": "Neighbourhood or place",
+        "poBox": "PO box",
+        "number": "House number",
+        "apartment": "Apartment",
+        "zip": "Postcode",
+        "zipInvalid": "A postcode has 7 digits.",
+        "numberInvalid": "A house number is digits, and may end in one letter, like <ltr>12A</ltr>.",
+        "poBoxInvalid": "A PO box is up to 6 digits.",
+        "lineInvalid": "One line of text here, without special characters.",
+        "email": "Email",
+        "emailReason": "For {business} to contact you about your pay.",
+        "emailInvalid": "That isn't an email address."
+      },
+      "bank": {
+        "paste": "Paste from your bank app",
+        "pasteHint": "You can paste the account number from your bank app, for example <ltr>12-571-041116</ltr>",
+        "pasteNone": "We couldn't read that number. You can type it below.",
+        "bank": "Bank",
+        "choose": "Choose",
+        "branch": "Branch",
+        "account": "Account number",
+        "where": "The numbers are in your bank app, under the account details, or on a cheque",
+        "reason": "Needed to pay your wages into the bank. Without an account, wages can't be paid by transfer.",
+        "accountInvalid": "The account number isn't valid. Check the digits.",
+        "warning": {
+          "checkDigit": "The account number doesn't match the bank you chose. Check it again.",
+          "length": "The account number has more or fewer digits than this bank uses. Check it again.",
+          "branch": "The bank you chose has no such branch. Check the branch number.",
+          "unknownBank": "There's no bank with that number. Check it again.",
+          "closedBank": "That bank no longer operates. Check it again."
+        },
+        "keep": "The number is right, save it",
+        "kept": "We'll save the number as it is, and {business} will check it.",
+        "checkFirst": "Check the account number, or press \"{keep}\" if it is right.",
+        "holder": "Whose account is it?",
+        "self": "Mine",
+        "family": "My spouse's, parent's or child's",
+        "other": "Someone else's",
+        "holderName": "The account holder's full name",
+        "otherNote": "By law, wages go only to your own account or your spouse's, parent's or child's. If you need something else, talk to {business}.",
+        "otherBlocked": "Wages go only to your own account or your spouse's, parent's or child's.",
+        "instruction": "{form, select, other {I ask}} {business} to pay my wages into this account",
+        "confirm": "Confirm the account with a code",
+        "code": {
+          "sent": "We sent a code by SMS to your number ending in <ltr>{tail}</ltr>",
+          "label": "The code from the SMS",
+          "resend": "Send a new code",
+          "edit": "Back to the account details",
+          "wrongCode": "That code isn't right. Try again.",
+          "tooMany": "Too many tries. Try again in a quarter of an hour.",
+          "rateLimit": "You can ask for a new code in a few seconds.",
+          "failed": "The code wasn't sent. Try again.",
+          "noPhone": "To change the account, your sign-in needs a phone number. Talk to {business}."
+        },
+        "phoneHold": "You can change the account a week after changing your phone number, from {date}.",
+        "phoneHoldToday": "You can change the account a week after changing your phone number, today from <ltr>{time}</ltr>.",
+        "saved": "The account is saved. {business} will check it before wages go to it.",
+        "savedWarned": "The account is saved with a note, and {business} will check it before wages go to it.",
+        "current": "Account for wages",
+        "currentLine": "{bank} · branch <ltr>{branch}</ltr>",
+        "holderLine": "In the name of {name}",
+        "change": "Change the account",
+        "keepCurrent": "Keep the current account"
+      },
+      "pension": {
+        "question": "Do you already have an active pension fund?",
+        "yes": "Yes",
+        "choose": "No, I want to choose a fund",
+        "employer": "No, let {business} choose",
+        "which": "Which fund?",
+        "pick": "Choose",
+        "existingHelp": "With an active fund, contributions can start from your first day. {business} will ask the fund to confirm.",
+        "later": "I'll choose later",
+        "dueOn": "You can choose until {date}. After that, {business} chooses a fund for you.",
+        "dueNone": "You can choose within 60 days of starting work. After that, {business} chooses a fund for you.",
+        "duePassed": "The time to choose a fund has passed, and {business} chooses one for you.",
+        "law": "By law you can choose a fund within 60 days of starting work."
+      },
+      "form101": {
+        "body": "Form 101 is filled in outside the app, on paper, and signed by pen. {business} will give you the form; fill in what's missing and hand it to {business}.",
+        "tax": "Until the form reaches {business}, tax may be deducted at the highest rate.",
+        "handOver": "Hand the form over in person rather than sending it on WhatsApp.",
+        "handedIn": "I handed in the form",
+        "handedInSaved": "Marked as handed in. {business} confirms once it has the form.",
+        "year": "for <ltr>{year}</ltr>",
+        "status": "{status, select, handed_in {Handed in, waiting for approval} accepted {Accepted by the business} returned {Returned to you} change_due {An updated form is due} other {Not handed in yet}}",
+        "returned": "{business} returned the form: {reason, select, attachment {an attachment is missing} signature {a signature is missing} details {a detail doesn't match} other {ask them why}}. It needs handing in again.",
+        "dueBy": "by {date}"
+      },
+      "summary": {
+        "title": "Still missing",
+        "none": "Nothing is missing"
+      },
+      "done": {
+        "title": "All done",
+        "titleLeft": "{count, plural, one {One step left} other {# steps left}}",
+        "body": "{business} will see that your details are complete.",
+        "sent": "The details were sent to {business}.",
+        "left": "Still to do: {what}",
+        "leftPension": "choose a pension fund by {date}",
+        "change": "You can go back to any step",
+        "profile": "Back to the profile"
+      },
+      "masked": {
+        "show": "Show",
+        "hide": "Hide",
+        "hidden": "{what}, hidden. Only the last digits show",
+        "failed": "The number didn't show. Try again."
+      },
+      "notice": {
+        "title": "Why we ask for these details",
+        "purpose": "{business} asks for these details to pay your wages and do what the law requires of an employer: a payslip, reports to the Tax Authority and National Insurance, and pension contributions.",
+        "fields": "Next to each detail it says why it's needed and whether the law requires it. Anything marked \"Optional\" can stay empty, and it changes nothing at work.",
+        "who": "You, the owner of {business} and the accountant can see these details. Managers see only whether they are complete. {business} passes them to whoever prepares the payroll, and to the Tax Authority, National Insurance and the pension fund when the law requires it.",
+        "conceptapp": "ConceptApp keeps the details for {business} and uses them for nothing else. The servers are in Frankfurt, Germany, with the American companies Supabase and Vercel. Sign-in codes are sent through Twilio in the United States, which receives only the phone number.",
+        "rights": "You can see all your details here and ask to correct or delete one that is wrong, also after the work ends. Every view of your details by someone else is recorded. For questions, contact {business}."
+      },
+      "failures": {
+        "off": "The employee file is off in this business.",
+        "demo": "In a demo business the file's details are made up and can't be changed.",
+        "closed": "Real details can't be saved here yet.",
+        "keys": "The file isn't available here yet. You can come back to it later.",
+        "invalid": "Something in the details isn't right. Check the marked fields.",
+        "stepUp": "A new code is needed. You can ask for it again.",
+        "phoneHold": "You can change the account a week after changing your phone number.",
+        "viewOnly": "Viewing as the ConceptApp team, nothing can be changed.",
+        "businessChanged": "You switched business since this screen opened. Open it again.",
+        "failed": "Not saved. Try again."
+      },
+      "viewing": "Viewing as the ConceptApp team, there's no file to open."
     },
     "notifications": {
       "title": "Notifications",

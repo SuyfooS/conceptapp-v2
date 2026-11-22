@@ -174,9 +174,10 @@ select is(
      ('public', 'acknowledge_file_duties'), ('public', 'employee_file_status'),
      ('public', 'team_emergency_contacts'), ('public', 'audit_guard_status'),
      ('public', 'note_phone_change'), ('private', 'log_file_denial'),
-     ('private', 'file_reader'), ('private', 'file_answer')
+     ('private', 'file_reader'), ('private', 'file_answer'),
+     ('public', 'bank_change_hold')
    )),
-  20,
+  21,
   'every function of the file runs as its owner, with an empty search_path'
 );
 select ok(
@@ -193,7 +194,8 @@ select ok(
      'public.dispute_bank_change(uuid, uuid, timestamptz)',
      'public.set_direct_groups(uuid, uuid, uuid, text[], timestamptz)',
      'public.set_tax_year_status(uuid, uuid, uuid, smallint, text, text, date, text, timestamptz)',
-     'public.audit_guard_status()'
+     'public.audit_guard_status()',
+     'public.bank_change_hold(uuid, uuid, timestamptz)'
    ]) as f)
   and (select bool_and(has_function_privilege('authenticated', f, 'execute')
       and not has_function_privilege('anon', f, 'execute'))

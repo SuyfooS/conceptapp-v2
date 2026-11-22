@@ -134,11 +134,15 @@ values
 -- 20261120000100_order_taking_screens.sql), for the browser tests of the
 -- menu's screens; the hosted one has it on too since Orel approved the screens
 -- on 21.11.2026 (tooling/demo-order-taking.test.ts). And both start with made-up
--- hiring files ("files", 20261126000200_employee_files.sql), the module off and
--- their writes closed: in the restaurant, Noa with an emergency contact and Yoav
--- without an account or this year's 101; in the shop, Tamar's new account for a
--- holder, Itai's passport and his 101 returned, Roni's 101 due again and his
--- contact, and Liya's pension handed directly (tooling/demo-files.test.ts).
+-- hiring files ("files", 20261126000200_employee_files.sql), the module off: in
+-- the restaurant, Noa with an emergency contact and Yoav without an account or
+-- this year's 101; in the shop, Tamar's new account for a holder, Itai's
+-- passport and his 101 returned, Roni's 101 due again and his contact, and
+-- Liya's pension handed directly (tooling/demo-files.test.ts). The shop's
+-- writes stay closed, as the hosted ones do; the restaurant takes them
+-- ("fileWrites": true) for the browser tests of the worker's own file (H5a,
+-- e2e/employee-file.spec.ts), which switch the module on and off themselves
+-- and give Noa her made-up file back after each test.
 insert into private.demo_businesses (business_id, definition)
 values
   ('00000000-0000-4000-b000-000000000001', $json$
@@ -148,6 +152,7 @@ values
     "template": "restaurant", "renews": false, "invites": true, "profiles": true, "photos": true,
     "chatFiles": true,
     "orderTaking": true,
+    "fileWrites": true,
     "settings": { "time_clock": { "payEstimate": true } },
     "hours": { "fridays": false, "cases": [
       { "user_id": "00000000-0000-4000-a000-000000000004", "case": "night" }

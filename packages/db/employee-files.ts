@@ -75,9 +75,20 @@ export type FileReadFailure =
   | { ok: false; failure: "denied"; reason: DenialReason }
   | { ok: false; failure: "keys" | "unavailable" | "failed" };
 
-export type FileWriteResult =
-  | { ok: true }
-  | { ok: false; failure: FileFailure };
+/**
+ * A write refused, in the screens' terms. In the week after a phone change
+ * (`phoneHold`) it says the day a bank change opens again (`opensOn`), and,
+ * when asked before a code goes (`checkBankChange`), the moment it does
+ * (`opensAt`, ISO).
+ */
+export type FileWriteFailure = {
+  ok: false;
+  failure: FileFailure;
+  opensOn?: string;
+  opensAt?: string;
+};
+
+export type FileWriteResult = { ok: true } | FileWriteFailure;
 
 /** A file as its screens show it: the plain part, and the sealed values opened. */
 export type EmployeeFile = {
@@ -116,13 +127,29 @@ const fileTable = (column: SealedColumn, place: Place) => ({
   user: place.user,
 });
 
+/** The phone hold's DETAIL: the day a bank change opens again, and nothing else. */
+const OPENS_ON = /^\d{4}-\d{2}-\d{2}$/;
+
 function failedWith(
   what: string,
-  error: { code?: string; message: string; hint?: string | null },
-): { ok: false; failure: FileFailure } {
+  error: {
+    code?: string;
+    message: string;
+    hint?: string | null;
+    details?: string | null;
+  },
+): FileWriteFailure {
   if (isMissingFunction(error)) return { ok: false, failure: "unavailable" };
   const failure = fileFailureOf(error.code, error.hint);
   if (failure === "failed") console.error(what, error.code, error.message);
+  // Only a date passes: whatever else a DETAIL might hold stays here.
+  if (
+    failure === "phoneHold" &&
+    typeof error.details === "string" &&
+    OPENS_ON.test(error.details)
+  ) {
+    return { ok: false, failure, opensOn: error.details };
+  }
   return { ok: false, failure };
 }
 
@@ -466,7 +493,7 @@ async function dataKeyFor(
   actorId: string,
   businessId: string,
   personId: string,
-): Promise<{ ok: true; dek: Buffer } | { ok: false; failure: FileFailure }> {
+): Promise<{ ok: true; dek: Buffer } | FileWriteFailure> {
   const offered = wrapDataKey(ring, newDataKey(), businessId, personId);
   const { data, error } = await createAdminClient().rpc("employee_data_key", {
     actor: actorId,
@@ -536,7 +563,10 @@ async function storedOfOwn(
  * value said), the account checked by Masav's rules (a warning goes through
  * and waits for a holder), each sealed group sealed with the person's key, and
  * for the person's own write, a sealed group typed again as stored left out,
- * so it doesn't make the 101 due again. `today` is the business's day.
+ * so it doesn't make the 101 due again. `today` is the business's day. In
+ * the week after a phone change a bank change is refused with the day it
+ * opens again (`opensOn`). `atTime` dates the write for the database (now,
+ * unless `checkBankChange` tries one).
  */
 export async function saveEmployeeDetails(
   actorId: string,
@@ -544,9 +574,10 @@ export async function saveEmployeeDetails(
   personId: string,
   input: unknown,
   today: string,
+  { atTime }: { atTime?: Date } = {},
 ): Promise<
   | { ok: true; changed: FileDetailField[]; changeDueBy: string | null }
-  | { ok: false; failure: FileFailure }
+  | FileWriteFailure
 > {
   const ring = employeeKeyRing();
   if (!ring) return { ok: false, failure: "keys" };
@@ -660,7 +691,13 @@ export async function saveEmployeeDetails(
 
   const { data, error } = await createAdminClient().rpc(
     "set_employee_details",
-    { actor: actorId, business: businessId, person: personId, patch },
+    {
+      actor: actorId,
+      business: businessId,
+      person: personId,
+      patch,
+      ...(atTime ? { at_time: atTime.toISOString() } : {}),
+    },
   );
   if (error) return failedWith("saving a file failed", error);
   const reply = detailsReply.safeParse(data);
@@ -670,6 +707,80 @@ export async function saveEmployeeDetails(
     changed: reply.data.changed,
     changeDueBy: reply.data.change_due_by,
   };
+}
+
+/**
+ * How far on `checkBankChange` dates its try: past the ten minutes a code
+ * counts for (`set_employee_details`), with room for the two clocks.
+ */
+export const BANK_TRY_AHEAD_MS = 15 * 60_000;
+
+/** `bank_change_hold`'s answer: when the week ends, and its day; null with none. */
+const holdReply = z
+  .object({
+    opens_at: z
+      .string()
+      .refine((at) => Number.isFinite(Date.parse(at)))
+      .transform((at) => new Date(at).toISOString()),
+    opens_on: z.string().regex(OPENS_ON),
+  })
+  .nullable();
+
+/**
+ * Whether the person's own bank change could be saved now but for its code,
+ * asked before an SMS goes, so no code is spent on what couldn't be kept:
+ * the database's own rules run on the account as typed (a demo, the module
+ * off, an account it can't keep), in the write itself, dated
+ * `BANK_TRY_AHEAD_MS` on. A code it holds is older than ten minutes by then,
+ * so the write always stops at the code and keeps nothing; that refusal
+ * (`stepUp`) is the answer "it can go". Dated that far on, the write would
+ * also measure the week after a phone change there and miss one ending in
+ * between, which the real write, dated now, still refuses once the code is
+ * spent: so that week is read on its own, now (`bank_change_hold`), and
+ * holds with its day and the moment it opens (`opensAt`).
+ */
+export async function checkBankChange(
+  personId: string,
+  businessId: string,
+  bank: unknown,
+  today: string,
+): Promise<FileWriteResult> {
+  const tried = await saveEmployeeDetails(
+    personId,
+    businessId,
+    personId,
+    { bank },
+    today,
+    { atTime: new Date(Date.now() + BANK_TRY_AHEAD_MS) },
+  );
+  if (tried.ok) {
+    // Never: no code counts that far on. Said, and taken as a failure.
+    console.error("a bank change went through without its code");
+    return { ok: false, failure: "failed" };
+  }
+  // Anything else keeps it back at any time: said as it is.
+  if (tried.failure !== "stepUp" && tried.failure !== "phoneHold") {
+    return tried;
+  }
+  const { data, error } = await createAdminClient().rpc("bank_change_hold", {
+    business: businessId,
+    person: personId,
+  });
+  // Before its migration reaches the project, the try's own answer, as before.
+  if (error && !isMissingFunction(error)) {
+    return failedWith("reading a phone hold failed", error);
+  }
+  const hold = holdReply.safeParse(error ? null : data);
+  if (!hold.success) return { ok: false, failure: "failed" };
+  if (hold.data) {
+    return {
+      ok: false,
+      failure: "phoneHold",
+      opensOn: hold.data.opens_on,
+      opensAt: hold.data.opens_at,
+    };
+  }
+  return tried.failure === "stepUp" ? { ok: true } : tried;
 }
 
 /** The person's own emergency contact, sealed, or null to remove it. */

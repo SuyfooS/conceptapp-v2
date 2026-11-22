@@ -11,6 +11,7 @@ import {
   identityDocumentSchema,
 } from "./identity-documents";
 import { israeliIdHint } from "./israeli-id";
+import { PENSION_FUND_KEYS } from "./pension-funds";
 import { normalizeIsraeliMobile } from "./phone";
 import { type DateParts, parseTypedDate } from "./typed-date";
 import { oneLineSchema } from "./typed-text";
@@ -117,8 +118,12 @@ export type ReturnedReason = (typeof RETURNED_REASONS)[number];
 export const BANK_REVIEWS = ["new", "warned", "disputed"] as const;
 export type BankReview = (typeof BANK_REVIEWS)[number];
 
-/** A pension fund's key, by shape only until H5 brings the dated list. */
-const fundKey = z.string().regex(/^[a-z0-9_]{1,40}$/);
+/**
+ * A pension fund's key from the dated list, or "unknown" (@domain/pension-funds).
+ * The database checks the shape only, so a list that changes needs no
+ * migration.
+ */
+const fundKey = z.enum(PENSION_FUND_KEYS);
 
 const day = z.iso.date();
 
@@ -145,6 +150,14 @@ export function birthDateSchema(today: string) {
   });
 }
 
+/**
+ * The most characters a typed line of the file holds, as the schemas below
+ * and the database keep them, so a screen says a longer one under its field
+ * before anything is sent: each name as on the document, the email, and a
+ * relative's name on the account.
+ */
+export const FILE_TEXT_MAX = { name: 60, email: 120, holderName: 80 } as const;
+
 const bankInput = z
   .object({
     bank: z.int().min(1).max(999),
@@ -152,7 +165,7 @@ const bankInput = z
     /** Digits as typed; the check gives its stored form. */
     account: z.string().max(40),
     holder: z.enum(["self", "family"]),
-    holderName: oneLineSchema(2, 80).optional(),
+    holderName: oneLineSchema(2, FILE_TEXT_MAX.holderName).optional(),
     instruction: z.literal(BANK_INSTRUCTION_VERSION),
   })
   .refine(
@@ -181,12 +194,21 @@ export function employeeDetailsInput(today: string) {
   return z
     .object({
       names: z
-        .object({ first: oneLineSchema(1, 60), last: oneLineSchema(1, 60) })
+        .object({
+          first: oneLineSchema(1, FILE_TEXT_MAX.name),
+          last: oneLineSchema(1, FILE_TEXT_MAX.name),
+        })
         .optional(),
       birthDate: birthDateSchema(today).nullable().optional(),
       identity: identityDocumentSchema.optional(),
       address: addressSchema.nullable().optional(),
-      email: z.string().trim().max(120).pipe(z.email()).nullable().optional(),
+      email: z
+        .string()
+        .trim()
+        .max(FILE_TEXT_MAX.email)
+        .pipe(z.email())
+        .nullable()
+        .optional(),
       workLanguage: oneLineSchema(2, 40).nullable().optional(),
       bank: bankInput.nullable().optional(),
       pension: pensionInput.optional(),

@@ -20,6 +20,8 @@ import {
   addressFormOf,
   type CoverPreset,
   coverOf,
+  type ProfileLocale,
+  profileLocaleOf,
 } from "@domain/profile";
 import type { NamedRole } from "@domain/role-access";
 import type { BusinessPlace } from "@domain/shabbat";
@@ -143,6 +145,11 @@ export type OwnProfile = {
   bio: string | null;
   cover: CoverPreset;
   addressForm: AddressForm | null;
+  /**
+   * The language they read the app in (`profiles.locale`): only the hiring
+   * file follows it so far (H5a), and the rest of the app speaks Hebrew.
+   */
+  locale: ProfileLocale;
   ready: boolean;
 };
 
@@ -332,7 +339,7 @@ export async function getCurrentMember(
     await Promise.all([
       supabase
         .from("profiles")
-        .select("full_name, avatar_path, bio, cover, address_form")
+        .select("full_name, avatar_path, bio, cover, address_form, locale")
         .eq("id", userId)
         .maybeSingle(),
       // Numbers are not read from the table, the person's own included.
@@ -387,6 +394,7 @@ export async function getCurrentMember(
       bio: own?.bio ?? null,
       cover: coverOf(own?.cover),
       addressForm: addressFormOf(own?.address_form),
+      locale: profileLocaleOf(own?.locale),
       ready: own?.ready ?? true,
     },
   };
@@ -673,6 +681,7 @@ type ProfileRow = {
   bio: string | null;
   cover: string | null;
   address_form: string | null;
+  locale: string | null;
   ready: boolean;
 };
 
@@ -688,6 +697,13 @@ async function olderProfile(
     .maybeSingle();
   if (error) throw error;
   return data
-    ? { ...data, bio: null, cover: null, address_form: null, ready: false }
+    ? {
+        ...data,
+        bio: null,
+        cover: null,
+        address_form: null,
+        locale: null,
+        ready: false,
+      }
     : null;
 }

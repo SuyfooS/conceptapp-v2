@@ -56,6 +56,53 @@ describe("the hiring file's code", () => {
     }
   });
 
+  it("draws the worker's own file with no cache and no value in a log", () => {
+    // Profile H5a: the screens of /me/file and the profile's summary of it.
+    const screens = [
+      ...files("app/(app)/me/file"),
+      "app/(app)/me/file-summary.tsx",
+    ];
+    expect(screens.length).toBeGreaterThan(5);
+    for (const path of screens) {
+      const source = read(path);
+      expect(source, path).not.toMatch(/["']use cache/);
+      if (!path.endsWith(".test.ts")) {
+        expect(source, path).not.toMatch(/console\.log/);
+      }
+    }
+    // A write logs what failed and its code, never what was typed.
+    const calls = [
+      ...read("app/(app)/me/file/actions.ts").matchAll(
+        /console\.\w+\(([^)]*)\)/g,
+      ),
+    ].map(([, args = ""]) => args);
+    expect(calls.length).toBeGreaterThan(0);
+    for (const call of calls) {
+      // Its words may name the bank; what it passes may not be typed.
+      const args = call.replace(/"[^"]*"/g, "");
+      expect(args).not.toMatch(
+        /\b(input|parsed|details|bank|field|step|who)\b/,
+      );
+    }
+  });
+
+  it("puts no value of a file in a URL", () => {
+    // The page reads the step's name from its address, and nothing else;
+    // the flow builds its addresses from a step's name alone.
+    const page = read("app/(app)/me/file/page.tsx");
+    expect(page).toMatch(/const \[\{ step \}, /);
+    expect(page).not.toMatch(/searchParams\./);
+    // Its addresses come from one place, a step's name and the twin's own
+    // query (`keep`, its state and language); the done screen's way back is
+    // the profile's.
+    const flow = read("app/(app)/me/file/file-flow.tsx");
+    const pushes = [...flow.matchAll(/router\.push\(\s*([\w.]+)/g)].map(
+      ([, to = ""]) => to,
+    );
+    expect(pushes).toEqual(["stepHref", "kit.profileHref"]);
+    expect(flow).toContain("/me/file?step=$" + "{next}");
+  });
+
   it("keeps its keys off the browser", () => {
     const named = code.filter(
       (path) =>

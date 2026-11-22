@@ -13,6 +13,7 @@ import {
   FILE_DETAIL_FIELDS,
   FILE_DUTIES_VERSION,
   FILE_GROUPS,
+  FILE_TEXT_MAX,
   fileFailureOf,
   fileReply,
   identityParts,
@@ -67,6 +68,30 @@ describe("employeeDetailsInput", () => {
 
   it("refuses a group it doesn't know", () => {
     expect(tried({ religion: "x" })).not.toBe("ok");
+  });
+
+  it("holds each line to the most a screen says before sending", () => {
+    const name = (length: number) =>
+      tried({ names: { first: "א".repeat(length), last: "כהן" } });
+    expect(name(FILE_TEXT_MAX.name)).toBe("ok");
+    expect(name(FILE_TEXT_MAX.name + 1)).not.toBe("ok");
+    const email = (length: number) =>
+      tried({ email: `${"a".repeat(length - "@b.co".length)}@b.co` });
+    expect(email(FILE_TEXT_MAX.email)).toBe("ok");
+    expect(email(FILE_TEXT_MAX.email + 1)).not.toBe("ok");
+    const holder = (length: number) =>
+      tried({
+        bank: {
+          bank: 12,
+          branch: 600,
+          account: "100001",
+          holder: "family",
+          holderName: "א".repeat(length),
+          instruction: BANK_INSTRUCTION_VERSION,
+        },
+      });
+    expect(holder(FILE_TEXT_MAX.holderName)).toBe("ok");
+    expect(holder(FILE_TEXT_MAX.holderName + 1)).not.toBe("ok");
   });
 
   it("takes a birth date as three typed numbers, not after today, within 100 years", () => {
@@ -180,6 +205,11 @@ describe("employeeDetailsInput", () => {
     expect(tried({ pension: { answer: "existing", fund: "Fund A" } })).not.toBe(
       "ok",
     );
+    // A key of the shape the database takes, but not on the dated list.
+    expect(tried({ pension: { answer: "new", fund: "fund_a" } })).not.toBe(
+      "ok",
+    );
+    expect(tried({ pension: { answer: "new", fund: "harel" } })).toBe("ok");
   });
 
   it("dates a change on or before today, within a year", () => {

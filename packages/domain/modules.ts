@@ -222,9 +222,16 @@ export type ModuleManifest<
   icon?: ModuleIcon;
   /**
    * The module's part of the Today screen. Until it has one of its own, one
-   * row linking to `nav.href` (or to its mode's, for a module with no tab).
+   * row linking to `nav.href` (or its mode's, or its page's, for a module
+   * with no tab).
    */
   homeWidget: { minRole: Role } | null;
+  /**
+   * Where a module with no tab and no mode keeps its own screen, and the
+   * lowest role that opens it (the hiring file's /me/file, reached from the
+   * profile). Its part on Today leads there.
+   */
+  page?: { href: `/${string}`; minRole: Role };
   /** Its own items in the same shell, under its own path (`ModuleMode`). */
   mode?: ModuleMode;
   /**
@@ -382,9 +389,10 @@ export function fitsTabBar(
 /**
  * What the Today screen shows for the viewer, from the enabled modules, in nav
  * order, then each enabled mode whose way in shows on Home (its own href and
- * icon), in registry order. Nothing for someone off the staff: their Home is
- * their own. Whether the person is in the mode at all is the mode's to say
- * (waiter mode: `public.order_mode`), so Home draws its part only then.
+ * icon), then each module with a page of its own and neither (its page's
+ * href), both in registry order. Nothing for someone off the staff: their
+ * Home is their own. Whether the person is in the mode at all is the mode's
+ * to say (waiter mode: `public.order_mode`), so Home draws its part only then.
  */
 export function moduleWidgets(
   manifests: readonly ModuleManifest[],
@@ -413,7 +421,18 @@ export function moduleWidgets(
       outside: false,
       mode: true as const,
     }));
-  return [...tabs, ...modes];
+  const pages = manifests.flatMap((m) => {
+    const icon = moduleIcon(m);
+    return m.nav === null &&
+      !m.mode &&
+      m.page &&
+      icon !== null &&
+      enabled.includes(m.key) &&
+      visible.has(m.key)
+      ? [{ key: m.key, href: m.page.href, icon, outside: false }]
+      : [];
+  });
+  return [...tabs, ...modes, ...pages];
 }
 
 /** The modes of the enabled modules, in registry order. */
@@ -428,19 +447,21 @@ export function moduleModes(
 
 /**
  * Whether the viewer may open the module's own screens: the module is on and
- * their role reaches its nav item. Never for someone off the staff, whose
- * `outsideStaff` screen checks its own permission: an accountant's
- * `/clock/pay` opens, `/clock` doesn't.
+ * their role reaches its nav item, or, for a module with no tab, its page
+ * (the hiring file's /me/file). A mode's screens check their own. Never for
+ * someone off the staff, whose `outsideStaff` screen checks its own
+ * permission: an accountant's `/clock/pay` opens, `/clock` doesn't.
  */
 export function canOpenModule(
   manifest: ModuleManifest,
   enabled: readonly ModuleKey[],
   viewer: Viewer,
 ): boolean {
+  const reach = manifest.nav ?? manifest.page ?? null;
   return (
     enabled.includes(manifest.key) &&
-    manifest.nav !== null &&
-    reaches(viewer.role, manifest.nav.minRole)
+    reach !== null &&
+    reaches(viewer.role, reach.minRole)
   );
 }
 

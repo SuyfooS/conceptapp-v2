@@ -27,6 +27,11 @@ export type ChoiceMenuProps = {
   onChange: (key: string) => void;
   /** Shown while no option is chosen yet. */
   placeholder?: string;
+  /**
+   * A choice still to make, said by the form around it ("חסר עוד שדה אחד"):
+   * marked for screen readers, so the form can take the person to it.
+   */
+  invalid?: boolean;
   className?: string;
 };
 
@@ -47,7 +52,8 @@ export function choiceShown(
  * Choosing one of a short list: a quiet button with the current value, and a
  * menu that floats beside it. Takes the place of a native select where a choice
  * sits inside a row. In a sheet the menu stays inside it, so it belongs to the
- * dialog for screen readers and keeps the business's colour.
+ * dialog for screen readers and keeps the business's colour. A longer list
+ * (the banks, the pension funds) scrolls within the room the screen has.
  */
 export function ChoiceMenu({
   label,
@@ -55,6 +61,7 @@ export function ChoiceMenu({
   options,
   onChange,
   placeholder,
+  invalid = false,
   className,
 }: ChoiceMenuProps) {
   const locale = useLocale();
@@ -75,6 +82,7 @@ export function ChoiceMenu({
       <DropdownMenu.Trigger
         ref={trigger}
         aria-label={label}
+        aria-invalid={invalid || undefined}
         className={cn(
           "pressable inline-flex min-h-11 items-center gap-1 rounded-[10px] font-medium text-ink-2",
           "focus-visible:outline-2 focus-visible:outline-accent [&_svg]:size-4",
@@ -89,7 +97,7 @@ export function ChoiceMenu({
           align="start"
           sideOffset={4}
           collisionPadding={12}
-          className="z-[60] min-w-44 rounded-[20px] bg-elevated p-1.5 shadow-float data-[state=open]:animate-[fade-in_150ms]"
+          className="z-[60] max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-44 overflow-y-auto rounded-[20px] bg-elevated p-1.5 shadow-float data-[state=open]:animate-[fade-in_150ms]"
         >
           <DropdownMenu.RadioGroup value={value} onValueChange={onChange}>
             {options.map((option) => (

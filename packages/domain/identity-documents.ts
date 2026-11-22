@@ -67,6 +67,33 @@ export function documentHint(number: string): string {
   return number.slice(-4).padStart(4, "0");
 }
 
+/** How long a document's number is once normalized, by its kind. */
+export const DOCUMENT_NUMBER_LENGTH = {
+  passport: { min: 5, max: 20 },
+  other: { min: 4, max: 20 },
+} as const;
+
+/** Another document's name: 2 to 40 characters, one line. */
+export const DOCUMENT_NAME_LENGTH = { min: 2, max: 40 } as const;
+
+/**
+ * Why a typed passport's or other document's number can't be kept, as a
+ * screen says it under the field before anything is sent: a character
+ * other than English letters and digits, or fewer than its kind has. Null
+ * when it can, or while it is empty. The same rules as the schemas below.
+ */
+export function documentNumberProblem(
+  kind: keyof typeof DOCUMENT_NUMBER_LENGTH,
+  input: string,
+): "invalid" | "short" | null {
+  if (cleanTyped(input).trim() === "") return null;
+  const number = normalizeDocumentNumber(input);
+  if (number === null || number.length > DOCUMENT_NUMBER_LENGTH[kind].max) {
+    return "invalid";
+  }
+  return number.length < DOCUMENT_NUMBER_LENGTH[kind].min ? "short" : null;
+}
+
 /** A document number as typed, `min` to `max` characters once normalized. */
 function documentNumberSchema(min: number, max: number) {
   return z
@@ -92,15 +119,21 @@ const expiresOn = z.iso
   });
 
 export const passportSchema = z.object({
-  number: documentNumberSchema(5, 20),
+  number: documentNumberSchema(
+    DOCUMENT_NUMBER_LENGTH.passport.min,
+    DOCUMENT_NUMBER_LENGTH.passport.max,
+  ),
   country,
   expiresOn: expiresOn.optional(),
 });
 
 export const otherDocumentSchema = z.object({
   /** What the document is called, e.g. "תעודת מבקש מקלט". */
-  name: oneLineSchema(2, 40),
-  number: documentNumberSchema(4, 20),
+  name: oneLineSchema(DOCUMENT_NAME_LENGTH.min, DOCUMENT_NAME_LENGTH.max),
+  number: documentNumberSchema(
+    DOCUMENT_NUMBER_LENGTH.other.min,
+    DOCUMENT_NUMBER_LENGTH.other.max,
+  ),
   country: country.optional(),
   expiresOn: expiresOn.optional(),
 });

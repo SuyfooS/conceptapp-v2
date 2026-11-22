@@ -20,6 +20,7 @@ import {
   saveMyProfileAction,
   setMyPhotoAction,
 } from "./actions";
+import { currentFileSummary, FileSummary } from "./file-summary";
 import { MeView, type PhotoLock } from "./me-view";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -38,6 +39,7 @@ export default async function MePage() {
     documents,
     documentsHome,
     modes,
+    file,
   ] = await Promise.all([
     currentMember(),
     currentWording(),
@@ -47,6 +49,8 @@ export default async function MePage() {
     currentDocumentsHome(),
     // The ways into the modes the person is in (waiter mode, P4).
     currentWording().then((words) => currentModeRows("me", words)),
+    // The person's own hiring file, where it is on for them (H5a).
+    currentFileSummary(),
   ]);
   const membership = member?.membership;
   // The layout has already sent these people elsewhere.
@@ -92,6 +96,7 @@ export default async function MePage() {
         <SwitchBusinessSection businesses={businesses} wording={wording} />
       }
       modes={modes.length > 0 ? <ModeRows rows={modes} /> : null}
+      file={file ? <FileSummary data={file} wording={wording} /> : null}
       documents={
         documents ? (
           <MyDocumentsSection

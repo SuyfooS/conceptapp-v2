@@ -257,6 +257,7 @@ describe("getCurrentMember", () => {
           bio: null,
           cover: null,
           address_form: null,
+          locale: "en",
         },
         error: null,
       },
@@ -287,6 +288,22 @@ describe("getCurrentMember", () => {
     expect(member?.name).toBe("Galit X");
     // The console's, the same in every business.
     expect(member?.ownName).toBe("Galit Books");
+  });
+
+  it("reads the language they chose, and Hebrew for one the app lacks", async () => {
+    expect((await getCurrentMember(catalogue))?.profile.locale).toBe("en");
+    db.tables.profiles = {
+      data: {
+        full_name: "Galit Books",
+        avatar_path: null,
+        bio: null,
+        cover: null,
+        address_form: null,
+        locale: "fr",
+      },
+      error: null,
+    };
+    expect((await getCurrentMember(catalogue))?.profile.locale).toBe("he");
   });
 
   it("has their own name twice where the business gave none", async () => {

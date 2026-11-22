@@ -58,6 +58,15 @@ export function parseTypedDate(parts: DateParts): TypedDate {
   };
 }
 
+/**
+ * Whether the year was typed short, one to three digits, as people often
+ * write it ("1/1/95"): the screen then says that a year has four, rather
+ * than only that the date isn't one.
+ */
+export function isShortYear(parts: DateParts): boolean {
+  return /^\d{1,3}$/.test(digits(parts.year));
+}
+
 /** A day (`YYYY-MM-DD`) as the three fields show it, or empty ones for null. */
 export function datePartsOf(date: string | null): DateParts {
   if (!date) return EMPTY_DATE;

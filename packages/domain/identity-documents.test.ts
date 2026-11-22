@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   documentHint,
+  documentNumberProblem,
   ID_KINDS,
   ISO_COUNTRIES,
   identityDocumentSchema,
@@ -45,6 +46,42 @@ describe("normalizeDocumentNumber", () => {
       expect(normalizeDocumentNumber(input)).toBeNull();
     },
   );
+});
+
+describe("documentNumberProblem", () => {
+  it("says a number too short for its kind before it is sent", () => {
+    expect(documentNumberProblem("passport", "1234")).toBe("short");
+    expect(documentNumberProblem("passport", "12345")).toBeNull();
+    expect(documentNumberProblem("other", "123")).toBe("short");
+    expect(documentNumberProblem("other", "AB-12")).toBeNull();
+  });
+
+  it("says a number that isn't letters and digits, or is too long", () => {
+    expect(documentNumberProblem("passport", "AB.123")).toBe("invalid");
+    expect(documentNumberProblem("other", "1".repeat(21))).toBe("invalid");
+  });
+
+  it("says nothing while it is empty", () => {
+    expect(documentNumberProblem("passport", "")).toBeNull();
+    expect(documentNumberProblem("other", "  ")).toBeNull();
+  });
+
+  it("agrees with the schemas", () => {
+    for (const number of [
+      "1234",
+      "12345",
+      "AB.123",
+      "ab 1234567",
+      "1".repeat(21),
+    ]) {
+      expect(documentNumberProblem("passport", number) === null, number).toBe(
+        passportSchema.safeParse({ number, country: "UA" }).success,
+      );
+      expect(documentNumberProblem("other", number) === null, number).toBe(
+        otherDocumentSchema.safeParse({ name: "אשרה", number }).success,
+      );
+    }
+  });
 });
 
 describe("documentHint", () => {

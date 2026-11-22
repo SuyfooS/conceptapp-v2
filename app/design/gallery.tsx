@@ -89,6 +89,7 @@ import enMessages from "@/messages/en.json";
 import heMessages from "@/messages/he.json";
 import { GalleryChat } from "./gallery-chat";
 import { GalleryFileField } from "./gallery-documents";
+import { GalleryFile } from "./gallery-file";
 import { GalleryOrderTaking } from "./gallery-order-taking";
 import { listPhotos } from "./list-photos";
 import { portraits } from "./portraits";
@@ -630,6 +631,11 @@ function GalleryBody({
 
         <Section title={t("fileField")}>
           <GalleryFileField />
+        </Section>
+
+        {/* The hiring file (profile H5a): its parts, and its mock screens. */}
+        <Section title={t("fileTitle")}>
+          <GalleryFile />
         </Section>
 
         {/* Waiter mode (S0): its parts, and its mock screens. */}

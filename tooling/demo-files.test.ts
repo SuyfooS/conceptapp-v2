@@ -6,9 +6,10 @@ import { describe, expect, it } from "vitest";
 
 // The demo businesses' hiring files (profile H4,
 // 20261126000200_employee_files.sql): made-up values in the demo format, the
-// module off and writes closed in both, locally and hosted, until Orel
-// approves the screens (anyone at the door is any demo person, and the next
-// visitor would read what they typed). The definition's "files" cases are
+// module off and writes closed in both hosted, until Orel approves the
+// screens (anyone at the door is any demo person, and the next visitor would
+// read what they typed); locally the restaurant takes writes for the browser
+// tests of the worker's own file (H5a). The definition's "files" cases are
 // each a person of that business and a case private.seed_demo_files knows,
 // and the values the seed writes check as real ones would.
 const root = join(__dirname, "..");
@@ -66,20 +67,33 @@ function arrayOf(body: string, name: string): string[] {
 }
 
 describe("the demo's hiring files", () => {
-  it("stay closed and off, locally and hosted", () => {
+  it("stay off, and closed but for the local restaurant's", () => {
     for (const file of ["supabase/seed.sql", "supabase/hosted-demo.sql"]) {
       const sql = read(file);
-      expect(sql, file).not.toContain('"fileWrites"');
       // Nothing switches the module on: no definition, and no statement,
-      // names it (the comments name the migration).
+      // names it (the comments name the migration). The browser tests of
+      // the worker's own file switch it on and off themselves (H5a).
       expect(sql, file).not.toMatch(/["']employee_files["']/);
       for (const definition of definitions(sql)) {
-        expect(definition.fileWrites, definition.slug).toBeUndefined();
         expect(JSON.stringify(definition), definition.slug).not.toContain(
           "employee_files",
         );
       }
     }
+    // Hosted, anyone at the door is any demo person, and the next visitor
+    // would read what they typed: closed there, always.
+    const hosted = read("supabase/hosted-demo.sql");
+    expect(hosted).not.toContain('"fileWrites"');
+    for (const definition of definitions(hosted)) {
+      expect(definition.fileWrites, definition.slug).toBeUndefined();
+    }
+    // Locally, the restaurant takes writes for e2e/employee-file.spec.ts;
+    // the shop stays closed, as the hosted ones are.
+    const local = Object.fromEntries(
+      definitions(read("supabase/seed.sql")).map((d) => [d.slug, d]),
+    );
+    expect(local["demo-restaurant"]?.fileWrites).toBe(true);
+    expect(local["demo-shop"]?.fileWrites).toBeUndefined();
   });
 
   it("name a person of their own business and a case the seed knows", () => {

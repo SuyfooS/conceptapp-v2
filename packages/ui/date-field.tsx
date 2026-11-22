@@ -21,6 +21,8 @@ export type DateFieldProps = {
   disabled?: boolean;
   /** The first field gets the focus when the error is said. */
   firstRef?: Ref<HTMLInputElement>;
+  /** The focus left the three fields: what was typed can be judged now. */
+  onBlur?: () => void;
 };
 
 /** How many digits each field holds before the next one takes the typing. */
@@ -44,6 +46,7 @@ export function DateField({
   autoComplete = "off",
   disabled = false,
   firstRef,
+  onBlur,
 }: DateFieldProps) {
   const id = useId();
   const messageId = `${id}-message`;
@@ -91,7 +94,13 @@ export function DateField({
   );
 
   return (
-    <fieldset className="m-0 flex min-w-0 flex-col gap-1.5 border-0 p-0">
+    <fieldset
+      // Moving from one of the three to the next is still inside.
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) onBlur?.();
+      }}
+      className="m-0 flex min-w-0 flex-col gap-1.5 border-0 p-0"
+    >
       <legend className="mb-1.5 font-medium text-ink text-sm">{label}</legend>
       <div dir="ltr" className="flex items-start gap-2 self-start">
         {field("day", "w-16")}

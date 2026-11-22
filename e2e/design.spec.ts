@@ -3,6 +3,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { createTranslator } from "next-intl";
 import { restaurantWording } from "../app/design/order-taking/data";
+import en from "../messages/en.json" with { type: "json" };
 import he from "../messages/he.json" with { type: "json" };
 import { daysLeftToRight } from "../packages/domain/share";
 import { type MessageTree, mergeWording } from "../packages/domain/wording";
@@ -149,7 +150,31 @@ const PAGES = [
   "/design/shell/me",
   "/design/shell/me?state=empty",
   "/design/shell/me?state=demo",
+  // The hiring file's way in from the profile (H5a): the card and the rows,
+  // and every part in.
+  "/design/shell/me?file=missing",
+  "/design/shell/me?file=done",
   "/design/shell/me/businesses",
+  // The worker's own file (H5a) on Noa's twin: stopped at the account, each
+  // step, a minor's birth date, an account the check warns about and its
+  // code, an account saved, everything sent, nothing yet (the welcome), and
+  // in English.
+  "/design/shell/me/file",
+  "/design/shell/me/file?step=start",
+  "/design/shell/me/file?step=identity",
+  "/design/shell/me/file?step=identity&state=minor",
+  "/design/shell/me/file?step=address",
+  "/design/shell/me/file?step=bank",
+  "/design/shell/me/file?step=bank&state=warning",
+  "/design/shell/me/file?step=bank&state=code",
+  "/design/shell/me/file?step=bank&state=hold",
+  "/design/shell/me/file?step=bank&state=saved",
+  "/design/shell/me/file?step=pension",
+  "/design/shell/me/file?step=form101",
+  "/design/shell/me/file?state=done",
+  "/design/shell/me/file?state=new",
+  "/design/shell/me/file?lang=en",
+  "/design/shell/me/file?lang=en&step=bank",
   "/design/shell/manage",
   // Someone at view on the management page (roles R7), and a module's
   // settings without the module's own edit.
@@ -5441,4 +5466,643 @@ test("the owner's line counts the day's fixes", async ({ page }) => {
   await expect(line.filter({ visible: true })).toBeVisible();
   await expect(line).toHaveAttribute("href", "/design/shell/manage/activity");
   await expect(line).not.toContainText("₪");
+});
+
+// The file demo, hydrated: its buttons answer and its boxes are laid out
+// (CI pressed and measured before it was, twice).
+async function openFileDemo(page: Page, url: string) {
+  await page.goto(url);
+  await page.waitForLoadState("networkidle");
+}
+
+// The worker's own file on Noa's twin (profile H5a). An account number the
+// check doubts is said in words, kept with "המספר נכון, לשמור", and saved
+// past the twin's code; the twin keeps nothing.
+test("the file demo warns about an account number in words and saves past it", async ({
+  page,
+}) => {
+  const f = he.app.file;
+  await openFileDemo(page, "/design/shell/me/file?step=bank&state=warning");
+  const bank = page.getByRole("region", { name: f.steps.name.bank });
+  await expect(bank.getByText(f.bank.warning.checkDigit)).toBeVisible();
+  // The step's own: the dock's on a phone and a tablet, the section's on a
+  // desktop (whose summary offers the same press).
+  const confirm = bank
+    .getByRole("button", { name: f.bank.confirm, exact: true })
+    .filter({ visible: true });
+  // Only the warning is in the way: said above the action, which can be
+  // pressed and takes the person to the number.
+  const checkFirst = page
+    .getByText(heT("app.file.bank.checkFirst", { keep: f.bank.keep }))
+    .filter({ visible: true });
+  await expect(checkFirst).toBeVisible();
+  await expect(confirm).toBeEnabled();
+  await confirm.click();
+  await expect(bank.getByLabel(f.bank.account)).toBeFocused();
+  await expect(page.getByLabel(f.bank.code.label)).toHaveCount(0);
+  await bank.getByRole("button", { name: f.bank.keep }).click();
+  await expect(
+    bank.getByText(heT("app.file.bank.kept", { business: "מסעדת הדגמה" })),
+  ).toBeVisible();
+  await expect(checkFirst).toHaveCount(0);
+  await confirm.click();
+  const code = page.getByLabel(f.bank.code.label);
+  await expect(code).toBeVisible();
+  await code.fill("123456");
+  await expect(
+    bank.getByText(
+      heT("app.file.bank.savedWarned", { business: "מסעדת הדגמה" }),
+    ),
+  ).toBeVisible();
+  await expect(bank.getByText("•••0002")).toBeVisible();
+  await expectCleanPage(page);
+});
+
+test("the file demo's own ID shows for a minute", async ({ page }) => {
+  const f = he.app.file;
+  await page.clock.install();
+  await openFileDemo(page, "/design/shell/me/file?step=identity");
+  const identity = page.getByRole("region", { name: f.steps.name.identity });
+  await expect(identity.getByText("•••0018")).toBeVisible();
+  await identity.getByRole("button", { name: f.masked.show }).click();
+  await expect(identity.getByText("000000018")).toBeVisible();
+  await page.clock.fastForward(60_000);
+  await expect(identity.getByText("•••0018")).toBeVisible();
+  await expect(identity.getByText("000000018")).toHaveCount(0);
+});
+
+// One step at a time under the steps bar on a phone, the steps beside the
+// one on screen on a tablet, and every step with the summary's one main
+// action on a desktop: the same file, the same words.
+test("the file demo reads the same in each device's shape", async ({
+  page,
+}, testInfo) => {
+  const f = he.app.file;
+  const project = testInfo.project.name;
+  await openFileDemo(page, "/design/shell/me/file");
+  await expect(
+    page.getByRole("heading", {
+      level: 1,
+      name: heT("app.file.title", { business: "מסעדת הדגמה" }),
+    }),
+  ).toBeVisible();
+  // The steps' own sections, by their titles.
+  const sections = page
+    .getByRole("region", {
+      name: new RegExp(`^(${Object.values(f.steps.name).join("|")})$`),
+    })
+    .filter({ visible: true });
+  const steps = page
+    .getByRole("complementary", { name: f.steps.title })
+    .filter({ visible: true });
+  // Stopped at the account, the step on screen: the summary's one main
+  // action is the account's own, never a way to where the person is.
+  const main = steps.getByRole("button", { name: f.bank.confirm });
+  const toBank = page
+    .getByRole("button", { name: f.actions.finish.bank })
+    .filter({ visible: true });
+  if (project === "phone") {
+    await expect(
+      page.getByText(heT("app.file.steps.count", { current: 4, count: 6 })),
+    ).toBeVisible();
+    await expect(sections).toHaveCount(1);
+    await expect(steps).toHaveCount(0);
+  } else if (project === "tablet") {
+    await expect(steps).toHaveCount(1);
+    await expect(sections).toHaveCount(1);
+    await expect(
+      steps.getByRole("link", {
+        name: `${f.steps.name.bank} · ${f.steps.state.open}`,
+      }),
+    ).toHaveAttribute("aria-current", "step");
+  } else {
+    await expect(steps).toHaveCount(1);
+    await expect(sections).toHaveCount(6);
+    await expect(main).toBeVisible();
+    await expect(toBank).toHaveCount(0);
+  }
+  await expect(
+    page.getByRole("region", { name: f.steps.name.bank }),
+  ).toBeVisible();
+});
+
+// On a desktop the step that keeps the file back is on screen already: the
+// summary's accent action does what that step's own does, so a press always
+// shows something (H5a's check of the second review): it says what is
+// missing and goes there, sends the code, offers nothing while the code's
+// boxes are up (as the dock doesn't: the code confirms itself), and goes on
+// once the account is in (H5a's last check).
+test("the file demo's summary does the open step's own action on a desktop", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "The summary is a desktop's.");
+  const f = he.app.file;
+  await openFileDemo(page, "/design/shell/me/file");
+  const bank = page.getByRole("region", { name: f.steps.name.bank });
+  const summary = page.getByRole("complementary", { name: f.steps.title });
+  const own = summary.getByRole("button", { name: f.bank.confirm });
+  await expect(own).toBeEnabled();
+
+  await own.click();
+  await expect(bank.locator('[aria-invalid="true"]').first()).toBeFocused();
+  await expect(
+    bank
+      .getByText(heT("app.file.missingRequired", { count: 5 }))
+      .filter({ visible: true }),
+  ).toBeVisible();
+
+  await bank.getByLabel(f.bank.paste).fill("12-600-100001");
+  await bank.getByRole("radio", { name: f.bank.self, exact: true }).check();
+  await bank
+    .getByRole("checkbox", {
+      name: heT("app.file.bank.instruction", {
+        form: "f",
+        business: "מסעדת הדגמה",
+      }),
+    })
+    .check();
+  await own.click();
+  const code = page.getByLabel(f.bank.code.label);
+  await expect(code).toBeVisible();
+  // With the boxes up, no press named for a confirmation that only moves
+  // the focus: why the file waits is said, and the digits stay.
+  await code.pressSequentially("12");
+  await expect(own).toHaveCount(0);
+  await expect(summary.getByText(f.actions.sendWaits)).toBeVisible();
+  await expect(bank.locator('input[name="code"]')).toHaveValue("12");
+
+  await code.pressSequentially("3456");
+  await expect(
+    bank.getByText(heT("app.file.bank.saved", { business: "מסעדת הדגמה" })),
+  ).toBeVisible();
+  await summary.getByRole("button", { name: f.actions.continue }).click();
+  await expect(page).toHaveURL(/step=pension/);
+});
+
+// Pension, the step on screen with nothing chosen: the summary's action says
+// so and goes to the first answer.
+test("the file demo's summary marks the pension's answer on a desktop", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "The summary is a desktop's.");
+  const f = he.app.file;
+  await openFileDemo(page, "/design/shell/me/file?state=saved&step=pension");
+  const pension = page.getByRole("region", { name: f.steps.name.pension });
+  await page
+    .getByRole("complementary", { name: f.steps.title })
+    .getByRole("button", { name: f.actions.savePension })
+    .click();
+  await expect(
+    pension.getByRole("radio", { name: f.pension.yes }),
+  ).toBeFocused();
+  await expect(page).toHaveURL(/step=pension/);
+});
+
+/** A step's main action: the dock's on a phone and a tablet, its own save on a desktop. */
+const fileStepAction = (
+  page: Page,
+  region: Locator,
+  project: string,
+  desktopLabel: string,
+) =>
+  project === "desktop"
+    ? region.getByRole("button", { name: desktopLabel })
+    : page
+        .getByRole("button", { name: he.app.file.actions.next, exact: true })
+        .filter({ visible: true });
+
+// Every refusal of a filled step has words, and its main action can be
+// pressed to show them: an old five-digit zip, an apartment past its ten
+// characters, a birth year of two digits.
+test("the file demo says under each field what keeps a step from saving", async ({
+  page,
+}, testInfo) => {
+  const f = he.app.file;
+  const project = testInfo.project.name;
+  await openFileDemo(page, "/design/shell/me/file?step=address");
+  const address = page.getByRole("region", { name: f.steps.name.address });
+  const apartment = address.getByLabel(
+    heT("app.file.optionalField", { field: f.address.apartment }),
+  );
+  await apartment.fill("12345678901");
+  await expect(
+    address.getByText(
+      f.tooLong.replace(/<\/?ltr>/g, "").replace("{max}", "10"),
+    ),
+  ).toBeVisible();
+  await apartment.fill("3");
+  await address
+    .getByLabel(heT("app.file.optionalField", { field: f.address.zip }))
+    .fill("61000");
+  const saveAddress = fileStepAction(
+    page,
+    address,
+    project,
+    f.actions.saveAddress,
+  );
+  await expect(saveAddress).toBeEnabled();
+  await saveAddress.click();
+  await expect(address.getByText(f.address.zipInvalid)).toBeVisible();
+  await expect(page).toHaveURL(/step=address/);
+
+  await openFileDemo(page, "/design/shell/me/file?step=identity");
+  const identity = page.getByRole("region", { name: f.steps.name.identity });
+  const year = identity
+    .getByRole("group", { name: f.identity.birthDate })
+    .getByLabel(f.date.year);
+  await year.fill("95");
+  await year.blur();
+  await expect(identity.getByText(f.date.yearShort)).toBeVisible();
+  // Every box shows a value: nothing is said to be missing.
+  await expect(
+    page.getByText(heT("app.file.missingRequired", { count: 1 })),
+  ).toHaveCount(0);
+  await expect(
+    fileStepAction(page, identity, project, f.actions.saveIdentity),
+  ).toBeEnabled();
+});
+
+// A town typed and left: the one it names is chosen; a choice made stays
+// until another is; and words that choose nothing say so.
+test("the file demo never takes a town typed for one chosen", async ({
+  page,
+}) => {
+  const f = he.app.file;
+  await openFileDemo(page, "/design/shell/me/file?step=address");
+  const address = page.getByRole("region", { name: f.steps.name.address });
+  const town = address.getByRole("combobox", { name: f.address.city });
+  await expect(town).toHaveValue("תל אביב - יפו");
+
+  await town.fill("חיפה");
+  await expect(
+    page.getByRole("option", { name: "חיפה", exact: true }),
+  ).toBeVisible();
+  await town.blur();
+  await expect(town).toHaveValue("חיפה");
+
+  // Several towns: the one chosen before stays.
+  await town.fill("מודיעין");
+  await expect(page.getByRole("option").first()).toBeVisible();
+  await town.blur();
+  await expect(town).toHaveValue("חיפה");
+  await expect(address.getByText(f.address.cityUnpicked)).toHaveCount(0);
+
+  // Emptied, then words that choose nothing: said under the field.
+  await town.fill("");
+  await town.blur();
+  await town.fill("מודיעין");
+  await expect(page.getByRole("option").first()).toBeVisible();
+  await town.blur();
+  await expect(town).toHaveValue("מודיעין");
+  await expect(address.getByText(f.address.cityUnpicked)).toBeVisible();
+  await expect(town).toHaveAttribute("aria-invalid", "true");
+});
+
+// The English file draws its dock in a left-to-right frame inside the
+// Hebrew shell: shrunk on a phone, the tab bar keeps its corner and the
+// dock stays beside it, never over it.
+test("the file demo in English keeps its dock beside the shrunk tab bar", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "phone", "Only a phone's bar shrinks.");
+  await page.setViewportSize({ width: 390, height: 600 });
+  await openFileDemo(page, "/design/shell/me/file?lang=en&step=address");
+  const next = page
+    .getByRole("button", { name: en.app.file.actions.next, exact: true })
+    .filter({ visible: true });
+  await expect(next).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, 500));
+  await expect(page.locator("nav[data-tab-compact]")).toHaveCount(1);
+  const bar = page.locator("nav[data-tab-compact] ul");
+  await expect
+    .poll(async () => {
+      const [button, tabs] = await Promise.all([
+        next.boundingBox(),
+        bar.boundingBox(),
+      ]);
+      if (!button || !tabs) return "unseen";
+      const apart =
+        button.x + button.width <= tabs.x + 1 ||
+        tabs.x + tabs.width <= button.x + 1;
+      return apart ? "beside" : "over";
+    })
+    .toBe("beside");
+});
+
+// A laptop leaves less than the screen's 900px: the summary's action stays
+// in view beside the steps, a new file's six included. A new file has
+// nothing to send yet: the welcome's way in is the page's main action, and
+// the summary's leads, quiet, to the first detail.
+test("the file demo keeps its main action in view on a laptop", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "The summary is a desktop's.");
+  await page.setViewportSize({ width: 1440, height: 780 });
+  await openFileDemo(page, "/design/shell/me/file?state=new");
+  const f = he.app.file;
+  await expect(
+    page
+      .getByRole("button", { name: f.welcome.start })
+      .filter({ visible: true }),
+  ).toHaveCount(1);
+  await expect(
+    page.getByRole("button", {
+      name: heT("app.file.actions.send", { business: "מסעדת הדגמה" }),
+    }),
+  ).toHaveCount(0);
+  const finish = page
+    .getByRole("button", { name: f.actions.finish.identity })
+    .filter({ visible: true });
+  await expect(finish).toHaveCount(1);
+  await page.evaluate(() => window.scrollTo(0, 600));
+  await expect(finish).toBeInViewport({ ratio: 1 });
+});
+
+// The welcome's card over the hero grows down as its words do (a narrow
+// phone, larger text), never up over the title.
+test("the file demo's welcome keeps its card under the title", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "phone", "A narrow phone's.");
+  await page.setViewportSize({ width: 320, height: 700 });
+  await openFileDemo(page, "/design/shell/me/file?state=new");
+  const title = page.getByText(
+    heT("app.file.welcome.title", { business: "מסעדת הדגמה" }),
+  );
+  const card = page
+    .getByText(heT("app.file.welcome.body", { count: 6 }))
+    .locator("..");
+  await expect(title).toBeVisible();
+  await expect(card).toBeVisible();
+  const [titleBox, cardBox] = await Promise.all([
+    title.boundingBox(),
+    card.boundingBox(),
+  ]);
+  expect(titleBox && cardBox).toBeTruthy();
+  if (!titleBox || !cardBox) return;
+  expect(cardBox.y).toBeGreaterThanOrEqual(titleBox.y + titleBox.height);
+});
+
+// The twin keeps nothing, so its language is its address: the button above
+// and step 0 switch it there, and step 0 shows the file's language until
+// one is picked on it (H5a's second review).
+test("the file demo switches language with the button, and step 0 follows", async ({
+  page,
+}) => {
+  const f = he.app.file;
+  const e = en.app.file;
+  await openFileDemo(page, "/design/shell/me/file?step=start");
+  await page.getByRole("button", { name: f.language.switch }).click();
+  await expect(page).toHaveURL(/[?&]lang=en/);
+  const english = page.locator('[dir="ltr"][lang="en"]');
+  const first = english.getByRole("region", { name: e.steps.name.start });
+  await expect(first.getByRole("radio", { name: e.start.en })).toBeChecked();
+  await expect(
+    first.getByRole("radio", { name: e.start.he }),
+  ).not.toBeChecked();
+  await english.getByRole("button", { name: e.language.switch }).click();
+  await expect(page).not.toHaveURL(/lang=en/);
+  await expect(
+    page
+      .getByRole("region", { name: f.steps.name.start })
+      .getByRole("radio", { name: f.start.he }),
+  ).toBeChecked();
+});
+
+// A step opened from another takes the focus at its title: a keyboard and a
+// screen reader go on from there, not from the top of the page.
+test("the file demo puts the focus on the step it opens", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name === "desktop",
+    "The dock is a phone's and a tablet's.",
+  );
+  const f = he.app.file;
+  await openFileDemo(page, "/design/shell/me/file?step=start");
+  await page
+    .getByRole("button", { name: f.actions.next, exact: true })
+    .filter({ visible: true })
+    .click();
+  await expect(page).toHaveURL(/step=identity/);
+  await expect(
+    page.getByRole("heading", { level: 2, name: f.steps.name.identity }),
+  ).toBeFocused();
+});
+
+// A desktop's account says what is missing beside its own action, which can
+// always be pressed, and goes to the first field it is about.
+test("the file demo's account on a desktop says what is missing", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "A desktop's own save.");
+  const f = he.app.file;
+  await openFileDemo(page, "/design/shell/me/file?step=bank");
+  const bank = page.getByRole("region", { name: f.steps.name.bank });
+  const confirm = bank.getByRole("button", { name: f.bank.confirm });
+  await expect(confirm).toBeEnabled();
+  await confirm.click();
+  await expect(
+    bank
+      .getByText(heT("app.file.missingRequired", { count: 5 }))
+      .filter({ visible: true }),
+  ).toBeVisible();
+  await expect(bank.locator('[aria-invalid="true"]').first()).toBeFocused();
+});
+
+// The steps' lifted shadow is never cut into a box: a tablet's list has no
+// scroll box at all, and a desktop's leaves the shadow its room.
+test("the file demo's steps keep their shadow whole", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "phone", "A phone has no list beside.");
+  await openFileDemo(page, "/design/shell/me/file");
+  const box = page
+    .getByRole("complementary", { name: he.app.file.steps.title })
+    .getByRole("list")
+    .first()
+    .locator("..");
+  const style = await box.evaluate((element) => {
+    const css = getComputedStyle(element);
+    return {
+      overflow: css.overflowY,
+      start: Number.parseFloat(css.paddingInlineStart),
+      end: Number.parseFloat(css.paddingInlineEnd),
+    };
+  });
+  if (testInfo.project.name === "tablet") {
+    expect(style.overflow).toBe("visible");
+  } else {
+    // The float shadow reaches about 30px beside the list.
+    expect(style.start).toBeGreaterThanOrEqual(30);
+    expect(style.end).toBeGreaterThanOrEqual(30);
+  }
+});
+
+// A desktop shows every step at once: one way back to the profile (above
+// them) and one way to the notice (beside them), never one per step.
+test("the file demo says 'later' and a step's 'why' only below a desktop", async ({
+  page,
+}, testInfo) => {
+  const f = he.app.file;
+  await openFileDemo(page, "/design/shell/me/file?step=address");
+  const later = page
+    .getByRole("link", { name: f.actions.later })
+    .filter({ visible: true });
+  const why = page
+    .getByRole("button", { name: f.why, exact: true })
+    .filter({ visible: true });
+  const expected = testInfo.project.name === "desktop" ? 0 : 1;
+  await expect(later).toHaveCount(expected);
+  await expect(why).toHaveCount(expected);
+});
+
+// The file goes only once its details are in: until then its action leads
+// to the first one open. Done says "סיימת" only with nothing open, and its
+// main action is the way back to the profile.
+test("the file demo sends only a file with its details in", async ({
+  page,
+}) => {
+  const f = he.app.file;
+  await openFileDemo(page, "/design/shell/me/file?step=form101");
+  await expect(
+    page.getByRole("button", {
+      name: heT("app.file.actions.send", { business: "מסעדת הדגמה" }),
+    }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: f.actions.finish.bank })
+    .filter({ visible: true })
+    .click();
+  await expect(page).toHaveURL(/step=bank/);
+
+  await openFileDemo(page, "/design/shell/me/file?step=done");
+  await expect(
+    page.getByRole("heading", {
+      name: heT("app.file.done.titleLeft", { count: 3 }),
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: f.done.title, exact: true }),
+  ).toHaveCount(0);
+
+  await openFileDemo(page, "/design/shell/me/file?state=done");
+  await expect(
+    page.getByRole("heading", { name: f.done.title, exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: f.done.profile })
+    .filter({ visible: true })
+    .click();
+  await expect(page).toHaveURL(/\/design\/shell\/me\?file=missing$/);
+});
+
+// A number shown and the screen left: Next keeps the screen to show again,
+// and it comes back with the dots, never the number.
+test("the file demo's own ID is hidden again after leaving the screen", async ({
+  page,
+}) => {
+  const f = he.app.file;
+  await openFileDemo(page, "/design/shell/me/file?step=identity");
+  const identity = page.getByRole("region", { name: f.steps.name.identity });
+  await identity.getByRole("button", { name: f.masked.show }).click();
+  await expect(identity.getByText("000000018")).toBeVisible();
+  await page.getByRole("link", { name: f.back, exact: true }).click();
+  await expect(page).toHaveURL(/\/design\/shell\/me\?file=missing$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/step=identity/);
+  await expect(identity.getByText("•••0018")).toBeVisible();
+  await expect(page.getByText("000000018")).toHaveCount(0);
+});
+
+// "החלפת החשבון" by mistake: "השארת החשבון הנוכחי" goes back to the saved one.
+test("the file demo goes back to the saved account", async ({ page }) => {
+  const f = he.app.file;
+  await openFileDemo(page, "/design/shell/me/file?step=bank&state=saved");
+  const bank = page.getByRole("region", { name: f.steps.name.bank });
+  await bank.getByRole("button", { name: f.bank.change }).click();
+  await expect(bank.getByLabel(f.bank.paste)).toBeFocused();
+  await bank.getByRole("button", { name: f.bank.keepCurrent }).click();
+  await expect(bank.getByText("•••0001")).toBeVisible();
+  await expect(bank.getByLabel(f.bank.paste)).toHaveCount(0);
+});
+
+// The week after a phone change: the day it opens, and no code until then.
+test("the file demo holds the account's code after a phone change", async ({
+  page,
+}, testInfo) => {
+  const f = he.app.file;
+  await openFileDemo(page, "/design/shell/me/file?step=bank&state=hold");
+  const words = heT("app.file.bank.phoneHold", { date: "27 בנובמבר 2026" });
+  const bank = page.getByRole("region", { name: f.steps.name.bank });
+  await expect(bank.getByText(words).filter({ visible: true })).toBeVisible();
+  await expect(
+    bank
+      .getByRole("button", { name: f.bank.confirm, exact: true })
+      .filter({ visible: true }),
+  ).toBeDisabled();
+  if (testInfo.project.name !== "desktop") return;
+  // The summary's action is the account's own: held too, and says why.
+  const summary = page.getByRole("complementary", { name: f.steps.title });
+  await expect(
+    summary.getByRole("button", { name: f.bank.confirm }),
+  ).toBeDisabled();
+  await expect(summary.getByText(words)).toBeVisible();
+});
+
+// A move with this year's 101 handed in: an updated one is due within a
+// week, said on the address step, which stays; the same press again goes
+// on. The address saved as it was is no move, and goes on at once, as in
+// the app.
+test("the file demo says an updated 101 is due after a move", async ({
+  page,
+}, testInfo) => {
+  const f = he.app.file;
+  const project = testInfo.project.name;
+  await openFileDemo(page, "/design/shell/me/file?state=done&step=address");
+  const address = page.getByRole("region", { name: f.steps.name.address });
+  const save = fileStepAction(page, address, project, f.actions.saveAddress);
+  const due = address.getByText(
+    heT("app.file.changeDue", { date: "1 בדצמבר 2026" }),
+  );
+  await address.getByLabel(f.address.number, { exact: true }).fill("14");
+  await save.click();
+  await expect(due).toBeVisible();
+  await expect(page).toHaveURL(/step=address/);
+  await save.click();
+  await expect(page).toHaveURL(/step=bank/);
+
+  await openFileDemo(page, "/design/shell/me/file?state=done&step=address");
+  await save.click();
+  await expect(page).toHaveURL(/step=bank/);
+  await expect(due).toHaveCount(0);
+});
+
+// A document's number too short says how many characters it needs.
+test("the file demo says how long a document's number needs to be", async ({
+  page,
+}, testInfo) => {
+  const f = he.app.file;
+  await openFileDemo(page, "/design/shell/me/file?step=identity");
+  const identity = page.getByRole("region", { name: f.steps.name.identity });
+  await identity
+    .getByRole("radio", { name: f.identity.other, exact: true })
+    .check();
+  await identity.getByLabel(f.identity.otherName).fill("תעודת עובד");
+  await identity.getByLabel(f.identity.otherNumber).fill("AB1");
+  await fileStepAction(
+    page,
+    identity,
+    testInfo.project.name,
+    f.actions.saveIdentity,
+  ).click();
+  await expect(
+    identity.getByText(
+      heT.markup("app.file.identity.documentShort", {
+        min: 4,
+        ltr: (chunks: string) => chunks,
+      }),
+    ),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/step=identity/);
 });
