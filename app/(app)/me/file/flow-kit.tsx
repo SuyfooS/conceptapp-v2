@@ -1,9 +1,9 @@
 "use client";
 
-import {
-  type FileStep,
-  previousFileStep,
-  type StepState,
+import type {
+  FileStep,
+  PensionDue,
+  StepState,
 } from "@domain/employee-file-steps";
 import { type AddressForm, formArg, type ProfileLocale } from "@domain/profile";
 import { cn } from "@ui/cn";
@@ -21,6 +21,17 @@ export type FileT = ReturnType<typeof useTranslations<"app.file">>;
 export type Kit = {
   data: FileScreenData;
   states: Record<FileStep, StepState>;
+  /** The steps on screen, by the business's settings (`data.steps`). */
+  steps: readonly FileStep[];
+  /** The step on screen after this one, or the done screen after the last. */
+  next: (step: FileStep) => FileStep | "done";
+  /** The step on screen before this one, or null before the first. */
+  previous: (step: FileStep) => FileStep | null;
+  /**
+   * A step's name: step 2 is "דרכי קשר" while the address isn't on screen,
+   * only the ways to reach the person.
+   */
+  stepName: (step: FileStep) => string;
   actions: FileActions;
   t: FileT;
   /**
@@ -77,6 +88,41 @@ export function useDay(): (day: string) => string {
     });
 }
 
+/**
+ * The time to choose a pension fund, as the pension's step says it under
+ * its question and the done screen beside a fund still to choose: by its
+ * day, its day passed (a fund can still be chosen), or within 60 days.
+ */
+export function pensionDueWords(
+  t: FileT,
+  day: (day: string) => string,
+  due: PensionDue,
+  business: string,
+): string {
+  return due.kind === "open"
+    ? t("pension.dueOn", { date: day(due.dueOn), business })
+    : due.kind === "passed"
+      ? t("pension.duePassed", { business })
+      : t("pension.dueNone", { business });
+}
+
+/**
+ * A fund chosen "later" still to choose (`pensionLaterOf`), as the steps'
+ * row of the pension and the done screen's "נשאר:" say it: by its day, or
+ * with the day passed, as Today's card and the profile's do.
+ */
+export function pensionLaterWords(
+  t: FileT,
+  day: (day: string) => string,
+  later: PensionDue,
+): string {
+  return later.kind === "open"
+    ? t("done.leftPension", { date: day(later.dueOn) })
+    : later.kind === "passed"
+      ? t("done.leftPensionPassed")
+      : t("done.leftPensionNone");
+}
+
 /** The words a choice of form reads, with the business: `{form}` and `{business}`. */
 export const formArgs = (kit: Kit) => ({
   form: formArg(kit.form),
@@ -125,7 +171,7 @@ export function FileSection({
         tabIndex={-1}
         className="text-balance px-1 font-bold text-xl outline-none"
       >
-        {kit.t(`steps.name.${step}`)}
+        {kit.stepName(step)}
       </h2>
       {children}
       <div className="flex flex-wrap items-center gap-x-4 px-1 xl:hidden">
@@ -211,7 +257,7 @@ export function StepDock({
   };
   notice?: ReactNode;
 }) {
-  const back = previousFileStep(step);
+  const back = kit.previous(step);
   return (
     <div className="xl:hidden">
       <div aria-hidden="true" className={notice ? "h-36" : "h-28"} />

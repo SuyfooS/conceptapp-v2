@@ -8,6 +8,17 @@ import type {
   ReturnedReason,
   TaxYearStatus,
 } from "@domain/employee-file";
+import type {
+  BankChangeSeenAs,
+  FileAsks,
+  Form101Setup,
+  NoticeNames,
+} from "@domain/employee-file-settings";
+import type {
+  FileParts,
+  FileStep,
+  PensionDue,
+} from "@domain/employee-file-steps";
 import type { Role } from "@domain/modules";
 import type {
   AddressForm,
@@ -60,13 +71,40 @@ export type FileScreenData = {
   /** The two numbers as their last digits only ("•••0018"). */
   masked: { id: string | null; bankAccount: string | null };
   missing: FileGroup[];
-  /** What the business asks: every group until H5b's settings. */
+  /** What the business asks of each worker (H5b's settings). */
+  asks: FileAsks;
+  /** The groups the file counts: the identity and the pension, and what is asked. */
   asked: FileGroup[];
+  /** What the flow shows: what is asked, or what the file holds already. */
+  parts: FileParts;
+  /** The steps on screen, in their order (`fileStepsOn`). */
+  steps: FileStep[];
+  /** How the business takes Form 101, decided on the server. */
+  form101: Form101Setup;
+  /** Who the notice names: whoever prepares the payroll, the employer, its phone. */
+  notice: NoticeNames;
+  /** The person's own language for work instructions, opened. */
+  workLanguage: string | null;
+  /** The person's own emergency contact, opened (E.164). */
+  emergency: { name: string; phone: string } | null;
   youthUntil: string | null;
   pensionDueOn: string | null;
   taxYear: TaxYearRow | null;
   /** The last four digits of the person's own number, or null without one. */
   phoneTail: string | null;
+  /**
+   * The account's last change while it is still told (`bankChangeToTell`,
+   * 14 days), by its day in the business's zone, whether the person said it
+   * wasn't theirs, and how this device saw it (`BankChangeSeenAs`): Today
+   * tells it where it wasn't seen, and the bank step offers "לא שיניתי" all
+   * that time on every device but the one it was made on, so hiding
+   * Today's card never takes the way to say it.
+   */
+  bankChange: {
+    on: string;
+    disputed: boolean;
+    seen: BankChangeSeenAs;
+  } | null;
 };
 
 /** Why the screen can't show a file, or the file. */
@@ -134,4 +172,45 @@ export type FileActions = {
   handInForm101: () => Promise<FileWriteAnswer>;
   submit: () => Promise<FileWriteAnswer>;
   saveProfile: (change: ProfileChange) => Promise<ProfileSaveResult>;
+  /** "לא שיניתי" in the bank step, while the account's change is told. */
+  disputeBankChange: () => Promise<FileWriteAnswer>;
+};
+
+/**
+ * What Today's cards need of the person's own file (H5b), never a value:
+ * how many groups are asked and how many are missing, whether a fund still
+ * to choose is all a sent file lacks (`pensionLeftOf`: the card then opens
+ * the pension's step and says by when), and the account's last change while
+ * Today tells it, by its day in the business's zone and by the database's
+ * moment of it, which "אני שיניתי" sends back so that only this very change
+ * is kept seen.
+ */
+export type FileToday = {
+  businessId: string;
+  businessName: string;
+  role: Role;
+  asked: number;
+  missing: number;
+  pension: PensionDue | null;
+  bank: { on: string; changedAt: string; disputed: boolean } | null;
+};
+
+/**
+ * What Today's writes on a bank change answer: done (the screen is drawn
+ * again by the server, or the twin, which keeps nothing, says where to go
+ * instead), or why not.
+ */
+export type FileTodayAnswer =
+  | { ok: true; to?: string }
+  | { ok: false; failure: FileActionFailure };
+
+/** Today's writes on a bank change, bound to the business drawn, or the twin's stand-ins. */
+export type FileTodayActions = {
+  /** "לא שיניתי", pressed on Today itself. */
+  dispute: () => Promise<FileTodayAnswer>;
+  /**
+   * Where "אני שיניתי" and "הבנתי" are sent once their undo's time is up:
+   * /home/bank-seen, kept on this device, or the twin's stand-in.
+   */
+  seenUrl: string;
 };

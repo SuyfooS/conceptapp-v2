@@ -5,6 +5,11 @@ import {
   DEPARTURE_SEEN_COOKIE,
 } from "@domain/businesses";
 import {
+  BANK_CHANGE_SEEN_COOKIE,
+  type BankChange,
+  withBankChangeSeen,
+} from "@domain/employee-file-settings";
+import {
   FIRST_STEPS_HIDDEN_COOKIE,
   withFirstStepsHidden,
 } from "@domain/first-steps";
@@ -70,12 +75,36 @@ export async function rememberFirstStepsHidden(
 }
 
 /**
- * Forget the choice, the departures seen and the first steps hidden, on
- * signing out, so the next person starts afresh.
+ * The person saw their account's last change in this business, at
+ * `changedAt`, the change's own moment in the database ("אני שיניתי",
+ * "הבנתי" on Today, checked against the file by /home/bank-seen: `said`;
+ * or the account they just added here, by the moment its save was dated
+ * with, which the database keeps as the change's: `made`): on this device
+ * Today doesn't tell that change again (`bankChangeSeen`), and the bank
+ * step doesn't ask "לא שיניתי" of one made here, while a later one is told,
+ * and so is anyone else's who signs in here. What others saw here, and in
+ * other businesses, stays seen. Kept as the business cookie is.
+ */
+export async function rememberBankChangeSeen(
+  change: BankChange,
+  as: "made" | "said" = "said",
+): Promise<void> {
+  const jar = await cookies();
+  jar.set(
+    BANK_CHANGE_SEEN_COOKIE,
+    withBankChangeSeen(jar.get(BANK_CHANGE_SEEN_COOKIE)?.value, change, as),
+    await businessCookieOptions(),
+  );
+}
+
+/**
+ * Forget the choice, the departures seen, the first steps hidden and the
+ * bank changes seen, on signing out, so the next person starts afresh.
  */
 export async function forgetBusiness(): Promise<void> {
   const jar = await cookies();
   jar.delete(BUSINESS_COOKIE);
   jar.delete(DEPARTURE_SEEN_COOKIE);
   jar.delete(FIRST_STEPS_HIDDEN_COOKIE);
+  jar.delete(BANK_CHANGE_SEEN_COOKIE);
 }

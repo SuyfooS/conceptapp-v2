@@ -1,12 +1,12 @@
 "use client";
 
 import {
-  FILE_STEPS,
   type FileStep,
   fileStepStates,
   isNewFile,
   nextFileStep,
   pensionDue,
+  previousFileStep,
   resumeStep,
   type SENT_WITH,
   type StepState,
@@ -14,6 +14,7 @@ import {
   stepsDone,
 } from "@domain/employee-file-steps";
 import { formArg, type ProfileLocale } from "@domain/profile";
+import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { Card, CardText } from "@ui/card";
 import { cn } from "@ui/cn";
@@ -29,12 +30,22 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { failureKey } from "./failure-words";
+import { fileStepInputOf, pensionLaterOf } from "./file-parts";
 import type {
   FileActionFailure,
   FileActions,
   FileScreenData,
 } from "./file-types";
-import { formIdOf, type Kit, titleId, useDay, WhyButton } from "./flow-kit";
+import {
+  focusTitle,
+  formIdOf,
+  type Kit,
+  pensionDueWords,
+  pensionLaterWords,
+  titleId,
+  useDay,
+  WhyButton,
+} from "./flow-kit";
 import { NoticeSheet } from "./notice-sheet";
 import { AddressStep } from "./steps/address-step";
 import {
@@ -57,6 +68,7 @@ const MARK: Record<StepState, "done" | "open"> = {
   done: "done",
   direct: "done",
   open: "open",
+  optional: "open",
 };
 
 /** Whether the screen is a desktop's, where every step shows at once. */
@@ -75,8 +87,10 @@ const desktop = () => window.matchMedia("(min-width: 80rem)").matches;
  * the first one still open, and on a desktop, with that one on screen
  * already, does its own action instead (it saves, sends the code, or says
  * what is missing and goes there), showing its save on its way, and none
- * while the code's boxes are up (`SummaryFoot`). Also drawn by the twin on
- * /design/shell/me/file.
+ * while the code's boxes are up (`SummaryFoot`). The steps are the ones
+ * the business's settings put on screen (`data.steps`, H5b): with Form 101
+ * not taken in the app, the pension's step leads to the done screen, which
+ * sends the file. Also drawn by the twin on /design/shell/me/file.
  */
 export function FileFlow({
   data,
@@ -123,18 +137,10 @@ export function FileFlow({
   // Each step's save on its way (`stepPending`): the summary shows it too.
   const [busy, setBusy] = useState<Kit["busy"]>({});
 
-  const states = fileStepStates({
-    addressForm: data.addressForm,
-    asked: data.asked,
-    missing: data.missing,
-    directGroups: data.file?.direct_groups ?? [],
-    pensionAnswer: data.file?.pension_answer ?? null,
-    form101: data.taxYear
-      ? { status: data.taxYear.status, route: data.taxYear.route }
-      : null,
-  });
+  const steps = data.steps;
+  const states = fileStepStates(fileStepInputOf(data));
   const isNew = isNewFile(data.file);
-  const resume = resumeStep(states);
+  const resume = resumeStep(states, steps);
   const current =
     view ??
     (isNew ? ("welcome" as const) : resume === "done" ? "done" : resume);
@@ -142,7 +148,7 @@ export function FileFlow({
     current === "welcome" || current === "done" ? "start" : current;
   const business = data.businessName;
   // What keeps the file from going: the send action leads there instead.
-  const blocker = sendBlocker(states);
+  const blocker = sendBlocker(states, steps);
 
   // A step's address (or, with none, the file's own: the welcome), with the
   // twin's query in the language asked.
@@ -203,6 +209,13 @@ export function FileFlow({
   const kit: Kit = {
     data,
     states,
+    steps,
+    next: (from) => nextFileStep(from, steps) ?? "done",
+    previous: (from) => previousFileStep(from, steps),
+    stepName: (of) =>
+      of === "address" && !data.parts.address
+        ? t("steps.name.contact")
+        : t(`steps.name.${of}`),
     actions,
     t,
     go,
@@ -243,24 +256,58 @@ export function FileFlow({
       setSendFailure(result.failure);
       return;
     }
+    // Said, as every save is: a screen reader hears it, and the twin, which
+    // keeps nothing, answers too. Sent from the done screen itself (Form 101
+    // off), the screen stays and the button pressed turns into the way back
+    // to the profile, so its title takes the focus here; from step 5, the
+    // done screen opening gives it the focus.
+    kit.say(t("done.sent", { business }));
+    if (current === "done") focusTitle("done");
     go("done");
   }
 
-  const done = stepsDone(states);
-  const missingSteps = FILE_STEPS.filter((s) => states[s] === "open");
+  const done = stepsDone(states, steps);
   const due = pensionDue(data.pensionDueOn, data.today);
+  // The pension answered "אבחר אחר כך" is behind the person, so the file
+  // can go, but the file still counts it missing (`pensionLaterOf`): a
+  // fund is still theirs to choose, by its day or with the day passed.
+  const later = pensionLaterOf(data);
+  // What a desktop's summary says is still missing: the steps open, and
+  // the pension while a fund is still to choose, as Today's card says.
+  const missingSteps = steps.filter(
+    (s) => states[s] === "open" || (s === "pension" && later !== null),
+  );
   const sendWords = sendFailure
     ? t(`failures.${failureKey(sendFailure)}`)
     : null;
-  // A step handed in directly is done, and says how under its name: the
-  // words a screen reader hears after the name are said once.
+  // A step handed in directly is done, and says how under its name; an
+  // optional one says so beside it: the words a screen reader hears after
+  // the name are said once. A fund chosen "later" still to choose: the
+  // pension's row says by when, or that the day passed, as the profile's
+  // does.
+  const pensionLater = later ? pensionLaterWords(t, day, later) : undefined;
   const stepRow = (s: FileStep, link: boolean) => (
     <StepRow
       key={s}
       mark={MARK[states[s]]}
-      title={t(`steps.name.${s}`)}
-      state={t(`steps.state.${states[s] === "direct" ? "done" : states[s]}`)}
-      detail={states[s] === "direct" ? t("steps.state.direct") : undefined}
+      title={kit.stepName(s)}
+      state={
+        states[s] === "optional"
+          ? t("optional")
+          : t(`steps.state.${states[s] === "direct" ? "done" : states[s]}`)
+      }
+      detail={
+        states[s] === "direct"
+          ? t("steps.state.direct")
+          : s === "pension"
+            ? pensionLater
+            : undefined
+      }
+      badge={
+        states[s] === "optional" ? (
+          <Badge aria-hidden="true">{t("optional")}</Badge>
+        ) : null
+      }
       href={link ? stepHref(s) : undefined}
       current={link && current === s}
     />
@@ -284,7 +331,7 @@ export function FileFlow({
         className="relative z-10 mx-4 -mt-12 flex flex-col gap-1"
       >
         <CardText className="text-ink">
-          {t("welcome.body", { count: FILE_STEPS.length })}
+          {t("welcome.body", { count: steps.length })}
         </CardText>
         {current === "welcome" ? (
           <div className="hidden pt-3 xl:flex">
@@ -325,13 +372,19 @@ export function FileFlow({
         </div>
         <PageHeader
           title={t("title", { business })}
-          subtitle={t("progress", { done, count: FILE_STEPS.length })}
+          subtitle={t("progress", { done, count: steps.length })}
           headingRef={pageTitle}
         />
       </div>
 
       {current === "done" ? (
-        <DoneView kit={kit} stepRow={stepRow} />
+        <DoneView
+          kit={kit}
+          stepRow={stepRow}
+          onSend={send}
+          sending={sending}
+          sendWords={sendWords}
+        />
       ) : (
         <>
           {current === "welcome" ? (
@@ -362,7 +415,7 @@ export function FileFlow({
             >
               <div className="flex min-h-0 flex-col gap-4 xl:-mx-8 xl:-mt-2 xl:overflow-y-auto xl:px-8 xl:pt-2 xl:pb-4">
                 <StepList className="shrink-0">
-                  {FILE_STEPS.map((s) => stepRow(s, true))}
+                  {steps.map((s) => stepRow(s, true))}
                 </StepList>
                 <div className="hidden shrink-0 flex-col gap-3 xl:flex">
                   <Card padding="lg" className="flex flex-col gap-2">
@@ -379,18 +432,20 @@ export function FileFlow({
                         className="flex flex-col gap-1 text-base"
                       >
                         {missingSteps.map((s) => (
-                          <li key={s}>{t(`steps.name.${s}`)}</li>
+                          <li key={s}>{kit.stepName(s)}</li>
                         ))}
                       </ul>
                     )}
-                    {due.kind === "open" ? (
+                    {due.kind !== "none" || later ? (
                       <p className="text-ink-2 text-sm">
-                        {t("pension.dueOn", { date: day(due.dueOn), business })}
+                        {pensionDueWords(t, day, due, business)}
                       </p>
                     ) : null}
                   </Card>
                   <VisibilityNote icon="lock" className="px-1">
-                    {t("visible")}
+                    {data.parts.emergency
+                      ? t("visibleEmergency")
+                      : t("visible")}
                   </VisibilityNote>
                   <WhyButton kit={kit} label={t("notice.title")} />
                 </div>
@@ -411,26 +466,32 @@ export function FileFlow({
             <div className="flex min-w-0 flex-col gap-10">
               <Steps
                 className="md:hidden"
-                count={FILE_STEPS.length}
-                current={FILE_STEPS.indexOf(step) + 1}
+                count={steps.length}
+                current={steps.indexOf(step) + 1}
                 label={t("steps.count", {
-                  current: FILE_STEPS.indexOf(step) + 1,
-                  count: FILE_STEPS.length,
+                  current: steps.indexOf(step) + 1,
+                  count: steps.length,
                 })}
               />
               <StartStep kit={kit} active={step === "start"} />
               <IdentityStep kit={kit} active={step === "identity"} />
-              <AddressStep kit={kit} active={step === "address"} />
-              <BankStep kit={kit} active={step === "bank"} screen={bank} />
+              {steps.includes("address") ? (
+                <AddressStep kit={kit} active={step === "address"} />
+              ) : null}
+              {steps.includes("bank") ? (
+                <BankStep kit={kit} active={step === "bank"} screen={bank} />
+              ) : null}
               <PensionStep kit={kit} active={step === "pension"} />
-              <Form101Step
-                kit={kit}
-                active={step === "form101"}
-                blocker={blocker}
-                onSend={send}
-                sending={sending}
-                sendFailure={sendWords}
-              />
+              {steps.includes("form101") ? (
+                <Form101Step
+                  kit={kit}
+                  active={step === "form101"}
+                  blocker={blocker}
+                  onSend={send}
+                  sending={sending}
+                  sendFailure={sendWords}
+                />
+              ) : null}
             </div>
           </div>
         </>
@@ -452,7 +513,14 @@ export function FileFlow({
         </div>
       ) : null}
 
-      <NoticeSheet open={notice} onOpenChange={setNotice} business={business} />
+      <NoticeSheet
+        open={notice}
+        onOpenChange={setNotice}
+        business={business}
+        names={data.notice}
+        form101={data.form101}
+        emergency={data.parts.emergency}
+      />
       <StatusToast message={toast?.message ?? null} stamp={toast?.stamp} />
     </PageBody>
   );
@@ -500,7 +568,7 @@ function ownAction(
       return bank.phase === "saved"
         ? {
             label: t("actions.continue"),
-            onClick: () => kit.go(nextFileStep("bank") ?? "done"),
+            onClick: () => kit.go(kit.next("bank")),
           }
         : bank.phase === "code"
           ? null
@@ -592,30 +660,66 @@ export function SummaryFoot({
  * Sent, or nothing left to fill: what the business sees now, what is still
  * the person's to do (a pension fund to choose by its day, a step still
  * open), and every step, to change any of them. "סיימת" only once nothing
- * is open; until then it says how many steps are left, and its main action
- * leads to the first. With nothing left, the way back to the profile is.
+ * is left at all; until then it says how many steps are left, and its main
+ * action leads to the first. With nothing open and the file not sent yet,
+ * its main action sends it, and a refusal is said under it: with Form 101
+ * not taken in the app (H5b) this is where the file goes, so a fund chosen
+ * "later" never keeps it back. A fund still to choose (the pension answered
+ * "אבחר אחר כך", which the file counts missing: `pensionLaterOf`) is never
+ * "סיימת" nor "הכול מוכן", by its day or with the day passed: it is titled
+ * so, says the day (or that it passed and a fund can still be chosen), and,
+ * sent, "בחירת קרן פנסיה" opens the pension's step; else the way back to
+ * the profile.
  */
 function DoneView({
   kit,
   stepRow,
+  onSend,
+  sending,
+  sendWords,
 }: {
   kit: Kit;
   stepRow: (step: FileStep, link: boolean) => ReactNode;
+  onSend: () => void;
+  sending: boolean;
+  sendWords: string | null;
 }) {
   const { t, data, states } = kit;
   const router = useRouter();
   const day = useDay();
   const business = data.businessName;
   const due = pensionDue(data.pensionDueOn, data.today);
-  const open = FILE_STEPS.filter((s) => states[s] === "open");
+  const open = kit.steps.filter((s) => states[s] === "open");
   const next = open[0] ?? null;
   const sent = data.file?.submitted_at != null;
+  // A fund chosen "later", which the file still counts missing: by its day,
+  // or with the day passed.
+  const later = pensionLaterOf(data);
+  // No step open, and that fund still to choose: never "סיימת".
+  const pensionLeft = next === null && later !== null;
   const main = next
-    ? { label: t(`actions.finish.${next}`), go: () => kit.go(next) }
-    : {
-        label: t("done.profile"),
-        go: () => router.push(kit.profileHref),
-      };
+    ? {
+        label: t(`actions.finish.${next}`),
+        go: () => kit.go(next),
+        pending: false,
+      }
+    : !sent
+      ? {
+          label: t("actions.send", { business }),
+          go: onSend,
+          pending: sending,
+        }
+      : pensionLeft
+        ? {
+            label: t("actions.choosePension"),
+            go: () => kit.go("pension"),
+            pending: false,
+          }
+        : {
+            label: t("done.profile"),
+            go: () => router.push(kit.profileHref),
+            pending: false,
+          };
   return (
     <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-start md:gap-8">
       <Card padding="lg" className="flex flex-col gap-2">
@@ -624,31 +728,46 @@ function DoneView({
           tabIndex={-1}
           className="font-bold text-xl outline-none"
         >
-          {next ? t("done.titleLeft", { count: open.length }) : t("done.title")}
+          {next
+            ? t("done.titleLeft", { count: open.length })
+            : pensionLeft
+              ? t("done.titlePension")
+              : t("done.title")}
         </h2>
         {sent || !next ? (
           <p className="text-md">
-            {sent ? t("done.sent", { business }) : t("done.body", { business })}
+            {sent
+              ? t("done.sent", { business })
+              : pensionLeft
+                ? t("done.readyPension", { business })
+                : t("done.ready", { business })}
           </p>
         ) : null}
-        {due.kind === "open" ? (
+        {pensionLeft ? (
           <p className="text-base">
-            {t("done.left", {
-              what: t("done.leftPension", { date: day(due.dueOn) }),
-            })}
+            {pensionDueWords(t, day, later, business)}
+          </p>
+        ) : later || due.kind === "open" ? (
+          <p className="text-base">
+            {t("done.left", { what: pensionLaterWords(t, day, later ?? due) })}
           </p>
         ) : null}
         {open.map((s) => (
           <p key={s} className="text-base">
-            {t("done.left", { what: t(`steps.name.${s}`) })}
+            {t("done.left", { what: kit.stepName(s) })}
           </p>
         ))}
         <div className="mt-2 hidden xl:flex">
-          <Button size="lg" onClick={main.go}>
+          <Button size="lg" onClick={main.go} loading={main.pending}>
             <ArrowRight aria-hidden="true" className="rtl:-scale-x-100" />
             {main.label}
           </Button>
         </div>
+        {!next && !sent && sendWords ? (
+          <p role="alert" className="text-danger text-sm">
+            {sendWords}
+          </p>
+        ) : null}
       </Card>
       <section
         aria-labelledby="file-done-steps"
@@ -657,7 +776,7 @@ function DoneView({
         <h2 id="file-done-steps" className="px-1 font-bold text-lg">
           {t("done.change")}
         </h2>
-        <StepList>{FILE_STEPS.map((s) => stepRow(s, true))}</StepList>
+        <StepList>{kit.steps.map((s) => stepRow(s, true))}</StepList>
       </section>
       <div className="xl:hidden">
         <div aria-hidden="true" className="h-28" />
@@ -667,6 +786,7 @@ function DoneView({
               <ArrowRight aria-hidden="true" className="rtl:-scale-x-100" />
             }
             onClick={main.go}
+            loading={main.pending}
           >
             {main.label}
           </DockButton>

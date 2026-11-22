@@ -1,7 +1,7 @@
 "use client";
 
 import type { PensionAnswer } from "@domain/employee-file";
-import { nextFileStep, pensionDue } from "@domain/employee-file-steps";
+import { pensionDue } from "@domain/employee-file-steps";
 import {
   isPensionFund,
   PENSION_FUNDS,
@@ -24,6 +24,7 @@ import {
   formIdOf,
   type Kit,
   LaterLink,
+  pensionDueWords,
   Reason,
   StepDock,
   showFirstProblem,
@@ -108,18 +109,10 @@ export function PensionStep({ kit, active }: { kit: Kit; active: boolean }) {
     }
     setTried(false);
     kit.say(t("saved"));
-    if (active) kit.go(nextFileStep("pension") ?? "done");
+    if (active) kit.go(kit.next("pension"));
   }
 
-  const dueWords =
-    due.kind === "open"
-      ? t("pension.dueOn", {
-          date: day(due.dueOn),
-          business: data.businessName,
-        })
-      : due.kind === "passed"
-        ? t("pension.duePassed", { business: data.businessName })
-        : t("pension.dueNone", { business: data.businessName });
+  const dueWords = pensionDueWords(t, day, due, data.businessName);
   const shown = choiceShown(options, fund ?? "", t("pension.pick"));
 
   return (

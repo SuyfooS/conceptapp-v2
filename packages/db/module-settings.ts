@@ -55,7 +55,10 @@ export async function setModuleEnabled(
 
 /**
  * A business's module rows for the console, whose people aren't members of it, so
- * RLS has nothing to show them. Callers check they're on the team.
+ * RLS has nothing to show them. Callers check they're on the team. Also read
+ * right after someone joins, for where they land (`landingAfterJoin`): the
+ * server made the claim, and the session can't read the rows until the next
+ * request.
  */
 export async function getBusinessModulesForTeam(
   businessId: string,

@@ -2,8 +2,10 @@
 
 import {
   checkBankChange,
+  disputeBankChange,
   noteStepUp,
   revealEmployeeFields,
+  saveEmergencyContact,
   saveEmployeeDetails,
   setTaxYearStatus,
   submitEmployeeFile,
@@ -14,71 +16,37 @@ import {
   PENSION_ANSWERS,
   REVEAL_FIELDS,
 } from "@domain/employee-file";
+import { form101SetupOf } from "@domain/employee-file-settings";
 import { phoneTail } from "@domain/employee-file-steps";
 import { ID_KINDS } from "@domain/identity-documents";
-import { canOpenModule } from "@domain/modules";
 import { normalizeOtpCode } from "@domain/otp";
-import { clockAt } from "@domain/today";
-import { canWrite } from "@domain/view-as";
-import { manifestFor } from "@modules/registry";
 import { refresh } from "next/cache";
 import { z } from "zod";
 import { checkCode, sendCode, signInPhoneOf } from "../../../(auth)/otp";
-import { currentMember } from "../../member";
-import { currentModules } from "../../modules";
+import { rememberBankChangeSeen } from "../../business-cookie";
 import type {
   ConfirmBankAnswer,
-  FileActionFailure,
   FileWriteAnswer,
   RevealAnswer,
   SavedStep,
   SaveStepAnswer,
   SendCodeAnswer,
 } from "./file-types";
+import { type FileWriter, fileWriter, logged } from "./file-writer";
 
 /*
  * The worker's own hiring file (profile H5a), each write bound on the page to
- * the business the screen was drawn for: the business the app opens is one
- * cookie for the whole browser, so a step saved from a tab left open after a
- * switch is refused ("businessChanged"), never written in the other. The
- * person is always the session's, never an id from the browser; nothing
- * changes while viewing as a role; the module is on and the person on the
- * staff. What is typed is checked here for its shape and again, whole, by
- * @domain/employee-file before it is sealed (@db/employee-files), and by the
- * database. Nothing typed is logged, anywhere: a failure logs its code.
+ * the business the screen was drawn for and made only as `fileWriter`
+ * allows: by the session's own person, never while viewing as a role, in
+ * that business, with the module on and them on the staff. What is typed is
+ * checked here for its
+ * shape and again, whole, by @domain/employee-file before it is sealed
+ * (@db/employee-files), and by the database. What the business asks, and
+ * how it takes Form 101, are read from its settings here, never from the
+ * browser (H5b). Nothing typed is logged, anywhere: a failure logs its code.
+ * Today's "אני שיניתי" is a route of its own (/home/bank-seen), since it is
+ * held for its undo and a held action loses its cookie.
  */
-
-type Self = {
-  userId: string;
-  businessId: string;
-  today: string;
-  year: number;
-};
-
-async function self(
-  business: unknown,
-): Promise<Self | { failure: FileActionFailure }> {
-  const [member, enabled] = await Promise.all([
-    currentMember(),
-    currentModules(),
-  ]);
-  const membership = member?.membership;
-  if (!member || !membership) return { failure: "failed" };
-  if (!canWrite(member.viewing)) return { failure: "viewOnly" };
-  if (business !== membership.business.id) {
-    return { failure: "businessChanged" };
-  }
-  if (!canOpenModule(manifestFor("employee_files"), enabled, membership)) {
-    return { failure: "off" };
-  }
-  const today = clockAt(new Date(), membership.business.place.timeZone).date;
-  return {
-    userId: member.userId,
-    businessId: membership.business.id,
-    today,
-    year: Number(today.slice(0, 4)),
-  };
-}
 
 /** The bank group as typed, checked by the domain whole, or null. */
 function bankOf(bank: unknown, today: string) {
@@ -86,14 +54,31 @@ function bankOf(bank: unknown, today: string) {
   return details.success ? (details.data.bank ?? null) : null;
 }
 
-/** A write's error, by its code only: whatever it carries stays here. */
-function logged(what: string, error: unknown): { failure: "failed" } {
-  const code =
-    error && typeof error === "object" && "code" in error
-      ? String((error as { code: unknown }).code)
-      : "without a code";
-  console.error(what, code);
-  return { failure: "failed" };
+/**
+ * The account the person just saved here, kept as seen on this device by
+ * the moment its save was dated (`at`), which the database keeps as the
+ * change's own (`set_employee_details` dates `bank_changed_at` by its
+ * `at_time`): never read again afterwards, so a change someone else made a
+ * moment later is never the one kept, and never the screen's. The device
+ * the change was made on doesn't ask "was it you?", neither Today nor the
+ * bank step (kept `made`), and every other one still does, so after a SIM
+ * swap the account's owner is still asked on their own phone. The account
+ * is in either way: a cookie that can't be kept leaves Today asking, and
+ * is logged by its code.
+ */
+async function keepOwnChangeSeen(who: FileWriter, at: Date): Promise<void> {
+  try {
+    await rememberBankChangeSeen(
+      {
+        business: who.businessId,
+        person: who.userId,
+        changedAt: at.toISOString(),
+      },
+      "made",
+    );
+  } catch (error) {
+    logged("keeping a new account seen failed", error);
+  }
 }
 
 const typedDate = z.object({
@@ -105,8 +90,10 @@ const typedDate = z.object({
 /**
  * Each step's groups and nothing else, by shape: the values are checked whole
  * by `employeeDetailsInput` in @db/employee-files. Identity with its names
- * and birth date (the number only when typed again), the address with its
- * email (null clears it), the pension's answer.
+ * and birth date (the number only when typed again); step 2's email (null
+ * clears it) with the address, the work language and the emergency contact
+ * where they show (H5b: null clears the language, and removes the contact);
+ * the pension's answer.
  */
 const STEP_INPUT = {
   identity: z
@@ -121,8 +108,14 @@ const STEP_INPUT = {
     .strict(),
   address: z
     .object({
-      address: z.object({ kind: z.string() }).loose(),
+      address: z.object({ kind: z.string() }).loose().nullable().optional(),
       email: z.string().nullable(),
+      workLanguage: z.string().nullable().optional(),
+      emergency: z
+        .object({ name: z.string(), phone: z.string() })
+        .strict()
+        .nullable()
+        .optional(),
     })
     .strict(),
   pension: z
@@ -130,28 +123,45 @@ const STEP_INPUT = {
     .strict(),
 } as const satisfies Record<SavedStep, z.ZodType>;
 
-/** The person saves one step of their file. */
+/**
+ * The person saves one step of their file. Step 2's emergency contact is
+ * kept apart from the file (`member_emergency_contacts`), so it is saved
+ * after the rest of the step, by its own write: a refusal of either is said,
+ * and a second press saves both again, which changes nothing twice.
+ */
 export async function saveFileStepAction(
   business: string,
   step: SavedStep,
   input: unknown,
 ): Promise<SaveStepAnswer> {
-  const who = await self(business);
+  const who = await fileWriter(business);
   if ("failure" in who) return { ok: false, failure: who.failure };
   const schema = z.enum(["identity", "address", "pension"]).safeParse(step);
   if (!schema.success) return { ok: false, failure: "invalid" };
   if (!STEP_INPUT[schema.data].safeParse(input).success) {
     return { ok: false, failure: "invalid" };
   }
+  const { emergency, ...rest } = input as { emergency?: unknown };
   try {
     const saved = await saveEmployeeDetails(
       who.userId,
       who.businessId,
       who.userId,
-      input,
+      rest,
       who.today,
     );
     if (!saved.ok) return { ok: false, failure: saved.failure };
+    if (emergency !== undefined) {
+      const contact = await saveEmergencyContact(
+        who.userId,
+        who.businessId,
+        emergency,
+      );
+      if (!contact.ok) {
+        refresh();
+        return { ok: false, failure: contact.failure };
+      }
+    }
     refresh();
     return { ok: true, changeDueBy: saved.changeDueBy };
   } catch (error) {
@@ -167,7 +177,7 @@ export async function revealOwnAction(
   business: string,
   field: "id" | "bank_account",
 ): Promise<RevealAnswer> {
-  const who = await self(business);
+  const who = await fileWriter(business);
   if ("failure" in who) return { ok: false, failure: who.failure };
   const which = z.enum(REVEAL_FIELDS).safeParse(field);
   if (!which.success) return { ok: false, failure: "invalid" };
@@ -198,7 +208,7 @@ export async function sendBankCodeAction(
   business: string,
   input: { bank: unknown },
 ): Promise<SendCodeAnswer> {
-  const who = await self(business);
+  const who = await fileWriter(business);
   if ("failure" in who) return { ok: false, failure: who.failure };
   const parsed = z.object({ bank: z.unknown() }).strict().safeParse(input);
   if (!parsed.success || !bankOf(parsed.data.bank, who.today)) {
@@ -245,13 +255,16 @@ export async function sendBankCodeAction(
  * was compared with the session's before anything is kept, the step-up
  * noted only then and only for them, and the account saved with it. The
  * account is checked for its shape before the code is spent, and was tried
- * whole before the code went (`sendBankCodeAction`).
+ * whole before the code went (`sendBankCodeAction`). The save is dated
+ * here, and that moment, the change's own, is kept as seen on this device
+ * (`keepOwnChangeSeen`): Today doesn't ask the person who just typed it
+ * here whether it was them, and every other device still does.
  */
 export async function confirmBankAction(
   business: string,
   input: { code: string; bank: unknown },
 ): Promise<ConfirmBankAnswer> {
-  const who = await self(business);
+  const who = await fileWriter(business);
   if ("failure" in who) return { ok: false, failure: who.failure };
   const parsed = z
     .object({ code: z.string().max(20), bank: z.unknown() })
@@ -285,12 +298,15 @@ export async function confirmBankAction(
     }
     const noted = await noteStepUp(who.userId, "bank");
     if (!noted.ok) return { ok: false, failure: noted.failure };
+    // Dated here, so the moment kept seen is this save's very own.
+    const at = new Date();
     const saved = await saveEmployeeDetails(
       who.userId,
       who.businessId,
       who.userId,
       { bank: parsed.data.bank },
       who.today,
+      { atTime: at },
     );
     if (!saved.ok) {
       return {
@@ -299,6 +315,7 @@ export async function confirmBankAction(
         ...(saved.opensOn ? { opensOn: saved.opensOn } : {}),
       };
     }
+    if (saved.changed.includes("bank")) await keepOwnChangeSeen(who, at);
     refresh();
     const check = checkBankAccount(bank, who.today).status;
     return { ok: true, review: check === "warning" ? "warned" : "new" };
@@ -307,18 +324,24 @@ export async function confirmBankAction(
   }
 }
 
-/** The person marks this year's Form 101 handed in, on paper (H5a's one route). */
+/**
+ * The person marks this year's Form 101 handed in, by the way the business
+ * takes it (its settings, never the browser's): on paper, or at the approved
+ * system its link opens. None while the business takes it outside the app.
+ */
 export async function handInForm101Action(
   business: string,
 ): Promise<FileWriteAnswer> {
-  const who = await self(business);
+  const who = await fileWriter(business);
   if ("failure" in who) return { ok: false, failure: who.failure };
+  const { way } = form101SetupOf(who.settings);
+  if (way === "off") return { ok: false, failure: "invalid" };
   try {
     const marked = await setTaxYearStatus(
       who.userId,
       who.businessId,
       who.userId,
-      { year: who.year, status: "handed_in", route: "print" },
+      { year: who.year, status: "handed_in", route: way },
     );
     if (!marked.ok) return { ok: false, failure: marked.failure };
     refresh();
@@ -332,7 +355,7 @@ export async function handInForm101Action(
 export async function submitFileAction(
   business: string,
 ): Promise<FileWriteAnswer> {
-  const who = await self(business);
+  const who = await fileWriter(business);
   if ("failure" in who) return { ok: false, failure: who.failure };
   try {
     const sent = await submitEmployeeFile(who.userId, who.businessId);
@@ -341,5 +364,26 @@ export async function submitFileAction(
     return { ok: true };
   } catch (error) {
     return { ok: false, ...logged("sending a file failed", error) };
+  }
+}
+
+/**
+ * "לא שיניתי" (H5b), on Today or in the bank step: the person says the
+ * account's last change wasn't theirs. The database marks it for a holder
+ * to look at (`bank_review` 'disputed'), and the screen, drawn again, says
+ * so. Pressed at once, never held for an undo: it destroys nothing.
+ */
+export async function disputeBankChangeAction(
+  business: string,
+): Promise<FileWriteAnswer> {
+  const who = await fileWriter(business);
+  if ("failure" in who) return { ok: false, failure: who.failure };
+  try {
+    const disputed = await disputeBankChange(who.userId, who.businessId);
+    if (!disputed.ok) return { ok: false, failure: disputed.failure };
+    refresh();
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, ...logged("disputing a bank change failed", error) };
   }
 }

@@ -4,6 +4,7 @@ import type { SENT_WITH } from "@domain/employee-file-steps";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { Card } from "@ui/card";
+import { ExternalLink } from "lucide-react";
 import { useState } from "react";
 import { failureKey } from "../failure-words";
 import type { FileActionFailure } from "../file-types";
@@ -19,13 +20,17 @@ import {
 } from "../flow-kit";
 
 /**
- * Step 5, "טופס 101", on paper (H5a's one way; the approved online form is
- * H5b's, the printed one H7's): what the person does outside the app, why
- * it matters for their tax, how to hand it over, where this year's stands,
- * and "מסרתי את הטופס", which the owner or the accountant then confirms.
- * The step's main action sends the whole file once its details are in; until
- * then it leads to the first still open, and says why. The form on paper
- * never keeps the file back.
+ * Step 5, "טופס 101", the way the business takes it (H5b's settings): on
+ * paper (the printed one is H7's), what the person does outside the app and
+ * how to hand it over; or at an approved system, by its link, named by its
+ * provider (or, with none set, by its site, left to right), with the site
+ * it opens said under it, in a new window that knows nothing of this one.
+ * Either way why it matters for their tax, where this year's stands, and
+ * "מסרתי את הטופס", which the owner or the accountant then confirms; the
+ * route it is marked by is the server's. Not drawn while the business takes
+ * it outside the app. The step's main action sends the whole file once its
+ * details are in; until then it leads to the first still open, and says
+ * why. The form never keeps the file back.
  */
 export function Form101Step({
   kit,
@@ -51,6 +56,7 @@ export function Form101Step({
   const [failure, setFailure] = useState<FileActionFailure | null>(null);
   const row = data.taxYear;
   const business = { business: data.businessName };
+  const setup = data.form101;
   // The person marks it again only once it was returned or is due again.
   const canMark =
     row === null || row.status === "returned" || row.status === "change_due";
@@ -76,11 +82,58 @@ export function Form101Step({
   return (
     <FileSection step="form101" active={active} kit={kit}>
       <Card padding="lg" className="flex flex-col gap-3">
-        <p className="text-pretty text-md">{t("form101.body", business)}</p>
-        <p className="text-pretty text-base">{t("form101.tax", business)}</p>
-        <p className="text-pretty text-base text-ink-2">
-          {t("form101.handOver")}
-        </p>
+        {setup.way === "link" ? (
+          <>
+            <p className="text-pretty text-md">
+              {setup.provider
+                ? t("form101.linkBody", {
+                    ...business,
+                    provider: setup.provider,
+                  })
+                : t.rich("form101.linkBodySite", {
+                    ...business,
+                    domain: setup.domain,
+                    ltr,
+                  })}
+            </p>
+            <div className="flex flex-col gap-1.5">
+              <Button
+                asChild
+                variant="secondary"
+                className="w-full md:w-auto md:self-start"
+              >
+                <a href={setup.link} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink
+                    aria-hidden="true"
+                    className="rtl:-scale-x-100"
+                  />
+                  {setup.provider
+                    ? t("form101.open", { provider: setup.provider })
+                    : t.rich("form101.openSite", { domain: setup.domain, ltr })}
+                </a>
+              </Button>
+              <p className="px-1 text-ink-2 text-sm">
+                {t.rich("form101.opensAt", { domain: setup.domain, ltr })}
+              </p>
+            </div>
+            <p className="text-pretty text-base">
+              {t("form101.tax", business)}
+            </p>
+            <p className="text-pretty text-base text-ink-2">
+              {t("form101.linkAfter")}
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="text-pretty text-md">{t("form101.body", business)}</p>
+            <p className="text-pretty text-base">
+              {t("form101.tax", business)}
+            </p>
+            <p className="text-pretty text-base text-ink-2">
+              {t("form101.handOver")}
+            </p>
+          </>
+        )}
         <div className="flex flex-wrap items-center gap-2 pt-1">
           <span className="font-medium text-base">
             {t("steps.name.form101")}{" "}
@@ -112,11 +165,12 @@ export function Form101Step({
           </p>
         ) : null}
         {canMark ? (
+          // As wide as the link's button on a phone, inline from a tablet.
           <Button
             variant="secondary"
             loading={pending}
             onClick={handIn}
-            className="self-start"
+            className="w-full md:w-auto md:self-start"
           >
             {t("form101.handedIn")}
           </Button>

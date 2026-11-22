@@ -29,7 +29,10 @@ show, gate or configure the module comes from it:
   `holdsPermission` over it and keep no defaults of their own.
 - `settings`: a Zod schema where every field has a default. Read with
   `readModuleSettings` (invalid fields fall back to defaults), written
-  through `validateModuleSettings` (invalid input throws).
+  through `validateModuleSettings` (invalid input throws). A field's
+  `.meta()` says who edits it (`level`), and for a text typed left to right,
+  how (`entry`: a link, a phone or digits, drawn with their keyboard; the
+  field tidies what is typed, and what it outputs is saved).
 
 `registry.ts` lists the manifests in nav order. `registry.test.ts` checks
 them against the database enum, the phone tab bar limit (home + 4) and the

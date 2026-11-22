@@ -3,7 +3,8 @@
 import { WEEKDAY_KEYS } from "@domain/availability-form";
 import type { ManageReadOnly } from "@domain/manage-access";
 import type { ModuleKey } from "@domain/modules";
-import type { SettingField } from "@domain/settings-form";
+import { displayIsraeliPhone, normalizeIsraeliPhone } from "@domain/phone";
+import type { SettingEntry, SettingField } from "@domain/settings-form";
 import type { Position, ShiftPattern } from "@domain/staffing";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
@@ -297,6 +298,7 @@ function PlainField({
           hint={hint}
           value={typeof value === "string" ? value : ""}
           maxLength={field.maxLength}
+          entry={field.entry}
           disabled={disabled}
           onChange={onChange}
         />
@@ -450,11 +452,33 @@ function TimeField({
   );
 }
 
+/** How each entry is typed: its keyboard and its input type. */
+const ENTRY: Record<
+  SettingEntry,
+  { inputMode: "url" | "tel" | "numeric"; type: "url" | "tel" | "text" }
+> = {
+  link: { inputMode: "url", type: "url" },
+  phone: { inputMode: "tel", type: "tel" },
+  digits: { inputMode: "numeric", type: "text" },
+};
+
+/** A phone as people write it: what is stored (E.164) and what is typed read the same. */
+const asPhone = (text: string) => {
+  const phone = normalizeIsraeliPhone(text);
+  return phone ? displayIsraeliPhone(phone) : text.trim();
+};
+
+/**
+ * One line of text, saved trimmed once it is left. A link, a phone or
+ * digits (`entry`) are typed left to right with their own keyboard, and the
+ * manifest's field tidies what is saved; a phone reads as people write it.
+ */
 function TextField({
   name,
   hint,
   value,
   maxLength,
+  entry,
   disabled,
   onChange,
 }: {
@@ -462,16 +486,19 @@ function TextField({
   hint: string | undefined;
   value: string;
   maxLength: number | undefined;
+  entry: SettingEntry | undefined;
   disabled: boolean;
   onChange: (value: string) => unknown;
 }) {
+  const phone = entry === "phone";
   const { draft, edit, leave } = useDraft(
-    value,
+    phone ? displayIsraeliPhone(value) : value,
     () => true,
     (text) => onChange(text.trim()),
     null,
-    (text) => text.trim(),
+    phone ? asPhone : (text) => text.trim(),
   );
+  const typed = entry ? ENTRY[entry] : null;
   return (
     <GroupedField
       label={name}
@@ -484,6 +511,17 @@ function TextField({
       onKeyDown={(event) => {
         if (event.key === "Enter") event.currentTarget.blur();
       }}
+      {...(typed
+        ? {
+            dir: "ltr",
+            className: ltrInputClass,
+            type: typed.type,
+            inputMode: typed.inputMode,
+            autoComplete: "off",
+            autoCapitalize: "none",
+            spellCheck: false,
+          }
+        : {})}
     />
   );
 }

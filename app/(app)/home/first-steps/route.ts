@@ -18,7 +18,7 @@ function answer(status: number): Response {
  * page: the business is the session's. Refused for anyone signed out,
  * viewing as someone or not its owner (`firstStepsHideRefusal`), who never
  * have "הסתרה", and for a request another site sends. A route rather than a
- * server action, for the reason `sendHide` (first-steps-hide.tsx) gives: a
+ * server action, for the reason `sendHide` (../hide-request.ts) gives: a
  * hide sent on leaving Today reaches another page's worker, and Next drops
  * the Set-Cookie of an action forwarded from there.
  */

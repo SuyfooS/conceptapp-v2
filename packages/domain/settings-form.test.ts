@@ -7,6 +7,7 @@ import {
   fieldsFor,
   type SettingLevel,
   settingLevelOf,
+  textSettingShown,
 } from "./settings-form";
 
 const settings = z.object({
@@ -169,5 +170,94 @@ describe("checkSettingsChange", () => {
         "business",
       ),
     ).toEqual({ ok: true, patch: { on: true } });
+  });
+});
+
+describe("a text setting typed left to right", () => {
+  const typed = z.object({
+    phone: z
+      .string()
+      .max(20)
+      .transform((value) => value.replace(/-/g, ""))
+      .refine((value) => value === "" || /^0\d{8,9}$/.test(value))
+      .default("")
+      .meta({ level: "owner", entry: "phone" }),
+    link: z.string().max(300).default("").meta({ entry: "link" }),
+  });
+
+  it("is still text, with its length and how it is typed", () => {
+    expect(describeSettings(typed)).toEqual([
+      {
+        key: "phone",
+        level: "owner",
+        kind: "text",
+        maxLength: 20,
+        entry: "phone",
+      },
+      {
+        key: "link",
+        level: "business",
+        kind: "text",
+        maxLength: 300,
+        entry: "link",
+      },
+    ]);
+    // A plain one says nothing of it.
+    expect(
+      describeSettings(settings).find((field) => field.key === "note"),
+    ).not.toHaveProperty("entry");
+  });
+
+  it("saves what the schema outputs, and refuses what it refuses", () => {
+    const withPhone = defineManifest({
+      key: "employee_files",
+      requires: [],
+      nav: null,
+      homeWidget: null,
+      permissions: [],
+      settings: typed,
+    });
+    expect(
+      checkSettingsChange(withPhone, {}, { phone: "03-123-4567" }, "owner"),
+    ).toEqual({ ok: true, patch: { phone: "031234567" } });
+    expect(
+      checkSettingsChange(withPhone, {}, { phone: "12" }, "owner"),
+    ).toEqual({ ok: false, problem: "invalid" });
+  });
+});
+
+describe("a text setting in the activity log", () => {
+  it("says nothing set as such, for every text setting", () => {
+    for (const raw of ["", null, undefined]) {
+      expect(textSettingShown(raw)).toBeNull();
+      expect(textSettingShown(raw, "phone")).toBeNull();
+      expect(textSettingShown(raw, "link")).toBeNull();
+    }
+  });
+
+  it("keeps words as written, right to left with the page", () => {
+    expect(textSettingShown("משרד רואי החשבון")).toEqual({
+      text: "משרד רואי החשבון",
+      ltr: false,
+    });
+  });
+
+  it("draws an entry left to right, a phone as people write it", () => {
+    expect(textSettingShown("+97231234567", "phone")).toEqual({
+      text: "03-123-4567",
+      ltr: true,
+    });
+    expect(textSettingShown("+972501234567", "phone")).toEqual({
+      text: "050-123-4567",
+      ltr: true,
+    });
+    expect(textSettingShown("https://101.example/noa", "link")).toEqual({
+      text: "https://101.example/noa",
+      ltr: true,
+    });
+    expect(textSettingShown("912345678", "digits")).toEqual({
+      text: "912345678",
+      ltr: true,
+    });
   });
 });

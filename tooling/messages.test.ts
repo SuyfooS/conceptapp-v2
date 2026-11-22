@@ -42,6 +42,24 @@ describe("messages", () => {
     }
   });
 
+  it("in Hebrew, end an address outside <ltr> on a letter or a digit", () => {
+    // In right-to-left words, what follows a Latin run up to a Hebrew one or
+    // the end (":", "/", ",") takes the paragraph's direction and lands on
+    // the run's other side: "ב-https://," reads "//:https".
+    const addresses = (message: string) =>
+      message
+        .replace(/<ltr>.*?<\/ltr>/g, "")
+        .match(/[a-z][a-z0-9+.-]*:\/\/[^\s֐-׿]*/gi) ?? [];
+    for (const [key, message] of heLeaves) {
+      for (const address of addresses(message)) {
+        expect(address, key).toMatch(/[a-z0-9]$/i);
+      }
+    }
+    expect(addresses("כתובת שמתחילה ב-https://, של מערכת")).toEqual([
+      "https://,",
+    ]);
+  });
+
   it("are never empty", () => {
     for (const [key, value] of [...heLeaves, ...enLeaves]) {
       expect(value.trim(), key).not.toBe("");

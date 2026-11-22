@@ -1,9 +1,15 @@
 import { BANK_INSTRUCTION_VERSION } from "@domain/employee-file";
-import { fileStepStates, type SENT_WITH } from "@domain/employee-file-steps";
+import {
+  fileStepStates,
+  nextFileStep,
+  previousFileStep,
+  type SENT_WITH,
+} from "@domain/employee-file-steps";
 import { formArg } from "@domain/profile";
 import { createElement, type ReactElement } from "react";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+import { fileStepInputOf } from "./file-parts";
 import type { Kit } from "./flow-kit";
 import type { BankScreen, BankScreenState } from "./steps/bank-step";
 
@@ -26,11 +32,11 @@ vi.mock("next/link", () => ({
 const { NextIntlClientProvider, createTranslator, useTranslations } =
   await import("next-intl");
 const { FileFlow, SummaryFoot } = await import("./file-flow");
-const { BankStep, bankHeld, bankToSend, useHoldWords } = await import(
-  "./steps/bank-step"
-);
+const { BankStep, bankHeld, bankMoves, bankToSend, useHoldWords } =
+  await import("./steps/bank-step");
 const { FileFrame } = await import("./file-frame");
-const { FileView } = await import("./file-view");
+const { FileView, fileViewOf } = await import("./file-view");
+const { NoticeBody } = await import("./notice-sheet");
 const { fileMessages } = await import("./file-messages");
 const { fileScreenDemo } = await import("../../../design/shell/me/file/data");
 const he = (await import("@/messages/he.json")).default;
@@ -45,6 +51,7 @@ const actions = {
   handInForm101: answer,
   submit: answer,
   saveProfile: answer,
+  disputeBankChange: answer,
 };
 
 const STATES = [
@@ -55,7 +62,9 @@ const STATES = [
   "code",
   "hold",
   "saved",
+  "ready",
   "done",
+  "later",
 ] as const;
 const VIEWS = [
   null,
@@ -213,6 +222,15 @@ describe("a step with everything filled in", () => {
 
 const business = "מסעדת הדגמה";
 const f = he.app.file;
+
+/** A message's words as the page draws them: each <ltr> a left-to-right span. */
+const drawn = (message: string, values: Record<string, string>) =>
+  Object.entries(values).reduce(
+    (text, [key, value]) => text.replace(`{${key}}`, value),
+    message
+      .replaceAll("<ltr>", '<span dir="ltr">')
+      .replaceAll("</ltr>", "</span>"),
+  );
 
 /** A button's opening tag, by the words it holds. */
 const buttonWith = (html: string, words: string) =>
@@ -383,6 +401,9 @@ describe("the summary's main action, with the open step on screen", () => {
   });
 });
 
+/** A last day to choose a fund before the twin's day (24 November 2026): passed. */
+const PASSED_DAY = "2026-11-23";
+
 describe("the done screen", () => {
   it("says 'סיימת' only with nothing open, and leads back to the profile", () => {
     const missing: string[] = [];
@@ -400,6 +421,284 @@ describe("the done screen", () => {
     expect(html).not.toContain(`>${f.done.title}</h2>`);
     expect(html).toContain(heT("app.file.done.titleLeft", { count: 3 }));
     expect(buttonWith(html, f.actions.finish.bank)).toHaveLength(2);
+  });
+
+  it("leads to the pension once sent with a fund chosen 'later' still to choose", () => {
+    const missing: string[] = [];
+    const { data } = fileScreenDemo("later", "he");
+    expect(data.missing).toEqual(["pension"]);
+    // No step is open, so the flow opens here by itself.
+    const html = drawData(data, "he", null, missing);
+    expect(missing).toEqual([]);
+    expect(html).not.toContain(`>${f.done.title}</h2>`);
+    expect(html).toContain(`>${f.done.titlePension}</h2>`);
+    expect(html).toContain(
+      heT("app.file.pension.dueOn", { date: "24 בדצמבר 2026", business }),
+    );
+    // The screen's main action: in the dock, and inline on a desktop.
+    expect(buttonWith(html, f.actions.choosePension)).toHaveLength(2);
+    expect(buttonWith(html, f.done.profile)).toHaveLength(0);
+  });
+
+  // H5b's last check: with the day passed, the database still counts the
+  // pension missing and Today still asks, so the done screen does too.
+  it("leads to the pension all the same once the day to choose passed", () => {
+    const missing: string[] = [];
+    const { data } = fileScreenDemo("later", "he");
+    const passed: Data = { ...data, pensionDueOn: PASSED_DAY };
+    const html = drawData(passed, "he", null, missing);
+    expect(missing).toEqual([]);
+    expect(html).not.toContain(`>${f.done.title}</h2>`);
+    expect(html).toContain(`>${f.done.titlePension}</h2>`);
+    expect(html).toContain(heT("app.file.pension.duePassed", { business }));
+    expect(buttonWith(html, f.actions.choosePension)).toHaveLength(2);
+    expect(buttonWith(html, f.done.profile)).toHaveLength(0);
+  });
+
+  it("still sends first when the file isn't sent, a fund chosen 'later' or not", () => {
+    const { data } = fileScreenDemo("later", "he", { form101: "off" });
+    // By its day, and with the day passed: never "סיימת" nor "הכול מוכן".
+    for (const [pensionDueOn, line] of [
+      [
+        "2026-12-24",
+        heT("app.file.pension.dueOn", { date: "24 בדצמבר 2026", business }),
+      ],
+      [PASSED_DAY, heT("app.file.pension.duePassed", { business })],
+    ] as const) {
+      const missing: string[] = [];
+      const unsent: Data = {
+        ...data,
+        pensionDueOn,
+        file: data.file ? { ...data.file, submitted_at: null } : null,
+      };
+      const html = drawData(unsent, "he", "done", missing);
+      expect(missing).toEqual([]);
+      expect(html).toContain(`>${f.done.titlePension}</h2>`);
+      expect(html).not.toContain(`>${f.done.title}</h2>`);
+      expect(html).toContain(heT("app.file.done.readyPension", { business }));
+      expect(html).not.toContain(heT("app.file.done.ready", { business }));
+      expect(html).toContain(line);
+      expect(
+        buttonWith(html, heT("app.file.actions.send", { business })),
+      ).toHaveLength(2);
+      expect(buttonWith(html, f.actions.choosePension)).toHaveLength(0);
+    }
+  });
+
+  it("says the fund left beside a step still open, its day passed too", () => {
+    const missing: string[] = [];
+    const { data } = fileScreenDemo("later", "he");
+    const html = drawData(
+      { ...data, pensionDueOn: PASSED_DAY, missing: ["bank", "pension"] },
+      "he",
+      "done",
+      missing,
+    );
+    expect(missing).toEqual([]);
+    // The account's step is open again: the pension isn't the title.
+    expect(html).toContain(heT("app.file.done.titleLeft", { count: 1 }));
+    expect(html).toContain(
+      heT("app.file.done.left", { what: f.done.leftPensionPassed }),
+    );
+  });
+});
+
+describe("the pension's row, a fund chosen 'later'", () => {
+  /** The steps' rows that lead to the pension: their marks and their words. */
+  const pensionRows = (html: string) =>
+    html.match(
+      /<a href="\/me\/file\?step=pension"[^>]*>(?:(?!<\/a>)[\s\S])*<\/a>/g,
+    ) ?? [];
+
+  it("says by when a fund is still to choose, though the step is behind her", () => {
+    const missing: string[] = [];
+    const { data } = fileScreenDemo("later", "he");
+    const left = heT("app.file.done.leftPension", { date: "24 בדצמבר 2026" });
+    // On the done screen's list, and beside the step on a tablet and a desktop.
+    for (const view of ["done", "pension"] as const) {
+      const html = drawData(data, "he", view, missing);
+      const rows = pensionRows(html);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toContain(`text-sm">${left}</span>`);
+      // Still marked done, and counted: the file goes with it.
+      expect(rows[0]).toContain("bg-success-soft");
+      expect(rows[0]).toContain(f.steps.state.done);
+      expect(html).toContain(heT("app.file.progress", { done: 6, count: 6 }));
+    }
+    expect(missing).toEqual([]);
+  });
+
+  it("says the day passed once it did, a fund still to choose", () => {
+    const missing: string[] = [];
+    const { data } = fileScreenDemo("later", "he");
+    const passed: Data = { ...data, pensionDueOn: PASSED_DAY };
+    for (const view of ["done", "pension"] as const) {
+      const html = drawData(passed, "he", view, missing);
+      const rows = pensionRows(html);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toContain(`text-sm">${f.done.leftPensionPassed}</span>`);
+      expect(rows[0]).toContain("bg-success-soft");
+    }
+    expect(missing).toEqual([]);
+  });
+
+  it("is still missing in a desktop's summary, by its day or with it passed", () => {
+    const { data } = fileScreenDemo("later", "he");
+    for (const [pensionDueOn, line] of [
+      [
+        "2026-12-24",
+        heT("app.file.pension.dueOn", { date: "24 בדצמבר 2026", business }),
+      ],
+      [PASSED_DAY, heT("app.file.pension.duePassed", { business })],
+    ] as const) {
+      const missing: string[] = [];
+      const html = drawData(
+        { ...data, pensionDueOn },
+        "he",
+        "pension",
+        missing,
+      );
+      expect(missing).toEqual([]);
+      expect(html).not.toContain(f.summary.none);
+      expect(html).toContain(`<li>${f.steps.name.pension}</li>`);
+      expect(html).toContain(`<p class="text-ink-2 text-sm">${line}</p>`);
+    }
+  });
+
+  it("says nothing more once a fund is chosen", () => {
+    const missing: string[] = [];
+    const html = draw("done", "he", "done", missing);
+    expect(missing).toEqual([]);
+    const rows = pensionRows(html);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).not.toContain(f.done.leftPension.split("{")[0] ?? "");
+  });
+});
+
+describe("the progress line", () => {
+  it("counts an optional step only once something of it is in", () => {
+    const missing: string[] = [];
+    const setup = { ask: "contact", form101: "off" } as const;
+    const fresh = fileScreenDemo("new", "he", setup).data;
+    expect(fresh.steps).toEqual(["start", "identity", "address", "pension"]);
+    const welcome = drawData(fresh, "he", null, missing);
+    // Nothing done yet, though step 2's row says "לא חובה".
+    expect(welcome).toContain(heT("app.file.progress", { done: 0, count: 4 }));
+    expect(welcome).toContain(heT("app.file.welcome.body", { count: 4 }));
+    const done = drawData(
+      fileScreenDemo("done", "he", setup).data,
+      "he",
+      "done",
+      missing,
+    );
+    expect(done).toContain(heT("app.file.progress", { done: 4, count: 4 }));
+    expect(missing).toEqual([]);
+  });
+});
+
+describe("the account's change, in the bank step", () => {
+  const changedOn = new Intl.DateTimeFormat("he", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date("2026-11-24T12:00:00Z"));
+
+  it("offers 'לא שיניתי' under the saved account while the change is told", () => {
+    const missing: string[] = [];
+    const { data } = fileScreenDemo("saved", "he");
+    expect(data.bankChange).toEqual({
+      on: "2026-11-24",
+      disputed: false,
+      seen: null,
+    });
+    const html = drawData(data, "he", "bank", missing);
+    expect(missing).toEqual([]);
+    expect(html).toContain(heT("app.file.bank.changed", { date: changedOn }));
+    const dispute = buttonWith(html, f.bank.dispute);
+    expect(dispute).toHaveLength(1);
+    // A quiet one: the step's main action stays the dock's, in the accent.
+    expect(dispute[0]).not.toContain("bg-accent");
+  });
+
+  it("says what follows once disputed, with nothing more to press", () => {
+    const missing: string[] = [];
+    const { data } = fileScreenDemo("saved", "he");
+    const html = drawData(
+      { ...data, bankChange: { on: "2026-11-24", disputed: true, seen: null } },
+      "he",
+      "bank",
+      missing,
+    );
+    expect(missing).toEqual([]);
+    expect(html).toContain(heT("app.file.bank.disputed", { business }));
+    expect(buttonWith(html, f.bank.dispute)).toHaveLength(0);
+  });
+
+  it("says nothing once the change is no longer told", () => {
+    const missing: string[] = [];
+    const { data } = fileScreenDemo("saved", "he");
+    const html = drawData({ ...data, bankChange: null }, "he", "bank", missing);
+    expect(html).not.toContain(f.bank.changed.split("{")[0] ?? "");
+    expect(buttonWith(html, f.bank.dispute)).toHaveLength(0);
+  });
+
+  it("isn't asked of a change made on this device, and still is of one said seen on Today", () => {
+    const missing: string[] = [];
+    const { data } = fileScreenDemo("saved", "he");
+    const told = data.bankChange;
+    if (!told) throw new Error("a change told");
+    const as = (bankChange: NonNullable<Data["bankChange"]>) =>
+      drawData({ ...data, bankChange }, "he", "bank", missing);
+    const made = as({ ...told, seen: "made" });
+    expect(made).not.toContain(f.bank.changed.split("{")[0] ?? "");
+    expect(buttonWith(made, f.bank.dispute)).toHaveLength(0);
+    // "אני שיניתי" on Today hid the card here: the step keeps the way.
+    expect(
+      buttonWith(as({ ...told, seen: "said" }), f.bank.dispute),
+    ).toHaveLength(1);
+    // Marked since, on another device: it says so, with nothing to press.
+    const marked = as({ ...told, seen: "made", disputed: true });
+    expect(marked).toContain(heT("app.file.bank.disputed", { business }));
+    expect(buttonWith(marked, f.bank.dispute)).toHaveLength(0);
+    expect(missing).toEqual([]);
+  });
+
+  // H5b's last check: "לא שיניתי" came back under the person's own account
+  // once "החלפת החשבון" let go of the one confirmed and "השארת החשבון
+  // הנוכחי" brought the saved one back.
+  it("isn't asked under the person's own change, through 'החלפת החשבון' and back", () => {
+    // The server's answer, after the code, tells this very change.
+    const { data } = fileScreenDemo("saved", "he");
+    let state: BankScreenState = screenOf({ phase: "code" });
+    const press = (move: Partial<BankScreenState>) => {
+      state = { ...state, ...move };
+      return drawHe(
+        createElement(Bank, { data, screen: { ...state, set: () => {} } }),
+      );
+    };
+    const changed = f.bank.changed.split("{")[0] ?? "";
+    const confirmed = press(
+      bankMoves.confirmed("new", { bank: 12, branch: 600, masked: "•••0002" }),
+    );
+    expect(state.phase).toBe("saved");
+    expect(confirmed).not.toContain(changed);
+    expect(buttonWith(confirmed, f.bank.dispute)).toHaveLength(0);
+    // "החלפת החשבון": a new account to type, the one confirmed let go.
+    const changing = press(bankMoves.change());
+    expect(state.confirmed).toBeNull();
+    expect(changing).toContain('id="file-bank-form"');
+    // "השארת החשבון הנוכחי": the saved account again, and still not asked.
+    const kept = press(bankMoves.keep());
+    expect(state.phase).toBe("saved");
+    expect(buttonWith(kept, f.bank.change)).toHaveLength(1);
+    expect(kept).not.toContain(changed);
+    expect(buttonWith(kept, f.bank.dispute)).toHaveLength(0);
+    // The same account on a screen that made no change: asked.
+    const fresh = drawHe(
+      createElement(Bank, { data, screen: screenOf({ phase: "saved" }) }),
+    );
+    expect(buttonWith(fresh, f.bank.dispute)).toHaveLength(1);
   });
 });
 
@@ -564,16 +863,11 @@ function useKit(data: Data, busy: Kit["busy"] = {}): Kit {
   const t = useTranslations("app.file");
   return {
     data,
-    states: fileStepStates({
-      addressForm: data.addressForm,
-      asked: data.asked,
-      missing: data.missing,
-      directGroups: data.file?.direct_groups ?? [],
-      pensionAnswer: data.file?.pension_answer ?? null,
-      form101: data.taxYear
-        ? { status: data.taxYear.status, route: data.taxYear.route }
-        : null,
-    }),
+    states: fileStepStates(fileStepInputOf(data)),
+    steps: data.steps,
+    next: (from) => nextFileStep(from, data.steps) ?? "done",
+    previous: (from) => previousFileStep(from, data.steps),
+    stepName: (of) => t(`steps.name.${of}`),
     actions,
     t,
     go: () => {},
@@ -607,6 +901,7 @@ function screenOf(over: Partial<BankScreenState>): BankScreen {
     hold: null,
     confirmed: null,
     review: null,
+    changedHere: false,
     set: () => {},
     ...over,
   };
@@ -797,5 +1092,282 @@ describe("the file's frame", () => {
       );
       expect(html.includes('dir="ltr" lang="en"')).toBe(lang === "en");
     }
+  });
+});
+
+// What each business asks (H5b): the twin's ways, each drawn whole.
+const SETUPS = [
+  { ask: "lean", form101: "print" },
+  { ask: "contact", form101: "print" },
+  { ask: "all", form101: "link" },
+  { ask: "all", form101: "off" },
+  { ask: "contact", form101: "off" },
+] as const;
+
+describe("the file by the business's settings", () => {
+  it("draws each way at every step on screen and done, in both languages, every word there", () => {
+    const missing: string[] = [];
+    for (const lang of ["he", "en"] as const) {
+      for (const setup of SETUPS) {
+        for (const state of ["stopped", "new", "ready", "done"] as const) {
+          const { data } = fileScreenDemo(state, lang, setup);
+          for (const view of [null, ...data.steps, "done"] as const) {
+            expect(drawData(data, lang, view, missing)).toContain("<main");
+          }
+        }
+      }
+    }
+    expect(missing).toEqual([]);
+  }, 60_000);
+
+  it("leaves out the address and the account when neither is asked", () => {
+    const missing: string[] = [];
+    const lean = fileScreenDemo("stopped", "he", { ask: "lean" }).data;
+    expect(lean.steps).toEqual(["start", "identity", "pension", "form101"]);
+    const html = drawData(lean, "he", null, missing);
+    expect(missing).toEqual([]);
+    expect(html).toContain(
+      heT("app.file.steps.count", { current: 3, count: 4 }),
+    );
+    expect(html).not.toContain('id="file-bank"');
+    expect(html).not.toContain('id="file-address"');
+    const welcome = drawData(
+      fileScreenDemo("new", "he", { ask: "lean" }).data,
+      "he",
+      null,
+      missing,
+    );
+    expect(welcome).toContain(heT("app.file.welcome.body", { count: 4 }));
+  });
+
+  it("names step 2 by the ways to reach the person, optional until something is in", () => {
+    const missing: string[] = [];
+    const { data } = fileScreenDemo("stopped", "he", { ask: "contact" });
+    const html = drawData(data, "he", "address", missing);
+    expect(missing).toEqual([]);
+    expect(html).toMatch(
+      new RegExp(
+        `<h2 id="file-address-title"[^>]*>${f.steps.name.contact}</h2>`,
+      ),
+    );
+    expect(html).toContain(f.address.emergencyTitle);
+    expect(html).toContain(f.address.workLanguage);
+    expect(html).not.toContain(f.address.city);
+    // Its row: "לא חובה" beside the name, said once to a screen reader.
+    expect(html).toMatch(
+      new RegExp(
+        `${f.steps.name.contact}<span class="sr-only"> · (<!-- -->)?${f.optional}</span>`,
+      ),
+    );
+    expect(html).toMatch(
+      new RegExp(`<span [^>]*aria-hidden="true"[^>]*>${f.optional}</span>`),
+    );
+    const done = drawData(
+      fileScreenDemo("done", "he", { ask: "contact" }).data,
+      "he",
+      "address",
+      missing,
+    );
+    // Hers, in: the contact's number as people write it.
+    expect(done).toContain('value="050-000-0099"');
+    expect(done).toMatch(
+      new RegExp(
+        `${f.steps.name.contact}<span class="sr-only"> · (<!-- -->)?${f.steps.state.done}</span>`,
+      ),
+    );
+  });
+
+  it("opens the approved system's link in a new window that knows nothing of this one", () => {
+    const missing: string[] = [];
+    const { data } = fileScreenDemo("stopped", "he", { form101: "link" });
+    const html = drawData(data, "he", "form101", missing);
+    expect(missing).toEqual([]);
+    const link = html.match(
+      /<a [^>]*href="https:\/\/101\.example\/noa"[^>]*>/,
+    )?.[0];
+    expect(link).toContain('target="_blank"');
+    expect(link).toContain('rel="noopener noreferrer"');
+    expect(html).toContain(
+      heT("app.file.form101.open", { provider: "משרד השכר" }),
+    );
+    expect(html).toContain(
+      f.form101.opensAt
+        .replace("<ltr>", '<span dir="ltr">')
+        .replace("{domain}", "101.example")
+        .replace("</ltr>", "</span>"),
+    );
+    expect(html).not.toContain(f.form101.handOver);
+    // Its two actions as wide as each other: full width on a phone, inline
+    // from a tablet up.
+    const handedIn = buttonWith(html, f.form101.handedIn);
+    expect(handedIn).toHaveLength(1);
+    for (const action of [link, handedIn[0]]) {
+      expect(action).toContain("w-full md:w-auto md:self-start");
+    }
+  });
+
+  it("names a system with no name set by its site, left to right", () => {
+    const missing: string[] = [];
+    const { data } = fileScreenDemo("stopped", "he", { form101: "link" });
+    const unnamed: Data = {
+      ...data,
+      form101: {
+        way: "link",
+        link: "https://101.example/noa",
+        domain: "101.example",
+        provider: null,
+      },
+    };
+    const html = drawData(unnamed, "he", "form101", missing);
+    expect(missing).toEqual([]);
+    // Inside Hebrew words a bare domain would read "example.101".
+    expect(html).toContain(
+      drawn(f.form101.openSite, { domain: "101.example" }),
+    );
+    expect(html).toContain(
+      drawn(f.form101.linkBodySite, { business, domain: "101.example" }),
+    );
+    expect(html).not.toContain(f.form101.open.split("{")[0] ?? "");
+    const notice = drawHe(
+      createElement(NoticeBody, {
+        business,
+        names: data.notice,
+        form101: unnamed.form101,
+        emergency: false,
+      }),
+    );
+    expect(notice).toContain(
+      drawn(f.notice.form101Site, { business, domain: "101.example" }),
+    );
+  });
+
+  it("says a part held but no longer asked can stay or change, in its step", () => {
+    const missing: string[] = [];
+    const { data } = fileScreenDemo("ready", "he", { ask: "held" });
+    // Neither is asked, both are in her file: both steps show, and nothing
+    // of theirs is counted missing.
+    expect(data.asks).toMatchObject({ address: false, bank: false });
+    expect(data.parts).toMatchObject({ address: true, bank: true });
+    expect(data.steps).toEqual([
+      "start",
+      "identity",
+      "address",
+      "bank",
+      "pension",
+      "form101",
+    ]);
+    expect(data.missing).toEqual([]);
+    const address = drawData(data, "he", "address", missing);
+    expect(address).toContain(heT("app.file.address.notAsked", { business }));
+    // The town, no longer asked, can be emptied.
+    expect(address).toContain(
+      heT("app.file.optionalField", { field: f.address.city }),
+    );
+    const bank = drawData(data, "he", "bank", missing);
+    expect(bank).toContain(heT("app.file.bank.notAsked", { business }));
+    expect(buttonWith(bank, f.bank.change)).toHaveLength(1);
+    expect(missing).toEqual([]);
+    // Where the business asks, neither says so.
+    const asked = fileScreenDemo("ready", "he").data;
+    expect(drawData(asked, "he", "address", missing)).not.toContain(
+      heT("app.file.address.notAsked", { business }),
+    );
+    expect(drawData(asked, "he", "bank", missing)).not.toContain(
+      heT("app.file.bank.notAsked", { business }),
+    );
+  });
+
+  it("sends from the done screen when Form 101 isn't taken in the app", () => {
+    const missing: string[] = [];
+    const { data } = fileScreenDemo("ready", "he", { form101: "off" });
+    expect(data.steps).not.toContain("form101");
+    const html = drawData(data, "he", null, missing);
+    expect(missing).toEqual([]);
+    expect(html).not.toContain('id="file-form101"');
+    expect(html).toContain(heT("app.file.done.ready", { business }));
+    // The screen's main action: in the dock, and inline on a desktop.
+    expect(
+      buttonWith(html, heT("app.file.actions.send", { business })),
+    ).toHaveLength(2);
+    // Once sent, the way back to the profile.
+    const sent = drawData(
+      fileScreenDemo("done", "he", { form101: "off" }).data,
+      "he",
+      "done",
+      missing,
+    );
+    expect(buttonWith(sent, f.done.profile)).toHaveLength(2);
+  });
+
+  it("opens a step the business doesn't ask where the person stopped", () => {
+    const { data } = fileScreenDemo("stopped", "he", { ask: "lean" });
+    expect(fileViewOf("bank", data.steps)).toBeNull();
+    expect(fileViewOf("pension", data.steps)).toBe("pension");
+    expect(fileViewOf("done", data.steps)).toBe("done");
+  });
+});
+
+describe("the notice", () => {
+  it("names who the business set, and leaves out what it didn't", () => {
+    const missing: string[] = [];
+    const { data } = fileScreenDemo("stopped", "he", { form101: "link" });
+    const named = drawHe(
+      createElement(NoticeBody, {
+        business,
+        names: data.notice,
+        form101: data.form101,
+        emergency: false,
+      }),
+    );
+    expect(named).toContain(
+      heT("app.file.notice.employer", { employer: "מסעדת הדגמה בע״מ" }),
+    );
+    expect(named).toContain(
+      heT("app.file.notice.whoProvider", {
+        business,
+        provider: "משרד רואי החשבון",
+      }),
+    );
+    expect(named).toContain(
+      heT("app.file.notice.form101Vendor", { business, provider: "משרד השכר" }),
+    );
+    expect(named).toContain('<span dir="ltr">03-123-4567</span>');
+    const bare = drawHe(
+      createElement(NoticeBody, {
+        business,
+        names: { payrollProvider: null, employer: null, phone: null },
+        form101: { way: "print" },
+        emergency: false,
+      }),
+    );
+    expect(bare).toContain(heT("app.file.notice.who", { business }));
+    expect(bare).toContain(heT("app.file.notice.rights", { business }));
+    expect(bare).not.toContain(f.notice.employer.split("{")[0] ?? "");
+    expect(bare).not.toContain(f.notice.emergency);
+    expect(missing).toEqual([]);
+  });
+
+  it("says the managers see the emergency contact while the step asks for one, as the step does", () => {
+    const missing: string[] = [];
+    const { data } = fileScreenDemo("stopped", "he", { ask: "contact" });
+    expect(data.parts.emergency).toBe(true);
+    const notice = drawHe(
+      createElement(NoticeBody, {
+        business,
+        names: data.notice,
+        form101: data.form101,
+        emergency: data.parts.emergency,
+      }),
+    );
+    expect(notice).toContain(f.notice.emergency);
+    // The flow's own note says it too, beside the steps on a desktop.
+    const html = drawData(data, "he", "address", missing);
+    expect(html).toContain(f.address.emergencyReason);
+    expect(html).toContain(f.visibleEmergency);
+    expect(html).not.toContain(`>${f.visible}<`);
+    const plain = draw("stopped", "he", "address", missing);
+    expect(plain).toContain(`>${f.visible}<`);
+    expect(plain).not.toContain(f.visibleEmergency);
+    expect(missing).toEqual([]);
   });
 });

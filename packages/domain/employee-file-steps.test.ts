@@ -2,12 +2,16 @@ import { describe, expect, it } from "vitest";
 import { FILE_GROUPS, type FileRow } from "./employee-file";
 import {
   FILE_STEPS,
+  type FileParts,
   type FileStepInput,
+  fileParts,
   fileStepOf,
   fileStepStates,
+  fileStepsOn,
   isNewFile,
   minorOnFile,
   nextFileStep,
+  onlyPensionLeft,
   pensionDue,
   phoneTail,
   previousFileStep,
@@ -25,6 +29,7 @@ const EMPTY: FileStepInput = {
   directGroups: [],
   pensionAnswer: null,
   form101: null,
+  contactHeld: false,
 };
 
 const row: FileRow = {
@@ -140,7 +145,9 @@ describe("fileStepStates", () => {
       asked: ["identity", "pension"],
       missing: ["identity", "pension"],
     });
-    expect(states.address).toBe("done");
+    // Step 2 without the address is only the ways to reach the person:
+    // optional, with nothing of it in yet.
+    expect(states.address).toBe("optional");
     expect(states.bank).toBe("done");
     expect(states.identity).toBe("open");
   });
@@ -264,5 +271,172 @@ describe("phoneTail", () => {
     expect(phoneTail("+972500000003")).toBe("0003");
     expect(phoneTail(null)).toBeNull();
     expect(phoneTail("+97")).toBeNull();
+  });
+});
+
+describe("the steps by the business's settings", () => {
+  const NOTHING_HELD = {
+    address: false,
+    email: false,
+    bank: false,
+    workLanguage: false,
+    emergency: false,
+  };
+  const ALL = {
+    address: true,
+    bank: true,
+    emergencyContact: false,
+    workLanguage: false,
+  };
+  const LEAN = { ...ALL, address: false, bank: false };
+  const on = (
+    asks: typeof ALL,
+    held: Partial<typeof NOTHING_HELD> = {},
+    way: "print" | "link" | "off" = "print",
+  ): FileParts => fileParts({ asks, way, held: { ...NOTHING_HELD, ...held } });
+
+  it("are all six while everything is asked", () => {
+    expect(fileStepsOn(on(ALL))).toEqual(FILE_STEPS);
+  });
+
+  it("leave out the address and the bank when neither is asked nor held", () => {
+    expect(fileStepsOn(on(LEAN))).toEqual([
+      "start",
+      "identity",
+      "pension",
+      "form101",
+    ]);
+  });
+
+  it("keep step 2 for the ways to reach the person alone", () => {
+    const parts = on({ ...LEAN, emergencyContact: true, workLanguage: true });
+    expect(parts).toMatchObject({
+      address: false,
+      workLanguage: true,
+      emergency: true,
+    });
+    expect(fileStepsOn(parts)).toEqual([
+      "start",
+      "identity",
+      "address",
+      "pension",
+      "form101",
+    ]);
+    // An email in the file keeps it too, to change or delete.
+    expect(fileStepsOn(on(LEAN, { email: true }))).toContain("address");
+  });
+
+  it("keep what the file holds though it isn't asked any more", () => {
+    expect(fileStepsOn(on({ ...ALL, bank: false }, { bank: true }))).toEqual(
+      FILE_STEPS,
+    );
+    expect(fileStepsOn(on({ ...ALL, bank: false }))).not.toContain("bank");
+  });
+
+  it("leave out Form 101 when it isn't taken in the app", () => {
+    expect(fileStepsOn(on(ALL, {}, "off"))).toEqual([
+      "start",
+      "identity",
+      "address",
+      "bank",
+      "pension",
+    ]);
+  });
+
+  it("go forward, back and on over the steps on screen", () => {
+    const lean = fileStepsOn(on(LEAN, {}, "off"));
+    expect(lean).toEqual(["start", "identity", "pension"]);
+    expect(nextFileStep("identity", lean)).toBe("pension");
+    expect(nextFileStep("pension", lean)).toBeNull();
+    expect(previousFileStep("pension", lean)).toBe("identity");
+    // From a step that isn't on screen, to the nearest one that is.
+    expect(nextFileStep("address", lean)).toBe("pension");
+    expect(fileStepOf("bank", lean)).toBeNull();
+    expect(fileStepOf("pension", lean)).toBe("pension");
+    const states = fileStepStates({
+      ...EMPTY,
+      addressForm: "f",
+      asked: ["identity", "pension"],
+      missing: ["pension"],
+    });
+    expect(resumeStep(states, lean)).toBe("pension");
+    expect(sendBlocker(states, lean)).toBe("pension");
+    expect(stepsDone(states, lean)).toBe(2);
+    expect(resumeStep({ ...states, pension: "done" }, lean)).toBe("done");
+  });
+
+  it("has step 2 optional while the address isn't asked and nothing of it is in", () => {
+    const lean = { ...EMPTY, asked: ["identity", "pension"] as const };
+    const states = fileStepStates({ ...lean, missing: ["identity"] });
+    expect(states.address).toBe("optional");
+    // Never where they pick up, never a blocker, and not counted as done
+    // until something of it is in: a new worker reads "0 מתוך 4".
+    const steps = ["start", "identity", "address", "pension"] as const;
+    expect(
+      stepsDone(fileStepStates({ ...lean, missing: lean.asked }), steps),
+    ).toBe(0);
+    expect(stepsDone({ ...states, start: "done" }, steps)).toBe(2);
+    expect(resumeStep({ ...states, start: "done" }, steps)).toBe("identity");
+    expect(sendBlocker({ ...states, identity: "done" }, steps)).toBeNull();
+    const held = fileStepStates({ ...lean, missing: [], contactHeld: true });
+    expect(held.address).toBe("done");
+    expect(stepsDone({ ...held, start: "done" }, steps)).toBe(4);
+    // Asked, it is the address as before.
+    expect(fileStepStates({ ...EMPTY, contactHeld: true }).address).toBe(
+      "open",
+    );
+  });
+});
+
+describe("onlyPensionLeft", () => {
+  const everythingIn = {
+    ...EMPTY,
+    addressForm: "f" as const,
+    missing: ["pension" as const],
+    form101: { status: "handed_in" as const, route: "print" as const },
+  };
+
+  it("is the pension answered 'later' with nothing else open", () => {
+    const states = fileStepStates({ ...everythingIn, pensionAnswer: "later" });
+    expect(resumeStep(states)).toBe("done");
+    expect(onlyPensionLeft(["pension"], states)).toBe(true);
+  });
+
+  it("isn't while the pension's step is open, or anything else is", () => {
+    // Not answered at all: the flow opens on its step by itself.
+    expect(onlyPensionLeft(["pension"], fileStepStates(everythingIn))).toBe(
+      false,
+    );
+    // Form 101 still to hand in: the flow opens there.
+    const form101Open = fileStepStates({
+      ...everythingIn,
+      pensionAnswer: "later",
+      form101: null,
+    });
+    expect(onlyPensionLeft(["pension"], form101Open)).toBe(false);
+    // ...unless Form 101 isn't on screen.
+    expect(
+      onlyPensionLeft(["pension"], form101Open, [
+        "start",
+        "identity",
+        "address",
+        "bank",
+        "pension",
+      ]),
+    ).toBe(true);
+    // Something else missing too.
+    const bankToo = fileStepStates({
+      ...everythingIn,
+      missing: ["bank", "pension"],
+      pensionAnswer: "later",
+    });
+    expect(onlyPensionLeft(["bank", "pension"], bankToo)).toBe(false);
+    // Nothing missing.
+    expect(
+      onlyPensionLeft(
+        [],
+        fileStepStates({ ...everythingIn, missing: [], pensionAnswer: "new" }),
+      ),
+    ).toBe(false);
   });
 });

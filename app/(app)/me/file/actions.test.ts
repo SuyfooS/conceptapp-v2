@@ -8,14 +8,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // session's own, the bank's code only to the number they sign in with now
 // (never the profile's copy) and only for an account that could be kept,
 // checked without touching the browser's session, noted only once it was
-// right and theirs, and nothing typed in a log.
+// right and theirs, and nothing typed in a log. H5b: step 2's work language
+// and emergency contact, the 101's route from the business's settings,
+// "לא שיניתי", and the account just added kept seen by its own save's
+// moment, never one read afterwards. Today's "אני שיניתי" is a route's
+// (home/bank-seen/route.test.ts).
 
 vi.mock("server-only", () => ({}));
 
 const mocks = vi.hoisted(() => ({
   currentMember: vi.fn(),
   currentModules: vi.fn(),
+  currentModuleSettings: vi.fn(),
   saveEmployeeDetails: vi.fn(),
+  saveEmergencyContact: vi.fn(),
+  disputeBankChange: vi.fn(),
+  getEmployeeFile: vi.fn(),
+  rememberBankChangeSeen: vi.fn(),
   checkBankChange: vi.fn(),
   revealEmployeeFields: vi.fn(),
   noteStepUp: vi.fn(),
@@ -29,9 +38,18 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("next/cache", () => ({ refresh: mocks.refresh }));
 vi.mock("../../member", () => ({ currentMember: mocks.currentMember }));
-vi.mock("../../modules", () => ({ currentModules: mocks.currentModules }));
+vi.mock("../../modules", () => ({
+  currentModules: mocks.currentModules,
+  currentModuleSettings: mocks.currentModuleSettings,
+}));
+vi.mock("../../business-cookie", () => ({
+  rememberBankChangeSeen: mocks.rememberBankChangeSeen,
+}));
 vi.mock("@db/employee-files", () => ({
   saveEmployeeDetails: mocks.saveEmployeeDetails,
+  saveEmergencyContact: mocks.saveEmergencyContact,
+  disputeBankChange: mocks.disputeBankChange,
+  getEmployeeFile: mocks.getEmployeeFile,
   checkBankChange: mocks.checkBankChange,
   revealEmployeeFields: mocks.revealEmployeeFields,
   noteStepUp: mocks.noteStepUp,
@@ -46,12 +64,31 @@ vi.mock("../../../(auth)/otp", () => ({
 
 const {
   confirmBankAction,
+  disputeBankChangeAction,
   handInForm101Action,
   revealOwnAction,
   saveFileStepAction,
   sendBankCodeAction,
   submitFileAction,
 } = await import("./actions");
+
+/** The file's settings as the manifest defaults them: everything asked, Form 101 on paper. */
+const DEFAULTS = {
+  askBank: true,
+  askAddress: true,
+  askEmergencyContact: false,
+  askWorkLanguage: false,
+  form101: "print",
+  form101Provider: "",
+  form101Link: "",
+  payrollProvider: "",
+  employerName: "",
+  employerPhone: "",
+  deductionsFile: "",
+};
+
+/** When the database says Noa's account last changed: someone else's change, read after hers. */
+const CHANGED_AT = "2026-11-20T08:00:00.123456+00:00";
 
 const SHOP = "11111111-1111-4111-a111-111111111111";
 const OTHER = "22222222-2222-4222-a222-222222222222";
@@ -93,6 +130,17 @@ beforeEach(() => {
   mocks.order = [];
   mocks.currentMember.mockReset().mockResolvedValue(noa());
   mocks.currentModules.mockReset().mockResolvedValue(["employee_files"]);
+  mocks.currentModuleSettings.mockReset().mockResolvedValue(DEFAULTS);
+  mocks.saveEmergencyContact.mockReset().mockImplementation(async () => {
+    mocks.order.push("contact");
+    return { ok: true };
+  });
+  mocks.disputeBankChange.mockReset().mockResolvedValue({ ok: true });
+  mocks.getEmployeeFile.mockReset().mockResolvedValue({
+    ok: true,
+    file: { bank_changed_at: CHANGED_AT },
+  });
+  mocks.rememberBankChangeSeen.mockReset().mockResolvedValue(undefined);
   mocks.saveEmployeeDetails.mockReset().mockImplementation(async () => {
     mocks.order.push("save");
     return { ok: true, changed: ["bank"], changeDueBy: null };
@@ -134,6 +182,7 @@ const everyWrite = (business: string) => [
   confirmBankAction(business, { code: "123456", bank: account() }),
   handInForm101Action(business),
   submitFileAction(business),
+  disputeBankChangeAction(business),
 ];
 
 const nothingCalled = () => {
@@ -147,6 +196,10 @@ const nothingCalled = () => {
     mocks.signInPhoneOf,
     mocks.sendCode,
     mocks.checkCode,
+    mocks.saveEmergencyContact,
+    mocks.disputeBankChange,
+    mocks.getEmployeeFile,
+    mocks.rememberBankChangeSeen,
   ]) {
     expect(fn).not.toHaveBeenCalled();
   }
@@ -352,7 +405,75 @@ describe("the bank's code", () => {
       NOA,
       { bank: account() },
       expect.any(String),
+      { atTime: expect.any(Date) },
     );
+  });
+
+  it("keeps the account just added as seen on this device, by its own save's moment", async () => {
+    // Read afterwards, the file would hold someone else's change made a
+    // moment later: it is never read.
+    mocks.getEmployeeFile.mockResolvedValue({
+      ok: true,
+      file: { bank_changed_at: CHANGED_AT },
+    });
+    const before = Date.now();
+    expect(
+      await confirmBankAction(SHOP, { code: "123456", bank: account() }),
+    ).toEqual({ ok: true, review: "new" });
+    expect(mocks.order).toEqual(["verify", "stepUp", "save"]);
+    expect(mocks.getEmployeeFile).not.toHaveBeenCalled();
+    // The moment the save was dated with, which the database keeps as the
+    // change's (`set_employee_details` dates it by `at_time`).
+    const at = mocks.saveEmployeeDetails.mock.calls[0]?.[5]?.atTime as Date;
+    expect(at.getTime()).toBeGreaterThanOrEqual(before);
+    expect(at.getTime()).toBeLessThanOrEqual(Date.now());
+    // Made here: the bank step on this device doesn't ask "לא שיניתי" of it.
+    expect(mocks.rememberBankChangeSeen).toHaveBeenCalledWith(
+      { business: SHOP, person: NOA, changedAt: at.toISOString() },
+      "made",
+    );
+    expect(mocks.rememberBankChangeSeen).not.toHaveBeenCalledWith(
+      expect.objectContaining({ changedAt: CHANGED_AT }),
+      expect.anything(),
+    );
+  });
+
+  it("keeps nothing seen when the save changed no account", async () => {
+    mocks.saveEmployeeDetails.mockResolvedValue({
+      ok: true,
+      changed: [],
+      changeDueBy: null,
+    });
+    expect(
+      await confirmBankAction(SHOP, { code: "123456", bank: account() }),
+    ).toEqual({ ok: true, review: "new" });
+    expect(mocks.rememberBankChangeSeen).not.toHaveBeenCalled();
+  });
+
+  it("says the account is in though its change couldn't be kept seen", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.rememberBankChangeSeen.mockRejectedValue(
+      Object.assign(new Error("100001"), { code: "XX000" }),
+    );
+    expect(
+      await confirmBankAction(SHOP, { code: "123456", bank: account() }),
+    ).toEqual({ ok: true, review: "new" });
+    expect(mocks.refresh).toHaveBeenCalledTimes(1);
+    const said = JSON.stringify(logged.mock.calls);
+    expect(said).toContain("XX000");
+    expect(said).not.toContain("100001");
+  });
+
+  it("keeps nothing seen when the account wasn't saved", async () => {
+    mocks.saveEmployeeDetails.mockResolvedValue({
+      ok: false,
+      failure: "invalid",
+    });
+    expect(
+      await confirmBankAction(SHOP, { code: "123456", bank: account() }),
+    ).toEqual({ ok: false, failure: "invalid" });
+    expect(mocks.getEmployeeFile).not.toHaveBeenCalled();
+    expect(mocks.rememberBankChangeSeen).not.toHaveBeenCalled();
   });
 
   it("says an account the check doubts is saved with a note", async () => {
@@ -415,6 +536,132 @@ describe("the bank's code", () => {
   });
 });
 
+describe("step 2's ways to reach the person", () => {
+  const contact = { name: "דוד כהן", phone: "052-000-0099" };
+
+  it("saves the details first, then the contact apart from them", async () => {
+    expect(
+      await saveFileStepAction(SHOP, "address", {
+        email: null,
+        workLanguage: "ערבית",
+        emergency: contact,
+      }),
+    ).toEqual({ ok: true, changeDueBy: null });
+    expect(mocks.order).toEqual(["save", "contact"]);
+    expect(mocks.saveEmployeeDetails).toHaveBeenCalledWith(
+      NOA,
+      SHOP,
+      NOA,
+      { email: null, workLanguage: "ערבית" },
+      expect.any(String),
+    );
+    expect(mocks.saveEmergencyContact).toHaveBeenCalledWith(NOA, SHOP, contact);
+  });
+
+  it("removes the contact with null, and leaves it alone when it isn't sent", async () => {
+    await saveFileStepAction(SHOP, "address", { email: null, emergency: null });
+    expect(mocks.saveEmergencyContact).toHaveBeenCalledWith(NOA, SHOP, null);
+    mocks.saveEmergencyContact.mockClear();
+    await saveFileStepAction(SHOP, "address", { email: null });
+    expect(mocks.saveEmergencyContact).not.toHaveBeenCalled();
+  });
+
+  it("says a contact refused, after the details went in", async () => {
+    mocks.saveEmergencyContact.mockResolvedValue({
+      ok: false,
+      failure: "invalid",
+    });
+    expect(
+      await saveFileStepAction(SHOP, "address", {
+        email: null,
+        emergency: { name: "ד", phone: "03-123-4567" },
+      }),
+    ).toEqual({ ok: false, failure: "invalid" });
+    expect(mocks.saveEmployeeDetails).toHaveBeenCalled();
+  });
+
+  it("saves no contact when the details were refused", async () => {
+    mocks.saveEmployeeDetails.mockResolvedValue({
+      ok: false,
+      failure: "invalid",
+    });
+    expect(
+      await saveFileStepAction(SHOP, "address", {
+        email: "x",
+        emergency: contact,
+      }),
+    ).toEqual({ ok: false, failure: "invalid" });
+    expect(mocks.saveEmergencyContact).not.toHaveBeenCalled();
+  });
+
+  it("takes a contact of its own shape only", async () => {
+    expect(
+      await saveFileStepAction(SHOP, "address", {
+        email: null,
+        emergency: { ...contact, relation: "אח" },
+      }),
+    ).toEqual({ ok: false, failure: "invalid" });
+    expect(mocks.saveEmployeeDetails).not.toHaveBeenCalled();
+  });
+});
+
+describe("Form 101's route", () => {
+  it("is the business's way, never the screen's", async () => {
+    mocks.currentModuleSettings.mockResolvedValue({
+      ...DEFAULTS,
+      form101: "link",
+      form101Link: "https://101.example/noa",
+    });
+    expect(await handInForm101Action(SHOP)).toEqual({ ok: true });
+    expect(mocks.setTaxYearStatus).toHaveBeenCalledWith(
+      NOA,
+      SHOP,
+      NOA,
+      expect.objectContaining({ status: "handed_in", route: "link" }),
+    );
+  });
+
+  it("is on paper while a link is chosen but none is set", async () => {
+    mocks.currentModuleSettings.mockResolvedValue({
+      ...DEFAULTS,
+      form101: "link",
+    });
+    await handInForm101Action(SHOP);
+    expect(mocks.setTaxYearStatus).toHaveBeenCalledWith(
+      NOA,
+      SHOP,
+      NOA,
+      expect.objectContaining({ route: "print" }),
+    );
+  });
+
+  it("marks nothing while the business takes it outside the app", async () => {
+    mocks.currentModuleSettings.mockResolvedValue({
+      ...DEFAULTS,
+      form101: "off",
+    });
+    expect(await handInForm101Action(SHOP)).toEqual({
+      ok: false,
+      failure: "invalid",
+    });
+    expect(mocks.setTaxYearStatus).not.toHaveBeenCalled();
+  });
+});
+
+describe("a bank change said not theirs", () => {
+  it("is disputed for the session's own file, and keeps nothing seen", async () => {
+    expect(await disputeBankChangeAction(SHOP)).toEqual({ ok: true });
+    expect(mocks.disputeBankChange).toHaveBeenCalledWith(NOA, SHOP);
+    expect(mocks.refresh).toHaveBeenCalled();
+    mocks.disputeBankChange.mockResolvedValue({ ok: false, failure: "demo" });
+    expect(await disputeBankChangeAction(SHOP)).toEqual({
+      ok: false,
+      failure: "demo",
+    });
+    expect(mocks.rememberBankChangeSeen).not.toHaveBeenCalled();
+  });
+});
+
 describe("the log", () => {
   it("holds a failure's code and nothing typed", async () => {
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -429,8 +676,31 @@ describe("the log", () => {
     expect(
       await confirmBankAction(SHOP, { code: "123456", bank: account() }),
     ).toEqual({ ok: false, failure: "failed" });
+    mocks.saveEmployeeDetails.mockResolvedValue({
+      ok: true,
+      changed: [],
+      changeDueBy: null,
+    });
+    mocks.saveEmergencyContact.mockRejectedValue(
+      Object.assign(new Error("דוד 0520000099"), { code: "XX000" }),
+    );
+    expect(
+      await saveFileStepAction(SHOP, "address", {
+        email: null,
+        workLanguage: "ערבית",
+        emergency: { name: "דוד", phone: "0520000099" },
+      }),
+    ).toEqual({ ok: false, failure: "failed" });
     const said = JSON.stringify(logged.mock.calls);
-    for (const value of ["000000018", "100001", "נועה", "123456"]) {
+    for (const value of [
+      "000000018",
+      "100001",
+      "נועה",
+      "123456",
+      "דוד",
+      "0520000099",
+      "ערבית",
+    ]) {
       expect(said).not.toContain(value);
     }
     expect(said).toContain("XX000");

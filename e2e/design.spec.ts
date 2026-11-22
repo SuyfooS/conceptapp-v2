@@ -22,6 +22,14 @@ const PAGES = [
   "/design/shell/today/availability-missing",
   "/design/shell/today/owner",
   "/design/shell/today/worker",
+  // The hiring file on Today (H5b): its card while something is missing,
+  // and when a fund chosen later is all that is left; an account changed,
+  // after "לא שיניתי", and nothing to tell (the quiet row).
+  "/design/shell/today/worker?file=missing",
+  "/design/shell/today/worker?file=pension",
+  "/design/shell/today/worker?file=bank",
+  "/design/shell/today/worker?file=disputed",
+  "/design/shell/today/worker?file=complete",
   "/design/shell/today/not-published",
   "/design/shell/today/worker-not-published",
   // A worker who builds the schedule without publishing it (roles R3).
@@ -154,6 +162,12 @@ const PAGES = [
   // and every part in.
   "/design/shell/me?file=missing",
   "/design/shell/me?file=done",
+  // What each business asks (H5b): neither the address nor the account,
+  // and the ways to reach her instead, with the contact's row.
+  "/design/shell/me?file=lean",
+  "/design/shell/me?file=contact",
+  // Sent, with a pension fund chosen later all that is left.
+  "/design/shell/me?file=later",
   "/design/shell/me/businesses",
   // The worker's own file (H5a) on Noa's twin: stopped at the account, each
   // step, a minor's birth date, an account the check warns about and its
@@ -175,6 +189,24 @@ const PAGES = [
   "/design/shell/me/file?state=new",
   "/design/shell/me/file?lang=en",
   "/design/shell/me/file?lang=en&step=bank",
+  // What each business asks (H5b): the steps that leave out the address and
+  // the account; step 2 as the ways to reach her, filled and not; the address
+  // and the account no longer asked but held; Form 101 by an approved
+  // system's link, in both languages; and not in the app, so the done screen
+  // sends the file.
+  "/design/shell/me/file?ask=lean",
+  "/design/shell/me/file?ask=lean&state=done",
+  "/design/shell/me/file?ask=contact&step=address",
+  "/design/shell/me/file?ask=contact&state=done",
+  "/design/shell/me/file?ask=held&state=ready&step=address",
+  "/design/shell/me/file?ask=held&state=ready&step=bank",
+  "/design/shell/me/file?form101=link&step=form101",
+  "/design/shell/me/file?form101=link&lang=en&step=form101",
+  "/design/shell/me/file?form101=off",
+  "/design/shell/me/file?form101=off&state=ready",
+  "/design/shell/me/file?form101=off&state=done",
+  // Sent with a fund still to choose: the done screen leads to the pension.
+  "/design/shell/me/file?state=later",
   "/design/shell/manage",
   // Someone at view on the management page (roles R7), and a module's
   // settings without the module's own edit.
@@ -193,6 +225,8 @@ const PAGES = [
   "/design/shell/manage/time_clock",
   "/design/shell/manage/lists",
   "/design/shell/manage/notifications",
+  // What the hiring file asks, as its owner sets it (H5b).
+  "/design/shell/manage/employee_files",
   "/design/shell/manage/departments",
   "/design/shell/manage/access",
   // Workers see pay too, and the shift lead still only by his own (R11e).
@@ -5994,7 +6028,8 @@ test("the file demo sends only a file with its details in", async ({
     .getByRole("button", { name: f.done.profile })
     .filter({ visible: true })
     .click();
-  await expect(page).toHaveURL(/\/design\/shell\/me\?file=missing$/);
+  // Back to the profile's twin that tells this same file: everything in.
+  await expect(page).toHaveURL(/\/design\/shell\/me\?file=done$/);
 });
 
 // A number shown and the screen left: Next keeps the screen to show again,
@@ -6105,4 +6140,374 @@ test("the file demo says how long a document's number needs to be", async ({
     ),
   ).toBeVisible();
   await expect(page).toHaveURL(/step=identity/);
+});
+
+// What each business asks of the hiring file (profile H5b), on Noa's twin:
+// steps left out, Form 101's link, the send on the done screen, Today's bank
+// change, and the owner's settings typed left to right. Nothing is kept.
+test("the file demo leaves out what the business doesn't ask", async ({
+  page,
+}, testInfo) => {
+  const f = he.app.file;
+  await openFileDemo(page, "/design/shell/me/file?ask=lean");
+  await expect(
+    page.getByRole("region", { name: f.steps.name.bank, exact: true }),
+  ).toHaveCount(0);
+  if (testInfo.project.name === "phone") {
+    await expect(
+      page.getByText(heT("app.file.steps.count", { current: 3, count: 4 })),
+    ).toBeVisible();
+  } else {
+    await expect(
+      page
+        .getByRole("complementary", { name: f.steps.title })
+        .getByRole("list")
+        .first()
+        .getByRole("listitem"),
+    ).toHaveCount(4);
+  }
+  if (testInfo.project.name === "desktop") {
+    const sections = page
+      .getByRole("region", {
+        name: new RegExp(`^(${Object.values(f.steps.name).join("|")})$`),
+      })
+      .filter({ visible: true });
+    await expect(sections).toHaveCount(4);
+    // The summary's main action is the open step's own: the pension's.
+    await expect(
+      page
+        .getByRole("complementary", { name: f.steps.title })
+        .getByRole("button", { name: f.actions.savePension }),
+    ).toBeVisible();
+  }
+  // The way back is to the profile as this business asks the file.
+  await expect(
+    page.getByRole("link", { name: f.back, exact: true }),
+  ).toHaveAttribute("href", "/design/shell/me?file=lean");
+  await openFileDemo(page, "/design/shell/me/file?ask=contact&step=address");
+  await expect(
+    page.getByRole("link", { name: f.back, exact: true }),
+  ).toHaveAttribute("href", "/design/shell/me?file=contact");
+  await expectCleanPage(page);
+});
+
+// Step 2 asked only for the ways to reach her is optional: a new worker has
+// done nothing yet, and the progress says so, as the welcome counts it.
+test("the file demo counts an optional step only once something of it is in", async ({
+  page,
+}) => {
+  await openFileDemo(page, "/design/shell/me/file?ask=contact&state=new");
+  await expect(
+    page.getByText(heT("app.file.progress", { done: 0, count: 5 })),
+  ).toBeVisible();
+  await expect(
+    page.getByText(heT("app.file.welcome.body", { count: 5 })),
+  ).toBeVisible();
+});
+
+test("the file demo's 101 link opens the provider and shows its domain", async ({
+  page,
+}, testInfo) => {
+  const f = he.app.file;
+  await openFileDemo(page, "/design/shell/me/file?form101=link&step=form101");
+  const form = page.getByRole("region", {
+    name: f.steps.name.form101,
+    exact: true,
+  });
+  const open = form.getByRole("link", {
+    name: heT("app.file.form101.open", { provider: "משרד השכר" }),
+  });
+  await expect(open).toHaveAttribute("href", "https://101.example/noa");
+  await expect(open).toHaveAttribute("target", "_blank");
+  await expect(open).toHaveAttribute("rel", "noopener noreferrer");
+  await expect(
+    form.getByText("נפתח באתר 101.example, בחלון חדש"),
+  ).toBeVisible();
+  await expect(form.getByText(f.form101.handOver)).toHaveCount(0);
+  // On a phone its two actions are as wide as each other: the card's width.
+  if (testInfo.project.name === "phone") {
+    const handedIn = form.getByRole("button", { name: f.form101.handedIn });
+    const [link, button] = await Promise.all([
+      open.boundingBox(),
+      handedIn.boundingBox(),
+    ]);
+    expect(Math.round(button?.width ?? 0)).toBe(Math.round(link?.width ?? 1));
+  }
+  await expectCleanPage(page);
+});
+
+// A fund chosen "later" all that is left: the done screen, Today's card and
+// the profile's lead to the pension's step, not to "סיימת"; the cards to the
+// very file they told, whose way back is to the profile that tells it.
+test("the file demo leads to the pension when a fund chosen later is all that is left", async ({
+  page,
+}, testInfo) => {
+  const f = he.app.file;
+  const onPension = async () => {
+    await expect(page).toHaveURL(
+      /\/design\/shell\/me\/file\?step=pension&state=later$/,
+    );
+    await page.waitForLoadState("networkidle");
+    const pension = page.getByRole("region", {
+      name: f.steps.name.pension,
+      exact: true,
+    });
+    await expect(
+      pension.getByRole("radio", { name: f.pension.choose, exact: true }),
+    ).toBeChecked();
+    await expect(
+      pension.getByRole("button", {
+        name: `${f.pension.which} ${f.pension.later}`,
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(heT("app.file.progress", { done: 6, count: 6 })),
+    ).toBeVisible();
+    if (testInfo.project.name !== "phone") {
+      const steps = page.getByRole("complementary", { name: f.steps.title });
+      await expect(
+        steps.getByRole("link", {
+          name: `${f.steps.name.bank} · ${f.steps.state.done}`,
+        }),
+      ).toBeVisible();
+      await expect(
+        steps.getByRole("link", {
+          name: `${f.steps.name.pension} · ${f.steps.state.done}`,
+        }),
+      ).toContainText(
+        heT("app.file.done.leftPension", { date: "24 בדצמבר 2026" }),
+      );
+    }
+    const back = page.getByRole("link", { name: f.back, exact: true });
+    await expect(back).toHaveAttribute("href", "/design/shell/me?file=later");
+    await back.click();
+    await expect(page).toHaveURL(/\/design\/shell\/me\?file=later$/);
+    await page.waitForLoadState("networkidle");
+  };
+
+  await openFileDemo(page, "/design/shell/me/file?state=later");
+  await expect(
+    page.getByRole("heading", { name: f.done.titlePension }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: f.done.title, exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: f.actions.choosePension })
+    .filter({ visible: true })
+    .first()
+    .click();
+  await expect(page).toHaveURL(/step=pension/);
+
+  await page.goto("/design/shell/today/worker?file=pension");
+  await page.waitForLoadState("networkidle");
+  const today = page.getByRole("main");
+  await expect(
+    today.getByText(heT("app.me.file.pensionLeft", { date: "24 בדצמבר" })),
+  ).toBeVisible();
+  const fromToday = today.getByRole("link", { name: f.actions.choosePension });
+  await expect(fromToday).toHaveAttribute(
+    "href",
+    "/design/shell/me/file?step=pension&state=later",
+  );
+  await expectCleanPage(page);
+  await fromToday.click();
+  await onPension();
+
+  // Landed on the profile that tells the same file: its card goes there too.
+  const fromProfile = page
+    .getByRole("main")
+    .getByRole("link", { name: f.actions.choosePension });
+  await expect(fromProfile).toHaveAttribute(
+    "href",
+    "/design/shell/me/file?step=pension&state=later",
+  );
+  await fromProfile.click();
+  await onPension();
+});
+
+// The account's change in the bank step, while Today tells it: "לא שיניתי"
+// stays reachable there once Today's card is hidden.
+test("the file demo's bank step keeps 'לא שיניתי' while the change is told", async ({
+  page,
+}) => {
+  const f = he.app.file;
+  await openFileDemo(page, "/design/shell/me/file?step=bank&state=saved");
+  const bank = page.getByRole("region", { name: f.steps.name.bank });
+  await expect(
+    bank.getByText(heT("app.file.bank.changed", { date: "24 בנובמבר 2026" })),
+  ).toBeVisible();
+  await bank.getByRole("button", { name: f.bank.dispute }).click();
+  const words = bank.getByText(
+    heT("app.file.bank.disputed", { business: "מסעדת הדגמה" }),
+  );
+  await expect(words).toBeVisible();
+  // The button it was on went: its words have the focus.
+  await expect(words).toBeFocused();
+  await expect(bank.getByRole("button", { name: f.bank.dispute })).toHaveCount(
+    0,
+  );
+  await expectCleanPage(page);
+});
+
+test("the file demo sends from the done screen when Form 101 is off", async ({
+  page,
+}) => {
+  const f = he.app.file;
+  await openFileDemo(page, "/design/shell/me/file?form101=off&state=ready");
+  await expect(
+    page.getByText(heT("app.file.done.ready", { business: "מסעדת הדגמה" })),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: f.steps.name.form101, exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", {
+      name: heT("app.file.actions.send", { business: "מסעדת הדגמה" }),
+    })
+    .filter({ visible: true })
+    .first()
+    .click();
+  // The twin's stand-in answers, and the done screen stays: the send is
+  // said, and its title has the focus, as the button pressed doesn't stay.
+  await expect(page).toHaveURL(/step=done/);
+  await expect(
+    page.getByRole("status").filter({
+      hasText: heT("app.file.done.sent", { business: "מסעדת הדגמה" }),
+    }),
+  ).toBeVisible();
+  await expect(page.locator("#file-done-title")).toBeFocused();
+  await expectCleanPage(page);
+});
+
+// "אני שיניתי" and "הבנתי" hide the card as the first steps hide: at once,
+// with "ביטול" in its place and the focus on it; "ביטול" brings it back
+// with the focus on the button pressed. The twin keeps nothing, and its
+// Today stays as the app's does, the file's quiet row too.
+test("the Today demo tells of a bank change, hides it with a way back, and 'לא שיניתי' marks it", async ({
+  page,
+}) => {
+  const b = he.app.home.file.bank;
+  await page.goto("/design/shell/today/worker?file=bank");
+  await page.waitForLoadState("networkidle");
+  const main = page.getByRole("main");
+  const card = main.getByRole("region", { name: b.title });
+  await expect(card).toBeVisible();
+  const undo = page
+    .getByRole("status")
+    .filter({ hasText: b.hidden })
+    .getByRole("button", { name: he.app.manage.undo });
+  const mine = card.getByRole("button", { name: b.mine });
+  await mine.click();
+  await expect(card).toHaveCount(0);
+  await expect(undo).toBeFocused();
+  await expectCleanPage(page);
+  await undo.click();
+  await expect(card).toBeVisible();
+  await expect(mine).toBeFocused();
+  await expect(main.getByText(he.app.home.file.complete)).toBeVisible();
+
+  await card.getByRole("button", { name: b.dispute }).click();
+  await expect(page).toHaveURL(/file=disputed/);
+  const disputed = main.getByRole("region", { name: b.disputedTitle });
+  await expect(
+    disputed.getByText(
+      heT("app.home.file.bank.disputed", { business: "מסעדת הדגמה" }),
+    ),
+  ).toBeVisible();
+  // The button pressed went: the card's title has the focus.
+  await expect(
+    disputed.getByRole("heading", { name: b.disputedTitle }),
+  ).toBeFocused();
+  const seen = disputed.getByRole("button", { name: b.seen });
+  await seen.click();
+  await expect(disputed).toHaveCount(0);
+  await expect(undo).toBeFocused();
+  await undo.click();
+  await expect(seen).toBeFocused();
+  await expectCleanPage(page);
+
+  // Nothing left to tell: the file's quiet row says it is complete, and
+  // leads to the file's twin with everything in.
+  await page.goto("/design/shell/today/worker?file=complete");
+  await page.waitForLoadState("networkidle");
+  await expect(main.getByRole("region", { name: b.title })).toHaveCount(0);
+  await expect(main.getByText(he.app.home.file.complete)).toBeVisible();
+  await expect(
+    main.getByRole("link").filter({ hasText: he.app.home.file.complete }),
+  ).toHaveAttribute("href", "/design/shell/me/file?state=done");
+});
+
+test("the settings demo types the link and the phone left to right", async ({
+  page,
+}) => {
+  const s = he.modules.employee_files.settings;
+  await page.goto("/design/shell/manage/employee_files");
+  await page.waitForLoadState("networkidle");
+  for (const [label, mode] of [
+    [s.form101Link.label, "url"],
+    [s.employerPhone.label, "tel"],
+    [s.deductionsFile.label, "numeric"],
+  ] as const) {
+    const field = page.getByLabel(new RegExp(label));
+    await expect(field).toHaveAttribute("dir", "ltr");
+    await expect(field).toHaveAttribute("inputmode", mode);
+  }
+  // The stored phone reads as people write it.
+  await expect(page.getByLabel(new RegExp(s.employerPhone.label))).toHaveValue(
+    "03-123-4567",
+  );
+  await expectCleanPage(page);
+
+  // The management page, drawn as the owner, leads here: every one of the
+  // file's settings is an owner's.
+  await page.goto("/design/shell/manage");
+  await page.waitForLoadState("networkidle");
+  await expect(
+    page
+      .getByRole("link", { name: new RegExp(he.modules.employee_files.name) })
+      .filter({ visible: true })
+      .first(),
+  ).toHaveAttribute("href", "/design/shell/manage/employee_files");
+  // A manager's has no such row.
+  await page.goto("/design/shell/manage?state=noTeam");
+  await page.waitForLoadState("networkidle");
+  await expect(
+    page
+      .getByRole("link", { name: new RegExp(he.modules.employee_files.name) })
+      .filter({ visible: true }),
+  ).toHaveCount(0);
+});
+
+test("the activity demo says the file's settings, the phone left to right", async ({
+  page,
+}) => {
+  const a = he.app.manage.activity;
+  await page.goto("/design/shell/manage/activity");
+  await page.waitForLoadState("networkidle");
+  const what = heT("app.manage.activity.actions.module.settings", {
+    module: he.modules.employee_files.name,
+  });
+  // The owner's log leads to the file's settings.
+  await expect(
+    page.getByRole("link", { name: what }).filter({ visible: true }).first(),
+  ).toHaveAttribute("href", "/design/shell/manage/employee_files");
+  await expect(
+    page
+      .locator('span[dir="ltr"]')
+      .filter({ hasText: /^03-123-4567$/ })
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText("משרד רואי החשבון").filter({ visible: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText(a.notSet).filter({ visible: true }).first(),
+  ).toBeVisible();
+  // Never the E.164 the database keeps.
+  await expect(
+    page.getByText("+97231234567").filter({ visible: true }),
+  ).toHaveCount(0);
 });

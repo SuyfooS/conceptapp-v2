@@ -14,7 +14,18 @@ stays plain (`identityParts`, `addressText`, `bankParts`), the emergency
 contact, the database's replies as schemas that fail closed, and its refusals
 (`fileFailureOf`). The worker's own flow (H5a) is `employee-file-steps.ts`:
 where each step stands, worked out from the file, where the person picks up,
-the minor's card and the pension's due date. Two more dated lists feed it:
+the minor's card and the pension's due date; since H5b it takes the steps the
+business's settings put on screen (`fileParts`, `fileStepsOn`), with step 2
+optional while only the ways to reach the person are asked (counted done
+only once something of it is in), and `onlyPensionLeft` for a file that
+lacks only a fund chosen "later", whose ways in open the pension's step. What each
+business asks is `employee-file-settings.ts`: the asks and the groups they
+count (`fileGroupsAsked`, as `private.file_groups`), Form 101's way
+(`form101SetupOf`, the link's check `FORM101_LINK` as the database's), the
+notice's names, the bank change Today tells for 14 days and the cookie that
+keeps it seen on a device, by its person and its exact moment. `phone.ts` has, beside the mobile's,
+`normalizeIsraeliPhone` and `displayIsraeliPhone` for any Israeli number, a
+business's landline too. Two more dated lists feed it:
 `pension-funds.ts` (the comprehensive funds as the Capital Market
 Authority's pension data names them, by report period) and `cities-data.ts`
 (Israel's settlements by CBS code, made by `tooling/cities.mjs` from

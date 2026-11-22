@@ -70,13 +70,18 @@ describe("the hiring file's code", () => {
         expect(source, path).not.toMatch(/console\.log/);
       }
     }
-    // A write logs what failed and its code, never what was typed.
+    // A write logs what failed and its code, never what was typed: its
+    // actions, and who may write (`fileWriter`, on the server only), whose
+    // `logged` they and Today's route share.
+    const writer = read("app/(app)/me/file/file-writer.ts");
+    expect(writer.startsWith('import "server-only";')).toBe(true);
     const calls = [
       ...read("app/(app)/me/file/actions.ts").matchAll(
         /console\.\w+\(([^)]*)\)/g,
       ),
+      ...writer.matchAll(/console\.\w+\(([^)]*)\)/g),
     ].map(([, args = ""]) => args);
-    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.length).toBeGreaterThan(1);
     for (const call of calls) {
       // Its words may name the bank; what it passes may not be typed.
       const args = call.replace(/"[^"]*"/g, "");
@@ -84,6 +89,31 @@ describe("the hiring file's code", () => {
         /\b(input|parsed|details|bank|field|step|who)\b/,
       );
     }
+  });
+
+  it("draws Today's cards and lands someone who joined with no cache, and no value in a log", () => {
+    // Profile H5b: Today reads what is missing and the account's change, and
+    // /join reads the business's modules for where to land.
+    for (const path of [
+      "app/(app)/home/page.tsx",
+      "app/(app)/home/today-file.ts",
+      "app/(app)/home/today-file-card.tsx",
+      "app/(app)/home/bank-change-card.tsx",
+      "app/(app)/home/bank-seen/route.ts",
+      "app/(app)/home/hide-request.ts",
+      "app/(auth)/join/landing.ts",
+      "app/(auth)/join/actions.ts",
+    ]) {
+      const source = read(path);
+      expect(source, path).not.toMatch(/["']use cache/);
+      expect(source, path).not.toMatch(/console\.log/);
+    }
+    // The 101's link opens in a window that knows nothing of the app's, and
+    // its route is the server's, from the business's settings.
+    expect(read("app/(app)/me/file/steps/form101-step.tsx")).toMatch(
+      /target="_blank"\s+rel="noopener noreferrer"/,
+    );
+    expect(read("app/(app)/me/file/actions.ts")).toMatch(/route: way \}/);
   });
 
   it("puts no value of a file in a URL", () => {

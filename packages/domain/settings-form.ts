@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { ModuleManifest, Role } from "./modules";
 import { readModuleSettings } from "./modules";
+import { displayIsraeliPhone } from "./phone";
 
 /**
  * Settings become screens by themselves. A module's settings schema says what
@@ -35,12 +36,42 @@ export type SettingEditor =
   // A list of the business's departments by key (who takes orders, P4).
   | "departments";
 
+/**
+ * What a text setting is typed as, when it isn't words: a link, a phone
+ * number or digits. Still a text field, drawn left to right with the
+ * keyboard for it; the manifest's field tidies what is typed (a
+ * transform: the phone to E.164, the digits without dashes), and
+ * `checkSettingsChange` saves what the schema outputs.
+ */
+export type SettingEntry = "link" | "phone" | "digits";
+
+/**
+ * A text setting's value as the activity log says it: null when nothing
+ * is set ("", or none), for the screen's "לא נקבע"; else its text, left to
+ * right (`ltr`) when it is typed so (`entry`), a phone as people write it
+ * ("+97231234567" as "03-123-4567"). Words stay as they were written.
+ */
+export function textSettingShown(
+  raw: unknown,
+  entry?: SettingEntry,
+): { text: string; ltr: boolean } | null {
+  if (raw === "" || raw === null || raw === undefined) return null;
+  const text = String(raw);
+  if (!entry) return { text, ltr: false };
+  return {
+    text: entry === "phone" ? displayIsraeliPhone(text) : text,
+    ltr: true,
+  };
+}
+
 type SettingMeta = {
   level?: SettingLevel;
   /** Kept in the settings, but on no screen. */
   hidden?: boolean;
   /** Drawn by a control of its own, not by its type. */
   editor?: SettingEditor;
+  /** A text setting typed left to right (`SettingEntry`). */
+  entry?: SettingEntry;
 };
 
 declare module "zod" {
@@ -48,6 +79,7 @@ declare module "zod" {
     level?: SettingLevel;
     hidden?: boolean;
     editor?: SettingEditor;
+    entry?: SettingEntry;
   }
 }
 
@@ -58,7 +90,7 @@ export type SettingField = Common &
     | { kind: "toggle" }
     | { kind: "choice"; options: (string | number)[] }
     | { kind: "number"; min: number; max: number }
-    | { kind: "text"; maxLength?: number }
+    | { kind: "text"; maxLength?: number; entry?: SettingEntry }
     | { kind: "editor"; editor: SettingEditor }
   );
 
@@ -101,7 +133,11 @@ function shapeOf(schema: JsonSchema) {
     };
   }
   if (schema.type === "string") {
-    return { kind: "text" as const, maxLength: schema.maxLength };
+    return {
+      kind: "text" as const,
+      maxLength: schema.maxLength,
+      ...(schema.entry ? { entry: schema.entry } : {}),
+    };
   }
   return null;
 }

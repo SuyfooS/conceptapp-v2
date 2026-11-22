@@ -8,13 +8,26 @@ import { ListGroup, ListRow } from "@ui/list-row";
 import { PageSection } from "@ui/page";
 import { ProgressRing } from "@ui/progress-ring";
 import { VisibilityNote } from "@ui/visibility-note";
-import { FileText, IdCard, Landmark, MapPin, PiggyBank } from "lucide-react";
+import {
+  FileText,
+  IdCard,
+  Landmark,
+  MapPin,
+  PiggyBank,
+  Siren,
+} from "lucide-react";
 import Link from "next/link";
 import { unstable_rethrow } from "next/navigation";
 import { getFormatter } from "next-intl/server";
 import type { ReactNode } from "react";
 import { type AppWording, translator } from "../wording";
 import { currentFileScreen } from "./file/file";
+import {
+  completeHref,
+  completeWords,
+  fileStepInputOf,
+  pensionLeftOf,
+} from "./file/file-parts";
 import type { FileScreenData } from "./file/file-types";
 
 /**
@@ -46,19 +59,32 @@ const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 /**
  * The way into the file from the profile: while something is missing, the
  * screen's one accent card says how much, with "השלמת הפרטים" (not for an
- * owner, who isn't counted, and may still fill a file for themselves); then
- * "התיק שלי ב{business}", who sees it, and a row for each part, each to its
- * step. Hebrew, as the profile is. Also drawn with mock data on the twin.
+ * owner, who isn't counted, and may still fill a file for themselves), or,
+ * when a fund chosen "later" is all a sent file lacks, by when (or that the
+ * day passed and a fund can still be chosen), with "בחירת קרן פנסיה" to the
+ * pension's step, in the words Today's card has (`completeWords`); then
+ * "התיק שלי ב{business}", who sees it, and a row for each part the business
+ * asks or the file holds (H5b): the identity and the pension always, the
+ * address, the account and the emergency contact where they show, and Form
+ * 101 unless it is taken outside the app; each to its step. Hebrew, as the
+ * profile is. Also drawn with mock data on the twin, whose links carry the
+ * file twin's state (`query`).
  */
 export async function FileSummary({
   data,
   wording,
   base = "",
+  query = "",
 }: {
   data: FileScreenData;
   wording: AppWording;
   /** "" in the app, "/design/shell" on the twin. */
   base?: string;
+  /**
+   * The twin's: the file twin's own query for the file drawn here (its state,
+   * what the business asks), so each link lands on that file. None in the app.
+   */
+  query?: string;
 }) {
   const t = translator(wording, "app.me.file");
   const tf = translator(wording, "app.file");
@@ -75,16 +101,8 @@ export async function FileSummary({
   const file = data.file;
   const direct = (group: FileGroup) =>
     file?.direct_groups.includes(group) ?? false;
-  const states = fileStepStates({
-    addressForm: data.addressForm,
-    asked: data.asked,
-    missing: data.missing,
-    directGroups: file?.direct_groups ?? [],
-    pensionAnswer: file?.pension_answer ?? null,
-    form101: data.taxYear
-      ? { status: data.taxYear.status, route: data.taxYear.route }
-      : null,
-  });
+  const states = fileStepStates(fileStepInputOf(data));
+  const { parts } = data;
   const plain = (group: FileGroup) =>
     direct(group)
       ? t("values.direct")
@@ -121,9 +139,13 @@ export async function FileSummary({
               ? t("values.duePassed")
               : t("values.missing");
 
-  const href = (step: string) => `${base}/me/file?step=${step}`;
+  const href = (step: string) =>
+    `${base}/me/file?step=${step}${query ? `&${query}` : ""}`;
   const asked = data.asked.length;
   const missing = data.missing.length;
+  // A fund chosen "later" all that is left: the card opens its step, as
+  // Today's does, rather than the flow's done screen.
+  const pensionLeft = pensionLeftOf(data);
 
   return (
     <>
@@ -132,17 +154,27 @@ export async function FileSummary({
           <div className="flex items-center gap-3">
             <ProgressRing value={asked - missing} max={asked} />
             <CardText className="text-pretty font-medium text-ink">
-              {t("missing", { count: missing })}
+              {completeWords(
+                translator(wording, "app"),
+                missing,
+                pensionLeft,
+                day,
+              )}
             </CardText>
           </div>
           <Button asChild size="lg" className="w-full md:w-auto md:self-start">
-            <Link href={`${base}/me/file`}>{t("complete")}</Link>
+            <Link href={completeHref(base, pensionLeft, query)}>
+              {pensionLeft ? tf("actions.choosePension") : t("complete")}
+            </Link>
           </Button>
         </Card>
       ) : null}
       <PageSection title={t("title", { business })}>
         <div className="-mt-1 px-1">
-          <VisibilityNote icon="lock">{t("visible")}</VisibilityNote>
+          {/* The managers see the emergency contact too, as step 2 says. */}
+          <VisibilityNote icon="lock">
+            {parts.emergency ? t("visibleEmergency") : t("visible")}
+          </VisibilityNote>
         </div>
         <ListGroup>
           <ListRow
@@ -151,36 +183,50 @@ export async function FileSummary({
             title={t("rows.identity")}
             subtitle={plain("identity")}
           />
-          <ListRow
-            href={href("address")}
-            leading={<MapPin />}
-            title={t("rows.address")}
-            subtitle={plain("address")}
-          />
-          <ListRow
-            href={href("bank")}
-            leading={<Landmark />}
-            title={t("rows.bank")}
-            subtitle={bank}
-          />
+          {parts.address ? (
+            <ListRow
+              href={href("address")}
+              leading={<MapPin />}
+              title={t("rows.address")}
+              subtitle={plain("address")}
+            />
+          ) : null}
+          {parts.emergency ? (
+            <ListRow
+              href={href("address")}
+              leading={<Siren />}
+              title={t("rows.emergency")}
+              subtitle={data.emergency?.name ?? t("values.none")}
+            />
+          ) : null}
+          {parts.bank ? (
+            <ListRow
+              href={href("bank")}
+              leading={<Landmark />}
+              title={t("rows.bank")}
+              subtitle={bank}
+            />
+          ) : null}
           <ListRow
             href={href("pension")}
             leading={<PiggyBank />}
             title={t("rows.pension")}
             subtitle={pension}
           />
-          <ListRow
-            href={href("form101")}
-            leading={<FileText />}
-            title={t.rich("rows.form101", { year: data.year, ltr })}
-            subtitle={
-              states.form101 === "direct"
-                ? t("values.direct")
-                : tf("form101.status", {
-                    status: data.taxYear?.status ?? "none",
-                  })
-            }
-          />
+          {parts.form101 ? (
+            <ListRow
+              href={href("form101")}
+              leading={<FileText />}
+              title={t.rich("rows.form101", { year: data.year, ltr })}
+              subtitle={
+                states.form101 === "direct"
+                  ? t("values.direct")
+                  : tf("form101.status", {
+                      status: data.taxYear?.status ?? "none",
+                    })
+              }
+            />
+          ) : null}
         </ListGroup>
       </PageSection>
     </>
