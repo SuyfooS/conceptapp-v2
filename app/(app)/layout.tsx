@@ -16,6 +16,8 @@ import { House } from "lucide-react";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { type ReactNode, Suspense } from "react";
+import { currentPastJobs } from "../(account)/me/past/past-file";
+import { PastJobsSection } from "../(account)/me/past/past-jobs";
 import { currentPlatformRole } from "../(admin)/staff";
 import { signOut } from "../(auth)/actions";
 import { currentBusinesses } from "./businesses";
@@ -62,9 +64,23 @@ async function Shell({ children }: { children: ReactNode }) {
     // The ConceptApp team works in the console, not inside a business.
     if (await currentPlatformRole()) redirect("/admin");
     // Taken off the team of their last business: which one, said once more
-    // each time, since nothing else of it is theirs to read.
-    const left = await currentDeparture(member);
-    return <NoBusinessScreen signOut={signOut} left={left?.name ?? null} />;
+    // each time, since nothing else of it is theirs to read; and the
+    // businesses they left whose file they can still read (profile H5c).
+    const [left, jobs] = await Promise.all([
+      currentDeparture(member),
+      currentPastJobs(),
+    ]);
+    return (
+      <NoBusinessScreen
+        signOut={signOut}
+        left={left?.name ?? null}
+        past={
+          jobs.length > 0 ? (
+            <PastJobsSection jobs={jobs} wording={baseWording} />
+          ) : null
+        }
+      />
+    );
   }
 
   const { business, role, perms, namedRole } = member.membership;

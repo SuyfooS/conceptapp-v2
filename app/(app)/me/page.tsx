@@ -3,6 +3,8 @@ import { pushAllowed } from "@db/push/devices";
 import { displayIsraeliMobile } from "@domain/phone";
 import { profilePhotoSrc } from "@domain/profile-photos";
 import type { Metadata } from "next";
+import { currentPastJobs } from "../../(account)/me/past/past-file";
+import { PastJobsSection } from "../../(account)/me/past/past-jobs";
 import { signOut } from "../../(auth)/actions";
 import { currentBusinesses } from "../businesses";
 import { currentDocumentsHome } from "../chat/documents/documents";
@@ -40,6 +42,7 @@ export default async function MePage() {
     documentsHome,
     modes,
     file,
+    past,
   ] = await Promise.all([
     currentMember(),
     currentWording(),
@@ -51,6 +54,8 @@ export default async function MePage() {
     currentWording().then((words) => currentModeRows("me", words)),
     // The person's own hiring file, where it is on for them (H5a).
     currentFileSummary(),
+    // The businesses they left whose file they can still read (H5c).
+    currentPastJobs(),
   ]);
   const membership = member?.membership;
   // The layout has already sent these people elsewhere.
@@ -94,6 +99,11 @@ export default async function MePage() {
       }
       businesses={
         <SwitchBusinessSection businesses={businesses} wording={wording} />
+      }
+      past={
+        past.length > 0 ? (
+          <PastJobsSection jobs={past} wording={wording} />
+        ) : null
       }
       modes={modes.length > 0 ? <ModeRows rows={modes} /> : null}
       file={file ? <FileSummary data={file} wording={wording} /> : null}

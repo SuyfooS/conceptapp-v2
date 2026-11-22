@@ -38,6 +38,25 @@ describe("proxy", () => {
     expect(source).toContain('"/me/:path*"');
   });
 
+  it("guards a former worker's old file, under the profile", () => {
+    // /me/past/<business> (profile H5c) is outside the app's frame: a
+    // signed-out visitor still goes to sign-in, and the session is renewed.
+    const path = "/me/past/00000000-0000-4000-b000-000000000001";
+    const privateBlock =
+      /export const PRIVATE = \[([\s\S]*?)\];/.exec(source)?.[1] ?? "";
+    const guarded = [...privateBlock.matchAll(/"(\/[^"]*)"/g)].map(
+      ([, p = ""]) => p,
+    );
+    expect(guarded.some((p) => path.startsWith(`${p}/`))).toBe(true);
+    const block = /matcher: \[([\s\S]*?)\],/.exec(source)?.[1] ?? "";
+    const matcher = [...block.matchAll(/^\s+"([^"]+)",$/gm)].map(
+      ([, pattern = ""]) => pattern,
+    );
+    expect(
+      unstable_doesMiddlewareMatch({ config: { matcher }, url: path }),
+    ).toBe(true);
+  });
+
   it("guards the photos", () => {
     expect(source).toContain('"/photos",');
     expect(source).toContain('"/photos/:path*"');

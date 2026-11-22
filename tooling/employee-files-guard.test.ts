@@ -133,6 +133,55 @@ describe("the hiring file's code", () => {
     expect(flow).toContain("/me/file?step=$" + "{next}");
   });
 
+  it("draws a former worker's old file with no cache, and no value in a log", () => {
+    // Profile H5c: the old file's screen, its reads and reveal, and the
+    // list of previous jobs on the profile and on the screen of someone
+    // with no business.
+    const screens = [
+      ...files("app/(account)"),
+      "app/(app)/no-business.tsx",
+      "app/(app)/departures.ts",
+      "app/(app)/me/page.tsx",
+    ];
+    expect(screens.length).toBeGreaterThan(8);
+    for (const path of screens) {
+      const source = read(path);
+      expect(source, path).not.toMatch(/["']use cache/);
+      if (!path.endsWith(".test.ts")) {
+        expect(source, path).not.toMatch(/console\.log/);
+      }
+    }
+    // Its reads are the server's alone, and each logs a code and a kind:
+    // the gate's, the list's and the reveal's, never what was read.
+    const reads = read("app/(account)/me/past/past-file.ts");
+    expect(reads.startsWith('import "server-only";')).toBe(true);
+    const action = read("app/(account)/me/past/actions.ts");
+    const calls = [
+      ...reads.matchAll(/console\.\w+\(([^)]*)\)/g),
+      ...action.matchAll(/console\.\w+\(([^)]*)\)/g),
+      ...action.matchAll(/logged\(([^)]*)\)/g),
+    ].map(([, args = ""]) => args);
+    expect(calls.length).toBeGreaterThan(1);
+    for (const call of calls) {
+      const args = call.replace(/"[^"]*"/g, "");
+      expect(args).not.toMatch(
+        /\b(read|file|data|field|which|who|revealed|member|found|job|business)\b/,
+      );
+    }
+  });
+
+  it("puts no value of a former worker's file in a URL", () => {
+    // The page reads the business's id from its address, and nothing else;
+    // the list's rows lead there by that id alone.
+    const page = read("app/(account)/me/past/[business]/page.tsx");
+    expect(page).toMatch(/const \{ business \} = await params;/);
+    expect(page).not.toMatch(/searchParams/);
+    const jobs = read("app/(account)/me/past/past-jobs.tsx");
+    expect(jobs).toContain("hrefOf = (id) => `/me/past/$" + "{id}`");
+    expect([...jobs.matchAll(/href=/g)]).toHaveLength(1);
+    expect(jobs).toContain("href={hrefOf(job.businessId)}");
+  });
+
   it("keeps its keys off the browser", () => {
     const named = code.filter(
       (path) =>

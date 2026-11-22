@@ -976,7 +976,8 @@
     "fileIdHint": "9 digits, left to right in Hebrew too",
     "fileCity": "Town",
     "fileCountry": "Country",
-    "fileDemo": "The employee file, as mock screens"
+    "fileDemo": "The employee file, as mock screens",
+    "filePastDemo": "A former worker's file, as a mock screen"
   },
   "shell": {
     "metaTitle": "Layout demo",
@@ -4314,6 +4315,26 @@
         "failed": "Not saved. Try again."
       },
       "viewing": "Viewing as the ConceptApp team, there's no file to open."
+    },
+    "past": {
+      "section": "Previous jobs",
+      "until": "On the team until {date}",
+      "subtitle": "You were on the team of {business} until {date}. You can see your details here, but not change them.",
+      "values": {
+        "fundUnknown": "No fund name given"
+      },
+      "form101": {
+        "returned": "Returned: {reason, select, attachment {an attachment was missing} signature {a signature was missing} details {a detail didn't match} other {another reason}}"
+      },
+      "kept": {
+        "title": "What {business} keeps",
+        "body": "{business} keeps these details after the work ends, because an employer needs them for wages, taxes and pension also after someone leaves.",
+        "here": "You can see them here as long as {business} uses the employee file in the app.",
+        "emergency": "Managers no longer see your emergency contact.",
+        "fix": "To correct or delete a detail that is wrong, contact {business}."
+      },
+      "off": "{business}'s employee file isn't open in the app now, so it can't be seen here. You can ask {business} for your details.",
+      "empty": "There are no details of yours in {business}'s employee file. If this is a mistake, contact {business}."
     },
     "notifications": {
       "title": "Notifications",

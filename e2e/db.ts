@@ -5480,3 +5480,139 @@ export async function demoFileLog(userId: string): Promise<unknown[]> {
     order by id`;
   return rows.map((row) => row.details);
 }
+
+/*
+ * A worker who left reads their old file (profile H5c,
+ * e2e/employee-file-past.spec.ts): a former worker of the local demo
+ * restaurant, which takes file writes, taken off its team 40 days ago with a
+ * made-up file of their own (`seed_demo_files` writes only the active
+ * people's), and a second business of their own for the profile's way in.
+ * Their ids, numbers and slug are in no other spec. Local database only, as
+ * postgres; the file is written as the demo's seed writes one, in the demo
+ * format, and everything of it goes again after each test.
+ */
+export const PAST_PEOPLE = {
+  former: {
+    id: "00000000-0000-4000-a000-000000000996",
+    name: "עדי לשעבר",
+    local: "050-000-0996",
+    e164: "+972500000996",
+  },
+  owner: {
+    id: "00000000-0000-4000-a000-000000000997",
+    name: "מור עסק חדש",
+    local: "050-000-0997",
+    e164: "+972500000997",
+  },
+} as const;
+
+export const PAST_BUSINESS = {
+  id: "00000000-0000-4000-b000-0000000000ee",
+  slug: "past-file-e2e",
+  name: "עסק חדש לעדי",
+} as const;
+
+/** The former worker off the demo restaurant's team, with their old file. */
+export async function openPastJob(): Promise<void> {
+  const former = PAST_PEOPLE.former.id;
+  await closePastJob();
+  await ensureLogins([PAST_PEOPLE.former]);
+  await sql.begin(async (tx) => {
+    await tx`insert into public.memberships
+        (business_id, user_id, role, active, left_at)
+      values (${DEMO_RESTAURANT}, ${former}, 'worker', false,
+        now() - interval '40 days')`;
+    await tx`insert into public.employee_details (
+        business_id, user_id, legal_first_name, legal_last_name, birth_date,
+        id_kind, id_enc, id_hint, city_code, address_enc, email_enc,
+        bank_code, bank_branch, bank_account_enc, bank_account_hint,
+        bank_holder_kind, bank_instruction_at, bank_instruction_version,
+        bank_changed_at, pension_answer, pension_fund, pension_answered_at,
+        submitted_at, updated_by
+      )
+      values (
+        ${DEMO_RESTAURANT}, ${former}, 'עדי', 'לשעבר', '1993-04-12',
+        'il', private.demo_sealed('000000018'), '0018',
+        5000, private.demo_sealed(jsonb_build_object(
+          'kind', 'street', 'street', 'רחוב הדגמה', 'number', '7')::text),
+        private.demo_sealed('adi@demo.conceptapp.invalid'),
+        12, 600, private.demo_sealed('100001'), '0001',
+        'self', now() - interval '50 days', 'v1',
+        now() - interval '50 days', 'existing', 'harel',
+        now() - interval '50 days', now() - interval '50 days',
+        (select m.user_id from public.memberships m
+          where m.business_id = ${DEMO_RESTAURANT} and m.role = 'owner'
+            and m.active
+          order by m.created_at limit 1)
+      )`;
+    await tx`insert into public.employee_tax_years
+        (business_id, user_id, tax_year, status, route)
+      values (${DEMO_RESTAURANT}, ${former},
+        extract(year from (now() at time zone 'Asia/Jerusalem'))::smallint,
+        'handed_in', 'print')`;
+    await tx`insert into public.member_emergency_contacts
+        (business_id, user_id, contact_enc)
+      values (${DEMO_RESTAURANT}, ${former}, private.demo_sealed(
+        jsonb_build_object('name', 'איש קשר להדגמה',
+          'phone', '+972500000999')::text))`;
+  });
+  await setPastLocale("he");
+}
+
+/** The former worker on the team of a business of their own now, from the shop's template. */
+export async function openPastJobElsewhere(): Promise<void> {
+  await openRealBusiness({
+    ...PAST_BUSINESS,
+    owner: PAST_PEOPLE.owner,
+    worker: PAST_PEOPLE.former,
+  });
+}
+
+/** The language the former worker chose (`profiles.locale`): the old file follows it. */
+export async function setPastLocale(locale: "he" | "en"): Promise<void> {
+  await sql`update public.profiles set locale = ${locale}
+    where id = ${PAST_PEOPLE.former.id}`;
+}
+
+/** The file's rows in the demo restaurant's log by or about the former worker: their own read and reveal write none. */
+export async function pastFileLog(): Promise<number> {
+  const former = PAST_PEOPLE.former.id;
+  const [row] = await sql<{ count: number }[]>`
+    select count(*)::int as count from public.audit_log
+    where business_id = ${DEMO_RESTAURANT} and action like 'employee.%'
+      and (actor_id = ${former} or details ->> 'person' = ${former})`;
+  return row?.count ?? 0;
+}
+
+/**
+ * Everything of the former worker in the demo restaurant gone, and their
+ * own business. The file's rows, the log and the employment periods are
+ * kept, so only a purge that names the business deletes them, for this
+ * transaction, and they go before the membership they hold.
+ */
+export async function closePastJob(): Promise<void> {
+  const former = PAST_PEOPLE.former.id;
+  await sql.begin(async (tx) => {
+    await tx`select set_config('ca.records_purge', ${DEMO_RESTAURANT}, true)`;
+    await tx`delete from public.employee_tax_years
+      where business_id = ${DEMO_RESTAURANT} and user_id = ${former}`;
+    await tx`delete from public.member_emergency_contacts
+      where business_id = ${DEMO_RESTAURANT} and user_id = ${former}`;
+    await tx`delete from public.employee_details
+      where business_id = ${DEMO_RESTAURANT} and user_id = ${former}`;
+    await tx`delete from private.person_keys
+      where business_id = ${DEMO_RESTAURANT} and user_id = ${former}`;
+    await tx`delete from public.audit_log
+      where business_id = ${DEMO_RESTAURANT}
+        and (actor_id = ${former} or details ->> 'person' = ${former})`;
+    await tx`delete from public.member_wages
+      where business_id = ${DEMO_RESTAURANT} and user_id = ${former}`;
+    await tx`delete from public.member_payroll_details
+      where business_id = ${DEMO_RESTAURANT} and user_id = ${former}`;
+    await tx`delete from public.employment_periods
+      where business_id = ${DEMO_RESTAURANT} and user_id = ${former}`;
+    await tx`delete from public.memberships
+      where business_id = ${DEMO_RESTAURANT} and user_id = ${former}`;
+  });
+  await deleteRealBusiness(PAST_BUSINESS.id);
+}

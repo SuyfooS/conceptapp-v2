@@ -37,6 +37,19 @@ const PAGES = [
   "/design/screens/join-claimed",
   "/design/screens/no-business",
   "/design/screens/no-business?state=left",
+  // "עבודות קודמות" under it, and a former worker's old file (profile H5c):
+  // from the profile and from the screen with no business, in English, and
+  // each state with no file to draw.
+  "/design/screens/no-business?state=left&past=1",
+  "/design/screens/past-file",
+  "/design/screens/past-file?lang=en",
+  "/design/screens/past-file?from=none",
+  "/design/screens/past-file?state=passport",
+  "/design/screens/past-file?state=returned&lang=en",
+  "/design/screens/past-file?state=off",
+  "/design/screens/past-file?state=empty",
+  "/design/screens/past-file?state=viewing",
+  "/design/screens/past-file?state=unavailable&lang=en",
   "/design/screens/no-access",
   "/design/screens/error",
   "/design/screens/not-found",

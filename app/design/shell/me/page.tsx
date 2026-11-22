@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { PastJobsSection } from "../../../(account)/me/past/past-jobs";
 import { MyDocumentsSection } from "../../../(app)/chat/documents/my-documents";
 import { FileSummary } from "../../../(app)/me/file-summary";
 import { MeView } from "../../../(app)/me/me-view";
@@ -12,9 +13,11 @@ import {
   demoSaveProfileAction,
   demoSetPhotoAction,
 } from "./actions";
-import { fileScreenDemo } from "./file/data";
+import { fileScreenDemo, pastJobDemo } from "./file/data";
 
-type Props = { searchParams: Promise<{ state?: string; file?: string }> };
+type Props = {
+  searchParams: Promise<{ state?: string; file?: string; past?: string }>;
+};
 
 // The real profile with mock data: Shiran, the shift manager, with her photo,
 // a line about herself, the "dots" cover and the feminine form. ?state=empty
@@ -27,7 +30,8 @@ type Props = { searchParams: Promise<{ state?: string; file?: string }> };
 // (two rows fewer); ?file=contact, one that asks for an emergency contact
 // too (its row); ?file=later, sent with a pension fund still to choose (the
 // card leads to the pension), each as Noa's twin has it (H5b), and each of
-// its links to that twin in the same state.
+// its links to that twin in the same state. ?past=1 adds "עבודות קודמות"
+// (H5c), a café she left, whose row leads to the old file's twin.
 export default function ShellMe({ searchParams }: Props) {
   return (
     <Suspense>
@@ -37,7 +41,7 @@ export default function ShellMe({ searchParams }: Props) {
 }
 
 async function Demo({ searchParams }: Props) {
-  const { state, file } = await searchParams;
+  const { state, file, past } = await searchParams;
   const shiran = teamMembers.find((m) => m.userId === "shiran");
   const profile = teamProfiles.shiran;
   const empty = state === "empty";
@@ -77,6 +81,15 @@ async function Demo({ searchParams }: Props) {
                   ? `ask=${file}`
                   : ""
             }
+          />
+        ) : null
+      }
+      past={
+        past === "1" ? (
+          <PastJobsSection
+            jobs={[pastJobDemo]}
+            wording={baseWording}
+            hrefOf={() => "/design/screens/past-file"}
           />
         ) : null
       }

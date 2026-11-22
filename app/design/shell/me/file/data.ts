@@ -4,10 +4,15 @@ import type { FileGroup, FileRow } from "@domain/employee-file";
 import type { EmployeeFileSettings } from "@domain/employee-file-settings";
 import { addYears } from "@domain/youth";
 import type { BankFieldValue } from "@ui/bank-field";
+import type {
+  PastBack,
+  PastFileData,
+  PastJob,
+} from "../../../../(account)/me/past/past-file-types";
 import { fileSettingsParts } from "../../../../(app)/me/file/file-parts";
 import type { FileScreenData } from "../../../../(app)/me/file/file-types";
 import type { BankPreset } from "../../../../(app)/me/file/steps/bank-step";
-import { business } from "../../data";
+import { business, leftBusiness } from "../../data";
 
 /*
  * Noa's hiring file on the twin (profile H5a), made up, in each state the
@@ -367,4 +372,68 @@ export function fileScreenDemo(
           }
         : undefined;
   return { data, preset };
+}
+
+/*
+ * A former worker's old file on the twin (profile H5c): Noa's sent file, as
+ * she left it in the layout demo's café, read-only. `passport` has a
+ * passport instead of her ID (its country and expiry), `returned` this
+ * year's 101 returned for its signature. Nothing here is kept either.
+ */
+
+/** The business she left on the twin, a month before its day. */
+export const pastJobDemo: PastJob = {
+  businessId: "demo-cafe",
+  name: leftBusiness.name,
+  accent: "#0f766e",
+  leftAt: "2026-10-12T08:00:00.000Z",
+};
+
+export type PastDemoState = "file" | "passport" | "returned";
+
+export function pastDemoStateOf(param: unknown): PastDemoState {
+  return param === "passport" || param === "returned" ? param : "file";
+}
+
+/** Her old file, in her language, with the way back from the profile or from the screen with no business. */
+export function pastFileDemo(
+  lang: "he" | "en",
+  state: PastDemoState = "file",
+  back: PastBack = "profile",
+): PastFileData {
+  const { data } = fileScreenDemo("done", lang);
+  const passport = state === "passport";
+  const year = data.taxYear;
+  return {
+    job: pastJobDemo,
+    locale: lang,
+    back,
+    demo: false,
+    file:
+      data.file && passport
+        ? {
+            ...data.file,
+            id_kind: "passport",
+            id_country: "PH",
+            id_expires_on: "2031-06-30",
+            id_hint: "0001",
+          }
+        : data.file,
+    address: data.address,
+    city: data.city,
+    email: data.email,
+    workLanguage: data.workLanguage,
+    documentName: null,
+    holderName: null,
+    // Kept in the file after leaving, though managers read it no more.
+    emergency: FILE_DEMO_CONTACT,
+    masked: passport ? { ...data.masked, id: "•••0001" } : data.masked,
+    taxYears: year
+      ? [
+          state === "returned"
+            ? { ...year, status: "returned", returnedReason: "signature" }
+            : year,
+        ]
+      : [],
+  };
 }

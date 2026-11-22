@@ -168,6 +168,8 @@ const PAGES = [
   "/design/shell/me?file=contact",
   // Sent, with a pension fund chosen later all that is left.
   "/design/shell/me?file=later",
+  // A business she left whose old file she can read (H5c).
+  "/design/shell/me?past=1",
   "/design/shell/me/businesses",
   // The worker's own file (H5a) on Noa's twin: stopped at the account, each
   // step, a minor's birth date, an account the check warns about and its
@@ -6572,4 +6574,52 @@ test("the activity demo says the file's settings, the phone left to right", asyn
   await expect(
     page.getByText("+97231234567").filter({ visible: true }),
   ).toHaveCount(0);
+});
+
+// A former worker's old file on its twin (profile H5c): read-only, outside
+// the app's frame, a number shown on its press and hidden again.
+test("the old file's twin shows a number and hides it", async ({ page }) => {
+  const f = he.app.file;
+  await openFileDemo(page, "/design/screens/past-file");
+  await expect(
+    page.getByRole("heading", {
+      level: 1,
+      name: heT("app.file.title", { business: "בית הקפה של נועה" }),
+    }),
+  ).toBeVisible();
+  const main = page.getByRole("main");
+  await expect(main.getByText("•••0018")).toBeVisible();
+  await expect(main.getByText("000000018")).toHaveCount(0);
+  // The ID's comes first, on every width.
+  await main
+    .getByRole("button", { name: f.masked.show, exact: true })
+    .first()
+    .click();
+  await expect(main.getByText("000000018")).toBeVisible();
+  await main.getByRole("button", { name: f.masked.hide, exact: true }).click();
+  await expect(main.getByText("•••0018")).toBeVisible();
+  await expect(main.getByText("000000018")).toHaveCount(0);
+});
+
+test("the profile's previous job leads to the old file", async ({ page }) => {
+  const business = "בית הקפה של נועה";
+  await openFileDemo(page, "/design/shell/me?past=1");
+  await expect(
+    page.getByRole("heading", { level: 2, name: he.app.past.section }),
+  ).toBeVisible();
+  await page
+    .getByRole("link", {
+      name: new RegExp(`^${heT("app.me.file.title", { business })}`),
+    })
+    .filter({ visible: true })
+    .click();
+  await expect(page).toHaveURL(/\/design\/screens\/past-file$/);
+  await expect(
+    page.getByRole("heading", {
+      level: 1,
+      name: heT("app.file.title", { business }),
+    }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: he.app.file.back, exact: true }).click();
+  await expect(page).toHaveURL(/\/design\/shell\/me\?past=1$/);
 });
