@@ -133,6 +133,9 @@ const PAGES = [
   "/design/shell/today/accountant?state=off",
   // The accountant signed in on the business's clock station: sign out when done.
   "/design/shell/today/accountant?state=station",
+  // The staff's hiring files on the accountant's Home (profile H6a).
+  "/design/shell/today/accountant?files=missing",
+  "/design/shell/today/accountant?files=complete",
   "/design/shell/today/businesses",
   "/design/shell/today/businesses?state=left",
   "/design/shell/team",
@@ -155,6 +158,24 @@ const PAGES = [
   "/design/shell/team/invite?as=paid",
   // Every role an owner's, for pay and for what it holds (roles R11c).
   "/design/shell/team/invite?as=held",
+  // The hiring file's lines and card for a holder, a manager and the
+  // accountant (files only), and a holder's file in each state (H6a).
+  "/design/shell/team?file=holder",
+  "/design/shell/team?file=manager",
+  "/design/shell/team?file=accountant",
+  "/design/shell/team/yoav?file=holder",
+  "/design/shell/team/yoav?file=manager",
+  "/design/shell/team/yoav?file=view",
+  "/design/shell/team/noa?file=holder",
+  "/design/shell/team/noa/file?state=duties",
+  "/design/shell/team/noa/file?state=locked",
+  "/design/shell/team/noa/file?state=code",
+  "/design/shell/team/noa/file?state=open",
+  "/design/shell/team/noa/file?state=viewing",
+  "/design/shell/team/noa/file?state=unavailable",
+  "/design/shell/team/noa/file?state=review",
+  "/design/shell/team/noa/file?state=open&as=accountant",
+  "/design/shell/team/yoav/file?state=open",
   "/design/shell/me",
   "/design/shell/me?state=empty",
   "/design/shell/me?state=demo",
@@ -5572,6 +5593,128 @@ async function openFileDemo(page: Page, url: string) {
   await page.goto(url);
   await page.waitForLoadState("networkidle");
 }
+
+// The holders' view of the file on its twins (profile H6a): the duties, the
+// twin's code (123456) and the file open, its account shown for a minute;
+// the hour's limit in words; a manager's count with no way in; the
+// accountant's Home leading to the files, and on to a file as the
+// accountant reads it; and a link to /me/file that names nothing missing.
+// The twins keep nothing.
+const hf = he.app.team.file;
+
+test("the file twin opens with the duties, then a code, and the account shows for a minute", async ({
+  page,
+}) => {
+  await page.clock.install();
+  await openFileDemo(page, "/design/shell/team/noa/file");
+  await expect(
+    page.getByRole("heading", { name: hf.duties.title }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: hf.duties.confirm }).click();
+  const boxes = page.getByLabel(hf.code.label);
+  await expect(boxes).toBeVisible();
+  await boxes.fill("123456");
+  await expect(page).toHaveURL(/\/design\/shell\/team\/noa\/file\?state=open$/);
+  const bank = page.getByRole("region", { name: hf.sections.bank });
+  await expect(bank.getByText("•••0001")).toBeVisible();
+  await bank.getByRole("button", { name: he.app.file.masked.show }).click();
+  await expect(bank.getByText("100001")).toBeVisible();
+  await page.clock.fastForward(60_000);
+  await expect(bank.getByText("100001")).toHaveCount(0);
+  await expect(bank.getByText("•••0001")).toBeVisible();
+});
+
+test("the file twin's reveal over the limit says so in words", async ({
+  page,
+}) => {
+  await openFileDemo(page, "/design/shell/team/noa/file?state=limit");
+  const identity = page.getByRole("region", { name: hf.sections.identity });
+  await identity.getByRole("button", { name: he.app.file.masked.show }).click();
+  await expect(identity.getByRole("alert")).toHaveText(hf.reveal.limit);
+  await expect(identity.getByText("000000018")).toHaveCount(0);
+  await expect(
+    identity.getByRole("button", { name: he.app.file.masked.show }),
+  ).toBeEnabled();
+});
+
+test("the manager's twin sees a count and no way into the file", async ({
+  page,
+}) => {
+  await openFileDemo(page, "/design/shell/team/yoav?file=manager");
+  await expect(
+    page.getByText(heT("app.team.file.card.missingCount", { count: 2 })),
+  ).toBeVisible();
+  await expect(page.getByText(hf.card.onlyHolders)).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: hf.card.open }).filter({ visible: true }),
+  ).toHaveCount(0);
+  for (const group of Object.values(hf.groups)) {
+    await expect(page.getByRole("main").getByText(group)).toHaveCount(0);
+  }
+});
+
+test("the accountant's Today twin leads to the files", async ({ page }) => {
+  await openFileDemo(page, "/design/shell/today/accountant?files=missing");
+  const card = page.getByRole("region", {
+    name: he.app.home.accountant.files.title,
+  });
+  await expect(
+    card.getByText(heT("app.home.accountant.files.missing", { count: 2 })),
+  ).toBeVisible();
+  await card
+    .getByRole("link", { name: he.app.home.accountant.files.open })
+    .click();
+  await expect(page).toHaveURL(/\/design\/shell\/team\?file=accountant$/);
+  await expect(page.getByText(hf.filesOnly.note)).toBeVisible();
+  const yoav = page
+    .getByRole("link", { name: /יואב לוי/ })
+    .filter({ visible: true })
+    .first();
+  await expect(yoav).toHaveAttribute(
+    "href",
+    "/design/shell/team/yoav/file?as=accountant",
+  );
+
+  // The file as the accountant reads it: back to the files, and no link to
+  // send from a profile the accountant never sees.
+  await yoav.click();
+  await expect(page).toHaveURL(
+    /\/design\/shell\/team\/yoav\/file\?as=accountant$/,
+  );
+  await page.waitForLoadState("networkidle");
+  const main = page.getByRole("main");
+  await expect(
+    main.getByRole("link", { name: hf.page.backTeam, exact: true }),
+  ).toHaveAttribute("href", "/design/shell/team?file=accountant");
+  await main.getByRole("button", { name: hf.duties.confirm }).click();
+  await page.getByLabel(hf.code.label).fill("123456");
+  await expect(page).toHaveURL(
+    /\/design\/shell\/team\/yoav\/file\?state=open&as=accountant$/,
+  );
+  await expect(
+    main.getByText(hf.rows.missing, { exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    main.getByText(heT("app.team.file.rows.missingHint", { first: "יואב" })),
+  ).toHaveCount(0);
+});
+
+test("Yoav's twin shares a link to /me/file that names no detail", async ({
+  page,
+}) => {
+  await openFileDemo(page, "/design/shell/team/yoav?file=holder");
+  await page
+    .getByRole("button", { name: hf.card.share })
+    .filter({ visible: true })
+    .click();
+  const sheet = page.getByRole("dialog", { name: hf.card.shareTitle });
+  await expect(sheet).toBeVisible();
+  const message = (await sheet.textContent()) ?? "";
+  expect(message).toContain("/me/file");
+  for (const group of Object.values(hf.groups)) {
+    expect(message).not.toContain(group);
+  }
+});
 
 // The worker's own file on Noa's twin (profile H5a). An account number the
 // check doubts is said in words, kept with "המספר נכון, לשמור", and saved

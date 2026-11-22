@@ -13,9 +13,11 @@ import {
   FILE_DETAIL_FIELDS,
   FILE_DUTIES_VERSION,
   FILE_GROUPS,
+  FILE_HOLDER_STATES,
   FILE_TEXT_MAX,
   fileFailureOf,
   fileReply,
+  holderStateReply,
   identityParts,
   maskedHint,
   revealReply,
@@ -487,5 +489,38 @@ describe("the database's replies", () => {
         detail: null,
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("a holder's state", () => {
+  // public.file_holder_state (20261126000500_file_holder_state.sql, H6a).
+  it("takes the six states the database answers, and nobody signed in", () => {
+    expect(FILE_HOLDER_STATES).toEqual([
+      "ready",
+      "ack",
+      "viewing",
+      "not_member",
+      "not_holder",
+      "off",
+    ]);
+    for (const state of FILE_HOLDER_STATES) {
+      expect(holderStateReply.parse(state)).toBe(state);
+    }
+    expect(holderStateReply.parse(null)).toBeNull();
+  });
+
+  it("refuses anything else", () => {
+    for (const reply of [
+      "holder",
+      "limit",
+      "",
+      1,
+      undefined,
+      { state: "ready" },
+    ]) {
+      expect(holderStateReply.safeParse(reply).success, String(reply)).toBe(
+        false,
+      );
+    }
   });
 });

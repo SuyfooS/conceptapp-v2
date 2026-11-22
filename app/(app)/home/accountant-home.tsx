@@ -1,4 +1,5 @@
 import { instantIn } from "@domain/availability";
+import type { FilesHome } from "@domain/file-holders";
 import { firstNameOf } from "@domain/people";
 import { clockAt, dayPart } from "@domain/today";
 import { Ambient } from "@ui/ambient";
@@ -13,6 +14,7 @@ import {
   Bell,
   CircleCheck,
   Clock3,
+  FolderLock,
   Hash,
   PencilLine,
   ReceiptText,
@@ -58,6 +60,12 @@ export type AccountantHomeData = {
    * (`currentStationHome`): sign out when done. Null anywhere else.
    */
   station?: StationHome | null;
+  /**
+   * The staff's hiring files (profile H6a, `currentFilesHome`), while the
+   * module is on and the accountant holds them, not viewing: how many, and
+   * what waits in them. Null otherwise.
+   */
+  files?: (FilesHome & { form101: boolean; href: string }) | null;
 };
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
@@ -73,8 +81,11 @@ const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
  * how many things the hours engine asks to check. Someone who keeps the books
  * of several businesses (payroll P3b) has them listed last, on phones and
  * tablets, to switch between. On the business's clock station, the card that
- * says to sign out when done comes under the greeting, as on Today. `base`
- * keeps the links inside the demo on /design/shell.
+ * says to sign out when done comes under the greeting, as on Today. While
+ * the hiring file is on, a card "תיקי העובדים" says how many files miss
+ * anything and leads to them (H6a): under what to look at before paying,
+ * beside the hero from a tablet up. `base` keeps the links inside the demo
+ * on /design/shell.
  */
 export async function AccountantHome({
   data,
@@ -175,7 +186,16 @@ export async function AccountantHome({
               wording={wording}
               href={payHref(pay.month)}
             />
-            <BeforeCard pay={pay} wording={wording} href={payHref(pay.month)} />
+            <div className="flex flex-col gap-6 xl:gap-8">
+              <BeforeCard
+                pay={pay}
+                wording={wording}
+                href={payHref(pay.month)}
+              />
+              {data.files ? (
+                <FilesCard files={data.files} wording={wording} />
+              ) : null}
+            </div>
             <div className="hidden xl:block">
               <EarlierMonths pay={pay} wording={wording} hrefFor={payHref} />
             </div>
@@ -190,6 +210,13 @@ export async function AccountantHome({
             <CardText>{t("home.accountant.noClock.body")}</CardText>
           </Card>
         )}
+        {!pay && data.files ? (
+          <FilesCard
+            files={data.files}
+            wording={wording}
+            className="md:max-w-xl"
+          />
+        ) : null}
         {data.documents ? (
           <TodayDocuments
             data={data.documents}
@@ -205,6 +232,57 @@ export async function AccountantHome({
         />
       </PageBody>
     </div>
+  );
+}
+
+/**
+ * The staff's hiring files: how many miss anything, the 101s not in while
+ * the business takes them in the app, the accounts to look at, and the way
+ * to them. With no manager or worker yet there are no files: one line says
+ * so and when they come, with no "complete" line and no way to an empty
+ * list. A quiet card: the pay hero keeps the page's one main action.
+ */
+export function FilesCard({
+  files,
+  wording,
+  className,
+}: {
+  files: NonNullable<AccountantHomeData["files"]>;
+  wording: AppWording;
+  className?: string;
+}) {
+  const t = translator(wording, "app.home.accountant.files");
+  const none = files.files === 0;
+  const lines = none
+    ? [t("none")]
+    : [
+        t("missing", { count: files.missing }),
+        files.form101 && files.form101Open > 0
+          ? t("form101", { count: files.form101Open })
+          : null,
+        files.bankReviews > 0
+          ? t("reviews", { count: files.bankReviews })
+          : null,
+      ].filter((line): line is string => line !== null);
+  return (
+    <section aria-labelledby="files-home-title" className={className}>
+      <Card padding="lg" className="flex flex-col gap-3">
+        <CardTitle as="h2" id="files-home-title">
+          {t("title")}
+        </CardTitle>
+        {lines.map((line) => (
+          <CardText key={line}>{line}</CardText>
+        ))}
+        {none ? null : (
+          <Button asChild variant="secondary" className="self-start">
+            <Link href={files.href}>
+              <FolderLock aria-hidden="true" />
+              {t("open")}
+            </Link>
+          </Button>
+        )}
+      </Card>
+    </section>
   );
 }
 

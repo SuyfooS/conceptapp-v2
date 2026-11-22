@@ -31,6 +31,13 @@ const SERVER_ONLY = [
   "packages/db/crypto.ts",
   "packages/db/employee-files.ts",
   "packages/db/audit-guard.ts",
+  // Profile H6a: the holders' step-up, who reads the files, their status,
+  // a holder's file and its cookie.
+  "packages/db/file-step-up.ts",
+  "app/(app)/team/file-access.ts",
+  "app/(app)/team/file-status.ts",
+  "app/(app)/team/[person]/file/holder-file.ts",
+  "app/(app)/team/[person]/file/step-up.ts",
 ];
 
 const code = ["app", "packages", "modules", "tooling", "e2e"].flatMap(files);
@@ -114,6 +121,59 @@ describe("the hiring file's code", () => {
       /target="_blank"\s+rel="noopener noreferrer"/,
     );
     expect(read("app/(app)/me/file/actions.ts")).toMatch(/route: way \}/);
+  });
+
+  it("draws the holders' view with no cache and no value in a log", () => {
+    // Profile H6a: a holder's file, the team's status lines, who reads the
+    // files and the profile's card.
+    const screens = [
+      ...files("app/(app)/team/[person]/file"),
+      "app/(app)/team/file-status.ts",
+      "app/(app)/team/file-access.ts",
+      "app/(app)/team/file-lines.tsx",
+      "app/(app)/team/[person]/file-card.tsx",
+    ];
+    expect(screens.length).toBeGreaterThan(10);
+    for (const path of screens) {
+      const source = read(path);
+      expect(source, path).not.toMatch(/["']use cache/);
+      if (!/\.test\.tsx?$/.test(path)) {
+        expect(source, path).not.toMatch(/console\.log/);
+      }
+    }
+    // A refusal logs what failed and an error's code, never what was typed
+    // or shown: the actions pass no variable of their own (they log through
+    // `logged`), the reads an error's code and kind alone.
+    const consoleArgs = (path: string) =>
+      [...read(path).matchAll(/console\.\w+\(([^)]*)\)/g)].map(
+        ([, args = ""]) => args.replace(/"[^"]*"/g, "").replace(/\s/g, ""),
+      );
+    for (const path of [
+      "app/(app)/team/[person]/file/actions.ts",
+      "app/(app)/team/file-access.ts",
+    ]) {
+      for (const args of consoleArgs(path)) {
+        expect(args, path).not.toMatch(
+          /\b(code|value|field|revealed|verified|input|typed|person)\b/,
+        );
+      }
+    }
+    const reads = [
+      "app/(app)/team/[person]/file/holder-file.ts",
+      "app/(app)/team/file-status.ts",
+    ].flatMap(consoleArgs);
+    expect(reads).toEqual([",code,kind", "what,code,kind"]);
+    // The page reads the person from its address and nothing else.
+    const page = read("app/(app)/team/[person]/file/page.tsx");
+    expect(page).toMatch(
+      /\[\{ person \}, member\] = await Promise\.all\(\[params,/,
+    );
+    expect(page).not.toMatch(/searchParams/);
+    // The step-up's cookie is the server's alone, and never sent from
+    // another site.
+    const stepUp = read("app/(app)/team/[person]/file/step-up.ts");
+    expect(stepUp).toMatch(/httpOnly: true/);
+    expect(stepUp).toMatch(/sameSite: "strict"/);
   });
 
   it("puts no value of a file in a URL", () => {

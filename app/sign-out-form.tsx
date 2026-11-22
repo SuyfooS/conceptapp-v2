@@ -10,6 +10,7 @@ import {
   type UnsentOnDevice,
   unsentToAsk,
 } from "./(app)/orders/orders-storage";
+import { signOutAndLeave } from "./sign-out";
 
 /** What signing out answers. */
 export type SignedOut = {
@@ -44,9 +45,11 @@ export type SignOutAction = (only?: "who") => Promise<SignedOut | null>;
  * signing out draws the signed-out app again at once, which may already be
  * on its way to the door, and takes such a screen with it.
  *
- * What the phone keeps outlives the page, so waiter mode's records of the
- * person (P7: drafts, rounds on their way, the menu) go first, and the page
- * waits for that before it goes. An order of theirs that hasn't gone would
+ * Signing out forgets the hiring files' step-up on the server, so every
+ * file open on the device, in any tab or window, closes at once (H6a,
+ * `signOutAndLeave`). What the phone keeps outlives the page, so waiter
+ * mode's records of the person (P7: drafts, rounds on their way, the menu)
+ * go first, and the page waits for that before it goes. An order of theirs that hasn't gone would
  * go with them, and nothing brings it back: the form asks once, naming
  * where, with "יציאה ומחיקה" and "חזרה" (CLAUDE.md's exception to undo).
  * Whose they are is the server's word, asked of the action ("who") only
@@ -94,10 +97,11 @@ export function SignOutForm({
             }
           }
           sure.current = false;
-          const out = await action();
-          if (!out?.to) return;
-          await clearOrdersOnSignOut(out.user);
-          window.location.replace(out.to);
+          await signOutAndLeave(action, {
+            win: window,
+            clearOrders: clearOrdersOnSignOut,
+            go: (to) => window.location.replace(to),
+          });
         }}
         className={className}
       >

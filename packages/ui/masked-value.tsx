@@ -11,15 +11,28 @@ export type PageVisibility = Pick<
 >;
 
 /**
+ * What asking for a number gives: the number; null when it can't be shown
+ * now (the failed words); a line of its own to say instead (a holder over
+ * the hour's limit, H6a); or `held`, nothing to say, since the caller drew
+ * something else (the file locked again).
+ */
+export type RevealOutcome =
+  | string
+  | null
+  | { message: string }
+  | { held: true };
+
+/**
  * Asks for a number, and gives it only to a page that stayed on screen the
  * whole way: one put away while it came (another app, the phone locked) gets
  * "away", even when the answer lands as it comes back, so nothing shows that
- * the person didn't watch arrive. A failure is null.
+ * the person didn't watch arrive. A failure is null, and away too, as it
+ * was; a line to say or `held` passes either way: they reveal nothing.
  */
 export async function revealWhileShown(
-  onReveal: () => Promise<string | null>,
+  onReveal: () => Promise<RevealOutcome>,
   page: PageVisibility,
-): Promise<string | null | "away"> {
+): Promise<RevealOutcome | "away"> {
   let away = page.visibilityState === "hidden";
   const left = () => {
     if (page.visibilityState === "hidden") away = true;
@@ -27,6 +40,7 @@ export async function revealWhileShown(
   page.addEventListener("visibilitychange", left);
   try {
     const value = await onReveal().catch(() => null);
+    if (value !== null && typeof value === "object") return value;
     return away || page.visibilityState === "hidden" ? "away" : value;
   } finally {
     page.removeEventListener("visibilitychange", left);
@@ -74,6 +88,10 @@ export function watchShown(
  * screen is left, even one Next keeps to show again (`watchShown`); one that
  * arrives while the page is away never shows (`revealWhileShown`). It is
  * never kept anywhere but here while it shows. Its words are the caller's.
+ * A holder's reveal of someone else's number (H6a) can also answer a line
+ * of its own (over the hour's limit), said instead of the failed words, or
+ * `held` when the screen drew itself again (the file locked): nothing said,
+ * and the button can be pressed again.
  */
 export function MaskedValue({
   label,
@@ -89,8 +107,8 @@ export function MaskedValue({
   label: string;
   /** "•••0018". */
   masked: string;
-  /** The number, or null when it can't be shown now. */
-  onReveal: () => Promise<string | null>;
+  /** The number, null when it can't be shown now, or what to say instead. */
+  onReveal: () => Promise<RevealOutcome>;
   showLabel: string;
   hideLabel: string;
   /** "מספר זהות, מוסתר. רואים רק את הספרות האחרונות". */
@@ -101,7 +119,8 @@ export function MaskedValue({
 }) {
   const [shown, setShown] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  const [failed, setFailed] = useState(false);
+  /** What is said under it: the failed words, or the reveal's own line. */
+  const [said, setSaid] = useState<string | null>(null);
 
   // A layout effect, so a screen hidden with the number shown drops it
   // before it is hidden, and shows the dots again when it comes back.
@@ -112,10 +131,13 @@ export function MaskedValue({
 
   async function reveal() {
     setPending(true);
-    setFailed(false);
+    setSaid(null);
     const value = await revealWhileShown(onReveal, document);
     setPending(false);
-    if (value === null) setFailed(true);
+    if (value === null) setSaid(failedLabel);
+    else if (typeof value === "object") {
+      if ("message" in value) setSaid(value.message);
+    }
     // Put away while it came: it stays hidden, to be asked for again.
     else if (value !== "away") setShown(value);
   }
@@ -151,9 +173,9 @@ export function MaskedValue({
           {shown === null ? showLabel : hideLabel}
         </Button>
       </div>
-      {failed ? (
+      {said ? (
         <p role="alert" className="text-danger text-sm">
-          {failedLabel}
+          {said}
         </p>
       ) : null}
     </div>

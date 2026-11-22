@@ -5,12 +5,22 @@
 
 import type { ActivityLookups, ActivityRow } from "@domain/activity";
 import type { AvailabilityAnswer } from "@domain/availability";
+import { accountHint } from "@domain/bank-account";
 import type { BusinessDetails } from "@domain/business-details";
+import {
+  type BankReview,
+  type FileStatus,
+  maskedHint,
+} from "@domain/employee-file";
 import type { ModuleRow } from "@domain/modules";
 import type { AddressForm, CoverPreset } from "@domain/profile";
 import type { Position, ShiftPattern } from "@domain/staffing";
 import type { GivableNamedRole, TeamInvite, TeamMember } from "@domain/team";
+import type { HolderFileData } from "../../(app)/team/[person]/file/holder-file-types";
 import { portraits } from "../portraits";
+
+/** What the holder twin's "הצגה" shows: the test range's ID and an account that checks valid. */
+export const DEMO_HOLDER_NUMBERS = { id: "000000018", bankAccount: "100001" };
 
 export const business = { name: "מסעדת הדגמה" };
 /** A business the demo's accountant was taken off the team of. */
@@ -905,3 +915,170 @@ export const demoOrdersMode = {
   open: true,
   action: "פתיחת מצב מלצרות",
 } as const;
+
+/**
+ * How complete each demo person's hiring file is (profile H6a), as
+ * `public.employee_file_status` gives it to a holder, for the team's twins:
+ * Noa complete with this year's 101 in, Yoav without his account and his
+ * pension and no 101 yet, Maya, a minor, without her identity details and
+ * with a new account to look at, Shiran complete with an updated 101 due,
+ * and the rest complete. Owners have no row. Whoever sees the team without
+ * the files reads the same rows without `detail` (`teamFileStatusFor`).
+ */
+export const teamFileStatus: Record<string, FileStatus> = Object.fromEntries(
+  (
+    [
+      ["shiran", [], "change_due", null],
+      ["noa", [], "handed_in", null],
+      ["yoav", ["bank", "pension"], null, null],
+      ["maya", ["identity"], "accepted", "new"],
+      ["itay", [], "accepted", null],
+      ["shira", [], "handed_in", null],
+      ["omer", [], "accepted", null],
+    ] as const
+  ).map(([userId, missing, status, review]) => [
+    userId,
+    {
+      user_id: userId,
+      complete: missing.length === 0,
+      missing: missing.length,
+      form101_in: status !== null,
+      detail: {
+        missing: [...missing],
+        tax_year: 2026,
+        status,
+        returned_reason: null,
+        change_due_by: status === "change_due" ? "2026-12-01" : null,
+        pension_due_on: null,
+        bank_review: review,
+        youth_until: userId === "maya" ? "2027-04-15" : null,
+        submitted_at: missing.length === 0 ? "2026-09-20T09:05:00Z" : null,
+      },
+    },
+  ]),
+);
+
+/** The same rows as a holder or as anyone else who sees the team reads them. */
+export function teamFileStatusFor(
+  reader: "holder" | "team",
+): Record<string, FileStatus> {
+  return reader === "holder"
+    ? teamFileStatus
+    : Object.fromEntries(
+        Object.entries(teamFileStatus).map(([id, row]) => [
+          id,
+          { ...row, detail: null },
+        ]),
+      );
+}
+
+/** Noa's made-up file, as a holder opens it: complete, from the test ranges. */
+const DEMO_HOLDER_FILE: HolderFileData = {
+  today: "2026-11-24",
+  year: 2026,
+  asked: ["identity", "address", "bank", "pension"],
+  missing: [],
+  direct: [],
+  form101: { provider: null },
+  identity: {
+    legalName: "נועה כהן",
+    kind: "il",
+    country: null,
+    documentName: null,
+    expiresOn: null,
+    birthDate: "1995-01-01",
+    masked: maskedHint("0018"),
+    youthUntil: null,
+  },
+  contact: {
+    address: {
+      kind: "street",
+      cityCode: 5000,
+      street: "הרצל",
+      number: "12",
+    },
+    email: "noa@demo.conceptapp.invalid",
+    workLanguage: null,
+    emergency: { name: "דנה כהן", phone: "+972541234570" },
+  },
+  bank: {
+    code: 12,
+    branch: 600,
+    masked: maskedHint(accountHint(DEMO_HOLDER_NUMBERS.bankAccount)),
+    holder: "self",
+    holderName: null,
+    instructionAt: "2026-09-20T09:00:00Z",
+    review: null,
+    changedAt: "2026-09-20T09:00:00Z",
+  },
+  pension: { answer: "existing", fund: "harel", dueOn: null },
+  taxYear: {
+    status: "handed_in",
+    route: "print",
+    returnedReason: null,
+    changeDueBy: null,
+  },
+  submittedAt: "2026-09-20T09:05:00Z",
+};
+
+/**
+ * A demo person's file as a holder opens it on the twin: Noa's, with what
+ * their status row says is missing left out and its account to look at;
+ * `review` makes Noa's account one she said she didn't change.
+ */
+export function demoHolderFile(
+  person: string,
+  review: BankReview | null = null,
+): HolderFileData {
+  const status = teamFileStatus[person]?.detail;
+  const missing = status?.missing ?? [];
+  const member = teamMembers.find((m) => m.userId === person);
+  const base = DEMO_HOLDER_FILE;
+  return {
+    ...base,
+    missing,
+    identity: missing.includes("identity")
+      ? {
+          ...base.identity,
+          legalName: null,
+          kind: null,
+          birthDate: null,
+          masked: null,
+          youthUntil: status?.youth_until ?? null,
+        }
+      : {
+          ...base.identity,
+          legalName: member?.name ?? base.identity.legalName,
+          youthUntil: status?.youth_until ?? null,
+        },
+    bank: missing.includes("bank")
+      ? {
+          code: null,
+          branch: null,
+          masked: null,
+          holder: null,
+          holderName: null,
+          instructionAt: null,
+          review: null,
+          changedAt: null,
+        }
+      : base.bank && {
+          ...base.bank,
+          review: review ?? status?.bank_review ?? null,
+          changedAt:
+            (review ?? status?.bank_review) ? "2026-11-20T08:00:00Z" : null,
+        },
+    pension: missing.includes("pension")
+      ? { answer: null, fund: null, dueOn: null }
+      : base.pension,
+    taxYear: status?.status
+      ? {
+          status: status.status,
+          route: "print",
+          returnedReason: null,
+          changeDueBy: status.change_due_by,
+        }
+      : null,
+    submittedAt: status?.submitted_at ?? null,
+  };
+}

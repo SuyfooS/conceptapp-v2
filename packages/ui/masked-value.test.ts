@@ -10,7 +10,9 @@ import {
  * "הצגה" on the hiring file's own ID or account (profile H5a, plan §9.1): a
  * number that arrives while the page is put away (another app, the phone
  * locked, a slow answer) never shows, even when it lands as the page comes
- * back. A page stands in for the document here.
+ * back. A page stands in for the document here. A holder's reveal (H6a)
+ * may answer a line to say instead, or nothing to say: neither reveals a
+ * number, so each passes as it came, the page away or not.
  */
 
 class Page extends EventTarget {
@@ -155,5 +157,47 @@ describe("revealWhileShown", () => {
       await revealWhileShown(() => Promise.reject(new Error()), asPage(page)),
     ).toBeNull();
     expect(page.listening).toBe(0);
+  });
+});
+
+describe("revealWhileShown, for a holder's reveal", () => {
+  const limit = { message: "Numbers of 30 people were already shown" };
+
+  it("passes a line to say as it came", async () => {
+    const page = new Page();
+    expect(await revealWhileShown(async () => limit, asPage(page))).toBe(limit);
+  });
+
+  it("still says it when the page was put away meanwhile: it reveals nothing", async () => {
+    const page = new Page();
+    const slow = {
+      answer: () => {},
+      promise: null as Promise<{ message: string }> | null,
+    };
+    slow.promise = new Promise((resolve) => {
+      slow.answer = () => resolve(limit);
+    });
+    const shown = revealWhileShown(
+      () => slow.promise as Promise<{ message: string }>,
+      asPage(page),
+    );
+    page.set("hidden");
+    slow.answer();
+    expect(await shown).toBe(limit);
+    expect(page.listening).toBe(0);
+  });
+
+  it("passes held, which shows and says nothing, the page away or not", async () => {
+    const page = new Page();
+    const held = { held: true } as const;
+    expect(await revealWhileShown(async () => held, asPage(page))).toBe(held);
+    page.visibilityState = "hidden";
+    expect(await revealWhileShown(async () => held, asPage(page))).toBe(held);
+  });
+
+  it("keeps a failure while away as away, as before", async () => {
+    const page = new Page();
+    page.visibilityState = "hidden";
+    expect(await revealWhileShown(async () => null, asPage(page))).toBe("away");
   });
 });

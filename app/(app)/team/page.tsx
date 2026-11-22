@@ -1,17 +1,21 @@
 import { invitesOpen } from "@db/invites";
+import { seesFiles } from "@domain/file-holders";
 import { canEditTeam, canSeeTeam } from "@domain/team";
 import { canWrite } from "@domain/view-as";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { currentWording } from "../current-wording";
 import { currentMember } from "../member";
+import { currentModules } from "../modules";
 import {
+  currentFilesTeam,
   currentGivableNamedRoles,
   currentOwnerOnlyRoles,
   currentTeam,
 } from "../team";
 import { baseWording, translator } from "../wording";
 import { cancelInviteAction, resendInviteAction } from "./actions";
+import { currentTeamFiles } from "./file-status";
 import { TeamFreshness } from "./team-freshness";
 import { TeamView } from "./team-view";
 
@@ -30,16 +34,26 @@ export async function generateMetadata(): Promise<Metadata> {
 // gets no new link for an invite to a role that holds pay, nor to a role the
 // business named that they don't give (the roles plan's R11b). Each person
 // and invite with a named role shows it by its name, with its base. Deleting
-// is bound to this business: one held past a switch is refused.
+// is bound to this business: one held past a switch is refused. While the
+// hiring file is on (profile H6a), each manager and worker shows how
+// complete their file is, in a holder's words or as a count; someone who
+// holds the files without seeing the team (the accountant) gets the files
+// alone, each row leading to the file, with no numbers and no invites.
 export default async function TeamPage() {
-  const member = await currentMember();
+  const [member, enabled] = await Promise.all([
+    currentMember(),
+    currentModules(),
+  ]);
   const membership = member?.membership;
-  if (!member || !membership || !canSeeTeam(membership)) notFound();
-  const [team, open, ownerOnly, named] = await Promise.all([
-    currentTeam(),
-    invitesOpen(membership.business.id),
-    currentOwnerOnlyRoles(),
-    currentGivableNamedRoles(),
+  if (!member || !membership) notFound();
+  const seesTeam = canSeeTeam(membership);
+  if (!seesTeam && !seesFiles(membership, enabled)) notFound();
+  const [team, open, ownerOnly, named, files] = await Promise.all([
+    seesTeam ? currentTeam() : currentFilesTeam(),
+    seesTeam ? invitesOpen(membership.business.id) : Promise.resolve(false),
+    seesTeam ? currentOwnerOnlyRoles() : Promise.resolve([]),
+    seesTeam ? currentGivableNamedRoles() : Promise.resolve([]),
+    currentTeamFiles(),
   ]);
   if (!team) notFound();
   return (
@@ -53,12 +67,14 @@ export default async function TeamPage() {
         peopleHref="/team"
         resend={resendInviteAction}
         cancel={
-          canWrite(member.viewing) && canEditTeam(membership)
+          seesTeam && canWrite(member.viewing) && canEditTeam(membership)
             ? cancelInviteAction.bind(null, membership.business.id)
             : undefined
         }
         ownerOnly={ownerOnly}
         named={named}
+        files={files}
+        filesOnly={!seesTeam}
         wording={await currentWording()}
       />
     </>
