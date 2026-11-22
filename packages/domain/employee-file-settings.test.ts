@@ -111,14 +111,19 @@ describe("Form 101's way", () => {
     });
   });
 
-  it("names the site when no provider is set", () => {
+  it("has no name when no provider is set: the screens name its site", () => {
     expect(
       form101SetupOf({
         ...DEFAULTS,
         form101: "link",
         form101Link: "https://forms.101.example/x",
       }),
-    ).toMatchObject({ provider: "forms.101.example" });
+    ).toEqual({
+      way: "link",
+      link: "https://forms.101.example/x",
+      domain: "forms.101.example",
+      provider: null,
+    });
   });
 });
 
@@ -216,49 +221,102 @@ describe("a bank change on Today", () => {
 describe("the bank changes seen on this device", () => {
   const SHOP = "10000000-0000-4000-b000-000000000001";
   const CAFE = "10000000-0000-4000-b000-000000000002";
+  const NOA = "20000000-0000-4000-b000-000000000001";
+  const DANA = "20000000-0000-4000-b000-000000000002";
   const AT = "2026-11-20T10:00:00.123456+00:00";
   const LATER = "2026-11-21T08:00:00+00:00";
+  const EARLIER = "2026-11-18T09:00:00+00:00";
+  const noa = (changedAt: string, business = SHOP) => ({
+    business,
+    person: NOA,
+    changedAt,
+  });
 
   it("remembers a change by the moment the database gave it", () => {
-    const cookie = withBankChangeSeen(null, SHOP, AT);
-    expect(bankChangeSeen(cookie, SHOP, AT)).toBe(true);
-    expect(bankChangeSeen(cookie, CAFE, AT)).toBe(false);
+    const cookie = withBankChangeSeen(null, noa(AT));
+    expect(bankChangeSeen(cookie, noa(AT))).toBe(true);
+    expect(bankChangeSeen(cookie, noa(AT, CAFE))).toBe(false);
     // A newer change is told again.
-    expect(bankChangeSeen(cookie, SHOP, LATER)).toBe(false);
+    expect(bankChangeSeen(cookie, noa(LATER))).toBe(false);
+  });
+
+  it("never hides an earlier change by a later one seen", () => {
+    const cookie = withBankChangeSeen(null, noa(LATER));
+    expect(bankChangeSeen(cookie, noa(EARLIER))).toBe(false);
+    expect(bankChangeSeen(cookie, noa(AT))).toBe(false);
+  });
+
+  it("is one person's: on a shared device another's change is still told", () => {
+    // Noa said she saw hers on the shop's tablet; Dana signs in on it next,
+    // her own account changed two days before Noa's.
+    const cookie = withBankChangeSeen(null, noa(AT));
+    expect(
+      bankChangeSeen(cookie, { business: SHOP, person: DANA, changedAt: AT }),
+    ).toBe(false);
+    expect(
+      bankChangeSeen(cookie, {
+        business: SHOP,
+        person: DANA,
+        changedAt: EARLIER,
+      }),
+    ).toBe(false);
+    // Each keeps her own.
+    const both = withBankChangeSeen(cookie, {
+      business: SHOP,
+      person: DANA,
+      changedAt: EARLIER,
+    });
+    expect(bankChangeSeen(both, noa(AT))).toBe(true);
+    expect(
+      bankChangeSeen(both, {
+        business: SHOP,
+        person: DANA,
+        changedAt: EARLIER,
+      }),
+    ).toBe(true);
   });
 
   it("reads garbage as nothing", () => {
-    for (const cookie of ["", "x", `${SHOP}.abc`, `${SHOP}`, "a.1,,b"]) {
-      expect(bankChangeSeen(cookie, SHOP, AT), cookie).toBe(false);
-    }
-    expect(withBankChangeSeen("junk,x.y", SHOP, AT)).toBe(
+    for (const cookie of [
+      "",
+      "x",
+      `${SHOP}.abc`,
+      `${SHOP}`,
+      // A business without its person names nobody's change.
       `${SHOP}.${Date.parse(AT)}`,
+      `${SHOP}.${NOA}.abc`,
+      "a.1,,b",
+    ]) {
+      expect(bankChangeSeen(cookie, noa(AT)), cookie).toBe(false);
+    }
+    expect(withBankChangeSeen("junk,x.y", noa(AT))).toBe(
+      `${SHOP}.${NOA}.${Date.parse(AT)}`,
     );
   });
 
-  it("keeps the newest change of a business in place of the older one", () => {
+  it("keeps a person's newest change of a business in place of the older one", () => {
     const cookie = withBankChangeSeen(
-      withBankChangeSeen(withBankChangeSeen(null, SHOP, AT), CAFE, AT),
-      SHOP,
-      LATER,
+      withBankChangeSeen(withBankChangeSeen(null, noa(AT)), noa(AT, CAFE)),
+      noa(LATER),
     );
     expect(cookie).toBe(
-      `${CAFE}.${Date.parse(AT)},${SHOP}.${Date.parse(LATER)}`,
+      `${CAFE}.${NOA}.${Date.parse(AT)},${SHOP}.${NOA}.${Date.parse(LATER)}`,
     );
-    expect(bankChangeSeen(cookie, SHOP, LATER)).toBe(true);
+    expect(bankChangeSeen(cookie, noa(LATER))).toBe(true);
+    expect(bankChangeSeen(cookie, noa(AT))).toBe(false);
   });
 
-  it("drops the oldest business after the twentieth", () => {
+  it("drops the oldest after the twentieth", () => {
     const ids = Array.from(
       { length: BANK_CHANGE_SEEN_MOST + 1 },
       (_, n) => `10000000-0000-4000-b000-${String(n).padStart(12, "0")}`,
     );
     const cookie = ids.reduce<string | null>(
-      (kept, id) => withBankChangeSeen(kept, id, AT),
+      (kept, id) => withBankChangeSeen(kept, noa(AT, id)),
       null,
     );
     expect(cookie?.split(",")).toHaveLength(BANK_CHANGE_SEEN_MOST);
-    expect(bankChangeSeen(cookie, ids[0] ?? "", AT)).toBe(false);
-    expect(bankChangeSeen(cookie, ids[1] ?? "", AT)).toBe(true);
+    expect(bankChangeSeen(cookie, noa(AT, ids[0] ?? ""))).toBe(false);
+    expect(bankChangeSeen(cookie, noa(AT, ids[1] ?? ""))).toBe(true);
   });
 });

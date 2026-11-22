@@ -8,7 +8,8 @@ import { baseWording } from "../../../../../(app)/wording";
 import { demoModuleRows } from "../../../data";
 import { demoActivityPaths } from "../paths";
 
-// The activity log of a business where nothing has happened yet.
+// The activity log of a business where nothing has happened yet, as its
+// owner reads it (every area, and every module whose settings are theirs).
 export default function ShellManageActivityEmpty() {
   return (
     <ActivityView
@@ -16,7 +17,7 @@ export default function ShellManageActivityEmpty() {
       timeZone={ISRAEL_TIME_ZONE}
       older={null}
       earlier={false}
-      manageable={modulesToManage(demoModuleRows)}
+      manageable={modulesToManage(demoModuleRows, "owner")}
       clockOn
       departmentsOn={departmentsOn(demoModuleRows)}
       everyArea

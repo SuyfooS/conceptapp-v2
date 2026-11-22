@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { ModuleManifest, Role } from "./modules";
 import { readModuleSettings } from "./modules";
+import { displayIsraeliPhone } from "./phone";
 
 /**
  * Settings become screens by themselves. A module's settings schema says what
@@ -43,6 +44,25 @@ export type SettingEditor =
  * `checkSettingsChange` saves what the schema outputs.
  */
 export type SettingEntry = "link" | "phone" | "digits";
+
+/**
+ * A text setting's value as the activity log says it: null when nothing
+ * is set ("", or none), for the screen's "לא נקבע"; else its text, left to
+ * right (`ltr`) when it is typed so (`entry`), a phone as people write it
+ * ("+97231234567" as "03-123-4567"). Words stay as they were written.
+ */
+export function textSettingShown(
+  raw: unknown,
+  entry?: SettingEntry,
+): { text: string; ltr: boolean } | null {
+  if (raw === "" || raw === null || raw === undefined) return null;
+  const text = String(raw);
+  if (!entry) return { text, ltr: false };
+  return {
+    text: entry === "phone" ? displayIsraeliPhone(text) : text,
+    ltr: true,
+  };
+}
 
 type SettingMeta = {
   level?: SettingLevel;

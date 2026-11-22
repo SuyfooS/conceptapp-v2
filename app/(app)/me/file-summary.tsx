@@ -145,7 +145,10 @@ export async function FileSummary({
       ) : null}
       <PageSection title={t("title", { business })}>
         <div className="-mt-1 px-1">
-          <VisibilityNote icon="lock">{t("visible")}</VisibilityNote>
+          {/* The managers see the emergency contact too, as step 2 says. */}
+          <VisibilityNote icon="lock">
+            {parts.emergency ? t("visibleEmergency") : t("visible")}
+          </VisibilityNote>
         </div>
         <ListGroup>
           <ListRow

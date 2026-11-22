@@ -12,9 +12,12 @@ import { ltr } from "./flow-kit";
  * details and where they go, who keeps them and where, and the person's
  * rights. It names who the business set (H5b): the employer by law,
  * whoever prepares the payroll, the approved system Form 101 is filled in
- * at, and the phone for questions; each left out, or said without a name,
- * until it is set. The holders are the owner and the accountant until the
- * grants (H6) can say more.
+ * at (by its site, left to right, until it is named), and the phone for
+ * questions; each left out, or said without a name, until it is set. The
+ * holders are the owner and the accountant until the grants (H6) can say
+ * more; while step 2 shows an emergency contact (`emergency`), it says the
+ * managers see that contact too, as the step does
+ * (`public.team_emergency_contacts`).
  */
 export function NoticeSheet({
   open,
@@ -22,12 +25,15 @@ export function NoticeSheet({
   business,
   names,
   form101,
+  emergency,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   business: string;
   names: NoticeNames;
   form101: Form101Setup;
+  /** The emergency contact on screen (`parts.emergency`), asked or held. */
+  emergency: boolean;
 }) {
   const t = useTranslations("app.file");
   return (
@@ -38,7 +44,12 @@ export function NoticeSheet({
       closeLabel={t("actions.close")}
       readingLabel={t("notice.title")}
     >
-      <NoticeBody business={business} names={names} form101={form101} />
+      <NoticeBody
+        business={business}
+        names={names}
+        form101={form101}
+        emergency={emergency}
+      />
     </Sheet>
   );
 }
@@ -48,10 +59,12 @@ export function NoticeBody({
   business,
   names,
   form101,
+  emergency,
 }: {
   business: string;
   names: NoticeNames;
   form101: Form101Setup;
+  emergency: boolean;
 }) {
   const t = useTranslations("app.file");
   return (
@@ -69,12 +82,19 @@ export function NoticeBody({
             })
           : t("notice.who", { business })}
       </p>
+      {emergency ? <p>{t("notice.emergency")}</p> : null}
       {form101.way === "link" ? (
         <p>
-          {t("notice.form101Vendor", {
-            business,
-            provider: form101.provider,
-          })}
+          {form101.provider
+            ? t("notice.form101Vendor", {
+                business,
+                provider: form101.provider,
+              })
+            : t.rich("notice.form101Site", {
+                business,
+                domain: form101.domain,
+                ltr,
+              })}
         </p>
       ) : null}
       <p>{t("notice.conceptapp", { business })}</p>

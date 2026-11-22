@@ -6,6 +6,7 @@ import {
 } from "@domain/businesses";
 import {
   BANK_CHANGE_SEEN_COOKIE,
+  type BankChange,
   withBankChangeSeen,
 } from "@domain/employee-file-settings";
 import {
@@ -74,24 +75,20 @@ export async function rememberFirstStepsHidden(
 }
 
 /**
- * The person said they saw their account's last change in this business,
- * at `changedAt` as the database gave it ("אני שיניתי", "הבנתי" on
- * Today): on this device it isn't told again (`bankChangeSeen`), until a
- * later change. Another business's seen here stay seen. Kept as the
- * business cookie is.
+ * The person saw their account's last change in this business, at
+ * `changedAt` as the database gave it ("אני שיניתי", "הבנתי" on Today, or
+ * the account they just added here): on this device that change isn't
+ * told to them again (`bankChangeSeen`), while a later one is, and so is
+ * anyone else's who signs in here. What others saw here, and in other
+ * businesses, stays seen. Kept as the business cookie is.
  */
 export async function rememberBankChangeSeen(
-  businessId: string,
-  changedAt: string,
+  change: BankChange,
 ): Promise<void> {
   const jar = await cookies();
   jar.set(
     BANK_CHANGE_SEEN_COOKIE,
-    withBankChangeSeen(
-      jar.get(BANK_CHANGE_SEEN_COOKIE)?.value,
-      businessId,
-      changedAt,
-    ),
+    withBankChangeSeen(jar.get(BANK_CHANGE_SEEN_COOKIE)?.value, change),
     await businessCookieOptions(),
   );
 }

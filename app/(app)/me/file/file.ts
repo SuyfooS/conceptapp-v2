@@ -93,7 +93,8 @@ export async function currentFileScreen(): Promise<FileScreen> {
 /**
  * What Today's cards need of the person's own file (H5b), and never a
  * value: how much of it is missing, and the account's last change while
- * Today tells it (14 days), unless they said they saw it on this device.
+ * Today tells it (14 days), unless they said they saw that change on this
+ * device, or added the account on it.
  * Null where there is no file to show (the module off, off the staff,
  * viewing as a role) and when anything went wrong, which never takes Today
  * down with it.
@@ -103,15 +104,20 @@ export async function currentFileToday(): Promise<FileToday | null> {
     const screen = await currentFileScreen();
     if (screen.kind !== "file") return null;
     const { data } = screen;
+    // The session's person, as the screen was read for (one read a request).
+    const person = (await currentMember())?.userId ?? null;
     const changedAt = data.file?.bank_changed_at ?? null;
     const on = bankChangeToTell(changedAt, new Date(), data.timeZone);
+    // Seen only by this person, of this very change: on a shared device,
+    // what someone else said they saw hides nothing of theirs.
     const seen =
       changedAt !== null &&
-      bankChangeSeen(
-        (await cookies()).get(BANK_CHANGE_SEEN_COOKIE)?.value,
-        data.businessId,
+      person !== null &&
+      bankChangeSeen((await cookies()).get(BANK_CHANGE_SEEN_COOKIE)?.value, {
+        business: data.businessId,
+        person,
         changedAt,
-      );
+      });
     return {
       businessId: data.businessId,
       businessName: data.businessName,

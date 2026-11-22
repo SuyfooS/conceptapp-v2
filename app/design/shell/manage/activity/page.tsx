@@ -15,7 +15,9 @@ import {
 } from "../../data";
 import { demoActivityPaths } from "./paths";
 
-// The real activity log with the demo business's rows, on the demo's Wednesday.
+// The real activity log with the demo business's rows, on the demo's
+// Wednesday, as its owner reads it: every area, and a setting's line leads to
+// every module whose settings are theirs, the hiring file's too.
 export default function ShellManageActivity() {
   return (
     <ActivityView
@@ -27,7 +29,7 @@ export default function ShellManageActivity() {
       timeZone={ISRAEL_TIME_ZONE}
       older={null}
       earlier={false}
-      manageable={modulesToManage(demoModuleRows)}
+      manageable={modulesToManage(demoModuleRows, "owner")}
       clockOn
       departmentsOn={departmentsOn(demoModuleRows)}
       everyArea

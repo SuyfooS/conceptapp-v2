@@ -5412,7 +5412,12 @@ export type DemoFileFacts = {
   bankByte: number | null;
   pensionAnswer: string | null;
   submitted: boolean;
-  /** This year's 101, as the person marked it. */
+  /**
+   * This year's 101, as the person marked it, beside the details: the form
+   * can be marked with no details row at all (`set_tax_year_status` writes
+   * only its own), and then there are no facts; `demoTaxYear` reads it
+   * alone.
+   */
   form101: string | null;
   /** And the way it was marked by: on paper, or at an approved system's link. */
   form101Route: string | null;
@@ -5420,6 +5425,21 @@ export type DemoFileFacts = {
   emergencyByte: number | null;
   workLanguageByte: number | null;
 };
+
+/**
+ * The person's latest 101 in the demo restaurant, as they marked it, by its
+ * own row (`public.employee_tax_years`), whether or not the file holds any
+ * details. Null for none.
+ */
+export async function demoTaxYear(
+  userId: string,
+): Promise<{ status: string; route: string | null } | null> {
+  const rows = await sql<{ status: string; route: string | null }[]>`
+    select y.status, y.route from public.employee_tax_years y
+    where y.business_id = ${DEMO_RESTAURANT} and y.user_id = ${userId}
+    order by y.tax_year desc limit 1`;
+  return rows[0] ?? null;
+}
 
 /** What the person's file holds, by its plain columns only. Null for none. */
 export async function demoFileFacts(

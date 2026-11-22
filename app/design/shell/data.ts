@@ -509,6 +509,17 @@ const demoRow = (
 const DEMO_FIXED_LIST = "00000000-0000-4000-8000-00000000f1a1";
 
 export const demoActivityRows: ActivityRow[] = [
+  // The file's settings (H5b), set up by the team as set_module_settings
+  // logs them: the business's own values, the phone as people write it and
+  // left to right, nothing before as "לא נקבע".
+  demoRow(148, "2026-11-04T16:20:00+02:00", "team", "module.settings", {
+    module: "employee_files",
+    from: { payrollProvider: "", employerPhone: "" },
+    to: {
+      payrollProvider: "משרד רואי החשבון",
+      employerPhone: "+97231234567",
+    },
+  }),
   // The hiring file (profile H4), as set_employee_details, a refused
   // employee_file and set_emergency_contact log them: which parts changed,
   // why a view was refused, whose contact, never a value or a hint.

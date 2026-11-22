@@ -185,13 +185,16 @@ const PAGES = [
   "/design/shell/me/file?lang=en",
   "/design/shell/me/file?lang=en&step=bank",
   // What each business asks (H5b): the steps that leave out the address and
-  // the account; step 2 as the ways to reach her, filled and not; Form 101 by
-  // an approved system's link, in both languages; and not in the app, so the
-  // done screen sends the file.
+  // the account; step 2 as the ways to reach her, filled and not; the address
+  // and the account no longer asked but held; Form 101 by an approved
+  // system's link, in both languages; and not in the app, so the done screen
+  // sends the file.
   "/design/shell/me/file?ask=lean",
   "/design/shell/me/file?ask=lean&state=done",
   "/design/shell/me/file?ask=contact&step=address",
   "/design/shell/me/file?ask=contact&state=done",
+  "/design/shell/me/file?ask=held&state=ready&step=address",
+  "/design/shell/me/file?ask=held&state=ready&step=bank",
   "/design/shell/me/file?form101=link&step=form101",
   "/design/shell/me/file?form101=link&lang=en&step=form101",
   "/design/shell/me/file?form101=off",
@@ -6212,8 +6215,15 @@ test("the file demo sends from the done screen when Form 101 is off", async ({
     .filter({ visible: true })
     .first()
     .click();
-  // The twin's stand-in answers, and the done screen stays.
+  // The twin's stand-in answers, and the done screen stays: the send is
+  // said, and its title has the focus, as the button pressed doesn't stay.
   await expect(page).toHaveURL(/step=done/);
+  await expect(
+    page.getByRole("status").filter({
+      hasText: heT("app.file.done.sent", { business: "מסעדת הדגמה" }),
+    }),
+  ).toBeVisible();
+  await expect(page.locator("#file-done-title")).toBeFocused();
   await expectCleanPage(page);
 });
 
@@ -6261,4 +6271,55 @@ test("the settings demo types the link and the phone left to right", async ({
     "03-123-4567",
   );
   await expectCleanPage(page);
+
+  // The management page, drawn as the owner, leads here: every one of the
+  // file's settings is an owner's.
+  await page.goto("/design/shell/manage");
+  await page.waitForLoadState("networkidle");
+  await expect(
+    page
+      .getByRole("link", { name: new RegExp(he.modules.employee_files.name) })
+      .filter({ visible: true })
+      .first(),
+  ).toHaveAttribute("href", "/design/shell/manage/employee_files");
+  // A manager's has no such row.
+  await page.goto("/design/shell/manage?state=noTeam");
+  await page.waitForLoadState("networkidle");
+  await expect(
+    page
+      .getByRole("link", { name: new RegExp(he.modules.employee_files.name) })
+      .filter({ visible: true }),
+  ).toHaveCount(0);
+});
+
+test("the activity demo says the file's settings, the phone left to right", async ({
+  page,
+}) => {
+  const a = he.app.manage.activity;
+  await page.goto("/design/shell/manage/activity");
+  await page.waitForLoadState("networkidle");
+  const what = heT("app.manage.activity.actions.module.settings", {
+    module: he.modules.employee_files.name,
+  });
+  // The owner's log leads to the file's settings.
+  await expect(
+    page.getByRole("link", { name: what }).filter({ visible: true }).first(),
+  ).toHaveAttribute("href", "/design/shell/manage/employee_files");
+  await expect(
+    page
+      .locator('span[dir="ltr"]')
+      .filter({ hasText: /^03-123-4567$/ })
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText("משרד רואי החשבון").filter({ visible: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText(a.notSet).filter({ visible: true }).first(),
+  ).toBeVisible();
+  // Never the E.164 the database keeps.
+  await expect(
+    page.getByText("+97231234567").filter({ visible: true }),
+  ).toHaveCount(0);
 });

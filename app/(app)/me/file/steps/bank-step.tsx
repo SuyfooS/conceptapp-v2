@@ -209,7 +209,10 @@ type Problem =
  * (Enter in them) goes to them, and a desktop's summary offers none, as the
  * dock doesn't: only "שליחת קוד חדש" sends another code. What it stands on
  * is the flow's (`useBankScreen`), so the step left for the done screen and
- * opened again shows the code's boxes over the account they confirm.
+ * opened again shows the code's boxes over the account they confirm. An
+ * account the business no longer asks for (H5b) stays, and says so: it can
+ * be kept or changed here. Taking it out of the file isn't on screen yet
+ * (docs/ROADMAP.md's known issues).
  */
 export function BankStep({
   kit,
@@ -453,6 +456,12 @@ export function BankStep({
 
   return (
     <FileSection step="bank" active={active} kit={kit}>
+      {/* Held from before, no longer asked: it stays, and can change. */}
+      {data.asks.bank ? null : (
+        <p className="px-1 text-base text-ink-2">
+          {t("bank.notAsked", { business: data.businessName })}
+        </p>
+      )}
       {phase === "saved" ? (
         <Card padding="lg" className="flex flex-col gap-4">
           <div className="flex flex-col gap-0.5">

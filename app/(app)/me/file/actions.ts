@@ -110,6 +110,29 @@ function logged(what: string, error: unknown): { failure: "failed" } {
   return { failure: "failed" };
 }
 
+/**
+ * The account the person just saved here, kept as seen on this device by
+ * the moment the database gives its change, read again (never the
+ * screen's): the device the change was made on doesn't ask "was it you?",
+ * and every other one still does, so after a SIM swap the account's owner
+ * is still asked on their own phone. The account is in either way: a read
+ * that fails leaves Today asking, and is logged by its code.
+ */
+async function keepOwnChangeSeen(who: Self): Promise<void> {
+  try {
+    const read = await getEmployeeFile(who.businessId, who.userId);
+    const changedAt = read.ok ? (read.file?.bank_changed_at ?? null) : null;
+    if (changedAt === null) return;
+    await rememberBankChangeSeen({
+      business: who.businessId,
+      person: who.userId,
+      changedAt,
+    });
+  } catch (error) {
+    logged("keeping a new account seen failed", error);
+  }
+}
+
 const typedDate = z.object({
   day: z.string(),
   month: z.string(),
@@ -284,7 +307,10 @@ export async function sendBankCodeAction(
  * was compared with the session's before anything is kept, the step-up
  * noted only then and only for them, and the account saved with it. The
  * account is checked for its shape before the code is spent, and was tried
- * whole before the code went (`sendBankCodeAction`).
+ * whole before the code went (`sendBankCodeAction`). The change is then
+ * kept as seen on this device (`keepOwnChangeSeen`): Today doesn't ask the
+ * person who just typed it here whether it was them, and every other
+ * device still does.
  */
 export async function confirmBankAction(
   business: string,
@@ -338,6 +364,7 @@ export async function confirmBankAction(
         ...(saved.opensOn ? { opensOn: saved.opensOn } : {}),
       };
     }
+    await keepOwnChangeSeen(who);
     refresh();
     const check = checkBankAccount(bank, who.today).status;
     return { ok: true, review: check === "warning" ? "warned" : "new" };
@@ -439,7 +466,11 @@ export async function seenBankChangeAction(
     }
     const changedAt = read.file?.bank_changed_at ?? null;
     if (changedAt !== null) {
-      await rememberBankChangeSeen(who.businessId, changedAt);
+      await rememberBankChangeSeen({
+        business: who.businessId,
+        person: who.userId,
+        changedAt,
+      });
     }
     refresh();
     return { ok: true };

@@ -129,22 +129,23 @@ export function fileGroupsAsked(
 /**
  * Form 101 as the worker meets it. "link" only once a link is set: until
  * then the paper card, so the step is never empty. Named by its provider,
- * or without one by the site it opens.
+ * or, with none set (`provider` null), by the site it opens, which the
+ * screens say left to right: a domain inside Hebrew words would otherwise
+ * read back to front ("101.example" as "example.101").
  */
 export type Form101Setup =
   | { way: "print" }
-  | { way: "link"; link: string; domain: string; provider: string }
+  | { way: "link"; link: string; domain: string; provider: string | null }
   | { way: "off" };
 
 export function form101SetupOf(settings: EmployeeFileSettings): Form101Setup {
   if (settings.form101 === "off") return { way: "off" };
   if (settings.form101 === "link" && settings.form101Link !== "") {
-    const domain = linkDomain(settings.form101Link);
     return {
       way: "link",
       link: settings.form101Link,
-      domain,
-      provider: settings.form101Provider || domain,
+      domain: linkDomain(settings.form101Link),
+      provider: settings.form101Provider || null,
     };
   }
   return { way: "print" };
@@ -190,54 +191,74 @@ export function bankChangeToTell(
 }
 
 /**
- * The cookie that remembers, on this device, the bank changes the person
- * said they saw ("אני שיניתי", "הבנתי"): "<business>.<ms>" entries,
- * comma-separated, each the database's moment of the change, the latest
- * last. Kept as long as the business cookie, and forgotten with it on
- * signing out.
+ * The cookie that remembers, on this device, the bank changes people said
+ * they saw ("אני שיניתי", "הבנתי", and the account just added here):
+ * "<business>.<person>.<ms>" entries, comma-separated, each the database's
+ * moment of that person's change in that business, the latest last. A
+ * change is seen only by its own person and its own moment, so on a shared
+ * device one person's seen never hides another's change, nor an earlier
+ * change of their own. Kept as long as the business cookie, and forgotten
+ * with it on signing out.
  */
 export const BANK_CHANGE_SEEN_COOKIE = "ca_bank_seen";
 
-/** How many businesses the cookie remembers; the oldest goes first. */
+/** How many changes the cookie remembers, one a person in a business; the oldest goes first. */
 export const BANK_CHANGE_SEEN_MOST = 20;
 
-const SEEN_ENTRY = /^([0-9a-f-]{36})\.(\d{1,15})$/;
+/** A person's account's last change in a business, as the database gave its moment. */
+export type BankChange = {
+  business: string;
+  person: string;
+  changedAt: string;
+};
 
-function seenIn(cookie: string | null | undefined): [string, number][] {
+type SeenEntry = { business: string; person: string; at: number };
+
+const SEEN_ENTRY = /^([0-9a-f-]{36})\.([0-9a-f-]{36})\.(\d{1,15})$/;
+
+function seenIn(cookie: string | null | undefined): SeenEntry[] {
   return (cookie ?? "").split(",").flatMap((entry) => {
     const found = SEEN_ENTRY.exec(entry);
-    return found?.[1] && found[2] ? [[found[1], Number(found[2])]] : [];
+    return found?.[1] && found[2] && found[3]
+      ? [{ business: found[1], person: found[2], at: Number(found[3]) }]
+      : [];
   });
 }
 
-/** Whether the person said they saw this business's change of `changedAt` on this device. */
+/** Whether this very change was said seen on this device: its person's, at its moment. */
 export function bankChangeSeen(
   cookie: string | null | undefined,
-  business: string,
-  changedAt: string,
+  change: BankChange,
 ): boolean {
-  const at = Date.parse(changedAt);
+  const at = Date.parse(change.changedAt);
   if (Number.isNaN(at)) return false;
-  return seenIn(cookie).some(([id, seen]) => id === business && seen >= at);
+  return seenIn(cookie).some(
+    (entry) =>
+      entry.business === change.business &&
+      entry.person === change.person &&
+      entry.at === at,
+  );
 }
 
 /**
- * The cookie's value once this business's change is seen too: its entry
- * last, replacing an older one of the same business, and no more than
- * `BANK_CHANGE_SEEN_MOST`, the oldest dropped.
+ * The cookie's value once this change is seen too: its entry last,
+ * replacing an older one of the same person in the same business, and no
+ * more than `BANK_CHANGE_SEEN_MOST`, the oldest dropped.
  */
 export function withBankChangeSeen(
   cookie: string | null | undefined,
-  business: string,
-  changedAt: string,
+  change: BankChange,
 ): string {
-  const at = Date.parse(changedAt);
-  const others = seenIn(cookie).filter(([id]) => id !== business);
-  const entries: [string, number][] = Number.isNaN(at)
+  const at = Date.parse(change.changedAt);
+  const others = seenIn(cookie).filter(
+    (entry) =>
+      entry.business !== change.business || entry.person !== change.person,
+  );
+  const entries: SeenEntry[] = Number.isNaN(at)
     ? others
-    : [...others, [business, at]];
+    : [...others, { business: change.business, person: change.person, at }];
   return entries
     .slice(-BANK_CHANGE_SEEN_MOST)
-    .map(([id, seen]) => `${id}.${seen}`)
+    .map((entry) => `${entry.business}.${entry.person}.${entry.at}`)
     .join(",");
 }

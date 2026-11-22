@@ -22,9 +22,8 @@ import {
   readModuleSettings,
 } from "@domain/modules";
 import type { CompReason, LineCancelReason } from "@domain/orders";
-import { displayIsraeliPhone } from "@domain/phone";
 import { editOrView } from "@domain/role-access";
-import { describeSettings } from "@domain/settings-form";
+import { describeSettings, textSettingShown } from "@domain/settings-form";
 import { shabbatCityOf, timeIn } from "@domain/shabbat";
 import { manifests } from "@modules/registry";
 import { accentProps } from "@ui/accent";
@@ -351,21 +350,13 @@ export function ActivityView({
           }
           case "number":
             return <span dir="ltr">{String(raw)}</span>;
-          case "text":
+          case "text": {
             // Nothing typed reads as such; a link, a phone or digits left
-            // to right, the phone as people write it.
-            if (raw === "" || raw === null || raw === undefined) {
-              return t("notSet");
-            }
-            return field.entry ? (
-              <span dir="ltr">
-                {field.entry === "phone"
-                  ? displayIsraeliPhone(String(raw))
-                  : String(raw)}
-              </span>
-            ) : (
-              String(raw)
-            );
+            // to right, the phone as people write it (`textSettingShown`).
+            const shown = textSettingShown(raw, field.entry);
+            if (shown === null) return t("notSet");
+            return shown.ltr ? <span dir="ltr">{shown.text}</span> : shown.text;
+          }
           default:
             return String(raw);
         }

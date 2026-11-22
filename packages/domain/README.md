@@ -21,7 +21,7 @@ business asks is `employee-file-settings.ts`: the asks and the groups they
 count (`fileGroupsAsked`, as `private.file_groups`), Form 101's way
 (`form101SetupOf`, the link's check `FORM101_LINK` as the database's), the
 notice's names, the bank change Today tells for 14 days and the cookie that
-keeps it seen on a device. `phone.ts` has, beside the mobile's,
+keeps it seen on a device, by its person and its exact moment. `phone.ts` has, beside the mobile's,
 `normalizeIsraeliPhone` and `displayIsraeliPhone` for any Israeli number, a
 business's landline too. Two more dated lists feed it:
 `pension-funds.ts` (the comprehensive funds as the Capital Market

@@ -36,7 +36,14 @@ import type {
   FileActions,
   FileScreenData,
 } from "./file-types";
-import { formIdOf, type Kit, titleId, useDay, WhyButton } from "./flow-kit";
+import {
+  focusTitle,
+  formIdOf,
+  type Kit,
+  titleId,
+  useDay,
+  WhyButton,
+} from "./flow-kit";
 import { NoticeSheet } from "./notice-sheet";
 import { AddressStep } from "./steps/address-step";
 import {
@@ -247,6 +254,13 @@ export function FileFlow({
       setSendFailure(result.failure);
       return;
     }
+    // Said, as every save is: a screen reader hears it, and the twin, which
+    // keeps nothing, answers too. Sent from the done screen itself (Form 101
+    // off), the screen stays and the button pressed turns into the way back
+    // to the profile, so its title takes the focus here; from step 5, the
+    // done screen opening gives it the focus.
+    kit.say(t("done.sent", { business }));
+    if (current === "done") focusTitle("done");
     go("done");
   }
 
@@ -410,7 +424,9 @@ export function FileFlow({
                     ) : null}
                   </Card>
                   <VisibilityNote icon="lock" className="px-1">
-                    {t("visible")}
+                    {data.parts.emergency
+                      ? t("visibleEmergency")
+                      : t("visible")}
                   </VisibilityNote>
                   <WhyButton kit={kit} label={t("notice.title")} />
                 </div>
@@ -484,6 +500,7 @@ export function FileFlow({
         business={business}
         names={data.notice}
         form101={data.form101}
+        emergency={data.parts.emergency}
       />
       <StatusToast message={toast?.message ?? null} stamp={toast?.stamp} />
     </PageBody>

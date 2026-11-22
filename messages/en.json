@@ -4003,6 +4003,7 @@
         "complete": "Complete the details",
         "title": "My file at {business}",
         "visible": "You, the owner and whoever prepares the payroll can see these details",
+        "visibleEmergency": "You, the owner and whoever prepares the payroll can see these details, and managers see the emergency contact too",
         "rows": {
           "identity": "Identity details",
           "address": "Address",
@@ -4039,6 +4040,7 @@
       },
       "why": "Why we ask",
       "visible": "You, the owner and whoever prepares the payroll can see these details",
+      "visibleEmergency": "You, the owner and whoever prepares the payroll can see these details, and managers see the emergency contact too",
       "saved": "Saved",
       "steps": {
         "title": "The steps",
@@ -4219,7 +4221,8 @@
         "currentLine": "{bank} · branch <ltr>{branch}</ltr>",
         "holderLine": "In the name of {name}",
         "change": "Change the account",
-        "keepCurrent": "Keep the current account"
+        "keepCurrent": "Keep the current account",
+        "notAsked": "{business} no longer asks for an account for wages. You can keep this one or change it."
       },
       "pension": {
         "question": "Do you already have an active pension fund?",
@@ -4246,7 +4249,9 @@
         "returned": "{business} returned the form: {reason, select, attachment {an attachment is missing} signature {a signature is missing} details {a detail doesn't match} other {ask them why}}. It needs handing in again.",
         "dueBy": "by {date}",
         "linkBody": "{business} receives Form 101 through {provider}. You fill it in and sign it there.",
+        "linkBodySite": "{business} receives Form 101 through <ltr>{domain}</ltr>. You fill it in and sign it there.",
         "open": "Fill in the form at {provider}",
+        "openSite": "Fill in the form at <ltr>{domain}</ltr>",
         "opensAt": "Opens <ltr>{domain}</ltr> in a new window",
         "linkAfter": "Once you've handed it in there, mark it here."
       },
@@ -4280,7 +4285,9 @@
         "rights": "You can see all your details here and ask to correct or delete one that is wrong, also after the work ends. Every view of your details by someone else is recorded. For questions, contact {business}.",
         "employer": "The employer by law: {employer}.",
         "whoProvider": "You, the owner of {business} and the accountant can see these details. Managers see only whether they are complete. {business} passes them to {provider}, who prepares the payroll, and to the Tax Authority, National Insurance and the pension fund when the law requires it.",
+        "emergency": "Managers also see the emergency contact, to call if something happens at work.",
         "form101Vendor": "Form 101 is filled in at {provider}, which passes it to {business}.",
+        "form101Site": "Form 101 is filled in at <ltr>{domain}</ltr>, which passes it to {business}.",
         "rightsPhone": "You can see all your details here and ask to correct or delete one that is wrong, also after the work ends. Every view of your details by someone else is recorded. For questions, call {business} on <ltr>{phone}</ltr>."
       },
       "failures": {
@@ -7154,7 +7161,7 @@
         },
         "form101Link": {
           "label": "Link to Form 101",
-          "hint": "An address starting with https://, of a system the Tax Authority approved for Form 101. Workers see which site it opens."
+          "hint": "A secure address, starting with https, of a system the Tax Authority approved for Form 101. Workers see which site it opens."
         },
         "payrollProvider": {
           "label": "Who prepares the payroll",

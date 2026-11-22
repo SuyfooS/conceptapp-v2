@@ -222,6 +222,15 @@ describe("a step with everything filled in", () => {
 const business = "מסעדת הדגמה";
 const f = he.app.file;
 
+/** A message's words as the page draws them: each <ltr> a left-to-right span. */
+const drawn = (message: string, values: Record<string, string>) =>
+  Object.entries(values).reduce(
+    (text, [key, value]) => text.replace(`{${key}}`, value),
+    message
+      .replaceAll("<ltr>", '<span dir="ltr">')
+      .replaceAll("</ltr>", "</span>"),
+  );
+
 /** A button's opening tag, by the words it holds. */
 const buttonWith = (html: string, words: string) =>
   (
@@ -908,6 +917,77 @@ describe("the file by the business's settings", () => {
     expect(buttonWith(html, f.form101.handedIn)).toHaveLength(1);
   });
 
+  it("names a system with no name set by its site, left to right", () => {
+    const missing: string[] = [];
+    const { data } = fileScreenDemo("stopped", "he", { form101: "link" });
+    const unnamed: Data = {
+      ...data,
+      form101: {
+        way: "link",
+        link: "https://101.example/noa",
+        domain: "101.example",
+        provider: null,
+      },
+    };
+    const html = drawData(unnamed, "he", "form101", missing);
+    expect(missing).toEqual([]);
+    // Inside Hebrew words a bare domain would read "example.101".
+    expect(html).toContain(
+      drawn(f.form101.openSite, { domain: "101.example" }),
+    );
+    expect(html).toContain(
+      drawn(f.form101.linkBodySite, { business, domain: "101.example" }),
+    );
+    expect(html).not.toContain(f.form101.open.split("{")[0] ?? "");
+    const notice = drawHe(
+      createElement(NoticeBody, {
+        business,
+        names: data.notice,
+        form101: unnamed.form101,
+        emergency: false,
+      }),
+    );
+    expect(notice).toContain(
+      drawn(f.notice.form101Site, { business, domain: "101.example" }),
+    );
+  });
+
+  it("says a part held but no longer asked can stay or change, in its step", () => {
+    const missing: string[] = [];
+    const { data } = fileScreenDemo("ready", "he", { ask: "held" });
+    // Neither is asked, both are in her file: both steps show, and nothing
+    // of theirs is counted missing.
+    expect(data.asks).toMatchObject({ address: false, bank: false });
+    expect(data.parts).toMatchObject({ address: true, bank: true });
+    expect(data.steps).toEqual([
+      "start",
+      "identity",
+      "address",
+      "bank",
+      "pension",
+      "form101",
+    ]);
+    expect(data.missing).toEqual([]);
+    const address = drawData(data, "he", "address", missing);
+    expect(address).toContain(heT("app.file.address.notAsked", { business }));
+    // The town, no longer asked, can be emptied.
+    expect(address).toContain(
+      heT("app.file.optionalField", { field: f.address.city }),
+    );
+    const bank = drawData(data, "he", "bank", missing);
+    expect(bank).toContain(heT("app.file.bank.notAsked", { business }));
+    expect(buttonWith(bank, f.bank.change)).toHaveLength(1);
+    expect(missing).toEqual([]);
+    // Where the business asks, neither says so.
+    const asked = fileScreenDemo("ready", "he").data;
+    expect(drawData(asked, "he", "address", missing)).not.toContain(
+      heT("app.file.address.notAsked", { business }),
+    );
+    expect(drawData(asked, "he", "bank", missing)).not.toContain(
+      heT("app.file.bank.notAsked", { business }),
+    );
+  });
+
   it("sends from the done screen when Form 101 isn't taken in the app", () => {
     const missing: string[] = [];
     const { data } = fileScreenDemo("ready", "he", { form101: "off" });
@@ -947,6 +1027,7 @@ describe("the notice", () => {
         business,
         names: data.notice,
         form101: data.form101,
+        emergency: false,
       }),
     );
     expect(named).toContain(
@@ -967,11 +1048,37 @@ describe("the notice", () => {
         business,
         names: { payrollProvider: null, employer: null, phone: null },
         form101: { way: "print" },
+        emergency: false,
       }),
     );
     expect(bare).toContain(heT("app.file.notice.who", { business }));
     expect(bare).toContain(heT("app.file.notice.rights", { business }));
     expect(bare).not.toContain(f.notice.employer.split("{")[0] ?? "");
+    expect(bare).not.toContain(f.notice.emergency);
+    expect(missing).toEqual([]);
+  });
+
+  it("says the managers see the emergency contact while the step asks for one, as the step does", () => {
+    const missing: string[] = [];
+    const { data } = fileScreenDemo("stopped", "he", { ask: "contact" });
+    expect(data.parts.emergency).toBe(true);
+    const notice = drawHe(
+      createElement(NoticeBody, {
+        business,
+        names: data.notice,
+        form101: data.form101,
+        emergency: data.parts.emergency,
+      }),
+    );
+    expect(notice).toContain(f.notice.emergency);
+    // The flow's own note says it too, beside the steps on a desktop.
+    const html = drawData(data, "he", "address", missing);
+    expect(html).toContain(f.address.emergencyReason);
+    expect(html).toContain(f.visibleEmergency);
+    expect(html).not.toContain(`>${f.visible}<`);
+    const plain = draw("stopped", "he", "address", missing);
+    expect(plain).toContain(`>${f.visible}<`);
+    expect(plain).not.toContain(f.visibleEmergency);
     expect(missing).toEqual([]);
   });
 });

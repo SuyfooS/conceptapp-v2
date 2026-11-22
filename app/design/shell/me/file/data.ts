@@ -150,11 +150,18 @@ export type FileDemoState =
   | "ready"
   | "done";
 
-/** What the business asks on the twin: everything, no address or account, or the ways to reach her instead. */
-export type FileDemoAsk = "all" | "lean" | "contact";
+/**
+ * What the business asks on the twin: everything; no address or account;
+ * the ways to reach her instead; or, `held`, neither the address nor the
+ * account any more, though her file holds both from before (each step says
+ * it is no longer asked).
+ */
+export type FileDemoAsk = "all" | "lean" | "contact" | "held";
 
 export function fileDemoAskOf(param: unknown): FileDemoAsk {
-  return param === "lean" || param === "contact" ? param : "all";
+  return param === "lean" || param === "contact" || param === "held"
+    ? param
+    : "all";
 }
 
 /** How the business takes Form 101 on the twin. */
@@ -239,9 +246,9 @@ export function fileScreenDemo(
   // Finished: everything she gives is in, sent or not yet.
   const finished = state === "ready" || state === "done";
   // A business that asks neither the address nor the account: none of
-  // either in her file.
+  // either in her file, unless it stopped asking after she gave them.
   const row: FileRow | null =
-    filled && ask !== "all"
+    filled && (ask === "lean" || ask === "contact")
       ? {
           ...filled,
           city_code: null,

@@ -7,6 +7,7 @@ import {
   fieldsFor,
   type SettingLevel,
   settingLevelOf,
+  textSettingShown,
 } from "./settings-form";
 
 const settings = z.object({
@@ -222,5 +223,41 @@ describe("a text setting typed left to right", () => {
     expect(
       checkSettingsChange(withPhone, {}, { phone: "12" }, "owner"),
     ).toEqual({ ok: false, problem: "invalid" });
+  });
+});
+
+describe("a text setting in the activity log", () => {
+  it("says nothing set as such, for every text setting", () => {
+    for (const raw of ["", null, undefined]) {
+      expect(textSettingShown(raw)).toBeNull();
+      expect(textSettingShown(raw, "phone")).toBeNull();
+      expect(textSettingShown(raw, "link")).toBeNull();
+    }
+  });
+
+  it("keeps words as written, right to left with the page", () => {
+    expect(textSettingShown("משרד רואי החשבון")).toEqual({
+      text: "משרד רואי החשבון",
+      ltr: false,
+    });
+  });
+
+  it("draws an entry left to right, a phone as people write it", () => {
+    expect(textSettingShown("+97231234567", "phone")).toEqual({
+      text: "03-123-4567",
+      ltr: true,
+    });
+    expect(textSettingShown("+972501234567", "phone")).toEqual({
+      text: "050-123-4567",
+      ltr: true,
+    });
+    expect(textSettingShown("https://101.example/noa", "link")).toEqual({
+      text: "https://101.example/noa",
+      ltr: true,
+    });
+    expect(textSettingShown("912345678", "digits")).toEqual({
+      text: "912345678",
+      ltr: true,
+    });
   });
 });

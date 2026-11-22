@@ -9,6 +9,7 @@ import {
   demoFileFacts,
   demoFileLog,
   demoModuleSettings,
+  demoTaxYear,
   forgetDemoJoin,
   inviteToDemoLink,
   notePhoneChange,
@@ -796,9 +797,11 @@ test("the owner sets Form 101's link, and the worker hands it in there", async (
       hasText: heT("app.file.form101.handedInSaved", { business: BUSINESS }),
     }),
   ).toBeVisible();
-  const facts = await demoFileFacts(NOA.id);
-  expect(facts?.form101).toBe("handed_in");
-  expect(facts?.form101Route).toBe("link");
+  // Her file holds no details yet: the form's own row says it, with the
+  // route the server took from the settings.
+  await expect
+    .poll(async () => await demoTaxYear(NOA.id))
+    .toEqual({ status: "handed_in", route: "link" });
 
   // The notice names who prepares the payroll, the system and the phone.
   // A desktop's is in the summary; a phone's and a tablet's in the step.

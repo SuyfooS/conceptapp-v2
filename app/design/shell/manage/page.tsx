@@ -18,7 +18,10 @@ type Props = { searchParams: Promise<{ state?: string }> };
 // management page without changing it, with the line that says so, and no
 // rows to the team, the roles or pay, which aren't theirs. `?state=noTeam`
 // is a manager lowered to team none (R6): no row to the team, and, as for
-// every manager, none to the roles or pay, which are the owner's.
+// every manager, none to the roles or pay, which are the owner's. The
+// modules are those with settings at the level drawn, as the app lists them
+// (`access.level`): the owner's include the hiring file's, whose settings
+// are all an owner's (H5b).
 export default function ShellManage({ searchParams }: Props) {
   return (
     <Suspense>
@@ -34,7 +37,7 @@ async function Demo({ searchParams }: Props) {
   const owner = !readOnly && state !== "noTeam";
   return (
     <ManageView
-      modules={modulesToManage(demoModuleRows)}
+      modules={modulesToManage(demoModuleRows, owner ? "owner" : "business")}
       base="/design/shell"
       home="/design/shell"
       team={readOnly || state === "noTeam" ? null : "/design/shell/team"}

@@ -23,13 +23,14 @@ import {
  * Step 5, "טופס 101", the way the business takes it (H5b's settings): on
  * paper (the printed one is H7's), what the person does outside the app and
  * how to hand it over; or at an approved system, by its link, named by its
- * provider, with the site it opens said under it, in a new window that
- * knows nothing of this one. Either way why it matters for their tax, where
- * this year's stands, and "מסרתי את הטופס", which the owner or the
- * accountant then confirms; the route it is marked by is the server's. Not
- * drawn while the business takes it outside the app. The step's main action
- * sends the whole file once its details are in; until then it leads to the
- * first still open, and says why. The form never keeps the file back.
+ * provider (or, with none set, by its site, left to right), with the site
+ * it opens said under it, in a new window that knows nothing of this one.
+ * Either way why it matters for their tax, where this year's stands, and
+ * "מסרתי את הטופס", which the owner or the accountant then confirms; the
+ * route it is marked by is the server's. Not drawn while the business takes
+ * it outside the app. The step's main action sends the whole file once its
+ * details are in; until then it leads to the first still open, and says
+ * why. The form never keeps the file back.
  */
 export function Form101Step({
   kit,
@@ -84,10 +85,16 @@ export function Form101Step({
         {setup.way === "link" ? (
           <>
             <p className="text-pretty text-md">
-              {t("form101.linkBody", {
-                ...business,
-                provider: setup.provider,
-              })}
+              {setup.provider
+                ? t("form101.linkBody", {
+                    ...business,
+                    provider: setup.provider,
+                  })
+                : t.rich("form101.linkBodySite", {
+                    ...business,
+                    domain: setup.domain,
+                    ltr,
+                  })}
             </p>
             <div className="flex flex-col gap-1.5">
               <Button
@@ -100,7 +107,9 @@ export function Form101Step({
                     aria-hidden="true"
                     className="rtl:-scale-x-100"
                   />
-                  {t("form101.open", { provider: setup.provider })}
+                  {setup.provider
+                    ? t("form101.open", { provider: setup.provider })
+                    : t.rich("form101.openSite", { domain: setup.domain, ltr })}
                 </a>
               </Button>
               <p className="px-1 text-ink-2 text-sm">

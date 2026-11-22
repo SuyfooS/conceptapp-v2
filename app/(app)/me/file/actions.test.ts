@@ -409,6 +409,53 @@ describe("the bank's code", () => {
     );
   });
 
+  it("keeps the account just added as seen on this device, by the database's moment", async () => {
+    mocks.getEmployeeFile.mockImplementation(async () => {
+      mocks.order.push("read");
+      return { ok: true, file: { bank_changed_at: CHANGED_AT } };
+    });
+    expect(
+      await confirmBankAction(SHOP, { code: "123456", bank: account() }),
+    ).toEqual({ ok: true, review: "new" });
+    // Read again once the account is in, never taken from the screen.
+    expect(mocks.order).toEqual(["verify", "stepUp", "save", "read"]);
+    expect(mocks.getEmployeeFile).toHaveBeenCalledWith(SHOP, NOA);
+    expect(mocks.rememberBankChangeSeen).toHaveBeenCalledWith({
+      business: SHOP,
+      person: NOA,
+      changedAt: CHANGED_AT,
+    });
+  });
+
+  it("says the account is in though its change couldn't be kept seen", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.getEmployeeFile.mockResolvedValue({ ok: false, failure: "keys" });
+    expect(
+      await confirmBankAction(SHOP, { code: "123456", bank: account() }),
+    ).toEqual({ ok: true, review: "new" });
+    mocks.getEmployeeFile.mockRejectedValue(
+      Object.assign(new Error("100001"), { code: "XX000" }),
+    );
+    expect(
+      await confirmBankAction(SHOP, { code: "123456", bank: account() }),
+    ).toEqual({ ok: true, review: "new" });
+    expect(mocks.rememberBankChangeSeen).not.toHaveBeenCalled();
+    expect(mocks.refresh).toHaveBeenCalledTimes(2);
+    expect(JSON.stringify(logged.mock.calls)).not.toContain("100001");
+  });
+
+  it("keeps nothing seen when the account wasn't saved", async () => {
+    mocks.saveEmployeeDetails.mockResolvedValue({
+      ok: false,
+      failure: "invalid",
+    });
+    expect(
+      await confirmBankAction(SHOP, { code: "123456", bank: account() }),
+    ).toEqual({ ok: false, failure: "invalid" });
+    expect(mocks.getEmployeeFile).not.toHaveBeenCalled();
+    expect(mocks.rememberBankChangeSeen).not.toHaveBeenCalled();
+  });
+
   it("says an account the check doubts is saved with a note", async () => {
     expect(
       await confirmBankAction(SHOP, {
@@ -601,7 +648,11 @@ describe("a bank change on Today", () => {
     ) => ReturnType<typeof seenBankChangeAction>;
     expect(await seen(SHOP, "2020-01-01T00:00:00Z")).toEqual({ ok: true });
     expect(mocks.getEmployeeFile).toHaveBeenCalledWith(SHOP, NOA);
-    expect(mocks.rememberBankChangeSeen).toHaveBeenCalledWith(SHOP, CHANGED_AT);
+    expect(mocks.rememberBankChangeSeen).toHaveBeenCalledWith({
+      business: SHOP,
+      person: NOA,
+      changedAt: CHANGED_AT,
+    });
   });
 
   it("keeps nothing without a change, or when the file can't be read", async () => {
