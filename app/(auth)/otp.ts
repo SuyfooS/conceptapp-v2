@@ -4,6 +4,8 @@ import {
   forgetAuthAttempt,
   noteAuthAttempt,
 } from "@db/auth-limits";
+import { createAdminClient } from "@db/supabase/admin";
+import { createDetachedClient } from "@db/supabase/detached";
 import { createClient } from "@db/supabase/server";
 import { refusalReason } from "@domain/otp";
 import { normalizeIsraeliMobile } from "@domain/phone";
@@ -90,22 +92,24 @@ export async function sendCode(
   return "failed";
 }
 
+type Checked =
+  | { userId: string; accessToken: string | null }
+  | { error: SignInError };
+
 /**
- * Check the code and set the session cookies, unless the number or the caller
- * checked too many lately. Returns who signed in, or why not.
+ * A code checked on `client`, counted first: the number in one spelling,
+ * so a respelled one meets the same count.
  */
-export async function verifyCode(
+async function checked(
+  client: Pick<ReturnType<typeof createDetachedClient>, "auth">,
   phone: string,
   token: string,
-): Promise<{ userId: string } | { error: SignInError }> {
-  // The number comes back from the browser with the form's state: one
-  // spelling per number, so a respelled one meets the same count.
+): Promise<Checked> {
   const number = normalizeIsraeliMobile(phone);
   if (!number) return { error: "wrongCode" };
   const attempt = await count("verify", number);
   if (typeof attempt === "string") return { error: attempt };
-  const supabase = await createClient();
-  const { data, error } = await supabase.auth.verifyOtp({
+  const { data, error } = await client.auth.verifyOtp({
     phone: number,
     token,
     type: "sms",
@@ -116,5 +120,69 @@ export async function verifyCode(
     }
     return { error: "wrongCode" };
   }
-  return { userId: data.user.id };
+  return {
+    userId: data.user.id,
+    accessToken: data.session?.access_token ?? null,
+  };
+}
+
+/**
+ * Check the code and set the session cookies, unless the number or the caller
+ * checked too many lately. Returns who signed in, or why not.
+ */
+export async function verifyCode(
+  phone: string,
+  token: string,
+): Promise<{ userId: string } | { error: SignInError }> {
+  // The number comes back from the browser with the form's state.
+  const result = await checked(await createClient(), phone, token);
+  return "error" in result ? result : { userId: result.userId };
+}
+
+/**
+ * The number a person signs in with now, as the auth server holds it
+ * (`auth.users.phone`, read with the secret key): where a code that proves
+ * it is them goes. Never the profile's copy, which a number changed by the
+ * team doesn't reach, nor one a browser sends. Null without one.
+ */
+export async function signInPhoneOf(userId: string): Promise<string | null> {
+  const { data, error } =
+    await createAdminClient().auth.admin.getUserById(userId);
+  if (error) {
+    throw Object.assign(new Error("reading a sign-in number failed"), {
+      code: error.code ?? String(error.status ?? ""),
+    });
+  }
+  return normalizeIsraeliMobile(data.user?.phone ?? "");
+}
+
+/**
+ * Check a code that proves a signed-in person is at their own phone (the
+ * hiring file's bank change), counted with the sign-in codes, on a client
+ * that keeps no session (`createDetachedClient`): this browser's own session
+ * stays as it is whoever the number turns out to be, and the session the
+ * check opened on the auth server is ended at once (`local`: that one
+ * session only). Returns whose number it was, for the caller to compare
+ * with the session's before anything is kept.
+ */
+export async function checkCode(
+  phone: string,
+  token: string,
+): Promise<{ userId: string } | { error: SignInError }> {
+  const client = createDetachedClient();
+  const result = await checked(client, phone, token);
+  if ("error" in result) return result;
+  if (result.accessToken) {
+    const { error } = await client.auth.admin.signOut(
+      result.accessToken,
+      "local",
+    );
+    if (error) {
+      console.error(
+        "ending a checked code's session failed",
+        error.code ?? error.status,
+      );
+    }
+  }
+  return { userId: result.userId };
 }

@@ -106,6 +106,27 @@ export function stepsDone(states: Record<FileStep, StepState>): number {
   return FILE_STEPS.filter((step) => states[step] !== "open").length;
 }
 
+/**
+ * The steps a file is sent with: the details payroll needs. Step 0 is the
+ * profile's, and Form 101 is handed in on paper, so neither keeps it back.
+ */
+export const SENT_WITH = [
+  "identity",
+  "address",
+  "bank",
+  "pension",
+] as const satisfies readonly FileStep[];
+
+/**
+ * What keeps the file from being sent: the first of its details still open,
+ * which the send action leads to instead, or null once it can go.
+ */
+export function sendBlocker(
+  states: Record<FileStep, StepState>,
+): (typeof SENT_WITH)[number] | null {
+  return SENT_WITH.find((step) => states[step] === "open") ?? null;
+}
+
 /** Where the person picks up: the first step still open, or done. */
 export function resumeStep(
   states: Record<FileStep, StepState>,

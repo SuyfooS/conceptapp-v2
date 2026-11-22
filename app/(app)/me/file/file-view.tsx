@@ -1,5 +1,6 @@
 import { accentTokens } from "@domain/color";
 import { fileStepOf } from "@domain/employee-file-steps";
+import type { ProfileLocale } from "@domain/profile";
 import { accentProps } from "@ui/accent";
 import en from "@/messages/en.json";
 import type he from "@/messages/he.json";
@@ -37,8 +38,8 @@ export function FileView({
   actions: FileActions;
   base?: string;
   profileHref?: string;
-  /** The twin's own query, kept from step to step. */
-  keep?: string;
+  /** The twin's own query in each language, kept from step to step. */
+  keep?: Record<ProfileLocale, string>;
   preset?: { bank?: BankPreset };
 }) {
   const english = data.locale === "en";

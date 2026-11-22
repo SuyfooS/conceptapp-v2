@@ -1,7 +1,7 @@
 "use client";
 
 import { Eye, EyeOff } from "lucide-react";
-import { useEffect, useEffectEvent, useState } from "react";
+import { useLayoutEffect, useState } from "react";
 import { Button } from "./button";
 
 /** What a page says about itself: whether it is on screen, and when that changes. */
@@ -33,11 +33,45 @@ export async function revealWhileShown(
   }
 }
 
+/** Where a page is put away: the window it is in. */
+export type PageWindow = Pick<
+  Window,
+  "addEventListener" | "removeEventListener" | "setTimeout" | "clearTimeout"
+>;
+
+/**
+ * While a number shows: it hides after `hideAfterMs`, as soon as the page is
+ * put away (another app, the phone locked, the page left), and when the
+ * number's screen goes, the returned stop included. Next keeps a screen it
+ * leaves for a while, hidden in an <Activity> with its state, and hiding it
+ * runs this stop: so a number shown never comes back on screen with it.
+ */
+export function watchShown(
+  hide: () => void,
+  hideAfterMs: number,
+  page: PageVisibility,
+  win: PageWindow,
+): () => void {
+  const timer = win.setTimeout(hide, hideAfterMs);
+  const away = () => {
+    if (page.visibilityState === "hidden") hide();
+  };
+  page.addEventListener("visibilitychange", away);
+  win.addEventListener("pagehide", hide);
+  return () => {
+    win.clearTimeout(timer);
+    page.removeEventListener("visibilitychange", away);
+    win.removeEventListener("pagehide", hide);
+    hide();
+  };
+}
+
 /**
  * A number that stays hidden until asked for (the hiring file, H5a: the
  * person's own ID and account): its last digits after three dots, left to
  * right, and "הצגה", which asks the server for it (`onReveal`). Shown, it
- * hides again after a minute, or as soon as the page is put away; one that
+ * hides again after a minute, as soon as the page is put away, or when its
+ * screen is left, even one Next keeps to show again (`watchShown`); one that
  * arrives while the page is away never shows (`revealWhileShown`). It is
  * never kept anywhere but here while it shows. Its words are the caller's.
  */
@@ -68,21 +102,12 @@ export function MaskedValue({
   const [shown, setShown] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [failed, setFailed] = useState(false);
-  const hide = useEffectEvent(() => setShown(null));
 
-  useEffect(() => {
+  // A layout effect, so a screen hidden with the number shown drops it
+  // before it is hidden, and shows the dots again when it comes back.
+  useLayoutEffect(() => {
     if (shown === null) return;
-    const timer = setTimeout(hide, hideAfterMs);
-    const away = () => {
-      if (document.visibilityState === "hidden") hide();
-    };
-    document.addEventListener("visibilitychange", away);
-    window.addEventListener("pagehide", hide);
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener("visibilitychange", away);
-      window.removeEventListener("pagehide", hide);
-    };
+    return watchShown(() => setShown(null), hideAfterMs, document, window);
   }, [shown, hideAfterMs]);
 
   async function reveal() {

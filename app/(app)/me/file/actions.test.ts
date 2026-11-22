@@ -5,8 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // file's server code (@db/employee-files) and the sign-in codes
 // (app/(auth)/otp). They hold the rules a write keeps: nothing for a view
 // session or another business than the screen's, the person always the
-// session's own, the bank's code only to their own number and noted only
-// once it was right and theirs, and nothing typed in a log.
+// session's own, the bank's code only to the number they sign in with now
+// (never the profile's copy) and only for an account that could be kept,
+// checked without touching the browser's session, noted only once it was
+// right and theirs, and nothing typed in a log.
 
 vi.mock("server-only", () => ({}));
 
@@ -14,12 +16,14 @@ const mocks = vi.hoisted(() => ({
   currentMember: vi.fn(),
   currentModules: vi.fn(),
   saveEmployeeDetails: vi.fn(),
+  checkBankChange: vi.fn(),
   revealEmployeeFields: vi.fn(),
   noteStepUp: vi.fn(),
   setTaxYearStatus: vi.fn(),
   submitEmployeeFile: vi.fn(),
   sendCode: vi.fn(),
-  verifyCode: vi.fn(),
+  checkCode: vi.fn(),
+  signInPhoneOf: vi.fn(),
   refresh: vi.fn(),
   order: [] as string[],
 }));
@@ -28,6 +32,7 @@ vi.mock("../../member", () => ({ currentMember: mocks.currentMember }));
 vi.mock("../../modules", () => ({ currentModules: mocks.currentModules }));
 vi.mock("@db/employee-files", () => ({
   saveEmployeeDetails: mocks.saveEmployeeDetails,
+  checkBankChange: mocks.checkBankChange,
   revealEmployeeFields: mocks.revealEmployeeFields,
   noteStepUp: mocks.noteStepUp,
   setTaxYearStatus: mocks.setTaxYearStatus,
@@ -35,7 +40,8 @@ vi.mock("@db/employee-files", () => ({
 }));
 vi.mock("../../../(auth)/otp", () => ({
   sendCode: mocks.sendCode,
-  verifyCode: mocks.verifyCode,
+  checkCode: mocks.checkCode,
+  signInPhoneOf: mocks.signInPhoneOf,
 }));
 
 const {
@@ -52,11 +58,13 @@ const OTHER = "22222222-2222-4222-a222-222222222222";
 const NOA = "33333333-3333-4333-a333-333333333333";
 const SOMEONE = "44444444-4444-4444-a444-444444444444";
 const NOA_PHONE = "+972500000003";
+/** The profile's copy of her number, from before the team changed it. */
+const NOA_OLD_PHONE = "+972500000098";
 
 /** Noa, a worker in the shop, as the session reads her. */
 const noa = (over: Record<string, unknown> = {}) => ({
   userId: NOA,
-  phone: NOA_PHONE,
+  phone: NOA_OLD_PHONE,
   viewing: null,
   membership: {
     role: "worker",
@@ -98,8 +106,16 @@ beforeEach(() => {
   });
   mocks.setTaxYearStatus.mockReset().mockResolvedValue({ ok: true });
   mocks.submitEmployeeFile.mockReset().mockResolvedValue({ ok: true });
-  mocks.sendCode.mockReset().mockResolvedValue(null);
-  mocks.verifyCode.mockReset().mockImplementation(async () => {
+  mocks.checkBankChange.mockReset().mockImplementation(async () => {
+    mocks.order.push("try");
+    return { ok: true };
+  });
+  mocks.signInPhoneOf.mockReset().mockResolvedValue(NOA_PHONE);
+  mocks.sendCode.mockReset().mockImplementation(async () => {
+    mocks.order.push("send");
+    return null;
+  });
+  mocks.checkCode.mockReset().mockImplementation(async () => {
     mocks.order.push("verify");
     return { userId: NOA };
   });
@@ -114,7 +130,7 @@ afterEach(() => {
 const everyWrite = (business: string) => [
   saveFileStepAction(business, "identity", identity),
   revealOwnAction(business, "id"),
-  sendBankCodeAction(business),
+  sendBankCodeAction(business, { bank: account() }),
   confirmBankAction(business, { code: "123456", bank: account() }),
   handInForm101Action(business),
   submitFileAction(business),
@@ -127,8 +143,10 @@ const nothingCalled = () => {
     mocks.noteStepUp,
     mocks.setTaxYearStatus,
     mocks.submitEmployeeFile,
+    mocks.checkBankChange,
+    mocks.signInPhoneOf,
     mocks.sendCode,
-    mocks.verifyCode,
+    mocks.checkCode,
   ]) {
     expect(fn).not.toHaveBeenCalled();
   }
@@ -238,10 +256,20 @@ describe("a step's save", () => {
 });
 
 describe("the bank's code", () => {
-  it("goes to the person's own number, whatever the call carries", async () => {
-    expect(await sendBankCodeAction(SHOP)).toEqual({ ok: true, tail: "0003" });
+  const send = () => sendBankCodeAction(SHOP, { bank: account() });
+
+  it("goes to the number she signs in with now, never the profile's copy or the call's", async () => {
+    expect(await send()).toEqual({ ok: true, tail: "0003" });
+    expect(mocks.signInPhoneOf).toHaveBeenCalledWith(NOA);
     expect(mocks.sendCode).toHaveBeenCalledWith(NOA_PHONE);
-    // A number from the browser is no part of the call.
+    expect(mocks.sendCode).not.toHaveBeenCalledWith(NOA_OLD_PHONE);
+    // A number from the browser is no part of either call.
+    expect(
+      await sendBankCodeAction(SHOP, {
+        bank: account(),
+        phone: "+972500000999",
+      } as never),
+    ).toEqual({ ok: false, failure: "invalid" });
     expect(
       await confirmBankAction(SHOP, {
         code: "123456",
@@ -250,34 +278,64 @@ describe("the bank's code", () => {
       } as never),
     ).toEqual({ ok: false, failure: "invalid" });
     await confirmBankAction(SHOP, { code: "123456", bank: account() });
-    expect(mocks.verifyCode).toHaveBeenCalledWith(NOA_PHONE, "123456");
+    expect(mocks.checkCode).toHaveBeenCalledWith(NOA_PHONE, "123456");
+  });
+
+  it("goes only for an account that could be kept, tried before any SMS", async () => {
+    await send();
+    expect(mocks.order).toEqual(["try", "send"]);
+    expect(mocks.checkBankChange).toHaveBeenCalledWith(
+      NOA,
+      SHOP,
+      account(),
+      expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+    );
+    // Not an account at all: nothing tried, nothing sent.
+    mocks.order = [];
+    expect(
+      await sendBankCodeAction(SHOP, {
+        bank: { ...account(), holder: "friend" },
+      }),
+    ).toEqual({ ok: false, failure: "invalid" });
+    expect(mocks.order).toEqual([]);
+  });
+
+  // The week after a phone change: said with the day it opens, before an
+  // SMS goes to a number the hold doesn't trust, and counted nowhere.
+  it("goes nowhere in the week after a phone change, and says the day", async () => {
+    mocks.checkBankChange.mockResolvedValue({
+      ok: false,
+      failure: "phoneHold",
+      opensOn: "2026-11-30",
+    });
+    expect(await send()).toEqual({
+      ok: false,
+      failure: "phoneHold",
+      opensOn: "2026-11-30",
+    });
+    mocks.checkBankChange.mockResolvedValue({ ok: false, failure: "demo" });
+    expect(await send()).toEqual({ ok: false, failure: "demo" });
+    expect(mocks.signInPhoneOf).not.toHaveBeenCalled();
+    expect(mocks.sendCode).not.toHaveBeenCalled();
   });
 
   it("goes nowhere without a number", async () => {
-    mocks.currentMember.mockResolvedValue(noa({ phone: null }));
-    expect(await sendBankCodeAction(SHOP)).toEqual({
-      ok: false,
-      failure: "noPhone",
-    });
+    mocks.signInPhoneOf.mockResolvedValue(null);
+    expect(await send()).toEqual({ ok: false, failure: "noPhone" });
+    expect(
+      await confirmBankAction(SHOP, { code: "123456", bank: account() }),
+    ).toEqual({ ok: false, failure: "noPhone" });
     expect(mocks.sendCode).not.toHaveBeenCalled();
+    expect(mocks.checkCode).not.toHaveBeenCalled();
   });
 
   it("says the auth server's wait and the counts in their own words", async () => {
     mocks.sendCode.mockResolvedValue("rateLimit");
-    expect(await sendBankCodeAction(SHOP)).toEqual({
-      ok: false,
-      failure: "rateLimit",
-    });
+    expect(await send()).toEqual({ ok: false, failure: "rateLimit" });
     mocks.sendCode.mockResolvedValue("tooMany");
-    expect(await sendBankCodeAction(SHOP)).toEqual({
-      ok: false,
-      failure: "tooMany",
-    });
+    expect(await send()).toEqual({ ok: false, failure: "tooMany" });
     mocks.sendCode.mockResolvedValue("unknownPhone");
-    expect(await sendBankCodeAction(SHOP)).toEqual({
-      ok: false,
-      failure: "failed",
-    });
+    expect(await send()).toEqual({ ok: false, failure: "failed" });
   });
 
   it("is noted only after it was right, and then the account is saved", async () => {
@@ -305,11 +363,11 @@ describe("the bank's code", () => {
   });
 
   it("saves nothing for a wrong code, and notes nothing", async () => {
-    mocks.verifyCode.mockResolvedValue({ error: "wrongCode" });
+    mocks.checkCode.mockResolvedValue({ error: "wrongCode" });
     expect(
       await confirmBankAction(SHOP, { code: "123456", bank: account() }),
     ).toEqual({ ok: false, failure: "wrongCode" });
-    mocks.verifyCode.mockResolvedValue({ error: "tooMany" });
+    mocks.checkCode.mockResolvedValue({ error: "tooMany" });
     expect(
       await confirmBankAction(SHOP, { code: "123456", bank: account() }),
     ).toEqual({ ok: false, failure: "tooMany" });
@@ -322,7 +380,7 @@ describe("the bank's code", () => {
 
   it("notes nothing when the code was someone else's account", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
-    mocks.verifyCode.mockResolvedValue({ userId: SOMEONE });
+    mocks.checkCode.mockResolvedValue({ userId: SOMEONE });
     expect(
       await confirmBankAction(SHOP, { code: "123456", bank: account() }),
     ).toEqual({ ok: false, failure: "failed" });
@@ -340,7 +398,7 @@ describe("the bank's code", () => {
     expect(
       await confirmBankAction(SHOP, { code: "123456", bank: null }),
     ).toEqual({ ok: false, failure: "invalid" });
-    expect(mocks.verifyCode).not.toHaveBeenCalled();
+    expect(mocks.checkCode).not.toHaveBeenCalled();
   });
 
   it("says the day a change opens again after a phone change", async () => {

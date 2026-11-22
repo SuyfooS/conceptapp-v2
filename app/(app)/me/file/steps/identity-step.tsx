@@ -1,12 +1,14 @@
 "use client";
 
-import { birthDateSchema } from "@domain/employee-file";
+import { birthDateSchema, FILE_TEXT_MAX } from "@domain/employee-file";
 import { minorOnFile, nextFileStep } from "@domain/employee-file-steps";
 import {
   type Country,
+  DOCUMENT_NAME_LENGTH,
+  DOCUMENT_NUMBER_LENGTH,
+  documentNumberProblem,
   type IdKind,
   ISO_COUNTRIES,
-  normalizeDocumentNumber,
 } from "@domain/identity-documents";
 import { isIsraeliId } from "@domain/israeli-id";
 import {
@@ -25,20 +27,23 @@ import { DateField } from "@ui/date-field";
 import { IdField } from "@ui/id-field";
 import { MaskedValue } from "@ui/masked-value";
 import { TextField } from "@ui/text-field";
-import { type FormEvent, useId, useState } from "react";
+import { type FormEvent, useId, useRef, useState } from "react";
 import { failureKey } from "../failure-words";
 import type { FileActionFailure } from "../file-types";
 import {
   Failure,
   FileSection,
   firstProblem,
+  focusFirstField,
   type Kit,
   LaterLink,
+  ltr,
   Reason,
   StepDock,
   showFirstProblem,
   useDay,
 } from "../flow-kit";
+import { documentChanged } from "../flow-rules";
 
 const KINDS = ["il", "passport", "other"] as const satisfies readonly IdKind[];
 
@@ -63,7 +68,10 @@ const partEmpty = (parts: DateParts) =>
  * or another), its number, the names exactly as on it and the birth date.
  * The names start empty, to be typed as the document has them. A saved
  * number shows as its last digits, with "הצגה" for the person's own eyes,
- * and "תיקון" types a new one; left empty, the saved one stays. As soon as
+ * and "תיקון" types a new one; left empty, the saved one stays, unless a
+ * passport's or another document's other details changed, which go only
+ * with its number typed again (the screen says so). Lengths are said under
+ * their fields as the server holds them, so no refusal goes unsaid. As soon as
  * the birth date says the person is under 18 today, the card about the
  * medical certificate shows, before anything is saved. A date with every
  * part typed is judged once it is full or left ("1/1/95" says the year has
@@ -74,6 +82,7 @@ export function IdentityStep({ kit, active }: { kit: Kit; active: boolean }) {
   const { t, data } = kit;
   const day = useDay();
   const formId = useId();
+  const numberCard = useRef<HTMLDivElement>(null);
   const file = data.file;
   const [kind, setKind] = useState<IdKind>(file?.id_kind ?? "il");
   // A saved number is retyped only when asked to, or for another kind.
@@ -115,19 +124,28 @@ export function IdentityStep({ kit, active }: { kit: Kit; active: boolean }) {
           ? t("identity.birthRange")
           : null
       : null;
+  // A passport's or another document's number: letters and digits, as many
+  // as its kind has, said under it before anything is sent.
+  const documentProblem =
+    kind === "il" ? null : documentNumberProblem(kind, number);
   const numberOk =
     !retype ||
     number === "" ||
-    (kind === "il"
-      ? isIsraeliId(number)
-      : normalizeDocumentNumber(number) !== null);
-  const numberError = numberOk
+    (kind === "il" ? isIsraeliId(number) : documentProblem === null);
+  const numberWords = numberOk
     ? null
     : kind === "il"
       ? number.length === 9 || tried
         ? t("identity.idInvalid")
         : null
-      : t("identity.documentInvalid");
+      : documentProblem === "short"
+        ? tried
+          ? t.rich("identity.documentShort", {
+              min: DOCUMENT_NUMBER_LENGTH[kind].min,
+              ltr,
+            })
+          : null
+        : t("identity.documentInvalid");
   const expiresDay = typedDay(expires);
   const expiresOk =
     kind === "il" ||
@@ -142,10 +160,38 @@ export function IdentityStep({ kit, active }: { kit: Kit; active: boolean }) {
       : null;
 
   // A number kept as saved, of the same kind, may stay as it is: the
-  // document goes again only with a number typed.
+  // document goes again only with a number typed. Its other details go with
+  // it, whole or not at all, so one changed there asks for the number again
+  // rather than being dropped unsaid.
   const storedSameKind =
     Boolean(file?.has.id) && kind === (file?.id_kind ?? null);
-  const sendsDocument = retype && (number !== "" || !storedSameKind);
+  const detailsChanged =
+    retype &&
+    storedSameKind &&
+    kind !== "il" &&
+    documentChanged(
+      {
+        country: file?.id_country ?? null,
+        expiresOn: file?.id_expires_on ?? null,
+        name: kind === "other" ? data.documentName : null,
+      },
+      {
+        country,
+        expiresOn: expiresDay,
+        name: kind === "other" ? tidyLine(documentName) : null,
+      },
+    );
+  const sendsDocument =
+    retype && (number !== "" || !storedSameKind || detailsChanged);
+  const retypeWords = detailsChanged && number === "";
+  const numberError =
+    numberWords ?? (retypeWords && tried ? t("identity.retypeToChange") : null);
+  // A line past its most, said under it at once.
+  const tooLong = (text: string, max: number) =>
+    tidyLine(text).length > max ? t.rich("tooLong", { max, ltr }) : null;
+  const firstError = tooLong(first, FILE_TEXT_MAX.name);
+  const lastError = tooLong(last, FILE_TEXT_MAX.name);
+  const documentNameError = tooLong(documentName, DOCUMENT_NAME_LENGTH.max);
   // Required and still empty, for the main action's words.
   const empty = [
     tidyLine(first) === "",
@@ -153,9 +199,18 @@ export function IdentityStep({ kit, active }: { kit: Kit; active: boolean }) {
     partEmpty(birth),
     sendsDocument && number === "",
     sendsDocument && kind === "passport" && country === null,
-    sendsDocument && kind === "other" && tidyLine(documentName).length < 2,
+    sendsDocument &&
+      kind === "other" &&
+      tidyLine(documentName).length < DOCUMENT_NAME_LENGTH.min,
   ].filter(Boolean).length;
-  const ready = empty === 0 && birthCheck.success && numberOk && expiresOk;
+  const ready =
+    empty === 0 &&
+    birthCheck.success &&
+    numberOk &&
+    expiresOk &&
+    !firstError &&
+    !lastError &&
+    !(sendsDocument && kind === "other" && documentNameError);
   const minor = birthCheck.success && minorOnFile(birthCheck.data, data.today);
 
   function changeKind(next: IdKind) {
@@ -242,7 +297,7 @@ export function IdentityStep({ kit, active }: { kit: Kit; active: boolean }) {
           ))}
         </ChoiceList>
 
-        <Card padding="lg" className="flex flex-col gap-4">
+        <Card ref={numberCard} padding="lg" className="flex flex-col gap-4">
           {retype ? (
             <>
               {kind === "other" ? (
@@ -251,6 +306,7 @@ export function IdentityStep({ kit, active }: { kit: Kit; active: boolean }) {
                   hint={t("identity.otherNameHint")}
                   value={documentName}
                   onChange={(event) => setDocumentName(event.target.value)}
+                  error={documentNameError}
                   autoComplete="off"
                 />
               ) : null}
@@ -261,9 +317,11 @@ export function IdentityStep({ kit, active }: { kit: Kit; active: boolean }) {
                 onChange={setNumber}
                 error={numberError}
                 hint={
-                  file?.has.id && kind === (file.id_kind ?? null)
-                    ? t("identity.keepStored")
-                    : undefined
+                  !storedSameKind
+                    ? undefined
+                    : retypeWords
+                      ? t("identity.retypeToChange")
+                      : t("identity.keepStored")
                 }
               />
               {kind !== "il" ? (
@@ -312,7 +370,11 @@ export function IdentityStep({ kit, active }: { kit: Kit; active: boolean }) {
               />
               <Button
                 variant="ghost"
-                onClick={() => setRetype(true)}
+                onClick={() => {
+                  setRetype(true);
+                  // The button goes: the first field it opened takes the focus.
+                  focusFirstField(numberCard);
+                }}
                 className="self-start text-ink-2"
               >
                 {t("actions.edit")}
@@ -327,12 +389,14 @@ export function IdentityStep({ kit, active }: { kit: Kit; active: boolean }) {
             label={t("identity.firstName")}
             value={first}
             onChange={(event) => setFirst(event.target.value)}
+            error={firstError}
             autoComplete="given-name"
           />
           <TextField
             label={t("identity.lastName")}
             value={last}
             onChange={(event) => setLast(event.target.value)}
+            error={lastError}
             autoComplete="family-name"
           />
           <Reason>{t("identity.namesReason")}</Reason>
@@ -371,7 +435,7 @@ export function IdentityStep({ kit, active }: { kit: Kit; active: boolean }) {
 
         {changeDueBy ? (
           <p role="status" className="px-1 font-medium text-base">
-            {t("identity.changeDue", { date: day(changeDueBy) })}
+            {t("changeDue", { date: day(changeDueBy) })}
           </p>
         ) : null}
 

@@ -5298,9 +5298,10 @@ export async function clearFileRows(ids: readonly number[]): Promise<void> {
 /**
  * The person's file in the demo restaurant gone, as if they had never filled
  * it: its years, the emergency contact, the file and its key, their step-up,
- * the file's log rows about them, the minor's day payroll keeps, and their
- * form of address and language. The file's rows and the log are kept, so
- * only a purge that names the business deletes them, for this transaction.
+ * the file's log rows about them, the minor's day payroll keeps, their
+ * phone changes (`notePhoneChange`), and their form of address and
+ * language. The file's rows and the log are kept, so only a purge that
+ * names the business deletes them, for this transaction.
  */
 export async function clearDemoFile(userId: string): Promise<void> {
   await sql.begin(async (tx) => {
@@ -5314,6 +5315,7 @@ export async function clearDemoFile(userId: string): Promise<void> {
     await tx`delete from private.person_keys
       where business_id = ${DEMO_RESTAURANT} and user_id = ${userId}`;
     await tx`delete from private.step_ups where user_id = ${userId}`;
+    await tx`delete from private.phone_changes where user_id = ${userId}`;
     await tx`delete from public.audit_log
       where business_id = ${DEMO_RESTAURANT}
         and action like 'employee.%'
@@ -5323,6 +5325,30 @@ export async function clearDemoFile(userId: string): Promise<void> {
     await tx`update public.profiles set address_form = null, locale = 'he'
       where id = ${userId}`;
   });
+}
+
+/**
+ * A change of the person's number `daysAgo`, as the trigger on auth.users
+ * notes one (`private.phone_changes`): the bank waits a week after it.
+ * `clearDemoFile` takes it back.
+ */
+export async function notePhoneChange(
+  userId: string,
+  daysAgo: number,
+): Promise<void> {
+  await sql`insert into private.phone_changes (user_id, changed_at)
+    values (${userId}, now() - make_interval(days => ${daysAgo}::int))`;
+}
+
+/** How many sign-in codes went to a number since a moment: none in a hold. */
+export async function codesSentSince(
+  phone: string,
+  since: Date,
+): Promise<number> {
+  const rows = await sql<{ count: number }[]>`
+    select count(*)::int as count from dev.sms_codes
+    where phone = ${phone} and created_at >= ${since}`;
+  return rows[0]?.count ?? 0;
 }
 
 /** The person's made-up file back, as the demo starts with it. */

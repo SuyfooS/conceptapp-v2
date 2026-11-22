@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
-import { type PageVisibility, revealWhileShown } from "./masked-value";
+import { describe, expect, it, vi } from "vitest";
+import {
+  type PageVisibility,
+  type PageWindow,
+  revealWhileShown,
+  watchShown,
+} from "./masked-value";
 
 /*
  * "הצגה" on the hiring file's own ID or account (profile H5a, plan §9.1): a
@@ -42,6 +47,68 @@ function slowAnswer(value: string | null) {
 }
 
 const asPage = (page: Page) => page as unknown as PageVisibility;
+
+/** A window with its own clock: what `watchShown` waits on and listens to. */
+class Win extends EventTarget {
+  timers = new Map<number, () => void>();
+  next = 1;
+  setTimeout = ((run: () => void) => {
+    const id = this.next++;
+    this.timers.set(id, run);
+    return id;
+  }) as unknown as Window["setTimeout"];
+  clearTimeout = ((id: number) => {
+    this.timers.delete(id);
+  }) as unknown as Window["clearTimeout"];
+  /** The minute passes. */
+  tick() {
+    for (const run of [...this.timers.values()]) run();
+    this.timers.clear();
+  }
+}
+
+const asWin = (win: Win) => win as unknown as PageWindow;
+
+describe("watchShown", () => {
+  it("hides the number after the minute", () => {
+    const page = new Page();
+    const win = new Win();
+    const hide = vi.fn();
+    watchShown(hide, 60_000, asPage(page), asWin(win));
+    expect(hide).not.toHaveBeenCalled();
+    win.tick();
+    expect(hide).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides it as soon as the page is put away, or left", () => {
+    const page = new Page();
+    const win = new Win();
+    const hide = vi.fn();
+    watchShown(hide, 60_000, asPage(page), asWin(win));
+    page.set("hidden");
+    expect(hide).toHaveBeenCalledTimes(1);
+    win.dispatchEvent(new Event("pagehide"));
+    expect(hide).toHaveBeenCalledTimes(2);
+  });
+
+  // Next keeps a screen it leaves (hidden in an <Activity>, its state kept)
+  // and runs its effects' stops as it hides it: the number goes then, so it
+  // never comes back on screen when the person opens the file again.
+  it("hides it when its screen goes, kept or not, and listens no more", () => {
+    const page = new Page();
+    const win = new Win();
+    const hide = vi.fn();
+    const stop = watchShown(hide, 60_000, asPage(page), asWin(win));
+    expect(page.listening).toBe(1);
+    stop();
+    expect(hide).toHaveBeenCalledTimes(1);
+    expect(page.listening).toBe(0);
+    expect(win.timers.size).toBe(0);
+    page.set("hidden");
+    win.dispatchEvent(new Event("pagehide"));
+    expect(hide).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe("revealWhileShown", () => {
   it("gives the number to a page that stayed on screen", async () => {

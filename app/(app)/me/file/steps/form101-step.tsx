@@ -1,5 +1,6 @@
 "use client";
 
+import type { SENT_WITH } from "@domain/employee-file-steps";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { Card } from "@ui/card";
@@ -9,6 +10,7 @@ import type { FileActionFailure } from "../file-types";
 import {
   Failure,
   FileSection,
+  focusTitle,
   type Kit,
   LaterLink,
   ltr,
@@ -21,17 +23,22 @@ import {
  * H5b's, the printed one H7's): what the person does outside the app, why
  * it matters for their tax, how to hand it over, where this year's stands,
  * and "מסרתי את הטופס", which the owner or the accountant then confirms.
- * The step's main action sends the whole file.
+ * The step's main action sends the whole file once its details are in; until
+ * then it leads to the first still open, and says why. The form on paper
+ * never keeps the file back.
  */
 export function Form101Step({
   kit,
   active,
+  blocker,
   onSend,
   sending,
   sendFailure,
 }: {
   kit: Kit;
   active: boolean;
+  /** The first of the file's details still open, or null once it can go. */
+  blocker: (typeof SENT_WITH)[number] | null;
   /** Sends the whole file: the page's, beside its main action on a desktop too. */
   onSend: () => void;
   sending: boolean;
@@ -61,6 +68,9 @@ export function Form101Step({
       return;
     }
     kit.say(t("form101.handedInSaved", business));
+    // The button goes once the file says the form is in: the focus stays
+    // with the step.
+    focusTitle("form101");
   }
 
   return (
@@ -120,12 +130,19 @@ export function Form101Step({
         <StepDock
           kit={kit}
           step="form101"
-          main={{
-            label: t("actions.send", business),
-            onClick: onSend,
-            pending: sending,
-          }}
-          notice={sendFailure}
+          main={
+            blocker
+              ? {
+                  label: t(`actions.finish.${blocker}`),
+                  onClick: () => kit.go(blocker),
+                }
+              : {
+                  label: t("actions.send", business),
+                  onClick: onSend,
+                  pending: sending,
+                }
+          }
+          notice={blocker ? t("actions.sendWaits") : sendFailure}
         />
       ) : null}
     </FileSection>

@@ -37,19 +37,27 @@ const BETWEEN = /[\s\-()./'"`\u05F3\u05F4\u2018\u2019\u201C\u201D]+/u;
  * Text as the search compares it, in one script: cleaned (`cleanTyped`),
  * lower case, no niqqud and nothing between words. Hebrew: final letters as
  * the others, a doubled yod or vav once ("קריית", "קרית"). English: q as k,
- * a doubled letter once ("Qiryat Atta", "kiryat ata").
+ * a doubled letter once ("Qiryat Atta", "kiryat ata"), counted across the
+ * apostrophe the list writes inside a name ("Ra'anana", "raanana").
  */
 export function normalizeCityQuery(text: string, script: "he" | "en"): string {
-  return cityWords(text, script).join("");
+  return collapsed(cityWords(text).join(""), script);
 }
 
-function cityWords(text: string, script: "he" | "en"): string[] {
-  const words = looseHebrew(cleanTyped(text)).split(BETWEEN).filter(Boolean);
-  return words.map((word) =>
-    script === "he"
-      ? word.replace(/יי+/g, "י").replace(/וו+/g, "ו")
-      : word.replace(/q/g, "k").replace(/([a-z])\1+/g, "$1"),
-  );
+/** The words of a name or a query, nothing between them. */
+function cityWords(text: string): string[] {
+  return looseHebrew(cleanTyped(text)).split(BETWEEN).filter(Boolean);
+}
+
+/**
+ * Spellings of the same letters as one, once the words are joined: a
+ * doubled letter the list splits with an apostrophe ("Be'er Sheva") meets
+ * the same name typed without it ("Beer Sheva").
+ */
+function collapsed(joined: string, script: "he" | "en"): string {
+  return script === "he"
+    ? joined.replace(/יי+/g, "י").replace(/וו+/g, "ו")
+    : joined.replace(/q/g, "k").replace(/([a-z])\1+/g, "$1");
 }
 
 /** Whether the text is typed in Hebrew letters. */
@@ -59,10 +67,12 @@ const HEBREW = /[א-ת]/;
 type Indexed = { whole: string; tails: string[] };
 
 function indexed(name: string, script: "he" | "en"): Indexed {
-  const words = cityWords(name, script);
+  const words = cityWords(name);
   return {
-    whole: words.join(""),
-    tails: words.slice(1).map((_, i) => words.slice(i + 1).join("")),
+    whole: collapsed(words.join(""), script),
+    tails: words
+      .slice(1)
+      .map((_, i) => collapsed(words.slice(i + 1).join(""), script)),
   };
 }
 

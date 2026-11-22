@@ -19,9 +19,11 @@ type Props = {
 // real view. By default she stopped at the account; `?step=` opens a step,
 // `?state=new` has nothing yet (the welcome), `minor` a 16-year-old's birth
 // date, `warning` an account the check warns about, `code` its code asked
-// for (the twin takes 123456), `saved` the account in, `done` everything
-// sent. `?lang=en` is her file in English, as the app draws it for someone
-// who chose English.
+// for (the twin takes 123456), `hold` an account held in the week after a
+// phone change, `saved` the account in, `done` everything sent (and a new
+// address there makes an updated 101 due). `?lang=en` is her file in
+// English, as the app draws it for someone who chose English; the language
+// button and step 0 switch it there, since the twin keeps nothing.
 export default function FileDemoPage({ searchParams }: Props) {
   return (
     <Suspense>
@@ -39,17 +41,20 @@ async function Demo({ searchParams }: Props) {
     fileViewOf(step) ??
     (which === "done"
       ? "done"
-      : which === "warning" || which === "code" || which === "saved"
+      : which === "warning" ||
+          which === "code" ||
+          which === "hold" ||
+          which === "saved"
         ? "bank"
         : which === "minor"
           ? "identity"
           : null);
-  const keep = [
-    which === "stopped" ? null : `state=${which}`,
-    english ? "lang=en" : null,
-  ]
-    .filter(Boolean)
-    .join("&");
+  // Its state in its address, in either language.
+  const kept = which === "stopped" ? null : `state=${which}`;
+  const keep = {
+    he: kept ?? "",
+    en: [kept, "lang=en"].filter(Boolean).join("&"),
+  };
   return (
     <FileView
       data={data}
@@ -59,7 +64,7 @@ async function Demo({ searchParams }: Props) {
       profileHref="/design/shell/me?file=missing"
       keep={keep}
       actions={{
-        saveStep: demoSaveFileStepAction,
+        saveStep: demoSaveFileStepAction.bind(null, which),
         reveal: demoRevealAction,
         sendBankCode: demoSendBankCodeAction,
         confirmBank: demoConfirmBankAction,

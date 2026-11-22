@@ -8,6 +8,7 @@ import {
   ZIP_DIGITS,
 } from "@domain/address";
 import type { City } from "@domain/cities";
+import { FILE_TEXT_MAX } from "@domain/employee-file";
 import { nextFileStep } from "@domain/employee-file-steps";
 import { tidyLine } from "@domain/typed-text";
 import { Button } from "@ui/button";
@@ -30,6 +31,7 @@ import {
   Reason,
   StepDock,
   showFirstProblem,
+  useDay,
 } from "../flow-kit";
 
 const email = z.email();
@@ -43,10 +45,13 @@ const email = z.email();
  * server. Each of its refusals is said under its own field (`addressProblems`):
  * at once for what is too long, and for the zip once it is left or full.
  * With nothing missing the main action can always be pressed, and a press
- * that can't save says every problem and goes to the first.
+ * that can't save says every problem and goes to the first. A move with this
+ * year's 101 handed in makes an updated one due within a week: said, and the
+ * step stays until the person goes on.
  */
 export function AddressStep({ kit, active }: { kit: Kit; active: boolean }) {
   const { t, data } = kit;
+  const day = useDay();
   const formId = useId();
   const noStreetId = useId();
   const stored = data.address;
@@ -77,6 +82,8 @@ export function AddressStep({ kit, active }: { kit: Kit; active: boolean }) {
   const [tried, setTried] = useState(false);
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<FileActionFailure | null>(null);
+  // A move that makes this year's 101 due again: said, and the step stays.
+  const [changeDueBy, setChangeDueBy] = useState<string | null>(null);
 
   const kind = noStreet ? instead : "street";
   const address = {
@@ -95,7 +102,7 @@ export function AddressStep({ kit, active }: { kit: Kit; active: boolean }) {
   const problems = addressProblems(address);
   const lineError = (field: "street" | "area" | "apartment", max: number) =>
     problems[field] === "tooLong"
-      ? t.rich("address.tooLong", { max, ltr })
+      ? t.rich("tooLong", { max, ltr })
       : problems[field] === "invalid"
         ? t("address.lineInvalid")
         : null;
@@ -111,9 +118,12 @@ export function AddressStep({ kit, active }: { kit: Kit; active: boolean }) {
       : null;
   const poBoxError = problems.poBox ? t("address.poBoxInvalid") : null;
   const mailTyped = mail.trim();
-  const mailOk = mailTyped === "" || email.safeParse(mailTyped).success;
-  const mailError =
-    !mailOk && (tried || mailTyped.includes("@"))
+  const mailLong = mailTyped.length > FILE_TEXT_MAX.email;
+  const mailOk =
+    mailTyped === "" || (!mailLong && email.safeParse(mailTyped).success);
+  const mailError = mailLong
+    ? t.rich("tooLong", { max: FILE_TEXT_MAX.email, ltr })
+    : !mailOk && (tried || mailTyped.includes("@"))
       ? t("address.emailInvalid")
       : null;
 
@@ -145,8 +155,12 @@ export function AddressStep({ kit, active }: { kit: Kit; active: boolean }) {
       setFailure(result.failure);
       return;
     }
+    setTried(false);
+    setChangeDueBy(result.changeDueBy);
     kit.say(t("saved"));
-    if (active) kit.go(nextFileStep("address") ?? "done");
+    if (active && !result.changeDueBy) {
+      kit.go(nextFileStep("address") ?? "done");
+    }
   }
 
   return (
@@ -266,6 +280,12 @@ export function AddressStep({ kit, active }: { kit: Kit; active: boolean }) {
             inputMode="email"
           />
         </Card>
+
+        {changeDueBy ? (
+          <p role="status" className="px-1 font-medium text-base">
+            {t("changeDue", { date: day(changeDueBy) })}
+          </p>
+        ) : null}
 
         <Failure>
           {failure ? t(`failures.${failureKey(failure)}`) : null}

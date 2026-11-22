@@ -92,11 +92,14 @@ describe("the hiring file's code", () => {
     const page = read("app/(app)/me/file/page.tsx");
     expect(page).toMatch(/const \[\{ step \}, /);
     expect(page).not.toMatch(/searchParams\./);
+    // Its addresses come from one place, a step's name and the twin's own
+    // query (`keep`, its state and language); the done screen's way back is
+    // the profile's.
     const flow = read("app/(app)/me/file/file-flow.tsx");
-    const pushes = [...flow.matchAll(/router\.push\(([^,]*),/g)].map(
-      ([, to = ""]) => to.trim(),
+    const pushes = [...flow.matchAll(/router\.push\(\s*([\w.]+)/g)].map(
+      ([, to = ""]) => to,
     );
-    expect(pushes).toEqual(["stepHref(next)"]);
+    expect(pushes).toEqual(["stepHref", "kit.profileHref"]);
     expect(flow).toContain("/me/file?step=$" + "{next}");
   });
 

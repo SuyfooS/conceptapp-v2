@@ -167,6 +167,7 @@ const PAGES = [
   "/design/shell/me/file?step=bank",
   "/design/shell/me/file?step=bank&state=warning",
   "/design/shell/me/file?step=bank&state=code",
+  "/design/shell/me/file?step=bank&state=hold",
   "/design/shell/me/file?step=bank&state=saved",
   "/design/shell/me/file?step=pension",
   "/design/shell/me/file?step=form101",
@@ -5480,11 +5481,21 @@ test("the file demo warns about an account number in words and saves past it", a
   const confirm = page
     .getByRole("button", { name: f.bank.confirm, exact: true })
     .filter({ visible: true });
-  await expect(confirm).toBeDisabled();
+  // Only the warning is in the way: said above the action, which can be
+  // pressed and takes the person to the number.
+  const checkFirst = page
+    .getByText(heT("app.file.bank.checkFirst", { keep: f.bank.keep }))
+    .filter({ visible: true });
+  await expect(checkFirst).toBeVisible();
+  await expect(confirm).toBeEnabled();
+  await confirm.click();
+  await expect(bank.getByLabel(f.bank.account)).toBeFocused();
+  await expect(page.getByLabel(f.bank.code.label)).toHaveCount(0);
   await bank.getByRole("button", { name: f.bank.keep }).click();
   await expect(
     bank.getByText(heT("app.file.bank.kept", { business: "מסעדת הדגמה" })),
   ).toBeVisible();
+  await expect(checkFirst).toHaveCount(0);
   await confirm.click();
   const code = page.getByLabel(f.bank.code.label);
   await expect(code).toBeVisible();
@@ -5535,10 +5546,10 @@ test("the file demo reads the same in each device's shape", async ({
   const steps = page
     .getByRole("complementary", { name: f.steps.title })
     .filter({ visible: true });
-  const send = page
-    .getByRole("button", {
-      name: heT("app.file.actions.send", { business: "מסעדת הדגמה" }),
-    })
+  // Stopped at the account: the summary's one main action leads there, as
+  // sending would only once the details are in.
+  const main = page
+    .getByRole("button", { name: f.actions.finish.bank })
     .filter({ visible: true });
   if (project === "phone") {
     await expect(
@@ -5557,7 +5568,7 @@ test("the file demo reads the same in each device's shape", async ({
   } else {
     await expect(steps).toHaveCount(1);
     await expect(sections).toHaveCount(6);
-    await expect(send).toHaveCount(1);
+    await expect(main).toHaveCount(1);
   }
   await expect(
     page.getByRole("region", { name: f.steps.name.bank }),
@@ -5593,7 +5604,7 @@ test("the file demo says under each field what keeps a step from saving", async 
   await apartment.fill("12345678901");
   await expect(
     address.getByText(
-      f.address.tooLong.replace(/<\/?ltr>/g, "").replace("{max}", "10"),
+      f.tooLong.replace(/<\/?ltr>/g, "").replace("{max}", "10"),
     ),
   ).toBeVisible();
   await apartment.fill("3");
@@ -5695,22 +5706,33 @@ test("the file demo in English keeps its dock beside the shrunk tab bar", async 
     .toBe("beside");
 });
 
-// A laptop leaves less than the screen's 900px: the summary's one main
-// action stays in view beside the steps, a new file's six included.
+// A laptop leaves less than the screen's 900px: the summary's action stays
+// in view beside the steps, a new file's six included. A new file has
+// nothing to send yet: the welcome's way in is the page's main action, and
+// the summary's leads, quiet, to the first detail.
 test("the file demo keeps its main action in view on a laptop", async ({
   page,
 }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "The summary is a desktop's.");
   await page.setViewportSize({ width: 1440, height: 780 });
   await page.goto("/design/shell/me/file?state=new");
-  const send = page
-    .getByRole("button", {
+  const f = he.app.file;
+  await expect(
+    page
+      .getByRole("button", { name: f.welcome.start })
+      .filter({ visible: true }),
+  ).toHaveCount(1);
+  await expect(
+    page.getByRole("button", {
       name: heT("app.file.actions.send", { business: "מסעדת הדגמה" }),
-    })
+    }),
+  ).toHaveCount(0);
+  const finish = page
+    .getByRole("button", { name: f.actions.finish.identity })
     .filter({ visible: true });
-  await expect(send).toHaveCount(1);
+  await expect(finish).toHaveCount(1);
   await page.evaluate(() => window.scrollTo(0, 600));
-  await expect(send).toBeInViewport({ ratio: 1 });
+  await expect(finish).toBeInViewport({ ratio: 1 });
 });
 
 // The welcome's card over the hero grows down as its words do (a narrow
@@ -5734,4 +5756,226 @@ test("the file demo's welcome keeps its card under the title", async ({
   expect(titleBox && cardBox).toBeTruthy();
   if (!titleBox || !cardBox) return;
   expect(cardBox.y).toBeGreaterThanOrEqual(titleBox.y + titleBox.height);
+});
+
+// The twin keeps nothing, so its language is its address: the button above
+// and step 0 switch it there, and step 0 shows the file's language until
+// one is picked on it (H5a's second review).
+test("the file demo switches language with the button, and step 0 follows", async ({
+  page,
+}) => {
+  const f = he.app.file;
+  const e = en.app.file;
+  await page.goto("/design/shell/me/file?step=start");
+  await page.getByRole("button", { name: f.language.switch }).click();
+  await expect(page).toHaveURL(/[?&]lang=en/);
+  const english = page.locator('[dir="ltr"][lang="en"]');
+  const first = english.getByRole("region", { name: e.steps.name.start });
+  await expect(first.getByRole("radio", { name: e.start.en })).toBeChecked();
+  await expect(
+    first.getByRole("radio", { name: e.start.he }),
+  ).not.toBeChecked();
+  await english.getByRole("button", { name: e.language.switch }).click();
+  await expect(page).not.toHaveURL(/lang=en/);
+  await expect(
+    page
+      .getByRole("region", { name: f.steps.name.start })
+      .getByRole("radio", { name: f.start.he }),
+  ).toBeChecked();
+});
+
+// A step opened from another takes the focus at its title: a keyboard and a
+// screen reader go on from there, not from the top of the page.
+test("the file demo puts the focus on the step it opens", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name === "desktop",
+    "The dock is a phone's and a tablet's.",
+  );
+  const f = he.app.file;
+  await page.goto("/design/shell/me/file?step=start");
+  await page
+    .getByRole("button", { name: f.actions.next, exact: true })
+    .filter({ visible: true })
+    .click();
+  await expect(page).toHaveURL(/step=identity/);
+  await expect(
+    page.getByRole("heading", { level: 2, name: f.steps.name.identity }),
+  ).toBeFocused();
+});
+
+// A desktop's account says what is missing beside its own action, which can
+// always be pressed, and goes to the first field it is about.
+test("the file demo's account on a desktop says what is missing", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "A desktop's own save.");
+  const f = he.app.file;
+  await page.goto("/design/shell/me/file?step=bank");
+  const bank = page.getByRole("region", { name: f.steps.name.bank });
+  const confirm = bank.getByRole("button", { name: f.bank.confirm });
+  await expect(confirm).toBeEnabled();
+  await confirm.click();
+  await expect(
+    bank
+      .getByText(heT("app.file.missingRequired", { count: 5 }))
+      .filter({ visible: true }),
+  ).toBeVisible();
+  await expect(bank.locator('[aria-invalid="true"]').first()).toBeFocused();
+});
+
+// The steps' lifted shadow is never cut into a box: a tablet's list has no
+// scroll box at all, and a desktop's leaves the shadow its room.
+test("the file demo's steps keep their shadow whole", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "phone", "A phone has no list beside.");
+  await page.goto("/design/shell/me/file");
+  const box = page
+    .getByRole("complementary", { name: he.app.file.steps.title })
+    .getByRole("list")
+    .first()
+    .locator("..");
+  const style = await box.evaluate((element) => {
+    const css = getComputedStyle(element);
+    return {
+      overflow: css.overflowY,
+      start: Number.parseFloat(css.paddingInlineStart),
+      end: Number.parseFloat(css.paddingInlineEnd),
+    };
+  });
+  if (testInfo.project.name === "tablet") {
+    expect(style.overflow).toBe("visible");
+  } else {
+    // The float shadow reaches about 30px beside the list.
+    expect(style.start).toBeGreaterThanOrEqual(30);
+    expect(style.end).toBeGreaterThanOrEqual(30);
+  }
+});
+
+// A desktop shows every step at once: one way back to the profile (above
+// them) and one way to the notice (beside them), never one per step.
+test("the file demo says 'later' and a step's 'why' only below a desktop", async ({
+  page,
+}, testInfo) => {
+  const f = he.app.file;
+  await page.goto("/design/shell/me/file?step=address");
+  const later = page
+    .getByRole("link", { name: f.actions.later })
+    .filter({ visible: true });
+  const why = page
+    .getByRole("button", { name: f.why, exact: true })
+    .filter({ visible: true });
+  const expected = testInfo.project.name === "desktop" ? 0 : 1;
+  await expect(later).toHaveCount(expected);
+  await expect(why).toHaveCount(expected);
+});
+
+// The file goes only once its details are in: until then its action leads
+// to the first one open. Done says "סיימת" only with nothing open, and its
+// main action is the way back to the profile.
+test("the file demo sends only a file with its details in", async ({
+  page,
+}) => {
+  const f = he.app.file;
+  await page.goto("/design/shell/me/file?step=form101");
+  await expect(
+    page.getByRole("button", {
+      name: heT("app.file.actions.send", { business: "מסעדת הדגמה" }),
+    }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: f.actions.finish.bank })
+    .filter({ visible: true })
+    .click();
+  await expect(page).toHaveURL(/step=bank/);
+
+  await page.goto("/design/shell/me/file?step=done");
+  await expect(
+    page.getByRole("heading", {
+      name: heT("app.file.done.titleLeft", { count: 3 }),
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: f.done.title, exact: true }),
+  ).toHaveCount(0);
+
+  await page.goto("/design/shell/me/file?state=done");
+  await expect(
+    page.getByRole("heading", { name: f.done.title, exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: f.done.profile })
+    .filter({ visible: true })
+    .click();
+  await expect(page).toHaveURL(/\/design\/shell\/me\?file=missing$/);
+});
+
+// A number shown and the screen left: Next keeps the screen to show again,
+// and it comes back with the dots, never the number.
+test("the file demo's own ID is hidden again after leaving the screen", async ({
+  page,
+}) => {
+  const f = he.app.file;
+  await page.goto("/design/shell/me/file?step=identity");
+  const identity = page.getByRole("region", { name: f.steps.name.identity });
+  await identity.getByRole("button", { name: f.masked.show }).click();
+  await expect(identity.getByText("000000018")).toBeVisible();
+  await page.getByRole("link", { name: f.back, exact: true }).click();
+  await expect(page).toHaveURL(/\/design\/shell\/me\?file=missing$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/step=identity/);
+  await expect(identity.getByText("•••0018")).toBeVisible();
+  await expect(page.getByText("000000018")).toHaveCount(0);
+});
+
+// "החלפת החשבון" by mistake: "השארת החשבון הנוכחי" goes back to the saved one.
+test("the file demo goes back to the saved account", async ({ page }) => {
+  const f = he.app.file;
+  await page.goto("/design/shell/me/file?step=bank&state=saved");
+  const bank = page.getByRole("region", { name: f.steps.name.bank });
+  await bank.getByRole("button", { name: f.bank.change }).click();
+  await expect(bank.getByLabel(f.bank.paste)).toBeFocused();
+  await bank.getByRole("button", { name: f.bank.keepCurrent }).click();
+  await expect(bank.getByText("•••0001")).toBeVisible();
+  await expect(bank.getByLabel(f.bank.paste)).toHaveCount(0);
+});
+
+// The week after a phone change: the day it opens, and no code until then.
+test("the file demo holds the account's code after a phone change", async ({
+  page,
+}) => {
+  const f = he.app.file;
+  await page.goto("/design/shell/me/file?step=bank&state=hold");
+  await expect(
+    page
+      .getByText(heT("app.file.bank.phoneHold", { date: "27 בנובמבר 2026" }))
+      .filter({ visible: true }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("button", { name: f.bank.confirm, exact: true })
+      .filter({ visible: true }),
+  ).toBeDisabled();
+});
+
+// A move with this year's 101 handed in: an updated one is due within a
+// week, said on the address step, which stays.
+test("the file demo says an updated 101 is due after a move", async ({
+  page,
+}, testInfo) => {
+  const f = he.app.file;
+  await page.goto("/design/shell/me/file?state=done&step=address");
+  const address = page.getByRole("region", { name: f.steps.name.address });
+  await (testInfo.project.name === "desktop"
+    ? address.getByRole("button", { name: f.actions.saveAddress })
+    : page
+        .getByRole("button", { name: f.actions.next, exact: true })
+        .filter({ visible: true })
+  ).click();
+  await expect(
+    address.getByText(heT("app.file.changeDue", { date: "1 בדצמבר 2026" })),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/step=address/);
 });

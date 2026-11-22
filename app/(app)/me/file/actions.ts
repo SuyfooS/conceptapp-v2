@@ -1,6 +1,7 @@
 "use server";
 
 import {
+  checkBankChange,
   noteStepUp,
   revealEmployeeFields,
   saveEmployeeDetails,
@@ -22,7 +23,7 @@ import { canWrite } from "@domain/view-as";
 import { manifestFor } from "@modules/registry";
 import { refresh } from "next/cache";
 import { z } from "zod";
-import { sendCode, verifyCode } from "../../../(auth)/otp";
+import { checkCode, sendCode, signInPhoneOf } from "../../../(auth)/otp";
 import { currentMember } from "../../member";
 import { currentModules } from "../../modules";
 import type {
@@ -50,7 +51,6 @@ import type {
 type Self = {
   userId: string;
   businessId: string;
-  phone: string | null;
   today: string;
   year: number;
 };
@@ -75,10 +75,15 @@ async function self(
   return {
     userId: member.userId,
     businessId: membership.business.id,
-    phone: member.phone,
     today,
     year: Number(today.slice(0, 4)),
   };
+}
+
+/** The bank group as typed, checked by the domain whole, or null. */
+function bankOf(bank: unknown, today: string) {
+  const details = employeeDetailsInput(today).safeParse({ bank });
+  return details.success ? (details.data.bank ?? null) : null;
 }
 
 /** A write's error, by its code only: whatever it carries stays here. */
@@ -181,19 +186,42 @@ export async function revealOwnAction(
 }
 
 /**
- * A code by SMS for a bank change, to the person's own number as the
- * database keeps it (`own_phone`), never one the browser sends; counted with
- * the sign-in codes (`private.auth_limits`).
+ * A code by SMS for a bank change, once the account as typed could be kept
+ * but for the code (`checkBankChange`: the database's own rules, the week
+ * after a phone change with the day it opens included), so no code goes on
+ * what couldn't be. It goes to the number the person signs in with now, as
+ * the auth server holds it (`signInPhoneOf`), never the profile's copy and
+ * never one the browser sends; counted with the sign-in codes
+ * (`private.auth_limits`).
  */
 export async function sendBankCodeAction(
   business: string,
+  input: { bank: unknown },
 ): Promise<SendCodeAnswer> {
   const who = await self(business);
   if ("failure" in who) return { ok: false, failure: who.failure };
-  const tail = phoneTail(who.phone);
-  if (!who.phone || !tail) return { ok: false, failure: "noPhone" };
+  const parsed = z.object({ bank: z.unknown() }).strict().safeParse(input);
+  if (!parsed.success || !bankOf(parsed.data.bank, who.today)) {
+    return { ok: false, failure: "invalid" };
+  }
   try {
-    const error = await sendCode(who.phone);
+    const keepable = await checkBankChange(
+      who.userId,
+      who.businessId,
+      parsed.data.bank,
+      who.today,
+    );
+    if (!keepable.ok) {
+      return {
+        ok: false,
+        failure: keepable.failure,
+        ...(keepable.opensOn ? { opensOn: keepable.opensOn } : {}),
+      };
+    }
+    const phone = await signInPhoneOf(who.userId);
+    const tail = phoneTail(phone);
+    if (!phone || !tail) return { ok: false, failure: "noPhone" };
+    const error = await sendCode(phone);
     if (error === null) return { ok: true, tail };
     switch (error) {
       case "rateLimit":
@@ -210,11 +238,13 @@ export async function sendBankCodeAction(
 
 /**
  * The account, saved once the code is right: the code checked for the
- * person's own number (`verifyCode`, which renews their own session's
- * cookies on the way, as signing in does: a call from the screen itself,
- * never a held write), the step-up noted only then and only for them, and
- * the account saved with it. The account is checked before the code is
- * spent, so a code never goes on what couldn't be kept.
+ * number the person signs in with now (`checkCode`, on a client that keeps
+ * no session, so this browser's session stays the person's whoever the
+ * number turns out to be, and the check's own session is ended), whose it
+ * was compared with the session's before anything is kept, the step-up
+ * noted only then and only for them, and the account saved with it. The
+ * account is checked for its shape before the code is spent, and was tried
+ * whole before the code went (`sendBankCodeAction`).
  */
 export async function confirmBankAction(
   business: string,
@@ -227,16 +257,14 @@ export async function confirmBankAction(
     .strict()
     .safeParse(input);
   if (!parsed.success) return { ok: false, failure: "invalid" };
-  const details = employeeDetailsInput(who.today).safeParse({
-    bank: parsed.data.bank,
-  });
-  const bank = details.success ? details.data.bank : null;
+  const bank = bankOf(parsed.data.bank, who.today);
   if (!bank) return { ok: false, failure: "invalid" };
   const code = normalizeOtpCode(parsed.data.code);
   if (!code) return { ok: false, failure: "wrongCode" };
-  if (!who.phone) return { ok: false, failure: "noPhone" };
   try {
-    const verified = await verifyCode(who.phone, code);
+    const phone = await signInPhoneOf(who.userId);
+    if (!phone) return { ok: false, failure: "noPhone" };
+    const verified = await checkCode(phone, code);
     if ("error" in verified) {
       switch (verified.error) {
         case "rateLimit":
@@ -249,7 +277,7 @@ export async function confirmBankAction(
       }
     }
     // The code was the number's, so its owner is the session's own; if
-    // not, nothing is noted for anyone.
+    // not, nothing is noted or kept for anyone, and nobody was signed in.
     if (verified.userId !== who.userId) {
       console.error("a bank code checked for another account");
       return { ok: false, failure: "failed" };

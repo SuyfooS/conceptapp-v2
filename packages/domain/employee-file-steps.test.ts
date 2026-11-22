@@ -12,7 +12,9 @@ import {
   phoneTail,
   previousFileStep,
   resumeStep,
+  SENT_WITH,
   STEP_OF_GROUP,
+  sendBlocker,
   stepsDone,
 } from "./employee-file-steps";
 
@@ -169,6 +171,49 @@ describe("fileStepStates", () => {
     });
     expect(resumeStep(states)).toBe("done");
     expect(stepsDone(states)).toBe(FILE_STEPS.length);
+  });
+});
+
+describe("sendBlocker", () => {
+  it("keeps an empty file back, at its first detail", () => {
+    expect(sendBlocker(fileStepStates(EMPTY))).toBe("identity");
+  });
+
+  it("names the first of the details still open", () => {
+    const states = fileStepStates({
+      ...EMPTY,
+      addressForm: "f",
+      missing: ["bank", "pension"],
+    });
+    expect(sendBlocker(states)).toBe("bank");
+  });
+
+  it("lets the file go without step 0 or Form 101", () => {
+    const states = fileStepStates({ ...EMPTY, missing: [] });
+    expect(states.start).toBe("open");
+    expect(states.form101).toBe("open");
+    expect(sendBlocker(states)).toBeNull();
+  });
+
+  it("takes 'later', a group handed directly and one not asked as done", () => {
+    expect(
+      sendBlocker(
+        fileStepStates({
+          ...EMPTY,
+          asked: ["identity", "address", "pension"],
+          missing: ["pension", "address"],
+          directGroups: ["address"],
+          pensionAnswer: "later",
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it("are the four details, in the steps' order", () => {
+    expect(SENT_WITH).toEqual(
+      FILE_STEPS.filter((step) => SENT_WITH.some((sent) => sent === step)),
+    );
+    expect(SENT_WITH).toEqual(FILE_GROUPS.map((group) => STEP_OF_GROUP[group]));
   });
 });
 

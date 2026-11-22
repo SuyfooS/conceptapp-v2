@@ -8,9 +8,10 @@ import {
   pensionDue,
   resumeStep,
   type StepState,
+  sendBlocker,
   stepsDone,
 } from "@domain/employee-file-steps";
-import { formArg } from "@domain/profile";
+import { formArg, type ProfileLocale } from "@domain/profile";
 import { Button } from "@ui/button";
 import { Card, CardText } from "@ui/card";
 import { cn } from "@ui/cn";
@@ -31,7 +32,7 @@ import type {
   FileActions,
   FileScreenData,
 } from "./file-types";
-import { type Kit, useDay, WhyButton } from "./flow-kit";
+import { focusTitle, type Kit, titleId, useDay, WhyButton } from "./flow-kit";
 import { NoticeSheet } from "./notice-sheet";
 import { AddressStep } from "./steps/address-step";
 import { type BankPreset, BankStep } from "./steps/bank-step";
@@ -59,8 +60,10 @@ const desktop = () => window.matchMedia("(min-width: 80rem)").matches;
  * screen; on a desktop every step one under the other, and beside them the
  * steps, what is still missing and the page's one main action. A new file
  * opens on its welcome; after that, on the first step still open. Each step
- * is an address (`?step=`), so "back" and a link from the profile work.
- * Also drawn by the twin on /design/shell/me/file.
+ * is an address (`?step=`), so "back" and a link from the profile work, and
+ * a step opened takes the focus at its title. The file is sent only once
+ * its details are in (`sendBlocker`): until then the send action leads to
+ * the first one still open. Also drawn by the twin on /design/shell/me/file.
  */
 export function FileFlow({
   data,
@@ -68,7 +71,7 @@ export function FileFlow({
   actions,
   base,
   profileHref,
-  keep = "",
+  keep,
   preset,
 }: {
   data: FileScreenData;
@@ -77,8 +80,12 @@ export function FileFlow({
   /** "" in the app, "/design/shell" on the twin. */
   base: string;
   profileHref: string;
-  /** The twin's own query (its state and language), kept from step to step. */
-  keep?: string;
+  /**
+   * The twin's own query (its state and language) in each language, kept
+   * from step to step: the twin keeps nothing, so a language saved there
+   * is its address. The app reads the profile again instead.
+   */
+  keep?: Record<ProfileLocale, string>;
   /** The twin's: a state to open the bank step on. */
   preset?: { bank?: BankPreset };
 }) {
@@ -86,6 +93,7 @@ export function FileFlow({
   const router = useRouter();
   const day = useDay();
   const summaryId = useId();
+  const pageTitle = useRef<HTMLHeadingElement>(null);
   const [notice, setNotice] = useState(false);
   const [toast, setToast] = useState<{ message: string; stamp: string } | null>(
     null,
@@ -114,34 +122,72 @@ export function FileFlow({
   const step: FileStep =
     current === "welcome" || current === "done" ? "start" : current;
   const business = data.businessName;
+  // What keeps the file from going: the send action leads there instead.
+  const blocker = sendBlocker(states);
 
-  const stepHref = (next: FileStep | "done") =>
-    `${base}/me/file?step=${next}${keep ? `&${keep}` : ""}`;
-  const go = (next: FileStep | "done") =>
-    router.push(stepHref(next), { scroll: false });
+  // A step's address (or, with none, the file's own: the welcome), with the
+  // twin's query in the language asked.
+  const stepHref = (next: FileStep | "done" | null, locale = data.locale) => {
+    const kept = keep?.[locale] ?? "";
+    if (next === null) return `${base}/me/file${kept ? `?${kept}` : ""}`;
+    return `${base}/me/file?step=${next}${kept ? `&${kept}` : ""}`;
+  };
+  const go = (next: FileStep | "done" | null, locale?: ProfileLocale) =>
+    router.push(stepHref(next, locale), { scroll: false });
+  // The same screen in another language: the twin's address holds it.
+  const showLocale = (locale: ProfileLocale) => {
+    if (keep && locale !== data.locale) {
+      go(current === "welcome" ? null : current, locale);
+    }
+  };
+  // A step to finish: opened, or, already the one on screen (a desktop's
+  // summary beside it), brought back into view with the focus at its title.
+  const finish = (next: FileStep) => {
+    if (current !== next) {
+      go(next);
+      return;
+    }
+    document.getElementById(`file-${next}`)?.scrollIntoView({ block: "start" });
+    focusTitle(next);
+  };
+  // Where the welcome's way in leads: on where the person stopped (step 0
+  // is the profile's, so a file can be new with it done).
+  const startFilling = () => finish(resume === "done" ? "start" : resume);
 
   // A step opened by its address, or picked up where the person stopped: a
   // phone and a tablet start at its top, a desktop scrolls to it among the
-  // others (the first step is the page's top already).
+  // others (the first step is the page's top already). Opened from another,
+  // its title takes the focus, since what held it (the dock's button, a
+  // step's link) went away or is behind: a keyboard and a screen reader go
+  // on from the step, not from the top of the page. Never on arrival.
   const first = useRef(true);
   useEffect(() => {
     const opening = first.current;
     first.current = false;
+    const reduce = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
     if (current === "welcome" || current === "done") {
-      if (!opening) window.scrollTo({ top: 0 });
+      if (opening) return;
+      window.scrollTo({ top: 0 });
+      const title =
+        current === "done"
+          ? document.getElementById(titleId("done"))
+          : pageTitle.current;
+      title?.focus({ preventScroll: true });
       return;
     }
     if (desktop()) {
       if (opening && current === "start") return;
-      const reduce = window.matchMedia(
-        "(prefers-reduced-motion: reduce)",
-      ).matches;
       document.getElementById(`file-${current}`)?.scrollIntoView({
         block: "start",
         behavior: reduce ? "auto" : "smooth",
       });
     } else if (!opening) {
       window.scrollTo({ top: 0 });
+    }
+    if (!opening) {
+      document.getElementById(titleId(current))?.focus({ preventScroll: true });
     }
   }, [current]);
 
@@ -151,6 +197,7 @@ export function FileFlow({
     actions,
     t,
     go,
+    showLocale,
     profileHref,
     say: (message) => setToast({ message, stamp: Date.now().toString() }),
     openNotice: () => setNotice(true),
@@ -160,15 +207,21 @@ export function FileFlow({
   async function switchLanguage() {
     if (switching) return;
     setSwitching(true);
+    const next = data.locale === "en" ? "he" : "en";
     const result = await actions
-      .saveProfile({ locale: data.locale === "en" ? "he" : "en" })
+      .saveProfile({ locale: next })
       .catch(() => ({ ok: false }) as const);
     setSwitching(false);
     if (!result.ok) kit.say(t("language.failed"));
+    else showLocale(next);
   }
 
   async function send() {
     if (sending) return;
+    if (blocker) {
+      finish(blocker);
+      return;
+    }
     setSending(true);
     setSendFailure(null);
     const result = await actions
@@ -203,7 +256,9 @@ export function FileFlow({
   );
 
   // The card over the hero's foot stays in the flow, so longer words (a
-  // narrow phone, larger text) push down rather than up over the title.
+  // narrow phone, larger text) push down rather than up over the title. On
+  // a desktop it holds the welcome's way in, the page's one main action
+  // while nothing is in yet; a phone and a tablet have it in the dock.
   const hero = (
     <div className="flex flex-col">
       <Card tone="hero" padding="none" className="px-5 pt-6 pb-16">
@@ -219,8 +274,33 @@ export function FileFlow({
         <CardText className="text-ink">
           {t("welcome.body", { count: FILE_STEPS.length })}
         </CardText>
+        <div className="hidden pt-3 xl:flex">
+          <Button size="lg" onClick={startFilling}>
+            <ArrowRight aria-hidden="true" className="rtl:-scale-x-100" />
+            {t("welcome.start")}
+          </Button>
+        </div>
       </Card>
     </div>
+  );
+
+  // The summary's action on a desktop: the send once the details are in;
+  // until then the way to the first still open, the page's main action
+  // unless the welcome above holds it.
+  const summaryAction = blocker ? (
+    <Button
+      size="lg"
+      variant={isNew ? "secondary" : "primary"}
+      onClick={() => finish(blocker)}
+    >
+      <ArrowRight aria-hidden="true" className="rtl:-scale-x-100" />
+      {t(`actions.finish.${blocker}`)}
+    </Button>
+  ) : (
+    <Button size="lg" loading={sending} onClick={send}>
+      <Send aria-hidden="true" className="rtl:-scale-x-100" />
+      {t("actions.send", { business })}
+    </Button>
   );
 
   return (
@@ -251,6 +331,7 @@ export function FileFlow({
         <PageHeader
           title={t("title", { business })}
           subtitle={t("progress", { done, count: FILE_STEPS.length })}
+          headingRef={pageTitle}
         />
       </div>
 
@@ -261,7 +342,9 @@ export function FileFlow({
           {current === "welcome" ? (
             <div className="flex flex-col gap-4">
               {hero}
-              <WhyButton kit={kit} label={t("notice.title")} />
+              <div className="xl:hidden">
+                <WhyButton kit={kit} label={t("notice.title")} />
+              </div>
             </div>
           ) : isNew ? (
             <div className="hidden xl:block">{hero}</div>
@@ -273,15 +356,16 @@ export function FileFlow({
               current === "welcome" && "hidden xl:grid",
             )}
           >
-            {/* Never taller than the screen: the steps and what is missing
-                scroll inside it when they don't fit, and the page's main
-                action stays at its foot, in view on a laptop for a new
-                file too. */}
+            {/* Never taller than the screen: on a desktop the steps and
+                what is missing scroll inside it when they don't fit, with
+                room around them for the steps' lifted shadow, and the
+                page's main action stays at its foot, in view on a laptop
+                for a new file too. A tablet's six steps always fit. */}
             <aside
               aria-label={t("steps.title")}
               className="hidden min-w-0 flex-col gap-3 md:sticky md:top-8 md:flex md:max-h-[calc(100dvh-env(safe-area-inset-bottom)-10.5rem)] xl:order-last xl:max-h-[calc(100dvh-4rem)]"
             >
-              <div className="-mx-1 flex min-h-0 flex-col gap-4 overflow-y-auto px-1 pb-4">
+              <div className="flex min-h-0 flex-col gap-4 xl:-mx-8 xl:-mt-2 xl:overflow-y-auto xl:px-8 xl:pt-2 xl:pb-4">
                 <StepList className="shrink-0">
                   {FILE_STEPS.map((s) => stepRow(s, true))}
                 </StepList>
@@ -317,10 +401,12 @@ export function FileFlow({
                 </div>
               </div>
               <div className="hidden shrink-0 flex-col gap-3 xl:flex">
-                <Button size="lg" loading={sending} onClick={send}>
-                  <Send aria-hidden="true" className="rtl:-scale-x-100" />
-                  {t("actions.send", { business })}
-                </Button>
+                {summaryAction}
+                {blocker ? (
+                  <p className="px-1 text-ink-2 text-sm">
+                    {t("actions.sendWaits")}
+                  </p>
+                ) : null}
                 {sendWords ? (
                   <p role="alert" className="px-1 text-danger text-sm">
                     {sendWords}
@@ -351,6 +437,7 @@ export function FileFlow({
               <Form101Step
                 kit={kit}
                 active={step === "form101"}
+                blocker={blocker}
                 onSend={send}
                 sending={sending}
                 sendFailure={sendWords}
@@ -368,9 +455,7 @@ export function FileFlow({
               icon={
                 <ArrowRight aria-hidden="true" className="rtl:-scale-x-100" />
               }
-              // Step 0 saves to the profile, so a file can be new with it
-              // done: the welcome goes on where the person stopped.
-              onClick={() => go(resume === "done" ? "start" : resume)}
+              onClick={startFilling}
             >
               {t("welcome.start")}
             </DockButton>
@@ -386,8 +471,10 @@ export function FileFlow({
 
 /**
  * Sent, or nothing left to fill: what the business sees now, what is still
- * the person's to do (a pension fund to choose by its day), and every step,
- * to change any of them.
+ * the person's to do (a pension fund to choose by its day, a step still
+ * open), and every step, to change any of them. "סיימת" only once nothing
+ * is open; until then it says how many steps are left, and its main action
+ * leads to the first. With nothing left, the way back to the profile is.
  */
 function DoneView({
   kit,
@@ -397,19 +484,34 @@ function DoneView({
   stepRow: (step: FileStep, link: boolean) => ReactNode;
 }) {
   const { t, data, states } = kit;
+  const router = useRouter();
   const day = useDay();
   const business = data.businessName;
   const due = pensionDue(data.pensionDueOn, data.today);
   const open = FILE_STEPS.filter((s) => states[s] === "open");
+  const next = open[0] ?? null;
+  const sent = data.file?.submitted_at != null;
+  const main = next
+    ? { label: t(`actions.finish.${next}`), go: () => kit.go(next) }
+    : {
+        label: t("done.profile"),
+        go: () => router.push(kit.profileHref),
+      };
   return (
     <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-start md:gap-8">
       <Card padding="lg" className="flex flex-col gap-2">
-        <h2 className="font-bold text-xl">{t("done.title")}</h2>
-        <p className="text-md">
-          {data.file?.submitted_at
-            ? t("done.sent", { business })
-            : t("done.body", { business })}
-        </p>
+        <h2
+          id={titleId("done")}
+          tabIndex={-1}
+          className="font-bold text-xl outline-none"
+        >
+          {next ? t("done.titleLeft", { count: open.length }) : t("done.title")}
+        </h2>
+        {sent || !next ? (
+          <p className="text-md">
+            {sent ? t("done.sent", { business }) : t("done.body", { business })}
+          </p>
+        ) : null}
         {due.kind === "open" ? (
           <p className="text-base">
             {t("done.left", {
@@ -422,9 +524,12 @@ function DoneView({
             {t("done.left", { what: t(`steps.name.${s}`) })}
           </p>
         ))}
-        <Button asChild variant="secondary" className="mt-2 self-start">
-          <Link href={kit.profileHref}>{t("done.profile")}</Link>
-        </Button>
+        <div className="mt-2 hidden xl:flex">
+          <Button size="lg" onClick={main.go}>
+            <ArrowRight aria-hidden="true" className="rtl:-scale-x-100" />
+            {main.label}
+          </Button>
+        </div>
       </Card>
       <section
         aria-labelledby="file-done-steps"
@@ -435,6 +540,19 @@ function DoneView({
         </h2>
         <StepList>{FILE_STEPS.map((s) => stepRow(s, true))}</StepList>
       </section>
+      <div className="xl:hidden">
+        <div aria-hidden="true" className="h-28" />
+        <FloatingDock>
+          <DockButton
+            icon={
+              <ArrowRight aria-hidden="true" className="rtl:-scale-x-100" />
+            }
+            onClick={main.go}
+          >
+            {main.label}
+          </DockButton>
+        </FloatingDock>
+      </div>
     </div>
   );
 }

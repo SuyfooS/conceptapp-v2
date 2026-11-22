@@ -97,6 +97,7 @@ export function BankField({
   onChange,
   warning,
   error,
+  marked = false,
 }: {
   labels: {
     paste: string;
@@ -118,8 +119,15 @@ export function BankField({
   warning: string | null;
   /** What can't be kept at all, in words. */
   error?: string | null;
+  /**
+   * Once the account was pressed to go and couldn't: each part still empty,
+   * and the number while its warning isn't kept, is marked, so the form
+   * takes the person to the first (its own words say how many are missing).
+   */
+  marked?: boolean;
 }) {
   const statusId = useId();
+  const mark = (on: boolean) => (marked && on ? { "aria-invalid": true } : {});
   const [pasted, setPasted] = useState("");
   const [unread, setUnread] = useState(false);
 
@@ -173,6 +181,7 @@ export function BankField({
             onChange({ ...value, bank: Number(key), kept: false })
           }
           placeholder={labels.choose}
+          invalid={marked && value.bank === null}
           className={cn(
             fieldInputClass,
             "justify-between font-normal",
@@ -191,6 +200,7 @@ export function BankField({
               kept: false,
             })
           }
+          {...mark(value.branch === "")}
           dir="ltr"
           className={cn(ltrInputClass, "tabular-nums")}
           inputMode="numeric"
@@ -207,7 +217,9 @@ export function BankField({
             })
           }
           error={error ?? undefined}
-          aria-describedby={warning ? statusId : undefined}
+          // The warning's words describe it; without one, the field's own.
+          {...(warning ? { "aria-describedby": statusId } : {})}
+          {...mark(value.account === "" || (warning !== null && !value.kept))}
           dir="ltr"
           className={cn(ltrInputClass, "tabular-nums")}
           inputMode="numeric"

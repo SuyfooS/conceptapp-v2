@@ -5,8 +5,10 @@ import he from "../messages/he.json" with { type: "json" };
 import { checkBankAccount } from "../packages/domain/bank-account";
 import {
   clearDemoFile,
+  codesSentSince,
   demoFileFacts,
   demoFileLog,
+  notePhoneChange,
   restoreDemoFile,
 } from "./db";
 import { SMS_COOLDOWN_MS, secondPage, signIn } from "./session";
@@ -206,6 +208,20 @@ test("a new worker picks how to be addressed, stops at the account and comes bac
   expect(facts?.idKind).toBe("il");
   // Sealed in server code, never the demo's made-up format.
   expect(facts?.idByte).toBe(1);
+
+  // Form 101 from the profile's row: with the account still open, the
+  // file can't go yet, and its action leads there instead.
+  await page.goto("/me/file?step=form101");
+  await expect(
+    visible(
+      page,
+      "button",
+      heT("app.file.actions.send", { business: BUSINESS }),
+    ),
+  ).toHaveCount(0);
+  await visible(page, "button", f.actions.finish.bank).click();
+  await expect(page).toHaveURL(/step=bank$/);
+  expect((await demoFileFacts(NOA.id))?.submitted).toBe(false);
 });
 
 test("a wrong account number gets a warning in words and is saved with a flag", async ({
@@ -236,11 +252,22 @@ test("a wrong account number gets a warning in words and is saved with a flag", 
       name: heT("app.file.bank.instruction", { form: "f", business: BUSINESS }),
     })
     .check();
-  await expect(visible(page, "button", f.bank.confirm)).toBeDisabled();
+  // Only the warning is in the way: said above the action, which takes
+  // the person to the number and sends nothing.
+  const checkFirst = page
+    .getByText(heT("app.file.bank.checkFirst", { keep: f.bank.keep }))
+    .filter({ visible: true });
+  await expect(checkFirst).toBeVisible();
+  const before = new Date(Date.now() - 1000);
+  await visible(page, "button", f.bank.confirm).click();
+  await expect(bank.getByLabel(f.bank.account)).toBeFocused();
+  await expect(page.getByLabel(f.bank.code.label)).toHaveCount(0);
+  expect(await codesSentSince(NOA.e164, before)).toBe(0);
   await bank.getByRole("button", { name: f.bank.keep }).click();
   await expect(
     bank.getByText(heT("app.file.bank.kept", { business: BUSINESS })),
   ).toBeVisible();
+  await expect(checkFirst).toHaveCount(0);
   await expectCleanPage(page);
 
   const since = await askForBankCode(page);
@@ -417,6 +444,76 @@ test("the own ID shows masked, and hides again after a minute", async ({
   await page.clock.fastForward(60_000);
   await expect(identity.getByText("•••0018")).toBeVisible();
   await expect(identity.getByText("000000018")).toHaveCount(0);
+});
+
+// The week after a phone change: the account is tried before any SMS, so
+// no code goes to a number the hold doesn't trust, and the day it opens is
+// said, with the code's action off until then.
+test("an account waits a week after a phone change, and no code goes", async ({
+  page,
+}, testInfo) => {
+  await notePhoneChange(NOA.id, 2);
+  await signIn(page, NOA);
+  await page.goto("/me/file");
+  await start(page, testInfo);
+  await fillToBank(page, testInfo);
+  const bank = section(page, "bank");
+  await bank.getByLabel(f.bank.paste).fill("12-600-100001");
+  await bank.getByRole("radio", { name: f.bank.self, exact: true }).check();
+  await bank
+    .getByRole("checkbox", {
+      name: heT("app.file.bank.instruction", { form: "f", business: BUSINESS }),
+    })
+    .check();
+  const before = new Date(Date.now() - 1000);
+  await visible(page, "button", f.bank.confirm).click();
+  await expect(
+    page
+      .getByText(f.bank.phoneHold.split("{date}")[0] ?? "")
+      .filter({ visible: true }),
+  ).toBeVisible();
+  await expect(page.getByLabel(f.bank.code.label)).toHaveCount(0);
+  await expect(visible(page, "button", f.bank.confirm)).toBeDisabled();
+  expect(await codesSentSince(NOA.e164, before)).toBe(0);
+  expect((await demoFileFacts(NOA.id))?.bankCode).toBeNull();
+  await expectCleanPage(page);
+});
+
+// Step 0's language is the file's own until one is picked there: after the
+// language button above, it shows the new one, and saving step 0 keeps it.
+test("step 0 follows the language button, and keeps it", async ({
+  page,
+}, testInfo) => {
+  await signIn(page, NOA);
+  await page.goto("/me/file?step=start");
+  await page.getByRole("button", { name: f.language.switch }).click();
+  const english = page.locator('[dir="ltr"][lang="en"]');
+  const first = english.getByRole("region", {
+    name: en.app.file.steps.name.start,
+  });
+  await expect(
+    first.getByRole("radio", { name: en.app.file.start.en }),
+  ).toBeChecked();
+  await first.getByRole("radio", { name: en.app.file.start.f }).check();
+  if (isDesktop(testInfo)) {
+    await first
+      .getByRole("button", { name: en.app.file.actions.saveStart })
+      .click();
+  } else {
+    await visible(page, "button", en.app.file.actions.next).click();
+    await expect(page).toHaveURL(/step=identity$/);
+  }
+  await expect(
+    page.getByText(en.app.file.saved, { exact: true }),
+  ).toBeVisible();
+  // Still English: the file's language wasn't taken back.
+  await page.reload();
+  await expect(
+    english.getByRole("heading", {
+      level: 1,
+      name: en.app.file.title.replace("{business}", BUSINESS),
+    }),
+  ).toBeVisible();
 });
 
 test("the file answers no-store and stays closed to others", async ({

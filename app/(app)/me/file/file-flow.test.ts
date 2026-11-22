@@ -44,6 +44,7 @@ const STATES = [
   "minor",
   "warning",
   "code",
+  "hold",
   "saved",
   "done",
 ] as const;
@@ -171,7 +172,7 @@ describe("a step with everything filled in", () => {
     );
     expect(missing).toEqual([]);
     expect(html).toContain(
-      he.app.file.address.tooLong
+      he.app.file.tooLong
         .replace("<ltr>", '<span dir="ltr">')
         .replace("{max}", "10")
         .replace("</ltr>", "</span>"),
@@ -198,6 +199,166 @@ describe("a step with everything filled in", () => {
     const dock = dockButtons(html);
     expect(dock).toHaveLength(1);
     expect(dock[0]).not.toMatch(DISABLED);
+  });
+});
+
+const business = "מסעדת הדגמה";
+const f = he.app.file;
+
+/** A button's opening tag, by the words it holds. */
+const buttonWith = (html: string, words: string) =>
+  (
+    html.match(/<button[^>]*>(?:(?!<\/button>)[\s\S])*<\/button>/g) ?? []
+  ).filter((button) => button.includes(words));
+
+describe("sending the file", () => {
+  it("leads to the first detail still open instead, with words that name it", () => {
+    const missing: string[] = [];
+    // Stopped at the account: the 101's dock and the summary lead there.
+    const html = draw("stopped", "he", "form101", missing);
+    expect(missing).toEqual([]);
+    expect(html).not.toContain(heT("app.file.actions.send", { business }));
+    // The dock's main action and the desktop's summary.
+    expect(buttonWith(html, f.actions.finish.bank)).toHaveLength(2);
+    expect(html).toContain(f.actions.sendWaits);
+  });
+
+  it("goes once the details are in, though Form 101 is still on paper", () => {
+    const { data } = fileScreenDemo("saved", "he");
+    const missing: string[] = [];
+    const html = drawData(
+      {
+        ...data,
+        missing: [],
+        file: data.file && { ...data.file, pension_answer: "employer" },
+      },
+      "he",
+      "form101",
+      missing,
+    );
+    expect(missing).toEqual([]);
+    expect(
+      buttonWith(html, heT("app.file.actions.send", { business })),
+    ).toHaveLength(2);
+    expect(html).not.toContain(f.actions.sendWaits);
+  });
+
+  it("gives a new file's welcome on a desktop its own way in, and the summary's stays quiet", () => {
+    const missing: string[] = [];
+    const html = draw("new", "he", null, missing);
+    // The dock's (a phone's and a tablet's) and the hero's (a desktop's).
+    expect(buttonWith(html, f.welcome.start)).toHaveLength(2);
+    const summary = buttonWith(html, f.actions.finish.identity);
+    expect(summary).toHaveLength(1);
+    expect(summary[0]).toContain("bg-surface-2 text-ink");
+    expect(summary[0]).not.toContain("bg-accent text-accent-ink");
+    expect(html).not.toContain(heT("app.file.actions.send", { business }));
+  });
+});
+
+describe("the done screen", () => {
+  it("says 'סיימת' only with nothing open, and leads back to the profile", () => {
+    const missing: string[] = [];
+    const html = draw("done", "he", "done", missing);
+    expect(missing).toEqual([]);
+    expect(html).toContain(`>${f.done.title}</h2>`);
+    // The screen's main action: in the dock, and inline on a desktop.
+    expect(buttonWith(html, f.done.profile)).toHaveLength(2);
+  });
+
+  it("says how many steps are left otherwise, and leads to the first", () => {
+    const missing: string[] = [];
+    const html = draw("stopped", "he", "done", missing);
+    expect(missing).toEqual([]);
+    expect(html).not.toContain(`>${f.done.title}</h2>`);
+    expect(html).toContain(heT("app.file.done.titleLeft", { count: 3 }));
+    expect(buttonWith(html, f.actions.finish.bank)).toHaveLength(2);
+  });
+});
+
+describe("a step's title", () => {
+  it("can take the focus, where a keyboard goes on from", () => {
+    const missing: string[] = [];
+    const html = draw("stopped", "he", "bank", missing);
+    for (const step of ["start", "identity", "address", "bank"]) {
+      expect(html).toMatch(
+        new RegExp(`<h2 id="file-${step}-title" tabindex="-1"`),
+      );
+    }
+  });
+});
+
+describe("a desktop's every step at once", () => {
+  it("says 'אמשיך אחר כך' and 'למה מבקשים את זה' on a phone and a tablet only", () => {
+    const missing: string[] = [];
+    const html = draw("stopped", "he", "bank", missing);
+    const later = html.match(
+      new RegExp(`<a [^>]*>${f.actions.later}</a>`, "g"),
+    );
+    expect(later?.length).toBeGreaterThan(0);
+    for (const link of later ?? []) expect(link).toContain("xl:hidden");
+    // Each step's own, in the wrapper that hides it on a desktop.
+    const why = html.match(
+      new RegExp(
+        `<div class="[^"]*"><button[^>]*>(?:(?!</button>)[\\s\\S])*${f.why}</button></div>`,
+        "g",
+      ),
+    );
+    expect(why?.length).toBeGreaterThan(0);
+    for (const wrap of why ?? []) {
+      expect(wrap).toMatch(/^<div class="[^"]*xl:hidden/);
+    }
+  });
+});
+
+describe("the bank step", () => {
+  it("says above its action when only the check's warning is in the way, and can be pressed", () => {
+    const missing: string[] = [];
+    const html = draw("warning", "he", "bank", missing);
+    expect(missing).toEqual([]);
+    expect(html).toContain(
+      heT("app.file.bank.checkFirst", { keep: f.bank.keep }).replace(
+        /"/g,
+        "&quot;",
+      ),
+    );
+    const dock = dockButtons(html);
+    expect(dock).toHaveLength(1);
+    expect(dock[0]).not.toMatch(DISABLED);
+    // A desktop's own action is never pressed in vain without words.
+    for (const button of buttonWith(html, f.bank.confirm)) {
+      expect(button).not.toMatch(DISABLED);
+    }
+  });
+
+  it("holds the code in the week after a phone change, and says the day", () => {
+    const missing: string[] = [];
+    const html = draw("hold", "he", "bank", missing);
+    expect(missing).toEqual([]);
+    expect(html).toContain("27 בנובמבר 2026");
+    expect(html).toContain(f.bank.phoneHold.split("{date}")[0] ?? "");
+    for (const button of buttonWith(html, f.bank.confirm)) {
+      expect(button).toMatch(DISABLED);
+    }
+  });
+
+  it("offers the saved account back while a new one is typed", () => {
+    const { data } = fileScreenDemo("saved", "he");
+    const missing: string[] = [];
+    const html = drawData(data, "he", "bank", missing, {
+      bank: {
+        value: { bank: null, branch: "", account: "", kept: false },
+        holder: "self",
+        instruction: false,
+        phase: "edit",
+      },
+    });
+    expect(missing).toEqual([]);
+    expect(buttonWith(html, f.bank.keepCurrent)).toHaveLength(1);
+    // Not for a file with no account yet.
+    expect(draw("warning", "he", "bank", missing)).not.toContain(
+      f.bank.keepCurrent,
+    );
   });
 });
 

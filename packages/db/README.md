@@ -1731,7 +1731,11 @@ per role: owners always hold it, accountants by `private.accountant_perms`
   person's own write); refusals read by `fileFailureOf`, and in the week
   after a phone change a bank write's says the day it opens again
   (`opensOn`, from the refusal's DETAIL, a date only: H5a's bank step says
-  it). Covered by
+  it). `checkBankChange` tries a bank write before its SMS goes, dated past
+  any code's ten minutes (`at_time`), so it always stops at the code and
+  keeps nothing, and says the hold first. The step-up code goes to
+  `auth.users.phone` (read with the secret key), never `profiles.phone`,
+  which a phone change doesn't reach yet. Covered by
   `employee_files.test.sql`, `employee_files_writes.test.sql`,
   `employee_files_demo.test.sql`, `employee-files.db.test.ts` (the real
   sealing against the database), `payroll_access`, `roles_catalogue`,

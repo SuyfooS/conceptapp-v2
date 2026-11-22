@@ -65,6 +65,9 @@ describe("normalizeCityQuery", () => {
     const en = (text: string) => normalizeCityQuery(text, "en");
     expect(en("Kiryat Ata")).toBe(en("QIRYAT ATTA"));
     expect(en("tel-aviv")).toBe(en("Tel Aviv"));
+    // A doubled letter across the list's apostrophe is one letter too.
+    expect(en("Raanana")).toBe(en("Ra'anana"));
+    expect(en("Beer Sheva")).toBe(en("Be'er Sheva"));
   });
 });
 
@@ -80,6 +83,19 @@ describe("searchCities", () => {
     expect(codes("kiryat ata")[0]).toBe(6800);
     expect(codes("tel aviv")[0]).toBe(5000);
     expect(codes("Haifa")[0]).toBe(4000);
+  });
+
+  it("finds an English name the list writes with an apostrophe, typed without it", () => {
+    // "Ra'anana", "Be'er Sheva", "Ma'ale Adummim", "Be'er Ya'aqov".
+    expect(codes("Raanana")[0]).toBe(8700);
+    expect(codes("Raan")).toContain(8700);
+    expect(codes("Beer Sheva")[0]).toBe(9000);
+    expect(codes("Maale Adumim")[0]).toBe(3616);
+    expect(codes("beer yaakov")[0]).toBe(2530);
+    // And with it, as before.
+    expect(codes("Ra'anana")[0]).toBe(8700);
+    expect(cityNamed("Raanana")?.code).toBe(8700);
+    expect(cityNamed("beer sheva")?.code).toBe(9000);
   });
 
   it("puts names that start with the query before names that only hold it", () => {

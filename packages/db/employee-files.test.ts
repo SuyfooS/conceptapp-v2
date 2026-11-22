@@ -448,6 +448,19 @@ describe("saveEmployeeDetails", () => {
     expect(await saveBank()).toEqual({ ok: false, failure: "stepUp" });
   });
 
+  it("dates the write now, unless it is told when", async () => {
+    await files.saveEmployeeDetails(
+      NOA,
+      BUSINESS,
+      NOA,
+      { pension: { answer: "later" } },
+      TODAY,
+    );
+    expect(callsTo("set_employee_details")[0]?.args).not.toHaveProperty(
+      "at_time",
+    );
+  });
+
   it("fails closed on a reply that doesn't parse", async () => {
     db.answers.set_employee_details = () => ({
       data: { changed: ["religion"] },
@@ -462,6 +475,82 @@ describe("saveEmployeeDetails", () => {
         TODAY,
       ),
     ).toEqual({ ok: false, failure: "failed" });
+  });
+});
+
+describe("checkBankChange", () => {
+  const account = {
+    bank: 12,
+    branch: 600,
+    account: "100001",
+    holder: "self",
+    instruction: "v1",
+  };
+  const refusal = (hint: string, details: string | null = null): Failure => ({
+    code: "55000",
+    hint,
+    message: "refused",
+    details,
+  });
+
+  it("tries the account as the write would, dated past any code the database holds", async () => {
+    db.answers.set_employee_details = () => ({
+      data: null,
+      error: refusal("step_up"),
+    });
+    const before = Date.now();
+    expect(await files.checkBankChange(NOA, BUSINESS, account, TODAY)).toEqual({
+      ok: true,
+    });
+    const [tried] = callsTo("set_employee_details");
+    expect(tried?.args).toMatchObject({ actor: NOA, person: NOA });
+    expect(Object.keys(tried?.args.patch as object)).toEqual(["bank"]);
+    // More than a code's ten minutes on, so the write stops at the code.
+    const at = Date.parse(tried?.args.at_time as string);
+    expect(at - before).toBeGreaterThanOrEqual(files.BANK_TRY_AHEAD_MS - 1000);
+    expect(files.BANK_TRY_AHEAD_MS).toBeGreaterThan(10 * 60_000);
+  });
+
+  it("says the week after a phone change, with the day it opens", async () => {
+    db.answers.set_employee_details = () => ({
+      data: null,
+      error: refusal("phone_hold", "2026-11-30"),
+    });
+    expect(await files.checkBankChange(NOA, BUSINESS, account, TODAY)).toEqual({
+      ok: false,
+      failure: "phoneHold",
+      opensOn: "2026-11-30",
+    });
+  });
+
+  it("says any other refusal as the save would, and an account it can't keep", async () => {
+    db.answers.set_employee_details = () => ({
+      data: null,
+      error: { code: "55000", hint: "demo", message: "A demo" },
+    });
+    expect(
+      await files.checkBankChange(NOA, BUSINESS, account, TODAY),
+    ).toMatchObject({ ok: false, failure: "demo" });
+    expect(
+      await files.checkBankChange(
+        NOA,
+        BUSINESS,
+        { ...account, holder: "friend" },
+        TODAY,
+      ),
+    ).toEqual({ ok: false, failure: "invalid" });
+  });
+
+  it("never takes a write that went through for a yes", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    db.answers.set_employee_details = () => ({
+      data: { changed: ["bank"], change_due_by: null },
+      error: null,
+    });
+    expect(await files.checkBankChange(NOA, BUSINESS, account, TODAY)).toEqual({
+      ok: false,
+      failure: "failed",
+    });
   });
 });
 

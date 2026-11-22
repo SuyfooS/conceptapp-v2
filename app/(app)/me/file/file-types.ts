@@ -104,24 +104,27 @@ export type CodeFailure =
   | "tooMany"
   | "wrongCode";
 
-export type SendCodeAnswer =
-  | { ok: true; tail: string }
-  | { ok: false; failure: CodeFailure | FileActionFailure };
+/** A code's or an account's refusal; in the week after a phone change, with its day. */
+type CodeRefusal = {
+  ok: false;
+  failure: CodeFailure | FileActionFailure;
+  /** In the week after a phone change: the day a change opens again. */
+  opensOn?: string;
+};
+
+/** Sent, to the number ending in `tail`; or why not, before any SMS went. */
+export type SendCodeAnswer = { ok: true; tail: string } | CodeRefusal;
 
 export type ConfirmBankAnswer =
   | { ok: true; review: "new" | "warned" }
-  | {
-      ok: false;
-      failure: CodeFailure | FileActionFailure;
-      /** In the week after a phone change: the day a change opens again. */
-      opensOn?: string;
-    };
+  | CodeRefusal;
 
 /** The screen's writes, bound to the business it was drawn for, or the twin's stand-ins. */
 export type FileActions = {
   saveStep: (step: SavedStep, input: unknown) => Promise<SaveStepAnswer>;
   reveal: (field: "id" | "bank_account") => Promise<RevealAnswer>;
-  sendBankCode: () => Promise<SendCodeAnswer>;
+  /** The account as typed goes too: tried whole before any SMS. */
+  sendBankCode: (input: { bank: unknown }) => Promise<SendCodeAnswer>;
   confirmBank: (input: {
     code: string;
     bank: unknown;

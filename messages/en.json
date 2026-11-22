@@ -4047,6 +4047,15 @@
         "back": "Back",
         "later": "I'll carry on later",
         "send": "Send the details to {business}",
+        "finish": {
+          "start": "Choose how to address you",
+          "identity": "Complete your ID details",
+          "address": "Complete your address",
+          "bank": "Complete the account for your wages",
+          "pension": "Complete the pension answer",
+          "form101": "Hand in Form 101"
+        },
+        "sendWaits": "You can send your details once your ID details, address, account and pension are filled in.",
         "edit": "Change",
         "saveStart": "Save the choice",
         "saveIdentity": "Save your details",
@@ -4057,6 +4066,8 @@
       "optional": "Optional",
       "optionalField": "{field} (optional)",
       "missingRequired": "{count, plural, one {One more field} other {# more fields}} to continue",
+      "tooLong": "Up to <ltr>{max}</ltr> characters here.",
+      "changeDue": "An updated Form 101 is due within a week of the change, by {date}",
       "search": {
         "placeholder": "Start typing"
       },
@@ -4089,7 +4100,9 @@
         "idReason": "Required by law: for your payslip, Form 101, your pension and the safety training record.",
         "idInvalid": "This ID number isn't valid. Check the digits again.",
         "documentInvalid": "The number can hold only English letters and digits.",
+        "documentShort": "That number is too short. It has at least <ltr>{min}</ltr> characters.",
         "keepStored": "Leave it empty to keep the number already saved.",
+        "retypeToChange": "To change the document's details, type its number again.",
         "firstName": "First name as on the document",
         "lastName": "Last name as on the document",
         "namesReason": "Required by law: for your payslip and Form 101.",
@@ -4098,8 +4111,7 @@
         "birthInvalid": "That isn't a date. Check the day, month and year.",
         "birthRange": "The date of birth has to be in the past.",
         "minorTitle": "Before you start work",
-        "minorBody": "Before you start work, bring {business} a medical certificate from your family doctor and your ID card. {business} keeps a copy until a year after the work ends.",
-        "changeDue": "An updated Form 101 is due within a week of the change, by {date}"
+        "minorBody": "Before you start work, bring {business} a medical certificate from your family doctor and your ID card. {business} keeps a copy until a year after the work ends."
       },
       "date": {
         "day": "Day",
@@ -4123,7 +4135,6 @@
         "zipInvalid": "A postcode has 7 digits.",
         "numberInvalid": "A house number is digits, and may end in one letter, like <ltr>12A</ltr>.",
         "poBoxInvalid": "A PO box is up to 6 digits.",
-        "tooLong": "Up to <ltr>{max}</ltr> characters here.",
         "lineInvalid": "One line of text here, without special characters.",
         "email": "Email",
         "emailReason": "For {business} to contact you about your pay.",
@@ -4149,12 +4160,14 @@
         },
         "keep": "The number is right, save it",
         "kept": "We'll save the number as it is, and {business} will check it.",
+        "checkFirst": "Check the account number, or press \"{keep}\" if it is right.",
         "holder": "Whose account is it?",
         "self": "Mine",
         "family": "My spouse's, parent's or child's",
         "other": "Someone else's",
         "holderName": "The account holder's full name",
         "otherNote": "By law, wages go only to your own account or your spouse's, parent's or child's. If you need something else, talk to {business}.",
+        "otherBlocked": "Wages go only to your own account or your spouse's, parent's or child's.",
         "instruction": "{form, select, other {I ask}} {business} to pay my wages into this account",
         "confirm": "Confirm the account with a code",
         "code": {
@@ -4174,7 +4187,8 @@
         "current": "Account for wages",
         "currentLine": "{bank} · branch <ltr>{branch}</ltr>",
         "holderLine": "In the name of {name}",
-        "change": "Change the account"
+        "change": "Change the account",
+        "keepCurrent": "Keep the current account"
       },
       "pension": {
         "question": "Do you already have an active pension fund?",
@@ -4207,6 +4221,7 @@
       },
       "done": {
         "title": "All done",
+        "titleLeft": "{count, plural, one {One step left} other {# steps left}}",
         "body": "{business} will see that your details are complete.",
         "sent": "The details were sent to {business}.",
         "left": "Still to do: {what}",

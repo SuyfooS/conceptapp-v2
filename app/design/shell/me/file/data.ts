@@ -10,7 +10,8 @@ import { business } from "../../data";
  * Noa's hiring file on the twin (profile H5a), made up, in each state the
  * screens show: nothing yet (the welcome), part filled and stopped at the
  * account, a minor's birth date, an account the check warns about and its
- * code, an account saved, and everything sent. The ID and the account are
+ * code, an account held in the week after a phone change, an account saved,
+ * and everything sent. The ID and the account are
  * from the test ranges (tooling/demo-files.test.ts), and nothing typed on
  * the twin is kept.
  */
@@ -29,8 +30,22 @@ export const FILE_DEMO_WARNED: BankFieldValue = {
   kept: false,
 };
 
+/** The account Noa typed on the twin's `hold`, one the check passes. */
+const FILE_DEMO_HELD: BankFieldValue = {
+  bank: 12,
+  branch: "600",
+  account: FILE_DEMO_NUMBERS.bankAccount,
+  kept: false,
+};
+
 /** The code the twin's code step takes. */
 export const FILE_DEMO_CODE = "123456";
+
+/** The day Noa's bank change opens again on the twin's `hold`: her phone changed. */
+export const FILE_DEMO_HELD_UNTIL = "2026-11-27";
+
+/** When an updated 101 is due on the twin's `done`, after a move: a week on. */
+export const FILE_DEMO_CHANGE_DUE = "2026-12-01";
 
 const EMPTY_ROW: FileRow = {
   legal_first_name: null,
@@ -104,6 +119,7 @@ export type FileDemoState =
   | "minor"
   | "warning"
   | "code"
+  | "hold"
   | "saved"
   | "done";
 
@@ -113,6 +129,7 @@ export function fileDemoStateOf(param: unknown): FileDemoState {
     case "minor":
     case "warning":
     case "code":
+    case "hold":
     case "saved":
     case "done":
       return param;
@@ -198,6 +215,16 @@ export function fileScreenDemo(
             tail: "0003",
           },
         }
-      : undefined;
+      : state === "hold"
+        ? {
+            bank: {
+              value: FILE_DEMO_HELD,
+              holder: "self" as const,
+              instruction: true,
+              phase: "edit" as const,
+              heldUntil: FILE_DEMO_HELD_UNTIL,
+            },
+          }
+        : undefined;
   return { data, preset };
 }

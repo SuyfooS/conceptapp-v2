@@ -562,7 +562,8 @@ async function storedOfOwn(
  * for the person's own write, a sealed group typed again as stored left out,
  * so it doesn't make the 101 due again. `today` is the business's day. In
  * the week after a phone change a bank change is refused with the day it
- * opens again (`opensOn`).
+ * opens again (`opensOn`). `atTime` dates the write for the database (now,
+ * unless `checkBankChange` tries one).
  */
 export async function saveEmployeeDetails(
   actorId: string,
@@ -570,6 +571,7 @@ export async function saveEmployeeDetails(
   personId: string,
   input: unknown,
   today: string,
+  { atTime }: { atTime?: Date } = {},
 ): Promise<
   | { ok: true; changed: FileDetailField[]; changeDueBy: string | null }
   | FileWriteFailure
@@ -686,7 +688,13 @@ export async function saveEmployeeDetails(
 
   const { data, error } = await createAdminClient().rpc(
     "set_employee_details",
-    { actor: actorId, business: businessId, person: personId, patch },
+    {
+      actor: actorId,
+      business: businessId,
+      person: personId,
+      patch,
+      ...(atTime ? { at_time: atTime.toISOString() } : {}),
+    },
   );
   if (error) return failedWith("saving a file failed", error);
   const reply = detailsReply.safeParse(data);
@@ -696,6 +704,45 @@ export async function saveEmployeeDetails(
     changed: reply.data.changed,
     changeDueBy: reply.data.change_due_by,
   };
+}
+
+/**
+ * How far on `checkBankChange` dates its try: past the ten minutes a code
+ * counts for (`set_employee_details`), with room for the two clocks.
+ */
+export const BANK_TRY_AHEAD_MS = 15 * 60_000;
+
+/**
+ * Whether the person's own bank change could be saved now but for its code,
+ * asked before an SMS goes, so no code is spent on what couldn't be kept:
+ * the database's own rules run on the account as typed (a demo, the module
+ * off, an account it can't keep, the week after a phone change with the day
+ * it opens), in the write itself, dated `BANK_TRY_AHEAD_MS` on. A code it
+ * holds is older than ten minutes by then, so the write always stops at the
+ * code and keeps nothing; that refusal (`stepUp`) is the answer "it can go".
+ * A phone change whose week ends within those minutes still holds here, and
+ * says the day it opens: today.
+ */
+export async function checkBankChange(
+  personId: string,
+  businessId: string,
+  bank: unknown,
+  today: string,
+): Promise<FileWriteResult> {
+  const tried = await saveEmployeeDetails(
+    personId,
+    businessId,
+    personId,
+    { bank },
+    today,
+    { atTime: new Date(Date.now() + BANK_TRY_AHEAD_MS) },
+  );
+  if (tried.ok) {
+    // Never: no code counts that far on. Said, and taken as a failure.
+    console.error("a bank change went through without its code");
+    return { ok: false, failure: "failed" };
+  }
+  return tried.failure === "stepUp" ? { ok: true } : tried;
 }
 
 /** The person's own emergency contact, sealed, or null to remove it. */

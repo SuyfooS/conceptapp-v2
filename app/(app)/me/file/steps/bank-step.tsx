@@ -2,7 +2,11 @@
 
 import { accountHint, checkBankAccount } from "@domain/bank-account";
 import { banksOn, formatBankCode } from "@domain/banks";
-import { BANK_INSTRUCTION_VERSION, maskedHint } from "@domain/employee-file";
+import {
+  BANK_INSTRUCTION_VERSION,
+  FILE_TEXT_MAX,
+  maskedHint,
+} from "@domain/employee-file";
 import { nextFileStep } from "@domain/employee-file-steps";
 import { tidyLine } from "@domain/typed-text";
 import { BankField, type BankFieldValue, EMPTY_BANK } from "@ui/bank-field";
@@ -13,30 +17,36 @@ import { CodeSlots, type CodeSlotsStatus } from "@ui/code-slots";
 import { MaskedValue } from "@ui/masked-value";
 import { TextField } from "@ui/text-field";
 import { useTranslations } from "next-intl";
-import { type FormEvent, useId, useState } from "react";
+import { type FormEvent, useId, useRef, useState } from "react";
 import { type CodeKey, codeKey, failureKey } from "../failure-words";
 import type { CodeFailure, FileActionFailure } from "../file-types";
 import {
   Failure,
   FileSection,
+  focusFirstField,
+  focusTitle,
   formArgs,
   type Kit,
   LaterLink,
   ltr,
   Reason,
   StepDock,
+  showFirstProblem,
   useDay,
 } from "../flow-kit";
+import { bankBlock } from "../flow-rules";
 
 type Holder = "self" | "family" | "other";
 
-/** What the twin opens the step on: an account typed, and the code asked for. */
+/** What the twin opens the step on: an account typed, its code asked for, or held. */
 export type BankPreset = {
   value: BankFieldValue;
   holder: Holder;
   instruction: boolean;
   phase: "edit" | "code";
   tail?: string;
+  /** The week after a phone change: the day a change opens again. */
+  heldUntil?: string;
 };
 
 type Problem =
@@ -49,9 +59,14 @@ type Problem =
  * to keep a number the check doubts (it is then flagged for a holder);
  * whose account it is (the person's or a close relative's: the law allows
  * no one else); the written instruction, in the chosen form; and a code by
- * SMS to the person's own number, which the database asks for before any
- * bank change. Saved, the account shows by its bank, branch and last
- * digits, and "החלפת החשבון" starts again.
+ * SMS to the number the person signs in with, which the database asks for
+ * before any bank change. The account is tried whole before the code goes,
+ * so the week after a phone change says its day before any SMS, and keeps
+ * the code from going until then. What keeps the account back is said
+ * above its action, and a press that can't go takes the person to the
+ * first field it is about. Saved, the account shows by its bank, branch and
+ * last digits; "החלפת החשבון" starts again, and "השארת החשבון הנוכחי" goes
+ * back to the one saved.
  */
 export function BankStep({
   kit,
@@ -67,6 +82,7 @@ export function BankStep({
   const day = useDay();
   const formId = useId();
   const holderNameId = useId();
+  const form = useRef<HTMLFormElement>(null);
   const file = data.file;
   const [phase, setPhase] = useState<"edit" | "code" | "saved">(
     preset?.phase ?? (file?.has.bank_account ? "saved" : "edit"),
@@ -80,12 +96,17 @@ export function BankStep({
   const [tail, setTail] = useState<string | null>(
     preset?.tail ?? data.phoneTail,
   );
+  const [tried, setTried] = useState(false);
   const [sending, setSending] = useState(false);
   const [status, setStatus] = useState<CodeSlotsStatus>("idle");
   // The slots send only when they fill up, so after a refusal that isn't the
   // digits' fault they start again, empty.
   const [attempt, setAttempt] = useState(0);
   const [problem, setProblem] = useState<Problem | null>(null);
+  // The week after a phone change: no code goes until the day it opens.
+  const [heldUntil, setHeldUntil] = useState<string | null>(
+    preset?.heldUntil ?? null,
+  );
   const [review, setReview] = useState<"new" | "warned" | null>(null);
   // The account just confirmed, shown until the server's answer has it.
   const [confirmed, setConfirmed] = useState<{
@@ -118,19 +139,53 @@ export function BankStep({
   const warning =
     check?.status === "warning" ? t(`bank.warning.${check.warning}`) : null;
   const unusable = check?.status === "unusable";
+  const holderNameShort =
+    holder === "family" && tidyLine(holderName).length < 2;
+  const holderNameError =
+    holder === "family" &&
+    tidyLine(holderName).length > FILE_TEXT_MAX.holderName
+      ? t.rich("tooLong", { max: FILE_TEXT_MAX.holderName, ltr })
+      : null;
   const empty = [
     value.bank === null,
     value.branch === "",
     value.account === "",
     holder === null,
-    holder === "family" && tidyLine(holderName).length < 2,
+    holderNameShort,
     !instruction,
   ].filter(Boolean).length;
-  const ready =
-    empty === 0 &&
-    holder !== "other" &&
-    !unusable &&
-    (warning === null || value.kept);
+  const block = bankBlock({
+    empty,
+    holderOther: holder === "other",
+    unusable,
+    warning: warning !== null,
+    kept: value.kept,
+  });
+  const held = heldUntil !== null && heldUntil > data.today;
+  const ready = block === null && !holderNameError && !held;
+  // What keeps the account back, said above its action before it is pressed.
+  const blockWords =
+    block === "missing"
+      ? t("missingRequired", { count: empty })
+      : block === "other"
+        ? t("bank.otherBlocked")
+        : block === "unusable"
+          ? t("bank.accountInvalid")
+          : block === "warning"
+            ? t("bank.checkFirst", { keep: t("bank.keep") })
+            : null;
+  const holdWords =
+    held && heldUntil ? t("bank.phoneHold", { date: day(heldUntil) }) : null;
+
+  /** The account as the server takes it, from what is typed. */
+  const typedBank = () => ({
+    bank: value.bank,
+    branch: Number(value.branch),
+    account: value.account,
+    holder,
+    ...(holder === "family" ? { holderName } : {}),
+    instruction: BANK_INSTRUCTION_VERSION,
+  });
 
   function said(
     failure: CodeFailure | FileActionFailure,
@@ -143,19 +198,44 @@ export function BankStep({
         ? { of: "code", key }
         : { of: "file", failure: failure as FileActionFailure, opensOn },
     );
+    if (failure === "phoneHold") {
+      // No code goes until the day it opens: back to the account, held.
+      setHeldUntil(opensOn ?? data.today);
+      setStatus("idle");
+      setPhase("edit");
+      focusTitle("bank");
+    }
+  }
+
+  /** Everything typed goes, and with it what was said about it. */
+  function clearTyped() {
+    setValue(EMPTY_BANK);
+    setHolder(null);
+    setHolderName("");
+    setInstruction(false);
+    setTried(false);
   }
 
   async function askForCode(event?: FormEvent) {
     event?.preventDefault();
-    if (!ready || sending) return;
+    setTried(true);
+    if (sending) return;
+    if (!ready) {
+      if (form.current) showFirstProblem(form.current);
+      return;
+    }
     setSending(true);
     setProblem(null);
     const answer = await kit.actions
-      .sendBankCode()
+      .sendBankCode({ bank: typedBank() })
       .catch(() => ({ ok: false, failure: "failed" }) as const);
     setSending(false);
     if (!answer.ok) {
-      said(answer.failure, "send");
+      said(
+        answer.failure,
+        "send",
+        "opensOn" in answer ? answer.opensOn : undefined,
+      );
       return;
     }
     setTail(answer.tail);
@@ -168,17 +248,7 @@ export function BankStep({
     setStatus("pending");
     setProblem(null);
     const answer = await kit.actions
-      .confirmBank({
-        code,
-        bank: {
-          bank: value.bank,
-          branch: Number(value.branch),
-          account: value.account,
-          holder,
-          ...(holder === "family" ? { holderName } : {}),
-          instruction: BANK_INSTRUCTION_VERSION,
-        },
-      })
+      .confirmBank({ code, bank: typedBank() })
       .catch(() => ({ ok: false, failure: "failed" }) as const);
     if (answer.ok) {
       setStatus("success");
@@ -190,12 +260,11 @@ export function BankStep({
           masked: maskedHint(accountHint(check.account.account)),
         });
       }
-      setValue(EMPTY_BANK);
-      setHolder(null);
-      setHolderName("");
-      setInstruction(false);
+      clearTyped();
       setPhase("saved");
       kit.say(t("saved"));
+      // The code's boxes went: the step, saved, takes the focus.
+      focusTitle("bank");
       return;
     }
     said(
@@ -203,6 +272,7 @@ export function BankStep({
       "confirm",
       "opensOn" in answer ? answer.opensOn : undefined,
     );
+    if (answer.failure === "phoneHold") return;
     if (answer.failure === "wrongCode") {
       setStatus("error");
       return;
@@ -230,7 +300,26 @@ export function BankStep({
           masked: data.masked.bankAccount,
         }
       : null);
+  // An account is saved already: "השארת החשבון הנוכחי" goes back to it.
+  const hasSaved = Boolean(file?.has.bank_account) || confirmed !== null;
   const editing = phase === "edit";
+
+  const keepSaved = hasSaved ? (
+    <Button
+      variant="ghost"
+      disabled={status === "pending"}
+      onClick={() => {
+        clearTyped();
+        setProblem(null);
+        setStatus("idle");
+        setPhase("saved");
+        focusTitle("bank");
+      }}
+      className="self-start text-ink-2"
+    >
+      {t("bank.keepCurrent")}
+    </Button>
+  ) : null;
 
   return (
     <FileSection step="bank" active={active} kit={kit}>
@@ -281,6 +370,9 @@ export function BankStep({
               setReview(null);
               setConfirmed(null);
               setProblem(null);
+              // The button goes: the first field of the new account takes
+              // the focus.
+              focusFirstField(form);
             }}
             className="self-start"
           >
@@ -289,6 +381,7 @@ export function BankStep({
         </Card>
       ) : (
         <form
+          ref={form}
           id={formId}
           onSubmit={askForCode}
           noValidate
@@ -314,6 +407,7 @@ export function BankStep({
                 onChange={setValue}
                 warning={warning}
                 error={unusable ? t("bank.accountInvalid") : null}
+                marked={tried}
               />
             ) : (
               <p className="font-medium text-md">
@@ -332,13 +426,17 @@ export function BankStep({
           {editing ? (
             <>
               <ChoiceList legend={t("bank.holder")} legendClassName="text-md">
-                {(["self", "family", "other"] as const).map((option) => (
+                {(["self", "family", "other"] as const).map((option, at) => (
                   <ChoiceRow
                     key={option}
                     name={`${formId}-holder`}
                     title={t(`bank.${option}`)}
                     checked={holder === option}
                     onChange={() => setHolder(option)}
+                    // A press with nobody chosen comes here.
+                    aria-invalid={
+                      tried && holder === null && at === 0 ? true : undefined
+                    }
                   />
                 ))}
               </ChoiceList>
@@ -349,6 +447,10 @@ export function BankStep({
                     label={t("bank.holderName")}
                     value={holderName}
                     onChange={(event) => setHolderName(event.target.value)}
+                    error={holderNameError}
+                    {...(tried && holderNameShort
+                      ? { "aria-invalid": true }
+                      : {})}
                     autoComplete="off"
                   />
                 </Card>
@@ -363,18 +465,27 @@ export function BankStep({
                   type="checkbox"
                   checked={instruction}
                   onChange={(event) => setInstruction(event.target.checked)}
+                  aria-invalid={tried && !instruction ? true : undefined}
                   className="mt-0.5 size-6 shrink-0 cursor-pointer accent-accent"
                 />
                 <span className="text-base">
                   {t("bank.instruction", formArgs(kit))}
                 </span>
               </label>
+              {/* On a desktop, what keeps the account back is said beside
+                  its action, as the dock says it above its own. */}
+              {(tried || block === "warning" || held) &&
+              (holdWords ?? blockWords) ? (
+                <p role="status" className="hidden px-1 text-base xl:block">
+                  {holdWords ?? blockWords}
+                </p>
+              ) : null}
               <div className="hidden xl:flex">
                 <Button
                   type="submit"
                   variant="secondary"
                   loading={sending}
-                  disabled={!ready}
+                  disabled={held}
                 >
                   {t("bank.confirm")}
                 </Button>
@@ -412,6 +523,9 @@ export function BankStep({
                   onClick={() => {
                     setPhase("edit");
                     setProblem(null);
+                    // The code's boxes go: the account's first field
+                    // takes the focus.
+                    focusFirstField(form);
                   }}
                   className="text-ink-2"
                 >
@@ -420,7 +534,10 @@ export function BankStep({
               </div>
             </Card>
           )}
-          <Failure>{problemWords}</Failure>
+          {/* In the week after a phone change the dock says it, and a
+              desktop beside the action; elsewhere, the refusal here. */}
+          <Failure>{held ? null : problemWords}</Failure>
+          {keepSaved}
         </form>
       )}
       <LaterLink kit={kit} />
@@ -438,16 +555,14 @@ export function BankStep({
                 ? {
                     label: t("bank.confirm"),
                     form: formId,
-                    disabled: !ready,
+                    // Something missing, or the week after a phone change,
+                    // is said above it; anything else, once pressed.
+                    disabled: block === "missing" || block === "other" || held,
                     pending: sending,
                   }
                 : undefined
           }
-          notice={
-            editing && holder !== "other" && empty > 0
-              ? t("missingRequired", { count: empty })
-              : null
-          }
+          notice={editing ? (holdWords ?? blockWords) : null}
         />
       ) : null}
     </FileSection>
