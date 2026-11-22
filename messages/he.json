@@ -1378,7 +1378,14 @@
           "title": "עוד אין שעות לשכר",
           "body": "השעות לשכר יופיעו כאן כשהשעון יופעל לעסק."
         },
-        "remarks": "{count, plural, one {הערה אחת לבדיקה בשעות} other {# הערות לבדיקה בשעות}}"
+        "remarks": "{count, plural, one {הערה אחת לבדיקה בשעות} other {# הערות לבדיקה בשעות}}",
+        "files": {
+          "title": "תיקי העובדים",
+          "missing": "{count, plural, =0 {כל התיקים הושלמו} one {בתיק אחד חסרים פרטים} other {ב-# תיקים חסרים פרטים}}",
+          "form101": "{count, plural, =0 {כל טפסי 101 נמסרו} one {טופס 101 אחד עוד לא נמסר} other {# טפסי 101 עוד לא נמסרו}}",
+          "reviews": "{count, plural, =0 {אין חשבון בנק לבדיקה} one {חשבון בנק אחד לבדיקה} other {# חשבונות בנק לבדיקה}}",
+          "open": "לתיקים"
+        }
       },
       "file": {
         "complete": "הפרטים בתיק הושלמו",
@@ -1602,6 +1609,152 @@
         "label": "מחיקת ההזמנה של {name}",
         "done": "ההזמנה של {name} נמחקה",
         "gone": "ההזמנה כבר לא פתוחה: היא התקבלה או נמחקה בינתיים."
+      },
+      "file": {
+        "groups": {
+          "identity": "פרטים מזהים",
+          "address": "כתובת",
+          "bank": "חשבון בנק",
+          "pension": "פנסיה"
+        },
+        "line": {
+          "complete": "הפרטים לשכר הושלמו",
+          "missingGroups": "חסר בתיק: {groups}",
+          "missingCount": "{count, plural, one {חסר פרט אחד לשכר} other {חסרים # פרטים לשכר}}",
+          "bankReview": "חשבון בנק לבדיקה",
+          "form101Holder": "טופס 101 לשנת {year}: {status, select, handed_in {נמסר} accepted {התקבל} returned {הוחזר} change_due {עדכון עד <ltr>{date}</ltr>} other {לא נמסר}}",
+          "form101Team": "טופס 101: {state, select, in {נמסר} other {חסר}}"
+        },
+        "columns": {
+          "details": "פרטים לשכר",
+          "form101": "טופס 101 לשנת {year}"
+        },
+        "cells": {
+          "complete": "הושלם",
+          "missingGroups": "חסר: {groups}",
+          "missingCount": "{count, plural, one {חסר אחד} other {חסרים #}}",
+          "form101": "{status, select, handed_in {נמסר} accepted {התקבל} returned {הוחזר} change_due {עדכון עד <ltr>{date}</ltr>} in {נמסר} missing {חסר} other {לא נמסר}}"
+        },
+        "filesOnly": {
+          "subtitle": "{count, plural, one {תיק אחד} other {# תיקים}} של הצוות",
+          "note": "כאן רואים את התיקים לשכר של הצוות. את הצוות עצמו מנהלים הבעלים."
+        },
+        "card": {
+          "title": "התיק לשכר של {name}",
+          "missingGroups": "חסר בתיק: {groups}.",
+          "missingCount": "{count, plural, one {חסר פרט אחד.} other {חסרים # פרטים.}}",
+          "bankReview": "חשבון הבנק מחכה לבדיקה.",
+          "onlyHolders": "את הפרטים עצמם רואים רק מי שקיבלו גישה לתיקים.",
+          "share": "שליחת קישור להשלמה",
+          "shareTitle": "קישור להשלמת התיק",
+          "shareMessage": "{first}, חסרים עוד כמה פרטים בתיק שלך ב{business}. אפשר להשלים אותם באפליקציה, בערך 5 דקות:",
+          "open": "פתיחת התיק",
+          "completeRow": "התיק לשכר · הושלם"
+        },
+        "page": {
+          "metaTitle": "תיק עובד",
+          "title": "התיק של {name}",
+          "backTeam": "צוות",
+          "visible": "רואים את התיק רק מי שקיבלו גישה לתיקים. כל צפייה נרשמת."
+        },
+        "duties": {
+          "title": "מה מותר ומה אסור עם הפרטים",
+          "intro": "לפני שפותחים תיקים של {business}:",
+          "purpose": "הפרטים בתיקים הם לתשלום השכר ולמה שהחוק מחייב מעסיק, ולשום דבר אחר.",
+          "copies": "לא מעתיקים, לא מצלמים ולא שולחים אותם בוואטסאפ או במייל.",
+          "others": "לא מראים אותם למי שלא קיבל גישה לתיקים, גם לא לאנשים אחרים בעסק.",
+          "reveal": "מספר זהות ומספר חשבון מציגים רק כשצריך, והם מוסתרים שוב אחרי דקה. כל צפייה נרשמת, גם ניסיון שנדחה.",
+          "lock": "אחרי רבע שעה בלי פעילות התיקים ננעלים, ופותחים אותם שוב בקוד ב-SMS. כדאי לנעול את הטלפון כשמניחים אותו.",
+          "leak": "נראה שפרט הגיע למי שלא צריך? מטפלים בזה מיד ומספרים לבעלים.",
+          "ends": "הגישה לתיקים נגמרת כשהתפקיד נגמר.",
+          "confirm": "אישור ושליחת קוד"
+        },
+        "locked": {
+          "title": "התיק נעול",
+          "body": "כדי לראות את התיק שולחים קוד ב-SMS למספר הטלפון שלך. אחרי רבע שעה בלי פעילות הוא ננעל שוב.",
+          "send": "שליחת קוד"
+        },
+        "code": {
+          "sent": "שלחנו קוד ב-SMS למספר שמסתיים ב-<ltr>{tail}</ltr>",
+          "label": "הקוד מה-SMS",
+          "resend": "שליחת קוד חדש",
+          "wrongCode": "הקוד לא נכון. אפשר לנסות שוב.",
+          "tooMany": "היו הרבה ניסיונות. אפשר לנסות שוב בעוד רבע שעה.",
+          "rateLimit": "אפשר לבקש קוד חדש בעוד כמה שניות.",
+          "failed": "הקוד לא נשלח. אפשר לנסות שוב.",
+          "noPhone": "כדי לפתוח תיקים צריך מספר טלפון בחשבון שלך."
+        },
+        "sections": {
+          "identity": "פרטים מזהים",
+          "contact": "כתובת ודרכי קשר",
+          "bank": "חשבון לשכר",
+          "pension": "פנסיה",
+          "form101": "טופס 101 לשנת {year}"
+        },
+        "rows": {
+          "legalName": "שם כמו בתעודה",
+          "document": "תעודה",
+          "documentKind": "{kind, select, il {תעודת זהות ישראלית} passport {דרכון} other {מסמך רשמי אחר}}",
+          "passportOf": "דרכון · {country}",
+          "number": "{kind, select, il {מספר זהות} passport {מספר דרכון} other {מספר המסמך}}",
+          "expires": "בתוקף עד",
+          "birthDate": "תאריך לידה",
+          "address": "כתובת",
+          "apartment": "דירה {apartment}",
+          "poBox": "ת.ד. {poBox}",
+          "zip": "מיקוד <ltr>{zip}</ltr>",
+          "email": "אימייל",
+          "workLanguage": "שפה להוראות עבודה",
+          "emergency": "איש קשר לחירום",
+          "bankName": "בנק",
+          "bankOf": "{name} (<ltr>{code}</ltr>)",
+          "branch": "סניף",
+          "account": "מספר חשבון",
+          "holder": "בעל החשבון",
+          "holderSelf": "של {first}",
+          "holderFamily": "של בן או בת זוג, הורה או ילד: {holder}",
+          "instruction": "ההוראה לתשלום לחשבון אושרה ב-<ltr>{date}</ltr> בקוד ב-SMS",
+          "pensionExisting": "יש קרן פעילה: {fund}",
+          "pensionNew": "קרן חדשה: {fund}",
+          "pensionEmployer": "{business} בוחר קרן",
+          "pensionLater": "{form, select, f {{first} תבחר קרן עד <ltr>{date}</ltr>} m {{first} יבחר קרן עד <ltr>{date}</ltr>} other {לבחור קרן עד <ltr>{date}</ltr>}}",
+          "pensionLaterNone": "{form, select, f {{first} תבחר קרן בהמשך} m {{first} יבחר קרן בהמשך} other {הקרן תיבחר בהמשך}}",
+          "pensionPassed": "עבר המועד לבחירה: לבטח בקרן ש{business} בוחר",
+          "fundUnknown": "שם הקרן עוד לא ידוע",
+          "fund": "קרן הפנסיה",
+          "form101": "{status, select, handed_in {נמסר} accepted {התקבל} returned {הוחזר} change_due {צריך טופס מעודכן עד <ltr>{date}</ltr>} other {לא נמסר}}",
+          "form101Route": "{route, select, link {דרך {provider}} print {על נייר} other {ישירות לשכר}}",
+          "status": "מצב",
+          "form101Way": "איך נמסר",
+          "returnedReason": "{reason, select, attachment {חסר צירוף} signature {חסרה חתימה} details {פרט לא תואם} other {סיבה אחרת}}",
+          "missing": "חסר",
+          "missingHint": "אפשר לשלוח ל{first} קישור להשלמה מהפרופיל",
+          "direct": "נמסר ישירות לשכר",
+          "sent": "נשלח ל{business} ב-<ltr>{date}</ltr>",
+          "notSent": "{form, select, f {{first} עוד לא שלחה את התיק} m {{first} עוד לא שלח את התיק} other {התיק עוד לא נשלח}}"
+        },
+        "review": {
+          "new": "חשבון הבנק של {first} הוחלף ב-<ltr>{date}</ltr>, ועוד לא נבדק.",
+          "warned": "מספר החשבון של {first} לא עבר את בדיקת הבנק. {form, select, f {כדאי לבדוק איתה.} m {כדאי לבדוק איתו.} other {כדאי לבדוק את זה.}}",
+          "disputed": "{form, select, f {{first} סימנה שלא היא שינתה את החשבון.} m {{first} סימן שלא הוא שינה את החשבון.} other {בתיק של {first} סומן „לא שיניתי” על החשבון.}} הוא לא ייכנס לקובץ לשכר עד שתבדקו."
+        },
+        "reveal": {
+          "limit": "כבר הוצגו מספרים של 30 אנשים בשעה האחרונה. אפשר להציג עוד בהמשך.",
+          "noAccess": "אין לך גישה למספר הזה."
+        },
+        "lock": {
+          "action": "נעילת התיק",
+          "hint": "התיקים ננעלים גם לבד אחרי רבע שעה בלי פעילות."
+        },
+        "viewing": "בצפייה כצוות האפליקציה לא רואים את התיק, רק כמה פרטים חסרים.",
+        "unavailable": "אי אפשר לפתוח תיקים כאן עדיין.",
+        "failures": {
+          "viewOnly": "בצפייה בתור אי אפשר לשנות דבר.",
+          "businessChanged": "עברת לעסק אחר בינתיים. כדאי לטעון את המסך מחדש.",
+          "off": "התיק לשכר כבוי בעסק.",
+          "noAccess": "אין לך גישה לתיקים.",
+          "failed": "משהו לא עבד. אפשר לנסות שוב."
+        }
       }
     },
     "availability": {

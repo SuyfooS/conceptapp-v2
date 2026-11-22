@@ -887,3 +887,47 @@ describe("the other writes", () => {
     ).toEqual({ ok: false, failure: "moved" });
   });
 });
+
+describe("a holder's state", () => {
+  // public.file_holder_state (H6a): asked under the session, never logged.
+  it("asks the database under the session, and reads its answer", async () => {
+    db.answers.file_holder_state = () => ({ data: "ack", error: null });
+    expect(await files.getFileHolderState(BUSINESS)).toBe("ack");
+    expect(callsTo("file_holder_state")).toEqual([
+      { fn: "file_holder_state", args: { business: BUSINESS }, as: "session" },
+    ]);
+  });
+
+  it("reads nobody signed in as no member", async () => {
+    db.answers.file_holder_state = () => ({ data: null, error: null });
+    expect(await files.getFileHolderState(BUSINESS)).toBe("not_member");
+  });
+
+  it("is unavailable before its migration, on a failure and on a reply it can't read", async () => {
+    db.answers.file_holder_state = () => ({
+      data: null,
+      error: { code: "PGRST202", message: "no such function" },
+    });
+    expect(await files.getFileHolderState(BUSINESS)).toBe("unavailable");
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    db.answers.file_holder_state = () => ({
+      data: null,
+      error: { code: "57014", message: "canceling statement" },
+    });
+    expect(await files.getFileHolderState(BUSINESS)).toBe("unavailable");
+    expect(logged).toHaveBeenCalledTimes(1);
+    db.answers.file_holder_state = () => ({ data: "holder", error: null });
+    expect(await files.getFileHolderState(BUSINESS)).toBe("unavailable");
+  });
+
+  it("says whether this deployment holds the keys", () => {
+    expect(files.hasEmployeeKeys()).toBe(true);
+    const saved = process.env.EMPLOYEE_DATA_KEKS;
+    delete process.env.EMPLOYEE_DATA_KEKS;
+    try {
+      expect(files.hasEmployeeKeys()).toBe(false);
+    } finally {
+      process.env.EMPLOYEE_DATA_KEKS = saved ?? "";
+    }
+  });
+});

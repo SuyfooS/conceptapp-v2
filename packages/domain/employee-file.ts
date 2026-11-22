@@ -75,6 +75,25 @@ export const DENIAL_REASONS = [
 export type DenialReason = (typeof DENIAL_REASONS)[number];
 
 /**
+ * Whether the signed-in person may read the business's files as a holder
+ * now, as `public.file_holder_state` answers it before any file is read
+ * (profile H6a), never logged: ready, the duties screen first (`ack`), in a
+ * view session, not a member, without the permission, or the module off.
+ */
+export const FILE_HOLDER_STATES = [
+  "ready",
+  "ack",
+  "viewing",
+  "not_member",
+  "not_holder",
+  "off",
+] as const;
+export type FileHolderState = (typeof FILE_HOLDER_STATES)[number];
+
+/** `public.file_holder_state`'s answer: null for nobody signed in. */
+export const holderStateReply = z.enum(FILE_HOLDER_STATES).nullable();
+
+/**
  * The duties screen's wording version (reg 7(ב)): a holder confirms it before
  * any file opens. `private.file_duties_version()` holds the same
  * (`employee-files.db.test.ts`); new words are a new version, confirmed again.

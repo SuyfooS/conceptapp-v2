@@ -1,6 +1,7 @@
 import { getPayRolesForTeam } from "@db/payroll";
 import { getGivableNamedRoles } from "@db/roles";
 import { getTeam } from "@db/team";
+import { fileStaff, seesFiles } from "@domain/file-holders";
 import type { Role } from "@domain/modules";
 import { buildsSchedule } from "@domain/schedule";
 import {
@@ -13,6 +14,7 @@ import {
 } from "@domain/team";
 import { cache } from "react";
 import { currentMember } from "./member";
+import { currentModules } from "./modules";
 
 /**
  * The signed-in person's team, read once per request: null unless they see
@@ -26,6 +28,31 @@ export const currentTeam = cache(async (): Promise<Team | null> => {
   if (!membership || !canSeeTeam(membership)) return null;
   const { members, invites } = await getTeam(membership.business.id);
   return buildTeam(members, invites, new Date());
+});
+
+/**
+ * The staff as someone who reads the hiring files without seeing the team
+ * reads them (the accountant, profile H6a): the active managers and workers,
+ * whose files the business keeps, once per request, with no invites (the
+ * team screen's) and no numbers (the database gives them none). Null for
+ * anyone who sees the team, whose list is `currentTeam`, and for anyone
+ * who doesn't hold the files.
+ */
+export const currentFilesTeam = cache(async (): Promise<Team | null> => {
+  const [member, enabled] = await Promise.all([
+    currentMember(),
+    currentModules(),
+  ]);
+  const membership = member?.membership;
+  if (
+    !membership ||
+    canSeeTeam(membership) ||
+    !seesFiles(membership, enabled)
+  ) {
+    return null;
+  }
+  const { members } = await getTeam(membership.business.id);
+  return buildTeam(fileStaff(members), [], new Date());
 });
 
 /**

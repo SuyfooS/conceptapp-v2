@@ -18,11 +18,13 @@ import {
   type FileDetailField,
   type FileFailure,
   type FileGroup,
+  type FileHolderState,
   type FileRow,
   type FileStatus,
   type Form101Route,
   fileFailureOf,
   fileReply,
+  holderStateReply,
   identityParts,
   keyReply,
   maskedHint,
@@ -67,8 +69,8 @@ import { createClient } from "./supabase/server";
  *
  * Never call these inside `'use cache'`, never with a value in a GET URL;
  * responses that carry a value set `Cache-Control: private, no-store` (H5's
- * and H6's routes). Nothing here logs a value: a failure logs its code and
- * the database's message, which hold none by design.
+ * /me/file, H6a's /team/[person]/file). Nothing here logs a value: a failure
+ * logs its code and the database's message, which hold none by design.
  */
 
 export type FileReadFailure =
@@ -264,6 +266,40 @@ export async function getEmployeeFile(
     }
     throw error;
   }
+}
+
+/**
+ * Whether this deployment holds the file's keys: without them every read
+ * says `keys` before the database, so a holder's screen asks first and sends
+ * no SMS for a file that couldn't open (H6a).
+ */
+export function hasEmployeeKeys(): boolean {
+  return employeeKeyRing() !== null;
+}
+
+/**
+ * Whether the signed-in person may read the business's files as a holder
+ * now (`public.file_holder_state`, 20261126000500_file_holder_state.sql;
+ * H6a), asked before any file is read and never logged, so a holder's screen
+ * shows the duties without a refused read in the log. Nobody signed in is
+ * no member. `unavailable` before the migration reaches a project, and for
+ * any failure or a reply that doesn't parse, which reads no file.
+ */
+export async function getFileHolderState(
+  businessId: string,
+): Promise<FileHolderState | "unavailable"> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("file_holder_state", {
+    business: businessId,
+  });
+  if (error) {
+    if (isMissingFunction(error)) return "unavailable";
+    console.error("reading a holder's state failed", error.code, error.message);
+    return "unavailable";
+  }
+  const reply = holderStateReply.safeParse(data);
+  if (!reply.success) return "unavailable";
+  return reply.data ?? "not_member";
 }
 
 /** The ID number, the account number or both, opened: each call is logged for a holder. */
@@ -471,7 +507,7 @@ export async function getTeamEmergencyContacts(
   return { ok: true, contacts };
 }
 
-/** The duties screen confirmed, in the wording on screen now (H6 calls it). */
+/** The duties screen confirmed, in the wording on screen now (H6a's file screen). */
 export async function acknowledgeFileDuties(
   businessId: string,
 ): Promise<boolean> {

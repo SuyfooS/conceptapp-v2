@@ -1,18 +1,22 @@
 import type { TeamPerson } from "@db/team";
+import type { FileStatus } from "@domain/employee-file";
+import { fileLineOf } from "@domain/file-holders";
 import { avatarHue, firstNameOf } from "@domain/people";
 import { displayIsraeliMobile } from "@domain/phone";
 import { formArg, type ProfileSaveResult } from "@domain/profile";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader } from "@ui/page";
 import { PersonAvatar } from "@ui/person-row";
-import { MessageCircle, Phone } from "lucide-react";
+import { CircleCheck, FolderLock, MessageCircle, Phone } from "lucide-react";
 import { getFormatter } from "next-intl/server";
 import type { ReactNode } from "react";
 import { ProfileFrame, profileAvatarRing } from "../../me/profile-frame";
-import { type AppWording, translator } from "../../wording";
+import { type AppWording, type Translator, translator } from "../../wording";
+import { type Format, groupsWords } from "../file-lines";
 import { roleLabel } from "../role-label";
 import type { MemberChangeActions } from "../team-change-types";
 import { BioLine, BioState, BioUndo, PersonActions } from "./bio-control";
+import { FileCard, type FileCardWords } from "./file-card";
 import {
   type MemberChangesData,
   MemberChangesState,
@@ -41,6 +45,75 @@ export type PersonChanges = Pick<
 > & { actions: MemberChangeActions };
 
 /**
+ * How complete the person's hiring file is, for whoever sees the team or
+ * holds the files (profile H6a, `currentTeamFiles`): a holder's words or a
+ * count, never a value.
+ */
+export type FileCardData = {
+  status: FileStatus;
+  /** Holder words (the database's detail), or counts. */
+  reader: "holder" | "team";
+  /** The ConceptApp team viewing as a role: counts only, and says so. */
+  viewing: boolean;
+  /** The file's own screen, for a holder. */
+  fileHref: string | null;
+  /** The link to complete it may be sent: never while viewing. */
+  share: boolean;
+  businessName: string;
+  form101: boolean;
+};
+
+/**
+ * The card's words while anything needs action (a part missing, or for a
+ * holder an account to look at), or null for a file that is complete.
+ */
+export function fileCardWords(
+  t: Translator<"app">,
+  format: Format,
+  card: FileCardData,
+  name: string,
+  first: string,
+): FileCardWords | null {
+  const line = fileLineOf(card.status);
+  const missing = line.kind !== "complete";
+  const review = line.kind !== "count" && line.bankReview !== null;
+  if (!missing && !review) return null;
+  const lines = [
+    line.kind === "groups"
+      ? t("team.file.card.missingGroups", {
+          groups: groupsWords(t, format, line.groups),
+        })
+      : line.kind === "count"
+        ? t("team.file.card.missingCount", { count: line.count })
+        : null,
+    review ? t("team.file.card.bankReview") : null,
+  ].filter((text): text is string => text !== null);
+  return {
+    title: t("team.file.card.title", { name }),
+    lines,
+    note: card.viewing
+      ? t("team.file.viewing")
+      : card.reader === "holder"
+        ? null
+        : t("team.file.card.onlyHolders"),
+    share:
+      missing && card.share
+        ? {
+            label: t("team.file.card.share"),
+            title: t("team.file.card.shareTitle"),
+            message: t("team.file.card.shareMessage", {
+              first,
+              business: card.businessName,
+            }),
+          }
+        : null,
+    open: card.fileHref
+      ? { href: card.fileHref, label: t("team.file.card.open") }
+      : null,
+  };
+}
+
+/**
  * A colleague's profile, `/team/[person]`, as whoever sees the team reads it:
  * the same top as their own /me, in their cover and this business's colour,
  * their line about themselves, a way to call them, and a way to delete a line
@@ -50,11 +123,15 @@ export type PersonChanges = Pick<
  * the business's own name for them, shown everywhere in it and only in it,
  * their own name untouched (ROADMAP "תיקון שם"). A minor shows until when
  * (payroll P5): the schedule needs it, and only that day, never a birth date
- * or the rest of their details for payroll. Also rendered with mock data on
- * /design/shell/team/[person].
+ * or the rest of their details for payroll. While the hiring file is on
+ * (H6a, `fileCard`), a manager's or a worker's file comes first: the page's
+ * one accent card while anything is missing, with "שליחת קישור להשלמה" and,
+ * for a holder, "פתיחת התיק"; a quiet row once it is complete. Also
+ * rendered with mock data on /design/shell/team/[person].
  */
 export async function PersonView({
   data,
+  fileCard = null,
   youthUntil = null,
   timeZone,
   canClear,
@@ -65,6 +142,8 @@ export async function PersonView({
   wording,
 }: {
   data: TeamPerson;
+  /** How complete their hiring file is (H6a); null with none to show. */
+  fileCard?: FileCardData | null;
   /** A minor's 18th birthday, from `public.team_youth`; null for an adult. */
   youthUntil?: string | null;
   /** The business's zone, for the month they joined. */
@@ -104,9 +183,33 @@ export async function PersonView({
     }),
   });
 
+  const cardWords = fileCard
+    ? fileCardWords(t, format, fileCard, name, first)
+    : null;
+  // A complete file: a quiet row, the file's own screen for a holder.
+  const fileRow =
+    fileCard && !cardWords ? (
+      <ListGroup>
+        {fileCard.fileHref ? (
+          <ListRow
+            href={fileCard.fileHref}
+            leading={<FolderLock />}
+            title={t("team.file.card.completeRow")}
+            subtitle={t("team.file.card.open")}
+          />
+        ) : (
+          <ListRow
+            leading={<CircleCheck />}
+            title={t("team.file.line.complete")}
+          />
+        )}
+      </ListGroup>
+    ) : null;
+
   // What the page offers while they are on the team.
   const offers = (
     <>
+      {cardWords ? <FileCard words={cardWords} /> : fileRow}
       {youthUntil ? (
         <ListGroup>
           <ListRow

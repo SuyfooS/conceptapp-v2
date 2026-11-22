@@ -13,8 +13,10 @@ import { FormerView } from "../../../../(app)/team/[person]/former-view";
 import { PersonView } from "../../../../(app)/team/[person]/person-view";
 import { baseWording } from "../../../../(app)/wording";
 import {
+  business,
   demoNamedRole,
   shiftsAheadOf,
+  teamFileStatusFor,
   teamMembers,
   teamProfiles,
 } from "../../data";
@@ -31,7 +33,7 @@ export const generateStaticParams = () =>
 
 type Props = {
   params: Promise<{ person: string }>;
-  searchParams: Promise<{ state?: string; as?: string }>;
+  searchParams: Promise<{ state?: string; as?: string; file?: string }>;
 };
 
 // A colleague's profile with mock data, as the owner reads it from the Team
@@ -58,6 +60,13 @@ type Props = {
 // name the business shows for them with the demo's stand-in, shown at once
 // with the fix back as its undo, the mock name back on reload;
 // ?state=nameless: someone nobody named, whose title and row read "בלי שם".
+// The hiring file (profile H6a): ?file=holder as the owner, who reads what
+// is missing and opens the file from here; ?file=manager as someone who
+// sees the team without the files, who reads how many; ?file=view as the
+// ConceptApp team viewing as a role, who sends nothing. Yoav lacks his
+// account and his pension, Maya her identity details with a new account
+// to look at, the rest are complete. "שליחת קישור להשלמה" opens the share
+// sheet, which sends nothing itself.
 export default function ShellTeamPerson(props: Props) {
   return (
     <Suspense>
@@ -67,7 +76,10 @@ export default function ShellTeamPerson(props: Props) {
 }
 
 async function Demo({ params, searchParams }: Props) {
-  const [{ person }, { state, as }] = await Promise.all([params, searchParams]);
+  const [{ person }, { state, as, file }] = await Promise.all([
+    params,
+    searchParams,
+  ]);
   const member = teamMembers.find((m) => m.userId === person);
   if (!member) notFound();
   if (state === "former") {
@@ -98,8 +110,29 @@ async function Demo({ params, searchParams }: Props) {
             }
           : { userId: "demo-owner", role: "owner", perms: [] };
   const profile = teamProfiles[person];
+  const reader = file === "holder" ? "holder" : "team";
+  const status =
+    file === "holder" || file === "manager" || file === "view"
+      ? (teamFileStatusFor(reader)[person] ?? null)
+      : null;
   return (
     <PersonView
+      fileCard={
+        status
+          ? {
+              status,
+              reader,
+              viewing: file === "view",
+              fileHref:
+                reader === "holder"
+                  ? `/design/shell/team/${person}/file`
+                  : null,
+              share: file !== "view",
+              businessName: business.name,
+              form101: true,
+            }
+          : null
+      }
       data={{
         ...member,
         name: state === "nameless" ? null : member.name,

@@ -27,6 +27,7 @@ import {
   currentTeamAvailability,
 } from "../schedule/week";
 import { currentTeam } from "../team";
+import { currentFilesHome } from "../team/file-status";
 import { baseWording, translator } from "../wording";
 import { AccountantHome } from "./accountant-home";
 import { currentFirstSteps } from "./first-steps";
@@ -152,7 +153,7 @@ export default async function HomePage() {
  * about modules, which other modules being on would make untrue.
  */
 async function OutsideStaffHome() {
-  const [member, enabled, pay, documents, wording, businesses, station] =
+  const [member, enabled, pay, documents, wording, businesses, station, files] =
     await Promise.all([
       currentMember(),
       currentModules(),
@@ -161,6 +162,8 @@ async function OutsideStaffHome() {
       currentWording(),
       currentBusinesses(),
       currentStationHome(),
+      // The staff's hiring files, for the accountant who holds them (H6a).
+      currentFilesHome(),
     ]);
   const membership = member?.membership;
   if (!member || !membership) return null;
@@ -183,6 +186,7 @@ async function OutsideStaffHome() {
             : null,
         // This device is the business's clock station: sign out when done.
         station,
+        files: files ? { ...files, href: "/team" } : null,
       }}
     />
   );

@@ -1,3 +1,4 @@
+import { filesHomeOf } from "@domain/file-holders";
 import { Suspense } from "react";
 import { AccountantHome } from "../../../../(app)/home/accountant-home";
 import { baseWording } from "../../../../(app)/wording";
@@ -8,10 +9,12 @@ import {
   demoPayHomeEmpty,
   demoPayHomeNoAmounts,
 } from "../../clock/pay/data";
-import { business } from "../../data";
+import { business, teamFileStatus } from "../../data";
 import { demoSignOutOfStation } from "../../station/actions";
 
-type Props = { searchParams: Promise<{ state?: string; estimate?: string }> };
+type Props = {
+  searchParams: Promise<{ state?: string; estimate?: string; files?: string }>;
+};
 
 // Home as the demo's accountant has it: October to pay with its estimate
 // (payroll P7), what to check before paying it, and the months before.
@@ -20,7 +23,10 @@ type Props = { searchParams: Promise<{ state?: string; estimate?: string }> };
 // the hours engine's remarks still to check, ?estimate=off one whose amounts
 // the team hasn't turned on. ?state=station is the default month, signed in
 // on the business's clock station: the card says the device is the
-// business's tablet, and signing out goes to the station's twin.
+// business's tablet, and signing out goes to the station's twin. The hiring
+// file's card (profile H6a): ?files=missing with the demo's files (Yoav's and
+// Maya's missing details, Maya's account to look at), ?files=complete with
+// every file complete; it leads to the team twin's files.
 export default function ShellTodayAccountant({ searchParams }: Props) {
   return (
     <Suspense>
@@ -30,7 +36,8 @@ export default function ShellTodayAccountant({ searchParams }: Props) {
 }
 
 async function Demo({ searchParams }: Props) {
-  const { state, estimate } = await searchParams;
+  const { state, estimate, files } = await searchParams;
+  const statuses = Object.values(teamFileStatus);
   return (
     <AccountantHome
       wording={baseWording}
@@ -55,6 +62,29 @@ async function Demo({ searchParams }: Props) {
         bell: { unread: 1 },
         station:
           state === "station" ? { kind: "signOut", shows: "clock_code" } : null,
+        files:
+          files === "missing" || files === "complete"
+            ? {
+                ...filesHomeOf(
+                  files === "missing"
+                    ? statuses
+                    : statuses.map((row) => ({
+                        ...row,
+                        complete: true,
+                        missing: 0,
+                        form101_in: true,
+                        detail: row.detail && {
+                          ...row.detail,
+                          missing: [],
+                          bank_review: null,
+                        },
+                      })),
+                  true,
+                ),
+                form101: true,
+                href: "/design/shell/team?file=accountant",
+              }
+            : null,
       }}
     />
   );

@@ -1378,7 +1378,14 @@
           "title": "No hours for payroll yet",
           "body": "The hours for payroll show here once the clock is switched on for the business."
         },
-        "remarks": "{count, plural, one {One thing to check in the hours} other {# things to check in the hours}}"
+        "remarks": "{count, plural, one {One thing to check in the hours} other {# things to check in the hours}}",
+        "files": {
+          "title": "Staff files",
+          "missing": "{count, plural, =0 {All files are complete} one {Details missing in one file} other {Details missing in # files}}",
+          "form101": "{count, plural, =0 {Every Form 101 is in} one {One Form 101 not handed in yet} other {# Forms 101 not handed in yet}}",
+          "reviews": "{count, plural, =0 {No bank account to check} one {One bank account to check} other {# bank accounts to check}}",
+          "open": "To the files"
+        }
       },
       "file": {
         "complete": "Your file is complete",
@@ -1602,6 +1609,152 @@
         "label": "Delete the invite for {name}",
         "done": "The invite for {name} was deleted",
         "gone": "The invite is no longer open: it was accepted or deleted in the meantime."
+      },
+      "file": {
+        "groups": {
+          "identity": "Identity details",
+          "address": "Address",
+          "bank": "Bank account",
+          "pension": "Pension"
+        },
+        "line": {
+          "complete": "Payroll details complete",
+          "missingGroups": "Missing: {groups}",
+          "missingCount": "{count, plural, one {One payroll detail missing} other {# payroll details missing}}",
+          "bankReview": "Bank account to check",
+          "form101Holder": "Form 101 for {year}: {status, select, handed_in {handed in} accepted {accepted by payroll} returned {sent back} change_due {update by <ltr>{date}</ltr>} other {not handed in}}",
+          "form101Team": "Form 101: {state, select, in {handed in} other {not in yet}}"
+        },
+        "columns": {
+          "details": "Payroll details",
+          "form101": "Form 101 for {year}"
+        },
+        "cells": {
+          "complete": "Complete",
+          "missingGroups": "Missing: {groups}",
+          "missingCount": "{count, plural, one {One missing} other {# missing}}",
+          "form101": "{status, select, handed_in {Handed in} accepted {Accepted by payroll} returned {Sent back} change_due {Update by <ltr>{date}</ltr>} in {Handed in} missing {Not in yet} other {Not handed in}}"
+        },
+        "filesOnly": {
+          "subtitle": "{count, plural, one {One staff file} other {# staff files}}",
+          "note": "Here you see the staff's payroll files. The owners manage the team itself."
+        },
+        "card": {
+          "title": "{name}'s payroll file",
+          "missingGroups": "Missing from the file: {groups}.",
+          "missingCount": "{count, plural, one {One detail missing.} other {# details missing.}}",
+          "bankReview": "The bank account is waiting to be checked.",
+          "onlyHolders": "Only people given access to the files see the details themselves.",
+          "share": "Send a link to complete it",
+          "shareTitle": "Link to complete the file",
+          "shareMessage": "{first}, a few details are still missing from your file at {business}. You can complete them in the app, in about 5 minutes:",
+          "open": "Open the file",
+          "completeRow": "Payroll file · complete"
+        },
+        "page": {
+          "metaTitle": "Staff file",
+          "title": "{name}'s file",
+          "backTeam": "Team",
+          "visible": "Only people given access to the files see this file. Every view is recorded."
+        },
+        "duties": {
+          "title": "What you may and may not do with these details",
+          "intro": "Before you open {business}'s files:",
+          "purpose": "The details in the files are for paying wages and for what the law requires of an employer, and nothing else.",
+          "copies": "Don't copy them, photograph them or send them on WhatsApp or by email.",
+          "others": "Don't show them to anyone without access to the files, other people in the business included.",
+          "reveal": "Show an ID or account number only when needed; it hides again after a minute. Every view is recorded, a refused one too.",
+          "lock": "After a quarter of an hour without activity the files lock, and a code by SMS opens them again. Lock your phone when you put it down.",
+          "leak": "Think a detail reached someone it shouldn't? Deal with it at once and tell the owners.",
+          "ends": "Access to the files ends when the role does.",
+          "confirm": "Confirm and send a code"
+        },
+        "locked": {
+          "title": "The file is locked",
+          "body": "To see the file, a code is sent by SMS to your phone number. After a quarter of an hour without activity it locks again.",
+          "send": "Send a code"
+        },
+        "code": {
+          "sent": "We sent a code by SMS to the number ending in <ltr>{tail}</ltr>",
+          "label": "The code from the SMS",
+          "resend": "Send a new code",
+          "wrongCode": "That code isn't right. You can try again.",
+          "tooMany": "There were many tries. You can try again in a quarter of an hour.",
+          "rateLimit": "You can ask for a new code in a few seconds.",
+          "failed": "The code wasn't sent. You can try again.",
+          "noPhone": "To open files, your account needs a phone number."
+        },
+        "sections": {
+          "identity": "Identity details",
+          "contact": "Address and contact",
+          "bank": "Account for wages",
+          "pension": "Pension",
+          "form101": "Form 101 for {year}"
+        },
+        "rows": {
+          "legalName": "Name as on the document",
+          "document": "Document",
+          "documentKind": "{kind, select, il {Israeli ID card} passport {A passport} other {Another official document}}",
+          "passportOf": "Passport · {country}",
+          "number": "{kind, select, il {ID number} passport {Passport number} other {Document number}}",
+          "expires": "Valid until",
+          "birthDate": "Date of birth",
+          "address": "Address",
+          "apartment": "Apartment {apartment}",
+          "poBox": "P.O. Box {poBox}",
+          "zip": "Zip <ltr>{zip}</ltr>",
+          "email": "Email",
+          "workLanguage": "Language for work instructions",
+          "emergency": "Emergency contact",
+          "bankName": "Bank",
+          "bankOf": "{name} (<ltr>{code}</ltr>)",
+          "branch": "Branch",
+          "account": "Account number",
+          "holder": "Account holder",
+          "holderSelf": "{first}'s own",
+          "holderFamily": "A spouse's, parent's or child's: {holder}",
+          "instruction": "The instruction to pay into the account was confirmed on <ltr>{date}</ltr> with an SMS code",
+          "pensionExisting": "Has an active fund: {fund}",
+          "pensionNew": "New fund: {fund}",
+          "pensionEmployer": "{business} chooses a fund",
+          "pensionLater": "{form, select, f {{first} will choose a fund by <ltr>{date}</ltr>} m {{first} will choose a fund by <ltr>{date}</ltr>} other {A fund to choose by <ltr>{date}</ltr>}}",
+          "pensionLaterNone": "{form, select, f {{first} will choose a fund later} m {{first} will choose a fund later} other {A fund will be chosen later}}",
+          "pensionPassed": "The day to choose has passed: insure with the fund {business} chooses",
+          "fundUnknown": "The fund's name isn't known yet",
+          "fund": "Pension fund",
+          "form101": "{status, select, handed_in {Handed in} accepted {Accepted by payroll} returned {Sent back} change_due {An updated form is due by <ltr>{date}</ltr>} other {Not handed in}}",
+          "form101Route": "{route, select, link {Through {provider}} print {On paper} other {Straight to payroll}}",
+          "status": "Status",
+          "form101Way": "How it was handed in",
+          "returnedReason": "{reason, select, attachment {An attachment is missing} signature {A signature is missing} details {A detail doesn't match} other {Another reason}}",
+          "missing": "Missing",
+          "missingHint": "You can send {first} a link to complete it from the profile",
+          "direct": "Handed straight to payroll",
+          "sent": "Sent to {business} on <ltr>{date}</ltr>",
+          "notSent": "{form, select, f {{first} hasn't sent the file yet} m {{first} hasn't sent the file yet} other {The file hasn't been sent yet}}"
+        },
+        "review": {
+          "new": "{first}'s bank account was changed on <ltr>{date}</ltr>, and hasn't been checked yet.",
+          "warned": "{first}'s account number didn't pass the bank's check. {form, select, f {Worth checking with her.} m {Worth checking with him.} other {Worth checking.}}",
+          "disputed": "{form, select, f {{first} marked that she didn't change the account.} m {{first} marked that he didn't change the account.} other {{first}'s file is marked “I didn't change it” on the account.}} It stays out of the payroll file until you check."
+        },
+        "reveal": {
+          "limit": "Numbers of 30 people were already shown in the last hour. You can show more later.",
+          "noAccess": "You don't have access to this number."
+        },
+        "lock": {
+          "action": "Lock the file",
+          "hint": "The files also lock by themselves after a quarter of an hour without activity."
+        },
+        "viewing": "Viewing as the app's team, you don't see the file, only how many details are missing.",
+        "unavailable": "Files can't be opened here yet.",
+        "failures": {
+          "viewOnly": "While viewing as someone, nothing can be changed.",
+          "businessChanged": "You switched to another business meanwhile. Reload the screen.",
+          "off": "The payroll file is off in this business.",
+          "noAccess": "You don't have access to the files.",
+          "failed": "Something didn't work. You can try again."
+        }
       }
     },
     "availability": {

@@ -1,0 +1,61 @@
+"use server";
+
+import type {
+  AcknowledgeAnswer,
+  ConfirmFileCodeAnswer,
+  KeepOpenAnswer,
+  LockAnswer,
+  RevealHolderAnswer,
+  SendFileCodeAnswer,
+} from "../../../../../(app)/team/[person]/file/holder-file-types";
+import { DEMO_HOLDER_NUMBERS } from "../../../data";
+import { FILE_DEMO_CODE } from "../../../me/file/data";
+
+// Stand-ins for a holder's actions on the file twin (profile H6a), where
+// nobody is signed in: a moment's wait, and nothing kept. The duties are
+// taken, a code "goes" to the number ending in 0014, the twin's code opens
+// it and any other is wrong, "הצגה" shows the made-up numbers (or, on
+// `limit`, says the hour's limit was reached), and keeping open and locking
+// change nothing: the twin's address holds its state.
+
+const pause = () => new Promise((resolve) => setTimeout(resolve, 300));
+
+export async function demoAcknowledgeDutiesAction(): Promise<AcknowledgeAnswer> {
+  await pause();
+  return { ok: true, open: false };
+}
+
+export async function demoSendFileCodeAction(): Promise<SendFileCodeAnswer> {
+  await pause();
+  return { ok: true, tail: "0014" };
+}
+
+export async function demoConfirmFileCodeAction(
+  code: string,
+): Promise<ConfirmFileCodeAnswer> {
+  await pause();
+  return code === FILE_DEMO_CODE
+    ? { ok: true }
+    : { ok: false, failure: "wrongCode" };
+}
+
+export async function demoRevealHolderAction(
+  state: string,
+  field: string,
+): Promise<RevealHolderAnswer> {
+  await pause();
+  if (state === "limit") return { ok: false, failure: "limit" };
+  return {
+    ok: true,
+    value:
+      field === "id" ? DEMO_HOLDER_NUMBERS.id : DEMO_HOLDER_NUMBERS.bankAccount,
+  };
+}
+
+export async function demoKeepFileOpenAction(): Promise<KeepOpenAnswer> {
+  return { open: true };
+}
+
+export async function demoLockFileAction(): Promise<LockAnswer> {
+  return { ok: true };
+}

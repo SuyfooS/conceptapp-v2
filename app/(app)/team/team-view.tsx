@@ -16,8 +16,11 @@ import { pageGlowClass } from "@ui/page-glow";
 import { PersonAvatar, PersonList, PersonRow } from "@ui/person-row";
 import { UserPlus } from "lucide-react";
 import Link from "next/link";
+import { createFormatter } from "next-intl";
 import type { ComponentProps } from "react";
 import { type AppWording, type Translator, translator } from "../wording";
+import { type Format, fileCells, fileLineWords } from "./file-lines";
+import type { TeamFiles } from "./file-status";
 import {
   CancelInviteButton,
   InviteCancels,
@@ -48,6 +51,11 @@ type ViewProps = {
   ownerOnly: readonly Role[];
   /** The business's live named roles: a new link only for one the viewer gives. */
   named: readonly GivableNamedRole[];
+  /** The hiring file's status by person, with whose words (H6a); null for none. */
+  files: TeamFiles | null;
+  /** Reads the files without seeing the team: the files alone, no invites. */
+  filesOnly: boolean;
+  format: Format;
 };
 
 /**
@@ -66,7 +74,12 @@ type ViewProps = {
  * delete it. A role the business named shows by its name, with the role it
  * is built on (the roles plan's R11b), and an invite to one gets a new link
  * only from someone who gives it (`named`), never once it was removed.
- * Also rendered with mock data on /design/shell/team.
+ * While the hiring file is on (H6a, `files`), each manager and worker has a
+ * second line saying what their file lacks (to a holder) or how much (to
+ * anyone else who sees the team), and the desktop table two columns of it.
+ * Someone who reads the files without seeing the team (the accountant) gets
+ * the files alone: managers and workers, no numbers, no invites, each row
+ * leading to the file. Also rendered with mock data on /design/shell/team.
  */
 export function TeamView({
   team,
@@ -77,6 +90,8 @@ export function TeamView({
   cancel,
   ownerOnly = [],
   named = [],
+  files = null,
+  filesOnly = files?.filesOnly === true,
   wording,
 }: {
   team: Team;
@@ -102,13 +117,23 @@ export function TeamView({
    * viewer who edits the team; none by default.
    */
   named?: readonly GivableNamedRole[];
+  /**
+   * The hiring file's status lines (`currentTeamFiles`), while its module is
+   * on for someone who sees the team or holds the files; none by default.
+   */
+  files?: TeamFiles | null;
+  /**
+   * The viewer reads the files without seeing the team (the accountant):
+   * the files alone, even when their status couldn't be read.
+   */
+  filesOnly?: boolean;
   /** The business's words; the app's own on the demo. */
   wording: AppWording;
 }) {
   const t = translator(wording, "app");
-  const invites = inviteHref !== undefined;
-  const edits = canEditTeam(viewer);
-  const view = {
+  const invites = inviteHref !== undefined && !filesOnly;
+  const edits = canEditTeam(viewer) && !filesOnly;
+  const view: ViewProps = {
     t,
     team,
     viewer,
@@ -118,15 +143,25 @@ export function TeamView({
     edits,
     ownerOnly,
     named,
+    files,
+    filesOnly,
+    format: createFormatter({
+      locale: wording.locale ?? "he",
+      timeZone: "UTC",
+    }),
   };
   return (
     <PageBody className={pageGlowClass}>
       <PageHeader
         title={t("team.title")}
-        subtitle={t("team.subtitle", {
-          members: team.counts.members,
-          open: team.counts.open,
-        })}
+        subtitle={
+          filesOnly
+            ? t("team.file.filesOnly.subtitle", { count: team.members.length })
+            : t("team.subtitle", {
+                members: team.counts.members,
+                open: team.counts.open,
+              })
+        }
         actions={
           inviteHref && edits ? (
             <Button asChild size="lg">
@@ -138,12 +173,18 @@ export function TeamView({
           ) : undefined
         }
       />
-      {edits ? null : (
+      {filesOnly ? (
+        <p className="text-ink-2 md:max-w-2xl">
+          {t("team.file.filesOnly.note")}
+        </p>
+      ) : edits ? null : (
         <p className="text-ink-2 md:max-w-2xl">{t("team.readOnly")}</p>
       )}
       <InviteCancels cancel={cancel ?? null}>
         <div className="grid gap-6 md:grid-cols-2 md:items-start md:gap-8 xl:hidden">
-          {team.invites.length > 0 ? (
+          {filesOnly ? (
+            <Members {...view} />
+          ) : team.invites.length > 0 ? (
             <>
               <Invites {...view} />
               <Members {...view} />
@@ -215,7 +256,22 @@ function inviteActions(
   );
 }
 
-function Members({ t, team, peopleHref }: ViewProps) {
+/** Where a member's row leads: their profile, or for a files-only reader their file. */
+const memberHref = ({ peopleHref, filesOnly }: ViewProps, userId: string) =>
+  filesOnly ? `${peopleHref}/${userId}/file` : `${peopleHref}/${userId}`;
+
+/** The file's line under a member, while there is one (managers and workers). */
+function fileLine({ t, files, format }: ViewProps, userId: string) {
+  const status = files?.byPerson[userId];
+  return files && status ? (
+    <span className="block text-pretty">
+      {fileLineWords(t, format, status, files)}
+    </span>
+  ) : null;
+}
+
+function Members(view: ViewProps) {
+  const { t, team } = view;
   return (
     <PageSection title={t("team.members.title")}>
       <PersonList aria-label={t("team.members.title")}>
@@ -224,13 +280,14 @@ function Members({ t, team, peopleHref }: ViewProps) {
             key={m.userId}
             name={m.name}
             photo={m.photo}
-            href={`${peopleHref}/${m.userId}`}
+            href={memberHref(view, m.userId)}
             title={name(t, m.name)}
             subtitle={
               <>
                 {roleLabel(t, m.role, m.namedRole)}
                 {m.phone ? " · " : null}
                 {phone(m.phone)}
+                {fileLine(view, m.userId)}
               </>
             }
           />
@@ -355,12 +412,17 @@ function NameCell({
 }
 
 function Everyone(view: ViewProps) {
-  const { t, team, peopleHref, invites, edits } = view;
-  const note = invitesNote(view);
+  const { t, team, invites, edits, files, filesOnly, format } = view;
+  const note = filesOnly ? null : invitesNote(view);
   // The column of new links, for someone who may send them.
   const links = invites && edits;
+  // The numbers, for whoever sees the team: a files-only reader has none.
+  const phones = !filesOnly;
+  const shownInvites = filesOnly ? [] : team.invites;
   return (
-    <PageSection title={t("team.everyone")}>
+    <PageSection
+      title={filesOnly ? t("team.members.title") : t("team.everyone")}
+    >
       {/* Above the table, where the invites are its first rows: with a long
           team, under it would be out of sight while the undo waits. */}
       <InviteCancelUndo />
@@ -372,15 +434,29 @@ function Everyone(view: ViewProps) {
               <th scope="col" className={th}>
                 {t("team.columns.name")}
               </th>
-              <th scope="col" className={th}>
-                {t("team.columns.phone")}
-              </th>
+              {phones ? (
+                <th scope="col" className={th}>
+                  {t("team.columns.phone")}
+                </th>
+              ) : null}
               <th scope="col" className={th}>
                 {t("team.columns.role")}
               </th>
-              <th scope="col" className={th}>
-                {t("team.columns.status")}
-              </th>
+              {files ? (
+                <th scope="col" className={th}>
+                  {t("team.file.columns.details")}
+                </th>
+              ) : null}
+              {files?.form101 ? (
+                <th scope="col" className={th}>
+                  {t("team.file.columns.form101", { year: files.year })}
+                </th>
+              ) : null}
+              {filesOnly ? null : (
+                <th scope="col" className={th}>
+                  {t("team.columns.status")}
+                </th>
+              )}
               {links ? (
                 <th scope="col" className={th}>
                   {t("team.columns.link")}
@@ -389,12 +465,14 @@ function Everyone(view: ViewProps) {
             </tr>
           </thead>
           <tbody>
-            {team.invites.map((i) => (
+            {shownInvites.map((i) => (
               <UnlessCancelled key={i.id} id={i.id}>
                 <tr>
                   <NameCell person={i.name} label={name(t, i.name)} />
                   <td className={cn(td, "text-ink-2")}>{phone(i.phone)}</td>
                   <td className={td}>{roleLabel(t, i.role, i.namedRole)}</td>
+                  {files ? <td className={td} /> : null}
+                  {files?.form101 ? <td className={td} /> : null}
                   <td className={td}>
                     <InviteBadge t={t} state={i.state} />
                   </td>
@@ -406,26 +484,38 @@ function Everyone(view: ViewProps) {
                 </tr>
               </UnlessCancelled>
             ))}
-            {team.members.map((m) => (
-              <tr key={m.userId}>
-                <NameCell
-                  person={m.name}
-                  photo={m.photo}
-                  label={name(t, m.name)}
-                  href={`${peopleHref}/${m.userId}`}
-                />
-                <td className={cn(td, "text-ink-2")}>{phone(m.phone)}</td>
-                <td className={td}>{roleLabel(t, m.role, m.namedRole)}</td>
-                <td className={cn(td, "text-ink-2")}>
-                  {t("team.state.member")}
-                </td>
-                {links ? <td className={td} /> : null}
-              </tr>
-            ))}
+            {team.members.map((m) => {
+              const status = files?.byPerson[m.userId];
+              const cells = status ? fileCells(t, format, status) : null;
+              return (
+                <tr key={m.userId}>
+                  <NameCell
+                    person={m.name}
+                    photo={m.photo}
+                    label={name(t, m.name)}
+                    href={memberHref(view, m.userId)}
+                  />
+                  {phones ? (
+                    <td className={cn(td, "text-ink-2")}>{phone(m.phone)}</td>
+                  ) : null}
+                  <td className={td}>{roleLabel(t, m.role, m.namedRole)}</td>
+                  {files ? <td className={td}>{cells?.details}</td> : null}
+                  {files?.form101 ? (
+                    <td className={td}>{cells?.form101}</td>
+                  ) : null}
+                  {filesOnly ? null : (
+                    <td className={cn(td, "text-ink-2")}>
+                      {t("team.state.member")}
+                    </td>
+                  )}
+                  {links ? <td className={td} /> : null}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
-      {invites && team.invites.length === 0 ? (
+      {filesOnly ? null : invites && team.invites.length === 0 ? (
         <p className="px-1 text-ink-2 text-sm">{noInvites(view)}</p>
       ) : note ? (
         <p className="px-1 text-ink-2 text-sm">{note}</p>

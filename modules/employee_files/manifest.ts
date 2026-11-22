@@ -21,8 +21,11 @@ import { z } from "zod";
  * @db/employee-files, @domain/employee-file). H5a built the worker's own
  * /me/file, the module's page (no tab: the profile leads there); H5b brought
  * what each business asks, Today's cards and the landing after joining
- * (20261126000400_employee_files_settings.sql); H6 brings the owner's and
- * the accountant's view, H7 Form 101, H8 retention.
+ * (20261126000400_employee_files_settings.sql); H6a brought the owners' and
+ * the accountant's view (the status on /team, /team/[person]/file), the
+ * duties and the SMS step-up (20261126000500_file_holder_state.sql); H6b to
+ * H6d follow (bank reviews, who sees the files, the payroll export), H7
+ * Form 101, H8 retention.
  *
  * Off in every template and every business, the demo ones included (their
  * files are made up), until Orel approves the screens. Even switched on, a
@@ -32,7 +35,7 @@ import { z } from "zod";
  * Its one key, people.files, is given by an owner, as pay is: owners always
  * hold it and accountants through their fixed grant
  * (`private.accountant_perms`). Never switched per role on the roles screen:
- * it is the owner's own switch, on /manage/access in H6.
+ * it is the owner's own switch, on /manage/access in H6c.
  */
 export const manifest = defineManifest({
   key: "employee_files",

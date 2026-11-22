@@ -7,6 +7,7 @@ import {
   shiftsAhead,
 } from "@db/team";
 import { isUuid } from "@domain/activity";
+import { seesFiles } from "@domain/file-holders";
 import { holdsPermission, isStaff, type Viewer } from "@domain/modules";
 import { mayClearBio } from "@domain/profile";
 import {
@@ -24,6 +25,7 @@ import { chatPaths } from "../../chat/chat-paths";
 import { currentWording } from "../../current-wording";
 import { currentAccess } from "../../manage/access/access";
 import { currentMember } from "../../member";
+import { currentModules } from "../../modules";
 import { currentGivableNamedRoles, currentOwnerOnlyRoles } from "../../team";
 import { baseWording, translator } from "../../wording";
 import {
@@ -32,6 +34,7 @@ import {
   renameMemberAction,
   setMemberRoleAction,
 } from "../actions";
+import { currentTeamFiles } from "../file-status";
 import { FormerView } from "./former-view";
 import { type PersonChanges, PersonView } from "./person-view";
 
@@ -45,19 +48,30 @@ export async function generateMetadata(): Promise<Metadata> {
 // plan's R6), like the Team screen it is reached from: changes only for
 // whoever edits it. Anyone else gets the not-found screen; the signed-in
 // person's own profile is /me. Someone no longer on the team gets a page
-// that says so.
+// that says so. While the hiring file is on (profile H6a), a manager's or a
+// worker's page says how complete their file is (a card while anything is
+// missing, with a link to send them to complete it), and a holder opens
+// the file from it; someone who holds the files without seeing the team
+// (the accountant) goes straight to the file.
 export default async function TeamPersonPage({
   params,
 }: {
   params: Promise<{ person: string }>;
 }) {
-  const [{ person }, member] = await Promise.all([params, currentMember()]);
+  const [{ person }, member, enabled] = await Promise.all([
+    params,
+    currentMember(),
+    currentModules(),
+  ]);
   const membership = member?.membership;
-  if (!member || !membership || !canSeeTeam(membership)) notFound();
+  if (!member || !membership) notFound();
+  const holds = seesFiles(membership, enabled);
+  if (!canSeeTeam(membership) && !holds) notFound();
   if (person === member.userId) redirect("/me");
   if (!isUuid(person)) notFound();
+  if (!canSeeTeam(membership)) redirect(`/team/${person}/file`);
   const businessId = membership.business.id;
-  const [data, youth, wording, chat, open] = await Promise.all([
+  const [data, youth, wording, chat, open, files] = await Promise.all([
     getTeamPerson(businessId, person),
     // Who is a minor, and until when: the schedule needs it (payroll P5),
     // and whoever sees the team reads it.
@@ -66,6 +80,8 @@ export default async function TeamPersonPage({
     chatAccess(),
     // A demo business keeps its people, as it takes no invites (#80).
     invitesOpen(businessId),
+    // How complete their hiring file is, never a value (H6a).
+    currentTeamFiles(),
   ]);
   if (!data) {
     // Taken off the team: their place is kept, and the page says so.
@@ -152,9 +168,26 @@ export default async function TeamPersonPage({
       },
     };
   }
+  const status = files?.byPerson[data.userId] ?? null;
   return (
     <PersonView
       data={data}
+      fileCard={
+        files && status
+          ? {
+              status,
+              reader: files.reader,
+              viewing: !canWrite(member.viewing),
+              fileHref:
+                files.reader === "holder" ? `/team/${data.userId}/file` : null,
+              // A link only, which anyone who sees the team may send a
+              // colleague; never while viewing as a role.
+              share: canWrite(member.viewing),
+              businessName: membership.business.name,
+              form101: files.form101,
+            }
+          : null
+      }
       youthUntil={youth.get(data.userId) ?? null}
       timeZone={timeZone}
       canClear={canWrite(member.viewing) && mayClearBio(membership, data.role)}

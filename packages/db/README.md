@@ -1705,6 +1705,22 @@ per role: owners always hold it, accountants by `private.accountant_perms`
   returned, never raised, and logged as `employee.view_denied` (20 a day per
   caller in each business, then one `many` there; none for nobody signed in, the module off, or a
   person who isn't in the business; someone outside is told `not_member`).
+- **The holders' gate** (`20261126000500_file_holder_state.sql`, H6a):
+  `public.file_holder_state(business)`, under the session and not logged,
+  says whether the signed-in person may read the business's files as a
+  holder now: null for nobody signed in, `off`, then
+  `private.file_holder_gate`'s `viewing`, `not_member`, `not_holder` or
+  `ack`, else `ready`. A holder's screen asks it before any file is read
+  (`getFileHolderState`), so the duties show without an
+  `employee.view_denied` row. Covered by
+  `employee_files_holder_state.test.sql`.
+- **The step-up** (`@db/file-step-up`, H6a): a signed cookie `ca_file_open`
+  (`v1.<business>.<holder>.<ms>.<mac>`, an HMAC with a key HKDF derives from
+  `SUPABASE_SECRET_KEY`, as the punch key is; `path=/team`, httpOnly,
+  strict, 15 minutes from the last activity), set only after a right SMS
+  code for the holder's own `auth.users.phone`, checked by `checkCode`. The
+  database doesn't enforce it: a holder reading a file with their own
+  session directly gets only sealed values, and every read is logged.
 - **Real values.** `private.file_settings.real_values` stays false until Orel
   opens it on the production project, after the lawyer:
   `update private.file_settings set real_values = true, changed_at = now();`.
@@ -1714,7 +1730,7 @@ per role: owners always hold it, accountants by `private.accountant_perms`
   trigger, an update, delete or truncate on the log for `service_role`,
   `authenticated` or `anon`, and RLS off or any privilege on the file tables
   and the keys. `public.audit_guard_status()` (secret key; `@db/audit-guard`)
-  gives the newest run, for H6's console card.
+  gives the newest run, for H6c's console card.
 - **Locks.** `private.file_lock` (an advisory lock per business and person)
   first, then `employee_details`, `member_payroll_details`,
   `employee_tax_years`, `private.person_keys`, by every writer of a file and

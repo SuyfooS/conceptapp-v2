@@ -26,11 +26,13 @@ const TODAY = "2026-11-24";
  * The hiring file's parts (profile H5a): the steps bar and the list with
  * its current step, an ID number checked as it is typed, a bank account
  * with its check in words, a town and a country found by typing, and a
- * number shown for a minute. Nothing typed here goes anywhere.
+ * number shown for a minute, and one a holder asks for over the hour's
+ * limit, said in words (H6a). Nothing typed here goes anywhere.
  */
 export function GalleryFile() {
   const t = useTranslations("design");
   const tf = useTranslations("app.file");
+  const tt = useTranslations("app.team.file");
   const tb = useTranslations("banks");
   const locale = useLocale() === "en" ? "en" : "he";
   const [id, setId] = useState("");
@@ -110,6 +112,15 @@ export function GalleryFile() {
           showLabel={tf("masked.show")}
           hideLabel={tf("masked.hide")}
           hiddenLabel={tf("masked.hidden", { what: tf("identity.idNumber") })}
+          failedLabel={tf("masked.failed")}
+        />
+        <MaskedValue
+          label={tt("rows.account")}
+          masked="•••567"
+          onReveal={async () => ({ message: tt("reveal.limit") })}
+          showLabel={tf("masked.show")}
+          hideLabel={tf("masked.hide")}
+          hiddenLabel={tf("masked.hidden", { what: tt("rows.account") })}
           failedLabel={tf("masked.failed")}
         />
       </Card>

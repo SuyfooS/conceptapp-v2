@@ -5616,3 +5616,96 @@ export async function closePastJob(): Promise<void> {
   });
   await deleteRealBusiness(PAST_BUSINESS.id);
 }
+
+/*
+ * The holders' view of the file (profile H6a). The owner and the accountant
+ * confirm the duties, open the files by an SMS code and reveal numbers, all
+ * in the demo restaurant, so each test starts with no confirmation and ends
+ * with Noa's and Yoav's made-up files back (`restoreDemoFile`, which also
+ * takes away the log's rows about them). Local database only, as postgres.
+ */
+
+/**
+ * No holder in the demo restaurant has confirmed the duties: their
+ * confirmations and their `employee.ack` rows go, under the purge that
+ * names the business, for this transaction.
+ */
+export async function clearDemoFileAcks(): Promise<void> {
+  await sql.begin(async (tx) => {
+    await tx`select set_config('ca.records_purge', ${DEMO_RESTAURANT}, true)`;
+    await tx`delete from private.file_acknowledgements
+      where business_id = ${DEMO_RESTAURANT}`;
+    await tx`delete from public.audit_log
+      where business_id = ${DEMO_RESTAURANT} and action = 'employee.ack'`;
+  });
+}
+
+export type FileGap = "identity" | "address" | "bank" | "pension";
+
+/**
+ * Parts of the person's file in the demo restaurant gone, each group's plain
+ * and sealed columns together, as the table's checks keep them.
+ * `restoreDemoFile` puts the made-up file back.
+ */
+export async function setDemoFileGaps(
+  userId: string,
+  groups: readonly FileGap[],
+): Promise<void> {
+  for (const group of groups) {
+    if (group === "identity") {
+      await sql`update public.employee_details set legal_first_name = null,
+        legal_last_name = null, birth_date = null, id_kind = null, id_enc = null,
+        id_hint = null, id_country = null, id_expires_on = null, id_name_enc = null
+        where business_id = ${DEMO_RESTAURANT} and user_id = ${userId}`;
+    } else if (group === "address") {
+      await sql`update public.employee_details set city_code = null,
+        address_enc = null
+        where business_id = ${DEMO_RESTAURANT} and user_id = ${userId}`;
+    } else if (group === "bank") {
+      await sql`update public.employee_details set bank_code = null,
+        bank_branch = null, bank_account_enc = null, bank_account_hint = null,
+        bank_holder_kind = null, bank_holder_enc = null,
+        bank_instruction_at = null, bank_instruction_version = null,
+        bank_changed_at = null, bank_review = null
+        where business_id = ${DEMO_RESTAURANT} and user_id = ${userId}`;
+    } else {
+      await sql`update public.employee_details set pension_answer = null,
+        pension_fund = null, pension_answered_at = null
+        where business_id = ${DEMO_RESTAURANT} and user_id = ${userId}`;
+    }
+  }
+}
+
+/** What the `employee.view` rows by `actorId` about `personId` name, oldest first. */
+export async function demoFileViews(
+  actorId: string,
+  personId: string,
+): Promise<unknown[]> {
+  const rows = await sql<{ details: unknown }[]>`
+    select details from public.audit_log
+    where business_id = ${DEMO_RESTAURANT}
+      and action = 'employee.view'
+      and actor_id = ${actorId}
+      and details ->> 'person' = ${personId}
+    order by id`;
+  return rows.map((row) => row.details);
+}
+
+/** How many of the file's view rows, refused or not, `actorId` has in the demo restaurant. */
+export async function demoFileReadsBy(actorId: string): Promise<number> {
+  const rows = await sql<{ count: number }[]>`
+    select count(*)::int as count from public.audit_log
+    where business_id = ${DEMO_RESTAURANT}
+      and actor_id = ${actorId}
+      and action in ('employee.view', 'employee.view_denied')`;
+  return rows[0]?.count ?? 0;
+}
+
+/** The person's account waiting for a holder to look at it, or not. */
+export async function setDemoBankReview(
+  userId: string,
+  review: "new" | "warned" | "disputed" | null,
+): Promise<void> {
+  await sql`update public.employee_details set bank_review = ${review}
+    where business_id = ${DEMO_RESTAURANT} and user_id = ${userId}`;
+}

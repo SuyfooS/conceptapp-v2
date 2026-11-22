@@ -4321,6 +4321,7 @@ export type Database = {
         Args: { business: string; recipient: string };
         Returns: Json;
       };
+      file_holder_state: { Args: { business: string }; Returns: string };
       finish_list: {
         Args: { actor: string; at_time?: string; list: string };
         Returns: undefined;
