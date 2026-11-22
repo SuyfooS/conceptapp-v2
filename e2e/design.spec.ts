@@ -6889,3 +6889,33 @@ test("the team twin filters to missing details", async ({ page }) => {
   await page.getByRole("button", { name: hf.filter.all, exact: true }).click();
   await expect(noa.first()).toBeVisible();
 });
+
+// The review: a choice that shows nobody says so, and its button leads back
+// to everyone. Every file is complete with its 101 accepted (?complete=1).
+test("the team twin says a choice shows nobody, and shows everyone again", async ({
+  page,
+}) => {
+  await openFileDemo(page, "/design/shell/team?file=holder&complete=1");
+  const noa = page
+    .getByRole("link", { name: /נועה כהן/ })
+    .filter({ visible: true });
+  const choice = (label: string) =>
+    page.getByRole("button", { name: label, exact: true });
+  const noForm101 = page.getByText(
+    heT("app.team.file.filter.emptyForm101", { year: 2026 }),
+    { exact: true },
+  );
+  await expect(noa.first()).toBeVisible();
+  await choice(hf.filter.missing).click();
+  await expect(
+    page.getByText(hf.filter.emptyMissing, { exact: true }),
+  ).toBeVisible();
+  await expect(noa).toHaveCount(0);
+  await expectCleanPage(page);
+  await choice(hf.filter.form101).click();
+  await expect(noForm101).toBeVisible();
+  await choice(hf.filter.showAll).click();
+  await expect(noa.first()).toBeVisible();
+  await expect(noForm101).toHaveCount(0);
+  await expect(choice(hf.filter.all)).toHaveAttribute("aria-pressed", "true");
+});

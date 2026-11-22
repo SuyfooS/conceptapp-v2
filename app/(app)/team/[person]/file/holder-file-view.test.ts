@@ -31,6 +31,7 @@ const { demoFileHistory, demoHolderFile, DEMO_HOLDER_NUMBERS } = await import(
 );
 const { baseWording } = await import("../../../wording");
 const he = (await import("@/messages/he.json")).default;
+const en = (await import("@/messages/en.json")).default;
 
 const heT = createTranslator({ locale: "he", messages: he });
 
@@ -421,7 +422,19 @@ describe("what a holder does in the open file", () => {
     expect(page).toContain(f.history.submit);
     expect(page).toContain("גלית הדגמה");
     expect(html).toMatch(/xl:hidden/);
-    expect(html).toContain(`<caption class="sr-only">${f.history.title}`);
+    // One region by the title: the table's scroller, a region of its own
+    // inside the section, is named apart (the review: axe landmark-unique,
+    // and the e2e's region by the title).
+    expect(html).toContain(
+      `<caption class="sr-only">${f.history.table}</caption>`,
+    );
+    expect(html).toContain(`aria-label="${f.history.table}"`);
+    expect(html).not.toContain(`aria-label="${f.history.title}"`);
+    expect(f.history.table).not.toContain(f.history.title);
+    const enHistory = en.app.team.file.history;
+    expect(enHistory.table.toLowerCase()).not.toContain(
+      enHistory.title.toLowerCase(),
+    );
     for (const column of Object.values(f.history.columns)) {
       expect(html).toMatch(new RegExp(`<th[^>]*>${column}</th>`));
     }

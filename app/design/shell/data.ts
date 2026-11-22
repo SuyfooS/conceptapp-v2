@@ -985,6 +985,37 @@ export function teamFileStatusFor(
       );
 }
 
+/**
+ * The same rows with every file complete, its 101 accepted and no account
+ * to look at (the team twin's ?complete=1): no choice of the filter but
+ * "כולם" shows anyone, so each says so, with its way back to everyone.
+ */
+export function teamFileStatusComplete(
+  reader: "holder" | "team",
+): Record<string, FileStatus> {
+  return Object.fromEntries(
+    Object.entries(teamFileStatusFor(reader)).map(
+      ([id, row]): [string, FileStatus] => [
+        id,
+        {
+          ...row,
+          complete: true,
+          missing: 0,
+          form101_in: true,
+          detail: row.detail && {
+            ...row.detail,
+            missing: [],
+            status: "accepted",
+            change_due_by: null,
+            bank_review: null,
+            submitted_at: row.detail.submitted_at ?? "2026-09-20T09:05:00Z",
+          },
+        },
+      ],
+    ),
+  );
+}
+
 /** Noa's made-up file, as a holder opens it: complete, from the test ranges. */
 const DEMO_HOLDER_FILE: HolderFileData = {
   today: "2026-11-24",

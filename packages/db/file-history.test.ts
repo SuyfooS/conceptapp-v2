@@ -108,6 +108,16 @@ describe("what happened in a file", () => {
     ]);
   });
 
+  // The review: the log holds the id as Postgres prints a uuid, in lower
+  // case, and `details->>person` compares text.
+  it("asks for the person in lower case, however the id came", async () => {
+    await getFileHistory(SHOP, NOA.toUpperCase());
+    for (const query of logQueries()) {
+      expect(query.steps).toContainEqual(["eq", "details->>person", NOA]);
+    }
+    expect(logQueries()).toHaveLength(2);
+  });
+
   it("asks nobody's name with nothing to show", async () => {
     const page = await getFileHistory(SHOP, NOA);
     expect(page).toMatchObject({ rows: [], more: false });

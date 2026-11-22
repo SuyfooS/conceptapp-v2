@@ -3,6 +3,7 @@
 import type { FileFilter as FileChoice, FileTag } from "@domain/file-holders";
 import { Button } from "@ui/button";
 import { Card, CardText } from "@ui/card";
+import { cn } from "@ui/cn";
 import { Segmented } from "@ui/segmented";
 import { createContext, type ReactNode, use, useState } from "react";
 
@@ -27,14 +28,48 @@ const FilterContext = createContext<Filtering | null>(null);
 /** The choice, over what it filters. */
 export function FileFilter({
   counts,
+  initial = "all",
   children,
 }: {
   counts: Record<FileTag, number>;
+  /**
+   * The choice it opens with: everyone, since none is kept. Another only
+   * where a drawing starts from one already made (the tests).
+   */
+  initial?: FileChoice;
   children: ReactNode;
 }) {
-  const [choice, choose] = useState<FileChoice>("all");
+  const [choice, choose] = useState<FileChoice>(initial);
   return (
     <FilterContext value={{ choice, choose, counts }}>{children}</FilterContext>
+  );
+}
+
+/**
+ * The phone's and the tablet's lists: on a tablet the invites and the
+ * members side by side (`columns={2}`), or one list across, capped. Under
+ * any choice but "כולם" the invites go (they have no file), so the members
+ * take one list across as well, with no empty column beside it.
+ */
+export function FileColumns({
+  columns,
+  className,
+  children,
+}: {
+  columns: 1 | 2;
+  className: string;
+  children: ReactNode;
+}) {
+  const choice = use(FilterContext)?.choice ?? "all";
+  return (
+    <div
+      className={cn(
+        className,
+        columns === 2 && choice === "all" ? "md:grid-cols-2" : "md:max-w-2xl",
+      )}
+    >
+      {children}
+    </div>
   );
 }
 

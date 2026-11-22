@@ -47,12 +47,15 @@ export async function getFileHistory(
   personId: string,
 ): Promise<FileHistoryPage> {
   const supabase = await createClient();
+  // The writers log a uuid as Postgres prints it, in lower case, and
+  // `details->>person` is text: an id in upper case would match no row.
+  const person = personId.toLowerCase();
   const about = () =>
     supabase
       .from("audit_log")
       .select(COLUMNS)
       .eq("business_id", businessId)
-      .eq("details->>person", personId);
+      .eq("details->>person", person);
   const [changes, reveals] = await Promise.all([
     about()
       .filter("action", "in", CHANGES)

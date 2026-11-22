@@ -1801,6 +1801,7 @@
         "history": {
           "title": "What happened in the file",
           "note": "Who changed or showed what, and when. Never the values.",
+          "table": "Each action in the file, newest first",
           "columns": {
             "what": "What",
             "who": "Who",

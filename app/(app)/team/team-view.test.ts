@@ -1,3 +1,4 @@
+import type { FileFilter } from "@domain/file-holders";
 import { createElement } from "react";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
@@ -25,9 +26,13 @@ const { NextIntlClientProvider, createTranslator } = await import("next-intl");
 const { TeamView } = await import("./team-view");
 const { buildTeam } = await import("@domain/team");
 const { fileStaff } = await import("@domain/file-holders");
-const { teamFileStatusFor, teamInvites, teamMembers, teamToday } = await import(
-  "../../design/shell/data"
-);
+const {
+  teamFileStatusComplete,
+  teamFileStatusFor,
+  teamInvites,
+  teamMembers,
+  teamToday,
+} = await import("../../design/shell/data");
 const { baseWording } = await import("../wording");
 const he = (await import("@/messages/he.json")).default;
 
@@ -54,6 +59,7 @@ function draw(
   viewer: { role: "owner" | "manager" | "accountant"; perms: string[] },
   fileHref?: (userId: string) => string,
   staff = teamMembers,
+  fileFilter: FileFilter = "all",
 ): string {
   const missing: string[] = [];
   const provider = {
@@ -83,6 +89,7 @@ function draw(
         fileHref,
         resend,
         files: shown,
+        fileFilter,
         wording: baseWording,
       }),
     ),
@@ -302,5 +309,86 @@ describe("the team's files after H6b", () => {
     // Everyone shows to begin with: the choice isn't kept.
     expect(text(draw(files("holder"), owner))).toContain("דנה אברהם");
     expect(text(draw(null, owner))).not.toContain(f.label);
+  });
+
+  // The review: each choice in each shape, from what each reader sees; the
+  // invites and the owner, who have no file, hidden under one; the tablet's
+  // members then one list across; and a choice that shows nobody saying so,
+  // with its way back to everyone.
+  const filter = he.app.team.file.filter;
+  const invitesList = `aria-label="${he.app.team.invites.title}"`;
+  const everyone = [
+    ...teamMembers.map((m) => [m.userId, m.name ?? ""] as const),
+    ...teamInvites.map((i) => [i.id, i.name ?? ""] as const),
+  ];
+  const who = (page: string) =>
+    everyone.filter(([, n]) => page.includes(n)).map(([id]) => id);
+  /** Whose rows the phone's and the tablet's lists, and the desktop's table, hold. */
+  const rows = (html: string) => ({
+    lists: who(text(html.slice(0, html.indexOf("<table")))),
+    table: who(text(table(html))),
+  });
+  const pressed = (label: string) =>
+    new RegExp(`aria-pressed="true"[^>]*>${label}</button>`);
+
+  it("shows under each choice whom it names, in every shape, as each reader sees them", () => {
+    const cases = [
+      [owner, "holder", "missing", ["yoav", "maya"]],
+      // Shiran's 101 needs an updated form, which only a holder reads.
+      [owner, "holder", "form101", ["shiran", "yoav"]],
+      [manager, "team", "missing", ["yoav", "maya"]],
+      [manager, "team", "form101", ["yoav"]],
+    ] as const;
+    for (const [viewer, reader, choice, shown] of cases) {
+      const html = draw(files(reader), viewer, undefined, teamMembers, choice);
+      expect(rows(html), `${reader} ${choice}`).toEqual({
+        lists: shown,
+        table: shown,
+      });
+      expect(html).toMatch(pressed(filter[choice]));
+      expect(html).not.toMatch(pressed(filter.all));
+      expect(html).not.toContain(invitesList);
+      // One list across the tablet: no empty column where the invites were.
+      expect(listsClass(html)).toContain("md:max-w-2xl");
+      expect(listsClass(html)).not.toContain("md:grid-cols-2");
+    }
+    const all = draw(files("holder"), owner);
+    expect(rows(all)).toEqual({
+      lists: everyone.map(([id]) => id),
+      table: everyone.map(([id]) => id),
+    });
+    expect(all).toMatch(pressed(filter.all));
+    expect(all).toContain(invitesList);
+    expect(listsClass(all)).toContain("md:grid-cols-2");
+  });
+
+  it("says a choice shows nobody, and leads back to everyone, for each reader", () => {
+    const empty = [
+      ["missing", filter.emptyMissing],
+      ["form101", heT("app.team.file.filter.emptyForm101", { year: 2026 })],
+    ] as const;
+    for (const [viewer, reader] of [
+      [owner, "holder"],
+      [manager, "team"],
+    ] as const) {
+      const complete = files(reader, {
+        byPerson: teamFileStatusComplete(reader),
+      });
+      for (const [choice, words] of empty) {
+        const html = draw(complete, viewer, undefined, teamMembers, choice);
+        const page = text(html);
+        expect(page, `${reader} ${choice}`).toContain(words);
+        expect(page).toContain(filter.showAll);
+        // The choice stays, to choose another; nobody's row in any shape.
+        expect(html).toMatch(pressed(filter[choice]));
+        expect(html).not.toContain("<table");
+        expect(who(page)).toEqual([]);
+      }
+      // Under "כולם" everyone, as ever, and no line saying otherwise.
+      const all = text(draw(complete, viewer));
+      expect(who(all)).toHaveLength(everyone.length);
+      expect(all).not.toContain(filter.showAll);
+      expect(all).not.toContain(filter.emptyMissing);
+    }
   });
 });

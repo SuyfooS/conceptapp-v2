@@ -142,7 +142,9 @@ export async function currentHolderFile(
       }
     }
     if (read.access !== "holder") return { kind: "closed" };
-    const history = await fileHistoryOf(holder.businessId, person);
+    // By the id the database returned, never the address as typed: the log
+    // names the person in lower case, and its filter compares text.
+    const history = await fileHistoryOf(holder.businessId, head.personId);
     return {
       kind: "open",
       head,

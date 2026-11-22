@@ -331,6 +331,14 @@ describe("what happened in the file", () => {
     ]);
   });
 
+  // The review: the address may hold the id in upper case, which the file's
+  // reads take as a uuid, while the log names the person in lower case.
+  it("is read by the id the database returned, not the address as typed", async () => {
+    const screen = await currentHolderFile(NOA.toUpperCase());
+    expect(screen.kind).toBe("open");
+    expect(mocks.getFileHistory).toHaveBeenCalledWith(SHOP, NOA);
+  });
+
   it("says it couldn't be read by a code and a kind, and the file still opens", async () => {
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
     mocks.getFileHistory.mockRejectedValue(

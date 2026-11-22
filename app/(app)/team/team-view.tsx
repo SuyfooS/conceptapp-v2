@@ -1,4 +1,8 @@
-import { type FileTag, fileFilterTags } from "@domain/file-holders";
+import {
+  type FileFilter as FileChoice,
+  type FileTag,
+  fileFilterTags,
+} from "@domain/file-holders";
 import type { Role, Viewer } from "@domain/modules";
 import { displayIsraeliMobile } from "@domain/phone";
 import {
@@ -22,6 +26,7 @@ import { createFormatter } from "next-intl";
 import type { ComponentProps } from "react";
 import { type AppWording, type Translator, translator } from "../wording";
 import {
+  FileColumns,
   FileFilter,
   FileFilterChoice,
   FileFiltered,
@@ -101,8 +106,9 @@ type ViewProps = {
  * saying so and that their files come here once they join, instead of an
  * empty list and a table of headers. H6b-2 added a filter over every shape
  * (כולם · חסרים פרטים · 101 פתוח, from what the viewer sees, not kept on
- * reload) and, for a holder, the desktop's "שינוי אחרון". Also rendered
- * with mock data on /design/shell/team.
+ * reload; under a choice the invites go, and the members are one list
+ * across a tablet) and, for a holder, the desktop's "שינוי אחרון". Also
+ * rendered with mock data on /design/shell/team.
  */
 export function TeamView({
   team,
@@ -116,6 +122,7 @@ export function TeamView({
   named = [],
   files = null,
   filesOnly = files?.filesOnly === true,
+  fileFilter = "all",
   wording,
 }: {
   team: Team;
@@ -156,6 +163,11 @@ export function TeamView({
    * the files alone, even when their status couldn't be read.
    */
   filesOnly?: boolean;
+  /**
+   * The filter's choice the screen opens with: everyone, since none is kept
+   * (H6b-2). Another only for a drawing of one already made (the tests).
+   */
+  fileFilter?: FileChoice;
   /** The business's words; the app's own on the demo. */
   wording: AppWording;
 }) {
@@ -238,6 +250,7 @@ export function TeamView({
       {filtered ? (
         <FileFilter
           counts={{ missing: counted("missing"), form101: counted("form101") }}
+          initial={fileFilter}
         >
           <FileFilterChoice
             label={t("team.file.filter.label")}
@@ -285,12 +298,11 @@ function TeamBody({
   return (
     <InviteCancels cancel={cancel ?? null}>
       {/* The files alone are one list: across the tablet, capped, with no
-          empty column beside it. */}
-      <div
-        className={cn(
-          "grid gap-6 md:items-start md:gap-8 xl:hidden",
-          filesOnly ? "md:max-w-2xl" : "md:grid-cols-2",
-        )}
+          empty column beside it. So are the members under a choice of the
+          filter, which hides the invites. */}
+      <FileColumns
+        columns={filesOnly ? 1 : 2}
+        className="grid gap-6 md:items-start md:gap-8 xl:hidden"
       >
         {filesOnly ? (
           <Members {...view} />
@@ -305,7 +317,7 @@ function TeamBody({
             <Invites {...view} />
           </>
         )}
-      </div>
+      </FileColumns>
       <div className="hidden xl:block">
         <Everyone {...view} />
       </div>

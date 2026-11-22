@@ -106,7 +106,6 @@ export function FileHistorySection({
   format: Format;
   history: FileHistory;
 }) {
-  const title = t("team.file.history.title");
   const lines = (history?.entries ?? []).flatMap((entry) => {
     const what = historyLine(t, format, entry);
     return what === null
@@ -141,7 +140,7 @@ export function FileHistorySection({
         tabIndex={-1}
         className="px-1 font-bold text-lg outline-none"
       >
-        {title}
+        {t("team.file.history.title")}
       </h2>
       <p className="px-1 text-ink-2 md:max-w-2xl">
         {t("team.file.history.note")}
@@ -173,8 +172,11 @@ export function FileHistorySection({
             </ol>
           </Card>
           <Card padding="none" className="hidden overflow-hidden xl:block">
+            {/* Its scroller is a region named by the caption, inside the
+                section's own: a name apart, never the title again (axe
+                landmark-unique). */}
             <DataTable
-              caption={title}
+              caption={t("team.file.history.table")}
               columns={[
                 { key: "what", label: t("team.file.history.columns.what") },
                 { key: "who", label: t("team.file.history.columns.who") },
