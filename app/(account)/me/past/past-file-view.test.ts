@@ -27,6 +27,7 @@ const { baseWording } = await import("../../../(app)/wording");
 const { pastFileDemo, pastJobDemo, FILE_DEMO_NUMBERS } = await import(
   "../../../design/shell/me/file/data"
 );
+const { glowClass } = await import("@ui/page-glow");
 const he = (await import("@/messages/he.json")).default;
 const en = (await import("@/messages/en.json")).default;
 
@@ -57,6 +58,12 @@ function text(html: string): string {
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&amp;/g, "&");
+}
+
+/** The classes of the first tag that matches. */
+function classesOf(html: string, tag: RegExp): string[] {
+  const found = tag.exec(html)?.[0] ?? "";
+  return /class="([^"]*)"/.exec(found)?.[1]?.split(" ") ?? [];
 }
 
 /** Every console.error, which next-intl's missing words go to. */
@@ -121,7 +128,7 @@ describe("the old file", () => {
   it("is in a left-to-right English frame for someone who chose English, in the business's colour", () => {
     const html = file(pastFileDemo("en"));
     expect(html).toMatch(
-      /<div data-accent="" style="[^"]*" dir="ltr" lang="en">/,
+      /<div data-accent="" style="[^"]*" dir="ltr" lang="en" class="[^"]*">/,
     );
     expect(text(html)).toContain(
       enT("app.past.kept.title", { business: CAFE }),
@@ -130,8 +137,40 @@ describe("the old file", () => {
       enT("app.past.subtitle", { business: CAFE, date: "October 2026" }),
     );
     const hebrew = file(pastFileDemo("he"));
-    expect(hebrew).toMatch(/<div data-accent="" style="[^"]*">/);
+    expect(hebrew).toMatch(/<div data-accent="" style="[^"]*" class="[^"]*">/);
     expect(hebrew).not.toContain('lang="en"');
+  });
+
+  it("washes the whole window in the business's colour at every width, and only the page is narrowed", () => {
+    const screens = [
+      file(pastFileDemo("he")),
+      draw(
+        createElement(PastUnavailable, {
+          screen: { kind: "off", job: pastJobDemo, locale: "he", back: "list" },
+        }),
+      ),
+    ];
+    for (const html of screens) {
+      // Outside the app's frame: the wash of a whole page, on the frame
+      // that is the window's width, never the in-frame one that goes on
+      // desktop.
+      const frame = classesOf(html, /<div data-accent=""[^>]*>/);
+      expect(frame).toEqual(expect.arrayContaining(glowClass.split(" ")));
+      expect(frame).not.toContain("xl:bg-none");
+      const page = classesOf(html, /<main[^>]*>/);
+      expect(page).toContain("max-w-5xl");
+      // A wash on the narrowed page would stop in a line at its edge.
+      expect(page.filter((name) => /(^|:)bg-/.test(name))).toEqual([]);
+    }
+  });
+
+  it("wraps a long email inside its card", () => {
+    const email = "michal.bendavid.1987@company-mail.co.il";
+    const html = file({ ...pastFileDemo("he"), email });
+    const row = new RegExp(
+      `<dd class="([^"]*)"><span dir="ltr">${email.replace(/\./g, "\\.")}</span></dd>`,
+    ).exec(html);
+    expect(row?.[1]?.split(" ")).toContain("wrap-anywhere");
   });
 
   it("says managers no longer see the contact only when there is one", () => {
@@ -149,6 +188,16 @@ describe("the old file", () => {
       new Intl.DisplayNames(["he"], { type: "region" }).of("PH") ?? "PH",
     );
     expect(html).toContain("30 ביוני 2031");
+  });
+
+  it("gives the passport its own last digits, never the account's", () => {
+    const { masked } = pastFileDemo("he", "passport");
+    expect(masked.id).toBe(`•••${FILE_DEMO_NUMBERS.passport.slice(-4)}`);
+    expect(masked.id).not.toBe(masked.bankAccount);
+    const html = file(pastFileDemo("he", "passport"));
+    for (const shown of [masked.id, masked.bankAccount]) {
+      expect(html).toContain(shown ?? "a number");
+    }
   });
 
   it("says why this year's 101 came back", () => {

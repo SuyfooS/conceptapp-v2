@@ -34,8 +34,16 @@ import { business, leftBusiness } from "../../data";
 /** The twin's day: fixed, so its dates read the same on every visit. */
 export const FILE_DEMO_TODAY = "2026-11-24";
 
-/** What the twin's "הצגה" shows: the test range's ID and an account that checks valid. */
-export const FILE_DEMO_NUMBERS = { id: "000000018", bankAccount: "100001" };
+/**
+ * What the twin's "הצגה" shows: the test range's ID, a made-up passport in
+ * the demo seed's shape (the old file's `passport`), and an account that
+ * checks valid.
+ */
+export const FILE_DEMO_NUMBERS = {
+  id: "000000018",
+  passport: "P0002468",
+  bankAccount: "100001",
+};
 
 /** The account the twin's check warns about (Hapoalim 12, branch 600). */
 export const FILE_DEMO_WARNED: BankFieldValue = {
@@ -377,8 +385,9 @@ export function fileScreenDemo(
 /*
  * A former worker's old file on the twin (profile H5c): Noa's sent file, as
  * she left it in the layout demo's café, read-only. `passport` has a
- * passport instead of her ID (its country and expiry), `returned` this
- * year's 101 returned for its signature. Nothing here is kept either.
+ * passport instead of her ID (its country, its expiry and its own number,
+ * which "הצגה" shows), `returned` this year's 101 returned for its
+ * signature. Nothing here is kept either.
  */
 
 /** The business she left on the twin, a month before its day. */
@@ -403,6 +412,8 @@ export function pastFileDemo(
 ): PastFileData {
   const { data } = fileScreenDemo("done", lang);
   const passport = state === "passport";
+  // Its own last digits, never the account's.
+  const passportHint = FILE_DEMO_NUMBERS.passport.slice(-4);
   const year = data.taxYear;
   return {
     job: pastJobDemo,
@@ -416,7 +427,7 @@ export function pastFileDemo(
             id_kind: "passport",
             id_country: "PH",
             id_expires_on: "2031-06-30",
-            id_hint: "0001",
+            id_hint: passportHint,
           }
         : data.file,
     address: data.address,
@@ -427,7 +438,9 @@ export function pastFileDemo(
     holderName: null,
     // Kept in the file after leaving, though managers read it no more.
     emergency: FILE_DEMO_CONTACT,
-    masked: passport ? { ...data.masked, id: "•••0001" } : data.masked,
+    masked: passport
+      ? { ...data.masked, id: `•••${passportHint}` }
+      : data.masked,
     taxYears: year
       ? [
           state === "returned"

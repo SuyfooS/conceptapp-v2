@@ -3,7 +3,7 @@ import {
   PastFileView,
   PastUnavailable,
 } from "../../../(account)/me/past/past-file-view";
-import { demoRevealAction } from "../../shell/me/file/actions";
+import { demoRevealPastAction } from "../../shell/me/file/actions";
 import {
   pastDemoStateOf,
   pastFileDemo,
@@ -17,7 +17,8 @@ type Props = {
 // A former worker's old file (profile H5c) with Noa's mock file from the
 // café she left, drawn by the real view outside the app's frame, as the
 // real screen is. "הצגה" shows the twin's made-up numbers and keeps
-// nothing. `?state=passport` has a passport instead of her ID,
+// nothing. `?state=passport` has a passport instead of her ID (and shows
+// the passport's number),
 // `?state=returned` this year's 101 returned; `?state=off` the business no
 // longer using the file, `empty` nothing of hers in it, `viewing` the
 // ConceptApp team viewing as a role, `unavailable` no keys here.
@@ -53,10 +54,11 @@ async function Demo({ searchParams }: Props) {
       />
     );
   }
+  const shown = pastDemoStateOf(state);
   return (
     <PastFileView
-      data={pastFileDemo(locale, pastDemoStateOf(state), back)}
-      reveal={demoRevealAction}
+      data={pastFileDemo(locale, shown, back)}
+      reveal={demoRevealPastAction.bind(null, shown)}
       backHref={backHref}
     />
   );

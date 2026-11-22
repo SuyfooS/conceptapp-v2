@@ -11,7 +11,7 @@ import { Card } from "@ui/card";
 import { cn } from "@ui/cn";
 import { EmptyState } from "@ui/empty-state";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
-import { pageGlowClass } from "@ui/page-glow";
+import { glowClass } from "@ui/page-glow";
 import { VisibilityNote } from "@ui/visibility-note";
 import { FolderClock } from "lucide-react";
 import Link from "next/link";
@@ -70,7 +70,12 @@ function backOf(frame: PastFrame, backHref: string | undefined) {
   };
 }
 
-/** The frame every state is drawn in: the business's colour, the person's language. */
+/**
+ * The frame every state is drawn in: the business's colour, the person's
+ * language. Outside the app's frame, so the wash is the whole window's at
+ * every width, as on the other screens outside it, and only the page is
+ * narrowed: on the page, a wash would stop in a hard line at its edge.
+ */
 function Frame({ frame, children }: { frame: PastFrame; children: ReactNode }) {
   const english = frame.locale === "en";
   return (
@@ -78,15 +83,19 @@ function Frame({ frame, children }: { frame: PastFrame; children: ReactNode }) {
       {...accentProps(accentTokens(frame.job.accent))}
       dir={english ? "ltr" : undefined}
       lang={english ? "en" : undefined}
+      className={cn("min-h-dvh", glowClass)}
     >
-      <PageBody className={cn(pageGlowClass, "max-w-5xl")}>{children}</PageBody>
+      <PageBody className="max-w-5xl">{children}</PageBody>
     </div>
   );
 }
 
 type Line = { key: string; label: ReactNode; value: ReactNode };
 
-/** A part's plain rows: each a label over its value, hairlines between. */
+/**
+ * A part's plain rows: each a label over its value, hairlines between. A
+ * value with nowhere to break, such as a long email, wraps inside its card.
+ */
 function Lines({
   lines,
   className,
@@ -104,7 +113,9 @@ function Lines({
           className="flex flex-col gap-0.5 py-3 first:pt-0 last:pb-0"
         >
           <dt className="text-ink-2 text-sm">{line.label}</dt>
-          <dd className="text-pretty font-medium text-md">{line.value}</dd>
+          <dd className="text-pretty font-medium text-md wrap-anywhere">
+            {line.value}
+          </dd>
         </div>
       ))}
     </dl>

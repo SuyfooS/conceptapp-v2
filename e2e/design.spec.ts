@@ -6601,6 +6601,24 @@ test("the old file's twin shows a number and hides it", async ({ page }) => {
   await expect(main.getByText("000000018")).toHaveCount(0);
 });
 
+// With a passport, the twin's "הצגה" shows the passport its last digits are
+// from, which are not the account's.
+test("the old file's twin shows a passport by its own number", async ({
+  page,
+}) => {
+  const f = he.app.file;
+  await openFileDemo(page, "/design/screens/past-file?state=passport");
+  const main = page.getByRole("main");
+  await expect(main.getByText("•••2468")).toBeVisible();
+  await expect(main.getByText("•••0001")).toBeVisible();
+  await main
+    .getByRole("button", { name: f.masked.show, exact: true })
+    .first()
+    .click();
+  await expect(main.getByText("P0002468")).toBeVisible();
+  await expect(main.getByText("000000018")).toHaveCount(0);
+});
+
 test("the profile's previous job leads to the old file", async ({ page }) => {
   const business = "בית הקפה של נועה";
   await openFileDemo(page, "/design/shell/me?past=1");
