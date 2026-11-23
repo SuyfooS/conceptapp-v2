@@ -111,6 +111,8 @@ export type EmployeeFile = {
   missing: FileGroup[];
   youthUntil: string | null;
   pensionDueOn: string | null;
+  /** The open employment period's first day, or null for none (H6b-2). */
+  startedOn: string | null;
   taxYears: {
     year: number;
     status: TaxYearStatus;
@@ -251,6 +253,7 @@ export async function getEmployeeFile(
       missing: answer.missing,
       youthUntil: answer.youth_until,
       pensionDueOn: answer.pension_due_on,
+      startedOn: answer.started_on,
       taxYears: answer.tax_years.map((year) => ({
         year: year.year,
         status: year.status,
@@ -881,7 +884,12 @@ export async function noteStepUp(
   return error ? failedWith("noting a code failed", error) : { ok: true };
 }
 
-/** A holder confirms someone's new account, as the screen read it. */
+/**
+ * A holder confirms someone's new account, as the screen read it:
+ * `seenChangedAt` is the file's `bank_changed_at` exactly as the database
+ * gave it, microseconds and all, never a date written again, since any
+ * other moment answers 40001 (`moved`), as a change since does.
+ */
 export async function acknowledgeBank(
   actorId: string,
   businessId: string,
@@ -913,21 +921,35 @@ export async function disputeBankChange(
   return error ? failedWith("disputing a change failed", error) : { ok: true };
 }
 
-/** A holder marks parts of a file "נמסר ישירות לשכר" (none takes the mark off). */
-export async function setDirectGroups(
+/**
+ * A holder marks one part of a file "נמסר ישירות לשכר" (`marked`), or takes
+ * the mark off (H6b; 20261126000600_file_started_and_changed.sql): the
+ * database adds or takes off that part alone, reading the stored marks
+ * under the file's lock, so two holders' presses at once each keep the
+ * other's, and says whether anything changed (`changed` false: the part
+ * already was so, nothing written). A part the business doesn't ask is
+ * refused for a mark (`invalid`), never for taking one off.
+ */
+export async function markDirectGroup(
   actorId: string,
   businessId: string,
   personId: string,
-  groups: readonly FileGroup[],
-): Promise<FileWriteResult> {
+  group: FileGroup,
+  marked: boolean,
+): Promise<{ ok: true; changed: boolean } | FileWriteFailure> {
   if (!employeeKeyRing()) return { ok: false, failure: "keys" };
-  const { error } = await createAdminClient().rpc("set_direct_groups", {
+  const { data, error } = await createAdminClient().rpc("set_direct_groups", {
     actor: actorId,
     business: businessId,
     person: personId,
-    groups: [...groups],
+    file_group: group,
+    marked,
   });
-  return error ? failedWith("marking a file failed", error) : { ok: true };
+  if (error) return failedWith("marking a file failed", error);
+  // Only a yes or a no: anything else says nothing about the file.
+  return typeof data === "boolean"
+    ? { ok: true, changed: data }
+    : { ok: false, failure: "failed" };
 }
 
 /** A year's Form 101 marked, or its mark taken off (`status` null). */

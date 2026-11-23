@@ -1,4 +1,4 @@
-import { createElement } from "react";
+import { createElement, isValidElement, type ReactElement } from "react";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type {
@@ -24,13 +24,17 @@ vi.mock("next/link", () => ({
     createElement("a", { href, ...rest }, children as never),
 }));
 
-const { NextIntlClientProvider, createTranslator } = await import("next-intl");
+const { NextIntlClientProvider, createFormatter, createTranslator } =
+  await import("next-intl");
 const { HolderFileView } = await import("./holder-file-view");
-const { demoHolderFile, DEMO_HOLDER_NUMBERS } = await import(
+const { HolderReveal } = await import("./holder-reveal");
+const { historyLine } = await import("./file-history");
+const { demoFileHistory, demoHolderFile, DEMO_HOLDER_NUMBERS } = await import(
   "../../../../design/shell/data"
 );
-const { baseWording } = await import("../../../wording");
+const { baseWording, translator } = await import("../../../wording");
 const he = (await import("@/messages/he.json")).default;
+const en = (await import("@/messages/en.json")).default;
 
 const heT = createTranslator({ locale: "he", messages: he });
 
@@ -42,7 +46,12 @@ const actions: HolderFileActions = {
   reveal: answer,
   keepOpen: answer,
   lock: answer,
+  acknowledgeBank: answer,
+  markDirect: answer,
 };
+
+/** "מה קרה בתיק" with nothing recorded yet. */
+const NO_HISTORY = { entries: [], more: false };
 
 const head = (over: Partial<HolderFileHead> = {}): HolderFileHead => ({
   personId: "noa",
@@ -97,6 +106,40 @@ const text = (html: string) =>
 
 const f = he.app.team.file;
 
+/**
+ * The elements a screen is made of, as React gets them, keys and all
+ * (markup has none): the server's own parts called, and an island's props
+ * looked through, its children and the elements it takes, since its hooks
+ * run only inside React.
+ */
+function elementsOf(node: unknown): ReactElement[] {
+  const found: ReactElement[] = [];
+  const walk = (each: unknown) => {
+    if (Array.isArray(each)) {
+      for (const item of each) walk(item);
+      return;
+    }
+    if (!isValidElement(each)) return;
+    found.push(each);
+    const props = each.props as Record<string, unknown>;
+    for (const value of Object.values(props)) walk(value);
+    if (typeof each.type !== "function") return;
+    try {
+      walk((each.type as (props: unknown) => unknown)(props));
+    } catch {
+      // An island: its hooks need React, and its props were looked through.
+    }
+  };
+  // React says so of each hook called outside it.
+  const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    walk(node);
+  } finally {
+    quiet.mockRestore();
+  }
+  return found;
+}
+
 describe("a holder's file screen", () => {
   it("shows the duties with their seven lines and the one action that confirms them", () => {
     const html = draw({ kind: "duties", head: head() });
@@ -137,7 +180,12 @@ describe("a holder's file screen", () => {
 
   it("opens the file with the numbers' last digits only, and no main action", () => {
     const data = demoHolderFile("noa");
-    const html = draw({ kind: "open", head: head(), data });
+    const html = draw({
+      kind: "open",
+      history: NO_HISTORY,
+      head: head(),
+      data,
+    });
     const page = text(html);
     for (const title of [
       f.sections.identity,
@@ -163,7 +211,12 @@ describe("a holder's file screen", () => {
   // itself, so it sits between two lists of terms, never inside one.
   it("puts each number where it is read, between lists of terms", () => {
     const data = demoHolderFile("noa");
-    const html = draw({ kind: "open", head: head(), data });
+    const html = draw({
+      kind: "open",
+      history: NO_HISTORY,
+      head: head(),
+      data,
+    });
     const page = text(html);
     const at = (part: string) => {
       const found = page.indexOf(part);
@@ -182,15 +235,22 @@ describe("a holder's file screen", () => {
     expect(at(data.bank?.masked ?? "none")).toBeLessThan(at(f.rows.holder));
     const lists = html.match(/<dl[^>]*>.*?<\/dl>/gs) ?? [];
     expect(lists.length).toBeGreaterThan(0);
+    // The number's own row, with its "הצגה", is in no list; a holder's
+    // write sits under the row it is about (H6b-1).
     for (const list of lists) {
-      expect(list).not.toContain("<button");
+      expect(list).not.toContain(he.app.file.masked.show);
     }
   });
 
   it("says what is missing, with where to send a link from for someone who sees the team", () => {
     const data = demoHolderFile("yoav");
     const seen = text(
-      draw({ kind: "open", head: head({ name: "יואב לוי" }), data }),
+      draw({
+        kind: "open",
+        history: NO_HISTORY,
+        head: head({ name: "יואב לוי" }),
+        data,
+      }),
     );
     expect(seen).toContain(f.rows.missing);
     expect(seen).toContain(
@@ -199,6 +259,7 @@ describe("a holder's file screen", () => {
     const filesOnly = text(
       draw({
         kind: "open",
+        history: NO_HISTORY,
         head: head({ name: "יואב לוי", seesTeam: false }),
         data,
       }),
@@ -215,6 +276,7 @@ describe("a holder's file screen", () => {
       const page = text(
         draw({
           kind: "open",
+          history: NO_HISTORY,
           head: head({ addressForm: form }),
           data: demoHolderFile("noa", "disputed"),
         }),
@@ -260,6 +322,7 @@ describe("a holder's file screen", () => {
     ).toContain('tabindex="-1"');
     const open = draw({
       kind: "open",
+      history: NO_HISTORY,
       head: head(),
       data: demoHolderFile("noa"),
     });
@@ -283,5 +346,253 @@ describe("a holder's file screen", () => {
     // A second code says so, so the line is new and is heard.
     expect(words("resent")).not.toBe(words("sent"));
     expect(words("resent")).toContain("0014");
+  });
+});
+
+// Profile H6b: what a holder does in the open file, "מה קרה בתיק", and a
+// minor's checklist.
+describe("what a holder does in the open file", () => {
+  const open = (
+    data: ReturnType<typeof demoHolderFile>,
+    over: Partial<HolderFileHead> = {},
+    history: Parameters<typeof demoFileHistory>[1] | "none" = "none",
+  ) =>
+    draw({
+      kind: "open",
+      head: head(over),
+      data,
+      history:
+        history === "none" ? NO_HISTORY : demoFileHistory("noa", history),
+    });
+  /** The accent's buttons: the screen's main action. */
+  const accents = (html: string) =>
+    html.match(/bg-accent text-accent-ink/g)?.length ?? 0;
+
+  it("confirms each kind of review in its own words, the one main action", () => {
+    const newOne = text(open(demoHolderFile("noa", "new")));
+    expect(newOne).toContain(f.review.confirmNew);
+    expect(newOne).toContain(f.review.held);
+    const warned = text(open(demoHolderFile("noa", "warned")));
+    expect(warned).toContain(f.review.confirmWarned);
+    expect(warned).toContain(f.review.held);
+    for (const form of ["f", "m", null] as const) {
+      const html = open(demoHolderFile("noa", "disputed"), {
+        addressForm: form,
+      });
+      const page = text(html);
+      expect(page).toContain(
+        heT("app.team.file.review.confirmDisputed", { first: "נועה" }),
+      );
+      expect(page).toContain(
+        heT("app.team.file.review.notTheirs", {
+          first: "נועה",
+          form: form ?? "x",
+        }),
+      );
+      expect(accents(html)).toBe(1);
+    }
+    expect(accents(open(demoHolderFile("noa")))).toBe(0);
+  });
+
+  it("offers no confirmation for a review without its moment", () => {
+    const data = demoHolderFile("noa", "new");
+    const page = text(
+      open({ ...data, bank: data.bank && { ...data.bank, changedAt: null } }),
+    );
+    expect(page).not.toContain(f.review.confirmNew);
+  });
+
+  it("marks each missing part, takes a mark off, and offers neither on a complete one", () => {
+    const count = (page: string, words: string) => page.split(words).length - 1;
+    const yoav = text(open(demoHolderFile("yoav"), { name: "יואב לוי" }));
+    expect(count(yoav, f.direct.mark)).toBe(2);
+    expect(count(yoav, f.direct.markHint)).toBe(2);
+    expect(yoav).not.toContain(f.direct.unmark);
+    const marked = text(
+      open(demoHolderFile("yoav", null, ["bank"]), { name: "יואב לוי" }),
+    );
+    expect(count(marked, f.direct.mark)).toBe(1);
+    expect(count(marked, f.direct.unmark)).toBe(1);
+    expect(marked).toContain(f.rows.direct);
+    const noa = text(open(demoHolderFile("noa")));
+    expect(noa).not.toContain(f.direct.mark);
+    expect(noa).not.toContain(f.direct.unmark);
+  });
+
+  it("marks a pension whose day passed as the business's choice, and then reads it handed directly", () => {
+    const business = "מסעדת הדגמה";
+    const passed = text(
+      open(demoHolderFile("yoav", null, [], true), { name: "יואב לוי" }),
+    );
+    expect(passed).toContain(
+      heT("app.team.file.rows.pensionPassed", { business }),
+    );
+    expect(passed).toContain(heT("app.team.file.direct.pension", { business }));
+    const after = text(
+      open(demoHolderFile("yoav", null, ["pension"], true), {
+        name: "יואב לוי",
+      }),
+    );
+    expect(after).toContain(f.rows.direct);
+    for (const form of ["f", "m", "x"]) {
+      expect(after).not.toContain(
+        heT("app.team.file.rows.pensionLaterNone", { first: "יואב", form }),
+      );
+    }
+    expect(after).not.toContain(
+      heT("app.team.file.rows.pensionPassed", { business }),
+    );
+  });
+
+  it("lists what happened in the file in a list and a table, never a value", () => {
+    const html = open(demoHolderFile("noa"), {}, "full");
+    const page = text(html);
+    expect(page).toContain(f.history.title);
+    expect(page).toContain(f.history.note);
+    expect(page).toContain(
+      heT("app.team.file.history.reveal", { fields: "מספר החשבון" }),
+    );
+    expect(page).toContain(f.history.bankDisputed);
+    expect(page).toContain(
+      heT("app.team.file.history.details", { fields: "חשבון הבנק" }),
+    );
+    expect(page).toContain(f.history.submit);
+    expect(page).toContain("גלית הדגמה");
+    expect(html).toMatch(/xl:hidden/);
+    // One region by the title: the table's scroller, a region of its own
+    // inside the section, is named apart (the review: axe landmark-unique,
+    // and the e2e's region by the title).
+    expect(html).toContain(
+      `<caption class="sr-only">${f.history.table}</caption>`,
+    );
+    expect(html).toContain(`aria-label="${f.history.table}"`);
+    expect(html).not.toContain(`aria-label="${f.history.title}"`);
+    expect(f.history.table).not.toContain(f.history.title);
+    const enHistory = en.app.team.file.history;
+    expect(enHistory.table.toLowerCase()).not.toContain(
+      enHistory.title.toLowerCase(),
+    );
+    for (const column of Object.values(f.history.columns)) {
+      expect(html).toMatch(new RegExp(`<th[^>]*>${column}</th>`));
+    }
+    expect(html).not.toContain(DEMO_HOLDER_NUMBERS.id);
+    expect(html).not.toContain(DEMO_HOLDER_NUMBERS.bankAccount);
+  });
+
+  it("says nothing recorded yet, a history it couldn't read, and that only the newest show", () => {
+    expect(text(open(demoHolderFile("noa"), {}, "empty"))).toContain(
+      f.history.empty,
+    );
+    const failed = text(open(demoHolderFile("noa"), {}, "failed"));
+    expect(failed).toContain(f.history.failed);
+    expect(failed).toContain(f.sections.identity);
+    const more = demoFileHistory("noa");
+    const page = text(
+      draw({
+        kind: "open",
+        head: head(),
+        data: demoHolderFile("noa"),
+        history: more && { ...more, more: true },
+      }),
+    );
+    expect(page).toContain(heT("app.team.file.history.more", { count: 40 }));
+  });
+
+  it("starts a newer account at the dots, never beside the old account's digits", () => {
+    // The bank's "הצגה" keeps the digits shown for a minute: keyed by the
+    // change it shows, a change since (said by "החשבון הוחלף שוב בינתיים")
+    // starts it again, hidden (the second review).
+    const reveals = (changedAt: string | null) => {
+      const data = demoHolderFile("noa", "new");
+      return elementsOf(
+        HolderFileView({
+          screen: {
+            kind: "open",
+            head: head(),
+            data: { ...data, bank: data.bank && { ...data.bank, changedAt } },
+            history: NO_HISTORY,
+          },
+          paths: { profile: "/team/noa", team: "/team" },
+          actions,
+          wording: baseWording,
+        }),
+      ).filter(
+        (element) =>
+          element.type === HolderReveal &&
+          (element.props as { field: string }).field === "bank_account",
+      );
+    };
+    const read = "2026-11-20T08:00:00.123456+00:00";
+    const since = "2026-11-20T08:00:05.000001+00:00";
+    expect(reveals(read).length).toBeGreaterThan(0);
+    expect(new Set(reveals(read).map((element) => element.key))).toEqual(
+      new Set([read]),
+    );
+    expect(new Set(reveals(since).map((element) => element.key))).toEqual(
+      new Set([since]),
+    );
+    expect(new Set(reveals(null).map((element) => element.key))).toEqual(
+      new Set(["bank"]),
+    );
+  });
+
+  it("says in the history what is marked since, by the file's own names of its parts", () => {
+    const t = translator(baseWording, "app");
+    const format = createFormatter({
+      locale: "he",
+      timeZone: "Asia/Jerusalem",
+    });
+    const marks = (groups: ("identity" | "pension")[]) =>
+      historyLine(t, format, {
+        id: 7,
+        at: "2026-11-22T12:05:00Z",
+        actor: { kind: "member", name: "גלית הדגמה" },
+        line: {
+          action: "employee.direct",
+          person: { kind: "member", name: "נועה כהן" },
+          groups,
+        },
+      });
+    // The row holds the set after its own change: "אחרי השינוי מסומן",
+    // never "סימון", which read as the press that marked them all, nor
+    // "עכשיו", which an older row no longer is.
+    const both = marks(["identity", "pension"]);
+    expect(both).toBe(
+      heT("app.team.file.history.direct", {
+        groups: format.list(
+          [f.direct.groups.identity, f.direct.groups.pension],
+          { type: "conjunction" },
+        ),
+      }),
+    );
+    expect(both).toContain("אחרי השינוי");
+    expect(both).not.toContain("עכשיו");
+    expect(en.app.team.file.history.direct).toContain("After this change");
+    // As the section's toast names it, and the activity log by the same name.
+    expect(marks(["identity"])).toContain(f.direct.groups.identity);
+    expect(he.app.manage.activity.actions.employee.groups).toEqual(
+      f.direct.groups,
+    );
+    expect(en.app.manage.activity.actions.employee.groups).toEqual(
+      en.app.team.file.direct.groups,
+    );
+    expect(marks([])).toBe(f.history.directCleared);
+  });
+
+  it("reminds the business what it owes a minor, and nothing for an adult", () => {
+    const maya = text(open(demoHolderFile("maya"), { name: "מאיה פרץ" }));
+    expect(maya).toContain(f.minor.title);
+    expect(maya).toContain(f.minor.before);
+    expect(maya).toContain("27.11.2026");
+    expect(maya).not.toContain(f.minor.under15);
+    const started = demoHolderFile("maya");
+    const unknown = text(
+      open({
+        ...started,
+        identity: { ...started.identity, minor: { startedOn: null } },
+      }),
+    );
+    expect(unknown).toContain(f.minor.noticeNoStart);
+    expect(text(open(demoHolderFile("noa")))).not.toContain(f.minor.title);
   });
 });

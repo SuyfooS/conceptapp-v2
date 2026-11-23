@@ -27,7 +27,7 @@ import {
   currentTeamAvailability,
 } from "../schedule/week";
 import { currentTeam } from "../team";
-import { currentFilesHome } from "../team/file-status";
+import { currentFileReviews, currentFilesHome } from "../team/file-status";
 import { baseWording, translator } from "../wording";
 import { AccountantHome } from "./accountant-home";
 import { currentFirstSteps } from "./first-steps";
@@ -69,6 +69,7 @@ export default async function HomePage() {
     firstSteps,
     modes,
     file,
+    reviews,
   ] = await Promise.all([
     currentMember(),
     currentModules(),
@@ -90,6 +91,9 @@ export default async function HomePage() {
     currentWording().then((words) => currentModeRows("home", words)),
     // The person's own hiring file, where it is on for them (H5b).
     currentFileToday(),
+    // The staff's accounts to look at, for an owner who holds the files
+    // (H6b-1); none in a view, which reads no detail.
+    currentFileReviews(),
   ]);
   const membership = member?.membership;
   // The layout has already sent these people elsewhere.
@@ -142,6 +146,7 @@ export default async function HomePage() {
         modes,
         // What is missing of the person's own file, and an account changed.
         file,
+        reviews,
       }}
     />
   );
