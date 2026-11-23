@@ -59,6 +59,7 @@ export function exportWords(wording: AppWording): ExportWords {
   const tf = translator(wording, "app.pay.file");
   const tc = translator(wording, "modules.time_clock");
   const ts = translator(wording, "modules.time_clock.settings");
+  const ta = translator(wording, "app.clock.absences");
   const cities = translator(wording, "cities");
 
   const flagFormat: FlagFormat = {
@@ -140,6 +141,7 @@ export function exportWords(wording: AppWording): ExportWords {
     rest: (rest) => t("tags.rest", { rest }),
     holiday: (key) => tc(`holidays.${key}`),
     oneOff: (key) => tc(`oneOffRestDays.${key as OneOffRestDayKey}`),
+    absence: (kind) => ta(`kinds.${kind}`),
     yes: tf("yes"),
     noName: t("noName"),
     someone: tf("someone"),
@@ -176,8 +178,8 @@ export function exportWords(wording: AppWording): ExportWords {
           });
         case "minimumWageTableStale":
           return tc("payroll.notes.minimumWageTableStale");
-        case "paidAbsencesMissing":
-          return tc("payroll.notes.paidAbsencesMissing");
+        case "absencesNotCounted":
+          return tc("payroll.notes.absencesNotCounted");
         default:
           return note satisfies never;
       }

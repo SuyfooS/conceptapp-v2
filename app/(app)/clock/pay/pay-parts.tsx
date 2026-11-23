@@ -1,3 +1,4 @@
+import { ABSENCE_KINDS, type AbsenceKind } from "@domain/absences";
 import { formatShekels, moneyLocale } from "@domain/money";
 import type { PayDay } from "@domain/pay-month";
 import { hasEstimate } from "@domain/pay-rates";
@@ -320,6 +321,24 @@ export function BeforePayrollCard({
 }
 
 /**
+ * Someone's days away in the month by kind (known issue 19), "חופשה 2 ·
+ * מחלה 1"; null with none, or when the engine couldn't run.
+ */
+export function absencesText(
+  days: Record<AbsenceKind, number> | null,
+  t: PayT,
+): string | null {
+  if (!days) return null;
+  const parts = ABSENCE_KINDS.filter((kind) => days[kind] > 0).map((kind) =>
+    t("absences.byKind", {
+      kind: t(`absences.kinds.${kind}`),
+      count: days[kind],
+    }),
+  );
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+/**
  * A person's line in the month's list: hours and days, with their estimate
  * while the business shows amounts and the month has something to estimate
  * (payroll P7), their wage, and what to check.
@@ -359,6 +378,9 @@ export function PersonLine({
         <span className="block">
           <WageSpans wage={person.wage} t={t} />
         </span>
+      ) : null}
+      {absencesText(person.absenceDays, t) ? (
+        <span className="block">{absencesText(person.absenceDays, t)}</span>
       ) : null}
       <PersonFlags person={person} t={t} check={check} />
     </>
@@ -658,6 +680,8 @@ export function payMonthColumns(
     { key: "nights", label: t("columns.nights"), align: "end", numeric: true },
     { key: "breaks", label: t("columns.breaks"), align: "end" },
     { key: "wage", label: t("columns.wage"), align: "end" },
+    // Days away by kind (known issue 19), as the phone's line says them.
+    { key: "absences", label: t("columns.absences") },
     ...(amounts
       ? [
           {

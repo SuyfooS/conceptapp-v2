@@ -24,6 +24,8 @@ const PAGES = [
   "/design/shell/today/on-shift",
   "/design/shell/today/availability-missing",
   "/design/shell/today/owner",
+  // Who is away today (known issue 19), and the warning on a shift.
+  "/design/shell/today/owner?away=1",
   "/design/shell/today/worker",
   // The hiring file on Today (H5b): its card while something is missing,
   // and when a fund chosen later is all that is left; an account changed,
@@ -50,6 +52,8 @@ const PAGES = [
   "/design/shell/today/station",
   "/design/shell/today/station?state=worker",
   "/design/shell/schedule",
+  // A builder's board says who on a shift is away that day.
+  "/design/shell/schedule?away=1",
   // Next week, as the link in a shared schedule opens it.
   "/design/shell/schedule?week=2026-11-08",
   "/design/shell/schedule/worker",
@@ -72,6 +76,7 @@ const PAGES = [
   "/design/shell/schedule/build/running?week=next",
   // Next week saved as a draft, with people on Sunday: a copy keeps it.
   "/design/shell/schedule/build/running?week=next&state=draft",
+  "/design/shell/schedule/build/running?week=next&state=draft&away=1",
   "/design/shell/schedule/shifts",
   "/design/shell/schedule/shifts?at=evening",
   "/design/shell/clock",
@@ -96,7 +101,15 @@ const PAGES = [
   "/design/shell/clock/history",
   "/design/shell/clock/history?state=empty",
   "/design/shell/clock/history?estimate=off",
+  "/design/shell/clock/history?absences=1",
   "/design/shell/clock/team",
+  "/design/shell/clock/team?away=1",
+  // Days away on the person's page (known issue 19).
+  "/design/shell/clock/team/noa?absences=1",
+  "/design/shell/clock/team/noa?absences=1&state=absenceAdd",
+  "/design/shell/clock/team/noa?absences=1&state=absenceEdit",
+  "/design/shell/clock/team/noa?absences=1&state=absenceOverlap",
+  "/design/shell/clock/team/noa?absences=1&state=absenceClosed",
   "/design/shell/clock/team/noa",
   "/design/shell/clock/team/yoav",
   // A shift being fixed with "ביטול המשמרת" under it, the step that cancels
@@ -112,6 +125,8 @@ const PAGES = [
   "/design/shell/clock/team/yoav?state=addBreak",
   "/design/shell/clock/team/yoav?state=openBreak",
   "/design/shell/clock/pay",
+  "/design/shell/clock/pay?absences=1",
+  "/design/shell/clock/pay/noa?absences=1",
   "/design/shell/clock/pay?person=yoav",
   "/design/shell/clock/pay?show=noWage",
   "/design/shell/clock/pay?show=noNumber",
@@ -7520,4 +7535,94 @@ test("the team twin says a choice shows nobody, and shows everyone again", async
   await expect(noa.first()).toBeVisible();
   await expect(noForm101).toHaveCount(0);
   await expect(choice(hf.filter.all)).toHaveAttribute("aria-pressed", "true");
+});
+
+test("the person's demo records days away, removes them and brings them back", async ({
+  page,
+}) => {
+  const ta = he.app.clock.absences;
+  const shown = (text: string) =>
+    page.getByRole("main").getByText(text).filter({ visible: true }).first();
+  await page.goto("/design/shell/clock/team/noa?absences=1");
+  await expect(page.getByRole("heading", { name: ta.title })).toBeVisible();
+  await expect(shown(ta.kinds.vacation)).toBeVisible();
+  await expect(shown(ta.kinds.reserve)).toBeVisible();
+  await expect(shown("אושר מראש")).toBeVisible();
+  await expect(
+    shown(heT("app.clock.absences.shiftsOn", { count: 2 })),
+  ).toBeVisible();
+
+  // Recording: the four kinds, and the stand-in's answer in the toast.
+  await page
+    .getByRole("button", { name: ta.add })
+    .filter({ visible: true })
+    .first()
+    .click();
+  const sheet = page.getByRole("dialog", { name: ta.sheet.addTitle });
+  for (const kind of Object.values(ta.kinds)) {
+    await expect(sheet.getByRole("radio", { name: kind })).toBeVisible();
+  }
+  await sheet.getByRole("radio", { name: ta.kinds.sick }).check();
+  await sheet.getByRole("button", { name: ta.sheet.submit }).click();
+  await expect(page.getByText(ta.done.add).first()).toBeVisible();
+
+  // Removing the vacation offers "ביטול", which brings it back.
+  await page
+    .getByRole("button", { name: ta.kinds.vacation })
+    .filter({ visible: true })
+    .first()
+    .click();
+  const edit = page.getByRole("dialog", { name: ta.sheet.editTitle });
+  await edit.getByRole("button", { name: ta.sheet.remove }).click();
+  await expect(page.getByText(ta.done.remove).first()).toBeVisible();
+  await page.getByRole("button", { name: ta.done.undo }).click();
+  await expect(page.getByText(ta.done.restore).first()).toBeVisible();
+});
+
+test("the person's demo says an overlap and a closed month as the app does", async ({
+  page,
+}) => {
+  const ta = he.app.clock.absences;
+  await page.goto(
+    "/design/shell/clock/team/noa?absences=1&state=absenceOverlap",
+  );
+  const sheet = page.getByRole("dialog", { name: ta.sheet.addTitle });
+  await expect(sheet.getByText(ta.failure.overlap)).toBeVisible();
+  await page.goto(
+    "/design/shell/clock/team/noa?absences=1&state=absenceClosed",
+  );
+  await expect(
+    page.getByRole("dialog", { name: ta.sheet.addTitle }).getByText(
+      heT("app.clock.absences.failure.monthClosed", {
+        month: "אוקטובר 2026",
+      }),
+    ),
+  ).toBeVisible();
+});
+
+test("next week's demo says who is away on each day, on a shift and in the copy", async ({
+  page,
+}) => {
+  const tb = he.app.build;
+  await page.goto(
+    "/design/shell/schedule/build/running?week=next&state=draft&away=1",
+  );
+  await expect(
+    page
+      .getByText(heT("app.build.awayDay", { names: "איתי מזרחי" }))
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByText(heT("app.build.awayOnShift", { names: "איתי" }))
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
+  await page.getByRole("button", { name: tb.copy.action }).click();
+  const sheet = page.getByRole("dialog", { name: tb.copy.title });
+  await expect(
+    sheet.getByRole("heading", { name: tb.groups.away }),
+  ).toBeVisible();
+  await expect(sheet).toContainText("איתי מזרחי");
 });

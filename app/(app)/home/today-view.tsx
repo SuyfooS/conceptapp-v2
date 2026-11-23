@@ -198,6 +198,19 @@ export type TodayData = {
    * anyone else, in a view, or when the read failed.
    */
   reviews?: FileReview[] | null;
+  /**
+   * Who on the staff is away today, and until when (known issue 19), for
+   * whoever builds the schedule or edits the clock: never why. `links`: the
+   * rows lead to their hours, for whoever edits the clock. Null for anyone
+   * else, or with the clock off.
+   */
+  away?: TodayAway | null;
+};
+
+/** Who is away today, as Today lists them. */
+export type TodayAway = {
+  rows: { userId: string; name: string | null; until: string }[];
+  links: boolean;
 };
 
 type T = Translator<"app">;
@@ -651,7 +664,14 @@ export async function TodayView({
             {listsPart(
               "md:col-span-2 xl:col-span-1 xl:col-start-2 xl:row-start-2",
             )}
-            <WhoWorksToday {...view} now={data.now} />
+            <WhoWorksToday {...view} now={data.now} away={data.away ?? null} />
+            <AwayToday
+              t={t}
+              path={path}
+              format={format}
+              today={clock.date}
+              away={data.away ?? null}
+            />
             {rest(
               lists || chat || documentsWaiting
                 ? "md:col-span-2"
@@ -660,6 +680,14 @@ export async function TodayView({
           </div>
         ) : data.widgets.length > 0 ? (
           <div className="flex flex-col gap-6 md:gap-8">
+            {/* With scheduling off, in the place of who works today. */}
+            <AwayToday
+              t={t}
+              path={path}
+              format={format}
+              today={clock.date}
+              away={data.away ?? null}
+            />
             {listsPart("md:max-w-2xl")}
             {rest()}
           </div>
@@ -1182,7 +1210,9 @@ function WhoWorksToday({
   clock,
   schedule,
   now,
-}: ViewProps & { now: string }) {
+  away,
+}: ViewProps & { now: string; away: TodayAway | null }) {
+  const awayNow = new Set(away?.rows.map((row) => row.userId) ?? []);
   const { published } = schedule;
   const manager = schedule.builds;
   const { thisWeek, nextWeek } = published;
@@ -1290,9 +1320,18 @@ function WhoWorksToday({
                           }
                           title={name}
                           subtitle={
-                            published.positions.find(
-                              (p) => p.key === a.position,
-                            )?.name
+                            <>
+                              {
+                                published.positions.find(
+                                  (p) => p.key === a.position,
+                                )?.name
+                              }
+                              {awayNow.has(a.user) ? (
+                                <span className="block font-medium text-warning">
+                                  {t("home.who.away")}
+                                </span>
+                              ) : null}
+                            </>
                           }
                         />
                       );
@@ -1304,6 +1343,68 @@ function WhoWorksToday({
           })}
         </div>
       )}
+    </PageSection>
+  );
+}
+
+/**
+ * Who on the staff is away today (known issue 19), and until when, for
+ * whoever builds the schedule or edits the clock: never why. Each leads to
+ * their hours for whoever edits the clock. Nothing with nobody away. Phone:
+ * one column; from a tablet up it spans the grid's columns.
+ */
+function AwayToday({
+  t,
+  path,
+  format,
+  today,
+  away,
+}: {
+  t: T;
+  path: Path;
+  format: Format;
+  today: string;
+  away: TodayAway | null;
+}) {
+  if (!away || away.rows.length === 0) return null;
+  const dayOf = (date: string) =>
+    format.dateTime(new Date(`${date}T12:00:00Z`), {
+      weekday: "long",
+      timeZone: "UTC",
+    });
+  return (
+    <PageSection title={t("home.away.title")} className="md:col-span-2">
+      <ListGroup className="md:max-w-2xl">
+        {away.rows.map((row) => {
+          const name = row.name ?? t("team.noName");
+          const subtitle =
+            row.until === today
+              ? t("clock.absences.todayOnly")
+              : t.rich("clock.absences.until", {
+                  ltr,
+                  weekday: dayOf(row.until),
+                  date: dayMonth(row.until),
+                });
+          return away.links ? (
+            <ListRow
+              key={row.userId}
+              href={path(
+                `/clock/team/${row.userId}?month=${today.slice(0, 7)}`,
+              )}
+              leading={<Avatar name={name} />}
+              title={name}
+              subtitle={subtitle}
+            />
+          ) : (
+            <ListRow
+              key={row.userId}
+              leading={<Avatar name={name} />}
+              title={name}
+              subtitle={subtitle}
+            />
+          );
+        })}
+      </ListGroup>
     </PageSection>
   );
 }

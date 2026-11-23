@@ -17,6 +17,7 @@ import type { SwapAction } from "./shift-sheet";
 import {
   type AppT,
   assigneePeople,
+  awayOnShift,
   firstNames,
   formOf,
   hasEnded,
@@ -207,6 +208,13 @@ export function ShiftCard({
           className="size-5 shrink-0 text-ink-2 rtl:-scale-x-100"
         />
       </div>
+      {manager && awayOnShift(t, data, shift).length > 0 ? (
+        <p className="font-medium text-sm text-warning">
+          {t("build.awayOnShift", {
+            names: awayOnShift(t, data, shift).join(", "),
+          })}
+        </p>
+      ) : null}
       {id && mine && (request ? shift.day >= data.today : upcoming) ? (
         <div className="relative flex flex-col gap-2 border-line border-t pt-3">
           {request ? (

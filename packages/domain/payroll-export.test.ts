@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { KindSpan } from "./absences";
 import { instantIn } from "./availability";
 import { payrollHistory } from "./holiday-pay";
 import {
@@ -107,8 +108,13 @@ const CALENDAR = payrollCalendar(
   SIX,
 );
 
-function monthOf(entries: TimeEntry[], people: PayrollPerson[]) {
+function monthOf(
+  entries: TimeEntry[],
+  people: PayrollPerson[],
+  absences: KindSpan[] = [],
+) {
   const input: PayrollInput = {
+    absences,
     month: "2026-10",
     timeZone: TZ,
     now: NOW,
@@ -146,6 +152,10 @@ const WORDS: ExportWords = {
       waiting: "waiting",
       hoursLaw: "hoursLaw",
       daysNotWorked: "daysNotWorked",
+      vacationDays: "vacationDays",
+      sickDays: "sickDays",
+      reserveDays: "reserveDays",
+      otherAbsenceDays: "otherAbsenceDays",
       toCheck: "toCheck",
     },
     daily: {
@@ -164,6 +174,7 @@ const WORDS: ExportWords = {
       eve: "eve",
       holidayOrRest: "holidayOrRest",
       oneOff: "oneOff",
+      absence: "absence",
       source: "source",
       status: "status",
       correctedBy: "correctedBy",
@@ -200,6 +211,7 @@ const WORDS: ExportWords = {
   rest: (rest) => `rest:${rest}`,
   holiday: (key) => `holiday:${key}`,
   oneOff: (key) => `oneOff:${key}`,
+  absence: (kind) => `absence:${kind}`,
   yes: "yes",
   noName: "no name",
   someone: "someone",
@@ -231,6 +243,7 @@ const WORDS: ExportWords = {
       firstShift: "line:firstShift",
       open: "line:open",
       daysNotWorked: "line:daysNotWorked",
+      absences: "line:absences",
       nothingElse: "line:nothingElse",
     },
     closed: (month, date, changed) =>
@@ -408,6 +421,10 @@ describe("exportSheets", () => {
       "waiting",
       "hoursLaw",
       "daysNotWorked",
+      "vacationDays",
+      "sickDays",
+      "reserveDays",
+      "otherAbsenceDays",
       "toCheck",
     ]);
   });
@@ -608,7 +625,7 @@ describe("exportSheets", () => {
       expect.arrayContaining([
         "six",
         "telAviv",
-        "note:paidAbsencesMissing",
+        "note:absencesNotCounted",
         "line:minutes",
         "line:nothingElse",
       ]),
@@ -1064,5 +1081,103 @@ describe("localDateTime", () => {
   it("is the business's own clock, summer time or not", () => {
     expect(localDateTime("2026-10-14T06:30:00Z", TZ)).toBe("2026-10-14T09:30");
     expect(localDateTime("2026-11-14T06:30:00Z", TZ)).toBe("2026-11-14T08:30");
+  });
+});
+
+describe("days away in the file (known issue 19)", () => {
+  // Noa away on vacation from the 20th to the 22nd (she worked the 20th and
+  // 21st anyway) and sick on the 26th; Idle, with no shift, sick on the 29th.
+  const away: KindSpan[] = [
+    { userId: NOA, kind: "vacation", from: "2026-10-20", to: "2026-10-22" },
+    { userId: NOA, kind: "sick", from: "2026-10-26", to: "2026-10-26" },
+    { userId: IDLE, kind: "sick", from: "2026-10-29", to: "2026-10-29" },
+  ];
+  const file = exportSheets(
+    monthOf(ENTRIES, PEOPLE, away),
+    LISTED,
+    META,
+    WORDS,
+  );
+  const of = (key: Sheet["key"]) => file.sheets.find((one) => one.key === key);
+
+  it("counts them by kind on the summary, on the row of their days' wage", () => {
+    const noa = rowsOf(of("summary")).filter((row) => row.name?.v === "Noa");
+    // Before the raise on the 15th: none.
+    expect(noa.map((row) => row.vacationDays)).toEqual([whole(0), whole(3)]);
+    expect(noa.map((row) => row.sickDays)).toEqual([whole(0), whole(1)]);
+    expect(noa[1]?.reserveDays).toEqual(whole(0));
+    expect(noa[1]?.otherAbsenceDays).toEqual(whole(0));
+  });
+
+  it("lists someone with days away and no shift", () => {
+    const idle = rowsOf(of("summary")).filter((row) => row.name?.v === "Idle");
+    expect(idle.map((row) => row.sickDays)).toEqual([whole(1)]);
+  });
+
+  it("says the kind on a shift's row, and gives each date away without one a row of its own, in order", () => {
+    const noa = rowsOf(of("daily")).filter((row) => row.name?.v === "Noa");
+    expect(
+      noa.map((row) => [row.date?.v, row.absence?.v ?? null, row.in?.v]),
+    ).toEqual([
+      ["2026-10-14", null, "08:00"],
+      ["2026-10-15", null, "08:00"],
+      ["2026-10-20", "absence:vacation", "08:00"],
+      ["2026-10-21", "absence:vacation", "08:00"],
+      ["2026-10-21", "absence:vacation", "13:00"],
+      ["2026-10-22", "absence:vacation", undefined],
+      ["2026-10-26", "absence:sick", undefined],
+      ["2026-10-29", null, "08:00"],
+    ]);
+    // A day away has no hours, and only its date, weekday and kind.
+    const alone = noa.find((row) => row.date?.v === "2026-10-22");
+    expect(alone?.hours).toBe(null);
+    expect(alone?.weekday).toEqual(text("day4"));
+    // The log counts shifts, not days away.
+    expect(file.shifts).toBe(FILE.shifts);
+  });
+
+  it("asks to check a day away with hours on it, with its rule", () => {
+    const check = rowsOf(of("check")).filter(
+      (row) => row.what?.v === "flag:absenceWorked",
+    );
+    expect(check.map((row) => [row.date?.v, row.rule?.v])).toEqual([
+      ["2026-10-20", "rule:absenceWorked"],
+      ["2026-10-21", "rule:absenceWorked"],
+    ]);
+  });
+
+  it("says how it counts them on the sheet about the file", () => {
+    const lines = rowsOf(of("about")).map((row) => row.details?.v);
+    expect(lines).toContain("line:absences");
+    expect(lines).toContain("note:absencesNotCounted");
+  });
+});
+
+describe("changedSinceExport and days away", () => {
+  const sent = "2026-11-03T08:00:00Z";
+  const before = "2026-10-20T08:00:00Z";
+  const after = "2026-11-04T08:00:00Z";
+  const one = (more: {
+    recordedAt?: string;
+    changedAt?: string | null;
+    removedAt?: string | null;
+  }) => ({ recordedAt: before, changedAt: null, removedAt: null, ...more });
+  const changed = (absences: ReturnType<typeof one>[]) =>
+    changedSinceExport([], [], "2026-10", sent, [], absences);
+
+  it("is false for days away the file already had", () => {
+    expect(changed([one({})])).toBe(false);
+    // Removed before the file: it never had them.
+    expect(changed([one({ removedAt: "2026-10-30T08:00:00Z" })])).toBe(false);
+  });
+
+  it("is true for days away recorded, changed or brought back after it", () => {
+    expect(changed([one({ recordedAt: after })])).toBe(true);
+    expect(changed([one({ changedAt: after })])).toBe(true);
+  });
+
+  it("is true for days away removed after it that the file had, and false for ones it never had", () => {
+    expect(changed([one({ removedAt: after })])).toBe(true);
+    expect(changed([one({ recordedAt: after, removedAt: after })])).toBe(false);
   });
 });

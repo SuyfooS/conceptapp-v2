@@ -68,6 +68,7 @@ const copyOf = (
     staff: STAFF,
     people: PEOPLE,
     answers: [],
+    away: [],
     replace: false,
     now: null,
     timeZone: zone,
@@ -334,6 +335,50 @@ describe("copyLastWeek", () => {
     ]);
     // The shift itself is copied, its places open.
     expect(standing(copy)[0]?.needed).toBe(2);
+  });
+
+  it("skips someone away on the shift's day, before their answer is read, and copies them on other days", () => {
+    const copy = copyOf({
+      source: sourceOf([
+        shift("2026-11-15", "08:00", "15:00", [tamar, itai]),
+        shift("2026-11-16", "08:00", "15:00", [tamar]),
+      ]),
+      // Away on Sunday: an answer that covers it doesn't change that.
+      away: [{ userId: tamar, from: "2026-11-21", to: "2026-11-22" }],
+      answers: [
+        {
+          userId: tamar,
+          ranges: [
+            { day: "2026-11-22", start: "08:00", end: "15:00" },
+            { day: "2026-11-23", start: "08:00", end: "15:00" },
+          ],
+        },
+      ],
+    });
+    expect(standing(copy).map(who)).toEqual([[itai], [tamar]]);
+    expect(copy.skipped).toEqual([
+      {
+        reason: "away",
+        user: tamar,
+        shift: {
+          day: "2026-11-22",
+          name: "בוקר",
+          start: "08:00",
+          end: "15:00",
+        },
+      },
+    ]);
+    // Their place stays open, and they count once among those copied.
+    expect(standing(copy)[0]?.needed).toBe(2);
+    expect(copy.people).toBe(2);
+  });
+
+  it("names someone off the staff before saying they are away", () => {
+    const copy = copyOf({
+      source: sourceOf([shift("2026-11-15", "08:00", "15:00", [michal])]),
+      away: [{ userId: michal, from: "2026-11-22", to: "2026-11-22" }],
+    });
+    expect(copy.skipped.map((one) => one.reason)).toEqual(["offStaff"]);
   });
 
   it("joins answers that touch, as the shift's sheet does", () => {

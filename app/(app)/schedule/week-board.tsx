@@ -42,6 +42,7 @@ import {
 import {
   type AppT,
   assigneePeople,
+  awayOnShift,
   dayLabel,
   firstNames,
   formOf,
@@ -687,6 +688,13 @@ function WeekShift({
         <span className="font-semibold text-sm">{tb("canTake")}</span>
       ) : null}
       {tookIt ? <span className="text-sm">{tb("tookIt")}</span> : null}
+      {manager && awayOnShift(t, data, shift).length > 0 ? (
+        <span className="font-medium text-sm text-warning">
+          {t("build.awayOnShift", {
+            names: awayOnShift(t, data, shift).join(", "),
+          })}
+        </span>
+      ) : null}
       {/* A shift that is over takes nobody: nothing to say it lacks. */}
       {manager && !hasEnded(data, shift) ? (
         <div>

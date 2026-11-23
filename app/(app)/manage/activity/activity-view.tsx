@@ -88,6 +88,14 @@ type Described = {
 };
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
+
+/** Each write to someone's days away, by its words under `actions.clock`. */
+const ABSENCE_WORDS = {
+  "clock.absence_add": "absenceAdd",
+  "clock.absence_change": "absenceChange",
+  "clock.absence_remove": "absenceRemove",
+  "clock.absence_restore": "absenceRestore",
+} as const;
 const HEX = /^#[0-9a-f]{6}$/i;
 
 const th = "px-4 py-3 text-start font-medium text-ink-2 text-sm";
@@ -173,6 +181,7 @@ export function ActivityView({
   const t = translator(wording, "app.manage.activity");
   const tRoles = translator(wording, "app.team.roles");
   const tm = translator(wording, "modules");
+  const tAbsences = translator(wording, "app.clock.absences");
   const tCities = translator(wording, "cities");
   const tDays = translator(wording, "days");
   const tDetails = translator(wording, "app.manage.business");
@@ -659,6 +668,29 @@ export function ActivityView({
           href: personHours(line.personId, line.clockIn),
         };
       }
+      // Days away: the kind and the days, never the note. The line leads to
+      // the person's hours in the month the days start in.
+      case "clock.absence_add":
+      case "clock.absence_change":
+      case "clock.absence_remove":
+      case "clock.absence_restore":
+        return {
+          what: t.rich(`actions.clock.${ABSENCE_WORDS[line.action]}`, {
+            ltr,
+            person: who(line.person),
+            kind: tAbsences(`kinds.${line.kind}`),
+            days:
+              line.from === line.to
+                ? shortDate(line.from)
+                : `${shortDate(line.from)}–${shortDate(line.to)}`,
+          }),
+          notes: [],
+          changes: [],
+          href:
+            paths.clockTeam && line.personId
+              ? `${paths.clockTeam}/${line.personId}?month=${line.from.slice(0, 7)}`
+              : paths.clockTeam,
+        };
       case "clock.confirm":
         return plain(
           t("actions.clock.confirm", { person: who(line.person) }),

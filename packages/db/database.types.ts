@@ -9,6 +9,84 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      absences: {
+        Row: {
+          business_id: string;
+          changed_at: string | null;
+          changed_by: string | null;
+          from_day: string;
+          id: string;
+          kind: string;
+          note: string | null;
+          recorded_at: string;
+          recorded_by: string | null;
+          removed_at: string | null;
+          removed_by: string | null;
+          to_day: string;
+          user_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          business_id: string;
+          changed_at?: string | null;
+          changed_by?: string | null;
+          from_day: string;
+          id?: string;
+          kind: string;
+          note?: string | null;
+          recorded_at?: string;
+          recorded_by?: string | null;
+          removed_at?: string | null;
+          removed_by?: string | null;
+          to_day: string;
+          user_id: string;
+        };
+        Update: {
+          business_id?: string;
+          changed_at?: string | null;
+          changed_by?: string | null;
+          from_day?: string;
+          id?: string;
+          kind?: string;
+          note?: string | null;
+          recorded_at?: string;
+          recorded_by?: string | null;
+          removed_at?: string | null;
+          removed_by?: string | null;
+          to_day?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "absences_business_id_user_id_fkey";
+            columns: ["business_id", "user_id"];
+            isOneToOne: false;
+            referencedRelation: "memberships";
+            referencedColumns: ["business_id", "user_id"];
+          },
+          {
+            foreignKeyName: "absences_changed_by_fkey";
+            columns: ["changed_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "absences_recorded_by_fkey";
+            columns: ["recorded_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "absences_removed_by_fkey";
+            columns: ["removed_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       audit_log: {
         Row: {
           action: string;
@@ -4120,6 +4198,18 @@ export type Database = {
         Args: { actor: string; at_time?: string; list: string };
         Returns: undefined;
       };
+      change_absence: {
+        Args: {
+          absence: string;
+          absence_kind: string;
+          absence_note?: string;
+          actor: string;
+          at_time?: string;
+          first_day: string;
+          last_day: string;
+        };
+        Returns: undefined;
+      };
       change_time_break: {
         Args: {
           actor: string;
@@ -4648,6 +4738,23 @@ export type Database = {
         Args: { actor: string; business: string; tickets: string[] };
         Returns: number;
       };
+      record_absence: {
+        Args: {
+          absence_kind: string;
+          absence_note?: string;
+          actor: string;
+          at_time?: string;
+          business: string;
+          first_day: string;
+          last_day: string;
+          person: string;
+        };
+        Returns: string;
+      };
+      remove_absence: {
+        Args: { absence: string; actor: string; at_time?: string };
+        Returns: undefined;
+      };
       remove_chat_message: {
         Args: { actor: string; at_time?: string; message: string };
         Returns: undefined;
@@ -4749,6 +4856,10 @@ export type Database = {
       reset_demo_businesses: {
         Args: Record<PropertyKey, never>;
         Returns: number;
+      };
+      restore_absence: {
+        Args: { absence: string; actor: string; at_time?: string };
+        Returns: undefined;
       };
       restore_business_role: {
         Args: { actor: string; role_id: string };
@@ -5286,6 +5397,14 @@ export type Database = {
       take_shift_swap: {
         Args: { actor: string; at_time?: string; swap: string };
         Returns: undefined;
+      };
+      team_away: {
+        Args: { business: string; first_day: string; last_day: string };
+        Returns: {
+          from_day: string;
+          to_day: string;
+          user_id: string;
+        }[];
       };
       team_emergency_contacts: {
         Args: { business: string };

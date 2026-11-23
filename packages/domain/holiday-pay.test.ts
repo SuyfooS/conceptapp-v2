@@ -345,3 +345,26 @@ describe("days and months", () => {
     expect(lineInWeek(line, "2026-09-13")).toBe(false);
   });
 });
+
+describe("holiday pay beside days away (known issue 19)", () => {
+  const yomKippur = [holiday("yom_kippur", "2026-09-21")];
+  const checks = (away: string[]) =>
+    lines({ holidays: yomKippur, awayDates: new Set(away) })[0]?.check;
+
+  it("asks to check a day away on the holiday, the day before or the day after", () => {
+    for (const date of ["2026-09-20", "2026-09-21", "2026-09-22"]) {
+      expect(checks([date]), date).toEqual([
+        "adjacentDays",
+        "inAbsence",
+        "averagePeriod",
+      ]);
+    }
+  });
+
+  it("asks nothing more for days away further off", () => {
+    expect(checks(["2026-09-19", "2026-09-23"])).toEqual([
+      "adjacentDays",
+      "averagePeriod",
+    ]);
+  });
+});

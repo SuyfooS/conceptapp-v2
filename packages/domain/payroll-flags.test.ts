@@ -195,12 +195,12 @@ describe("a minor's day", () => {
 
 describe("the codes", () => {
   it("are all listed once, each in a group", () => {
-    expect(PAYROLL_FLAG_CODES).toHaveLength(34);
+    expect(PAYROLL_FLAG_CODES).toHaveLength(36);
     expect(new Set(PAYROLL_FLAG_CODES).size).toBe(PAYROLL_FLAG_CODES.length);
     expect(Object.values(PAYROLL_FLAGS).every(Boolean)).toBe(true);
     expect(PAYROLL_NOTE_CODES).toEqual([
       "minimumWageTableStale",
-      "paidAbsencesMissing",
+      "absencesNotCounted",
       "roundingIgnored",
       "workWeekUnset",
     ]);

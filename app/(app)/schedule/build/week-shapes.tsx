@@ -42,6 +42,8 @@ export type DayInfo = {
   /** Candle lighting or havdalah, on a business closed on Shabbat. */
   shabbatTime: string | null;
   shabbatNote: ReactNode;
+  /** "לא בעבודה: נועה, יואב": who is away that day (known issue 19), or null. */
+  awayNote: string | null;
 };
 
 type RenderDay = (date: string, density: CardDensity) => ReactNode;
@@ -114,6 +116,9 @@ export function PhoneWeek({
             {current.shabbatNote}
           </p>
         ) : null}
+        {current.awayNote ? (
+          <p className="-mt-2 px-1 text-ink-2 text-sm">{current.awayNote}</p>
+        ) : null}
         <div className="grid gap-3">
           {renderCards(current.date, "full")}
           {renderAdd(current.date, "full")}
@@ -165,6 +170,9 @@ export function TabletWeek({
             ) : null}
             {day.shabbatNote ? (
               <p className="text-ink-2 text-sm">{day.shabbatNote}</p>
+            ) : null}
+            {day.awayNote ? (
+              <p className="text-ink-2 text-sm">{day.awayNote}</p>
             ) : null}
             {day.empty || !day.addable ? null : (
               <div className="mt-2">{renderAdd(day.date, "tile")}</div>
@@ -226,6 +234,9 @@ export function DesktopWeek({
             ) : null}
             {day.shabbatNote ? (
               <p className="text-ink-2 text-sm">{day.shabbatNote}</p>
+            ) : null}
+            {day.awayNote ? (
+              <p className="text-ink-2 text-sm">{day.awayNote}</p>
             ) : null}
           </div>
           {renderCards(day.date, "column")}

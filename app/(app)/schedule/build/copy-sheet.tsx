@@ -21,7 +21,7 @@ import { SheetSection } from "./sheet-section";
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 
 /** Who wasn't copied, in the order the sheet groups them. */
-const NAMED = ["unavailable", "busy", "offStaff"] as const;
+const NAMED = ["unavailable", "away", "busy", "offStaff"] as const;
 
 /** Before the sheet first opens: nothing worked out yet. */
 const NOTHING: WeekCopy = {

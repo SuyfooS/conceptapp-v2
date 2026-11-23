@@ -7,6 +7,7 @@ import {
   getTimeEntries,
 } from "@db/time-clock";
 import { getWages } from "@db/wages";
+import { absenceDays, monthSpan } from "@domain/absences";
 import { addDays, instantIn } from "@domain/availability";
 import { canOpenModule } from "@domain/modules";
 import { canSeePay } from "@domain/payroll-access";
@@ -45,6 +46,7 @@ import { manifestFor } from "@modules/registry";
 import { cache } from "react";
 import { currentMember } from "../member";
 import { currentModuleSettings, currentModules } from "../modules";
+import { ownAbsences } from "./absences";
 import type { ClockData, ClockPaths, OwnDetails } from "./clock-types";
 import type { HistoryData } from "./history/history-view";
 
@@ -271,15 +273,27 @@ export async function currentClockHistory(
       : currentMonth;
   const settings = await currentModuleSettings("time_clock");
   const { from, to } = monthRange(month, timeZone);
-  const [entries, cancelled] = await Promise.all([
+  const [entries, cancelled, away] = await Promise.all([
     getTimeEntries(businessId, from, to, userId),
     getCancelledEntries(businessId, from, to, userId),
+    ownAbsences(businessId, userId, month),
   ]);
   const step = settings.roundToMinutes;
   const nameOf = await correctorNames(businessId, entries, cancelled);
+  const span = monthSpan(month);
   return {
     month,
     currentMonth,
+    // Their own days away (known issue 19): read only, as recorded.
+    absences: away.map((one) => ({
+      id: one.id,
+      kind: one.kind,
+      from: one.from,
+      to: one.to,
+      note: one.note,
+      days: absenceDays(one),
+      inMonth: absenceDays(one, span),
+    })),
     minutes: monthMinutes(entries, month, timeZone, now, step),
     records: monthRecords(
       entries,

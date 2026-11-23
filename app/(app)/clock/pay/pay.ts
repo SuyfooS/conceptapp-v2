@@ -1,3 +1,4 @@
+import { getAbsences } from "@db/absences";
 import {
   getCorrections,
   getLastPayrollExport,
@@ -8,6 +9,7 @@ import { getEmploymentPeriods, getPayrollDetails } from "@db/payroll-details";
 import { getClosedMonths, getPayrollMonthRecord } from "@db/payroll-months";
 import { getCancelledEntries, getTimeEntries } from "@db/time-clock";
 import { getWages, wagesByPerson } from "@db/wages";
+import { ABSENCE_KINDS, monthSpan } from "@domain/absences";
 import { dateIn } from "@domain/availability";
 import { isStaff } from "@domain/modules";
 import {
@@ -264,6 +266,7 @@ export async function currentPayMonth(
     lastExport,
     closedState,
     before,
+    absences,
   ] = await Promise.all([
     monthOfHours(access, month),
     // The same month by the hours engine (payroll P7).
@@ -274,6 +277,10 @@ export async function currentPayMonth(
     currentClosedMonth(month),
     // The month before, whose differences this month's file holds.
     currentClosedMonth(addMonths(month, -1)),
+    // Its days away, removed ones too: a change since the file (known issue 19).
+    getAbsences(access.businessId, monthSpan(month).from, monthSpan(month).to, {
+      withRemoved: true,
+    }),
   ]);
   const totals = payTotals(entries, month, access.timeZone, now);
   const nameOf = nameIn(people);
@@ -317,6 +324,7 @@ export async function currentPayMonth(
         isStaff(person.role) &&
         youthLabel(own.youthUntil, access.today) !== null,
       rates: engine ? personRates(engine, own.restDay) : null,
+      absenceDays: engine?.absenceDays ?? null,
     };
   });
   const roleOf = (userId: string) =>
@@ -395,6 +403,8 @@ export async function currentPayMonth(
             lastExport.at,
             // A shift cancelled since leaves the file out of date too.
             cancelled,
+            // And a day away recorded, changed or removed since.
+            absences,
           ),
         }
       : null,
@@ -554,6 +564,12 @@ export async function currentPayPerson(
       payroll?.notes.some((note) => note.code === "minimumWageTableStale") ??
       false,
     setsWeek: access.role === "owner" && !access.viewOnly,
+    absences: ABSENCE_KINDS.flatMap((kind) => {
+      const dates = (payroll?.person.absences ?? [])
+        .filter((one) => one.kind === kind)
+        .map((one) => one.date);
+      return dates.length > 0 ? [{ kind, dates }] : [];
+    }),
   };
 }
 

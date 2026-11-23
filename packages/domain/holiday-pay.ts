@@ -19,6 +19,11 @@ import { wageOn } from "./wages";
 export const HOLIDAY_PAY_CHECKS = [
   /** Holiday pay: they worked the day before and the day after, or were away with consent. */
   "adjacentDays",
+  /**
+   * Holiday pay: a day away is recorded on the holiday, the day before or the
+   * day after (known issue 19). Whether it is owed is the accountant's.
+   */
+  "inAbsence",
   /** The average is of the 3 months before; 12 is the other reading. */
   "averagePeriod",
   /** Their history doesn't show that weekday as one of theirs. */
@@ -147,10 +152,15 @@ export function holidayPayLines(
     person: PayrollPerson;
     workedDates: ReadonlySet<string>;
     history: PayrollHistory | undefined;
+    /** The dates they are recorded as away (`@domain/absences`). */
+    awayDates?: ReadonlySet<string>;
   },
   readings: PayrollReadings = PAYROLL_READINGS,
 ): HolidayPayLine[] {
   const { person, workedDates, history } = args;
+  const away = args.awayDates ?? new Set<string>();
+  const awayAround = (date: string) =>
+    away.has(addDays(date, -1)) || away.has(date) || away.has(addDays(date, 1));
   const start = firstStart(person);
   const lines: HolidayPayLine[] = [];
   const owed = (date: string) =>
@@ -177,6 +187,7 @@ export function holidayPayLines(
       ...averageOf(person, history, holiday.date),
       check: inOrder([
         "adjacentDays",
+        ...(awayAround(holiday.date) ? (["inAbsence"] as const) : []),
         "averagePeriod",
         ...scheduled(holiday.date),
         ...(person.restDay === 6 ? [] : (["ownHolidays"] as const)),

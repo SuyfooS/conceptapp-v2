@@ -95,6 +95,7 @@ export function ScheduleBuildView({
         people={data.people}
         hasPattern={data.hasPattern}
         answers={data.answers}
+        away={data.away}
         positions={data.positions}
         manageHref={manageHref}
         running={running}

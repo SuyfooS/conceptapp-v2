@@ -4,9 +4,11 @@ import {
   getClockPeople,
   getTimeEntries,
 } from "@db/time-clock";
+import { canRecordAbsence } from "@domain/absences";
 import { dateIn } from "@domain/availability";
 import { stationSeen } from "@domain/clock-station";
 import { canSeePay } from "@domain/payroll-access";
+import { buildsSchedule } from "@domain/schedule";
 import { timeIn } from "@domain/shabbat";
 import {
   attendanceOf,
@@ -25,6 +27,7 @@ import { clockAt } from "@domain/today";
 import { cache } from "react";
 import { z } from "zod";
 import { currentModuleSettings } from "../../modules";
+import { awayTodayRows, personAbsenceRows } from "../absences";
 import { clockAccess, currentEntriesToConfirm } from "../clock";
 import type { PersonHoursData, StationRow, TeamHoursData } from "./team-types";
 
@@ -71,6 +74,12 @@ export async function currentTeamHours(
 
   const nameOf = (userId: string) =>
     people.find((person) => person.userId === userId)?.name ?? null;
+  const today = clockAt(now, timeZone).date;
+  const awayToday = await awayTodayRows(businessId, today, nameOf, (userId) =>
+    people.some(
+      (person) => person.userId === userId && person.staff && person.active,
+    ),
+  );
   const hours = teamMonth(
     entries,
     month,
@@ -177,8 +186,9 @@ export async function currentTeamHours(
       rows: stationRows,
       howTo,
       shownEmpty: howTo && settings.requirePunchCode,
-      today: clockAt(now, timeZone).date,
+      today,
     },
+    awayToday,
   };
 }
 
@@ -221,9 +231,17 @@ export async function currentPersonHours(
   }
 
   const step = settings.roundToMinutes;
-  // Who corrected or cancelled each shift, for its line.
+  // Who corrected or cancelled each shift, or recorded days away, for its line.
   const nameOf = (userId: string) =>
     people.find((row) => row.userId === userId)?.name ?? null;
+  const absences = await personAbsenceRows(
+    businessId,
+    person.userId,
+    month,
+    today,
+    timeZone,
+    nameOf,
+  );
   return {
     person: { userId: person.userId, name: person.name },
     month,
@@ -241,5 +259,12 @@ export async function currentPersonHours(
     today,
     unpaidBreaks: settings.unpaidBreaks,
     viewOnly,
+    absences,
+    // Someone off the staff gets no new days away: the database says so too.
+    canRecord:
+      person.staff &&
+      person.active &&
+      canRecordAbsence(access, access.userId, person.userId),
+    builds: access.scheduling && buildsSchedule(access),
   };
 }

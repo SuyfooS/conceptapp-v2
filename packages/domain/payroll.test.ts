@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { KindSpan } from "./absences";
 import { instantIn } from "./availability";
 import { holidayPayLines } from "./holiday-pay";
 import {
@@ -132,6 +133,7 @@ type Run = {
   settings?: Partial<PayrollSettings>;
   history?: PayrollHistory;
   now?: string;
+  absences?: KindSpan[];
 } & Pick<PayrollInput, "readings" | "minimumWage">;
 
 function input(run: Run): PayrollInput {
@@ -147,6 +149,7 @@ function input(run: Run): PayrollInput {
     history: run.history ? new Map([[ID, run.history]]) : undefined,
     readings: run.readings,
     minimumWage: run.minimumWage,
+    absences: run.absences,
   };
 }
 
@@ -1478,10 +1481,10 @@ describe("the engine", () => {
     expect(codes(day(result, "2026-10-14").flags)).toContain("dayOver12");
   });
 
-  it("always notes the paid absences the app doesn't know", () => {
+  it("always notes that days away aren't counted as days worked or toward the 42", () => {
     expect(
       payrollMonth(input({ month: "2026-10", entries: [] })).notes,
-    ).toContainEqual({ code: "paidAbsencesMissing" });
+    ).toContainEqual({ code: "absencesNotCounted" });
   });
 
   it("works out one person's own month", () => {
@@ -1615,6 +1618,19 @@ describe("the month's helpers", () => {
     ).toEqual(["owner", "was-staff"]);
   });
 
+  it("works a month out for someone who left with days away in it, hours or not", () => {
+    expect(
+      payrollPeopleOf(
+        [
+          { userId: "owner", role: "owner", active: true },
+          { userId: "left", role: "worker", active: false },
+        ],
+        [],
+        [{ userId: "left" }],
+      ),
+    ).toEqual(["owner", "left"]);
+  });
+
   it("lets holiday pay be asked directly too", () => {
     const range = payrollRange("2026-09");
     const calendar = payrollCalendar(TEL_AVIV, range.from, range.to, SIX);
@@ -1627,5 +1643,159 @@ describe("the month's helpers", () => {
         history: history({ 1: 10 }),
       }).map((line) => line.date),
     ).not.toContain("2026-09-21");
+  });
+});
+
+describe("days away (known issue 19)", () => {
+  // Monday to Thursday at their norm, eight hours, and Friday's seven (an
+  // eve): 39 hours, under the 42, in the week of 11 October.
+  const week = () => [
+    ...daily(
+      ["2026-10-12", "2026-10-13", "2026-10-14", "2026-10-15"],
+      "08:00",
+      "16:00",
+    ),
+    entry("2026-10-16 08:00", "2026-10-16 15:00"),
+  ];
+  const vacation = (from: string, to = from): KindSpan => ({
+    userId: ID,
+    kind: "vacation",
+    from,
+    to,
+  });
+  const weekFlags = (result: PersonPayroll) =>
+    result.flags.filter((flag) => flag.code === "absenceWeek");
+
+  it("never count as days worked, nor toward the 42: the week only asks, with the minutes that would move", () => {
+    const result = month({
+      month: "2026-10",
+      entries: week(),
+      absences: [vacation("2026-10-11")],
+    });
+    expect(result.daysWorked).toBe(5);
+    expect(minutes(result.buckets)).toEqual({ regular: 2340 });
+    // Counted as a holiday is, at the day's norm with no average: 2,340 +
+    // 480 is 300 past the 42, all on Friday.
+    expect(weekFlags(result)).toEqual([
+      { code: "absenceWeek", weekOf: "2026-10-11", days: 1, minutes: 300 },
+    ]);
+  });
+
+  it("ask nothing of a week the count wouldn't take past the 42", () => {
+    const result = month({
+      month: "2026-10",
+      entries: week().slice(0, 3),
+      absences: [vacation("2026-10-11")],
+    });
+    expect(weekFlags(result)).toEqual([]);
+  });
+
+  it("ask nothing for someone the Hours law doesn't apply to", () => {
+    const result = month({
+      month: "2026-10",
+      entries: week(),
+      person: { hoursLaw: "trust" },
+      absences: [vacation("2026-10-11")],
+    });
+    expect(weekFlags(result)).toEqual([]);
+  });
+
+  it("are never counted on the person's rest day", () => {
+    const result = month({
+      month: "2026-10",
+      entries: week(),
+      person: { restDay: 0 },
+      absences: [vacation("2026-10-11")],
+    });
+    expect(weekFlags(result)).toEqual([]);
+  });
+
+  it("say so where the clock has hours on a day away", () => {
+    const result = month({
+      month: "2026-10",
+      entries: week(),
+      absences: [
+        { userId: ID, kind: "sick", from: "2026-10-13", to: "2026-10-13" },
+      ],
+    });
+    expect(result.flags).toContainEqual({
+      code: "absenceWorked",
+      date: "2026-10-13",
+      kind: "sick",
+      minutes: 480,
+    });
+    expect(codes(day(result, "2026-10-13").flags)).toContain("absenceWorked");
+    // Worked, it would have been no day away to count.
+    expect(weekFlags(result)).toEqual([]);
+  });
+
+  it("count toward the 42 under the other reading, as a holiday is, and ask nothing then", () => {
+    const result = month({
+      month: "2026-10",
+      entries: week(),
+      absences: [vacation("2026-10-11")],
+      // No history to average: at the day's norm, as a holiday would be.
+      readings: {
+        ...PAYROLL_READINGS,
+        absencesCountTowardWeek: ["vacation"],
+        paidAbsenceCountsAt: "norm",
+      },
+    });
+    expect(minutes(day(result, "2026-10-16").buckets)).toEqual({
+      regular: 120,
+      ot125: 120,
+      ot150: 180,
+    });
+    expect(weekFlags(result)).toEqual([]);
+  });
+
+  it("are listed date by date and counted by kind, by the calendar", () => {
+    const result = month({
+      month: "2026-10",
+      entries: [],
+      absences: [
+        vacation("2026-09-29", "2026-10-02"),
+        { userId: ID, kind: "reserve", from: "2026-10-30", to: "2026-11-02" },
+        {
+          userId: "someone else",
+          kind: "sick",
+          from: "2026-10-05",
+          to: "2026-10-05",
+        },
+      ],
+    });
+    expect(result.absences).toEqual([
+      { date: "2026-10-01", kind: "vacation" },
+      { date: "2026-10-02", kind: "vacation" },
+      { date: "2026-10-30", kind: "reserve" },
+      { date: "2026-10-31", kind: "reserve" },
+    ]);
+    expect(result.absenceDays).toEqual({
+      vacation: 2,
+      sick: 0,
+      reserve: 2,
+      other: 0,
+    });
+    expect(result.daysWorked).toBe(0);
+  });
+
+  it("are read for one person's own month too", () => {
+    const own = personPayroll(
+      input({
+        month: "2026-10",
+        entries: [],
+        absences: [
+          vacation("2026-10-05"),
+          {
+            userId: "someone else",
+            kind: "sick",
+            from: "2026-10-06",
+            to: "2026-10-06",
+          },
+        ],
+      }),
+      ID,
+    );
+    expect(own?.absences).toEqual([{ date: "2026-10-05", kind: "vacation" }]);
   });
 });

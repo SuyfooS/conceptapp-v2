@@ -1,5 +1,6 @@
 "use server";
 
+import { type AbsenceValues, parseAbsence } from "@domain/absences";
 import { addDays, instantIn } from "@domain/availability";
 import type { StationStopResult } from "@domain/clock-station";
 import {
@@ -8,11 +9,12 @@ import {
   parseReason,
 } from "@domain/time-clock";
 import type {
+  AbsenceActionResult,
   BreakValues,
   EntryActionResult,
   EntryValues,
 } from "../../../../(app)/clock/team/team-types";
-import { DEMO_OVERLAPPING_COPY, demoShiftOf } from "./data";
+import { DEMO_OVERLAPPING_COPY, demoNoaAbsences, demoShiftOf } from "./data";
 
 const TIME_ZONE = "Asia/Jerusalem";
 
@@ -187,5 +189,55 @@ export async function demoStopStation(
 export async function demoRestartStation(
   _stationId: string,
 ): Promise<StationStopResult> {
+  return { ok: true };
+}
+
+/** The demo's today, as the team's twin has it. */
+const DEMO_TODAY = "2026-11-06";
+
+/**
+ * Days away the stand-ins check as the app does: what was typed, then an
+ * overlap with Noa's own days on the demo (other than the record changed).
+ * Nothing is stored.
+ */
+function checkAbsence(
+  values: AbsenceValues,
+  except: string | null,
+): AbsenceActionResult {
+  const parsed = parseAbsence(values, DEMO_TODAY);
+  if (!parsed.ok) return { ok: false, failure: parsed.problem };
+  const overlaps = demoNoaAbsences.some(
+    (one) =>
+      one.id !== except &&
+      one.from <= parsed.value.to &&
+      parsed.value.from <= one.to,
+  );
+  return overlaps ? { ok: false, failure: "overlap" } : { ok: true };
+}
+
+export async function demoRecordAbsence(
+  _personId: string,
+  values: AbsenceValues,
+): Promise<AbsenceActionResult> {
+  return checkAbsence(values, null);
+}
+
+export async function demoChangeAbsence(
+  absenceId: string,
+  values: AbsenceValues,
+): Promise<AbsenceActionResult> {
+  return checkAbsence(values, absenceId);
+}
+
+/** Removing and bringing back store nothing: the rows stay for the next visit. */
+export async function demoRemoveAbsence(
+  _absenceId: string,
+): Promise<AbsenceActionResult> {
+  return { ok: true };
+}
+
+export async function demoRestoreAbsence(
+  _absenceId: string,
+): Promise<AbsenceActionResult> {
   return { ok: true };
 }

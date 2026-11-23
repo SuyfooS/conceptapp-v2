@@ -712,6 +712,37 @@ describe("shiftCandidates", () => {
   it("gives nothing for a shift that is not there", () => {
     expect(shiftCandidates(WEEK, [], 0, team, answers)).toEqual([]);
   });
+
+  it("puts someone away that day after those not available, before those busy", () => {
+    const shifts = [
+      sunday("09:00", "16:00"),
+      sunday("15:00", "23:00", ["omer"]),
+    ];
+    const away = [
+      // Away that day, whatever their availability says.
+      { userId: "noa", from: "2026-10-30", to: "2026-11-01" },
+      // Away, and on the shift: on it is what they are.
+      { userId: "itay", from: "2026-11-01", to: "2026-11-01" },
+      // Busy wins over away.
+      { userId: "omer", from: "2026-11-01", to: "2026-11-03" },
+      // Away another day.
+      { userId: "maya", from: "2026-11-02", to: "2026-11-02" },
+    ];
+    const withItay = [sunday("09:00", "16:00", ["itay"]), shifts[1]].filter(
+      (one) => one !== undefined,
+    );
+    expect(
+      shiftCandidates(WEEK, withItay, 0, team, answers, away).map(
+        (c) => `${c.member.userId}:${c.state}`,
+      ),
+    ).toEqual([
+      "yoav:unavailable",
+      "maya:unavailable",
+      "noa:away",
+      "omer:busy",
+      "itay:assigned",
+    ]);
+  });
 });
 
 describe("overlappingShift", () => {

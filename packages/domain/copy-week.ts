@@ -1,3 +1,4 @@
+import { type AwaySpan, awayOn } from "./absences";
 import { type AvailabilityRange, addDays, weekDates } from "./availability";
 import { minutesOf, rangeMinutes } from "./hours";
 import { weekBuilt } from "./running-week";
@@ -70,12 +71,19 @@ export function copySourceOf(
  * - `gone`: no longer on the team (counted, never named: their name is no
  *   longer the builder's to read);
  * - `offStaff`: on the team but off the staff (an accountant now);
+ * - `away`: recorded as away on the shift's day (vacation, sick leave,
+ *   reserve duty, another absence; never which);
  * - `unavailable`: they sent availability for this week, and it doesn't
  *   cover the shift (someone who sent nothing is copied);
  * - `busy`: they would be on two shifts at once, with one that stays on the
  *   screen or with last week's night that runs into this week's first day.
  */
-export type CopySkipReason = "gone" | "offStaff" | "unavailable" | "busy";
+export type CopySkipReason =
+  | "gone"
+  | "offStaff"
+  | "away"
+  | "unavailable"
+  | "busy";
 
 export type CopySkip = {
   reason: CopySkipReason;
@@ -143,8 +151,9 @@ const byDayAndStart = (a: ScheduledShift, b: ScheduledShift) =>
  *    `replace`;
  * 6. otherwise its shifts still to start make way, and last week's come in;
  * 7. on each copy, someone not on the team is `gone`, someone off the staff
- *    `offStaff`, someone whose answer for this week doesn't cover it
- *    `unavailable`, and someone who sent no answer is copied;
+ *    `offStaff`, someone away on its day `away`, someone whose answer for
+ *    this week doesn't cover it `unavailable`, and someone who sent no
+ *    answer is copied;
  * 8. then someone who would work another shift at the same time, in the week
  *    as it will stand or last week's night into this week's first day, is
  *    `busy`: taken off the copy, never off a shift that stays;
@@ -166,6 +175,8 @@ export function copyLastWeek(input: {
   /** Everyone on the team, the staff included. */
   people: readonly string[];
   answers: readonly { userId: string; ranges: readonly AvailabilityRange[] }[];
+  /** Who is away this week, and when (`public.team_away`). */
+  away: readonly AwaySpan[];
   /** Days with people on them take last week's shifts too. */
   replace: boolean;
   /** The builder's clock; null for a screen where nothing is past. */
@@ -262,11 +273,13 @@ export function copyLastWeek(input: {
         ? "gone"
         : !onStaff.has(person.user)
           ? "offStaff"
-          : ranges && !availableFor(shift, ranges)
-            ? "unavailable"
-            : busy(person.user, at)
-              ? "busy"
-              : null;
+          : awayOn(input.away, person.user, shift.day)
+            ? "away"
+            : ranges && !availableFor(shift, ranges)
+              ? "unavailable"
+              : busy(person.user, at)
+                ? "busy"
+                : null;
       if (reason) {
         const { day, name, start, end } = shift;
         skipped.push({

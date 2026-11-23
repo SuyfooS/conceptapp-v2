@@ -25,6 +25,7 @@ export const GROWING_TABLES: readonly string[] = [
   "department_members",
   "time_entries",
   "time_breaks",
+  "absences",
   "audit_log",
   "documents",
   "document_recipients",

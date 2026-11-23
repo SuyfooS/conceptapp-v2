@@ -8,6 +8,7 @@ import { basisOf, getWeekSchedule, type WeekScheduleShift } from "@db/schedule";
 import type { MemberBusiness } from "@db/session";
 import { getEndedSwaps, getLiveSwaps } from "@db/swaps";
 import { type Colleague, getColleagues } from "@db/team";
+import type { AwaySpan } from "@domain/absences";
 import {
   type AvailabilityAnswer,
   addDays,
@@ -44,6 +45,7 @@ import { overnightDay } from "@domain/today";
 import { manifestFor } from "@modules/registry";
 import { unstable_rethrow } from "next/navigation";
 import { cache } from "react";
+import { teamAwayFor } from "../clock/absences";
 import { currentMember } from "../member";
 import { currentModuleSettings, currentModules } from "../modules";
 import { currentScheduleTeam } from "../team";
@@ -261,6 +263,11 @@ export type ScheduleBuildWeek = {
   hasPattern: boolean;
   answers: Pick<Availability, "userId" | "ranges">[];
   positions: Position[];
+  /**
+   * Who on the staff is away on the week's days (known issue 19), and when:
+   * never why. Empty while the time clock is off.
+   */
+  away: AwaySpan[];
 };
 
 export type BuildWeeksNow = BuildWeeks & {
@@ -321,9 +328,10 @@ export const currentScheduleBuild = cache(
     const { weeks, now } = scheduling;
     const at = start ?? weeks.nextWeek;
     if (at !== weeks.thisWeek && at !== weeks.nextWeek) return null;
-    const [context, team] = await Promise.all([
+    const [context, team, away] = await Promise.all([
       weekContext(at),
       currentScheduleTeam(),
+      teamAwayFor(membership, scheduling.business.id, at, addDays(at, 6)),
     ]);
     if (!context || !team) return null;
     const { week, open } = context;
@@ -354,6 +362,7 @@ export const currentScheduleBuild = cache(
         ranges,
       })),
       positions: context.positions,
+      away,
     };
   },
 );
@@ -536,6 +545,11 @@ export type PublishedSchedule = {
    * what became of them, for whoever asked or took one and for the board.
    */
   endedSwaps: EndedSwap[];
+  /**
+   * Who is away over the two weeks, and when (known issue 19), for whoever
+   * builds the schedule: never why. Null for everyone else.
+   */
+  away: AwaySpan[] | null;
 };
 
 /**
@@ -587,7 +601,7 @@ export const currentPublishedSchedule = cache(
       };
     };
     const yesterday = overnightDay(today, thisStart);
-    const [thisWeek, nextWeek, overnight, swaps, endedSwaps, people] =
+    const [thisWeek, nextWeek, overnight, swaps, endedSwaps, people, away] =
       await Promise.all([
         published(thisStart),
         published(addDays(thisStart, 7)),
@@ -599,6 +613,14 @@ export const currentPublishedSchedule = cache(
         getLiveSwaps(businessId),
         getEndedSwaps(businessId, today),
         getColleagues(businessId),
+        buildsSchedule(membership)
+          ? teamAwayFor(
+              membership,
+              businessId,
+              thisStart,
+              addDays(thisStart, 13),
+            )
+          : null,
       ]);
     return {
       userId: member.userId,
@@ -612,6 +634,7 @@ export const currentPublishedSchedule = cache(
       positions: settings.positions,
       swaps,
       endedSwaps,
+      away,
     };
   },
 );
