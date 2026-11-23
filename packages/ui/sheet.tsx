@@ -11,6 +11,7 @@ import {
 } from "react";
 import { Button } from "./button";
 import { cn } from "./cn";
+import { onScreen } from "./focus-after";
 import {
   sheetLiftStyle,
   sheetScrollsWhole,
@@ -50,16 +51,6 @@ export type SheetProps = {
   footer?: ReactNode;
   children: ReactNode;
 };
-
-/** Still drawn and shown: an element the focus can go back to. */
-function onScreen(element: Element | null | undefined): element is HTMLElement {
-  return (
-    element instanceof HTMLElement &&
-    element !== document.body &&
-    element.isConnected &&
-    element.getClientRects().length > 0
-  );
-}
 
 /**
  * A glass sheet that rises from the bottom, for one short task. Dragging the

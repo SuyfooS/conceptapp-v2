@@ -17,12 +17,12 @@ import { PersonList, PersonRow } from "@ui/person-row";
 import { Sheet } from "@ui/sheet";
 import { StatusToast } from "@ui/status-toast";
 import { Switch } from "@ui/switch";
+import { UndoRow } from "@ui/undo-row";
 import { ArrowDown, ArrowUp, Plus, Trash2, Users } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type FormEvent, useState } from "react";
 import { hairlineClass, inputClass, rowClass } from "./list-rows";
 import type { SettingsFailure, SettingsResult } from "./settings-types";
-import { UndoRow } from "./undo-row";
 
 const NAME_MAX = 40;
 

@@ -7,9 +7,12 @@ import {
   type ClipboardEvent,
   type KeyboardEvent,
   type MouseEvent,
+  type ReactNode,
+  type Ref,
   useEffect,
   useEffectEvent,
   useId,
+  useImperativeHandle,
   useRef,
   useState,
 } from "react";
@@ -31,6 +34,51 @@ const firstEmptyOf = (slots: string[]) => {
   return i === -1 ? slots.length - 1 : i;
 };
 
+/**
+ * What the field's own line says (`ui.codeSlots`'s words): the code
+ * accepted; how many digits are in, and which, each on its own; or, once
+ * the caret was moved by the arrows, Home or End, the digit it is on.
+ */
+export type CodeSlotsSaid =
+  | { key: "accepted" }
+  | { key: "count"; filled: number; total: number }
+  | { key: "typed"; filled: number; total: number; digits: string }
+  | { key: "at"; position: number; total: number; digit: string }
+  | { key: "atEmpty"; position: number; total: number };
+
+export function codeSlotsSaid({
+  slots,
+  total,
+  active,
+  moved,
+  success,
+}: {
+  slots: readonly string[];
+  total: number;
+  /** The caret's slot, from the left. */
+  active: number;
+  /** The caret was moved, and nothing typed since. */
+  moved: boolean;
+  success: boolean;
+}): CodeSlotsSaid {
+  if (success) return { key: "accepted" };
+  if (moved) {
+    const digit = slots[active] ?? "";
+    const position = active + 1;
+    return digit
+      ? { key: "at", position, total, digit }
+      : { key: "atEmpty", position, total };
+  }
+  const typed = slots.filter(Boolean);
+  if (typed.length === 0) return { key: "count", filled: 0, total };
+  return {
+    key: "typed",
+    filled: typed.length,
+    total,
+    digits: typed.join(" "),
+  };
+}
+
 export type CodeSlotsProps = {
   /** The field's name: the code is posted with its form under it. */
   name: string;
@@ -49,6 +97,10 @@ export type CodeSlotsProps = {
    * in wants. off for digits read off another screen, such as the clock's.
    */
   autoComplete?: "one-time-code" | "off";
+  /** Said after the field's own line: why the last code was refused, say. */
+  describedBy?: string;
+  /** The field itself, for a screen that brings the focus back to it. */
+  ref?: Ref<HTMLInputElement>;
   /** For the surface the slots sit on. */
   slotClassName?: string;
   className?: string;
@@ -57,7 +109,9 @@ export type CodeSlotsProps = {
 /**
  * Boxes for a one-time code. One real input lies over them, so the keyboard's
  * code suggestion and paste both work. Digits read left to right on a right to
- * left page.
+ * left page. Its own line tells a screen reader the digits typed, each on its
+ * own, and the caret's place after the arrows: the code stays in the field's
+ * line, never the page's announcer.
  *
  * After Code Slots from React Bits (see packages/ui/README.md), rebuilt on CSS
  * transitions and our tokens.
@@ -70,17 +124,22 @@ export function CodeSlots({
   onComplete,
   autoFocus = false,
   autoComplete = "one-time-code",
+  describedBy,
+  ref,
   slotClassName,
   className,
 }: CodeSlotsProps) {
   const t = useTranslations("ui.codeSlots");
   const countId = useId();
   const input = useRef<HTMLInputElement>(null);
+  useImperativeHandle(ref, () => input.current as HTMLInputElement, []);
   const row = useRef<HTMLDivElement>(null);
   const [slots, setSlots] = useState(() => blank(length));
   const [active, setActive] = useState(0);
   const [focused, setFocused] = useState(false);
   const [failed, setFailed] = useState(false);
+  /** The caret was moved by the keys, and nothing typed since. */
+  const [moved, setMoved] = useState(false);
   /** Who moves first when several slots change: a fill's start, or the drain. */
   const [flow, setFlow] = useState<number | "drain" | null>(null);
 
@@ -100,12 +159,14 @@ export function CodeSlots({
     }
     if (i === from) return;
     setFailed(false);
+    setMoved(false);
     setFlow(from);
     setSlots(next);
     setActive(Math.min(i, length - 1));
   }
 
   function clear(i: number, stepBack = false) {
+    setMoved(false);
     if (slots[i]) {
       const next = [...slots];
       next[i] = "";
@@ -130,15 +191,19 @@ export function CodeSlots({
       clear(active);
     } else if (key === "ArrowLeft") {
       event.preventDefault();
+      setMoved(true);
       setActive(Math.max(active - 1, 0));
     } else if (key === "ArrowRight") {
       event.preventDefault();
+      setMoved(true);
       setActive(Math.min(active + 1, length - 1));
     } else if (key === "Home") {
       event.preventDefault();
+      setMoved(true);
       setActive(0);
     } else if (key === "End") {
       event.preventDefault();
+      setMoved(true);
       setActive(length - 1);
     }
   }
@@ -173,6 +238,7 @@ export function CodeSlots({
   useEffect(() => {
     if (status !== "error") return;
     setFailed(true);
+    setMoved(false);
     setFlow("drain");
     setSlots(blank(length));
     setActive(0);
@@ -194,6 +260,14 @@ export function CodeSlots({
   };
   const slotWidth = `calc((100% - ${(length - 1) * GAP_PX}px) / ${length})`;
   const showCaret = focused && !busy && !slots[active];
+  const said = codeSlotsSaid({
+    slots,
+    total: length,
+    active,
+    moved,
+    success,
+  });
+  const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 
   return (
     <div className={cn("flex flex-col", className)}>
@@ -216,7 +290,7 @@ export function CodeSlots({
           aria-label={label}
           aria-invalid={failed || undefined}
           aria-busy={status === "pending" || undefined}
-          aria-describedby={countId}
+          aria-describedby={describedBy ? `${countId} ${describedBy}` : countId}
           readOnly={success}
           // biome-ignore lint/a11y/noAutofocus: the code is the only thing on this step
           autoFocus={autoFocus}
@@ -280,9 +354,28 @@ export function CodeSlots({
         </span>
       </div>
       <span id={countId} className="sr-only" aria-live="polite">
-        {success
+        {said.key === "accepted"
           ? t("accepted")
-          : t("count", { filled: code.length, total: length })}
+          : said.key === "count"
+            ? t("count", { filled: said.filled, total: said.total })
+            : said.key === "typed"
+              ? t.rich("typed", {
+                  filled: said.filled,
+                  total: said.total,
+                  digits: said.digits,
+                  ltr,
+                })
+              : said.key === "at"
+                ? t.rich("at", {
+                    position: said.position,
+                    total: said.total,
+                    digit: said.digit,
+                    ltr,
+                  })
+                : t("atEmpty", {
+                    position: said.position,
+                    total: said.total,
+                  })}
       </span>
     </div>
   );

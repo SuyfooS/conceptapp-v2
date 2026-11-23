@@ -19,7 +19,7 @@ import {
 } from "./db";
 import { MockPushService } from "./mock-push";
 import { secondPage, signIn } from "./session";
-import { heT } from "./t";
+import { heT, NEEDS_ACTION } from "./t";
 import { expect, type Page, test } from "./test";
 
 // The reminders (notifications part 4): the database writes them once a
@@ -48,8 +48,6 @@ const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 
 const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-/** What the Home tab adds to its name when something needs the person. */
-const NEEDS = (he.ui.appShell.needsAction.split("}")[1] ?? "").trim();
 /** A sentence with `<ltr>` in it, as the screen reads it out. */
 const plain = (chunks: string) => chunks;
 /** The same, as a phone gets it: times inside Unicode isolates. */
@@ -120,7 +118,7 @@ test("availability reminders reach who hasn't sent it, and the count reaches the
 
     await signIn(page, MISSING);
     // Something to do, shown before it is asked for.
-    await expect(homeTab(page)).toHaveAccessibleName(new RegExp(NEEDS));
+    await expect(homeTab(page)).toHaveAccessibleName(NEEDS_ACTION);
     await page.goto("/notifications");
     const reminder = line(
       page,

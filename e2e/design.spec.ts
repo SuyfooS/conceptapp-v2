@@ -1849,6 +1849,249 @@ test("the gallery's check draws each of its states", async ({ page }) => {
   }
 });
 
+// The way back waits while it is being reached (accessibility, part 1): the
+// gallery's toast with "ביטול" takes the focus, and waits for the keyboard
+// with no limit and, after a tap (a finger, or a phone's screen reader),
+// until a press elsewhere; then it counts down. A toast said from inside an
+// open sheet is heard: Radix hides what is outside the sheet, live regions
+// aside.
+test("the gallery's toast with its undo waits while its undo has the focus, and is heard over a sheet", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(60_000);
+  const d = he.design;
+  await page.goto("/design");
+
+  await page.getByRole("button", { name: d.sheetOpen, exact: true }).click();
+  const sheet = page.getByRole("dialog", { name: d.sheetTitle });
+  await sheet.getByRole("button", { name: d.sheetToast, exact: true }).click();
+  await expect(
+    page.getByRole("status").filter({ hasText: d.sheetToastText }),
+  ).toBeVisible();
+  await expect(sheet).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+
+  const show = page.getByRole("button", { name: d.toastUndoShow, exact: true });
+  const toast = page.getByRole("status").filter({ hasText: d.toastUndoText });
+  const undo = toast.getByRole("button", { name: he.app.manage.undo });
+  if (testInfo.project.name === "phone") {
+    await show.tap();
+    await expect(undo).toBeFocused();
+    await page.waitForTimeout(9_000);
+    await expect(toast).toBeVisible();
+    // A press anywhere else, and it counts its eight seconds.
+    await page
+      .getByRole("heading", { level: 2, name: d.floating, exact: true })
+      .tap();
+    await expect(toast).toBeHidden({ timeout: 12_000 });
+  } else {
+    await show.focus();
+    await page.keyboard.press("Enter");
+    await expect(undo).toBeFocused();
+    await expect(undo).toHaveAccessibleDescription(d.toastUndoText);
+    await page.waitForTimeout(9_000);
+    await expect(toast).toBeVisible();
+    // The keyboard moves on, and it counts its eight seconds.
+    await page.keyboard.press("Tab");
+    await expect(toast).toBeHidden({ timeout: 12_000 });
+  }
+
+  // Taken, the way back says so, and the focus goes back to what showed it.
+  await show.focus();
+  await page.keyboard.press("Enter");
+  await expect(undo).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByRole("status").filter({ hasText: d.toastUndoBack }),
+  ).toBeVisible();
+  await expect(show).toBeFocused();
+});
+
+// A quiet focus (a tap, a phone's screen reader) waits at most a minute.
+test("the gallery's toast stops waiting for a tap's focus after a minute", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "phone", "A tap needs a touch screen.");
+  const d = he.design;
+  await page.clock.install();
+  await page.goto("/design");
+  await page.getByRole("button", { name: d.toastUndoShow, exact: true }).tap();
+  const toast = page.getByRole("status").filter({ hasText: d.toastUndoText });
+  await expect(
+    toast.getByRole("button", { name: he.app.manage.undo }),
+  ).toBeFocused();
+  await page.clock.fastForward(61_000);
+  await expect(toast).toBeHidden({ timeout: 15_000 });
+});
+
+// The gallery's undo row: "ביטול" takes the place of the row removed, with
+// the focus, said by that focus (not again by the page's announcer), and its
+// hold waits while the keyboard is on it. Undone, the row's own button has
+// the focus again; let go, the row is gone for good and the focus is where
+// the keyboard went.
+test("the gallery's undo row takes the focus, waits while it has it, and gives it back", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  const d = he.design;
+  await page.goto("/design");
+  const section = page.locator("section").filter({
+    has: page.getByRole("heading", { name: d.undoRow, exact: true }),
+  });
+  const remove = section.getByRole("button", {
+    name: heT("design.undoRowRemove", { name: d.undoRowFirst }),
+  });
+  const removed = heT("design.undoRowRemoved", { name: d.undoRowFirst });
+  const row = section.getByRole("status").filter({ hasText: removed });
+  const undo = row.getByRole("button", { name: he.ui.undoRow.undo });
+
+  await remove.focus();
+  await page.keyboard.press("Enter");
+  await expect(undo).toBeFocused();
+  await expect(undo).toHaveAccessibleDescription(removed);
+  await expect(page.locator('[data-announcer="polite"]')).not.toContainText(
+    removed,
+  );
+  await page.waitForTimeout(9_000);
+  await expect(row).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(row).toHaveCount(0);
+  await expect(remove).toBeFocused();
+
+  await page.keyboard.press("Enter");
+  await expect(undo).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(row).toHaveCount(0, { timeout: 12_000 });
+  await expect(remove).toHaveCount(0);
+  expect(
+    await page.evaluate(() => document.activeElement !== document.body),
+  ).toBe(true);
+  await section
+    .getByRole("button", { name: d.undoRowReset, exact: true })
+    .click();
+  await expect(remove).toBeVisible();
+});
+
+// The gallery's stepper says its new number, and at its end keeps the focus
+// on its dimmed button, which changes nothing; the announcer's own entry
+// says its line.
+test("the gallery's stepper says its new number and keeps the focus at its ends", async ({
+  page,
+}) => {
+  const d = he.design;
+  await page.goto("/design");
+  const field = page.locator("#gallery-row-needed");
+  await expect(field).toHaveValue("3");
+  const fewer = field
+    .locator("..")
+    .getByRole("button", { name: d.fewer, exact: true });
+  const said = page.locator('[data-announcer="polite"] p');
+  await fewer.focus();
+  await page.keyboard.press("Enter");
+  await expect(field).toHaveValue("2");
+  await expect(said.filter({ hasText: /^2$/ })).toHaveCount(1);
+  await page.keyboard.press("Enter");
+  await expect(field).toHaveValue("1");
+  await expect(said.filter({ hasText: /^1$/ })).toHaveCount(1);
+  await expect(fewer).toHaveAttribute("aria-disabled", "true");
+  await expect(fewer).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(field).toHaveValue("1");
+  await expect(fewer).toBeFocused();
+
+  await page.getByRole("button", { name: d.announcerSay, exact: true }).click();
+  await expect(page.locator('[data-announcer="polite"]')).toContainText(
+    d.announcerLine,
+  );
+});
+
+// The person demo's undos (the sweep's high finding): "ביטול" takes the
+// place and the focus of what was pressed (the removal, the line's delete),
+// or a role change's sheet closes onto it; each waits while it has the
+// keyboard, and gives the focus back to what it brought back. On a phone, a
+// tap's focus waits too, until a press elsewhere; written, the card that
+// says what came off her has the focus.
+test("the person demo's undos take the focus, wait while they have it, and give it back", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(120_000);
+  const tt = he.app.team;
+  const tc = tt.changes;
+  const undoWord = he.ui.undoRow.undo;
+  const main = page.getByRole("main");
+  const noa = "נועה כהן";
+  await page.goto("/design/shell/team/noa");
+
+  // Off the team, held.
+  const remove = main.getByRole("button", { name: tc.remove });
+  const removed = heT("app.team.changes.removed", { name: noa, form: "f" });
+  const removal = main.getByRole("status").filter({ hasText: removed });
+  const undoRemoval = removal.getByRole("button", { name: undoWord });
+  await remove.focus();
+  await page.keyboard.press("Enter");
+  await expect(undoRemoval).toBeFocused();
+  await expect(undoRemoval).toHaveAccessibleDescription(removed);
+  await page.waitForTimeout(9_000);
+  await expect(undoRemoval).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(remove).toBeFocused();
+
+  // Made an owner, held: the sheet closes onto its undo.
+  const role = main.getByRole("button", { name: new RegExp(`^${tc.role}`) });
+  await role.focus();
+  await page.keyboard.press("Enter");
+  const sheet = page.getByRole("dialog");
+  await sheet.locator('input[name="member-role"][value="owner"]').check();
+  await sheet.getByRole("button", { name: tc.roleSubmit }).press("Enter");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  const roleUndo = main
+    .getByRole("status")
+    .filter({
+      hasText: heT("app.team.changes.roleChanged", {
+        name: noa,
+        role: tt.roles.owner,
+      }),
+    })
+    .getByRole("button", { name: undoWord });
+  await expect(roleUndo).toBeFocused();
+  await expect(role).toHaveAttribute("aria-disabled", "true");
+  await page.waitForTimeout(9_000);
+  await expect(roleUndo).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(role).toBeFocused();
+  await expect(role).toContainText(tt.roles.worker);
+
+  // Her line deleted, held: its undo under the name.
+  const clear = main.getByRole("button", { name: tt.person.clearBio });
+  const bioUndo = main
+    .getByRole("status")
+    .filter({ hasText: heT("app.team.person.bioCleared", { name: noa }) })
+    .getByRole("button", { name: undoWord });
+  await clear.focus();
+  await page.keyboard.press("Enter");
+  await expect(bioUndo).toBeFocused();
+  await page.waitForTimeout(9_000);
+  await expect(bioUndo).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(clear).toBeFocused();
+
+  if (testInfo.project.name !== "phone") return;
+  // A tap's focus waits too; a press elsewhere lets it go, and the written
+  // removal's card takes the focus.
+  await page.goto("/design/shell/team/noa");
+  await remove.tap();
+  await expect(undoRemoval).toBeFocused();
+  await page.waitForTimeout(9_000);
+  await expect(undoRemoval).toBeVisible();
+  await main.getByRole("heading", { level: 1 }).tap();
+  const done = main.getByRole("heading", {
+    name: heT("app.team.changes.removedTitle", { name: noa }),
+  });
+  await expect(done).toBeVisible({ timeout: 20_000 });
+  await expect(done).toBeFocused();
+});
+
 // A demo business takes no invites (#80): its Team screen offers none and
 // says why, at every size; a real one keeps its invite and new links.
 test("the team demo offers no invite in a demo business", async ({ page }) => {

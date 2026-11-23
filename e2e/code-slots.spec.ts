@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import he from "../messages/he.json" with { type: "json" };
+import { heT } from "./t";
 import { expect, type Page, test } from "./test";
 
 // The code boxes on the sign-in demo: no database and no SMS. Any code there is
@@ -67,4 +68,27 @@ test("short of six digits, the button says so and keeps them", async ({
   await page.getByRole("button", { name: t.verify, exact: true }).click();
   await expect(page.getByText(t.errors.invalidCode)).toBeVisible();
   expect(await posted(page)).toBe("12");
+});
+
+// The digits typed are said back, each on its own, in the field's own line,
+// and after the arrows the digit the caret is on (accessibility, part 1).
+test("the digits typed are read back", async ({ page }) => {
+  await toCodeStep(page);
+  const field = page.getByLabel(t.codeLabel);
+  const words = (
+    key: "typed" | "at",
+    values: Record<string, string | number>,
+  ) =>
+    heT.markup(`ui.codeSlots.${key}`, {
+      ltr: (chunks: string) => chunks,
+      ...values,
+    });
+  await page.keyboard.type("12");
+  await expect(field).toHaveAccessibleDescription(
+    words("typed", { filled: 2, total: 6, digits: "1 2" }),
+  );
+  await page.keyboard.press("ArrowLeft");
+  await expect(field).toHaveAccessibleDescription(
+    words("at", { position: 2, total: 6, digit: "2" }),
+  );
 });

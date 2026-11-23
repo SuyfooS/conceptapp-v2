@@ -27,6 +27,7 @@ import { Sheet } from "@ui/sheet";
 import { Stepper } from "@ui/stepper";
 import { Switch } from "@ui/switch";
 import { ltrInputClass } from "@ui/text-field";
+import { UndoRow } from "@ui/undo-row";
 import { ArrowDown, ArrowUp, Plus } from "lucide-react";
 import { useTranslations } from "next-intl";
 import {
@@ -37,7 +38,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { UndoRow } from "../../manage/undo-row";
 import { ITEM_ICONS } from "../list-preview";
 
 /** The kinds an item can be made as: a photo too, from L6. */

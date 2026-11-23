@@ -1,10 +1,10 @@
 "use client";
 
 import { Button } from "@ui/button";
+import { UndoRow } from "@ui/undo-row";
 import { Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { createContext, type ReactNode, use, useState } from "react";
-import { UndoRow } from "../manage/undo-row";
 import { useHeldWrite } from "../use-held-write";
 import type {
   CancelInvite,

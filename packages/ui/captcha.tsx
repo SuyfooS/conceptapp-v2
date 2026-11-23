@@ -21,6 +21,7 @@ import {
 import { preconnect } from "react-dom";
 import { Button } from "./button";
 import {
+  askingFocusOf,
   type CaptchaControl,
   type CaptchaSnapshot,
   captchaControlFor,
@@ -31,6 +32,7 @@ import {
   type TurnstileApi,
 } from "./captcha-control";
 import { cn } from "./cn";
+import { focusLost } from "./focus-after";
 
 declare global {
   interface Window {
@@ -259,10 +261,13 @@ export function CaptchaBox({
   }, [control]);
 
   // Asked for a tick while a press waits: the box comes into view (on a
-  // phone the step's dock may cover it).
-  const asking = state === "tap" && waiting;
+  // phone the step's dock may cover it), and its line takes the focus the
+  // busy button lost, so the ask is heard and the box is the next stop.
+  const asking = askingFocusOf({ state, waiting }) === "line";
   useEffect(() => {
-    if (asking) frame.current?.scrollIntoView({ block: "center" });
+    if (!asking) return;
+    frame.current?.scrollIntoView({ block: "center" });
+    if (focusLost()) said.current?.focus();
   }, [asking]);
 
   // The pressed button went with the failure, and its focus to the page:

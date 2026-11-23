@@ -5,7 +5,7 @@
   "ui": {
     "appShell": {
       "mainNav": "Main navigation",
-      "needsAction": ", {count} need action",
+      "needsAction": ", {count, plural, one {# needs action} other {# need action}}",
       "profile": "My profile"
     },
     "businesses": {
@@ -17,10 +17,15 @@
       "unreadElsewhere": "{businesses, plural, one {{count, plural, one {A new notification in another business} other {# new notifications in another business}}} other {{count} new notifications in other businesses}}",
       "menu": "Switch business. The business now: {name}",
       "menuUnread": "Switch business. The business now: {name}. {businesses, plural, one {{count, plural, one {A new notification in another business} other {# new notifications in another business}}} other {{count} new notifications in other businesses}}",
+      "switching": "Switching to {name}",
+      "switched": "You're now in {name}",
       "close": "Close"
     },
     "codeSlots": {
       "count": "{filled} of {total} digits",
+      "typed": "{filled} of {total} digits: <ltr>{digits}</ltr>",
+      "at": "Digit {position} of {total}: <ltr>{digit}</ltr>",
+      "atEmpty": "Digit {position} of {total}, empty",
       "accepted": "Code accepted"
     },
     "captcha": {
@@ -60,6 +65,7 @@
       "remove": "Remove the photo",
       "note": "The photo is cropped to a circle from the centre. What the phone keeps inside the file, such as where it was taken, is not kept.",
       "preparing": "Preparing the photo…",
+      "ready": "The photo is ready. You can save it or choose another.",
       "saved": "Photo saved",
       "failures": {
         "unreadable": "This file can't be opened. Try another photo.",
@@ -96,6 +102,13 @@
       "note": "The app does not send this message. On WhatsApp you choose whom to send it to.",
       "preview": "The message",
       "close": "Close"
+    },
+    "undoRow": {
+      "undo": "Undo"
+    },
+    "checklist": {
+      "checked": "Ticked",
+      "notChecked": "Not ticked"
     }
   },
   "days": {
@@ -262,6 +275,8 @@
     "rowCurrentText": "A bar in the business's colour at its start, and screen readers say it is the current one",
     "rowDisabled": "A row that isn't available now",
     "rowDisabledText": "Dimmed, and it can't be pressed until it comes back",
+    "rowWaits": "Waiting for its undo",
+    "rowWaitsText": "It can be reached, not pressed, until the undo is over",
     "badges": "Badges",
     "layout": "Layout and numbers",
     "layoutLink": "Demo: the same app on phone, tablet and desktop",
@@ -314,6 +329,8 @@
     "sheetSubtitle": "2 of 3",
     "sheetClose": "Close",
     "sheetDone": "Done",
+    "sheetToast": "Toast from the sheet",
+    "sheetToastText": "The change was saved",
     "sheetRole": "Waiter",
     "share": "Sharing",
     "shareOpen": "Open sharing",
@@ -330,6 +347,9 @@
     "floating": "What floats above the content",
     "toastShow": "Show a short message",
     "toastText": "The draft is saved.",
+    "toastUndoShow": "Toast with undo",
+    "toastUndoText": "The row was removed",
+    "toastUndoBack": "The row is back",
     "dockShow": "Show the main action",
     "dockHide": "Hide the main action",
     "dockQuiet": "Save",
@@ -998,7 +1018,17 @@
     "fileCity": "Town",
     "fileCountry": "Country",
     "fileDemo": "The employee file, as mock screens",
-    "filePastDemo": "A former worker's file, as a mock screen"
+    "filePastDemo": "A former worker's file, as a mock screen",
+    "undoRow": "Undo row",
+    "undoRowFirst": "Morning shift",
+    "undoRowSecond": "Evening shift",
+    "undoRowRemove": "Remove {name}",
+    "undoRowRemoved": "Removed from the list: {name}",
+    "undoRowReset": "Bring the rows back",
+    "announcer": "Screen reader messages",
+    "announcerSay": "Say a message",
+    "announcerLine": "This is how a message off screen sounds",
+    "announcerHint": "A screen reader says it. Nothing shows on screen."
   },
   "shell": {
     "metaTitle": "Layout demo",
@@ -6241,6 +6271,7 @@
           "chosen": "The file you chose",
           "removeChosen": "Remove the file",
           "preparing": "Preparing the photo",
+          "ready": "The file is ready to send",
           "uploadLabel": "Uploading the file",
           "uploading": "Uploading the file · <ltr>{percent}%</ltr>",
           "checking": "Checking the file",

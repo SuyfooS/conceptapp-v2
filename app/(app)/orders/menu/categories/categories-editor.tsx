@@ -13,12 +13,12 @@ import { IconButton } from "@ui/icon-button";
 import { ListGroup } from "@ui/list-row";
 import { PageSection } from "@ui/page";
 import { StatusToast } from "@ui/status-toast";
+import { UndoRow } from "@ui/undo-row";
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { type FormEvent, useState } from "react";
 import { inputClass } from "../../../manage/list-rows";
-import { UndoRow } from "../../../manage/undo-row";
 import { FailureLine } from "../menu-parts";
 import type {
   MenuActionFailure,

@@ -1,10 +1,10 @@
 "use client";
 
 import { StatusToast } from "@ui/status-toast";
+import { UndoRow } from "@ui/undo-row";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useState, useTransition } from "react";
-import { UndoRow } from "../manage/undo-row";
 import type { ListActionResult, ListFailure } from "./list-types";
 
 /**

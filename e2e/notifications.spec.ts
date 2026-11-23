@@ -9,7 +9,7 @@ import {
   takeDemoSwap,
 } from "./db";
 import { secondPage, signIn } from "./session";
-import { heT } from "./t";
+import { heT, NEEDS_ACTION } from "./t";
 import { expect, type Page, test } from "./test";
 
 // Notifications in the app (N1): the database writes a line from what
@@ -24,8 +24,6 @@ const MANAGER = { local: "050-000-0002", e164: "+972500000002" };
 
 const words = he.app.notifications;
 const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-/** What the Home tab adds to its name when something needs the person. */
-const NEEDS = (he.ui.appShell.needsAction.split("}")[1] ?? "").trim();
 
 const bell = (page: Page) =>
   page
@@ -96,7 +94,7 @@ test("a published week reaches the worker's bell, and opening it reads it", asyn
     `${words.bell}, ${heT("app.notifications.bellCount", { count: 1 })}`,
   );
   // A published week is news, not something to do: Home stays quiet.
-  await expect(homeTab(page)).not.toHaveAccessibleName(new RegExp(NEEDS));
+  await expect(homeTab(page)).not.toHaveAccessibleName(NEEDS_ACTION);
 
   await bell(page).click();
   const [before = "", after = ""] =
@@ -152,7 +150,7 @@ test("each step of a swap reaches the people it concerns", async ({
   // Noa gives away her evening: Yoav could take it, so Home counts it.
   await requestDemoSwap("evening", NOA.e164);
   await signIn(page, YOAV);
-  await expect(homeTab(page)).toHaveAccessibleName(new RegExp(NEEDS));
+  await expect(homeTab(page)).toHaveAccessibleName(NEEDS_ACTION);
   await page.goto("/notifications");
   const offer = line(
     page,

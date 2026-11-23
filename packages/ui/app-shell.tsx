@@ -115,23 +115,74 @@ function usePressedPath() {
   return { pathname, shown: pressed ?? pathname, press: setPressed };
 }
 
-function Count({ value, className }: { value?: number; className?: string }) {
-  const t = useTranslations("ui.appShell");
-  if (!value) return null;
+/** The count as it shows, a red badge; its words are `CountWords`. */
+function CountBadge({ value }: { value: number }) {
   return (
-    <>
-      <span
-        aria-hidden="true"
-        className={cn(
-          "min-w-[18px] rounded-full bg-danger px-1.5 text-center font-bold text-[11px] text-danger-ink leading-[18px]",
-          className,
-        )}
-      >
-        {value}
-      </span>
-      <span className="sr-only">{t("needsAction", { count: value })}</span>
-    </>
+    <span
+      aria-hidden="true"
+      className="min-w-[18px] rounded-full bg-danger px-1.5 text-center font-bold text-[11px] text-danger-ink leading-[18px]"
+    >
+      {value}
+    </span>
   );
+}
+
+/** What the count says after the item's name: ", 3 דורשים טיפול". */
+function CountWords({ value }: { value: number }) {
+  const t = useTranslations("ui.appShell");
+  return <span className="sr-only">{t("needsAction", { count: value })}</span>;
+}
+
+/**
+ * A tab of the bar, as it is drawn: hidden while the bar is shrunk to the
+ * current one (`collapsed`, out of the keyboard's way but still a link a
+ * screen reader reaches), the one left in sight (`shown`), its badge only
+ * while the bar is wide, and its count said either way.
+ */
+export function tabShape({
+  compact,
+  single,
+  active,
+  count,
+}: {
+  compact: boolean;
+  single: boolean;
+  active: boolean;
+  count?: number;
+}): {
+  collapsed: boolean;
+  tabbable: boolean;
+  badge: boolean;
+  saysCount: boolean;
+  shown: boolean;
+} {
+  const collapsed = compact && !active && !single;
+  return {
+    collapsed,
+    tabbable: !collapsed,
+    badge: Boolean(count) && !compact && !single,
+    saysCount: Boolean(count),
+    shown: compact && active && !single,
+  };
+}
+
+/**
+ * What a press does while the bar may be shrunk: on the tab left in sight
+ * (or the bar around it), it opens the bar; anywhere else it goes there, as
+ * a link does. Only a screen reader presses a hidden tab, which has no
+ * width for a finger.
+ */
+export function compactPress({
+  compact,
+  single,
+  onShown,
+}: {
+  compact: boolean;
+  single: boolean;
+  /** The press is on the tab left in sight, or on the bar itself. */
+  onShown: boolean;
+}): "open" | "go" {
+  return compact && !single && onShown ? "open" : "go";
 }
 
 /**
@@ -283,7 +334,15 @@ function TabBar({ nav }: { nav: NavItem[] }) {
               dragged.current = false;
               return;
             }
-            if (compact && !single) {
+            // The tab left in sight opens the bar; a hidden one, pressed by
+            // a screen reader, goes there, through its link, so a screen
+            // guarding unsaved work sees it as it sees a tap.
+            const link =
+              event.target instanceof Element
+                ? event.target.closest("a")
+                : null;
+            const onShown = !link || link.hasAttribute("data-tab-shown");
+            if (compactPress({ compact, single, onShown }) === "open") {
               event.preventDefault();
               event.stopPropagation();
               setCompact(false);
@@ -315,15 +374,18 @@ function TabBar({ nav }: { nav: NavItem[] }) {
           ) : null}
           {nav.map((item) => {
             const active = isActive(shown, item);
+            const tab = tabShape({
+              compact,
+              single,
+              active,
+              count: item.count,
+            });
             return (
               <li
                 key={item.href}
                 className={cn(
                   "relative z-10 min-w-0 flex-1 basis-0 transition-[flex-grow,opacity] duration-300",
-                  compact &&
-                    !active &&
-                    !single &&
-                    "grow-0 overflow-hidden opacity-0",
+                  tab.collapsed && "grow-0 overflow-hidden opacity-0",
                 )}
               >
                 <Link
@@ -332,7 +394,8 @@ function TabBar({ nav }: { nav: NavItem[] }) {
                   aria-current={isActive(pathname, item) ? "page" : undefined}
                   title={single ? item.label : undefined}
                   draggable={false}
-                  tabIndex={compact && !active && !single ? -1 : undefined}
+                  data-tab-shown={tab.shown || undefined}
+                  tabIndex={tab.tabbable ? undefined : -1}
                   className={cn(
                     "pressable flex h-full flex-col items-center justify-center gap-px rounded-full",
                     "focus-visible:outline-2 focus-visible:outline-accent focus-visible:-outline-offset-2",
@@ -359,10 +422,14 @@ function TabBar({ nav }: { nav: NavItem[] }) {
                   >
                     {item.label}
                   </span>
-                  {item.count && !small ? (
+                  {item.count && tab.badge ? (
                     <span className="absolute top-1 start-[calc(50%+6px)]">
-                      <Count value={item.count} />
+                      <CountBadge value={item.count} />
                     </span>
+                  ) : null}
+                  {/* Said with the shrunk bar too: the badge goes, the count stays. */}
+                  {item.count && tab.saysCount ? (
+                    <CountWords value={item.count} />
                   ) : null}
                 </Link>
               </li>
@@ -481,7 +548,12 @@ export function AppShell({
                 <span data-nav-label className="flex-1">
                   {item.label}
                 </span>
-                <Count value={item.count} />
+                {item.count ? (
+                  <>
+                    <CountBadge value={item.count} />
+                    <CountWords value={item.count} />
+                  </>
+                ) : null}
               </Link>
             );
           })}

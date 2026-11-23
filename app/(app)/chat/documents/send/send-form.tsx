@@ -594,6 +594,7 @@ export function SendDocumentForm({
               chosenLabel={t("send.chosen")}
               chosen={chosen}
               preparing={preparing ? t("send.preparing") : null}
+              readyLabel={t("send.ready")}
               disabled={sending || data.files === "notYet"}
               remove={
                 sending

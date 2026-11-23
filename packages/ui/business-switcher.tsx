@@ -3,12 +3,14 @@
 import { accentTokens } from "@domain/color";
 import { ArrowLeftRight } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useState, useTransition } from "react";
+import { type FormEvent, useEffect, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import { accentProps } from "./accent";
+import { announce } from "./announcer";
 import { Badge } from "./badge";
 import { ChoiceMenu } from "./choice-menu";
 import { cn } from "./cn";
+import { focusFirst } from "./focus-after";
 import { leaveBusiness } from "./leaving-business";
 import { ListGroup, ListRow } from "./list-row";
 import { Sheet } from "./sheet";
@@ -40,6 +42,80 @@ export type BusinessChoice = {
 
 /** The switch: a server action taking a form with `business`, the id. */
 export type ChooseBusiness = (form: FormData) => void | Promise<void>;
+
+/** A switch asked for longer ago than this is no longer waited for. */
+export const ARRIVAL_MS = 15_000;
+
+/** The switch on its way: the business asked for, and when. */
+export type AwaitedSwitch = { id: string; name: string; at: number };
+
+/**
+ * The switch this page asked for, until the business it named is the one
+ * the screens are drawn for. One per page: the press's screen may be gone
+ * by then (Home drawn again for the other business).
+ */
+let awaited: AwaitedSwitch | null = null;
+
+function awaitSwitch(next: AwaitedSwitch) {
+  awaited = next;
+}
+
+/**
+ * The business the page arrived in, when it is the one a switch asked for
+ * at most `ARRIVAL_MS` ago; null for none asked, another one (a refused
+ * switch), or one asked for too long ago.
+ */
+export function arrivalOf(
+  asked: AwaitedSwitch | null,
+  businesses: readonly BusinessChoice[],
+  now: number,
+): BusinessChoice | null {
+  if (!asked || now - asked.at > ARRIVAL_MS) return null;
+  const current = businesses.find((business) => business.current);
+  return current?.id === asked.id ? current : null;
+}
+
+/**
+ * The business the page arrived in, if a switch asked for it; a switch
+ * that arrived, or asked for too long ago, is no longer waited for.
+ */
+function takeArrival(
+  businesses: readonly BusinessChoice[],
+  now: number,
+): BusinessChoice | null {
+  const arrived = arrivalOf(awaited, businesses, now);
+  if (arrived || (awaited && now - awaited.at > ARRIVAL_MS)) awaited = null;
+  return arrived;
+}
+
+/** Says "עוברים לעסק X" for the switch just asked for, and waits for it. */
+function useSwitchAsked(businesses: readonly BusinessChoice[]) {
+  const t = useTranslations("ui.businesses");
+  return (id: string) => {
+    const business = businesses.find((one) => one.id === id);
+    if (!business || business.current) return;
+    awaitSwitch({ id, name: business.name, at: Date.now() });
+    announce(t("switching", { name: business.name }));
+  };
+}
+
+/**
+ * Once the screens are drawn for the business a switch asked for: "עברת
+ * לעסק X", and the focus on the page's title if it was lost (the pressed
+ * row went; the desktop's menu gives its own button the focus back, so
+ * nothing moves there). A switch refused, or long gone, says nothing.
+ */
+function useSwitchArrival(businesses: readonly BusinessChoice[]) {
+  const t = useTranslations("ui.businesses");
+  const current = businesses.find((business) => business.current)?.id;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the business the page is drawn for is what arrives
+  useEffect(() => {
+    const arrived = takeArrival(businesses, Date.now());
+    if (!arrived) return;
+    announce(t("switched", { name: arrived.name }));
+    focusFirst([]);
+  }, [current]);
+}
 
 /**
  * A business's mark: its first letter on its colour, in the same rounded
@@ -125,6 +201,7 @@ function BusinessRow({ business }: { business: BusinessChoice }) {
       name="business"
       value={business.id}
       disabled={pending}
+      busy={going}
       leading={leading}
       title={business.name}
       subtitle={about(business)}
@@ -138,7 +215,7 @@ function BusinessRow({ business }: { business: BusinessChoice }) {
  * keep the list's hairlines; a row sends its own id, and works before the
  * page's script has loaded. Sending it first tells any screen still holding
  * a write to send it (`leaveBusiness`). In a sheet, its cards are the
- * sheet's.
+ * sheet's. A screen reader hears the switch start and arrive.
  */
 export function BusinessList({
   businesses,
@@ -151,12 +228,18 @@ export function BusinessList({
   inSheet?: boolean;
   className?: string;
 }) {
+  const asked = useSwitchAsked(businesses);
+  useSwitchArrival(businesses);
   return (
     <form
       action={action}
       // Before the switch is sent: what a screen holds goes out first, while
       // the cookie still names the business it was made in.
-      onSubmit={() => void leaveBusiness()}
+      onSubmit={(event: FormEvent<HTMLFormElement>) => {
+        const submitter = (event.nativeEvent as SubmitEvent).submitter;
+        if (submitter instanceof HTMLButtonElement) asked(submitter.value);
+        void leaveBusiness();
+      }}
       className={className}
     >
       <ListGroup className={inSheet ? "bg-elevated" : undefined}>
@@ -184,6 +267,7 @@ export function BusinessSwitchRow({
 }) {
   const t = useTranslations("ui.businesses");
   const [open, setOpen] = useState(false);
+  useSwitchArrival(businesses);
   const current = businesses.find((business) => business.current);
   const elsewhere = unreadElsewhere(businesses);
   return (
@@ -233,6 +317,8 @@ export function BusinessMenu({
   const t = useTranslations("ui.businesses");
   const about = useAbout();
   const [pending, start] = useTransition();
+  const asked = useSwitchAsked(businesses);
+  useSwitchArrival(businesses);
   const current =
     businesses.find((business) => business.current) ?? businesses[0];
   if (!current) return null;
@@ -263,6 +349,7 @@ export function BusinessMenu({
           }))}
           onChange={(key) => {
             if (key === current.id || pending) return;
+            asked(key);
             start(async () => {
               await leaveBusiness();
               const form = new FormData();

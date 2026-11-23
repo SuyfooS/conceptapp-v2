@@ -15,21 +15,24 @@ import {
 import { Button } from "@ui/button";
 import { Card, CardText, CardTitle } from "@ui/card";
 import { ChoiceList, ChoiceRow } from "@ui/choice-row";
+import { firstOnScreen, focusFirst } from "@ui/focus-after";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { Sheet } from "@ui/sheet";
 import { StatusToast } from "@ui/status-toast";
+import { UndoRow } from "@ui/undo-row";
 import { Clock, UserMinus } from "lucide-react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import {
   createContext,
   type ReactNode,
+  type RefObject,
   use,
   useLayoutEffect,
   useRef,
   useState,
 } from "react";
-import { UndoRow } from "../../manage/undo-row";
+import { type HeldTimer, heldTimer } from "../../held-timer";
 import { HOLD_MS, useHeldWrite } from "../../use-held-write";
 import type {
   MemberChangeActions,
@@ -160,6 +163,17 @@ type ChangesValue = {
   remove: () => void;
   undoRemoval: () => void;
   toast: { text: string; stamp: string } | null;
+  /** "הסרה מהצוות": the focus comes back to it after "ביטול", or a failure. */
+  removeButton: RefObject<HTMLButtonElement | null>;
+  /** "תפקיד", as last pressed: the focus comes back to it. */
+  roleRow: RefObject<HTMLButtonElement | null>;
+  keepRoleRow: (row: HTMLButtonElement) => void;
+  /** The role change's "ביטול": its sheet closes onto it. */
+  roleUndoButton: RefObject<HTMLButtonElement | null>;
+  /** The removal's "ביטול" is being reached: the held removal waits. */
+  removalWaits: (waiting: boolean) => void;
+  /** The role change's "ביטול" is being reached: its write, or its undo, waits. */
+  roleUndoWaits: (waiting: boolean) => void;
 };
 
 const ChangesContext = createContext<ChangesValue | null>(null);
@@ -204,23 +218,28 @@ export function MemberChangesState({
   const [failure, setFailure] = useState<TeamChangeActionFailure | null>(null);
   const [busy, setBusy] = useState(false);
   const [roleUndo, setRoleUndo] = useState<Undo | null>(null);
-  const undoTimer = useRef<number | null>(null);
+  // The undo of a written change waits as a held write does, and stops
+  // with it while its "ביטול" is being reached.
+  const undoTimer = useRef<HeldTimer | null>(null);
+  const removeButton = useRef<HTMLButtonElement>(null);
+  const roleRow = useRef<HTMLButtonElement>(null);
+  const roleUndoButton = useRef<HTMLButtonElement>(null);
   const [toast, setToast] = useState<{ text: string; stamp: string } | null>(
     null,
   );
 
   function clearUndo() {
-    if (undoTimer.current !== null) window.clearTimeout(undoTimer.current);
+    undoTimer.current?.clear();
     undoTimer.current = null;
     setRoleUndo(null);
   }
   function showUndo(next: Undo) {
     clearUndo();
     setRoleUndo(next);
-    undoTimer.current = window.setTimeout(() => {
+    undoTimer.current = heldTimer(HOLD_MS, () => {
       undoTimer.current = null;
       setRoleUndo((now) => (now === next ? null : now));
-    }, HOLD_MS);
+    });
   }
 
   const held = useHeldWrite<Held>(async (value) => {
@@ -319,6 +338,28 @@ export function MemberChangesState({
     setPhase("on");
   }
 
+  function keepRoleRow(row: HTMLButtonElement) {
+    roleRow.current = row;
+  }
+
+  function removalWaits(waiting: boolean) {
+    if (held.held?.kind !== "remove") return;
+    if (waiting) held.pause();
+    else held.resume();
+  }
+
+  // Only one is ever offered: a held change's write, or a written one's undo.
+  function roleUndoWaits(waiting: boolean) {
+    const role = held.held?.kind === "role";
+    if (waiting) {
+      if (role) held.pause();
+      undoTimer.current?.pause();
+    } else {
+      if (role) held.resume();
+      undoTimer.current?.resume();
+    }
+  }
+
   // Leaving the screen: the held write goes (`useHeldWrite`), and the undo
   // of a written change with it, so none comes back that can't undo.
   // biome-ignore lint/correctness/useExhaustiveDependencies: only on leaving
@@ -341,6 +382,12 @@ export function MemberChangesState({
         remove,
         undoRemoval,
         toast,
+        removeButton,
+        roleRow,
+        keepRoleRow,
+        roleUndoButton,
+        removalWaits,
+        roleUndoWaits,
       }}
     >
       {children}
@@ -375,25 +422,48 @@ export function MemberRoleRow() {
   const value = use(ChangesContext);
   const t = useTranslations("app.team.changes");
   const [open, setOpen] = useState(false);
+  // A change was made in this opening: the sheet closes onto its undo.
+  const changed = useRef(false);
   const roleName = useRoleName(value?.data ?? NO_DATA);
   if (!value || shownRoles(value.data).length < 2) return null;
-  const { role, holding } = value;
+  const { role, holding, roleRow, keepRoleRow, roleUndoButton } = value;
   return (
     <>
       <ListRow
         title={t("role")}
         trailing={<span className="text-ink-2">{roleName(role)}</span>}
-        disabled={holding}
-        onClick={() => setOpen(true)}
+        // Dimmed while something waits for its undo, and still reachable:
+        // the focus comes back to it when the undo goes.
+        disabled={holding ? "focusable" : false}
+        onClick={(event) => {
+          keepRoleRow(event.currentTarget);
+          changed.current = false;
+          setOpen(true);
+        }}
       />
       <Sheet
         open={open}
         onOpenChange={setOpen}
         title={t("roleSheet", { name: value.data.first })}
         closeLabel={t("close")}
+        // Its "ביטול" came while the sheet was open, where its own focus
+        // would be taken back: the sheet closes onto it, else the row.
+        returnFocus={() => {
+          const back = changed.current
+            ? [roleUndoButton.current, roleRow.current]
+            : [roleRow.current];
+          changed.current = false;
+          return firstOnScreen(back);
+        }}
       >
         {/* Mounted on each opening, so it starts from the role they have. */}
-        <RolePicker value={value} onDone={() => setOpen(false)} />
+        <RolePicker
+          value={value}
+          onDone={() => {
+            changed.current = true;
+            setOpen(false);
+          }}
+        />
       </Sheet>
     </>
   );
@@ -403,12 +473,20 @@ export function MemberRoleRow() {
 export function MemberRoleNotes() {
   const value = use(ChangesContext);
   if (!value || shownRoles(value.data).length < 2) return null;
-  const { roleUndo, toast } = value;
+  const { roleUndo, toast, roleRow, roleUndoButton, roleUndoWaits } = value;
   return (
     <>
       <StatusToast message={toast?.text ?? null} stamp={toast?.stamp} />
       {roleUndo ? (
-        <UndoRow message={roleUndo.message} onUndo={roleUndo.run} />
+        // Quiet: the sheet closes onto it, and its focus says its words.
+        <UndoRow
+          message={roleUndo.message}
+          onUndo={roleUndo.run}
+          quiet
+          buttonRef={roleUndoButton}
+          onWaitingChange={roleUndoWaits}
+          focusAfter={() => [roleRow.current]}
+        />
       ) : null}
     </>
   );
@@ -538,8 +616,14 @@ function RolePicker({
 export function MemberRemoval() {
   const value = use(ChangesContext);
   const t = useTranslations("app.team.changes");
+  const failure = value?.failure ?? null;
+  // The removal came back refused: the page drew the button again, with
+  // why under it, and the focus goes back to it.
+  useLayoutEffect(() => {
+    if (failure) focusFirst([value?.removeButton.current], { title: false });
+  }, [failure, value?.removeButton]);
   if (!value) return null;
-  const { data, failure } = value;
+  const { data } = value;
   const ahead = data.ahead.shifts + data.ahead.drafts;
   return (
     <div className="flex flex-col gap-2">
@@ -562,6 +646,7 @@ export function MemberRemoval() {
         <>
           <ListGroup>
             <button
+              ref={value.removeButton}
               type="button"
               onClick={value.remove}
               className="flex min-h-[3.25rem] w-full items-center justify-center gap-2 px-4 font-medium text-danger transition-colors duration-150 ease-calm hover:bg-surface-2 active:bg-surface-3 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent [&_svg]:size-5"
@@ -598,15 +683,38 @@ export function MemberRemoval() {
 export function MemberLeft() {
   const value = use(ChangesContext);
   const t = useTranslations("app.team.changes");
+  const sendingLine = useRef<HTMLParagraphElement>(null);
+  const leftTitle = useRef<HTMLHeadingElement>(null);
+  const phase = value?.phase;
+  // Written: what came off them takes the focus from the line that went.
+  useLayoutEffect(() => {
+    if (phase === "removed") focusFirst([leftTitle.current]);
+  }, [phase]);
   if (!value) return null;
-  const { data, phase, left, removing } = value;
+  const { data, left, removing, removeButton } = value;
   const removed = t("removed", { name: data.name, form: data.form });
   if (removing) {
-    return <UndoRow message={removed} onUndo={value.undoRemoval} />;
+    // "הסרה מהצוות" went with the offers: "ביטול" takes its place and the
+    // focus. Undone, the button takes it back; its time up, the line that
+    // says it is on its way.
+    return (
+      <UndoRow
+        message={removed}
+        onUndo={value.undoRemoval}
+        autoFocus
+        onWaitingChange={value.removalWaits}
+        focusAfter={() => [removeButton.current, sendingLine.current]}
+      />
+    );
   }
   if (phase === "sending") {
     return (
-      <p role="status" className="px-1 text-base text-ink-2">
+      <p
+        ref={sendingLine}
+        role="status"
+        tabIndex={-1}
+        className="px-1 text-base text-ink-2 outline-none"
+      >
         {removed}
       </p>
     );
@@ -614,7 +722,12 @@ export function MemberLeft() {
   if (phase !== "removed" || !left) return null;
   return (
     <Card tone="flat" padding="lg" className="flex flex-col gap-3">
-      <CardTitle as="h2" className="text-lg">
+      <CardTitle
+        ref={leftTitle}
+        as="h2"
+        tabIndex={-1}
+        className="text-lg outline-none"
+      >
         {t("removedTitle", { name: data.name })}
       </CardTitle>
       <div className="flex flex-col gap-1">

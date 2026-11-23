@@ -22,12 +22,12 @@ import { pageGlowClass } from "@ui/page-glow";
 import { PersonAvatar } from "@ui/person-row";
 import { StatusToast } from "@ui/status-toast";
 import { Switch } from "@ui/switch";
+import { UndoRow } from "@ui/undo-row";
 import { TriangleAlert } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { NoteView } from "../../clock/pay/note-view";
 import type { NotePayView } from "../../clock/pay/pay-types";
-import { UndoRow } from "../undo-row";
 import type {
   AccessActions,
   AccessData,
