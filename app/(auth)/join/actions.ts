@@ -6,7 +6,7 @@ import { normalizeOtpCode } from "@domain/otp";
 import { redirect } from "next/navigation";
 import { rememberBusiness } from "../../(app)/business-cookie";
 import { pushSoon } from "../../push/server";
-import { type SignInError, sendCode, verifyCode } from "../otp";
+import { type SignInError, sendJoinCode, verifyCode } from "../otp";
 import { landingAfterJoin } from "./landing";
 
 /**
@@ -22,13 +22,20 @@ export type JoinState =
 
 /**
  * Joining from an invite link: send a code to the invited number (its
- * account is made first if it has none, once the code may go), check it,
- * then claim the invite on the server and open the app, in the business just
+ * account is made first if it has none, once the code may go, and a number
+ * with none starts with no counts, `sendJoinCode`), check it, then claim
+ * the invite on the server and open the app, in the business just
  * joined (someone in several opens it first): a worker or a manager on their
  * hiring file's welcome where the business uses it, anyone else on Today
- * (`landingAfterJoin`, H5b). The number always
- * comes from the invite, never from the form. A link that stopped working on
- * the way goes back to its page, which says why.
+ * (`landingAfterJoin`, H5b). The first send answers the same whether the
+ * number already had an account or not: too many and too soon are the code
+ * step, whose words are true either way; a malformed number and a failure
+ * stay on the invite. A new code asked for too soon reads as one asked for,
+ * as on sign-in, so the app's wait between codes reads the same for every
+ * number; too many and a failure are said on the code step. What "too many"
+ * still tells is a known issue (docs/ROADMAP.md, 94). The number always
+ * comes from the invite, never from the form. A link that stopped working
+ * on the way goes back to its page, which says why.
  */
 export async function join(
   token: string,
@@ -44,14 +51,32 @@ export async function join(
   if (intent === "send" || intent === "resend") {
     let error: SignInError | null;
     try {
-      error = await sendCode(invite.phone, () =>
+      error = await sendJoinCode(invite.phone, () =>
         ensurePhoneAccount(invite.phone),
       );
     } catch (cause) {
       console.error("join: sending the code failed", (cause as Error).message);
       error = "failed";
     }
-    if (error && intent === "send") return { step: "invite", error };
+    if (intent === "send" && error) {
+      // Too many, or a code sent to the number within the wait: the code
+      // step, word for word as for a code that went. A number with no
+      // account had its counts cleared and one with an account kept them,
+      // so anything else here would tell the link's holder which it was.
+      if (error === "tooMany" || error === "rateLimit") {
+        return { step: "code", error: undefined, resent: false };
+      }
+      return { step: "invite", error };
+    }
+    // A new code asked for within the app's wait between codes, which runs
+    // from the number's last counted send: a sign-in code counted for a
+    // number with an account starts it, and joining cleared the counts of a
+    // number with none, so saying it would tell the link's holder which it
+    // was. It reads as one asked for, as on sign-in: nothing went now, and
+    // the earlier code still works.
+    if (intent === "resend" && error === "rateLimit") {
+      return { step: "code", error: undefined, resent: true };
+    }
     return {
       step: "code",
       error: error ?? undefined,

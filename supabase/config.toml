@@ -269,7 +269,8 @@ template = "Your code is {{ .Code }}"
 # Controls the minimum amount of time that must pass before sending another sms otp.
 # Local and CI only (this file never reaches the hosted project): 2 s rather
 # than 5, so specs that sign one person in back to back rarely wait.
-# e2e/session.ts reads this value, and sign-in.spec.ts trips it on purpose.
+# e2e/session.ts reads this value, and seed.sql sets the app's own wait
+# between codes (private.auth_send_wait) just past it.
 max_frequency = "2s"
 
 # Use pre-defined map of phone number to OTP for testing.
