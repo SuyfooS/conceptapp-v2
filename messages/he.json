@@ -343,6 +343,8 @@
     "codeAgain": "מההתחלה",
     "captcha": "בדיקה שזה לא רובוט",
     "captchaHint": "Cloudflare מצייר את התיבה רק כשצריך לסמן. כאן במקומה מקום ריק באותו גודל.",
+    "captchaState": "מצב",
+    "captchaStateMenu": "מצב: {state}",
     "captchaSend": "שליחת קוד",
     "captchaStates": {
       "ready": "הכול תקין",

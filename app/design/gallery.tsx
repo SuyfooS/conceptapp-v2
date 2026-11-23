@@ -1503,16 +1503,27 @@ function GalleryBody({
         </Section>
 
         <Section title={t("captcha")}>
-          <Segmented
-            label={t("captcha")}
-            value={captchaShown}
-            onChange={setCaptchaShown}
-            options={CAPTCHA_STATES.map((state) => ({
-              value: state,
-              label: t(`captchaStates.${state}`),
-            }))}
-            className="self-start"
-          />
+          {/* Five states: a menu, since five segments don't fit a phone. */}
+          <div className="flex flex-wrap items-center gap-x-2 px-1">
+            <span aria-hidden="true" className="text-base text-ink-2">
+              {t("captchaState")}
+            </span>
+            <ChoiceMenu
+              label={t("captchaStateMenu", {
+                state: t(`captchaStates.${captchaShown}`),
+              })}
+              value={captchaShown}
+              options={CAPTCHA_STATES.map((state) => ({
+                key: state,
+                label: t(`captchaStates.${state}`),
+              }))}
+              onChange={(key) => {
+                const picked = CAPTCHA_STATES.find((state) => state === key);
+                if (picked) setCaptchaShown(picked);
+              }}
+              className="text-base text-ink"
+            />
+          </div>
           {/* A new stand-in for each state: a check keeps its own. */}
           <CaptchaDemo key={captchaShown} shown={captchaShown} />
           <p className="px-1 text-ink-2 text-sm">{t("captchaHint")}</p>

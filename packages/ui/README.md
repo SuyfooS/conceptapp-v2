@@ -17,7 +17,9 @@ Turnstile, P9b): `useCaptcha(setup, action)` keeps one check for a screen, and
 nothing, Cloudflare's own box only when it asks for a tick, and its lines while
 a press waits, when it failed and when it didn't load. A form sends through
 `holdSubmit` (a press made too soon waits and goes by itself), a send in code
-through `take()`. Its controller, `@ui/captcha-control`, has no React and is
+through `take()`. The script has 15 seconds from when a box is up, never from
+the screen's first drawing, and a screen whose language changes gets a new
+widget in it. Its controller, `@ui/captcha-control`, has no React and is
 tested on its own. The script is Cloudflare's, never copied here; the gallery
 shows the stand-in only.
 

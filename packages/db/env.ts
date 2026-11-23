@@ -139,11 +139,27 @@ export function parseTurnstileSiteKey(source: {
  * This deployment's Turnstile site key, read on the server by the pages
  * that send a code and handed to their screens (`CaptchaSetup`). Written
  * out in full, as a NEXT_PUBLIC_ variable must be to be read at build time.
+ * On Vercel's Production a test key (the setting unset, most likely) is
+ * said in the log, where /sign-in's build reads it: it passes anywhere, so
+ * no screen shows it, and once Supabase's CAPTCHA is on every code would be
+ * refused (docs/production.md, Turnstile, step 4). Never thrown: the merge
+ * that brings this code in builds before the key is set.
  */
 export function turnstileSiteKey(): string {
-  return parseTurnstileSiteKey({
+  const key = parseTurnstileSiteKey({
     NEXT_PUBLIC_TURNSTILE_SITE_KEY: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY,
   });
+  if (process.env.VERCEL_ENV === "production" && isTurnstileTestKey(key)) {
+    console.warn(
+      "NEXT_PUBLIC_TURNSTILE_SITE_KEY is unset or a test key on Production: Cloudflare's test widget passes anywhere, and Supabase's CAPTCHA refuses its token (docs/production.md, Turnstile, step 4)",
+    );
+  }
+  return key;
+}
+
+/** Whether `key` is one of Cloudflare's published test site keys. */
+function isTurnstileTestKey(key: string): boolean {
+  return (Object.values(TURNSTILE_TEST_KEYS) as string[]).includes(key);
 }
 
 /** The hiring file's keys, checked: which one seals, and every one that opens. */

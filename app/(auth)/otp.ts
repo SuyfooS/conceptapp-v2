@@ -217,7 +217,10 @@ export async function sendCode(
  * this send makes the account it never clears again. A clear that fails
  * leaves the counts as they were. The account is made before the auth
  * server sees the check's token, so a send it refuses for the check leaves
- * the account made, which joining needs anyway.
+ * the account made, which joining needs anyway. The clear and the app's
+ * wait come before the check too, so within the wait after a sign-in code
+ * a send with no good token answers `rateLimit` for a number with an
+ * account and `captcha` for one without (docs/ROADMAP.md, 94).
  */
 export async function sendJoinCode(
   phone: string,

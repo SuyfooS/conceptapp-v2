@@ -188,6 +188,37 @@ describe("turnstileSiteKey", () => {
     vi.stubEnv("NEXT_PUBLIC_TURNSTILE_SITE_KEY", "nope");
     expect(() => turnstileSiteKey()).toThrow(/NEXT_PUBLIC_TURNSTILE_SITE_KEY/);
   });
+
+  it("says in the log, never throwing, that Production has no key of its own", () => {
+    // Made up, as above.
+    const siteKey = `0x4${"A".repeat(7)}exampleKey00`;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      vi.stubEnv("VERCEL_ENV", "production");
+      for (const unset of ["", "1x00000000000000000000AA"]) {
+        vi.stubEnv("NEXT_PUBLIC_TURNSTILE_SITE_KEY", unset);
+        warn.mockClear();
+        expect(turnstileSiteKey()).toBe("1x00000000000000000000AA");
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(String(warn.mock.calls[0]?.[0])).toMatch(
+          /NEXT_PUBLIC_TURNSTILE_SITE_KEY.*Production.*docs\/production\.md/,
+        );
+      }
+      vi.stubEnv("NEXT_PUBLIC_TURNSTILE_SITE_KEY", siteKey);
+      warn.mockClear();
+      expect(turnstileSiteKey()).toBe(siteKey);
+      expect(warn).not.toHaveBeenCalled();
+      // Previews, CI and a computer use the test key on purpose.
+      vi.stubEnv("NEXT_PUBLIC_TURNSTILE_SITE_KEY", "");
+      for (const env of ["preview", "development", ""]) {
+        vi.stubEnv("VERCEL_ENV", env);
+        expect(turnstileSiteKey()).toBe("1x00000000000000000000AA");
+      }
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
 });
 
 describe("parseEmployeeDataKeys", () => {

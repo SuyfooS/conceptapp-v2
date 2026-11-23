@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  CAPTCHA_LOAD_MS,
   type CaptchaAction,
   type CaptchaSetup,
   type CaptchaState,
@@ -24,8 +23,8 @@ import { Button } from "./button";
 import {
   type CaptchaControl,
   type CaptchaSnapshot,
-  createCaptchaControl,
-  createDemoCaptcha,
+  captchaControlFor,
+  type HeldCaptcha,
   type TurnstileApi,
 } from "./captcha-control";
 
@@ -75,22 +74,29 @@ const LOADING: CaptchaSnapshot = {
  * The "אני לא רובוט" check of a screen that sends an SMS code (P9b), one
  * for the screen's whole life, whichever of its steps is drawn: the real
  * widget with the deployment's key, in the screen's language, or the twin's
- * stand-in. The script's deadline runs from the screen's first drawing.
+ * stand-in. A screen whose language changes while it is up gets a new
+ * widget in the new language, and a press waiting goes on waiting for it.
+ * The script's deadline runs only while a box is up (`CaptchaBox`), so a
+ * screen drawn with none yet waits for nothing.
  */
 export function useCaptcha(
   setup: CaptchaSetup,
   action: CaptchaAction,
 ): Captcha {
-  const locale = useLocale();
-  const [control] = useState(() =>
-    "demo" in setup
-      ? createDemoCaptcha(setup.demo)
-      : createCaptchaControl({
-          siteKey: setup.siteKey,
-          action,
-          language: captchaLanguageOf(locale),
-        }),
+  const language = captchaLanguageOf(useLocale());
+  const [kept, keep] = useState<HeldCaptcha>(() =>
+    captchaControlFor(null, setup, action, language),
   );
+  const mine = captchaControlFor(kept, setup, action, language);
+  if (mine !== kept) keep(mine);
+  const { control } = mine;
+  // The control the new one took the place of hands on its waiting presses.
+  const was = useRef(control);
+  useEffect(() => {
+    if (was.current === control) return;
+    was.current.handOver(control);
+    was.current = control;
+  }, [control]);
   const now = useSyncExternalStore(control.subscribe, control.snapshot, () =>
     control.demo ? control.snapshot() : LOADING,
   );
@@ -98,12 +104,6 @@ export function useCaptcha(
   const [going, setGoing] = useState<Press | null>(null);
   // The held press's own submit, while it is dispatched.
   const releasing = useRef(false);
-
-  useEffect(() => {
-    if (control.demo) return;
-    const late = window.setTimeout(control.loadTimedOut, CAPTCHA_LOAD_MS);
-    return () => window.clearTimeout(late);
-  }, [control]);
 
   // A held press goes once the check is no longer on its way: with the
   // token that landed, or without one when it failed or can't run.
@@ -223,14 +223,19 @@ export function CaptchaBox({
     else control.scriptFailed();
   };
 
-  // A box drawn again on a page whose script is in already; the widget goes
-  // with its place.
+  // A box drawn again on a page whose script is in already, or a new
+  // control in its place; the widget goes with its place. The script's
+  // deadline runs while the box is up, from when it is first drawn.
   useEffect(() => {
     const container = frame.current;
     if (!container || control.demo) return;
     const api = window.turnstile;
     if (api) control.attach(container, api, roomOf(container));
-    return () => control.detach(container);
+    const stopWaiting = control.awaitScript();
+    return () => {
+      stopWaiting();
+      control.detach(container);
+    };
   }, [control]);
 
   // Asked for a tick while a press waits: the box comes into view (on a

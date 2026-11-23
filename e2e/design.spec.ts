@@ -1788,22 +1788,46 @@ test("the gallery's check draws each of its states", async ({ page }) => {
   const d = he.design;
   const w = he.ui.captcha;
   await page.goto("/design");
-  const states = page.getByRole("group", { name: d.captcha });
   const section = page.locator("section").filter({
     has: page.getByRole("heading", { name: d.captcha, exact: true }),
   });
+  // Five states in a menu: a row of five segments spilled its words at 390.
+  const pick = async (state: keyof typeof d.captchaStates) => {
+    await section
+      .getByRole("button", { name: d.captchaStateMenu.split("{state}")[0] })
+      .click();
+    await page
+      .getByRole("menuitemradio", { name: d.captchaStates[state], exact: true })
+      .click();
+    await expect(
+      section.getByRole("button", {
+        name: d.captchaStateMenu.replace("{state}", d.captchaStates[state]),
+      }),
+    ).toBeVisible();
+  };
+  // Every word of the section inside its own control, at every width.
+  const spilled = () =>
+    section
+      .getByRole("button")
+      .evaluateAll((buttons) =>
+        buttons
+          .filter((button) => button.scrollWidth > button.clientWidth + 1)
+          .map((button) => button.textContent),
+      );
+  expect(await spilled()).toEqual([]);
   for (const [state, line] of [
     ["waiting", w.waiting],
     ["tap", w.tap],
     ["failed", w.failed],
     ["unavailable", w.unavailable],
   ] as const) {
-    await states.getByRole("button", { name: d.captchaStates[state] }).click();
+    await pick(state);
     await expect(section.getByText(line)).toBeVisible();
   }
-  await states.getByRole("button", { name: d.captchaStates.failed }).click();
+  await pick("failed");
   await expect(section.getByRole("button", { name: w.retry })).toBeVisible();
-  await states.getByRole("button", { name: d.captchaStates.ready }).click();
+  expect(await spilled()).toEqual([]);
+  await pick("ready");
   for (const line of [w.waiting, w.tap, w.failed, w.unavailable]) {
     await expect(section.getByText(line)).toHaveCount(0);
   }
@@ -5982,6 +6006,17 @@ test("the file twin held after a phone change says when the files open, with no 
     page.getByRole("button", { name: hf.locked.send }),
   ).toBeDisabled();
   await expect(page.getByLabel(hf.code.label)).toHaveCount(0);
+  // No "אני לא רובוט" check while no code can go, not even a failed one's
+  // line above the switched-off send.
+  await openFileDemo(
+    page,
+    "/design/shell/team/noa/file?state=held&captcha=failed",
+  );
+  await expect(
+    page.getByRole("button", { name: hf.locked.send }),
+  ).toBeDisabled();
+  await expect(page.locator("[data-captcha]")).toHaveCount(0);
+  await expect(page.getByText(he.ui.captcha.failed)).toHaveCount(0);
 });
 
 test("the file twin's reveal over the limit says so in words", async ({

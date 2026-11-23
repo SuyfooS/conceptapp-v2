@@ -343,6 +343,8 @@
     "codeAgain": "Start over",
     "captcha": "Not-a-robot check",
     "captchaHint": "Cloudflare draws its box only when a tick is needed. Here an empty space of its size stands in.",
+    "captchaState": "State",
+    "captchaStateMenu": "State: {state}",
     "captchaSend": "Send code",
     "captchaStates": {
       "ready": "All good",

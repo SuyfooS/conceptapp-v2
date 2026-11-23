@@ -36,9 +36,16 @@ export type JoinState =
  * number; too many and a failure are said on the code step. What "too many"
  * still tells is a known issue (docs/ROADMAP.md, 94). A send carries the
  * "אני לא רובוט" check's token (`captcha`, dropped when it isn't one), and
- * one the auth server refused for it stays on its step and says so: that is
- * the same for every number, since the check comes before the number is
- * looked up. The number always comes from the invite, never from the form.
+ * one the auth server refused for it stays on its step and says so. The
+ * auth server's refusal is the same for every number, since its check
+ * comes before it looks the number up, but the app's own wait isn't: a
+ * send with no good token, within the wait after a sign-in code to the
+ * invited number, reads as a code asked for when the number had an account
+ * (its counts kept, so the auth server isn't asked) and as refused for the
+ * check when it had none (its counts cleared). The app can't tell a bad
+ * token itself, and showing the code step for a send refused for its check
+ * would hide the refusal, so that is a known issue too (docs/ROADMAP.md,
+ * 94). The number always comes from the invite, never from the form.
  * A link that stopped working on the way goes back to its page, which says
  * why.
  */

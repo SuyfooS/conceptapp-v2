@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { CAPTCHA_LOAD_MS } from "@domain/turnstile";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   type CaptchaPage,
+  captchaControlFor,
   createCaptchaControl,
   createDemoCaptcha,
   type TurnstileApi,
@@ -286,21 +288,68 @@ describe("the script", () => {
     expect(later.snapshot().state).toBe("unavailable");
   });
 
-  it("is unavailable at the deadline while nothing came, and a widget drawn answers for itself", () => {
-    const control = createCaptchaControl({
-      siteKey: "1x00000000000000000000AA",
-      action: "sign-in",
-      language: "he",
-      page: { scriptFailed: false },
+  describe("its deadline", () => {
+    afterEach(() => {
+      vi.useRealTimers();
     });
-    control.loadTimedOut();
-    expect(control.snapshot().state).toBe("unavailable");
-    // A script that came late draws a widget all the same.
-    const turnstile = fakeTurnstile();
-    control.attach(box(), turnstile.api, 340);
-    expect(control.snapshot().state).toBe("loading");
-    control.loadTimedOut();
-    expect(control.snapshot().state).toBe("loading");
+
+    const fresh = () =>
+      createCaptchaControl({
+        siteKey: "1x00000000000000000000AA",
+        action: "bank-code",
+        language: "he",
+        page: { scriptFailed: false },
+      });
+
+    it("runs only while a box is up: a screen with none waits for nothing", () => {
+      vi.useFakeTimers();
+      // The bank step on its saved account: the screen's check, and no box.
+      const control = fresh();
+      vi.advanceTimersByTime(CAPTCHA_LOAD_MS * 4);
+      expect(control.snapshot().state).toBe("loading");
+      // "החלפת החשבון": the box comes up, and its script has its time.
+      const stop = control.awaitScript();
+      vi.advanceTimersByTime(CAPTCHA_LOAD_MS - 1);
+      expect(control.snapshot().state).toBe("loading");
+      vi.advanceTimersByTime(1);
+      expect(control.snapshot().state).toBe("unavailable");
+      stop();
+    });
+
+    it("ends with its box, and starts again with the next", () => {
+      vi.useFakeTimers();
+      const control = fresh();
+      const stop = control.awaitScript();
+      vi.advanceTimersByTime(CAPTCHA_LOAD_MS - 1);
+      stop();
+      vi.advanceTimersByTime(CAPTCHA_LOAD_MS);
+      expect(control.snapshot().state).toBe("loading");
+      control.awaitScript();
+      vi.advanceTimersByTime(CAPTCHA_LOAD_MS);
+      expect(control.snapshot().state).toBe("unavailable");
+    });
+
+    it("leaves a widget drawn to answer for itself, one drawn late too", () => {
+      vi.useFakeTimers();
+      const control = fresh();
+      const turnstile = fakeTurnstile();
+      control.awaitScript();
+      vi.advanceTimersByTime(CAPTCHA_LOAD_MS / 2);
+      control.attach(box(), turnstile.api, 340);
+      vi.advanceTimersByTime(CAPTCHA_LOAD_MS);
+      expect(control.snapshot().state).toBe("loading");
+      // A box drawn again once there is a widget waits for nothing.
+      control.awaitScript();
+      vi.advanceTimersByTime(CAPTCHA_LOAD_MS);
+      expect(control.snapshot().state).toBe("loading");
+      // A script that came after the deadline draws a widget all the same.
+      const late = fresh();
+      late.awaitScript();
+      vi.advanceTimersByTime(CAPTCHA_LOAD_MS);
+      expect(late.snapshot().state).toBe("unavailable");
+      late.attach(box(), turnstile.api, 340);
+      expect(late.snapshot().state).toBe("loading");
+    });
   });
 
   it("is unavailable when Cloudflare won't draw the widget, or in a browser it doesn't run in", () => {
@@ -323,6 +372,55 @@ describe("the script", () => {
     const { control: other, turnstile } = setUp();
     turnstile.last()["unsupported-callback"]();
     expect(other.snapshot().state).toBe("unavailable");
+  });
+});
+
+describe("a screen's language", () => {
+  const real = { siteKey: "1x00000000000000000000AA" };
+
+  it("keeps the control while it stays, and makes one in the new language once it changes", () => {
+    const he = captchaControlFor(null, real, "bank-code", "he");
+    expect(captchaControlFor(he, real, "bank-code", "he")).toBe(he);
+    const en = captchaControlFor(he, real, "bank-code", "en");
+    expect(en).not.toBe(he);
+    expect(en.language).toBe("en");
+    const turnstile = fakeTurnstile();
+    en.control.attach(box(), turnstile.api, 340);
+    expect(turnstile.last()).toMatchObject({
+      language: "en",
+      action: "bank-code",
+    });
+    expect(captchaControlFor(en, real, "bank-code", "en")).toBe(en);
+  });
+
+  it("keeps the twin's stand-in, which speaks none", () => {
+    const demo = captchaControlFor(null, { demo: "tap" }, "bank-code", "he");
+    expect(demo.control.demo).toBe(true);
+    expect(captchaControlFor(demo, { demo: "tap" }, "bank-code", "en")).toBe(
+      demo,
+    );
+  });
+
+  it("hands a waiting press on to the new control, which it goes with", async () => {
+    const old = setUp();
+    const pressed = old.control.take();
+    expect(old.control.snapshot().waiting).toBe(true);
+    const next = captchaControlFor(
+      { language: "he", control: old.control },
+      { siteKey: "1x00000000000000000000AA" },
+      "sign-in",
+      "en",
+    ).control;
+    old.control.handOver(next);
+    expect(old.control.snapshot().waiting).toBe(false);
+    expect(next.snapshot().waiting).toBe(true);
+    // The old widget's answer is no longer the press's.
+    old.turnstile.last().callback("OLD.TOKEN");
+    expect(await settled(pressed)).toBe(false);
+    const turnstile = fakeTurnstile();
+    next.attach(box(), turnstile.api, 340);
+    turnstile.last().callback("NEW.TOKEN");
+    expect(await pressed).toBe("NEW.TOKEN");
   });
 });
 

@@ -1,6 +1,8 @@
 import {
+  CAPTCHA_LOAD_MS,
   type CaptchaAction,
   type CaptchaEvent,
+  type CaptchaSetup,
   type CaptchaState,
   captchaSizeFor,
   nextCaptchaState,
@@ -67,7 +69,14 @@ export type CaptchaControl = {
   /** The widget goes with its container (or with whatever it is in). */
   detach: (container?: HTMLElement) => void;
   scriptFailed: () => void;
-  loadTimedOut: () => void;
+  /**
+   * A box is up to draw the widget: unless one is drawn within
+   * `CAPTCHA_LOAD_MS`, the script didn't load and the check is unavailable.
+   * Started by the box, never by the screen, which may have no box for a
+   * long while (the bank step's saved account). What it returns ends the
+   * wait, as the box goes.
+   */
+  awaitScript: () => () => void;
   /**
    * The token for one send, spent: at once when there is one; on its way or
    * asking for a tick, once it comes; none when the check failed or can't
@@ -78,6 +87,11 @@ export type CaptchaControl = {
   spend: () => void;
   /** "בדיקה מחדש": a failed check, tried again. */
   retry: () => void;
+  /**
+   * A new control took this one's place (the screen's language changed):
+   * each press waiting here waits for the new one's token instead.
+   */
+  handOver: (next: CaptchaControl) => void;
 };
 
 /**
@@ -227,9 +241,13 @@ export function createCaptchaControl({
       page.scriptFailed = true;
       apply({ kind: "scriptFailed" });
     },
-    loadTimedOut: () => {
-      // Only while no script came: a widget drawn answers for itself.
-      if (!everDrawn) apply({ kind: "loadTimeout" });
+    awaitScript: () => {
+      if (everDrawn) return () => {};
+      const late = setTimeout(() => {
+        // Only while no script came: a widget drawn answers for itself.
+        if (!everDrawn) apply({ kind: "loadTimeout" });
+      }, CAPTCHA_LOAD_MS);
+      return () => clearTimeout(late);
     },
     take: () => {
       if (now.state === "ready" && now.token !== null) {
@@ -260,6 +278,11 @@ export function createCaptchaControl({
       resetWidget();
       apply({ kind: "reset" });
     },
+    handOver: (next) => {
+      if (waiters.length === 0) return;
+      for (const waiter of waiters.splice(0)) next.take().then(waiter);
+      publish({ state: now.state, token: now.token });
+    },
   };
 }
 
@@ -283,9 +306,36 @@ export function createDemoCaptcha(
     attach: () => {},
     detach: () => {},
     scriptFailed: () => {},
-    loadTimedOut: () => {},
+    awaitScript: () => () => {},
     take: () => Promise.resolve(undefined),
     spend: () => {},
     retry: () => {},
+    handOver: () => {},
+  };
+}
+
+/** A screen's control, and the language its widget speaks. */
+export type HeldCaptcha = { language: "he" | "en"; control: CaptchaControl };
+
+/**
+ * The control for a screen's check in `language`: the one the screen holds
+ * while its language stays, and a new one once it changes (the file's
+ * "English / עברית" keeps the screen up), since Cloudflare's box speaks the
+ * language it was drawn in. The box draws the new one in the old one's
+ * place. The twin's stand-in speaks none, and stays.
+ */
+export function captchaControlFor(
+  held: HeldCaptcha | null,
+  setup: CaptchaSetup,
+  action: CaptchaAction,
+  language: "he" | "en",
+): HeldCaptcha {
+  if (held && (held.control.demo || held.language === language)) return held;
+  return {
+    language,
+    control:
+      "demo" in setup
+        ? createDemoCaptcha(setup.demo)
+        : createCaptchaControl({ siteKey: setup.siteKey, action, language }),
   };
 }

@@ -1,3 +1,4 @@
+import { TURNSTILE_TEST_KEYS } from "@domain/turnstile";
 import { describe, expect, it } from "vitest";
 import he from "../messages/he.json";
 import { jobs, readRepoFile, topLevel } from "./workflows";
@@ -15,7 +16,8 @@ import { jobs, readRepoFile, topLevel } from "./workflows";
 // branch only after Migrate conceptapp-prod. The repo is public, so what it
 // must never hold is checked here too. Turnstile's "אני לא רובוט" (P9b) goes
 // on in its own order: the code, the public key in Vercel and a rebuild, a
-// look, and only then CAPTCHA in Supabase, with a way back.
+// look at the key each site names (never Cloudflare's test key), and only
+// then CAPTCHA in Supabase, with a way back.
 
 const doc = readRepoFile("docs/production.md");
 
@@ -510,9 +512,19 @@ describe("docs/production.md", () => {
     }
     expect(key).toMatch(/`Secret Key` של הווידג'ט לא נכנס ל-Vercel/);
     expect(stepOf(turnstile, 3)).toContain("`Redeploy`");
-    expect(stepOf(turnstile, 4)).toContain("חלון פרטי");
-    expect(stepOf(turnstile, 4)).toContain(
-      he.ui.captcha.unavailable.split(".")[0] ?? "",
+    const look = stepOf(turnstile, 4);
+    expect(look).toContain("חלון פרטי");
+    const unloaded = he.ui.captcha.unavailable.split(".")[0] ?? "";
+    expect(look).toContain(unloaded);
+    // The key first, with a hard stop on the test key: it passes on any
+    // address, so the screen shows nothing, and CAPTCHA would then refuse
+    // every code. The page names its key where the doc says to look.
+    expect(look).toContain("`Ctrl+U`");
+    expect(look).toContain("`data-sitekey`");
+    expect(look).toContain(`\`${TURNSTILE_TEST_KEYS.pass}\`, עוצרים`);
+    expect(look.indexOf("`data-sitekey`")).toBeLessThan(look.indexOf(unloaded));
+    expect(readRepoFile("packages/ui/captcha.tsx")).toContain(
+      "data-sitekey={siteKey",
     );
     const on = stepOf(turnstile, 5);
     expect(on).toContain("`Authentication → Attack Protection`");
@@ -531,6 +543,23 @@ describe("docs/production.md", () => {
     expect(b4).toContain("`Authentication → Attack Protection`");
     expect(b4).toContain("ב7 צעד ב");
     expect(b4).toContain("`conceptapp-prod`");
+    expect(b4).toContain("`data-sitekey`");
+    // The demo's own project and the real site look at the key too, before
+    // anyone signs in: each is a build of its own.
+    const stepB = stepOf(section("ב7."), 5);
+    const stepBChecks = stepB.slice(stepB.indexOf("**בדיקה:**"));
+    for (const [where, text] of [
+      ["B7.2", stepOf(section("ב7."), 2)],
+      ["B7 step B", stepBChecks],
+    ] as const) {
+      expect(text, where).toContain("`data-sitekey`");
+      expect(text, where).toContain(`\`${TURNSTILE_TEST_KEYS.pass}\``);
+      expect(text, where).toContain("`Redeploy`");
+    }
+    expect(stepBChecks.indexOf("`data-sitekey`")).toBeGreaterThan(0);
+    expect(stepBChecks.indexOf("`data-sitekey`")).toBeLessThan(
+      stepBChecks.indexOf("נכנסים עם המספר שלך"),
+    );
     // Public and the same everywhere: the real site's table leaves it be.
     const real = rows(stepOf(section("ב7."), 5)).find(
       ([name = ""]) => name === "`NEXT_PUBLIC_TURNSTILE_SITE_KEY`",

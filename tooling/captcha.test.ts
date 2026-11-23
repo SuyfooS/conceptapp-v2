@@ -147,6 +147,28 @@ describe("Cloudflare's script and address", () => {
       "packages/ui/captcha.tsx",
     ]);
   });
+
+  it("have their deadline run by the box that loads the script, never by a screen", () => {
+    // A screen holds its check from its first drawing, with no box for a
+    // long while on some (the bank step's saved account): a deadline from
+    // there would say the check didn't load as soon as the box came up.
+    const source = read("packages/ui/captcha.tsx");
+    const hook = source.slice(
+      source.indexOf("export function useCaptcha("),
+      source.indexOf("function roomOf("),
+    );
+    const box = source.slice(source.indexOf("export function CaptchaBox("));
+    expect(hook.length).toBeGreaterThan(500);
+    expect(hook).not.toMatch(/awaitScript|setTimeout|CAPTCHA_LOAD_MS/);
+    expect(box).toContain("control.awaitScript()");
+    expect(box.indexOf("control.awaitScript()")).toBeLessThan(
+      box.indexOf("<Script"),
+    );
+    const timers = code
+      .filter(({ source }) => /\bawaitScript\(\)/.test(source))
+      .map(({ file }) => file);
+    expect(timers).toEqual(["packages/ui/captcha.tsx"]);
+  });
 });
 
 describe("the site key", () => {
