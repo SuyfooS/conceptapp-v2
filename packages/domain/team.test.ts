@@ -34,6 +34,7 @@ import {
   type TeamInvite,
   type TeamMember,
   teamChangeFailureOf,
+  unchangedMemberName,
   unchangedTeamName,
 } from "./team";
 
@@ -696,6 +697,35 @@ describe("unchangedTeamName", () => {
     expect(unchangedTeamName("\u{200B}", "\u{200B}")).toBe(false);
     expect(unchangedTeamName("Noa Cohen", null)).toBe(false);
     expect(unchangedTeamName("Noa Cohen", undefined)).toBe(false);
+  });
+});
+
+describe("unchangedMemberName", () => {
+  const marked = "\u{200F}Noa Cohen";
+
+  it("saves a name the business keeps clean of what nobody sees", () => {
+    expect(unchangedMemberName(marked, marked, true)).toBe(false);
+    expect(unchangedMemberName("Noa Cohen", marked, true)).toBe(false);
+    // Spaced or composed otherwise, it is still the name kept.
+    expect(unchangedMemberName("Noa  Cohen", "Noa Cohen", true)).toBe(true);
+    expect(unchangedMemberName("Noa Levi", marked, true)).toBe(false);
+  });
+
+  it("never offers to clean their own name: that keeps no row, so it writes nothing", () => {
+    // Their own name with a mark an earlier claim copied, and no row: the
+    // sheet opens on it, and neither it nor the name written clean is a fix.
+    expect(unchangedMemberName(marked, marked, false)).toBe(true);
+    expect(unchangedMemberName("Noa Cohen", marked, false)).toBe(true);
+    expect(unchangedMemberName(" Noa  Cohen ", "Noa Cohen", false)).toBe(true);
+    // A name of the business's own for them is.
+    expect(unchangedMemberName("Noa Levi", marked, false)).toBe(false);
+  });
+
+  it("is a fix for someone nobody named, and never for no name", () => {
+    expect(unchangedMemberName("Noa Cohen", null, false)).toBe(false);
+    expect(unchangedMemberName("", null, false)).toBe(false);
+    expect(unchangedMemberName("\u{200B}", "\u{200B}", false)).toBe(false);
+    expect(unchangedMemberName("", "Noa Cohen", true)).toBe(false);
   });
 });
 

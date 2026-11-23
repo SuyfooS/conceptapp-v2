@@ -320,6 +320,12 @@ async function phonesFromProfiles(
 
 /** One member as their profile shows them to whoever sees the team. */
 export type TeamPerson = TeamMember & {
+  /**
+   * The business's own name for them (`public.member_names`), which `name`
+   * shows; null when `name` is their own. The team's fix cleans the first
+   * of what nobody sees, never the second (`unchangedMemberName`).
+   */
+  memberName: string | null;
   /** Their line about themselves, or null. */
   bio: string | null;
   cover: CoverPreset;
@@ -332,7 +338,8 @@ export type TeamPerson = TeamMember & {
  * team reads them (RLS; callers check `canSeeTeam` first), with the role
  * the business named that they hold (R11b). Null when they are not an
  * active member. Before the profile's H2 migration reaches a project, they
- * have no line and the default cover. By the business's name for them.
+ * have no line and the default cover. By the business's name for them, and
+ * that name apart when it keeps one.
  */
 export async function getTeamPerson(
   businessId: string,
@@ -349,6 +356,7 @@ export async function getTeamPerson(
   return {
     userId: row.user_id,
     name: nameOf(row, names),
+    memberName: names.get(row.user_id.toLowerCase()) ?? null,
     phone: phoneOf.get(row.user_id) ?? null,
     role: row.role,
     namedRole: namedOf(roles, row.named_role),

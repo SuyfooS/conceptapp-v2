@@ -631,6 +631,24 @@ export function unchangedTeamName(
   return next.name === now;
 }
 
+/**
+ * Whether the team's fix of `draft` writes nothing over `shown`, the name
+ * the business shows for someone (`public.set_member_name`): `kept` when
+ * that is the business's own name for them (`public.member_names`), false
+ * when it is their own. A name the business keeps is saved clean of what
+ * nobody sees (`unchangedTeamName`). Their own name the business never
+ * touches: a draft that is their own name as the team keeps names
+ * (`sameTeamName`) keeps no row, so it is nothing, even while their own
+ * name still holds a mark, which only they clean, on /me.
+ */
+export function unchangedMemberName(
+  draft: unknown,
+  shown: string | null | undefined,
+  kept: boolean,
+): boolean {
+  return kept ? unchangedTeamName(draft, shown) : sameTeamName(draft, shown);
+}
+
 export type TeamInviteInput = RoleChoice & {
   name: string;
   /** Canonical E.164. */

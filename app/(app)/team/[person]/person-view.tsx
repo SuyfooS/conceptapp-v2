@@ -335,6 +335,7 @@ export async function PersonView({
           <MemberNameState
             personId={data.userId}
             name={data.name}
+            kept={data.memberName !== null}
             rename={changes.actions.rename}
           >
             {frame}

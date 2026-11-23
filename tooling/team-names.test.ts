@@ -4,14 +4,16 @@ import { parseTeamName, TEAM_NAME_MAX } from "@domain/team";
 import { beforeAll, describe, expect, it } from "vitest";
 
 // One rule for a name, in the app and in the database. public.claim_invite
-// reads an invite's name and the person's own with private.team_name
-// (20261127000500_invite_names.sql), which lists by code point what
-// parseTeamName (@domain/team) finds with Unicode's classes: Postgres has
-// none. Every code point goes through parseTeamName here and is sorted by
-// what it does to a name, and each list in the newest private.team_name must
-// hold exactly those. A character added on one side only, or a Node with a
-// newer Unicode, fails here, rather than as a name the claim and the screens
-// read apart (a row for someone's own name, or an old one left in place).
+// reads an invite's name and the person's own with private.team_name, and
+// public.set_member_name a fix and the person's own name when it decides
+// whether the fix is their own (20261127000500_invite_names.sql). The rule
+// lists by code point what parseTeamName (@domain/team) finds with
+// Unicode's classes: Postgres has none. Every code point goes through
+// parseTeamName here and is sorted by what it does to a name, and each list
+// in the newest private.team_name must hold exactly those. A character added
+// on one side only, or a Node with a newer Unicode, fails here, rather than
+// as a name the database and the screens read apart (a row for someone's
+// own name, or an old one left in place).
 
 const root = join(__dirname, "..");
 const migrations = readdirSync(join(root, "supabase/migrations")).sort();
@@ -166,5 +168,14 @@ describe("a name as the database keeps one (private.team_name)", () => {
     const claim = newest("public\\.claim_invite");
     expect(claim).toContain("kept := private.team_name(inv.full_name);");
     expect(claim).toContain("select private.team_name(p.full_name)");
+  });
+
+  it("is how the team's fix tells their own name, on both sides", () => {
+    const fix = newest("public\\.set_member_name");
+    expect(fix).toContain(
+      "if private.team_name(kept) is not distinct from private.team_name(own_name) then",
+    );
+    // No other test of their own name is left beside it.
+    expect(fix).not.toContain("if kept is not distinct from own_name then");
   });
 });

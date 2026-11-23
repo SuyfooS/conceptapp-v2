@@ -173,7 +173,15 @@ are compared; `tooling/team-names.test.ts` keeps its character lists equal to
 the app's); their own name keeps no row, and one kept from before goes; an
 owner keeps none, as only another owner could change it; an invite with no
 name leaves the business's. Someone with no name takes the clean name as
-their own. `/me` says which
+their own. The same migration holds both rules beyond the claim:
+`public.set_member_name` decides whether a fix is their own name with
+`private.team_name` on both sides, so an own name that still holds a mark,
+saved clean from `/team/[person]` or brought back by an undo, keeps no row
+(the screen's `unchangedMemberName` in @domain/team, by `TeamPerson.memberName`,
+offers no such save); and a member whose role becomes the owner's, by
+`public.set_member_role` or otherwise, loses the business's name for them
+(the trigger `memberships_owner_keeps_no_name`, `private.drop_owner_name`),
+after the membership, as the name's other writers lock. `/me` says which
 business keeps a name of its own for them: the session's `memberName` is the
 business's row, even one equal to their own name, which stays when they
 rename themselves, and the row says it beside their own where it differs

@@ -1,6 +1,10 @@
 "use client";
 
-import { parseTeamName, TEAM_NAME_MAX, unchangedTeamName } from "@domain/team";
+import {
+  parseTeamName,
+  TEAM_NAME_MAX,
+  unchangedMemberName,
+} from "@domain/team";
 import { Button } from "@ui/button";
 import { FieldGroup, GroupedField } from "@ui/field-group";
 import { ListGroup, ListRow } from "@ui/list-row";
@@ -27,9 +31,14 @@ import { MemberRoleNotes, MemberRoleRow } from "./member-changes";
 
 type Undo = { message: string; run: () => void };
 
+/** A name the screen shows, and whether it is the business's own for them. */
+type Shown = { name: string | null; kept: boolean };
+
 type NameValue = {
   /** The name as the screen shows it now; null: none. */
   shown: string | null;
+  /** Whether that is the business's own name for them, not their own. */
+  kept: boolean;
   busy: boolean;
   failure: TeamChangeActionFailure | null;
   /** The undo of a fix just written: the fix back. */
@@ -52,28 +61,31 @@ const settle = (run: Promise<MemberNameResult>) =>
  * them, shown everywhere in this business and nowhere else; their own name
  * stays theirs. The fix is written at once, and its undo, for a moment, is
  * the fix back, as a change between manager and worker. `name` is the name
- * the server has (null: none); the title, the row and the sentences follow
- * the screen's until the page is read again. The parts below read this
- * state; without it they draw nothing.
+ * the server has (null: none), and `kept` whether it is the business's own
+ * for them rather than their own; the title, the row and the sentences
+ * follow the screen's until the page is read again. The parts below read
+ * this state; without it they draw nothing.
  */
 export function MemberNameState({
   personId,
   name,
+  kept,
   rename,
   children,
 }: {
   personId: string;
   name: string | null;
+  kept: boolean;
   rename: MemberChangeActions["rename"];
   children: ReactNode;
 }) {
   const t = useTranslations("app.team.changes");
   // The name as the server has it, and as the screen shows it.
-  const [seen, setSeen] = useState(name);
-  const [shown, setShown] = useState(name);
-  if (name !== seen) {
-    setSeen(name);
-    setShown(name);
+  const [seen, setSeen] = useState<Shown>({ name, kept });
+  const [shown, setShown] = useState<Shown>({ name, kept });
+  if (name !== seen.name || kept !== seen.kept) {
+    setSeen({ name, kept });
+    setShown({ name, kept });
   }
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<TeamChangeActionFailure | null>(null);
@@ -106,28 +118,31 @@ export function MemberNameState({
 
   /**
    * Writes `to`, a name `parseTeamName` kept, for the one the screen shows,
-   * with the fix back as its undo; nothing when it is that one already
-   * (`unchangedTeamName`: one stored with what nobody sees is saved clean).
+   * with the fix back as its undo; nothing when that writes nothing
+   * (`unchangedMemberName`: a name the business keeps with what nobody sees
+   * is saved clean; their own name keeps no row, however it is stored).
    * Whether the sheet may close.
    */
   async function fix(to: string): Promise<boolean> {
     const from = shown;
-    if (unchangedTeamName(to, from)) return true;
+    if (unchangedMemberName(to, from.name, from.kept)) return true;
     if (busy) return false;
     setFailure(null);
     clearUndo();
     setBusy(true);
-    const result = await settle(rename(personId, to, from));
+    const result = await settle(rename(personId, to, from.name));
     setBusy(false);
     if (!result.ok) {
       setFailure(result.failure);
       return false;
     }
     if (!result.changed) return true;
-    const now = result.name;
+    // The server keeps `to` as sent and answers with it, unless it is their
+    // own name, which keeps no row: then it answers with theirs as stored.
+    const now: Shown = { name: result.name, kept: result.name === to };
     setShown(now);
     showUndo({
-      message: t("nameChanged", { name: now ?? to }),
+      message: t("nameChanged", { name: now.name ?? to }),
       run: () => void changeBack(from, now),
     });
     return true;
@@ -137,12 +152,12 @@ export function MemberNameState({
    * The undo of a fix already written: the name it had, or none. The row
    * waits for it, so no fix goes out for a name the server doesn't have yet.
    */
-  async function changeBack(from: string | null, to: string | null) {
+  async function changeBack(from: Shown, to: Shown) {
     clearUndo();
     setFailure(null);
     setShown(from);
     setBusy(true);
-    const result = await settle(rename(personId, from, to));
+    const result = await settle(rename(personId, from.name, to.name));
     setBusy(false);
     if (!result.ok) {
       setShown(to);
@@ -150,7 +165,7 @@ export function MemberNameState({
       return;
     }
     setToast({
-      text: from ? t("nameBack", { name: from }) : t("nameBackNone"),
+      text: from.name ? t("nameBack", { name: from.name }) : t("nameBackNone"),
       stamp: new Date().toISOString(),
     });
   }
@@ -161,7 +176,17 @@ export function MemberNameState({
 
   return (
     <NameContext
-      value={{ shown, busy, failure, undo, toast, open, setOpen, fix }}
+      value={{
+        shown: shown.name,
+        kept: shown.kept,
+        busy,
+        failure,
+        undo,
+        toast,
+        open,
+        setOpen,
+        fix,
+      }}
     >
       {children}
     </NameContext>
@@ -241,9 +266,10 @@ function NameForm({ value }: { value: NameValue }) {
   const [error, setError] = useState<"required" | "tooLong" | null>(null);
   const parsed = parseTeamName(draft);
   // A name stored with a double space, or with its letters decomposed, is no
-  // fix until a letter really differs; one stored with what nobody sees (a
-  // direction mark, a zero-width space) is, and saving it cleans it.
-  const same = unchangedTeamName(draft, value.shown);
+  // fix until a letter really differs. One the business keeps with what
+  // nobody sees (a direction mark, a zero-width space) is, and saving it
+  // cleans it; their own name it never cleans, so there it is none.
+  const same = unchangedMemberName(draft, value.shown, value.kept);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

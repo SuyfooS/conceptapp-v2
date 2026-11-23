@@ -1896,9 +1896,10 @@ test("the team demo deletes an invite, changes a role and takes someone off the 
 
 // Fixing a name on the demo (ROADMAP "תיקון שם"): the owner fixes Noa's,
 // shown at once in the title, with the fix back as its undo; an empty name is
-// said as an alert and the field takes the focus; one stored with a mark
-// nobody sees is saved clean; someone nobody named reads "בלי שם"; whoever
-// may not change the person gets no row. Nothing is stored.
+// said as an alert and the field takes the focus; one the business keeps
+// with a mark nobody sees is saved clean, and her own name with one is not
+// offered, as it would keep no row; someone nobody named reads "בלי שם";
+// whoever may not change the person gets no row. Nothing is stored.
 test("the person demo fixes a name, with the change back as its undo", async ({
   page,
 }) => {
@@ -1952,8 +1953,8 @@ test("the person demo fixes a name, with the change back as its undo", async ({
   ).toBeVisible();
   await expectCleanPage(page);
 
-  // A name stored with a mark nobody sees: the sheet saves it clean as it
-  // opens, though it reads the same.
+  // A name the business keeps with a mark nobody sees: the sheet saves it
+  // clean as it opens, though it reads the same.
   await page.goto("/design/shell/team/noa?state=marked");
   await nameRow.click();
   await expect(field).toHaveValue("\u{200F}נועה כהן");
@@ -1967,6 +1968,17 @@ test("the person demo fixes a name, with the change back as its undo", async ({
       hasText: heT("app.team.changes.nameChanged", { name: "נועה כהן" }),
     }),
   ).toBeVisible();
+
+  // Her own name with that mark, and none of the business's: saving it, or
+  // it written clean, would keep no row, so neither is offered.
+  await page.goto("/design/shell/team/noa?state=ownMarked");
+  await nameRow.click();
+  await expect(field).toHaveValue("\u{200F}נועה כהן");
+  await expect(submit).toBeDisabled();
+  await field.fill("נועה כהן");
+  await expect(submit).toBeDisabled();
+  await field.fill("נועה כהן-לוי");
+  await expect(submit).toBeEnabled();
 
   // Someone nobody named.
   await page.goto("/design/shell/team/noa?state=nameless");

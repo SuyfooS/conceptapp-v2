@@ -8,12 +8,15 @@
 -- from an earlier time in the business goes; an owner keeps none either; an
 -- invite with no name leaves what the business had; a character nobody sees
 -- is dropped, so it never stops a join, makes a row for their own name or
--- leaves an old one. The log keeps no name, the name is read as their
--- profile is, in that business, and only the server claims. Fixed ids and
--- numbers of its own (9c…, 050-000-93xx) and slugs (inam-…), so nothing here
--- meets the seeded people.
+-- leaves an old one. The team's fix (public.set_member_name) reads their own
+-- name the same way, so a save of it written clean, or the undo of a fix,
+-- keeps no row; and someone made an owner loses the business's name for
+-- them, as an owner who joins does. The log keeps no name, the name is read
+-- as their profile is, in that business, and only the server claims. Fixed
+-- ids and numbers of its own (9c…, 050-000-93xx) and slugs (inam-…), so
+-- nothing here meets the seeded people.
 begin;
-select plan(38);
+select plan(46);
 set local timezone = 'UTC';
 
 insert into auth.users (id, aud, role, phone)
@@ -340,6 +343,82 @@ select ok(
   not has_function_privilege('authenticated', 'private.team_name(text)', 'execute')
   and not has_function_privilege('anon', 'private.team_name(text)', 'execute'),
   'nobody signed in calls the rule'
+);
+
+------------------------------------------------------------------------------
+-- Fixing one by the same rule (public.set_member_name)
+
+-- 9's own name still holds the mark, and B keeps no name for them: the
+-- name written clean, as /team/[person] saves it, is their own.
+set local role service_role;
+select is(
+  public.set_member_name('9c000000-0000-4000-a000-000000000007',
+    '9c000000-0000-4000-b000-000000000002', '9c000000-0000-4000-a000-000000000009',
+    'Lior Ben', chr(8207) || 'Lior Ben', '2026-11-24 08:00+00'),
+  jsonb_build_object('changed', false, 'name', chr(8207) || 'Lior Ben'),
+  'their own name written clean, over one that holds a mark, changes nothing'
+);
+reset role;
+select is(
+  pg_temp.kept('9c000000-0000-4000-a000-000000000009'),
+  null,
+  'and writes no row'
+);
+
+-- A fix, then its undo as the app sends it: their own name, written clean.
+set local role service_role;
+select is(
+  public.set_member_name('9c000000-0000-4000-a000-000000000007',
+    '9c000000-0000-4000-b000-000000000002', '9c000000-0000-4000-a000-000000000009',
+    'Li Ben', chr(8207) || 'Lior Ben', '2026-11-24 08:05+00'),
+  '{"changed": true, "name": "Li Ben"}'::jsonb,
+  'a fix for them is the business''s own'
+);
+select is(
+  public.set_member_name('9c000000-0000-4000-a000-000000000007',
+    '9c000000-0000-4000-b000-000000000002', '9c000000-0000-4000-a000-000000000009',
+    'Lior Ben', 'Li Ben', '2026-11-24 08:10+00'),
+  jsonb_build_object('changed', true, 'name', chr(8207) || 'Lior Ben'),
+  'and its undo, their own name written clean, is their own name again'
+);
+reset role;
+select is(
+  pg_temp.kept('9c000000-0000-4000-a000-000000000009'),
+  null,
+  'with no row left'
+);
+
+------------------------------------------------------------------------------
+-- Becoming an owner
+
+-- 10 (Tal Gat), a worker in B, gets a name of B's own. Made a manager, they
+-- keep it; made an owner, they don't, as an owner who joins.
+set local role service_role;
+select public.set_member_name('9c000000-0000-4000-a000-000000000007',
+  '9c000000-0000-4000-b000-000000000002', '9c000000-0000-4000-a000-000000000010',
+  'Tali', 'Tal Gat', '2026-11-24 09:00+00');
+select public.set_member_role('9c000000-0000-4000-a000-000000000007',
+  '9c000000-0000-4000-b000-000000000002', '9c000000-0000-4000-a000-000000000010',
+  'manager', 'worker', '2026-11-24 09:05+00');
+reset role;
+select is(
+  pg_temp.kept('9c000000-0000-4000-a000-000000000010'),
+  'Tali',
+  'a member made a manager keeps the business''s name for them'
+);
+set local role service_role;
+select is(
+  public.set_member_role('9c000000-0000-4000-a000-000000000007',
+    '9c000000-0000-4000-b000-000000000002', '9c000000-0000-4000-a000-000000000010',
+    'owner', 'manager', '2026-11-24 09:10+00') ->> 'changed',
+  'true',
+  'the owner makes the manager an owner'
+);
+reset role;
+select is(
+  pg_temp.kept('9c000000-0000-4000-a000-000000000010'),
+  null,
+  'who keeps none of the business''s names: their own shows there, which they change'
 );
 
 ------------------------------------------------------------------------------

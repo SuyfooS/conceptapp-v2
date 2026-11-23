@@ -30,15 +30,32 @@
 --               invite the ConceptApp team named, so the name would stay as
 --               typed for good. One kept from an earlier time goes too. The
 --               rule is the role, not whether another owner is there today:
---               that one may leave, and the name would be stuck again.
+--               that one may leave, and the name would be stuck again. So it
+--               holds wherever someone becomes an owner, not only here: a
+--               member made an owner (public.set_member_role; an owner gives
+--               the role) loses the business's name for them as well, by a
+--               trigger on public.memberships. The claim keeps its own
+--               delete, for someone who comes back as an owner, whose role
+--               doesn't change.
+--   fixing one  public.set_member_name, the team's fix on /team/[person],
+--               decides whether a name is their own as the claim does: both
+--               read by private.team_name. An own name that still holds
+--               what nobody sees is then their own written clean, so saving
+--               it from the screen keeps no row, and the undo of a fix, which
+--               the app sends clean, takes the row away. Before, either wrote
+--               a row for their own name that nothing could take back, and
+--               every rename of theirs on /me stopped short of the business.
 --   locks       the invite, the named role, the membership, the profile, as
---               before, then the business's name for them: after the
---               membership, as public.set_member_name takes them, so the two
---               never wait on each other in a circle.
---   the log     invite.claim as before, never a name.
---   nothing else changes: who may join, the refusals, the return. No table,
---   column or signature in public, so packages/db/database.types.ts stays as
---   it is.
+--               before, then the business's name for them; for someone the
+--               claim makes an owner, the trigger takes the name just after
+--               the membership. Always after the membership, as
+--               public.set_member_name and public.set_member_role take them,
+--               so none of them waits on another in a circle.
+--   the log     invite.claim as before, never a name; a role change logs
+--               member.role as before, and nothing more for the name.
+--   nothing else changes: who may join, the refusals, the return, who may
+--   fix a name or change a role and what each answers. No table, column or
+--   signature in public, so packages/db/database.types.ts stays as it is.
 
 ------------------------------------------------------------------------------
 -- 1. A name as the app keeps one
@@ -54,7 +71,8 @@
 -- nothing but marks none, which no rule here tells; no screen writes one.
 -- Postgres has no Unicode classes, so each set is listed by code point, and
 -- tooling/team-names.test.ts keeps every list equal to the app's (U+0000,
--- which no text holds, aside). No caller but public.claim_invite.
+-- which no text holds, aside). Its callers: public.claim_invite and
+-- public.set_member_name, below.
 create function private.team_name(value text)
 returns text
 language sql
@@ -217,8 +235,10 @@ begin
   where id = claimant and full_name is null and kept is not null;
 
   -- The business's own name for them: none for an owner, whose name there is
-  -- their own; none for their own name, read the same way (the profile just
-  -- above is seen here). Either way, one kept from an earlier time goes.
+  -- their own (one whose role just became the owner's lost it to the
+  -- trigger below already); none for their own name, read the same way (the
+  -- profile just above is seen here). Either way, one kept from an earlier
+  -- time goes.
   if inv.role = 'owner'::public.member_role then
     delete from public.member_names n
     where n.business_id = inv.business_id and n.user_id = claimant;
@@ -258,14 +278,172 @@ begin
 end;
 $$;
 
+------------------------------------------------------------------------------
+-- 3. Fixing one by the same rule
+
+-- 20261117000700_member_names.sql's, the same, with only this: whether the
+-- new name is their own is decided as the claim decides it, both read as
+-- the app keeps names (private.team_name). An own name that still holds
+-- what nobody sees (one an earlier claim copied) is then their own written
+-- clean, which keeps no row: saving it from /team/[person] writes nothing,
+-- and the undo of a fix, which the app sends through parseTeamName, takes
+-- the row away. Their own name as it is stored still makes the name shown
+-- (`seen_name` is the name as the screen read it), so it is never a change
+-- meanwhile, and it is the name answered when the business keeps none. The
+-- same signature, so its grants stay; they are given again all the same.
+create or replace function public.set_member_name(
+  actor uuid,
+  business uuid,
+  person uuid,
+  new_name text default null,
+  seen_name text default null,
+  at_time timestamptz default now()
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  actor_role public.member_role;
+  target public.memberships%rowtype;
+  own_name text;
+  kept text;
+  was_kept text;
+  seen text;
+  shown_before text;
+  shown_after text;
+begin
+  -- One team change at a time in the business.
+  perform 1 from public.businesses b where b.id = business for no key update;
+
+  select m.role into actor_role
+  from public.memberships m
+  where m.business_id = business and m.user_id = actor and m.active;
+
+  if actor_role is null or not private.holds_perm(business, actor, 'team.edit'::text) then
+    raise exception 'Not allowed to change this name' using errcode = '42501';
+  end if;
+
+  if person is not distinct from actor then
+    raise exception 'Not yourself' using errcode = '22023';
+  end if;
+
+  select * into target
+  from public.memberships m
+  where m.business_id = business and m.user_id = person and m.active
+  for update;
+  if not found then
+    raise exception 'Not in the team' using errcode = 'P0002';
+  end if;
+
+  if not private.gives_role(actor_role, target.role) then
+    raise exception 'Only an owner changes the name of an owner, an accountant or a higher role'
+      using errcode = '42501';
+  end if;
+
+  if private.closed_to_invites(business) then
+    raise exception 'A demo business keeps its people' using errcode = '55000', hint = 'demo';
+  end if;
+
+  -- Every name as the screens write it: one line, its spaces collapsed.
+  kept := nullif(btrim(regexp_replace(coalesce(new_name, ''::text), '\s+', ' ', 'g')), ''::text);
+  if kept is not null and (char_length(kept) > 80 or kept ~ '[[:cntrl:]]') then
+    raise exception 'A name is one line of 1 to 80 characters'
+      using errcode = '22023', hint = 'name';
+  end if;
+  seen := nullif(btrim(regexp_replace(coalesce(seen_name, ''::text), '\s+', ' ', 'g')), ''::text);
+
+  select nullif(btrim(regexp_replace(coalesce(p.full_name, ''::text), '\s+', ' ', 'g')), ''::text)
+  into own_name
+  from public.profiles p
+  where p.id = person;
+
+  select n.name into was_kept
+  from public.member_names n
+  where n.business_id = business and n.user_id = person
+  for update;
+
+  shown_before := coalesce(was_kept, own_name);
+  if seen is distinct from shown_before then
+    raise exception 'The name changed meanwhile' using errcode = '40001';
+  end if;
+
+  -- Their own name, both read as the app keeps names: the business keeps
+  -- none of its own.
+  if private.team_name(kept) is not distinct from private.team_name(own_name) then
+    kept := null;
+  end if;
+  shown_after := coalesce(kept, own_name);
+
+  if kept is distinct from was_kept then
+    if kept is null then
+      delete from public.member_names n
+      where n.business_id = business and n.user_id = person;
+    else
+      insert into public.member_names (business_id, user_id, name, updated_at)
+      values (business, person, kept, at_time)
+      on conflict (business_id, user_id)
+        do update set name = excluded.name, updated_at = excluded.updated_at;
+    end if;
+  end if;
+
+  if shown_after is not distinct from shown_before then
+    return jsonb_build_object('changed', false, 'name', shown_after);
+  end if;
+
+  insert into public.audit_log (business_id, actor_id, action, details)
+  values (business, actor, 'member.name', jsonb_build_object('person', person));
+
+  return jsonb_build_object('changed', true, 'name', shown_after);
+end;
+$$;
+
+------------------------------------------------------------------------------
+-- 4. Becoming an owner
+
+-- An owner keeps none of the business's names (the header's "an owner"):
+-- a member whose role becomes the owner's loses the one it kept for them,
+-- whatever made them one (public.set_member_role, where an owner gives the
+-- role, or a claim that brings someone back as an owner from another
+-- role). After the membership's update, so the name is taken after the
+-- membership, as public.set_member_name takes them. Nothing is logged here:
+-- the role change is (member.role, invite.claim). It runs as its owner,
+-- since only public.set_member_name and public.claim_invite write the table
+-- otherwise; no caller but the trigger.
+create function private.drop_owner_name()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  delete from public.member_names n
+  where n.business_id = new.business_id and n.user_id = new.user_id;
+  return null;
+end;
+$$;
+
+create trigger memberships_owner_keeps_no_name
+  after update of role on public.memberships
+  for each row
+  when (new.role = 'owner'::public.member_role and old.role is distinct from new.role)
+  execute function private.drop_owner_name();
+
 comment on table public.member_names is
-  'The name a business shows for someone on its team, over their own (profiles.full_name), in that business only. Written only by public.set_member_name and, from an invite''s name, public.claim_invite; read as the person''s profile is read, per business (private.reads_member_name).';
+  'The name a business shows for someone on its team, over their own (profiles.full_name), in that business only. Written only by public.set_member_name and, from an invite''s name, public.claim_invite; none kept for an owner, so one goes when someone becomes an owner (private.drop_owner_name); read as the person''s profile is read, per business (private.reads_member_name).';
 
 ------------------------------------------------------------------------------
 -- Who may call what
 
 revoke execute on function private.team_name(text) from public, anon, authenticated;
+revoke execute on function private.drop_owner_name() from public, anon, authenticated;
 
 revoke execute on function public.claim_invite(text, uuid)
   from public, anon, authenticated;
 grant execute on function public.claim_invite(text, uuid) to service_role;
+
+revoke execute on function public.set_member_name(uuid, uuid, uuid, text, text, timestamptz)
+  from public, anon, authenticated;
+grant execute on function public.set_member_name(uuid, uuid, uuid, text, text, timestamptz)
+  to service_role;
