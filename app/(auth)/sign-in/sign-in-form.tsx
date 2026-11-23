@@ -5,24 +5,33 @@ import { Button } from "@ui/button";
 import { FieldGroup, GroupedPhoneField } from "@ui/field-group";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useActionState } from "react";
+import { useActionState, useId } from "react";
 import type { SignInState } from "../actions";
 import { authFieldsClass } from "../auth-screen";
 import { CodeField } from "../code-field";
 
 const initial: SignInState = { step: "phone" };
 
+/**
+ * Sign-in's two steps. The code step reads the same for every valid number,
+ * whether a code went to it or not, so its words are true either way, and
+ * its help says what to do when none came.
+ */
 export function SignInForm({
   signIn,
   demoHref,
+  start = initial,
 }: {
   /** `signIn`, or the design demo's stand-in. */
   signIn: (prev: SignInState, form: FormData) => Promise<SignInState>;
   /** The demo door, while it is open: the way back to it from the phone step. */
   demoHref?: string;
+  /** The design demo's first step; the real page starts on the phone. */
+  start?: SignInState;
 }) {
   const t = useTranslations("auth.signIn");
-  const [state, action, pending] = useActionState(signIn, initial);
+  const [state, action, pending] = useActionState(signIn, start);
+  const noCode = useId();
   const error = state.error ? t(`errors.${state.error}`) : undefined;
 
   if (state.step === "phone") {
@@ -103,6 +112,12 @@ export function SignInForm({
           {t("changePhone")}
         </Button>
       </div>
+      <section aria-labelledby={noCode} className="flex flex-col gap-1 pt-2">
+        <h2 id={noCode} className="px-1 font-semibold text-base">
+          {t("noCode.title")}
+        </h2>
+        <p className="px-1 text-base text-ink-2">{t("noCode.body")}</p>
+      </section>
     </form>
   );
 }

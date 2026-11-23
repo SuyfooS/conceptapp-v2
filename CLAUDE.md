@@ -203,7 +203,9 @@ font files or SF Symbols; asking the device for its own font is fine.
   demo people, with RLS unchanged, and anyone can come in and reset those businesses,
   so real people never join a demo business: the database takes no invites for one
   (only the local seed's, for the tests). Sign-in codes are counted per number and
-  per caller (`private.auth_limits`). `DEMO_DOOR=off` (a deployment setting, read
+  per caller (`private.auth_limits`, a quarter of an hour and a day), a check only
+  once a code went to the number, and the sign-in screen answers the same for every
+  valid number, registered or not. `DEMO_DOOR=off` (a deployment setting, read
   only by `demoDoorOpen` in `@db/env`) closes the demo door on a site: the site of
   real businesses has it off, the demo's own address on (Orel, 22 November 2026).
   Production's setup: `docs/production.md`.
