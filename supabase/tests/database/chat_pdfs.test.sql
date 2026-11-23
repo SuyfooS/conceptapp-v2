@@ -3,12 +3,15 @@
 -- as application/pdf, its name ending in .pdf, never in a demo business; the
 -- server told where a person's own place is (public.chat_upload_place) and
 -- nobody else's; a PDF sent only when Storage holds it as application/pdf at
--- the size reserved; read by whoever reads its message (a private chat's two
--- people alone, no owner, manager, accountant, view session or other
--- business), never once removed; the list's file name, and a private chat
--- with nothing in it yet listed for neither of its two; at most 10 PDF places
--- unsent from the last day a person, of those that hold a file or may still
--- be given one; a business's PDFs of the last 10 minutes within its space;
+-- the size reserved; served to whoever reads its message (a private chat's
+-- two people alone, no owner, manager, accountant, view session or other
+-- business), never once removed, the bucket read by the server only
+-- (20261127000300); the list's file name, and a private chat with nothing in
+-- it yet listed for neither of its two; at most 10 PDF places unsent from the
+-- last day a person, of those that hold a file or may still be given one; a
+-- person's own PDFs of the last 10 minutes in a business within half its space
+-- (20261127000300), their pictures and their PDFs elsewhere apart, and the
+-- business's within all of it;
 -- the project's guard counting the places on their way; which PDF paths a
 -- signed upload may still write, for the clean-up's tombstones; and an unsent
 -- place due after a day. Fixed ids of its own, explicit times, and Storage's
@@ -17,7 +20,7 @@
 -- once all meet the counts; one transaction can't show that here, and
 -- tooling/chat-pdfs.test.ts checks the lock comes before the counts.)
 begin;
-select plan(52);
+select plan(55);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -71,7 +74,9 @@ $$;
 create temporary table ids (name text primary key, id uuid) on commit drop;
 create temporary table ups (name text primary key, result jsonb) on commit drop;
 create temporary table sent (name text primary key, result jsonb) on commit drop;
-grant all on ids, ups, sent to authenticated, anon, service_role;
+-- What the browser put in the bucket: no session reads it there.
+create temporary table stored (name text primary key) on commit drop;
+grant all on ids, ups, sent, stored to authenticated, anon, service_role;
 
 create function pg_temp.id_of(saved text) returns uuid language sql as $$
   select i.id from ids i where i.name = saved
@@ -94,6 +99,7 @@ returns void language sql as $$
   insert into storage.objects (bucket_id, name, metadata, created_at)
   values ('chat-files', pg_temp.up(saved, 'path'),
     jsonb_build_object('size', bytes, 'mimetype', mime), at_time);
+  insert into stored values (pg_temp.up(saved, 'path'));
 $$;
 -- Sends as `actor` in P with the reservation `upload_name`, kept under `saved`.
 create function pg_temp.send_file(saved text, actor uuid, in_conversation uuid,
@@ -105,11 +111,23 @@ language sql as $$
   insert into ids select saved, (s.result ->> 'message')::uuid from sent s where s.name = saved;
   select i.id from ids i where i.name = saved
 $$;
--- The chat-files names the signed-in person reads, of this test's businesses.
+-- The chat-files names the signed-in person is served, of this test's
+-- businesses, as /chat-files decides: a file put in place that a message
+-- they read (RLS) points at, in the path's business and conversation, not
+-- removed and its file still kept. Only then the server reads it, with the
+-- secret key.
 create function pg_temp.read_files() returns setof text language sql as $$
-  select o.name from storage.objects o
-  where o.bucket_id = 'chat-files' and o.name like '8a000000-%'
-  order by o.name
+  select s.name from stored s
+  where s.name like '8a000000-%'
+    and exists (
+      select 1 from public.chat_messages m
+      where m.file_path = s.name
+        and m.business_id::text = split_part(s.name, '/', 1)
+        and m.conversation_id::text = split_part(s.name, '/', 2)
+        and m.removed_at is null
+        and m.file_removed_at is null
+    )
+  order by s.name
 $$;
 -- How a statement was refused: its code and hint, or 'none'.
 create function pg_temp.refusal(statement text) returns text language plpgsql as $$
@@ -507,47 +525,95 @@ select is(
 );
 
 ------------------------------------------------------------------------------
--- A business's PDFs of the last 10 minutes, within its space
+-- A person's PDFs of the last 10 minutes within half the space, and a
+-- business's within all of it
 
--- Yoav's ten of 10 MiB in the team's group, a second apart, put and sent.
+-- Yoav's five of 10 MiB in the team's group, a second apart, put and sent:
+-- half of the business's 100 MB.
 select count(pg_temp.reserve_pdf('y' || g, '8a000000-0000-4000-a000-000000000004',
   pg_temp.id_of('team'), 10485760, '2026-11-09 08:00:00+00'::timestamptz + g * interval '1 second'))
-from generate_series(1, 10) as g;
+from generate_series(1, 5) as g;
 insert into storage.objects (bucket_id, name, metadata, created_at)
 select 'chat-files', pg_temp.up('y' || g, 'path'),
   jsonb_build_object('size', 10485760, 'mimetype', 'application/pdf'),
   '2026-11-09 08:00:20+00'
-from generate_series(1, 10) as g;
+from generate_series(1, 5) as g;
 select count(pg_temp.send_file('y' || g, '8a000000-0000-4000-a000-000000000004',
   pg_temp.id_of('team'), 'y' || g, '2026-11-09 08:00:30+00'::timestamptz + g * interval '1 second'))
-from generate_series(1, 10) as g;
+from generate_series(1, 5) as g;
 select is(
   pg_temp.refusal($$select public.reserve_chat_upload('8a000000-0000-4000-a000-000000000004',
     '8a000000-0000-4000-b000-000000000001', 'pdf', 'application/pdf', 1000,
     pg_temp.id_of('team'), upload_name => 'y-a.pdf', at_time => '2026-11-09 08:01+00')$$),
-  '54000/busy',
-  'with the business''s PDFs of the last 10 minutes, sent, bringing its 100 MB, the next waits, whatever its size'
+  '54000/own',
+  'with his own PDFs of the last 10 minutes bringing half the business''s space, Yoav''s next waits, whatever its size'
 );
 select is(
-  pg_temp.refusal($$select public.reserve_chat_upload('8a000000-0000-4000-a000-000000000003',
+  pg_temp.refusal($$select public.reserve_chat_upload('8a000000-0000-4000-a000-000000000004',
+    '8a000000-0000-4000-b000-000000000001', 'image', 'image/webp', 42000,
+    pg_temp.id_of('team'), at_time => '2026-11-09 08:01+00')$$),
+  'none',
+  'while his picture goes: the server puts it itself, and only his PDFs count'
+);
+-- Yoav moves to Q's staff (one business's staff at a time), his five PDFs in P
+-- still in their 10 minutes, and then comes back.
+update public.memberships set active = false
+where business_id = '8a000000-0000-4000-b000-000000000001'
+  and user_id = '8a000000-0000-4000-a000-000000000004';
+insert into public.memberships (business_id, user_id, role, active, created_at)
+values ('8a000000-0000-4000-b000-000000000002', '8a000000-0000-4000-a000-000000000004', 'worker',
+  true, '2026-11-09 08:00:40+00');
+select is(
+  pg_temp.refusal($$select public.reserve_chat_upload('8a000000-0000-4000-a000-000000000004',
+    '8a000000-0000-4000-b000-000000000002', 'pdf', 'application/pdf', 1000,
+    pg_temp.id_of('q-team'), upload_name => 'y-q.pdf', at_time => '2026-11-09 08:01+00')$$),
+  'none',
+  'and on another business''s staff his PDF there goes: his share is of each business''s space'
+);
+update public.memberships set active = false
+where business_id = '8a000000-0000-4000-b000-000000000002'
+  and user_id = '8a000000-0000-4000-a000-000000000004';
+update public.memberships set active = true
+where business_id = '8a000000-0000-4000-b000-000000000001'
+  and user_id = '8a000000-0000-4000-a000-000000000004';
+-- Noa's four of 10 MiB, put and sent after his.
+select count(pg_temp.reserve_pdf('n' || g, '8a000000-0000-4000-a000-000000000003',
+  pg_temp.id_of('team'), 10485760, '2026-11-09 08:01:00+00'::timestamptz + g * interval '1 second'))
+from generate_series(1, 4) as g;
+insert into storage.objects (bucket_id, name, metadata, created_at)
+select 'chat-files', pg_temp.up('n' || g, 'path'),
+  jsonb_build_object('size', 10485760, 'mimetype', 'application/pdf'),
+  '2026-11-09 08:01:20+00'
+from generate_series(1, 4) as g;
+select count(pg_temp.send_file('n' || g, '8a000000-0000-4000-a000-000000000003',
+  pg_temp.id_of('team'), 'n' || g, '2026-11-09 08:01:30+00'::timestamptz + g * interval '1 second'))
+from generate_series(1, 4) as g;
+select is(
+  pg_temp.refusal($$select pg_temp.reserve_pdf('n5', '8a000000-0000-4000-a000-000000000003',
+    pg_temp.id_of('team'), 10485760, '2026-11-09 08:02+00')$$),
+  'none',
+  'while Noa''s fifth goes: her own still within half, and the business''s within its space'
+);
+select is(
+  pg_temp.refusal($$select public.reserve_chat_upload('8a000000-0000-4000-a000-000000000002',
     '8a000000-0000-4000-b000-000000000001', 'pdf', 'application/pdf', 1000,
-    pg_temp.id_of('team'), upload_name => 'n-a.pdf', at_time => '2026-11-09 08:02+00')$$),
+    pg_temp.id_of('team'), upload_name => 's-a.pdf', at_time => '2026-11-09 08:03+00')$$),
   '54000/busy',
-  'for anyone in the business'
+  'with the business''s PDFs of the last 10 minutes bringing its 100 MB (a place with nothing in it yet counting 10 MiB), the next waits for anyone in it'
 );
 select is(
   pg_temp.refusal($$select public.reserve_chat_upload('8a000000-0000-4000-a000-000000000007',
     '8a000000-0000-4000-b000-000000000002', 'pdf', 'application/pdf', 1000,
-    pg_temp.id_of('q-team'), upload_name => 'q-a.pdf', at_time => '2026-11-09 08:02+00')$$),
+    pg_temp.id_of('q-team'), upload_name => 'q-a.pdf', at_time => '2026-11-09 08:03+00')$$),
   'none',
   'while another business''s PDFs go'
 );
 select is(
   pg_temp.refusal($$select public.reserve_chat_upload('8a000000-0000-4000-a000-000000000004',
     '8a000000-0000-4000-b000-000000000001', 'pdf', 'application/pdf', 1000,
-    pg_temp.id_of('team'), upload_name => 'y-b.pdf', at_time => '2026-11-09 08:10:30+00')$$),
+    pg_temp.id_of('team'), upload_name => 'y-b.pdf', at_time => '2026-11-09 08:12+00')$$),
   'none',
-  'and 10 minutes on, the business''s go again'
+  'and 10 minutes on, Yoav''s go again'
 );
 
 ------------------------------------------------------------------------------

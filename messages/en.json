@@ -5948,6 +5948,7 @@
         "notPdf": "That isn't a PDF, so it wasn't sent. You can choose another file",
         "tooMany": "Too many files didn't finish sending in the last day. You can try again later",
         "busy": "Many PDFs were sent here in the last few minutes. You can try again in a few minutes",
+        "busyOwn": "You sent many PDFs in the last few minutes. You can try again in a few minutes",
         "notYet": "PDFs can't be sent here yet. The message itself can still be sent",
         "failed": "The file wasn't sent. You can try again",
         "cancelled": "Sending the file was stopped"
@@ -7358,7 +7359,7 @@
         },
         "fileSpaceMb": {
           "label": "Space for chat files",
-          "hint": "When the space runs out, the oldest files are deleted first.",
+          "hint": "When the space runs out, the oldest files are deleted first. If someone sent more than half of it, their oldest go first.",
           "options": {
             "50": "50 MB",
             "100": "100 MB",

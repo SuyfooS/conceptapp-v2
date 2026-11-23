@@ -5,6 +5,7 @@ import {
   CHAT_PDF_MAX_BYTES,
   CHAT_PDF_TYPE,
   CHAT_PDFS_WAITING_MAX,
+  CHAT_SENDER_SPACE_DIVISOR,
   CHAT_UPLOAD_HOURS,
   CHAT_UPLOAD_MARGIN_MINUTES,
   chatPlaceTombstone,
@@ -91,5 +92,37 @@ describe("a chat PDF's numbers", () => {
     expect(person).toBeLessThan(reserve.indexOf("'Too many in a minute'"));
     expect(business).toBeLessThan(reserve.indexOf("hint = 'pdfs'"));
     expect(business).toBeLessThan(reserve.indexOf("hint = 'busy'"));
+    expect(business).toBeLessThan(reserve.indexOf("hint = 'own'"));
+  });
+});
+
+describe("one person's share of a business's chat files", () => {
+  // 20261127000300_files_server_only.sql: half of the business's space, as
+  // @domain/chat-files says, both for what one person holds past the space
+  // and for their own PDFs of the last minutes.
+  it("is the reservation's: the sender's own PDFs bring at most half the space, asked before the business's", () => {
+    const reserve = newest("public\\.reserve_chat_upload");
+    expect(reserve).toMatch(
+      new RegExp(
+        `\\) / ${CHAT_SENDER_SPACE_DIVISOR} then\\s+raise exception '[^']+' using errcode = '54000', hint = 'own'`,
+      ),
+    );
+    const own = reserve.indexOf("hint = 'own'");
+    expect(own).toBeGreaterThan(reserve.indexOf("hint = 'pdfs'"));
+    expect(own).toBeLessThan(reserve.indexOf("hint = 'busy'"));
+    // Counted for the sender alone, over the same minutes as the business's.
+    const check = reserve.slice(reserve.indexOf("hint = 'pdfs'"), own);
+    expect(check).toContain("and u.owner_id = actor");
+    expect(check).toContain(`interval '${CHAT_PDF_BURST_MINUTES} minutes'`);
+  });
+
+  it("is the clean-up's: past the space, what one sender holds beyond half of it goes first", () => {
+    const files = newest("public\\.expired_files");
+    expect(files).toContain("partition by m.business_id, m.author_id");
+    expect(files).toContain(
+      `order by (o.sender_bytes > c.space_bytes / ${CHAT_SENDER_SPACE_DIVISOR}), o.created_at desc, o.id desc`,
+    );
+    // And a file goes for space only once what is kept ahead of it passes it.
+    expect(files).toContain("or l.newer_bytes > c.space_bytes");
   });
 });

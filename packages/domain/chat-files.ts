@@ -103,9 +103,20 @@ export const CHAT_PDFS_WAITING_MAX = 10;
  * its space (`fileSpaceMb`; public.reserve_chat_upload, 54000 with hint
  * 'busy'): the chat job runs as often, and brings its files back under its
  * space each time, so nobody can fill the Storage every business shares
- * faster than it is let go.
+ * faster than it is let go. One person's own PDFs of those minutes bring at
+ * most half of it (`CHAT_SENDER_SPACE_DIVISOR`, hint 'own'), so nobody alone
+ * keeps everyone's PDFs waiting.
  */
 export const CHAT_PDF_BURST_MINUTES = 10;
+
+/**
+ * One person's share of a business's space for chat files: a half. Past the
+ * space, the files they hold beyond it go first, their oldest first, before
+ * anyone else's (public.expired_files); and their own PDFs of
+ * `CHAT_PDF_BURST_MINUTES` bring at most it (public.reserve_chat_upload, 54000
+ * with hint 'own'). Under its space a business keeps its files as before.
+ */
+export const CHAT_SENDER_SPACE_DIVISOR = 2;
 
 /**
  * Storage's signed upload is good for `CHAT_UPLOAD_HOURS` from when the
@@ -244,9 +255,9 @@ export function parseChatFilePath(path: string): ChatFilePath | null {
 }
 
 /**
- * The database's rule (`private.can_read_chat_file`, and the paths
- * public.reserve_chat_upload makes): `<business>/<conversation>/<32 hex>
- * [-s].<webp|jpg|pdf>`, lower case, and, when `where` is given, in that
+ * The database's rule (the paths public.reserve_chat_upload makes, and what
+ * public.expired_files takes for a chat file): `<business>/<conversation>/<32
+ * hex>[-s].<webp|jpg|pdf>`, lower case, and, when `where` is given, in that
  * business's conversation.
  */
 export function isChatFilePath(

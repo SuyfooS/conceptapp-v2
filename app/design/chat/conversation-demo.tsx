@@ -110,7 +110,8 @@ export type DemoPinned = {
 /**
  * What the demo opens with: `?state=confirmed|readers|actions|photo`, and
  * for PDFs (C5) `attach` (the attach sheet open), `uploading` (Shiran's
- * PDF part of the way up) and `pdfFailed` (one that didn't go).
+ * PDF part of the way up), `pdfFailed` (one that didn't go) and `pdfOwn` (one
+ * that didn't go because she sent many PDFs in the last minutes).
  */
 export type DemoOpened =
   | "confirmed"
@@ -120,6 +121,7 @@ export type DemoOpened =
   | "attach"
   | "uploading"
   | "pdfFailed"
+  | "pdfOwn"
   | null;
 
 type Props = {
@@ -263,7 +265,11 @@ export function ConversationDemo({
   const [picked, setPicked] = useState<string | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [problem, setProblem] = useState<ReactNode>(() =>
-    opened === "pdfFailed" ? t("pdfFailure.failed") : null,
+    opened === "pdfFailed"
+      ? t("pdfFailure.failed")
+      : opened === "pdfOwn"
+        ? t("pdfFailure.busyOwn")
+        : null,
   );
   // The attach sheet (C5), and a PDF picked for the next message.
   const [attachOpen, setAttachOpen] = useState(opened === "attach");

@@ -179,16 +179,18 @@ nothing), reminds before they are due, marks late ones and closes as missed what
 its lines go to phones with the `notifications` job.
 `20261110001500_list_photos.sql` adds a fifth, `list-photos`, daily at 03:43 UTC: while a photo
 on a list is older than its business keeps photos (`photoDays`, 90 days unless the team chose
-another), it asks the app's `/cron/list-photos`, with the same two Vault secrets as the minute
-job, to remove the files through Storage (only the app reaches them) and mark their items; without
-the secrets it calls nothing and the photos wait.
+another), or (from `20261127000300_files_server_only.sql`) a profile photo a day old has no
+profile pointing at it, it asks the app's `/cron/list-photos`, with the same two Vault secrets as
+the minute job, to remove the files through Storage (only the app reaches them) and mark the
+lists' items; without the secrets it calls nothing and the photos wait.
 `20261111000200_chat.sql` adds a sixth, `chat`, every 10 minutes: pure SQL
 (`private.chat_tick`), with no pg_net and no Vault secret. It deletes the text of a removed
 message once its 10 minutes of undo are over, and a demo business's visitors' messages
 after an hour. From `20261111000500_chat_files.sql` it also asks the app's
 `/cron/chat-files`, with the same two Vault secrets, whenever a chat file is due: past its
 business's `fileDays` (90 unless the team chose 30 or 180), the oldest past its
-`fileSpaceMb` (100 MB unless the team chose 50 or 200), a removed message's once its undo is
+`fileSpaceMb` (100 MB unless the team chose 50 or 200; from `20261127000300_files_server_only.sql`
+first what one person holds beyond half of it), a removed message's once its undo is
 over, a reservation never sent, and anything in the `chat-files` bucket a day old that no
 row points at (from `20261111000600_chat_pdfs.sql`, a PDF the browser put through its signed
 upload and never sent among them). From `20261111000700_documents.sql` it also lists the
