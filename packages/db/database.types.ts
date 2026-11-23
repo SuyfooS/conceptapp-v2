@@ -18,6 +18,7 @@ export type Database = {
           details: NonNullable<Json>;
           id: number;
         };
+        ComputedFields: never;
         Insert: {
           action: string;
           actor_id?: string | null;
@@ -59,6 +60,7 @@ export type Database = {
           starts_at: string;
           submission_id: string;
         };
+        ComputedFields: never;
         Insert: {
           day: string;
           ends_at: string;
@@ -93,6 +95,7 @@ export type Database = {
           user_id: string;
           week_id: string;
         };
+        ComputedFields: never;
         Insert: {
           business_id: string;
           id?: string;
@@ -143,6 +146,7 @@ export type Database = {
           settings: NonNullable<Json>;
           updated_at: string;
         };
+        ComputedFields: never;
         Insert: {
           business_id: string;
           enabled?: boolean;
@@ -179,6 +183,7 @@ export type Database = {
           name_en: string | null;
           sort: number;
         };
+        ComputedFields: never;
         Insert: {
           archived_at?: string | null;
           base: Database["public"]["Enums"]["member_role"];
@@ -227,6 +232,7 @@ export type Database = {
           updated_at: string;
           updated_by: string | null;
         };
+        ComputedFields: never;
         Insert: {
           base_sentence: string;
           business_id: string;
@@ -277,6 +283,7 @@ export type Database = {
           timezone: string;
           updated_at: string;
         };
+        ComputedFields: never;
         Insert: {
           accent?: string;
           address?: string | null;
@@ -327,6 +334,7 @@ export type Database = {
           recorded_at: string;
           user_id: string;
         };
+        ComputedFields: never;
         Insert: {
           acked_at?: string;
           business_id: string;
@@ -371,6 +379,7 @@ export type Database = {
           person_a: string | null;
           person_b: string | null;
         };
+        ComputedFields: never;
         Insert: {
           business_id: string;
           changed_at?: string;
@@ -447,6 +456,7 @@ export type Database = {
           seeded: boolean;
           thumb_path: string | null;
         };
+        ComputedFields: never;
         Insert: {
           author_id?: string | null;
           body?: string | null;
@@ -517,6 +527,7 @@ export type Database = {
           seen_at: string;
           user_id: string;
         };
+        ComputedFields: never;
         Insert: {
           business_id: string;
           seen_at?: string;
@@ -545,6 +556,7 @@ export type Database = {
           read_at: string | null;
           user_id: string;
         };
+        ComputedFields: never;
         Insert: {
           business_id: string;
           conversation_id: string;
@@ -592,6 +604,7 @@ export type Database = {
           stopped_by: string | null;
           token_hash: string;
         };
+        ComputedFields: never;
         Insert: {
           business_id: string;
           created_at?: string;
@@ -660,6 +673,7 @@ export type Database = {
           department_id: string;
           user_id: string;
         };
+        ComputedFields: never;
         Insert: {
           added_at?: string;
           business_id: string;
@@ -700,6 +714,7 @@ export type Database = {
           position: number;
           updated_at: string;
         };
+        ComputedFields: never;
         Insert: {
           archived_at?: string | null;
           business_id: string;
@@ -736,6 +751,7 @@ export type Database = {
           seen_at: string;
           user_id: string;
         };
+        ComputedFields: never;
         Insert: {
           business_id: string;
           seen_at?: string;
@@ -764,6 +780,7 @@ export type Database = {
           opened_at: string | null;
           person_id: string;
         };
+        ComputedFields: never;
         Insert: {
           business_id: string;
           confirmed_at?: string | null;
@@ -826,6 +843,7 @@ export type Database = {
           sent_at: string;
           title: string;
         };
+        ComputedFields: never;
         Insert: {
           asks_confirmation?: boolean;
           author_id?: string | null;
@@ -952,6 +970,7 @@ export type Database = {
           user_id: string;
           work_language_enc: string | null;
         };
+        ComputedFields: never;
         Insert: {
           address_enc?: string | null;
           bank_account_enc?: string | null;
@@ -1049,6 +1068,7 @@ export type Database = {
           updated_by: string | null;
           user_id: string;
         };
+        ComputedFields: never;
         Insert: {
           business_id: string;
           change_due_by?: string | null;
@@ -1100,6 +1120,7 @@ export type Database = {
           updated_by: string | null;
           user_id: string;
         };
+        ComputedFields: never;
         Insert: {
           business_id: string;
           ended_on?: string | null;
@@ -1155,6 +1176,7 @@ export type Database = {
           role: Database["public"]["Enums"]["member_role"];
           token_hash: string;
         };
+        ComputedFields: never;
         Insert: {
           business_id: string;
           cancelled_at?: string | null;
@@ -1234,6 +1256,7 @@ export type Database = {
           photo: boolean;
           reading: number | null;
         };
+        ComputedFields: never;
         Insert: {
           answer?: string | null;
           business_id: string;
@@ -1312,6 +1335,7 @@ export type Database = {
           template_item_id: string | null;
           unit: string | null;
         };
+        ComputedFields: never;
         Insert: {
           answer?: string | null;
           business_id: string;
@@ -1399,6 +1423,7 @@ export type Database = {
           passed_by: string | null;
           to_department: string;
         };
+        ComputedFields: never;
         Insert: {
           business_id: string;
           from_department?: string | null;
@@ -1456,6 +1481,7 @@ export type Database = {
           list_id: string;
           user_id: string;
         };
+        ComputedFields: never;
         Insert: {
           business_id: string;
           list_id: string;
@@ -1494,6 +1520,7 @@ export type Database = {
           was_at: string;
           was_by: string | null;
         };
+        ComputedFields: never;
         Insert: {
           business_id: string;
           id?: string;
@@ -1561,6 +1588,7 @@ export type Database = {
           template_id: string;
           updated_at: string;
         };
+        ComputedFields: never;
         Insert: {
           active?: boolean;
           anchor?: string;
@@ -1651,6 +1679,7 @@ export type Database = {
           template_id: string;
           unit: string | null;
         };
+        ComputedFields: never;
         Insert: {
           business_id: string;
           default_quantity?: number | null;
@@ -1711,6 +1740,7 @@ export type Database = {
           updated_by: string | null;
           version: number;
         };
+        ComputedFields: never;
         Insert: {
           archived_at?: string | null;
           asks_quantities?: boolean;
@@ -1832,6 +1862,7 @@ export type Database = {
           template_id: string | null;
           updated_at: string;
         };
+        ComputedFields: never;
         Insert: {
           asks_quantities?: boolean;
           business_id: string;
@@ -1978,6 +2009,7 @@ export type Database = {
           updated_at: string;
           user_id: string;
         };
+        ComputedFields: never;
         Insert: {
           business_id: string;
           contact_enc: string;
@@ -2007,6 +2039,7 @@ export type Database = {
           updated_at: string;
           user_id: string;
         };
+        ComputedFields: never;
         Insert: {
           business_id: string;
           name: string;
@@ -2041,6 +2074,7 @@ export type Database = {
           user_id: string;
           youth_until: string | null;
         };
+        ComputedFields: never;
         Insert: {
           business_id: string;
           compulsory_education?: boolean;
@@ -2091,6 +2125,7 @@ export type Database = {
           set_by: string | null;
           user_id: string;
         };
+        ComputedFields: never;
         Insert: {
           business_id: string;
           effective_from: string;
@@ -2142,6 +2177,7 @@ export type Database = {
           updated_at: string;
           user_id: string;
         };
+        ComputedFields: never;
         Insert: {
           active?: boolean;
           business_id: string;
@@ -2202,6 +2238,7 @@ export type Database = {
           name: string;
           position: number;
         };
+        ComputedFields: never;
         Insert: {
           archived_at?: string | null;
           business_id: string;
@@ -2259,6 +2296,7 @@ export type Database = {
           updated_by: string | null;
           version: number;
         };
+        ComputedFields: never;
         Insert: {
           archived_at?: string | null;
           available?: boolean;
@@ -2366,6 +2404,7 @@ export type Database = {
           under16_hourly_agorot: number;
           youth_published: boolean;
         };
+        ComputedFields: never;
         Insert: {
           age16_hourly_agorot: number;
           age17_hourly_agorot: number;
@@ -2403,6 +2442,7 @@ export type Database = {
           updated_at: string;
           user_id: string;
         };
+        ComputedFields: never;
         Insert: {
           previews?: boolean;
           push_asked_at?: string | null;
@@ -2454,6 +2494,7 @@ export type Database = {
           source_module: Database["public"]["Enums"]["module_key"] | null;
           user_id: string;
         };
+        ComputedFields: never;
         Insert: {
           actor_id?: string | null;
           audience_perm?: string | null;
@@ -2548,6 +2589,7 @@ export type Database = {
           ticket_id: string;
           unit_agorot: number;
         };
+        ComputedFields: never;
         Insert: {
           allergy?: boolean;
           business_id: string;
@@ -2646,6 +2688,7 @@ export type Database = {
           name: string;
           position: number;
         };
+        ComputedFields: never;
         Insert: {
           archived_at?: string | null;
           business_id: string;
@@ -2681,6 +2724,7 @@ export type Database = {
           sent_at: string;
           sent_by: string | null;
         };
+        ComputedFields: never;
         Insert: {
           body_hash: string;
           business_id: string;
@@ -2743,6 +2787,7 @@ export type Database = {
           served_station: string | null;
           status: string;
         };
+        ComputedFields: never;
         Insert: {
           business_id: string;
           department_id: string;
@@ -2876,6 +2921,7 @@ export type Database = {
           takeaway_label: string | null;
           takeaway_no: number | null;
         };
+        ComputedFields: never;
         Insert: {
           business_id: string;
           cancel_reason?: string | null;
@@ -3009,6 +3055,7 @@ export type Database = {
           reopened_by: string | null;
           snapshot: NonNullable<Json>;
         };
+        ComputedFields: never;
         Insert: {
           business_id: string;
           closed_at: string;
@@ -3065,6 +3112,7 @@ export type Database = {
           requires: string | null;
           settable: boolean;
         };
+        ComputedFields: never;
         Insert: {
           area: string;
           by_owner?: boolean;
@@ -3099,6 +3147,7 @@ export type Database = {
           role: Database["public"]["Enums"]["platform_role"];
           user_id: string;
         };
+        ComputedFields: never;
         Insert: {
           created_at?: string;
           role: Database["public"]["Enums"]["platform_role"];
@@ -3132,6 +3181,7 @@ export type Database = {
           phone: string | null;
           updated_at: string;
         };
+        ComputedFields: never;
         Insert: {
           address_form?: string | null;
           avatar_path?: string | null;
@@ -3168,6 +3218,7 @@ export type Database = {
           short_hash: string | null;
           station_id: string | null;
         };
+        ComputedFields: never;
         Insert: {
           business_id: string;
           code_hash: string;
@@ -3222,6 +3273,7 @@ export type Database = {
           sent_at: string | null;
           state: string;
         };
+        ComputedFields: never;
         Insert: {
           attempts?: number;
           claimed_at?: string | null;
@@ -3278,6 +3330,7 @@ export type Database = {
           signed_out: number;
           user_id: string;
         };
+        ComputedFields: never;
         Insert: {
           auth_secret: string;
           created_at?: string;
@@ -3330,6 +3383,7 @@ export type Database = {
           perm: string;
           role: Database["public"]["Enums"]["member_role"];
         };
+        ComputedFields: never;
         Insert: {
           allowed?: boolean;
           business_id: string;
@@ -3392,6 +3446,7 @@ export type Database = {
           starts_at: string;
           week_id: string;
         };
+        ComputedFields: never;
         Insert: {
           business_id: string;
           day: string;
@@ -3443,6 +3498,7 @@ export type Database = {
           schedule_saved_at: string | null;
           starts_on: string;
         };
+        ComputedFields: never;
         Insert: {
           availability_due_at: string;
           business_id: string;
@@ -3478,6 +3534,7 @@ export type Database = {
           shift_id: string;
           user_id: string;
         };
+        ComputedFields: never;
         Insert: {
           business_id: string;
           position_key?: string | null;
@@ -3530,6 +3587,7 @@ export type Database = {
           taken_at: string | null;
           taken_by: string | null;
         };
+        ComputedFields: never;
         Insert: {
           business_id: string;
           cancelled_because?: string | null;
@@ -3607,6 +3665,7 @@ export type Database = {
           updated_at: string;
           updated_by: string | null;
         };
+        ComputedFields: never;
         Insert: {
           base_sentence: string;
           key: string;
@@ -3648,6 +3707,7 @@ export type Database = {
           updated_at: string;
           version: number;
         };
+        ComputedFields: never;
         Insert: {
           created_at?: string;
           definition?: NonNullable<Json>;
@@ -3677,6 +3737,7 @@ export type Database = {
           unpaid: boolean;
           user_id: string;
         };
+        ComputedFields: never;
         Insert: {
           business_id: string;
           created_at?: string;
@@ -3756,6 +3817,7 @@ export type Database = {
           source: Database["public"]["Enums"]["time_entry_source"];
           user_id: string;
         };
+        ComputedFields: never;
         Insert: {
           business_id: string;
           cancel_reason?: string | null;
@@ -3865,6 +3927,7 @@ export type Database = {
           staff_id: string;
           started_at: string;
         };
+        ComputedFields: never;
         Insert: {
           business_id: string;
           ended_at?: string | null;
