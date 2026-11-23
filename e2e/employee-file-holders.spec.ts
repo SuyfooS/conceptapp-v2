@@ -1,5 +1,4 @@
 import { expect, type Page, type TestInfo, test } from "@playwright/test";
-import { FILE_TABS_CHANNEL } from "../app/(app)/team/[person]/file/file-tabs";
 import he from "../messages/he.json" with { type: "json" };
 import {
   bumpDemoBankChange,
@@ -21,6 +20,7 @@ import {
   setDemoModuleSettings,
   setDemoPeriodStart,
 } from "./db";
+import { hearFileCheck } from "./file-watch";
 import { enterAs, expectCleanPage } from "./orders-parts";
 import { SMS_COOLDOWN_MS, secondPage } from "./session";
 import { latestCode, setDemoModule } from "./sms";
@@ -105,40 +105,20 @@ async function sendFileCode(
   return latestCode(phone, since);
 }
 
-type Checked = Window & { fileChecked?: Promise<void> };
-
 /**
  * The duties, then the code: the file opens, and its own first check is
- * answered before the test goes on. That check slides the step-up, so its
- * answer sets the cookie again, and its 10 seconds' wait runs until then: a
- * cookie cleared, or time passed on the page's clock, before it answered
- * would race it. Answered open, it tells the device's other tabs a file is
- * in use, which a channel of the same name in this tab hears.
+ * answered before the test goes on (`hearFileCheck`), so a test may then
+ * clear the cookie or move the page's clock.
  */
 async function openFile(page: Page, phone: string) {
   await expect(main(page).getByText(f.duties.title)).toBeVisible();
   const code = await sendFileCode(page, f.duties.confirm, phone);
-  await page.evaluate((name) => {
-    const tabs = new BroadcastChannel(name);
-    (window as Checked).fileChecked = new Promise<void>((resolve) => {
-      tabs.onmessage = (event: MessageEvent) => {
-        if (event.data?.kind !== "active") return;
-        tabs.close();
-        resolve();
-      };
-    });
-  }, FILE_TABS_CHANNEL);
+  const checked = await hearFileCheck(page);
   await page.getByLabel(f.code.label).fill(code);
   await expect(
     main(page).getByRole("heading", { name: f.sections.identity }),
   ).toBeVisible();
-  const checked = await page.evaluate(async () => {
-    const answered = (window as Checked).fileChecked;
-    if (!answered) return false;
-    await answered;
-    return true;
-  });
-  expect(checked, "the file's own first check, waited for").toBe(true);
+  await checked();
 }
 
 test.beforeEach(async () => {
