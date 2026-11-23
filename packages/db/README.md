@@ -2775,6 +2775,23 @@ read as messages/he.json. Console reads and writes are in `@db/wording`;
 - `@db/supabase/admin`: `createAdminClient()` with `SUPABASE_SECRET_KEY`,
   for server-only writes. Bypasses RLS, so every caller checks who is
   asking first.
+- `@db/auth-limits`: the counts on sign-in codes, with the secret key.
+  `noteAuthAttempt` gives 0, the seconds to wait (any window of
+  `private.auth_limits`: a quarter of an hour, a day per number),
+  `NO_CODE_WAITING` (-1) for a check with no code sent to its number in the
+  last ten minutes, or `CODE_JUST_SENT` (-2) for a send within the app's
+  own wait of the number's last counted one, on either side of it
+  (`private.auth_send_wait`, 65 seconds, the same for every number; of two
+  sent at once, the one stamped later may be counted first); either is
+  counted for its caller only. `forgetAuthAttempt` gives back a send the auth server sent nothing
+  for, past that wait: one of its limits on everyone (the project's SMS in
+  an hour, its requests from one address) or a failing SMS provider, for
+  the number and the caller, on sign-in as for joining and the file's
+  codes. A send to a number with no account stays counted on sign-in, as a
+  code sent does. `forgetNumberAttempts` clears a
+  number's counts while it has no account (none reached anyone): for
+  joining from an open invite only, before its code is counted; the
+  database keeps the counts of a number with an account.
 - `@db/admin`: the console's reads and writes. `createBusiness(actor,
   business)` calls `public.create_business` (service role only): it opens
   the business, applies its template and writes `business.create` to the
@@ -2805,3 +2822,5 @@ Sign-in is phone + SMS code. Accounts are never created at sign-in
 through invites from chunk 1d. Locally and in CI the `send_sms` auth hook
 writes codes to `dev.sms_codes` (defined in `supabase/seed.sql`, so it never
 reaches a real project); the Playwright test reads them from there.
+The sign-in screen gives every valid number the same answer, registered or
+not (`sendSignInCode` in `app/(auth)/otp.ts`).

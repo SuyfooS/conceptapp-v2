@@ -2,9 +2,15 @@
 -- checked is counted per number and per caller, and one over the limit is
 -- refused, with the seconds to wait, and not counted. Numbers and addresses
 -- are kept only as hashes, for a day. The limits are set here, since the
--- local seed lifts them for the browser tests.
+-- local seed lifts them for the browser tests. These are the quarter-hour
+-- windows; the day's windows, a code waiting and the app's own wait between
+-- codes are in auth_limits_windows.test.sql.
 begin;
-select plan(19);
+select plan(20);
+
+-- The quarter-hour windows only: setting each one's length below would give
+-- a day's window of the same kind and scope the same key.
+delete from private.auth_limits where per <> interval '15 minutes';
 
 update private.auth_limits set max_count = 2, per = interval '15 minutes'
 where kind = 'send' and scope = 'phone';
@@ -12,6 +18,8 @@ update private.auth_limits set max_count = 3, per = interval '10 minutes'
 where kind = 'send' and scope = 'caller';
 update private.auth_limits set max_count = 4, per = interval '15 minutes'
 where kind = 'verify';
+-- The wait between two codes to one number below every gap here.
+update private.auth_send_wait set per = interval '1 second';
 
 -- An attempt from two days ago, to be cleared.
 insert into private.auth_attempts (kind, key_hash, at)
@@ -63,10 +71,14 @@ select is(
   0, 'the number itself was not held against its limit'
 );
 
--- Checking codes is counted apart from sending them.
+-- Checking codes is counted apart from sending them, once a code went.
 select is(
   public.note_auth_attempt('verify', '+972500000981', '1.1.1.1', '2026-11-10 08:15:02+00'),
   0, 'a number that sent its limit still checks a code'
+);
+select is(
+  public.note_auth_attempt('send', '+972500000987', null, '2026-11-10 10:00+00'),
+  0, 'a code goes to the number to check'
 );
 select is(
   (select max(w) from (

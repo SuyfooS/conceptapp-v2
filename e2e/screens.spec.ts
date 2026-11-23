@@ -33,6 +33,8 @@ const PAGES = [
   "/design/shell/unavailable",
   "/design/screens/skeleton",
   "/design/screens/sign-in",
+  // The code step, as any valid number reaches it, with its help.
+  "/design/screens/sign-in?step=code",
   // As the site of real businesses has it: the demo door closed (P9).
   "/design/screens/sign-in?door=off",
   "/design/screens/enter",

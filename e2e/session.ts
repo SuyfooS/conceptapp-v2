@@ -7,7 +7,7 @@ import {
   type TestInfo,
 } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
-import { latestCode } from "./sms";
+import { codeAfter, lastCodeId, latestCode } from "./sms";
 
 const t = he.auth.signIn;
 
@@ -17,7 +17,9 @@ export type Person = { local: string; e164: string };
 /**
  * How long the auth server makes a number wait between two codes:
  * `[auth.sms] max_frequency` in supabase/config.toml, read so the two never
- * drift apart. Paths are from the repo root, where `pnpm e2e` runs.
+ * drift apart. The app's own wait (`private.auth_send_wait`) is a quarter of
+ * a second longer locally (seed.sql), within the half second more the tests
+ * wait. Paths are from the repo root, where `pnpm e2e` runs.
  */
 export const SMS_COOLDOWN_MS = (() => {
   const config = fs.readFileSync(path.resolve("supabase/config.toml"), "utf8");
@@ -36,24 +38,28 @@ export const SMS_COOLDOWN_MS = (() => {
 
 /**
  * Ask for a code on the sign-in screen and wait for the code step. When a
- * spec before signed this person in moments ago, the auth server says it is
- * too soon: like a person would, wait it out and ask again once. Returns the
+ * spec before signed this person in moments ago, the app's own wait between
+ * codes holds this one. The screen doesn't say so, since it answers every
+ * number the same, so the dev SMS hook's table is asked: with no new code,
+ * wait it out and ask for a new one once, as a person would. Returns the
  * time to read the code from (`latestCode`).
  */
 export async function askForCode(page: Page, person: Person): Promise<Date> {
   await page.goto("/sign-in");
   let since = new Date(Date.now() - 1000);
+  const before = await lastCodeId(person.e164);
   await page.getByLabel(t.phoneLabel).fill(person.local);
   await page.getByRole("button", { name: t.send }).click();
   const codeField = page.getByLabel(t.codeLabel);
-  const tooSoon = page.getByText(t.errors.rateLimit);
-  await expect(codeField.or(tooSoon)).toBeVisible();
-  if (await tooSoon.isVisible()) {
+  await expect(codeField).toBeVisible();
+  if (!(await codeAfter(person.e164, before))) {
     await page.waitForTimeout(SMS_COOLDOWN_MS + 500);
     since = new Date(Date.now() - 1000);
-    await page.getByRole("button", { name: t.send }).click();
+    await page.getByRole("button", { name: t.resend }).click();
+    await expect(
+      page.getByText((t.codeResent.split("<ltr>")[0] ?? "").trim()),
+    ).toBeVisible();
   }
-  await expect(codeField).toBeVisible();
   return since;
 }
 

@@ -20,7 +20,7 @@ import {
 } from "./db";
 import { enterAs } from "./orders-parts";
 import { SMS_COOLDOWN_MS, secondPage, signIn } from "./session";
-import { latestCode, setDemoModule } from "./sms";
+import { codeAfter, lastCodeId, latestCode, setDemoModule } from "./sms";
 import { heT } from "./t";
 
 // The worker's own hiring file (profile H5a), at each width. The local demo
@@ -141,7 +141,7 @@ async function fillToBank(page: Page, testInfo: TestInfo) {
   await save(page, testInfo, "address", f.actions.saveAddress);
 }
 
-/** "אישור החשבון בקוד", waiting out the auth server's wait if a code just went. */
+/** "אישור החשבון בקוד", waiting out the wait between codes if one just went. */
 async function askForBankCode(page: Page): Promise<Date> {
   let since = new Date(Date.now() - 1000);
   await bankConfirm(page).click();
@@ -1018,14 +1018,21 @@ test("a new worker who joins lands on the file's welcome", async ({
         role: "worker",
       });
       await page.goto(`/join/${again}`);
-      const next = new Date(Date.now() - 1000);
+      let next = new Date(Date.now() - 1000);
+      const before = await lastCodeId(person.e164);
       await page.getByRole("button", { name: j.send }).click();
-      const tooSoon = page.getByText(he.auth.signIn.errors.rateLimit);
       const code = page.getByLabel(j.codeLabel);
-      await expect(code.or(tooSoon)).toBeVisible();
-      if (await tooSoon.isVisible()) {
+      await expect(code).toBeVisible();
+      // Her number has an account now, so a code that went to it moments
+      // ago holds this one, and the code step says what it says for a code
+      // that went: wait it out and ask for a new one, as a person would.
+      if (!(await codeAfter(person.e164, before))) {
         await page.waitForTimeout(SMS_COOLDOWN_MS + 500);
-        await page.getByRole("button", { name: j.send }).click();
+        next = new Date(Date.now() - 1000);
+        await page.getByRole("button", { name: j.resend }).click();
+        await expect(
+          page.getByText((j.codeResent.split("<ltr>")[0] ?? "").trim()),
+        ).toBeVisible();
       }
       await code.fill(await latestCode(person.e164, next));
       await expect(page).toHaveURL(/\/home$/);

@@ -4366,6 +4366,7 @@ export type Database = {
         Args: { at_time?: string; paths: string[] };
         Returns: number;
       };
+      forget_number_attempts: { Args: { phone: string }; Returns: undefined };
       import_menu: {
         Args: { actor: string; at_time?: string; business: string; rows: Json };
         Returns: Json;

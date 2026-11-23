@@ -102,11 +102,49 @@ The server asks the same question first (`public.closed_to_invites`, secret key 
 in a closed one and `/team/invite` is not found there (#80).
 
 Sign-in codes are counted per number and per caller against `private.auth_limits`
-(`public.note_auth_attempt`; the server asks before every code it sends or checks). The
-team tunes the limits there, with SQL. `seed.sql` lifts them, because the browser tests
-sign the same people in many times from one machine. They hold the app's own way in only:
-the auth API is public, so a script calling it directly meets only Supabase's and Twilio's
-limits, and CAPTCHA once it is on (below).
+(`public.note_auth_attempt`; the server asks before every code it sends or checks), in
+every window there: a quarter of an hour for both (5 codes sent and 10 checked per number,
+20 and 40 per caller), and a day per number (15 sent, 30 checked)
+(`20261127000200_sign_in_windows.sql`). A check counts against its number only while a
+code sent to it may still be waiting: a send counted for it in the last ten minutes, a
+code's lifetime in Twilio Verify. Otherwise it is counted for its caller only, and the
+server says "wrong code" without asking the auth server. Between two codes to one number
+the app has its own wait, the same for every number (`private.auth_send_wait`, one row, 65
+seconds): a send within it of the number's last counted one (on either side, since of two
+asked for at once the one the app stamped later may be counted first) is counted for its
+caller only, asks the auth server nothing, and reads on sign-in and on `/join` as a code
+asked for (the earlier code still works), while the file's codes say "in a few seconds".
+It is longer than the auth server's own wait per number (`sms_max_frequency`, below), so
+that wait refuses no code the app lets go, unless someone asked the auth server directly.
+What the auth server still refuses (the project's SMS in an hour, its requests from one
+address), and a send the SMS provider failed, sent nothing: the server gives it back, for the number and the caller
+(`public.forget_auth_attempt`), and the screen says something went wrong. The sign-in screen
+answers the same for every valid number, registered or not, and nothing is sent to one with
+no account, which therefore still reaches the code step while the SMS cap is used up or the
+provider is down (`docs/ROADMAP.md`, known issue 98). So what is counted for such a number
+reached nobody: joining from an open invite clears it before the invite's code is counted
+(`public.forget_number_attempts`, which keeps the counts of a number with an account), and a
+stranger's tries can't hold a new person out. On `/join` the first send answers too many and
+too soon as the code step, as for a code that went, and a new code asked for too soon reads
+as one asked for, so neither the first answer nor the wait tells the link's holder whether
+the number already had an account. "Too many" said later still does: after five sign-in
+codes to the number and then a new code on `/join`, or one sign-in code and ten wrong checks
+and then a check on `/join`, only a number with an account hears it, and its person sees
+the five codes, or only one stray code in the second way (known issue 94). The team tunes
+the limits and the wait in those tables, with SQL.
+A number locked by the day's window (someone sent it codes and typed many wrong ones) is
+cleared with:
+
+```sql
+delete from private.auth_attempts
+where key_hash = encode(sha256(convert_to('phone:+9725…', 'UTF8')), 'hex');
+```
+
+(the number in E.164, as `+972501234567`). `seed.sql` lifts the limits, because the
+browser tests sign the same people in many times from one machine, and sets the wait to 2.25
+seconds, just past the local auth server's 2 (`config.toml`). They hold the app's own
+way in only: the auth API is public, so a script calling it directly meets only Supabase's
+and Twilio's limits, and CAPTCHA once it is on (below).
 
 ### Notifications on the phone
 
@@ -207,6 +245,17 @@ platform admin. The app's server sends and checks every code and refreshes every
 passes on no caller's address, so Supabase's limits per address are one limit for the whole
 site: B4 sizes them for the site's traffic together, and `private.auth_limits` alone counts each
 number and each caller.
+
+Two settings in the dashboards go with the app's own counts and wait (above), on both
+projects:
+
+- In Twilio Verify, keep a code's lifetime at the ten minutes `public.note_auth_attempt`
+  counts, or change the two together.
+- Keep the auth server's own wait between two codes to one number (`sms_max_frequency`,
+  60 seconds unless changed) a few seconds shorter than the app's
+  (`private.auth_send_wait`, 65), and change the two together: where the auth server's is
+  the longer, a number with an account gets "something went wrong" on sign-in inside it,
+  and one without gets the code step.
 
 On `conceptapp-dev` test numbers, without the `+` and with a code kept out of the repo, need
 Test OTPs Valid Until set, and Supabase won't save them without an SMS provider, even though
