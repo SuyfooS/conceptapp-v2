@@ -1,8 +1,8 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import { demoLists, endViewSessions, resetDemoLists } from "./db";
 import { secondPage, signIn } from "./session";
+import { expect, type Page, test } from "./test";
 
 // Lists, part 2 (L2): the demo restaurant starts with example lists
 // (supabase/migrations/20261109000700_lists_on.sql): the kitchen's opening

@@ -1,5 +1,4 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, type TestInfo, test } from "@playwright/test";
 import en from "../messages/en.json" with { type: "json" };
 import he from "../messages/he.json" with { type: "json" };
 import { checkBankAccount } from "../packages/domain/bank-account";
@@ -28,6 +27,7 @@ import { enterAs } from "./orders-parts";
 import { SMS_COOLDOWN_MS, secondPage, signIn } from "./session";
 import { codeAfter, lastCodeId, latestCode, setDemoModule } from "./sms";
 import { heT } from "./t";
+import { expect, type Page, type TestInfo, test } from "./test";
 
 // The worker's own hiring file (profile H5a), at each width. The local demo
 // restaurant takes file writes ("fileWrites": true in supabase/seed.sql); the
@@ -303,7 +303,8 @@ test("a wrong account number gets a warning in words and is saved with a flag", 
   await expect(checkFirst).toHaveCount(0);
   await expectCleanPage(page);
 
-  // The code goes with Cloudflare's token, beside the account.
+  // The code goes with the check's token (the stand-in's, as Cloudflare's
+  // test key gives it), beside the account.
   const posted = nextAction(page, "instruction");
   const since = await askForBankCode(page);
   expect((await posted).postData()).toContain(TEST_TOKEN);

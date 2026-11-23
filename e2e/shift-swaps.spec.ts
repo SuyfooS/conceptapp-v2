@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
-import { type Browser, expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
+import { standInForTurnstile } from "./captcha";
 import {
   clearSchedule,
   decideDemoSwap,
@@ -14,6 +14,7 @@ import {
 } from "./db";
 import { type Person, signIn } from "./session";
 import { heT } from "./t";
+import { type Browser, expect, type Page, test } from "./test";
 
 // Seeded in supabase/seed.sql: the demo restaurant and two of its workers.
 const NOA = { name: "נועה כהן", local: "050-000-0003", e164: "+972500000003" };
@@ -64,6 +65,7 @@ async function as(
     viewport: page.viewportSize(),
     baseURL: test.info().project.use.baseURL,
   });
+  await standInForTurnstile(context);
   const other = await context.newPage();
   await signIn(other, person);
   await other.goto(path);

@@ -1,5 +1,4 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
   backdateDemoListFinish,
@@ -16,6 +15,7 @@ import {
 } from "./db";
 import { signIn } from "./session";
 import { heT } from "./t";
+import { expect, type Page, test } from "./test";
 
 // Fixing a closed list in place (lists L6b-1), on the demo restaurant's lists
 // as their reset leaves them (lists.spec.ts): the kitchen's opening list sent

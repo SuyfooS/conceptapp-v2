@@ -7,7 +7,7 @@ import {
   type TestInfo,
 } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
-import { captchaSettled } from "./captcha";
+import { captchaSettled, standInForTurnstile } from "./captcha";
 import { codeAfter, lastCodeId, latestCode } from "./sms";
 
 const t = he.auth.signIn;
@@ -72,7 +72,8 @@ export async function askForCode(page: Page, person: Person): Promise<Date> {
  * A second person's page beside the test's own, as another device of the same
  * screen size, with its own cookies. Built from the project's fields one by
  * one: the whole `use` object holds keys a context doesn't take (trace,
- * launchOptions). Close its context at the end of the test.
+ * launchOptions). Served the stand-in for Cloudflare's script, as the test's
+ * own context is. Close its context at the end of the test.
  */
 export async function secondPage(
   browser: Browser,
@@ -89,6 +90,7 @@ export async function secondPage(
     baseURL: use.baseURL,
     reducedMotion: "reduce",
   });
+  await standInForTurnstile(context);
   return await context.newPage();
 }
 

@@ -1,5 +1,4 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
   bumpDemoTemplate,
@@ -13,6 +12,7 @@ import {
 } from "./db";
 import { signIn } from "./session";
 import { heT } from "./t";
+import { expect, type Page, test } from "./test";
 
 // Lists, part 3 (L3): the business's templates and their editor, which saves
 // itself, and the full send (a list typed now, a shift, a due time). The

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 
 // The tab bar on the demo: it shrinks scrolling down, and only comes back after
 // a real move up, so reading the page doesn't keep resizing it.

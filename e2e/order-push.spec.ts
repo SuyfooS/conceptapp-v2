@@ -1,4 +1,3 @@
-import { expect, type Page, test } from "@playwright/test";
 import {
   addOrderPushStation,
   ageOrderPushRound,
@@ -24,6 +23,7 @@ import {
   toast,
 } from "./orders-parts";
 import { secondPage, signIn } from "./session";
+import { expect, type Page, test } from "./test";
 
 // "מוכן" on the phone (waiter mode P8b), in a restaurant of its own, since
 // a demo's lines never reach one: the cook's "מוכן" sends the owner's push by

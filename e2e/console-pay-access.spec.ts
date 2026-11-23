@@ -1,5 +1,4 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
   closePayAccessBusiness,
@@ -14,6 +13,7 @@ import {
 } from "./db";
 import { secondPage, signIn } from "./session";
 import { heT } from "./t";
+import { expect, type Page, test } from "./test";
 
 // Who sees pay from the console (Orel's payroll decision 1, 9 November 2026:
 // the owner, and the ConceptApp team from the console). The team changes it

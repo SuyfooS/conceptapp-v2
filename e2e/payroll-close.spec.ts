@@ -1,5 +1,4 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
   cancelShopShift,
@@ -13,6 +12,7 @@ import {
   shopPayrollMonth,
 } from "./db";
 import { heT } from "./t";
+import { expect, type Page, test } from "./test";
 import { readWorkbook, sheetCells, unzip } from "./unzip";
 
 // Closing a month (payroll P9), in the demo shop as supabase/seed.sql starts

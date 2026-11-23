@@ -1,6 +1,5 @@
 import { readFile } from "node:fs/promises";
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
   clearDemoChat,
@@ -22,6 +21,7 @@ import { minimalPdf } from "./pdf";
 import { cameraPhoto } from "./photo";
 import { secondPage, signIn } from "./session";
 import { heT } from "./t";
+import { expect, type Page, test } from "./test";
 import { unzip } from "./unzip";
 
 // Official documents on screen (chat C7; the database is C6's,

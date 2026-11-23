@@ -1,6 +1,5 @@
 import { readFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Locator, type Page, test } from "@playwright/test";
 import { createTranslator } from "next-intl";
 import { FILE_TABS_TWIN_CHANNEL } from "../app/(app)/team/[person]/file/file-tabs";
 import { restaurantWording } from "../app/design/order-taking/data";
@@ -9,12 +8,13 @@ import he from "../messages/he.json" with { type: "json" };
 import { daysLeftToRight } from "../packages/domain/share";
 import { type MessageTree, mergeWording } from "../packages/domain/wording";
 import { before, buildScreen, HOLD_MS } from "./build-screen";
-import { CAPTCHA_FRAME } from "./captcha";
+import { CAPTCHA_FRAME, STAND_IN_WIDGET } from "./captcha";
 import { hearFileCheck } from "./file-watch";
 import { minimalPdf } from "./pdf";
 import { cameraPhoto } from "./photo";
 import { stubAudio } from "./station-audio";
 import { heT } from "./t";
+import { expect, type Locator, type Page, test } from "./test";
 import { readWorkbook, unzip } from "./unzip";
 
 // The design system in both appearances, on the demos: no data, no sign-in.
@@ -1759,28 +1759,40 @@ test("sign-in offers the demo only where the demo door is open", async ({
 // The "אני לא רובוט" check (P9b) as Cloudflare draws it, on the sign-in
 // twin: its test key that always passes settles with a token, and the one
 // that always asks shows the tick's line and Cloudflare's box. Nothing is
-// pressed inside Cloudflare's frame, and axe leaves it out.
-test("the check's live twin draws Cloudflare's own widget", async ({
-  page,
-}) => {
-  await page.goto("/design/screens/sign-in?captcha=live");
-  await expect(page.locator('[data-captcha="ready"]')).toHaveCount(1, {
-    timeout: 20_000,
-  });
+// pressed inside Cloudflare's frame, and axe leaves it out. It runs
+// Cloudflare's real script, where every other test has the e2e's stand-in
+// (e2e/test.ts), and waits on the box's `data-captcha`, never on
+// `networkidle`.
+test.describe(() => {
+  test.use({ turnstile: "cloudflare" });
 
-  await page.goto("/design/screens/sign-in?captcha=ask");
-  await expect(page.getByText(he.ui.captcha.tap)).toBeVisible({
-    timeout: 20_000,
+  test("the check's live twin draws Cloudflare's own widget", async ({
+    page,
+  }) => {
+    await page.goto("/design/screens/sign-in?captcha=live");
+    await expect(page.locator('[data-captcha="ready"]')).toHaveCount(1, {
+      timeout: 20_000,
+    });
+    // Cloudflare's own widget gave the token, not the stand-in.
+    await expect(page.locator(STAND_IN_WIDGET)).toHaveCount(0);
+
+    await page.goto("/design/screens/sign-in?captcha=ask");
+    await expect(page.getByText(he.ui.captcha.tap)).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(page.locator(CAPTCHA_FRAME)).toBeVisible();
+    await expect(page.locator(STAND_IN_WIDGET)).toHaveCount(0);
+    const { violations } = await new AxeBuilder({ page })
+      .exclude(CAPTCHA_FRAME)
+      .analyze();
+    expect(
+      violations.flatMap((v) =>
+        v.nodes.map(
+          (n) => `${v.id}: ${n.target.join(" ")} ${n.failureSummary}`,
+        ),
+      ),
+    ).toEqual([]);
   });
-  await expect(page.locator(CAPTCHA_FRAME)).toBeVisible();
-  const { violations } = await new AxeBuilder({ page })
-    .exclude(CAPTCHA_FRAME)
-    .analyze();
-  expect(
-    violations.flatMap((v) =>
-      v.nodes.map((n) => `${v.id}: ${n.target.join(" ")} ${n.failureSummary}`),
-    ),
-  ).toEqual([]);
 });
 
 // The gallery's check: its stand-in in each state, picked above it.

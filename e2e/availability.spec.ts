@@ -1,8 +1,8 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Locator, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import { availabilityOf, clearAvailability } from "./db";
 import { signIn } from "./session";
+import { expect, type Locator, type Page, test } from "./test";
 
 // A seeded worker of the demo restaurant (supabase/seed.sql), which is
 // closed on Shabbat (the restaurant template), sends next week's

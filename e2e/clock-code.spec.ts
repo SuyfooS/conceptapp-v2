@@ -1,5 +1,4 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, type Request, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import { qrMatrix, qrPath } from "../packages/domain/qr";
 import {
@@ -11,6 +10,7 @@ import {
   setPageHidden,
   standInCamera,
 } from "./camera";
+import { standInForTurnstile } from "./captcha";
 import {
   addOpenDemoEntry,
   clearPunchState,
@@ -23,6 +23,7 @@ import {
   setDemoRequirePunchCode,
 } from "./db";
 import { secondPage, signIn } from "./session";
+import { expect, type Page, type Request, test } from "./test";
 
 // The clock's code (issue #78): an owner asks for it, a manager shows it on
 // their phone, and the team scans it inside the circle or types its digits to
@@ -437,6 +438,7 @@ test("a worker scans the code inside the circle", async ({
   const viewer = await browser.newContext({
     baseURL: testInfo.project.use.baseURL,
   });
+  await standInForTurnstile(viewer);
   const gallery = await viewer.newPage();
   await gallery.goto("/design");
   const stranger = await qrDrawing(gallery, c.code.qrLabel);

@@ -1,10 +1,10 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
-import { CAPTCHA_FRAME, captchaSettled } from "./captcha";
+import { CAPTCHA_FRAME, captchaSettled, standInForTurnstile } from "./captcha";
 import { demoRole, inviteToDemo } from "./db";
 import { signIn } from "./session";
 import { latestCode } from "./sms";
+import { expect, type Page, test } from "./test";
 
 // The seeded platform admin (supabase/seed.sql) issues the link; the
 // invited numbers have no account until the link is used. One number per
@@ -89,6 +89,7 @@ test("an invited number joins the demo restaurant as a manager", async ({
     userAgent,
     locale,
   });
+  await standInForTurnstile(theirs);
   const joining = await theirs.newPage();
   await joining.goto(link);
   await expect(

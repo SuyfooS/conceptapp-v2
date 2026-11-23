@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
+import { standInForTurnstile } from "./captcha";
 import {
   addTestDevice,
   closeSettingsBusiness,
@@ -20,6 +20,7 @@ import {
 import { MockPushService } from "./mock-push";
 import { signIn } from "./session";
 import { heT } from "./t";
+import { expect, type Page, test } from "./test";
 
 // Each person's choices for their phone (notifications part 3), in a real
 // business of the spec's own: a demo business has nothing to choose. What
@@ -457,6 +458,7 @@ test("the phone's section says what this browser needs", async ({
     reducedMotion: "reduce",
   });
   try {
+    await standInForTurnstile(iphone);
     const phone = await iphone.newPage();
     await phone.addInitScript(() => {
       // Safari's page has no push outside a home-screen app.

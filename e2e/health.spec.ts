@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./test";
 
 // The address an uptime monitor asks (docs/production.md, B11), against the
 // served build: 200 at once, never a redirect, never kept, no cookie, and

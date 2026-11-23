@@ -1,8 +1,8 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import { demoInvite, inviteToDemo, removeDemoInvites } from "./db";
 import { signIn } from "./session";
+import { expect, type Page, test } from "./test";
 
 // The ConceptApp team sets up people from the console (Orel, 7 November
 // 2026): it renews an invite that ran out and adds a person in any role, an

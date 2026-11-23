@@ -1,8 +1,8 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import { inviteToDemo, removeDemoInvites } from "./db";
 import { signIn } from "./session";
+import { expect, type Page, test } from "./test";
 
 // Seeded in supabase/seed.sql. Neither number signs in in sign-in.spec.ts,
 // the spec just before this one: the auth server refuses a second code to

@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import { demoConversation } from "./db";
+import { expect, type Page, test } from "./test";
 
 // The console, the door to the app and the screens for when something is
 // missing, on their demos: both appearances, no data and no sign-in. What they

@@ -1,8 +1,8 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import { clearSchedule, scheduleDemoSunday } from "./db";
 import { signIn } from "./session";
+import { expect, type Page, test } from "./test";
 
 // Seeded in supabase/seed.sql: the demo restaurant, its manager and two
 // workers. The restaurant template's positions include waiter ("מלצר/ית")

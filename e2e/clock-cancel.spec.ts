@@ -1,5 +1,4 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
   addDemoShift,
@@ -10,6 +9,7 @@ import {
 } from "./db";
 import { secondPage, signIn } from "./session";
 import { heT } from "./t";
+import { expect, type Page, test } from "./test";
 
 // The reads of a cancelled shift (the clock plan's PR3), before any screen
 // can cancel one. Noa has two shifts last month in the demo restaurant (seeded

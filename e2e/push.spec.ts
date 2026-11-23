@@ -1,10 +1,3 @@
-import {
-  type Browser,
-  expect,
-  type Page,
-  type TestInfo,
-  test,
-} from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
   closePushBusiness,
@@ -17,6 +10,7 @@ import {
 import { fakePushManager, pushes } from "./fake-push";
 import { MockPushService } from "./mock-push";
 import { secondPage, signIn } from "./session";
+import { type Browser, expect, type Page, type TestInfo, test } from "./test";
 
 // Notifications on the phone. Headless Chromium can't subscribe for real (it
 // needs Google's push service), so the page's PushManager is a fake, with an

@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { expect, type Page, type TestInfo, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import { captchaSettled } from "./captcha";
 import {
@@ -32,6 +31,7 @@ import { enterAs, expectCleanPage } from "./orders-parts";
 import { SMS_COOLDOWN_MS, secondPage } from "./session";
 import { latestCode, setDemoModule } from "./sms";
 import { heT } from "./t";
+import { expect, type Page, type TestInfo, test } from "./test";
 
 // The owner's and the accountant's view of the hiring file (profile H6a), at
 // each width. The local demo restaurant's module is off, so each test

@@ -1,5 +1,4 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import { captchaSettled } from "./captcha";
 import {
@@ -16,6 +15,7 @@ import {
 import { secondPage, signIn } from "./session";
 import { latestCode } from "./sms";
 import { heT } from "./t";
+import { expect, type Page, test } from "./test";
 
 // One login in several businesses (payroll P3b; Orel, 8 November 2026): one
 // place on a staff per login and any number as an accountant. Galit keeps the
