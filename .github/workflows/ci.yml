@@ -188,14 +188,15 @@ jobs:
           if-no-files-found: error
 
   # After check and database pass: a red PR doesn't spend the time on e2e.
-  # One job per screen size, side by side, each with its own database: the
-  # sizes no longer share the demo data, and the run takes a third of the
-  # time it took in one job (it had reached the 45-minute limit). By 21
-  # November 2026 the desktop job alone took 38 to 45 minutes (1083 tests, one
-  # worker), and a run stopped at 1004 with none failed, so the limit is 60;
-  # once a job passes 50 minutes, split each size in two with --shard.
+  # Two jobs per screen size, all six side by side, each with its own
+  # database: no job shares the demo data with another. By 21 November 2026
+  # the desktop job alone took 38 to 45 minutes (1083 tests, one worker) and a
+  # run stopped at 1004 with none failed, so on 23 November each size was split
+  # in two by file with --shard (Playwright gives each shard whole files, in
+  # order, since fullyParallel is off). A file that needs another file's
+  # leftovers fails here: each must set up what it reads.
   e2e:
-    name: e2e (${{ matrix.project }})
+    name: e2e (${{ matrix.project }} ${{ matrix.shard }}/2)
     needs: [gate, check, database]
     if: >-
       ${{ !cancelled() && needs.gate.outputs.tested != 'yes'
@@ -206,6 +207,7 @@ jobs:
       fail-fast: false
       matrix:
         project: [phone, tablet, desktop]
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -288,8 +290,8 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: Playwright (${{ matrix.project }})
-        run: pnpm e2e --project=${{ matrix.project }}
+      - name: Playwright (${{ matrix.project }}, part ${{ matrix.shard }} of 2)
+        run: pnpm e2e --project=${{ matrix.project }} --shard=${{ matrix.shard }}/2
 
       # The results are for reading a failure, not part of passing: when
       # GitHub's artifact service is down (11 November 2026, it answered with
@@ -299,7 +301,7 @@ jobs:
         if: always()
         continue-on-error: true
         with:
-          name: playwright-results-${{ matrix.project }}
+          name: playwright-results-${{ matrix.project }}-${{ matrix.shard }}
           path: test-results/
           # 3 days, not 7: at ~14 MB a run, 7 days kept ~1.3 GB against the
           # plan's 1 GB, and a refused upload would also stop the record below.
@@ -317,7 +319,7 @@ jobs:
         if: github.event_name == 'pull_request' && steps.passed.outputs.tree != ''
         continue-on-error: true
         with:
-          name: passed-${{ github.job }}-${{ matrix.project }}-${{ steps.passed.outputs.tree }}
+          name: passed-${{ github.job }}-${{ matrix.project }}-${{ matrix.shard }}-${{ steps.passed.outputs.tree }}
           path: ${{ runner.temp }}/passed.txt
           retention-days: 1
           if-no-files-found: error
