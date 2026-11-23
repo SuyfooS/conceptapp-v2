@@ -2734,7 +2734,10 @@ read as messages/he.json. Console reads and writes are in `@db/wording`;
   last ten minutes, counted for its caller only. `forgetAuthAttempt` gives
   back a send the auth server held for its short wait: for joining and the
   file's codes only, never sign-in, where giving a try back would tell a
-  registered number from one that isn't.
+  registered number from one that isn't. `forgetNumberAttempts` clears a
+  number's counts while it has no account (none reached anyone): for
+  joining from an open invite only, before its code is counted; the
+  database keeps the counts of a number with an account.
 - `@db/admin`: the console's reads and writes. `createBusiness(actor,
   business)` calls `public.create_business` (service role only): it opens
   the business, applies its template and writes `business.create` to the

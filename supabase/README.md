@@ -91,7 +91,10 @@ code sent to it may still be waiting: a send counted for it in the last ten minu
 code's lifetime in Twilio Verify. Otherwise it is counted for its caller only, and the
 server says "wrong code" without asking the auth server. The sign-in screen answers the
 same for every valid number, registered or not, and nothing is sent to one with no
-account. The team tunes the limits in that table, with SQL. A number locked by the day's
+account. So what is counted for such a number reached nobody: joining from an open invite
+clears it before the invite's code is counted (`public.forget_number_attempts`, which
+keeps the counts of a number with an account), and a stranger's tries can't hold a new
+person out. The team tunes the limits in that table, with SQL. A number locked by the day's
 window (someone sent it codes and typed many wrong ones) is cleared with:
 
 ```sql

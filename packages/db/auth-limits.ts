@@ -62,3 +62,21 @@ export async function forgetAuthAttempt(attempt: AuthAttempt): Promise<void> {
     throw new Error(`Could not give the attempt back: ${error.message}`);
   }
 }
+
+/**
+ * Clears the codes counted for a number, sent and checked, while it has no
+ * account (`public.forget_number_attempts`): none reached anyone, since
+ * sign-in sends nothing to such a number. For joining from an open invite
+ * only, before its code is counted, so a stranger's sign-in tries can't hold
+ * the invited person out. The database keeps the counts of a number with an
+ * account, and the callers'. Before the function reaches a project, nothing
+ * is cleared, as before.
+ */
+export async function forgetNumberAttempts(phone: string): Promise<void> {
+  const { error } = await createAdminClient().rpc("forget_number_attempts", {
+    phone,
+  });
+  if (error && !isMissingFunction(error)) {
+    throw new Error(`Could not clear the number's attempts: ${error.message}`);
+  }
+}

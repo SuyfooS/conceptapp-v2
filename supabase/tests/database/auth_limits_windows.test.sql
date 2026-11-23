@@ -2,10 +2,12 @@
 -- number has a quarter-hour window and a day's for each kind, and a check is
 -- counted for its number only while a code sent to it may still be waiting
 -- (ten minutes). Without one there is nothing to check: the check answers -1
--- and is counted for its caller alone. The limits are set here, since the
--- local seed lifts them for the browser tests.
+-- and is counted for its caller alone. A number with no account yet has had
+-- no code reach it, so joining from its invite clears its counts
+-- (forget_number_attempts); one with an account keeps them. The limits are
+-- set here, since the local seed lifts them for the browser tests.
 begin;
-select plan(22);
+select plan(35);
 
 select set_eq(
   $$select kind, scope, per from private.auth_limits$$,
@@ -36,6 +38,13 @@ update private.auth_limits set max_count = 5
 where kind = 'verify' and scope = 'phone' and per = interval '1 day';
 update private.auth_limits set max_count = 2
 where kind = 'verify' and scope = 'caller';
+
+-- Numbers with an account: 5509 as the auth server keeps it, with no +, and
+-- 5510 with one. 5508 has none.
+insert into auth.users (id, aud, role, phone)
+values
+  ('55000000-0000-4000-a000-000000000009', 'authenticated', 'authenticated', '972500005509'),
+  ('55000000-0000-4000-a000-000000000010', 'authenticated', 'authenticated', '+972500005510');
 
 set local role service_role;
 
@@ -124,6 +133,51 @@ select is(
   84569, 'the day holds a number sent its day''s codes'
 );
 
+-- A number with no account: sign-in counts what is sent to it and sends
+-- nothing, so a stranger fills its day with nobody seeing a code. Joining
+-- from its invite clears it.
+select is(
+  public.note_auth_attempt('send', '+972500005508', '7.7.7.3', '2026-11-20 12:00+00'),
+  0, 'a stranger asks for a code for a number with no account'
+);
+select is(
+  public.note_auth_attempt('send', '+972500005508', '7.7.7.3', '2026-11-20 12:00:30+00'),
+  0, 'and again'
+);
+select is(
+  public.note_auth_attempt('send', '+972500005508', '7.7.7.3', '2026-11-20 12:15:01+00'),
+  0, 'and once more, past the quarter of an hour'
+);
+select is(
+  public.note_auth_attempt('verify', '+972500005508', '7.7.7.3', '2026-11-20 12:16+00'),
+  0, 'its checks count for the number, a send being counted'
+);
+select is(
+  public.note_auth_attempt('send', '+972500005508', '7.7.7.3', '2026-11-20 12:30:31+00'),
+  84569, 'the stranger has filled the number''s day'
+);
+select public.forget_number_attempts('+972500005508');
+select is(
+  public.note_auth_attempt('send', '+972500005508', null, '2026-11-20 12:30:32+00'),
+  0, 'joining from its invite clears it, since none of those codes reached anyone'
+);
+
+-- A number with an account keeps its counts: its codes may have reached it.
+select is(
+  public.note_auth_attempt('send', '+972500005509', null, '2026-11-20 13:00+00'),
+  0, 'a code goes to a number with an account'
+);
+select is(
+  public.note_auth_attempt('verify', '+972500005509', null, '2026-11-20 13:01+00'),
+  0, 'and is checked'
+);
+select is(
+  public.note_auth_attempt('send', '+972500005510', null, '2026-11-20 13:00+00'),
+  0, 'a code goes to a number the auth server keeps with its +'
+);
+select public.forget_number_attempts('+972500005509');
+select public.forget_number_attempts('+972500005510');
+
 reset role;
 
 select is(
@@ -152,6 +206,29 @@ select ok(
    where kind = 'verify'
      and key_hash = encode(sha256(convert_to('caller:7.7.7.2', 'UTF8')), 'hex')) = 2,
   'a check the caller''s limit held is counted nowhere'
+);
+select is(
+  (select count(*)::int from private.auth_attempts
+   where key_hash = encode(sha256(convert_to('phone:+972500005508', 'UTF8')), 'hex')),
+  1, 'the cleared tries are gone, sent and checked, and only the code joining asked for stays'
+);
+select is(
+  (select count(*)::int from private.auth_attempts
+   where key_hash = encode(sha256(convert_to('caller:7.7.7.3', 'UTF8')), 'hex')),
+  5, 'the stranger''s own counts stay'
+);
+select ok(
+  (select count(*) from private.auth_attempts
+   where key_hash = encode(sha256(convert_to('phone:+972500005509', 'UTF8')), 'hex')) = 2
+  and (select count(*) from private.auth_attempts
+   where key_hash = encode(sha256(convert_to('phone:+972500005510', 'UTF8')), 'hex')) = 1,
+  'a number with an account keeps its counts, however the auth server spells it'
+);
+select ok(
+  not has_function_privilege('authenticated', 'public.forget_number_attempts(text)', 'execute')
+  and not has_function_privilege('anon', 'public.forget_number_attempts(text)', 'execute')
+  and has_function_privilege('service_role', 'public.forget_number_attempts(text)', 'execute'),
+  'only the server clears a number'
 );
 
 select * from finish();

@@ -2,6 +2,7 @@ import "server-only";
 import {
   type AuthAttempt,
   forgetAuthAttempt,
+  forgetNumberAttempts,
   NO_CODE_WAITING,
   noteAuthAttempt,
 } from "@db/auth-limits";
@@ -121,11 +122,11 @@ export async function sendSignInCode(
 
 /**
  * Send a code by SMS to a number known to have an account, unless the number
- * or the caller asked for too many lately: joining, once the invite's
- * account is made (`prepare`, which runs once the code may go, before it
- * does), and the hiring file's codes, to the session's own number. The auth
- * server's short wait is said, and its try given back, since no code went.
- * Accounts are never created here; people arrive through invites.
+ * or the caller asked for too many lately: joining (`sendJoinCode`), once the
+ * invite's account is made (`prepare`, which runs once the code may go,
+ * before it does), and the hiring file's codes, to the session's own number.
+ * The auth server's short wait is said, and its try given back, since no
+ * code went. Accounts are never created here; people arrive through invites.
  */
 export async function sendCode(
   phone: string,
@@ -150,6 +151,28 @@ export async function sendCode(
     return "failed";
   }
   return sent.refused;
+}
+
+/**
+ * Send the code to join from an open invite, making the invited number's
+ * account once the code may go (`makeAccount`). While the number has no
+ * account its counts are cleared first: sign-in counts a send to such a
+ * number but sends nothing, so a stranger could fill its day with nobody
+ * seeing a code, and hold the new person out of joining. The database clears
+ * nothing for a number with an account (`forgetNumberAttempts`), and once
+ * this send makes the account it never clears again. A clear that fails
+ * leaves the counts as they were.
+ */
+export async function sendJoinCode(
+  phone: string,
+  makeAccount: () => Promise<void>,
+): Promise<SignInError | null> {
+  const number = normalizeIsraeliMobile(phone);
+  if (!number) return "invalidPhone";
+  await forgetNumberAttempts(number).catch((cause: Error) => {
+    console.error("clearing a new number's attempts failed", cause.message);
+  });
+  return sendCode(number, makeAccount);
 }
 
 type Checked =

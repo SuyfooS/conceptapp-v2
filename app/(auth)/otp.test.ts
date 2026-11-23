@@ -4,8 +4,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // for. Sign-in answers every valid number the same, whether it has an
 // account or not, and keeps every send counted (`sendSignInCode`); joining
 // and the file's codes say the auth server's short wait and give its try
-// back (`sendCode`). A check with no code sent to the number lately is a
-// wrong code, and the auth server isn't asked.
+// back (`sendCode`). Joining clears the counts of a number with no account
+// first, since none of them reached anyone (`sendJoinCode`). A check with no
+// code sent to the number lately is a wrong code, and the auth server isn't
+// asked.
 //
 // The codes a signed-in person proves their phone with (the hiring file's
 // bank change, profile H5a) hold too: the code goes to the number the auth
@@ -19,6 +21,7 @@ vi.mock("server-only", () => ({}));
 const mocks = vi.hoisted(() => ({
   noteAuthAttempt: vi.fn(),
   forgetAuthAttempt: vi.fn(),
+  forgetNumberAttempts: vi.fn(),
   signInWithOtp: vi.fn(),
   cookieVerifyOtp: vi.fn(),
   order: [] as string[],
@@ -34,6 +37,7 @@ vi.mock("@db/auth-limits", () => ({
   NO_CODE_WAITING: -1,
   noteAuthAttempt: mocks.noteAuthAttempt,
   forgetAuthAttempt: mocks.forgetAuthAttempt,
+  forgetNumberAttempts: mocks.forgetNumberAttempts,
 }));
 vi.mock("@db/supabase/admin", () => ({
   createAdminClient: () => ({
@@ -48,8 +52,14 @@ vi.mock("@db/supabase/detached", () => ({
 // The cookie-backed client: sign-in's and joining's, never a step-up's.
 vi.mock("@db/supabase/server", () => ({ createClient: mocks.cookieClient }));
 
-const { checkCode, sendCode, sendSignInCode, signInPhoneOf, verifyCode } =
-  await import("./otp");
+const {
+  checkCode,
+  sendCode,
+  sendJoinCode,
+  sendSignInCode,
+  signInPhoneOf,
+  verifyCode,
+} = await import("./otp");
 
 const NOA = "33333333-3333-4333-a333-333333333333";
 
@@ -60,6 +70,9 @@ beforeEach(() => {
     return 0;
   });
   mocks.forgetAuthAttempt.mockReset().mockResolvedValue(undefined);
+  mocks.forgetNumberAttempts.mockReset().mockImplementation(async () => {
+    mocks.order.push("clear");
+  });
   mocks.signInWithOtp.mockReset().mockImplementation(async () => {
     mocks.order.push("send");
     return { data: {}, error: null };
@@ -191,6 +204,46 @@ describe("sendCode", () => {
     expect(await sendCode("+972500000003", prepare)).toBe("tooMany");
     expect(prepare).not.toHaveBeenCalled();
     expect(mocks.signInWithOtp).not.toHaveBeenCalled();
+  });
+});
+
+describe("sendJoinCode", () => {
+  const makeAccount = async () => {
+    mocks.order.push("account");
+  };
+
+  it("clears a number's counts before it counts, then makes the account and sends", async () => {
+    expect(await sendJoinCode("050-000-0003", makeAccount)).toBeNull();
+    expect(mocks.order).toEqual(["clear", "count", "account", "send"]);
+    // One spelling per number: the one its counts are kept by.
+    expect(mocks.forgetNumberAttempts).toHaveBeenCalledWith("+972500000003");
+    expect(mocks.noteAuthAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "send", phone: "+972500000003" }),
+    );
+  });
+
+  it("answers as sendCode does once cleared", async () => {
+    mocks.signInWithOtp.mockResolvedValue(refused("over_sms_send_rate_limit"));
+    expect(await sendJoinCode("+972500000003", makeAccount)).toBe("rateLimit");
+    expect(mocks.forgetAuthAttempt).toHaveBeenCalledTimes(1);
+    mocks.noteAuthAttempt.mockResolvedValue(30);
+    mocks.order.length = 0;
+    expect(await sendJoinCode("+972500000003", makeAccount)).toBe("tooMany");
+    expect(mocks.order).toEqual(["clear"]);
+  });
+
+  it("still counts and sends when the clear fails, logged without the number", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.forgetNumberAttempts.mockRejectedValue(new Error("down"));
+    expect(await sendJoinCode("+972500000003", makeAccount)).toBeNull();
+    expect(mocks.order).toEqual(["count", "account", "send"]);
+    expect(JSON.stringify(logged.mock.calls)).not.toContain("500000003");
+    logged.mockRestore();
+  });
+
+  it("clears nothing for a malformed number", async () => {
+    expect(await sendJoinCode("123", makeAccount)).toBe("invalidPhone");
+    expect(mocks.order).toEqual([]);
   });
 });
 

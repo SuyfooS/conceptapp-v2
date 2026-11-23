@@ -6,7 +6,7 @@ import { normalizeOtpCode } from "@domain/otp";
 import { redirect } from "next/navigation";
 import { rememberBusiness } from "../../(app)/business-cookie";
 import { pushSoon } from "../../push/server";
-import { type SignInError, sendCode, verifyCode } from "../otp";
+import { type SignInError, sendJoinCode, verifyCode } from "../otp";
 import { landingAfterJoin } from "./landing";
 
 /**
@@ -22,8 +22,9 @@ export type JoinState =
 
 /**
  * Joining from an invite link: send a code to the invited number (its
- * account is made first if it has none, once the code may go), check it,
- * then claim the invite on the server and open the app, in the business just
+ * account is made first if it has none, once the code may go, and a number
+ * with none starts with no counts, `sendJoinCode`), check it, then claim
+ * the invite on the server and open the app, in the business just
  * joined (someone in several opens it first): a worker or a manager on their
  * hiring file's welcome where the business uses it, anyone else on Today
  * (`landingAfterJoin`, H5b). The number always
@@ -44,7 +45,7 @@ export async function join(
   if (intent === "send" || intent === "resend") {
     let error: SignInError | null;
     try {
-      error = await sendCode(invite.phone, () =>
+      error = await sendJoinCode(invite.phone, () =>
         ensurePhoneAccount(invite.phone),
       );
     } catch (cause) {

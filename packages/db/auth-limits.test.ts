@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // The counts on sign-in codes as the server reads them, with the database
 // stood in for: 0 to go ahead, the seconds to wait, or no code waiting for a
 // check; anything else, or a failure but a function not there yet, throws.
+// Joining clears the counts of a number with no account, by the number only.
 
 vi.mock("server-only", () => ({}));
 
@@ -22,9 +23,12 @@ vi.mock("./supabase/admin", () => ({
   }),
 }));
 
-const { forgetAuthAttempt, NO_CODE_WAITING, noteAuthAttempt } = await import(
-  "./auth-limits"
-);
+const {
+  forgetAuthAttempt,
+  forgetNumberAttempts,
+  NO_CODE_WAITING,
+  noteAuthAttempt,
+} = await import("./auth-limits");
 
 const ATTEMPT = {
   kind: "verify",
@@ -103,6 +107,26 @@ describe("forgetAuthAttempt", () => {
     db.answers.push({ error: { code: "57014", message: "timeout" } });
     await expect(forgetAuthAttempt(ATTEMPT)).rejects.toThrow(
       "Could not give the attempt back",
+    );
+  });
+});
+
+describe("forgetNumberAttempts", () => {
+  it("asks the database by the number alone", async () => {
+    await forgetNumberAttempts("+972500000003");
+    expect(db.calls).toEqual([
+      { name: "forget_number_attempts", args: { phone: "+972500000003" } },
+    ]);
+  });
+
+  it("clears nothing before the function reaches a project, and throws on any other failure", async () => {
+    db.answers.push({ error: { code: "PGRST202", message: "not found" } });
+    await expect(
+      forgetNumberAttempts("+972500000003"),
+    ).resolves.toBeUndefined();
+    db.answers.push({ error: { code: "57014", message: "timeout" } });
+    await expect(forgetNumberAttempts("+972500000003")).rejects.toThrow(
+      "Could not clear the number's attempts",
     );
   });
 });
