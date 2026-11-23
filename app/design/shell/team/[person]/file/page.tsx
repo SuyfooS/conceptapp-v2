@@ -45,6 +45,7 @@ const STATES = [
   "duties",
   "locked",
   "code",
+  "held",
   "open",
   "viewing",
   "unavailable",
@@ -63,8 +64,10 @@ type State = (typeof STATES)[number];
 // takes 123456 and opens the file (`?state=open`), whose numbers show for a
 // minute, and "נעילת התיק" or a quarter of an hour idle lock it again.
 // `?state=locked` is the file after the duties, waiting for a code; `code`
-// its boxes up; `viewing` the ConceptApp team viewing as a role; `unavailable`
-// a deployment that can't open files; `limit` the open file over the hour's
+// its boxes up; `held` the locked file in the week after the holder's own
+// phone change, which says from when the files open, with no code to send;
+// `viewing` the ConceptApp team viewing as a role; `unavailable` a
+// deployment that can't open files; `limit` the open file over the hour's
 // 30 people; `review` Noa's account one she said she didn't change. As the
 // owner, who sees the team, it leads back to the profile; `?as=accountant`
 // reads it files-only, back to the team's files. What a holder does there
@@ -123,7 +126,7 @@ async function Demo({ params, searchParams }: Props) {
     which === "viewing" ||
     which === "unavailable"
       ? { kind: which, head }
-      : which === "code"
+      : which === "code" || which === "held"
         ? { kind: "locked", head }
         : {
             kind: "open",
@@ -159,6 +162,7 @@ async function Demo({ params, searchParams }: Props) {
         markDirect: demoMarkDirectAction,
       }}
       code={which === "code" ? { tail: "0014" } : undefined}
+      hold={which === "held" ? { day: "2026-11-27", at: null } : undefined}
       wording={baseWording}
     />
   );

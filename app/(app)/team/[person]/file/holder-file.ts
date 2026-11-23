@@ -59,7 +59,9 @@ async function fileHistoryOf(
  * without a log (`public.file_holder_state`); whether their files are open
  * on this device (the step-up's cookie); and only then the file, under
  * their own session, which logs `employee.view` once a day, and with it
- * what happened in the file (H6b-1), which logs nothing. Never cached;
+ * what happened in the file (H6b-1), which logs nothing. The database asks
+ * for its own step-up on this sign-in too: without one the file is locked
+ * (`step_up`, its refusal logged once), as without the cookie. Never cached;
  * an error logs its code and kind, never a message, and shows the screen
  * that can't open a file.
  */
@@ -132,6 +134,8 @@ export async function currentHolderFile(
       switch (read.reason) {
         case "ack":
           return { kind: "duties", head };
+        case "step_up":
+          return { kind: "locked", head };
         case "viewing":
           return { kind: "viewing", head };
         case "off":

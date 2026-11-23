@@ -146,6 +146,27 @@ seconds, just past the local auth server's 2 (`config.toml`). They hold the app'
 way in only: the auth API is public, so a script calling it directly meets only Supabase's
 and Twilio's limits, and CAPTCHA once it is on (below).
 
+### Changing someone's sign-in number
+
+A sign-in number changes only as the ConceptApp team changes it
+(`20261127000400_file_step_up.sql`): a trigger on `auth.users` refuses any other change of
+`phone`, and any new `phone_change`, so a session copied from someone's browser can't move
+their number, and with it every code, to another phone. The person's own "change my number"
+is refused, and so is the dashboard's edit of a user's phone. The team changes it in the SQL
+editor, after checking who is asking, in one transaction that names the person first:
+
+```
+begin;
+select set_config('ca.phone_change', '<user id>', true);
+update auth.users set phone = '9725XXXXXXXX' where id = '<user id>';
+commit;
+```
+
+The number goes as E.164 without the `+`, as the auth server keeps it. For a week after, the
+person changes no bank account and, as a holder, opens no files (`private.phone_changes`,
+`public.bank_change_hold`), and nothing shortens it. `profiles.phone` doesn't follow the change
+yet (ROADMAP's known issue 69).
+
 ### Notifications on the phone
 
 `20261109000500_push.sql` schedules two jobs with pg_cron: `notifications` every minute,

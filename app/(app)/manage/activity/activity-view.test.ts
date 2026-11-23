@@ -27,8 +27,10 @@ const { demoActivityPaths } = await import(
 );
 const { baseWording } = await import("../../wording");
 const he = (await import("@/messages/he.json")).default;
+const en = (await import("@/messages/en.json")).default;
 
 const heT = createTranslator({ locale: "he", messages: he });
+const enT = createTranslator({ locale: "en", messages: en });
 const format = createFormatter({ locale: "he", timeZone: "Asia/Jerusalem" });
 const e = he.app.manage.activity.actions.employee;
 
@@ -109,5 +111,42 @@ describe("the activity log's marks handed directly to payroll", () => {
         person: NOA.name,
       }),
     );
+  });
+});
+
+// A holder's read refused for no live SMS code on this sign-in
+// (20261127000400_file_step_up.sql), in the log's own words.
+describe("the activity log's refused views", () => {
+  it("says a view refused without a valid SMS code, with and without a person", () => {
+    const refused = (id: number, person: typeof NOA | null): ActivityEntry => ({
+      id,
+      at: `2026-11-22T1${id}:00:00Z`,
+      actor: GALIT,
+      line: { action: "employee.view_denied", person, reason: "step_up" },
+    });
+    const shown = draw([refused(5, NOA), refused(3, null)]);
+    expect(shown).toContain(
+      heT("app.manage.activity.actions.employee.viewDenied", {
+        person: NOA.name,
+        reason: "step_up",
+      }),
+    );
+    expect(shown).toContain(
+      heT("app.manage.activity.actions.employee.viewDeniedPlain", {
+        reason: "step_up",
+      }),
+    );
+    expect(shown).toContain("בלי קוד ב-SMS בתוקף");
+    expect(shown).not.toContain(
+      heT("app.manage.activity.actions.employee.viewDeniedPlain", {
+        reason: "other",
+      }),
+    );
+    expect(
+      enT("app.manage.activity.actions.employee.viewDenied", {
+        person: "Noa",
+        reason: "step_up",
+      }),
+    ).toBe("A view of Noa's file was refused: without a valid SMS code");
   });
 });

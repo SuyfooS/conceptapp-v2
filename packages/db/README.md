@@ -1710,7 +1710,8 @@ per role: owners always hold it, accountants by `private.accountant_perms`
 - **Reads**, under the person's own session, security definer and volatile:
   `employee_file`, `reveal_employee_fields` (`id`, `bank_account`; 30 other
   people an hour for a holder, counted under an advisory lock per holder and
-  business, so parallel calls can't pass it), `export_employee_files` (ready holders; an
+  business, so parallel calls can't pass it), `export_employee_files` (ready
+  holders with a live step-up on this sign-in, else `step_up`; an
   unconfirmed account held back; one `employee.export {people, recipient,
   held}` first), `acknowledge_file_duties` (`employee.ack`),
   `employee_file_status` (holders the details, `team.view` a count and the
@@ -1719,8 +1720,11 @@ per role: owners always hold it, accountants by `private.accountant_perms`
   view). Who reads a file (`private.file_reader`): a view session never
   (`viewing`), the person their own in any state (unlogged: a former worker
   reads theirs, revealed numbers included, at `/me/past/<business>`, H5c),
-  then an active holder who confirmed the duties (`employee.view` once a day
-  per person; a reveal every call), else `not_member`, `not_holder` or `ack`. A refusal is
+  then an active holder who confirmed the duties and has a live step-up on
+  this sign-in (`employee.view` once a day per person; a reveal every call),
+  else `not_member`, `not_holder`, `ack` or `step_up` (a ready holder without
+  one, whoever the person is, so a lapsed session can't ask who is on the
+  staff). A refusal is
   returned, never raised, and logged as `employee.view_denied` (20 a day per
   caller in each business, then one `many` there; none for nobody signed in, the module off, or a
   person who isn't in the business; someone outside is told `not_member`).
@@ -1758,13 +1762,34 @@ per role: owners always hold it, accountants by `private.accountant_perms`
   its 101s' (never a read, never the emergency contact), for the team's
   desktop. The schemas default both to null, so the app reads a database
   before it. Covered by `employee_files_changes.test.sql`.
-- **The step-up** (`@db/file-step-up`, H6a): a signed cookie `ca_file_open`
-  (`v1.<business>.<holder>.<ms>.<mac>`, an HMAC with a key HKDF derives from
-  `SUPABASE_SECRET_KEY`, as the punch key is; `path=/team`, httpOnly,
-  strict, 15 minutes from the last activity), set only after a right SMS
-  code for the holder's own `auth.users.phone`, checked by `checkCode`. The
-  database doesn't enforce it: a holder reading a file with their own
-  session directly gets only sealed values, and every read is logged.
+- **The step-up** (H6a; in the database since
+  `20261127000400_file_step_up.sql`). For the screens, a signed cookie
+  `ca_file_open` (`@db/file-step-up`: `v1.<business>.<holder>.<ms>.<mac>`, an
+  HMAC with a key HKDF derives from `SUPABASE_SECRET_KEY`, as the punch key
+  is; `path=/team`, httpOnly, strict, 15 minutes from the last activity),
+  read first. For the database, `private.file_step_ups`: one row per holder
+  and sign-in (the access token's `session_id`), for one business, written
+  only by `open_file_step_up` after a right SMS code for the holder's own
+  `auth.users.phone` (`checkCode`), slid by `keep_file_step_up` (a live one
+  only; it never opens one) and deleted by `close_file_step_up` at
+  "נעילת התיק" and signing out, all three the secret key's.
+  `private.file_step_up_live` counts one for 15 minutes after `active_at`
+  and not more than a minute ahead, as `FILE_IDLE_MS` and
+  `FILE_CLOCK_SKEW_MS` (`tooling/employee-files-guard.test.ts`). A holder's
+  read, reveal or export without one is `step_up`, logged. Opening is
+  refused with the module off, before the duties, for anyone but an active
+  holder, without a sign-in (22023) and for 7 days after a phone change
+  (55000 `phone_hold`, the day as DETAIL). Covered by
+  `employee_files_step_up.test.sql`.
+- **A sign-in number** (`20261127000400_file_step_up.sql`): the trigger
+  `on_auth_user_phone_change_asked` (BEFORE UPDATE OF `phone`,
+  `phone_change` on `auth.users`, `public.refuse_own_phone_change`) refuses
+  any change of `phone` and any new `phone_change` (42501) unless the
+  transaction names that person in `ca.phone_change`, the team's step in
+  `supabase/README.md`. So the auth server's own "change my number", with
+  phone confirmations on or off, and the admin API's (the dashboard's edit)
+  are refused; a first number comes with the account (an insert), and an
+  update that leaves both as they were passes.
 - **Real values.** `private.file_settings.real_values` stays false until Orel
   opens it on the production project, after the lawyer:
   `update private.file_settings set real_values = true, changed_at = now();`.
@@ -1798,8 +1823,9 @@ per role: owners always hold it, accountants by `private.accountant_perms`
   change that ends in between, so that week is read on its own, now
   (`public.bank_change_hold(business, person)`,
   `20261126000300_bank_change_hold.sql`, the secret key's: when it ends and
-  its day, or null), and holds with the day and the moment it opens
-  (`opensAt`). The step-up code goes to
+  its day, or null; `phoneChangeHold`, which a holder's file code asks too,
+  before any SMS goes or a code is spent), and holds with the day and the
+  moment it opens (`opensAt`). The step-up code goes to
   `auth.users.phone` (read with the secret key), never `profiles.phone`,
   which a phone change doesn't reach yet. Covered by
   `employee_files.test.sql`, `employee_files_writes.test.sql`,

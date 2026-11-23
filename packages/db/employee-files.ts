@@ -62,6 +62,12 @@ import { createClient } from "./supabase/server";
  * checked by @domain/employee-file and sealed by @db/crypto. Callers make
  * sure `actor` is the signed-in person and not viewing (`canWrite`).
  *
+ * A holder's reads also ask the database for the holder's step-up on this
+ * sign-in (20261127000400_file_step_up.sql): written after a right SMS code
+ * (`openFileStepUp`), slid with the screens' cookie (`keepFileStepUp`) and
+ * closed with it (`closeFileStepUp`); without one a read says `step_up`,
+ * logged.
+ *
  * Without the keys on this deployment, every read and write of a file says
  * `keys` before it reaches the database, so no log row is written for a read
  * that couldn't be shown; only the completeness status works. Before the
@@ -767,6 +773,38 @@ const holdReply = z
   })
   .nullable();
 
+/** The week after a phone change, while it holds: the day it ends, and the moment. */
+export type PhoneHold = { opensOn: string; opensAt: string };
+
+/**
+ * Whether the person is in the week after a phone change now, read before
+ * an SMS code goes (`public.bank_change_hold`,
+ * 20261126000300_bank_change_hold.sql, the secret key's): the day it ends
+ * in the business's zone and the moment it does, or null. A bank change and
+ * a holder's files wait the same week. Before that migration reaches a
+ * project, no hold, as before.
+ */
+export async function phoneChangeHold(
+  businessId: string,
+  personId: string,
+): Promise<{ ok: true; hold: PhoneHold | null } | FileWriteFailure> {
+  const { data, error } = await createAdminClient().rpc("bank_change_hold", {
+    business: businessId,
+    person: personId,
+  });
+  if (error && !isMissingFunction(error)) {
+    return failedWith("reading a phone hold failed", error);
+  }
+  const hold = holdReply.safeParse(error ? null : data);
+  if (!hold.success) return { ok: false, failure: "failed" };
+  return {
+    ok: true,
+    hold: hold.data
+      ? { opensOn: hold.data.opens_on, opensAt: hold.data.opens_at }
+      : null,
+  };
+}
+
 /**
  * Whether the person's own bank change could be saved now but for its code,
  * asked before an SMS goes, so no code is spent on what couldn't be kept:
@@ -777,7 +815,7 @@ const holdReply = z
  * (`stepUp`) is the answer "it can go". Dated that far on, the write would
  * also measure the week after a phone change there and miss one ending in
  * between, which the real write, dated now, still refuses once the code is
- * spent: so that week is read on its own, now (`bank_change_hold`), and
+ * spent: so that week is read on its own, now (`phoneChangeHold`), and
  * holds with its day and the moment it opens (`opensAt`).
  */
 export async function checkBankChange(
@@ -803,24 +841,10 @@ export async function checkBankChange(
   if (tried.failure !== "stepUp" && tried.failure !== "phoneHold") {
     return tried;
   }
-  const { data, error } = await createAdminClient().rpc("bank_change_hold", {
-    business: businessId,
-    person: personId,
-  });
   // Before its migration reaches the project, the try's own answer, as before.
-  if (error && !isMissingFunction(error)) {
-    return failedWith("reading a phone hold failed", error);
-  }
-  const hold = holdReply.safeParse(error ? null : data);
-  if (!hold.success) return { ok: false, failure: "failed" };
-  if (hold.data) {
-    return {
-      ok: false,
-      failure: "phoneHold",
-      opensOn: hold.data.opens_on,
-      opensAt: hold.data.opens_at,
-    };
-  }
+  const held = await phoneChangeHold(businessId, personId);
+  if (!held.ok) return held;
+  if (held.hold) return { ok: false, failure: "phoneHold", ...held.hold };
   return tried.failure === "stepUp" ? { ok: true } : tried;
 }
 
@@ -882,6 +906,70 @@ export async function noteStepUp(
     step_purpose: purpose,
   });
   return error ? failedWith("noting a code failed", error) : { ok: true };
+}
+
+/**
+ * After the server checked a right SMS code for a holder's own number
+ * (H6a): the holder's files open in the business on this sign-in
+ * (`sessionId`, the auth server's) for 15 minutes from the last activity,
+ * in the database as well as in the screens' cookie
+ * (20261127000400_file_step_up.sql). Refused in the week after a phone
+ * change (`phoneHold`, with the day it opens), with the module off, before
+ * the duties (`ack`) and for anyone but an active holder (`noAccess`).
+ */
+export async function openFileStepUp(
+  actorId: string,
+  businessId: string,
+  sessionId: string,
+): Promise<FileWriteResult> {
+  const { error } = await createAdminClient().rpc("open_file_step_up", {
+    actor: actorId,
+    business: businessId,
+    auth_session: sessionId,
+  });
+  return error ? failedWith("opening the files failed", error) : { ok: true };
+}
+
+/** A database error's code alone: what it says stays here. */
+const codeOf = (error: { code?: string }) => error.code ?? "without a code";
+
+/**
+ * The holder's activity on an open file: the database's step-up for this
+ * sign-in slides, only while it is still live, so this never opens one.
+ * Whether it was slid; an error is no (logged by its code), never a throw,
+ * so what a screen already showed doesn't turn into a failure.
+ */
+export async function keepFileStepUp(
+  actorId: string,
+  businessId: string,
+  sessionId: string,
+): Promise<boolean> {
+  const { data, error } = await createAdminClient().rpc("keep_file_step_up", {
+    actor: actorId,
+    business: businessId,
+    auth_session: sessionId,
+  });
+  if (error) {
+    console.error("keeping the files open failed", codeOf(error));
+    return false;
+  }
+  return data === true;
+}
+
+/**
+ * "נעילת התיק", or signing out: the database's step-up for this sign-in
+ * goes. An error is logged by its code and never thrown, so it is never in
+ * the way of signing out; the step-up then goes by itself in 15 minutes.
+ */
+export async function closeFileStepUp(
+  actorId: string,
+  sessionId: string,
+): Promise<void> {
+  const { error } = await createAdminClient().rpc("close_file_step_up", {
+    actor: actorId,
+    auth_session: sessionId,
+  });
+  if (error) console.error("closing the files failed", codeOf(error));
 }
 
 /**

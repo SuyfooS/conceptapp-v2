@@ -1,12 +1,13 @@
 "use client";
 
+import { clockAt } from "@domain/today";
 import { Button } from "@ui/button";
 import { Card, CardTitle } from "@ui/card";
 import { CodeSlots, type CodeSlotsStatus } from "@ui/code-slots";
 import { EmptyState } from "@ui/empty-state";
 import { Lock, MessageSquareLock } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "next-intl";
 import {
   type ReactNode,
   useEffect,
@@ -16,10 +17,16 @@ import {
 } from "react";
 import { focusIfLost } from "./file-focus";
 import { FileOpenWatch } from "./file-open-watch";
-import { type HolderWordsKey, holderWordsOf } from "./holder-failure-words";
+import {
+  type HolderWordsKey,
+  holderWordsOf,
+  holdWordsOf,
+} from "./holder-failure-words";
 import type {
   AcknowledgeAnswer,
   ConfirmFileCodeAnswer,
+  FileCodeHold,
+  FileHold,
   HolderFileActions,
   SendFileCodeAnswer,
 } from "./holder-file-types";
@@ -36,13 +43,19 @@ const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
  * said in words, with the focus on it while no boxes are up; the line that
  * says where the code went is a status, so a new code sent is heard. Drawn
  * where an open file just closed (`focusTitle`), its title ("התיק נעול")
- * takes the focus, which went with the file. The twin, which keeps
- * nothing, goes to its open state instead (`openedHref`).
+ * takes the focus, which went with the file. In the week after the
+ * holder's own phone change no code goes (the server says so before any
+ * SMS, or before a code is spent): the card says from when the files open,
+ * a status that takes the focus, and its main action is off while the
+ * screen is up. The twin, which keeps nothing, goes to its open state
+ * instead (`openedHref`).
  */
 export function FileGate({
   kind,
   actions,
+  timeZone,
   code,
+  hold,
   openedHref,
   onOpened,
   focusTitle = false,
@@ -50,8 +63,12 @@ export function FileGate({
 }: {
   kind: "duties" | "locked";
   actions: Pick<HolderFileActions, "acknowledge" | "sendCode" | "confirmCode">;
+  /** The business's zone, for the time a hold ends today. */
+  timeZone: string;
   /** Opens on the code's boxes, a code sent to the number ending in `tail` (the twin). */
   code?: { tail: string };
+  /** Opens held, in the week after a phone change (the twin). */
+  hold?: FileHold;
   /** Where a right code leads on the twin; the app draws the page again. */
   openedHref?: string;
   /** The files opened on this device, before the page is drawn again. */
@@ -62,6 +79,7 @@ export function FileGate({
   children?: ReactNode;
 }) {
   const t = useTranslations("app.team.file");
+  const format = useFormatter();
   const router = useRouter();
   const [phase, setPhase] = useState<"start" | "code">(code ? "code" : "start");
   const [tail, setTail] = useState(code?.tail ?? "");
@@ -73,6 +91,10 @@ export function FileGate({
   const [problem, setProblem] = useState<HolderWordsKey | null>(null);
   // How many codes went: the second and on say so, and each is heard.
   const [sends, setSends] = useState(code ? 1 : 0);
+  // The week after a phone change, once the server said so: no code goes.
+  const [held, setHeld] = useState<FileHold | null>(hold ?? null);
+  // How many times an answer said it: each time it takes the focus.
+  const [holdSaid, setHoldSaid] = useState(0);
   const said = useRef<HTMLParagraphElement>(null);
   const title = useRef<HTMLHeadingElement>(null);
 
@@ -88,11 +110,25 @@ export function FileGate({
     if (problem && phase === "start") said.current?.focus();
   }, [problem, phase]);
 
+  // So does the week after a phone change, each time an answer says it.
+  useEffect(() => {
+    if (holdSaid > 0 && phase === "start") said.current?.focus();
+  }, [holdSaid, phase]);
+
   const opened = () => {
     onOpened?.();
     if (openedHref) router.push(openedHref);
     else router.refresh();
   };
+
+  /** The week after a phone change: back to the card, its action off. */
+  function holdBack(answer: FileCodeHold) {
+    setProblem(null);
+    setHeld({ day: answer.opensOn ?? null, at: answer.opensAt ?? null });
+    setHoldSaid((n) => n + 1);
+    setStatus("idle");
+    setPhase("start");
+  }
 
   /** A refusal in words; the duties first, or the files open, draw the page again. */
   function say(failure: string, when: "send" | "confirm" | "other") {
@@ -109,7 +145,8 @@ export function FileGate({
       .catch((): SendFileCodeAnswer => ({ ok: false, failure: "failed" }));
     setPending(false);
     if (!answer.ok) {
-      say(answer.failure, "send");
+      if (answer.failure === "phoneHold") holdBack(answer);
+      else say(answer.failure, "send");
       return;
     }
     setTail(answer.tail);
@@ -149,6 +186,10 @@ export function FileGate({
       opened();
       return;
     }
+    if (answer.failure === "phoneHold") {
+      holdBack(answer);
+      return;
+    }
     say(answer.failure, "confirm");
     if (answer.failure === "wrongCode") {
       setStatus("error");
@@ -158,7 +199,40 @@ export function FileGate({
     setAttempt((n) => n + 1);
   }
 
-  const problemLine = problem ? (
+  /** A day, `YYYY-MM-DD`, with its month in words, as the bank's step says it. */
+  const day = (on: string) =>
+    format.dateTime(new Date(`${on}T12:00:00Z`), {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+
+  /** The week after a phone change in words. */
+  function holdWords(on: FileHold): ReactNode {
+    const words = holdWordsOf(on, clockAt(new Date(), timeZone).date, timeZone);
+    switch (words.key) {
+      case "code.phoneHoldToday":
+        return t.rich("code.phoneHoldToday", { time: words.time, ltr });
+      case "code.phoneHold":
+        return t("code.phoneHold", { date: day(words.day) });
+      default:
+        return t("code.phoneHoldPlain");
+    }
+  }
+
+  // The week after a phone change in place of a refusal: a wait, said
+  // plainly, not in the danger colour.
+  const problemLine = held ? (
+    <p
+      ref={said}
+      tabIndex={-1}
+      role="status"
+      className="font-medium text-ink outline-none"
+    >
+      {holdWords(held)}
+    </p>
+  ) : problem ? (
     <p
       ref={said}
       tabIndex={-1}
@@ -216,6 +290,7 @@ export function FileGate({
         <Button
           size="lg"
           loading={pending}
+          disabled={held !== null}
           onClick={() => confirmDuties()}
           className="w-full md:w-auto md:self-start"
         >
@@ -235,7 +310,12 @@ export function FileGate({
       body={t("locked.body")}
     >
       {problemLine}
-      <Button size="lg" loading={pending} onClick={() => send()}>
+      <Button
+        size="lg"
+        loading={pending}
+        disabled={held !== null}
+        onClick={() => send()}
+      >
         <MessageSquareLock aria-hidden="true" />
         {t("locked.send")}
       </Button>
@@ -258,14 +338,20 @@ export function FileGate({
 export function GatedFile({
   kind,
   actions,
+  timeZone,
   code,
+  hold,
   twin,
   duties,
   children,
 }: {
   kind: "duties" | "locked" | "open";
   actions: HolderFileActions;
+  /** The business's zone. */
+  timeZone: string;
   code?: { tail: string };
+  /** The twin's week after a phone change. */
+  hold?: FileHold;
   /** The twin's states for what the app does by drawing itself again. */
   twin?: { opened: string; locked: string };
   /** The duties' lines, drawn on the server. */
@@ -301,7 +387,9 @@ export function GatedFile({
       <FileGate
         kind={gate}
         actions={actions}
+        timeZone={timeZone}
         code={code}
+        hold={hold}
         openedHref={twin?.opened}
         onOpened={() => {
           setClosedHere(false);

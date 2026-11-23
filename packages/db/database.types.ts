@@ -4178,6 +4178,10 @@ export type Database = {
         };
         Returns: string;
       };
+      close_file_step_up: {
+        Args: { actor: string; auth_session: string };
+        Returns: undefined;
+      };
       close_order: {
         Args: { actor: string; at_time?: string; order_ref: string };
         Returns: undefined;
@@ -4395,6 +4399,15 @@ export type Database = {
         };
         Returns: Json;
       };
+      keep_file_step_up: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          auth_session: string;
+          business: string;
+        };
+        Returns: boolean;
+      };
       keeps_demo_profile: { Args: { person: string }; Returns: boolean };
       list_photos_closed: { Args: { business: string }; Returns: boolean };
       lock_order_station: {
@@ -4476,6 +4489,15 @@ export type Database = {
       open_document: {
         Args: { actor: string; at_time?: string; document: string };
         Returns: Json;
+      };
+      open_file_step_up: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          auth_session: string;
+          business: string;
+        };
+        Returns: undefined;
       };
       open_schedule_week: {
         Args: { business: string; due_at: string; week_start: string };

@@ -5410,8 +5410,9 @@ export async function clearFileRows(ids: readonly number[]): Promise<void> {
 
 /**
  * The person's file in the demo restaurant gone, as if they had never filled
- * it: its years, the emergency contact, the file and its key, their step-up,
- * the file's log rows about them, the minor's day payroll keeps, their
+ * it: its years, the emergency contact, the file and its key, their step-ups
+ * (the bank's, and a holder's files' in the database), the file's log rows
+ * about them, the minor's day payroll keeps, their
  * phone changes (`notePhoneChange`), and their form of address and
  * language. The file's rows and the log are kept, so only a purge that
  * names the business deletes them, for this transaction.
@@ -5428,6 +5429,7 @@ export async function clearDemoFile(userId: string): Promise<void> {
     await tx`delete from private.person_keys
       where business_id = ${DEMO_RESTAURANT} and user_id = ${userId}`;
     await tx`delete from private.step_ups where user_id = ${userId}`;
+    await tx`delete from private.file_step_ups where user_id = ${userId}`;
     await tx`delete from private.phone_changes where user_id = ${userId}`;
     await tx`delete from public.audit_log
       where business_id = ${DEMO_RESTAURANT}
@@ -5709,18 +5711,76 @@ export async function closePastJob(): Promise<void> {
  */
 
 /**
- * No holder in the demo restaurant has confirmed the duties: their
- * confirmations and their `employee.ack` rows go, under the purge that
- * names the business, for this transaction.
+ * No holder in the demo restaurant has confirmed the duties, or has its
+ * files open in the database (20261127000400_file_step_up.sql): their
+ * confirmations, their step-ups and their `employee.ack` rows go, under the
+ * purge that names the business, for this transaction.
  */
 export async function clearDemoFileAcks(): Promise<void> {
   await sql.begin(async (tx) => {
     await tx`select set_config('ca.records_purge', ${DEMO_RESTAURANT}, true)`;
     await tx`delete from private.file_acknowledgements
       where business_id = ${DEMO_RESTAURANT}`;
+    await tx`delete from private.file_step_ups
+      where business_id = ${DEMO_RESTAURANT}`;
     await tx`delete from public.audit_log
       where business_id = ${DEMO_RESTAURANT} and action = 'employee.ack'`;
   });
+}
+
+/**
+ * A holder's files open in the database (20261127000400_file_step_up.sql):
+ * the business and the sign-in of each, newest first.
+ */
+export async function fileStepUpsOf(
+  userId: string,
+): Promise<{ businessId: string; sessionId: string }[]> {
+  return await sql<{ businessId: string; sessionId: string }[]>`
+    select business_id as "businessId", session_id as "sessionId"
+    from private.file_step_ups
+    where user_id = ${userId}
+    order by active_at desc`;
+}
+
+class RolledBack extends Error {}
+
+/**
+ * What `userId`'s token on the sign-in `sessionId` gets asking the database
+ * for `personId`'s file itself, past the app's screens (PostgREST sets the
+ * claims so): `holder`, `self`, or why not. In a transaction that is
+ * always rolled back, so its log row goes with it.
+ */
+export async function readFileAs(
+  userId: string,
+  sessionId: string,
+  businessId: string,
+  personId: string,
+): Promise<string> {
+  let said = "nothing";
+  try {
+    await sql.begin(async (tx) => {
+      const claims = {
+        sub: userId,
+        role: "authenticated",
+        session_id: sessionId,
+      };
+      await tx`select set_config('request.jwt.claims', ${JSON.stringify(claims)}, true)`;
+      await tx`set local role authenticated`;
+      const [row] = await tx<{ said: string | null }[]>`
+        select coalesce(x.f ->> 'reason', x.f ->> 'access') as said
+        from (select public.employee_file(${businessId}, ${personId}) as f) as x`;
+      said = row?.said ?? "nothing";
+      throw new RolledBack();
+    });
+  } catch (error) {
+    if (!(error instanceof RolledBack)) throw error;
+  }
+  return said;
+}
+
+/** The person's phone changes gone, `notePhoneChange`'s among them. */
+export async function clearPhoneChanges(userId: string): Promise<void> {
+  await sql`delete from private.phone_changes where user_id = ${userId}`;
 }
 
 export type FileGap = "identity" | "address" | "bank" | "pension";

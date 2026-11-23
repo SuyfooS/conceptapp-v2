@@ -418,6 +418,13 @@ describe("the database's replies", () => {
     );
   });
 
+  it("read a holder refused for no live SMS code on this sign-in (20261127000400)", () => {
+    const refused = { access: "denied", reason: "step_up" };
+    for (const reply of [fileReply, revealReply, exportReply]) {
+      expect(reply.parse(refused)).toEqual(refused);
+    }
+  });
+
   it("fail closed on what they don't expect", () => {
     expect(
       fileReply.safeParse({ access: "denied", reason: "because" }).success,

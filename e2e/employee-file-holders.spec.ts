@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { expect, type Page, type TestInfo, test } from "@playwright/test";
 import { FILE_TABS_CHANNEL } from "../app/(app)/team/[person]/file/file-tabs";
 import he from "../messages/he.json" with { type: "json" };
@@ -6,12 +7,17 @@ import {
   clearDemoFileAcks,
   clearDemoMinor,
   clearDemoTaxYears,
+  clearPhoneChanges,
+  codesSentSince,
   demoDirectGroups,
   demoFileActions,
   demoFileFacts,
   demoFileReadsBy,
   demoFileViews,
+  fileStepUpsOf,
   logDemoFileRow,
+  notePhoneChange,
+  readFileAs,
   restoreDemoFile,
   restoreDemoPeriodStart,
   setDemoBankReview,
@@ -37,7 +43,9 @@ import { heT } from "./t";
 // confirmed after a change meanwhile, a disputed one from Today to the file,
 // a part handed directly with its undo, a pension whose day passed, a write
 // without a fresh step-up, what happened in the file, a minor's checklist
-// and the team's filter.
+// and the team's filter. The step-up kept in the database too, for the
+// sign-in it was taken on (20261127000400_file_step_up.sql), and the week
+// after a phone change, when no code goes.
 const URI = {
   id: "00000000-0000-4000-a000-000000000001",
   e164: "+972500000001",
@@ -51,6 +59,7 @@ const GALIT = {
   id: "00000000-0000-4000-a000-000000000014",
   e164: "+972500000014",
 };
+const RESTAURANT = "00000000-0000-4000-b000-000000000001";
 
 const f = he.app.team.file;
 const main = (page: Page) => page.getByRole("main");
@@ -105,6 +114,31 @@ async function sendFileCode(
   return latestCode(phone, since);
 }
 
+/**
+ * This browser's sign-in, as the auth server names it in the access token
+ * the session cookie holds (@supabase/ssr's `base64-` value, in pieces when
+ * long). Never the newest the server keeps: checking a code opens one of its
+ * own, ended at once.
+ */
+async function sessionHere(page: Page): Promise<string> {
+  const pieces = (await page.context().cookies())
+    .filter((one) => /-auth-token(\.\d+)?$/.test(one.name))
+    .sort((a, b) => a.name.localeCompare(b.name, "en", { numeric: true }));
+  const kept = Buffer.from(
+    pieces
+      .map((one) => one.value)
+      .join("")
+      .replace(/^base64-/, ""),
+    "base64url",
+  ).toString("utf8");
+  const token = (JSON.parse(kept) as { access_token: string }).access_token;
+  const claims = JSON.parse(
+    Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8"),
+  ) as { session_id?: string };
+  expect(claims.session_id, "the token's sign-in").toBeTruthy();
+  return claims.session_id ?? "";
+}
+
 type Checked = Window & { fileChecked?: Promise<void> };
 
 /**
@@ -153,6 +187,7 @@ test.afterEach(async () => {
   await restoreDemoFile(NOA.id);
   await restoreDemoFile(YOAV.id);
   await clearDemoFileAcks();
+  await clearPhoneChanges(GALIT.id);
   await setDemoModuleSettings("employee_files", {});
   await setDemoModule("employee_files", false);
 });
@@ -345,6 +380,66 @@ test("a locked file asks for a code again, and the duties only once", async ({
   await expect(
     main(page).getByRole("heading", { name: f.locked.title }),
   ).toBeFocused();
+});
+
+test("the files open in the database for this sign-in alone, and locking and signing out close them there", async ({
+  page,
+}) => {
+  await enterAs(page, "accountant");
+  await open(page, `/team/${NOA.id}/file`);
+  await openFile(page, GALIT.e164);
+  await expectCleanPage(page);
+  const here = await sessionHere(page);
+  expect(await fileStepUpsOf(GALIT.id)).toEqual([
+    { businessId: RESTAURANT, sessionId: here },
+  ]);
+  // Asked by her own token, past the screens: this sign-in reads, another
+  // reads nothing.
+  expect(await readFileAs(GALIT.id, here, RESTAURANT, NOA.id)).toBe("holder");
+  expect(await readFileAs(GALIT.id, randomUUID(), RESTAURANT, NOA.id)).toBe(
+    "step_up",
+  );
+
+  // "נעילת התיק" closes it in the database too.
+  await visible(page, "button", f.lock.action).click();
+  await expect(main(page).getByText(f.locked.title)).toBeVisible();
+  await expect.poll(() => fileStepUpsOf(GALIT.id)).toEqual([]);
+  expect(await readFileAs(GALIT.id, here, RESTAURANT, NOA.id)).toBe("step_up");
+
+  // A code opens it again, there as well.
+  const code = await sendFileCode(page, f.locked.send, GALIT.e164);
+  await page.getByLabel(f.code.label).fill(code);
+  await expect(
+    main(page).getByRole("heading", { name: f.sections.identity }),
+  ).toBeVisible();
+  expect(await fileStepUpsOf(GALIT.id)).toEqual([
+    { businessId: RESTAURANT, sessionId: here },
+  ]);
+
+  // Signing out closes it there before the session ends.
+  await open(page, "/me");
+  await page.getByRole("button", { name: he.app.signOut }).click();
+  await expect(page).toHaveURL(/\/enter$/);
+  await expect.poll(() => fileStepUpsOf(GALIT.id)).toEqual([]);
+});
+
+test("a holder whose number changed this week gets no code, and is told when the files open", async ({
+  page,
+}) => {
+  await notePhoneChange(GALIT.id, 2);
+  await enterAs(page, "accountant");
+  await open(page, `/team/${NOA.id}/file`);
+  await expect(main(page).getByText(f.duties.title)).toBeVisible();
+  const before = new Date(Date.now() - 1000);
+  await visible(page, "button", f.duties.confirm).click();
+  await expect(
+    main(page).getByText(f.code.phoneHold.split("{date}")[0] ?? ""),
+  ).toBeVisible();
+  await expect(page.getByLabel(f.code.label)).toHaveCount(0);
+  await expect(visible(page, "button", f.duties.confirm)).toBeDisabled();
+  expect(await codesSentSince(GALIT.e164, before)).toBe(0);
+  expect(await fileStepUpsOf(GALIT.id)).toEqual([]);
+  await expectCleanPage(page);
 });
 
 test("a file locked in one tab closes at once in another", async ({
