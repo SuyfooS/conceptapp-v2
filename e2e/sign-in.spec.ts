@@ -1,8 +1,16 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
-import { askForCode, SMS_COOLDOWN_MS } from "./session";
-import { latestCode, restartSmsWait } from "./sms";
+import { displayIsraeliMobile } from "../packages/domain/phone";
+import { askForCode } from "./session";
+import {
+  codeAfter,
+  forgetSentCodes,
+  lastCodeId,
+  latestCode,
+  noteSentCode,
+  restartSmsWait,
+} from "./sms";
 
 const t = he.auth.signIn;
 
@@ -10,6 +18,8 @@ const t = he.auth.signIn;
 // Each device project signs in with the same person; codes are told apart
 // by time.
 const WORKER = { local: "050-000-0003", e164: "+972500000003" };
+// A valid number that is on no team.
+const UNKNOWN = { local: "050-999-9999", e164: "+972509999999" };
 
 async function expectAccessible(page: Page) {
   const { violations } = await new AxeBuilder({ page }).analyze();
@@ -23,6 +33,13 @@ async function expectAccessible(page: Page) {
 async function requestCode(page: Page, phone: string) {
   await page.getByLabel(t.phoneLabel).fill(phone);
   await page.getByRole("button", { name: t.send }).click();
+}
+
+/** The code step's words, its number as a placeholder. */
+async function codeStepWords(page: Page, phone: string): Promise<string> {
+  await expect(page.getByLabel(t.codeLabel)).toBeVisible();
+  const words = (await page.getByRole("main").textContent()) ?? "";
+  return words.replaceAll(displayIsraeliMobile(phone), "{phone}");
 }
 
 test("the sign-in page is clean, and the root leads to the door", async ({
@@ -40,12 +57,14 @@ test("the sign-in page is clean, and the root leads to the door", async ({
 test("a worker signs in with a phone code and lands on the home screen", async ({
   page,
 }, testInfo) => {
-  await page.goto("/sign-in");
-  const since = new Date(Date.now() - 1000);
-  await requestCode(page, WORKER.local);
+  const since = await askForCode(page, WORKER);
 
   const codeField = page.getByLabel(t.codeLabel);
   await expect(codeField).toBeVisible();
+  // What to do when no code came is always there.
+  await expect(
+    page.getByRole("heading", { name: t.noCode.title }),
+  ).toBeVisible();
   await expectAccessible(page);
 
   // A wrong code is refused and the person stays on the code step.
@@ -86,45 +105,80 @@ test("a worker signs in with a phone code and lands on the home screen", async (
   await expect(page).toHaveURL(/\/enter$/);
 });
 
-test("a second code asked for too soon is refused until the wait is over", async ({
+test("a code asked for again at once sends nothing new, reads as for any number, and the first code still signs in", async ({
   page,
 }) => {
-  // A code is on its way: the auth server's wait for this number starts now.
-  await askForCode(page, WORKER);
+  const since = await askForCode(page, WORKER);
+  const first = await latestCode(WORKER.e164, since);
   const codeField = page.getByLabel(t.codeLabel);
   const tooSoon = page.getByText(t.errors.rateLimit);
 
-  // On the code step, a new code at once is refused, and the step stays.
-  // The wait restarts right before each refused request, so the test does
-  // not depend on how fast the runner is.
+  // On the code step, a new code at once: the auth server holds it, and the
+  // screen says what it says for any number. The wait restarts right before
+  // each request, so the test does not depend on how fast the runner is.
   await restartSmsWait(WORKER.e164);
+  const sent = await lastCodeId(WORKER.e164);
   await page.getByRole("button", { name: t.resend }).click();
-  await expect(tooSoon).toBeVisible();
+  await expect(
+    page.getByText((t.codeResent.split("<ltr>")[0] ?? "").trim()),
+  ).toBeVisible();
+  await expect(tooSoon).toHaveCount(0);
   await expect(codeField).toBeVisible();
 
-  // Back to the number and asking again at once: refused, on the phone step.
+  // Back to the number and asking again at once: the code step, as always.
   await page.getByRole("button", { name: t.changePhone }).click();
   await page.getByLabel(t.phoneLabel).fill(WORKER.local);
   await restartSmsWait(WORKER.e164);
   await page.getByRole("button", { name: t.send }).click();
-  await expect(tooSoon).toBeVisible();
-  await expect(codeField).toHaveCount(0);
+  await expect(codeField).toBeVisible();
+  await expect(tooSoon).toHaveCount(0);
   await expectAccessible(page);
 
-  // Once the wait is over, the same request sends a code that signs in.
-  await page.waitForTimeout(SMS_COOLDOWN_MS + 500);
-  const since = new Date(Date.now() - 1000);
-  await requestCode(page, WORKER.local);
-  await expect(codeField).toBeVisible();
-  await codeField.fill(await latestCode(WORKER.e164, since));
+  // Nothing new went, and the first code still signs in.
+  expect(await codeAfter(WORKER.e164, sent)).toBeNull();
+  await codeField.fill(first);
   await expect(page).toHaveURL(/\/home$/);
 });
 
-test("an unknown number gets a clear answer and no code", async ({ page }) => {
+test("an unknown number reaches the code step a registered one does, word for word, and no code goes", async ({
+  page,
+}) => {
   await page.goto("/sign-in");
-  await requestCode(page, "050-999-9999");
-  await expect(page.getByText(t.errors.unknownPhone)).toBeVisible();
-  await expect(page.getByLabel(t.codeLabel)).toHaveCount(0);
+  await requestCode(page, WORKER.local);
+  const registered = await codeStepWords(page, WORKER.e164);
+
+  await page.getByRole("button", { name: t.changePhone }).click();
+  const sent = await lastCodeId(UNKNOWN.e164);
+  await requestCode(page, UNKNOWN.local);
+  const unknown = await codeStepWords(page, UNKNOWN.e164);
+
+  expect(unknown).toBe(registered);
+  expect(await codeAfter(UNKNOWN.e164, sent)).toBeNull();
+  await expectAccessible(page);
+
+  // A code typed for it is a wrong one, as any wrong code is.
+  await page.getByLabel(t.codeLabel).fill("123456");
+  await expect(page.getByText(t.errors.wrongCode)).toBeVisible();
+  await expect(page.getByLabel(t.codeLabel)).toBeVisible();
+});
+
+test("a code checked when none was sent lately is a wrong code, and the auth server isn't asked", async ({
+  page,
+}) => {
+  const since = await askForCode(page, WORKER);
+  const code = await latestCode(WORKER.e164, since);
+  // As if the code had gone longer ago than a code lasts.
+  await forgetSentCodes(WORKER.e164);
+
+  await page.getByLabel(t.codeLabel).fill(code);
+  await expect(page.getByText(t.errors.wrongCode)).toBeVisible();
+  await expect(page).toHaveURL(/\/sign-in$/);
+
+  // The right code was refused without asking the auth server, which would
+  // have taken it; once a code counts as sent again, the same code signs in.
+  await noteSentCode(WORKER.e164);
+  await page.getByLabel(t.codeLabel).fill(code);
+  await expect(page).toHaveURL(/\/home$/);
 });
 
 test("a malformed number is caught before anything is sent", async ({

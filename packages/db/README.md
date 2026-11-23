@@ -2727,6 +2727,14 @@ read as messages/he.json. Console reads and writes are in `@db/wording`;
 - `@db/supabase/admin`: `createAdminClient()` with `SUPABASE_SECRET_KEY`,
   for server-only writes. Bypasses RLS, so every caller checks who is
   asking first.
+- `@db/auth-limits`: the counts on sign-in codes, with the secret key.
+  `noteAuthAttempt` gives 0, the seconds to wait (any window of
+  `private.auth_limits`: a quarter of an hour, a day per number), or
+  `NO_CODE_WAITING` (-1) for a check with no code sent to its number in the
+  last ten minutes, counted for its caller only. `forgetAuthAttempt` gives
+  back a send the auth server held for its short wait: for joining and the
+  file's codes only, never sign-in, where giving a try back would tell a
+  registered number from one that isn't.
 - `@db/admin`: the console's reads and writes. `createBusiness(actor,
   business)` calls `public.create_business` (service role only): it opens
   the business, applies its template and writes `business.create` to the
@@ -2755,3 +2763,5 @@ Sign-in is phone + SMS code. Accounts are never created at sign-in
 through invites from chunk 1d. Locally and in CI the `send_sms` auth hook
 writes codes to `dev.sms_codes` (defined in `supabase/seed.sql`, so it never
 reaches a real project); the Playwright test reads them from there.
+The sign-in screen gives every valid number the same answer, registered or
+not (`sendSignInCode` in `app/(auth)/otp.ts`).

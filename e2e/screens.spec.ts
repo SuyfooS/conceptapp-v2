@@ -33,6 +33,8 @@ const PAGES = [
   "/design/shell/unavailable",
   "/design/screens/skeleton",
   "/design/screens/sign-in",
+  // The code step, as any valid number reaches it, with its help.
+  "/design/screens/sign-in?step=code",
   "/design/screens/enter",
   "/design/screens/join",
   "/design/screens/join-expired",

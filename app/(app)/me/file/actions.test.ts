@@ -389,7 +389,7 @@ describe("the bank's code", () => {
     expect(await send()).toEqual({ ok: false, failure: "rateLimit" });
     mocks.sendCode.mockResolvedValue("tooMany");
     expect(await send()).toEqual({ ok: false, failure: "tooMany" });
-    mocks.sendCode.mockResolvedValue("unknownPhone");
+    mocks.sendCode.mockResolvedValue("failed");
     expect(await send()).toEqual({ ok: false, failure: "failed" });
   });
 

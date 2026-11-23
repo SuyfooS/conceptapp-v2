@@ -83,11 +83,26 @@ The server asks the same question first (`public.closed_to_invites`, secret key 
 in a closed one and `/team/invite` is not found there (#80).
 
 Sign-in codes are counted per number and per caller against `private.auth_limits`
-(`public.note_auth_attempt`; the server asks before every code it sends or checks). The
-team tunes the limits there, with SQL. `seed.sql` lifts them, because the browser tests
-sign the same people in many times from one machine. They hold the app's own way in only:
-the auth API is public, so a script calling it directly meets only Supabase's and Twilio's
-limits, and CAPTCHA once it is on (below).
+(`public.note_auth_attempt`; the server asks before every code it sends or checks), in
+every window there: a quarter of an hour for both (5 codes sent and 10 checked per number,
+20 and 40 per caller), and a day per number (15 sent, 30 checked)
+(`20261127000200_sign_in_windows.sql`). A check counts against its number only while a
+code sent to it may still be waiting: a send counted for it in the last ten minutes, a
+code's lifetime in Twilio Verify. Otherwise it is counted for its caller only, and the
+server says "wrong code" without asking the auth server. The sign-in screen answers the
+same for every valid number, registered or not, and nothing is sent to one with no
+account. The team tunes the limits in that table, with SQL. A number locked by the day's
+window (someone sent it codes and typed many wrong ones) is cleared with:
+
+```sql
+delete from private.auth_attempts
+where key_hash = encode(sha256(convert_to('phone:+9725…', 'UTF8')), 'hex');
+```
+
+(the number in E.164, as `+972501234567`). `seed.sql` lifts the limits, because the
+browser tests sign the same people in many times from one machine. They hold the app's own
+way in only: the auth API is public, so a script calling it directly meets only Supabase's
+and Twilio's limits, and CAPTCHA once it is on (below).
 
 ### Notifications on the phone
 
@@ -190,6 +205,8 @@ dashboards, because `config.toml` is never pushed:
   per address, no looser than `private.auth_limits`; in Twilio Verify, its own limits per
   number and Fraud Guard. CAPTCHA (Cloudflare Turnstile) only once the app sends its token,
   or every sign-in stops.
+- In Twilio Verify, keep a code's lifetime at ten minutes, or change the ten minutes in
+  `public.note_auth_attempt` with it: a check after them is refused as a wrong code.
 - URL configuration: the site URL is the deployed address, not `127.0.0.1`.
 - The first platform admin: add a user by phone, then in the SQL editor:
 

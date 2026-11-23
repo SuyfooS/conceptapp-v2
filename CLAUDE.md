@@ -203,7 +203,9 @@ font files or SF Symbols; asking the device for its own font is fine.
   demo people, with RLS unchanged, and anyone can come in and reset those businesses,
   so real people never join a demo business: the database takes no invites for one
   (only the local seed's, for the tests). Sign-in codes are counted per number and
-  per caller (`private.auth_limits`). `PASSIVE_SIGN_IN` in
+  per caller (`private.auth_limits`, a quarter of an hour and a day), a check only
+  once a code went to the number, and the sign-in screen answers the same for every
+  valid number, registered or not. `PASSIVE_SIGN_IN` in
   `@domain/passive-sign-in` closes the demo door.
 - Run `pnpm check` (Biome + typecheck) before handing work back; `pnpm build`
   for anything touching routing or config.

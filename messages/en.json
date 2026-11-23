@@ -1033,18 +1033,21 @@
       "phoneIntro": "We'll text a sign-in code to your mobile number.",
       "phoneLabel": "Mobile number",
       "send": "Send code",
-      "codeIntro": "We sent a 6-digit code to <ltr>{phone}</ltr>.",
-      "codeResent": "We sent a new code to <ltr>{phone}</ltr>.",
+      "codeIntro": "If <ltr>{phone}</ltr> has been added to a business's team, we sent it a 6-digit code.",
+      "codeResent": "We asked for a new code for <ltr>{phone}</ltr>.",
       "codeLabel": "Code from the message",
       "verify": "Sign in",
       "resend": "Send a new code",
       "changePhone": "Different number",
       "demo": "Try the demo, no phone needed",
+      "noCode": {
+        "title": "Didn't get a code?",
+        "body": "A code goes only to a number already added to a business's team. If yours hasn't been added yet, a manager at your business can add it. You can also check the number, or ask for a new code in a minute."
+      },
       "errors": {
         "invalidPhone": "Enter an Israeli mobile number, e.g. 050-123-4567.",
-        "unknownPhone": "This number isn't registered yet. A manager at your business can add it.",
         "rateLimit": "You can ask for a new code in a few seconds.",
-        "tooMany": "There were too many tries. You can try again in a few minutes.",
+        "tooMany": "There were too many tries. You can try again later.",
         "invalidCode": "The code is 6 digits.",
         "wrongCode": "The code is wrong or has expired. You can ask for a new one.",
         "failed": "Something went wrong. Try again in a moment."
@@ -1682,7 +1685,7 @@
           "label": "The code from the SMS",
           "resend": "Send a new code",
           "wrongCode": "That code isn't right. You can try again.",
-          "tooMany": "There were many tries. You can try again in a quarter of an hour.",
+          "tooMany": "There were many tries. You can try again later.",
           "rateLimit": "You can ask for a new code in a few seconds.",
           "failed": "The code wasn't sent. You can try again.",
           "noPhone": "To open files, your account needs a phone number."
@@ -4382,7 +4385,7 @@
           "resend": "Send a new code",
           "edit": "Back to the account details",
           "wrongCode": "That code isn't right. Try again.",
-          "tooMany": "Too many tries. Try again in a quarter of an hour.",
+          "tooMany": "Too many tries. Try again later.",
           "rateLimit": "You can ask for a new code in a few seconds.",
           "failed": "The code wasn't sent. Try again.",
           "noPhone": "To change the account, your sign-in needs a phone number. Talk to {business}."

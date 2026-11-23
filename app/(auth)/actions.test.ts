@@ -5,7 +5,13 @@ import {
   AuthRetryableFetchError,
 } from "@supabase/supabase-js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { SignInState } from "./actions";
 
+// Signing in (`signIn`), with sending and checking the code stood in for:
+// every valid number reaches the code step with the same answer, whether it
+// has an account or not, and a resend or a check reads the number from the
+// step's own state, never the form's.
+//
 // Signing out (`signOut`), with ending the session and reading the device's
 // station stood in for, and the session read (`sessionUserHere`) as it is,
 // over a stand-in auth server (`getClaims`) and the request's cookies. It
@@ -29,6 +35,8 @@ const mocks = vi.hoisted(() => ({
   endSessionHere: vi.fn(),
   getClaims: vi.fn(),
   signedOutPath: vi.fn(),
+  sendSignInCode: vi.fn(),
+  verifyCode: vi.fn(),
 }));
 vi.mock("next/headers", () => ({
   cookies: async () => ({ getAll: () => mocks.cookies }),
@@ -46,9 +54,19 @@ vi.mock("./end-session", async (importOriginal) => ({
 vi.mock("../(app)/clock/station/station", () => ({
   signedOutPath: mocks.signedOutPath,
 }));
-vi.mock("./otp", () => ({ sendCode: vi.fn(), verifyCode: vi.fn() }));
+vi.mock("./otp", () => ({
+  sendSignInCode: mocks.sendSignInCode,
+  verifyCode: mocks.verifyCode,
+}));
 
-const { signOut } = await import("./actions");
+const { signIn, signOut } = await import("./actions");
+
+/** The sign-in form as it posts. */
+const posted = (fields: Record<string, string>) => {
+  const form = new FormData();
+  for (const [name, value] of Object.entries(fields)) form.set(name, value);
+  return form;
+};
 
 const b64 = (text: string) => Buffer.from(text).toString("base64url");
 
@@ -78,6 +96,92 @@ beforeEach(() => {
     return { data: { claims: { sub: USER } }, error: null };
   });
   mocks.signedOutPath.mockReset();
+  mocks.sendSignInCode.mockReset().mockResolvedValue(null);
+  mocks.verifyCode.mockReset().mockResolvedValue({ userId: USER });
+});
+
+describe("signing in", () => {
+  const phoneStep: SignInState = { step: "phone" };
+  const codeStep: SignInState = { step: "code", phone: "+972500000003" };
+
+  it("takes any valid number to the code step, with the same answer", async () => {
+    for (const [phone, e164] of [
+      ["050-000-0003", "+972500000003"],
+      ["050-999-9999", "+972509999999"],
+    ] as const) {
+      expect(
+        await signIn(phoneStep, posted({ intent: "send", phone })),
+      ).toEqual({ step: "code", phone: e164, error: undefined, resent: false });
+    }
+    expect(mocks.sendSignInCode).toHaveBeenCalledWith("+972509999999");
+  });
+
+  it("asks again for the step's own number, never the form's, and says it asked", async () => {
+    expect(
+      await signIn(
+        codeStep,
+        posted({ intent: "resend", phone: "050-999-9999" }),
+      ),
+    ).toEqual({
+      step: "code",
+      phone: "+972500000003",
+      error: undefined,
+      resent: true,
+    });
+    expect(mocks.sendSignInCode).toHaveBeenCalledWith("+972500000003");
+  });
+
+  it("keeps too many and a failure on the phone step, and on the code step for a resend", async () => {
+    for (const error of ["tooMany", "failed"] as const) {
+      mocks.sendSignInCode.mockResolvedValueOnce(error);
+      expect(
+        await signIn(
+          phoneStep,
+          posted({ intent: "send", phone: "050-000-0003" }),
+        ),
+      ).toEqual({ step: "phone", error });
+      mocks.sendSignInCode.mockResolvedValueOnce(error);
+      expect(await signIn(codeStep, posted({ intent: "resend" }))).toEqual({
+        step: "code",
+        phone: "+972500000003",
+        error,
+        resent: false,
+      });
+    }
+  });
+
+  it("catches a malformed number before anything is asked", async () => {
+    expect(
+      await signIn(phoneStep, posted({ intent: "send", phone: "123" })),
+    ).toEqual({ step: "phone", error: "invalidPhone" });
+    expect(mocks.sendSignInCode).not.toHaveBeenCalled();
+  });
+
+  it("checks the code for the step's own number", async () => {
+    mocks.verifyCode.mockResolvedValueOnce({ error: "wrongCode" });
+    expect(
+      await signIn(
+        codeStep,
+        posted({ intent: "verify", code: "123456", phone: "050-999-9999" }),
+      ),
+    ).toEqual({ ...codeStep, error: "wrongCode", resent: false });
+    expect(mocks.verifyCode).toHaveBeenCalledWith("+972500000003", "123456");
+    expect(
+      await signIn(codeStep, posted({ intent: "verify", code: "123456" })),
+    ).toEqual({ ...codeStep, error: undefined, resent: false, to: "/home" });
+  });
+
+  it("goes back to the phone step for another number", async () => {
+    expect(await signIn(codeStep, posted({ intent: "change" }))).toEqual({
+      step: "phone",
+    });
+  });
+
+  it("has no answer that says a number isn't registered", () => {
+    // @ts-expect-error unknownPhone is no answer any more
+    const said: SignInState = { step: "phone", error: "unknownPhone" };
+    expect(said.step).toBe("phone");
+  });
 });
 
 describe("signing out", () => {

@@ -222,7 +222,8 @@ select public.reset_demo_business('00000000-0000-4000-b000-000000000001');
 select public.reset_demo_business('00000000-0000-4000-b000-000000000002');
 
 -- The browser tests sign the same people in many times from one machine, so
--- the limits on sign-in codes (private.auth_limits) are lifted here.
+-- the limits on sign-in codes (private.auth_limits, every window) are lifted
+-- here.
 update private.auth_limits set max_count = 100000;
 
 -- Dev-only SMS: the auth `send_sms` hook (supabase/config.toml) writes each

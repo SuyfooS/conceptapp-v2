@@ -5,7 +5,7 @@ import { normalizeIsraeliMobile } from "@domain/phone";
 import { signedOutPath } from "../(app)/clock/station/station";
 import type { SignedOut } from "../sign-out-form";
 import { endSessionHere, sessionUserHere } from "./end-session";
-import { type SignInError, sendCode, verifyCode } from "./otp";
+import { type SignInError, sendSignInCode, verifyCode } from "./otp";
 
 export type SignInState =
   | { step: "phone"; error?: SignInError }
@@ -21,7 +21,9 @@ export type SignInState =
 /**
  * The two-step sign-in: phone → SMS code → session cookies. The form posts
  * an `intent`: "send" (or resend) a code, "verify" it, or "change" the
- * number. Accounts are never created here; people arrive through invites.
+ * number. A valid number gets the same answer whether it has an account or
+ * not (`sendSignInCode`), so the screen tells nobody who is registered.
+ * Accounts are never created here; people arrive through invites.
  */
 export async function signIn(
   prev: SignInState,
@@ -38,7 +40,7 @@ export async function signIn(
         : form.get("phone");
     const phone = normalizeIsraeliMobile(typeof raw === "string" ? raw : "");
     if (!phone) return { step: "phone", error: "invalidPhone" };
-    const error = await sendCode(phone);
+    const error = await sendSignInCode(phone);
     if (error && intent === "send") return { step: "phone", error };
     return {
       step: "code",

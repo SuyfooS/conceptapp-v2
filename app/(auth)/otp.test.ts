@@ -1,17 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// The codes sent and checked, with the auth server and the counts stood in
+// for. Sign-in answers every valid number the same, whether it has an
+// account or not, and keeps every send counted (`sendSignInCode`); joining
+// and the file's codes say the auth server's short wait and give its try
+// back (`sendCode`). A check with no code sent to the number lately is a
+// wrong code, and the auth server isn't asked.
+//
 // The codes a signed-in person proves their phone with (the hiring file's
-// bank change, profile H5a), with the auth server and the counts stood in
-// for. They hold: the code goes to the number the auth server has now,
-// never the profile's copy; it is checked on a client that keeps no
-// session, so this browser's cookies are never written and stay the
-// person's whoever the number turns out to be; the session the check opened
-// is ended at once; and every check is counted with the sign-in codes.
+// bank change, profile H5a) hold too: the code goes to the number the auth
+// server has now, never the profile's copy; it is checked on a client that
+// keeps no session, so this browser's cookies are never written and stay
+// the person's whoever the number turns out to be; the session the check
+// opened is ended at once; and every check is counted with the sign-in codes.
 
 vi.mock("server-only", () => ({}));
 
 const mocks = vi.hoisted(() => ({
   noteAuthAttempt: vi.fn(),
+  forgetAuthAttempt: vi.fn(),
+  signInWithOtp: vi.fn(),
+  cookieVerifyOtp: vi.fn(),
+  order: [] as string[],
   getUserById: vi.fn(),
   verifyOtp: vi.fn(),
   signOut: vi.fn(),
@@ -21,8 +31,9 @@ vi.mock("next/headers", () => ({
   headers: async () => ({ get: () => null }),
 }));
 vi.mock("@db/auth-limits", () => ({
+  NO_CODE_WAITING: -1,
   noteAuthAttempt: mocks.noteAuthAttempt,
-  forgetAuthAttempt: vi.fn(),
+  forgetAuthAttempt: mocks.forgetAuthAttempt,
 }));
 vi.mock("@db/supabase/admin", () => ({
   createAdminClient: () => ({
@@ -34,15 +45,29 @@ vi.mock("@db/supabase/detached", () => ({
     auth: { verifyOtp: mocks.verifyOtp, admin: { signOut: mocks.signOut } },
   }),
 }));
-// The cookie-backed client: a step-up's check never makes one.
+// The cookie-backed client: sign-in's and joining's, never a step-up's.
 vi.mock("@db/supabase/server", () => ({ createClient: mocks.cookieClient }));
 
-const { checkCode, signInPhoneOf } = await import("./otp");
+const { checkCode, sendCode, sendSignInCode, signInPhoneOf, verifyCode } =
+  await import("./otp");
 
 const NOA = "33333333-3333-4333-a333-333333333333";
 
 beforeEach(() => {
-  mocks.noteAuthAttempt.mockReset().mockResolvedValue(0);
+  mocks.order.length = 0;
+  mocks.noteAuthAttempt.mockReset().mockImplementation(async () => {
+    mocks.order.push("count");
+    return 0;
+  });
+  mocks.forgetAuthAttempt.mockReset().mockResolvedValue(undefined);
+  mocks.signInWithOtp.mockReset().mockImplementation(async () => {
+    mocks.order.push("send");
+    return { data: {}, error: null };
+  });
+  mocks.cookieVerifyOtp.mockReset().mockResolvedValue({
+    data: { user: { id: NOA }, session: { access_token: "a-cookie-token" } },
+    error: null,
+  });
   mocks.getUserById.mockReset().mockResolvedValue({
     data: { user: { id: NOA, phone: "972500000003" } },
     error: null,
@@ -55,7 +80,142 @@ beforeEach(() => {
     error: null,
   });
   mocks.signOut.mockReset().mockResolvedValue({ data: null, error: null });
-  mocks.cookieClient.mockReset();
+  mocks.cookieClient.mockReset().mockResolvedValue({
+    auth: {
+      signInWithOtp: mocks.signInWithOtp,
+      verifyOtp: mocks.cookieVerifyOtp,
+    },
+  });
+});
+
+/** The auth server refusing a code, with its error code. */
+const refused = (code: string) => ({
+  data: {},
+  error: { code, status: code.startsWith("over_") ? 429 : 422 },
+});
+
+describe("sendSignInCode", () => {
+  it("answers a number with an account and one without the same, both counted", async () => {
+    for (const answer of [
+      { data: {}, error: null },
+      refused("otp_disabled"),
+      refused("signup_disabled"),
+    ]) {
+      mocks.signInWithOtp.mockResolvedValueOnce(answer);
+      expect(await sendSignInCode("050-999-9999")).toBeNull();
+    }
+    expect(mocks.noteAuthAttempt).toHaveBeenCalledTimes(3);
+    expect(mocks.noteAuthAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "send", phone: "+972509999999" }),
+    );
+    expect(mocks.signInWithOtp).toHaveBeenCalledWith({
+      phone: "+972509999999",
+      options: { shouldCreateUser: false },
+    });
+    expect(mocks.forgetAuthAttempt).not.toHaveBeenCalled();
+  });
+
+  it("answers the auth server's short wait the same, and keeps its try counted", async () => {
+    for (const code of [
+      "over_sms_send_rate_limit",
+      "over_request_rate_limit",
+    ]) {
+      mocks.signInWithOtp.mockResolvedValueOnce(refused(code));
+      expect(await sendSignInCode("+972500000003")).toBeNull();
+    }
+    expect(mocks.noteAuthAttempt).toHaveBeenCalledTimes(2);
+    expect(mocks.forgetAuthAttempt).not.toHaveBeenCalled();
+  });
+
+  it("sends nothing past too many", async () => {
+    mocks.noteAuthAttempt.mockResolvedValue(30);
+    expect(await sendSignInCode("+972500000003")).toBe("tooMany");
+    expect(mocks.signInWithOtp).not.toHaveBeenCalled();
+  });
+
+  it("sends nothing when the count fails", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.noteAuthAttempt.mockRejectedValue(new Error("down"));
+    expect(await sendSignInCode("+972500000003")).toBe("failed");
+    expect(mocks.signInWithOtp).not.toHaveBeenCalled();
+    logged.mockRestore();
+  });
+
+  it("catches a malformed number before anything is counted", async () => {
+    expect(await sendSignInCode("123")).toBe("invalidPhone");
+    expect(mocks.noteAuthAttempt).not.toHaveBeenCalled();
+    expect(mocks.signInWithOtp).not.toHaveBeenCalled();
+  });
+
+  it("fails on another refusal, logged by its code and never the number", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.signInWithOtp.mockResolvedValue(refused("sms_send_failed"));
+    expect(await sendSignInCode("+972500000003")).toBe("failed");
+    const said = JSON.stringify(logged.mock.calls);
+    expect(said).toContain("sms_send_failed");
+    expect(said).not.toContain("500000003");
+    logged.mockRestore();
+  });
+});
+
+describe("sendCode", () => {
+  it("says the auth server's short wait, and gives its try back", async () => {
+    mocks.signInWithOtp.mockResolvedValue(refused("over_sms_send_rate_limit"));
+    expect(await sendCode("+972500000003")).toBe("rateLimit");
+    const counted = mocks.noteAuthAttempt.mock.calls[0]?.[0];
+    expect(counted).toMatchObject({ kind: "send", phone: "+972500000003" });
+    expect(mocks.forgetAuthAttempt).toHaveBeenCalledWith(counted);
+  });
+
+  it("fails for a number with no account, logged without the number", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.signInWithOtp.mockResolvedValue(refused("otp_disabled"));
+    expect(await sendCode("+972500000003")).toBe("failed");
+    expect(JSON.stringify(logged.mock.calls)).not.toContain("500000003");
+    expect(mocks.forgetAuthAttempt).not.toHaveBeenCalled();
+    logged.mockRestore();
+  });
+
+  it("runs `prepare` after the count and before the send", async () => {
+    expect(
+      await sendCode("+972500000003", async () => {
+        mocks.order.push("prepare");
+      }),
+    ).toBeNull();
+    expect(mocks.order).toEqual(["count", "prepare", "send"]);
+  });
+
+  it("runs nothing past too many", async () => {
+    const prepare = vi.fn();
+    mocks.noteAuthAttempt.mockResolvedValue(30);
+    expect(await sendCode("+972500000003", prepare)).toBe("tooMany");
+    expect(prepare).not.toHaveBeenCalled();
+    expect(mocks.signInWithOtp).not.toHaveBeenCalled();
+  });
+});
+
+describe("verifyCode", () => {
+  it("checks the code on the cookie's client, counted first", async () => {
+    expect(await verifyCode("050-000-0003", "123456")).toEqual({
+      userId: NOA,
+    });
+    expect(mocks.noteAuthAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "verify", phone: "+972500000003" }),
+    );
+    expect(mocks.cookieVerifyOtp).toHaveBeenCalledWith({
+      phone: "+972500000003",
+      token: "123456",
+      type: "sms",
+    });
+  });
+
+  it("with no code sent to the number lately, is a wrong code, and the auth server isn't asked", async () => {
+    mocks.noteAuthAttempt.mockResolvedValue(-1);
+    expect(await verifyCode("+972500000003", "123456")).toEqual({
+      error: "wrongCode",
+    });
+    expect(mocks.cookieVerifyOtp).not.toHaveBeenCalled();
+  });
 });
 
 describe("signInPhoneOf", () => {
@@ -109,6 +269,16 @@ describe("checkCode", () => {
       error: "tooMany",
     });
     expect(mocks.verifyOtp).not.toHaveBeenCalled();
+  });
+
+  it("with no code sent to the number lately, is a wrong code, and the auth server isn't asked", async () => {
+    mocks.noteAuthAttempt.mockResolvedValue(-1);
+    expect(await checkCode("+972500000003", "123456")).toEqual({
+      error: "wrongCode",
+    });
+    expect(mocks.verifyOtp).not.toHaveBeenCalled();
+    expect(mocks.signOut).not.toHaveBeenCalled();
+    expect(mocks.cookieClient).not.toHaveBeenCalled();
   });
 
   it("says a wrong code, and leaves nothing to end", async () => {
