@@ -2,26 +2,29 @@
 -- (20261127000400_file_step_up.sql): nobody touches its table but its three
 -- functions, the secret key's; a ready holder's read, reveal and export say
 -- 'step_up' without one, whoever the person is, logged, and nothing of a
--- file comes back; one opened after a right code reads for that sign-in
--- (the token's session_id) alone, in one business, for 15 minutes after the
--- last activity and not more than a minute ahead; keeping slides only a live
--- one and never opens one; closing takes this sign-in's alone. Opening is
--- refused with the module off, before the duties, for anyone but an active
--- holder, without a sign-in and in the week after a phone change (its day
--- in the business's zone). A view, the person's own file and someone who
--- left are as before. And a sign-in number changes only as the team changes
--- it: any other change of auth.users.phone, or a new phone_change, is
--- refused, the auth server's with confirmations on and off and the admin
--- API's; an update that leaves both as they were goes on. Times are relative
--- to the transaction's now(), or fixed by hand. Fixed ids (f8…), numbers
--- (050-089-xxxx) and slugs (esu-…), so nothing here meets the seed or
--- another test.
+-- file comes back; one opened after a right code reads for that holder and
+-- sign-in (the token's session_id) alone, another holder's token on the same
+-- id riding nothing, in one business, for 15 minutes after the last
+-- activity and not more than a minute ahead; opening logs nothing and clears
+-- the holder's lapsed ones, never a live one on another sign-in; keeping
+-- slides only a live one, never one ahead, and never opens one; closing
+-- takes this sign-in's alone. Opening is refused with the module off,
+-- before the duties, for anyone but an active holder, without a sign-in and
+-- in the week after a phone change (its day in the business's zone). A
+-- view, the person's own file and someone who left are as before. And a
+-- sign-in number changes only as the team changes it: any other change of
+-- auth.users.phone, or a new phone_change, is refused, the auth server's
+-- with confirmations on and off and the admin API's; an update that leaves
+-- both as they were goes on. Times are relative to the transaction's now(),
+-- or fixed by hand. Fixed ids (f8…), numbers (050-089-xxxx) and slugs
+-- (esu-…), so nothing here meets the seed or another test.
 begin;
-select plan(57);
+select plan(64);
 
 -- A (the module on): 1 its owner, who confirmed the duties; 2 the
 -- accountant, who hasn't; 3 Noa and 4 Yoav, workers with files; 5 a
--- manager; 6 a worker who left, with a file. B (on): 1 its owner too, 11 a
+-- manager; 6 a worker who left, with a file; 12 its other owner, who
+-- confirmed the duties too and never opens one. B (on): 1 its owner too, 11 a
 -- worker with a file. C (off): 8 its owner. 7 is on the ConceptApp team,
 -- viewing A as an owner. 9 asked for a new number before this (a pending
 -- phone_change), 10 is anyone.
@@ -29,7 +32,7 @@ insert into auth.users (id, aud, role, phone, phone_change)
 select ('f8000000-0000-4000-a000-' || lpad(n::text, 12, '0'))::uuid,
   'authenticated', 'authenticated', '97250089' || lpad(n::text, 4, '0'),
   case when n = 9 then '972500899997' else '' end
-from generate_series(1, 11) as n;
+from generate_series(1, 12) as n;
 
 create function pg_temp.p(n integer) returns uuid language sql as $$
   select ('f8000000-0000-4000-a000-' || lpad(n::text, 12, '0'))::uuid
@@ -55,6 +58,7 @@ values
   (pg_temp.biz(1), pg_temp.p(4), 'worker', true),
   (pg_temp.biz(1), pg_temp.p(5), 'manager', true),
   (pg_temp.biz(1), pg_temp.p(6), 'worker', false),
+  (pg_temp.biz(1), pg_temp.p(12), 'owner', true),
   (pg_temp.biz(2), pg_temp.p(1), 'owner', true),
   (pg_temp.biz(2), pg_temp.p(11), 'worker', true),
   (pg_temp.biz(3), pg_temp.p(8), 'owner', true);
@@ -73,7 +77,10 @@ values
   (pg_temp.biz(1), pg_temp.p(6), 'Dana', 'Mor'),
   (pg_temp.biz(2), pg_temp.p(11), 'Tal', 'Bar');
 insert into private.file_acknowledgements (business_id, user_id, version)
-values (pg_temp.biz(1), pg_temp.p(1), '2026-11-v1'), (pg_temp.biz(2), pg_temp.p(1), '2026-11-v1');
+values
+  (pg_temp.biz(1), pg_temp.p(1), '2026-11-v1'),
+  (pg_temp.biz(1), pg_temp.p(12), '2026-11-v1'),
+  (pg_temp.biz(2), pg_temp.p(1), '2026-11-v1');
 
 -- Signed in on the sign-in `session`, as PostgREST sets a token's claims.
 create function pg_temp.sign_in(uid uuid, session text) returns void language sql as $$
@@ -125,6 +132,20 @@ $$;
 create function pg_temp.logged(what text) returns integer language sql as $$
   select count(*)::integer from public.audit_log a
   where a.business_id = pg_temp.biz(1) and a.action = what and a.actor_id = pg_temp.p(1)
+$$;
+-- How many rows of any action a call adds to A's log by the owner.
+create function pg_temp.logs_added(call text) returns integer language plpgsql as $$
+declare
+  rows_before integer;
+  rows_after integer;
+begin
+  select count(*)::integer into rows_before from public.audit_log a
+  where a.business_id = pg_temp.biz(1) and a.actor_id = pg_temp.p(1);
+  execute call;
+  select count(*)::integer into rows_after from public.audit_log a
+  where a.business_id = pg_temp.biz(1) and a.actor_id = pg_temp.p(1);
+  return rows_after - rows_before;
+end;
 $$;
 
 ------------------------------------------------------------------------------
@@ -216,7 +237,9 @@ select is(pg_temp.logged('employee.view') + pg_temp.logged('employee.export'), 0
 ------------------------------------------------------------------------------
 -- Opened after a right code, for this sign-in
 
-select public.open_file_step_up(pg_temp.p(1), pg_temp.biz(1), pg_temp.s(1));
+select is(
+  pg_temp.logs_added($$select public.open_file_step_up(pg_temp.p(1), pg_temp.biz(1), pg_temp.s(1))$$),
+  0, 'opened after a right code, with nothing written to the log');
 select pg_temp.sign_in(pg_temp.p(1), pg_temp.s(1)::text);
 select is(pg_temp.read(pg_temp.biz(1), pg_temp.p(3)), 'holder', 'opened, the owner reads Noa''s file');
 select is(public.employee_file(pg_temp.biz(1), pg_temp.p(3)) -> 'file' ->> 'legal_first_name', 'Noa',
@@ -246,6 +269,9 @@ select is(pg_temp.read(pg_temp.biz(1), pg_temp.p(3)), 'step_up',
 select pg_temp.sign_in(pg_temp.p(4), pg_temp.s(1)::text);
 select is(pg_temp.read(pg_temp.biz(1), pg_temp.p(3)), 'not_holder',
   'and a worker''s token on the same sign-in id is still no holder');
+select pg_temp.sign_in(pg_temp.p(12), pg_temp.s(1)::text);
+select is(pg_temp.read(pg_temp.biz(1), pg_temp.p(3)), 'step_up',
+  'nor A''s other owner, a ready holder too, on the owner''s sign-in id');
 reset role;
 
 ------------------------------------------------------------------------------
@@ -279,6 +305,14 @@ select is(
   'to the moment kept');
 select is(public.keep_file_step_up(pg_temp.p(1), pg_temp.biz(2), pg_temp.s(1)), false,
   'and keeping it for another business slides nothing');
+select public.open_file_step_up(pg_temp.p(1), pg_temp.biz(1), pg_temp.s(6), now() + interval '2 minutes');
+select is(public.keep_file_step_up(pg_temp.p(1), pg_temp.biz(1), pg_temp.s(6)), false,
+  'keeping one two minutes ahead slides nothing');
+select is(
+  (select s.active_at from private.file_step_ups s
+   where s.user_id = pg_temp.p(1) and s.session_id = pg_temp.s(6)),
+  now() + interval '2 minutes',
+  'and leaves it where it was');
 
 ------------------------------------------------------------------------------
 -- One business per sign-in
@@ -287,6 +321,25 @@ select public.open_file_step_up(pg_temp.p(1), pg_temp.biz(2), pg_temp.s(1));
 select pg_temp.sign_in(pg_temp.p(1), pg_temp.s(1)::text);
 select is(pg_temp.read(pg_temp.biz(1), pg_temp.p(3)), 'step_up', 'opening B on a sign-in closes A there');
 select is(pg_temp.read(pg_temp.biz(2), pg_temp.p(11)), 'holder', 'and B reads');
+reset role;
+
+------------------------------------------------------------------------------
+-- Opening clears the holder's lapsed step-ups, never a live one
+
+-- A sign-in left 20 minutes ago, its step-up still there.
+insert into private.file_step_ups (user_id, session_id, business_id, active_at)
+values (pg_temp.p(1), pg_temp.s(5), pg_temp.biz(1), now() - interval '20 minutes');
+select public.open_file_step_up(pg_temp.p(1), pg_temp.biz(1), pg_temp.s(1));
+select public.open_file_step_up(pg_temp.p(1), pg_temp.biz(1), pg_temp.s(2));
+select is(
+  (select count(*)::integer from private.file_step_ups s
+   where s.user_id = pg_temp.p(1) and s.session_id = pg_temp.s(5)),
+  0, 'opening one clears the holder''s lapsed step-up on another sign-in');
+select pg_temp.sign_in(pg_temp.p(1), pg_temp.s(1)::text);
+select is(pg_temp.read(pg_temp.biz(1), pg_temp.p(3)), 'holder',
+  'while one opened before on another sign-in stays open');
+select pg_temp.sign_in(pg_temp.p(1), pg_temp.s(2)::text);
+select is(pg_temp.read(pg_temp.biz(1), pg_temp.p(3)), 'holder', 'beside the one just opened');
 reset role;
 
 ------------------------------------------------------------------------------
