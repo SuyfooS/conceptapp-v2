@@ -3,6 +3,12 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-23 · chat · CI's e2e in six parts
+
+- On chat/e2e-shards from origin/main 27b229f. Promised to Orel on 22 November: CI took about 50 minutes, most of it the desktop job's 38 to 45 (1083 tests on one worker). Each screen size now runs in two jobs side by side (`--shard=1/2`, `2/2`), six in all, each on its own runner with its own local Supabase, so no job shares the demo data with another. With `fullyParallel` off Playwright gives each part whole files, in order. Expected: about 25 to 30 minutes a run, on GitHub's free minutes for a public repository.
+- The jobs are named `e2e (phone 1/2)` and so on, their results `playwright-results-<size>-<part>` and their records `passed-e2e-<size>-<part>-<tree>`; `.github/scripts/tested-tree.sh` now asks for all eight records (check, database and the six) before main skips a run. A pull request run from before this change holds the old names, so a merge of such a tree runs everything on main once. README's CI paragraph says so.
+- Risk: a file that relied on an earlier file's leftovers in the same job now starts on a fresh database; CI's first run shows it. Checked here: nothing (YAML and the script only); CI is the test.
+
 ## 2026-11-23 · nightly run · CLAUDE.md names the (account) route group
 
 - Guessed (Orel left no issue, no question open, no בטל). What merged since the last run is the hiring file (H5a to H6a, #222 to #226) and the sheets' keyboard lift (#224), all reviewed several times, and Orel's open #227 (H6b) works in the same files, so the code was left alone. H5c's entry above says CLAUDE.md's Layout line could name `(account)` beside `(station)`; it now does: `(account)`, a signed-in person's own screens that need no business (`/me/past/<business>`), outside the frame.
