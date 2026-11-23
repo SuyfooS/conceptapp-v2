@@ -239,7 +239,10 @@ function OfficeDocuments({
   const waiting = data.documents.filter((d) => waitsFor(d, reader));
   const chosen = data.person;
   // What follows the notice in each shape: where the focus goes once it is
-  // put away, the one shown on this device.
+  // put away, the one shown on this device. The space note's title first,
+  // when it is shown: it comes right after the notice in every shape, and
+  // says the space for documents is filling or full.
+  const spaceNext = useRef<HTMLHeadingElement>(null);
   const phoneNext = useRef<HTMLElement>(null);
   const phonePerson = useRef<HTMLHeadingElement>(null);
   const tabletNext = useRef<HTMLHeadingElement>(null);
@@ -247,6 +250,7 @@ function OfficeDocuments({
   function afterNotice() {
     if (!focusLost()) return;
     const next = [
+      spaceNext.current,
       phonePerson.current,
       phoneNext.current,
       tabletNext.current,
@@ -263,7 +267,7 @@ function OfficeDocuments({
     />
   );
 
-  const space = <DocumentSpaceNote space={data.space} />;
+  const space = <DocumentSpaceNote space={data.space} headingRef={spaceNext} />;
 
   if (data.documents.length === 0 && people.length === 0) {
     return (

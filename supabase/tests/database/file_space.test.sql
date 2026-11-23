@@ -3,23 +3,24 @@
 -- the documents' bytes as their refusal counts them (a file still kept, never
 -- one whose file is gone), the chat files' bytes as the console counts them
 -- (the business's own folder of chat-files only), and both spaces as the
--- team set them; to an owner, a manager and the accountant, never to a
--- worker, someone who left or another business's owner; the secret key's
+-- team set them; to an owner, a manager, the accountant and someone given
+-- the management page alone (who sends no documents), never to a worker,
+-- someone who left or another business's owner; the secret key's
 -- alone. A demo that takes no files, and a business with chat off, take
 -- none. The console's public.admin_storage() gives each business's
 -- documents' bytes the same way. Fixed ids (f11e5ace…) and numbers
 -- (050-073-xxxx) of its own, explicit times, and Storage's rows written as
 -- the database's owner, as the Storage API would.
 begin;
-select plan(17);
+select plan(18);
 
 -- F: 1 the owner, 2 a manager, 3 a worker, 4 the accountant, 5 a worker who
--- left. G: 6 its owner. H, a demo that takes no files: 7 its owner. 8 on the
--- ConceptApp team.
+-- left, 9 a worker given manage.view alone. G: 6 its owner. H, a demo that
+-- takes no files: 7 its owner. 8 on the ConceptApp team.
 insert into auth.users (id, aud, role, phone)
 select ('f11e5ace-0000-4000-a000-' || lpad(n::text, 12, '0'))::uuid,
   'authenticated', 'authenticated', '97250073' || lpad(n::text, 4, '0')
-from generate_series(1, 8) as n;
+from generate_series(1, 9) as n;
 
 create function pg_temp.p(n integer) returns uuid language sql as $$
   select ('f11e5ace-0000-4000-a000-' || lpad(n::text, 12, '0'))::uuid
@@ -57,6 +58,10 @@ values
   (pg_temp.f(), pg_temp.p(5), 'worker', false, '2026-11-01 08:00+00'),
   (pg_temp.g(), pg_temp.p(6), 'owner', true, '2026-11-01 08:00+00'),
   (pg_temp.h(), pg_temp.p(7), 'owner', true, '2026-11-01 08:00+00');
+-- The management page without sending documents: a worker holds neither
+-- chat.send_documents nor clock.payroll (the office) by default.
+insert into public.memberships (business_id, user_id, role, active, perms, created_at)
+values (pg_temp.f(), pg_temp.p(9), 'worker', true, '{manage.view}', '2026-11-01 08:00+00');
 insert into public.business_modules (business_id, module_key, enabled, settings)
 values
   (pg_temp.f(), 'chat', true, '{}'),
@@ -129,6 +134,8 @@ select is(pg_temp.space(1, pg_temp.f(), 'chat_space_bytes')::bigint, 52428800::b
 
 select is(pg_temp.space(2, pg_temp.f(), 'document_bytes')::bigint, 600000::bigint,
   'a manager, who sees the management page, reads it');
+select is(pg_temp.space(9, pg_temp.f(), 'document_bytes')::bigint, 600000::bigint,
+  'and so does someone given the management page alone, who sends no documents');
 select is(pg_temp.space(4, pg_temp.f(), 'document_bytes')::bigint, 600000::bigint,
   'and the accountant, who sends payslips');
 select throws_ok(
