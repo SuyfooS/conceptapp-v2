@@ -74,7 +74,7 @@ function status(code: 204 | 400 | 401 | 403 | 404 | 500): Response {
  * unpinned card goes, with that one answer. A message only read changes nothing there, so
  * nothing old is read again for it; who confirmed is counted for its author
  * and management only, nobody else's sync asks. 401 signed out, never a
- * redirect (the screen reloads into sign-in); 404 for a conversation they
+ * redirect (the router draws the screen again, into sign-in); 404 for a conversation they
  * don't read (another business's included) and while viewing as someone or
  * with chat off; 400 for a question that isn't one; 403 from another site.
  * Every answer is `no-store`.

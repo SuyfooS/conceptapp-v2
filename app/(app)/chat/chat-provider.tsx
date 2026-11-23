@@ -185,7 +185,8 @@ const REDRAW_AFTER_MS = 1_500;
  * moves, every 30 for the list alone), at once when the page shows again,
  * after sending and when a conversation opens, and never while the page is
  * hidden. Nothing here keeps a session in the page (#80): the route reads
- * under the person's cookie. Signed out, the page loads again into sign-in.
+ * under the person's cookie. Signed out, the router draws the screen again,
+ * which goes to sign-in, never a whole-page reload (known issue 21).
  *
  * The Chat tab's count is drawn by the server: when the list's count moves,
  * the screen is drawn again, at most every 15 seconds.
@@ -312,12 +313,17 @@ export function ChatProvider({
           { cache: "no-store", signal: controller.signal },
         );
         if (response.status === 401) {
-          // Signed out somewhere else: the page goes to sign-in.
-          alive = false;
-          window.location.reload();
-          return;
-        }
-        if (response.status === 204) {
+          // Signed out somewhere else, or the session ran out: the router
+          // asks the server for the screen again, and the proxy sends it to
+          // sign-in. Never a whole-page reload: a tab left open after the
+          // person left would make one, and the next person to sign in on
+          // the device must not land on this conversation (known issue 21;
+          // the router's fetch keeps no page). Asked again as after any
+          // failure, should the session still be there.
+          askAgain();
+          s.failures += 1;
+          router.refresh();
+        } else if (response.status === 204) {
           s.failures = 0;
         } else if (response.status === 200) {
           const answer = chatSyncAnswer.safeParse(await response.json());

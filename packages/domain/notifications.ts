@@ -725,20 +725,6 @@ export function linkFor(
 }
 
 /**
- * A path inside the app: one slash, then no scheme, host, backslash or
- * control character that a browser could read as one.
- */
-export function isAppPath(url: unknown): url is `/${string}` {
-  return (
-    typeof url === "string" &&
-    url.startsWith("/") &&
-    !url.startsWith("//") &&
-    !url.includes("\\") &&
-    [...url].every((char) => char.charCodeAt(0) > 0x1f)
-  );
-}
-
-/**
  * Whether a `schedule.unfilled` line's week is already under way on `today`
  * (the business's own day, YYYY-MM-DD): its freed shifts are filled in this
  * week's schedule, which the line opens (`linkFor`), and its words say so.

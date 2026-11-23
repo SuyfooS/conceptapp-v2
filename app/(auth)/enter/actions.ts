@@ -11,6 +11,7 @@ import {
 } from "@domain/passive-sign-in";
 import { redirect } from "next/navigation";
 import { rememberBusiness } from "../../(app)/business-cookie";
+import { takeAfterSignIn } from "../after-sign-in";
 
 export type EnterResult = { failed: true };
 
@@ -24,7 +25,10 @@ export type ResetResult = { ok: boolean };
  * They come in to the business the door offered them in (`business`, its
  * key): the accountant is in both (payroll P3b), and whoever came in on this
  * browser before may have left another chosen. A business whose week renews
- * gets it published first, so there is a schedule to see on arrival.
+ * gets it published first, so there is a schedule to see on arrival. They
+ * land on the page a link asked for before sign-in, as with a code
+ * (`takeAfterSignIn`, known issue 21), else on Today; a refused or failed
+ * door leaves it kept.
  *
  * Nothing on a site whose demo door is closed (`DEMO_DOOR=off`), asked before
  * the secret key is: a server action answers a POST from any page, so this
@@ -74,7 +78,7 @@ export async function enterAs(
       console.error("demo schedule renewal failed", (error as Error).message);
     }
   }
-  redirect("/home");
+  redirect((await takeAfterSignIn()) ?? "/home");
 }
 
 /**

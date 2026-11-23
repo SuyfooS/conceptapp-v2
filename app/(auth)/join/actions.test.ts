@@ -12,7 +12,9 @@ import type { JoinState } from "./actions";
 // kept and one with none had cleared; too many and a failure are said. A
 // link that stopped working sends nothing. Each send passes on the "אני לא
 // רובוט" check's token, and one the auth server refused for it is said on
-// its own step, the same for every number.
+// its own step, the same for every number. A right code with a claim that
+// works forgets a page an earlier link kept for after sign-in (known issue
+// 21) and lands where H5b says; a refused claim forgets nothing.
 
 vi.mock("server-only", () => ({}));
 
@@ -24,6 +26,8 @@ const mocks = vi.hoisted(() => ({
   claimInvite: vi.fn(),
   sendJoinCode: vi.fn(),
   verifyCode: vi.fn(),
+  calls: [] as string[],
+  forgetAfterSignIn: vi.fn(),
   redirect: vi.fn((to: string) => {
     throw new Error(`redirect ${to}`);
   }),
@@ -39,6 +43,9 @@ vi.mock("@db/module-settings", () => ({
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
 vi.mock("../../(app)/business-cookie", () => ({ rememberBusiness: vi.fn() }));
 vi.mock("../../push/server", () => ({ pushSoon: vi.fn() }));
+vi.mock("../after-sign-in", () => ({
+  forgetAfterSignIn: mocks.forgetAfterSignIn,
+}));
 vi.mock("../otp", () => ({
   sendJoinCode: mocks.sendJoinCode,
   verifyCode: mocks.verifyCode,
@@ -46,11 +53,15 @@ vi.mock("../otp", () => ({
 
 const { join } = await import("./actions");
 
-/** The join form as it posts, with the check's token when it has one. */
-const posted = (intent: string, captcha?: string) => {
+/**
+ * The join form as it posts, with the check's token and the code when it
+ * has them.
+ */
+const posted = (intent: string, captcha?: string, code?: string) => {
   const form = new FormData();
   form.set("intent", intent);
   if (captcha !== undefined) form.set("captcha", captcha);
+  if (code !== undefined) form.set("code", code);
   return form;
 };
 
@@ -75,6 +86,11 @@ beforeEach(() => {
   });
   mocks.sendJoinCode.mockReset().mockResolvedValue(null);
   mocks.verifyCode.mockReset();
+  mocks.claimInvite.mockReset();
+  mocks.calls = [];
+  mocks.forgetAfterSignIn.mockReset().mockImplementation(async () => {
+    mocks.calls.push("forget");
+  });
   mocks.redirect.mockClear();
 });
 
@@ -176,5 +192,41 @@ describe("a link that stopped working", () => {
       `redirect /join/${TOKEN_LINK}`,
     );
     expect(mocks.sendJoinCode).not.toHaveBeenCalled();
+  });
+});
+
+describe("a right code", () => {
+  it("forgets a page kept for after sign-in, and lands where joining does", async () => {
+    mocks.verifyCode.mockResolvedValue({
+      userId: "00000000-0000-4000-8000-000000000801",
+    });
+    mocks.claimInvite.mockResolvedValue({
+      ok: true,
+      businessId: "00000000-0000-4000-b000-000000000001",
+    });
+    mocks.redirect.mockImplementationOnce((to: string) => {
+      mocks.calls.push(`redirect ${to}`);
+      throw new Error(`redirect ${to}`);
+    });
+    await expect(
+      join(TOKEN_LINK, codeStep, posted("verify", undefined, "123456")),
+    ).rejects.toThrow("redirect /home");
+    expect(mocks.forgetAfterSignIn).toHaveBeenCalledTimes(1);
+    expect(mocks.calls).toEqual(["forget", "redirect /home"]);
+  });
+
+  it("forgets nothing when the claim is refused", async () => {
+    mocks.verifyCode.mockResolvedValue({
+      userId: "00000000-0000-4000-8000-000000000801",
+    });
+    mocks.claimInvite.mockResolvedValue({ ok: false, error: "shiftsLeft" });
+    expect(
+      await join(TOKEN_LINK, codeStep, posted("verify", undefined, "123456")),
+    ).toEqual({ step: "code", error: "shiftsLeft" });
+    mocks.claimInvite.mockResolvedValue({ ok: false, error: "notOpen" });
+    await expect(
+      join(TOKEN_LINK, codeStep, posted("verify", undefined, "123456")),
+    ).rejects.toThrow(`redirect /join/${TOKEN_LINK}`);
+    expect(mocks.forgetAfterSignIn).not.toHaveBeenCalled();
   });
 });
