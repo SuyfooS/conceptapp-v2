@@ -19,6 +19,10 @@ import {
 
 export type SheetProps = {
   open: boolean;
+  /**
+   * A sheet that sends a write holds its close only until the answer
+   * (`useSheetWrite`), never until the page read again after it is drawn.
+   */
   onOpenChange: (open: boolean) => void;
   title: ReactNode;
   subtitle?: ReactNode;

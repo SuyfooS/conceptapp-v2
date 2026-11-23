@@ -16,6 +16,7 @@ import { Card } from "@ui/card";
 import { PunchCircle } from "@ui/punch-circle";
 import { StatusToast } from "@ui/status-toast";
 import { preloadQrReader } from "@ui/use-qr-camera";
+import { useSheetWrite } from "@ui/use-sheet-write";
 import { Coffee, Fingerprint, LogOut, ScanQrCode } from "lucide-react";
 import { unstable_rethrow } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -83,7 +84,13 @@ export function ClockPanel({
   const [scanning, setScanning] = useState<Direction | null>(null);
   /** Where the focus goes back to once the camera gives the circle back. */
   const [scanFrom, setScanFrom] = useState<ScanFrom>("circle");
-  const [noneBusy, startNone] = useTransition();
+  // The press without a code holds its sheet until the answer (`noneHeld`),
+  // and its buttons until the page read again after it is drawn.
+  const {
+    pending: noneBusy,
+    start: startNone,
+    held: noneHeld,
+  } = useSheetWrite();
   const [noneFailure, setNoneFailure] = useState<Failure | null>(null);
   const now = useNow(data.now, open !== null || sheet === "none");
 
@@ -370,8 +377,9 @@ export function ClockPanel({
           <WithoutCodeSheet
             open={sheet === "none"}
             onOpenChange={(next) => {
-              // The answer to a press under way belongs on this sheet.
-              if (!noneBusy) setSheet(next ? "none" : null);
+              // The answer to a press under way belongs on this sheet, and
+              // only the answer: a refusal shows before the page comes back.
+              if (!noneHeld()) setSheet(next ? "none" : null);
             }}
             direction={direction}
             now={now}
