@@ -4,9 +4,10 @@
 # which takes main alone, waits for its required reviewer and holds the
 # database's two secrets, PROD_SUPABASE_DB_PASSWORD and
 # PROD_SUPABASE_PROJECT_REF (Orel sets all three in GitHub). With "apply"
-# off it shows what would run and changes nothing. Nothing here adds demo
-# data or runs a SQL file: the demo stays in conceptapp-dev
-# (tooling/migrate-prod.test.ts keeps it so).
+# off it shows what would run and changes nothing; with it on, the run's
+# summary ends with the commit to release to the site of real businesses.
+# Nothing here adds demo data or runs a SQL file: the demo stays in
+# conceptapp-dev (tooling/migrate-prod.test.ts keeps it so).
 name: Migrate conceptapp-prod
 
 on:
@@ -114,3 +115,24 @@ jobs:
       - name: What the project has after
         if: inputs.apply && github.ref == 'refs/heads/main'
         run: pnpm exec supabase migration list --db-url "$DB_URL"
+
+      # Once applied: the commit these migrations came from, and the two lines
+      # that release it to the site of real businesses, which deploys the
+      # branch production and nothing else (docs/production.md, B7 and the
+      # update after a real business is live). Orel runs them on his own
+      # computer; a push that isn't a fast-forward is refused, so they never
+      # move the site back. This step writes the run's summary and nothing
+      # more.
+      - name: The commit to release
+        if: inputs.apply && github.ref == 'refs/heads/main'
+        run: |
+          {
+            echo "### Applied from $GITHUB_SHA"
+            echo ""
+            echo "To release it to the site of real businesses: in PowerShell, in the project's folder, one line at a time."
+            echo ""
+            echo '```powershell'
+            echo "git fetch origin"
+            echo "git push origin $GITHUB_SHA:refs/heads/production"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

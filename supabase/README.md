@@ -50,9 +50,12 @@ secret of the same name when its environment has none, and `conceptapp-dev`'s ar
 secrets, so a missing one stops the run before it connects anywhere. Before anything else it
 checks that the project holds no demo business (one that does is `conceptapp-dev`, its secrets
 entered by mistake), and it never adds the demo or the seed, and never runs a SQL file
-(`tooling/migrate-prod.test.ts`). A nightly run and a live session never run or approve it.
+(`tooling/migrate-prod.test.ts`). With "apply" on, its summary ends with the commit it applied
+from and the two lines that release that commit to the site of real businesses, which deploys
+the branch `production`, not `main`: the schema first, then the code. A nightly run and a live
+session never run or approve it, and never push to `production`.
 The setup of the environment and of the project: [`docs/production.md`](../docs/production.md),
-B2 and B3.
+B2 and B3; each release after that: its last section.
 
 Each demo business starts the way `private.demo_businesses` describes it (written by
 `seed.sql` and `hosted-demo.sql`). `public.reset_demo_business` puts one back that way:

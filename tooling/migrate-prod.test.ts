@@ -163,6 +163,40 @@ describe("Migrate conceptapp-prod", () => {
     expect(step("What the project has after")).toMatch(ON_APPLY);
   });
 
+  it("ends, once applied, with the commit to release, and only writes it", () => {
+    // The site of real businesses deploys the branch production, which Orel
+    // moves to the commit whose migrations are in (docs/production.md, B7
+    // and the update after a real business is live): the summary names that
+    // commit and his two lines, and runs nothing itself.
+    const names = allSteps.map(stepName);
+    expect(names.at(-1)).toBe("The commit to release");
+    const release = allSteps.at(-1) ?? "";
+    expect(release).toMatch(ON_APPLY);
+    const script = release
+      .slice(release.indexOf("run: |") + "run: |".length)
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line !== "");
+    expect(script[0]).toBe("{");
+    expect(script.at(-1)).toBe('} >> "$GITHUB_STEP_SUMMARY"');
+    for (const line of script.slice(1, -1)) {
+      expect(line).toMatch(/^echo /);
+    }
+    const lines = script
+      .map((line) => /^echo "(git [^"]+)"$/.exec(line)?.[1])
+      .filter((line) => line !== undefined);
+    expect(lines).toEqual([
+      "git fetch origin",
+      "git push origin $GITHUB_SHA:refs/heads/production",
+    ]);
+    // A fast-forward only: never forced, never another branch.
+    for (const line of script) {
+      expect(line).not.toContain("--force");
+      expect(line).not.toMatch(/\s\+\S*:refs\//);
+      expect(line).not.toMatch(/refs\/heads\/(?!production\b)/);
+    }
+  });
+
   it("reads the code and nothing more, with every action pinned", () => {
     expect(topLevel(prod, "permissions").trim()).toBe(
       "permissions:\n  contents: read",

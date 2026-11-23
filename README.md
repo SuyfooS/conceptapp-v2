@@ -72,6 +72,11 @@ Vercel and what to watch. The code's side of it:
   (`.github/workflows/migrate-prod.yml`) for real businesses, from `main` only, in the GitHub
   environment `conceptapp-prod` that waits for Orel's approval, never with the demo
   (`supabase/README.md`).
+- Once production is live, `main` deploys the demo's site alone. The site of real businesses
+  deploys the branch `production` (its Vercel project's production branch), which only Orel
+  moves forward, after Migrate conceptapp-prod has applied: a run with "apply" on ends its
+  summary with the commit and the two lines that release it, a fast-forward that is never
+  forced. Nobody else pushes to `production`.
 - `GET /health` (or `HEAD`) answers 200 with `{"status":"ok"}` from the running server, for an
   uptime monitor. It doesn't ask the database.
 

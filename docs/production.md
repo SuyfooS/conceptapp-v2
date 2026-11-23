@@ -8,7 +8,7 @@
 
 1. **אף סוד לא בצ'אט, ב-GitHub או בקובץ.** סיסמאות, מפתחות וקודים נכנסים ישר להגדרות של Supabase, של Vercel ושל GitHub, ועותק של כל אחד נשמר במנהל הסיסמאות.
 2. **המאגר ציבורי.** אף שם של לקוח, של אדם או נתון שלו לא נכתב ב-GitHub: לא בקוד, לא במסמך, לא ב-issue ולא ב-PR (22.11). כותבים "עסק אמיתי ראשון".
-3. **הסוכן הלילי וסשנים של Claude לא נוגעים בייצור.** הם לא מריצים ולא מאשרים את Migrate conceptapp-prod, ולא מקבלים אף סוד שלו. GitHub לא מבחין בינך לבין הסוכן, כי הסוכן כותב דרך אותו חשבון, ולכן האישור הוא לחיצה שלך בלבד.
+3. **הסוכן הלילי וסשנים של Claude לא נוגעים בייצור.** הם לא מריצים ולא מאשרים את Migrate conceptapp-prod, לא מקדמים את הענף `production` ולא מקבלים אף סוד שלו. GitHub לא מבחין בינך לבין הסוכן, כי הסוכן כותב דרך אותו חשבון, ולכן האישור הוא לחיצה שלך בלבד. מב7 צעד 4, מיזוג ל-`main`, גם של הסוכן, מגיע לאתר ההדגמה בלבד: לאתר של העסקים האמיתיים הוא מגיע רק כשאתה משחרר (עדכון אחרי שעסק אמיתי עלה, בסוף המסמך).
 
 ## איך מריצים פקודה, ואיך מריצים SQL
 
@@ -20,7 +20,7 @@
 | מה | איפה | מה זה עושה |
 |---|---|---|
 | `DEMO_DOOR` | `packages/db/env.ts` | דלת ההדגמה של כל אתר. `off` באתר של עסקים אמיתיים, `on` (או בלי הגדרה בכלל) באתר ההדגמה. עם `off` הכתובת `/enter` עוברת לכניסה עם טלפון: אין אנשי הדגמה, אין כניסה בלחיצה ואין איפוס. ערך אחר עוצר את הבנייה, והאתר הקודם נשאר באוויר |
-| Migrate conceptapp-prod | `.github/workflows/migrate-prod.yml` | מעדכן את מבנה המסד בפרויקט הייצור. רק בהרצה ידנית, רק מ-`main` ורק אחרי אישור שלך. קודם בודק שזה לא הפרויקט של ההדגמה, ואף פעם לא מוסיף את ההדגמה |
+| Migrate conceptapp-prod | `.github/workflows/migrate-prod.yml` | מעדכן את מבנה המסד בפרויקט הייצור. רק בהרצה ידנית, רק מ-`main` ורק אחרי אישור שלך. קודם בודק שזה לא הפרויקט של ההדגמה, ואף פעם לא מוסיף את ההדגמה. בסוף הרצה עם `apply` דלוק הוא כותב בסיכום שלה את הגרסה שממנה הגיע המבנה, ואת שתי השורות שמשחררות אותה לאתר של העסקים האמיתיים |
 | `/health` | `app/health/route.ts` | עונה 200 כשהשרת עונה, בשביל בדיקת זמינות. בלי נתונים, ובלי לשאול את מסד הנתונים |
 
 ## ב1. הסכם עם העסק
@@ -40,14 +40,16 @@
 
 ## ב2. פרויקט הייצור ב-Supabase
 
-**למה:** הנתונים של עסק אמיתי לא יושבים באותו פרויקט עם ההדגמה, שכל אחד יכול להיכנס אליה. **זמן:** כרבע שעה. **עלות:** תוכנית Pro של Supabase (לבדוק את המחיר לפני).
+**למה:** הנתונים של עסק אמיתי לא יושבים באותו פרויקט עם ההדגמה, שכל אחד יכול להיכנס אליה. **זמן:** כרבע שעה. **עלות:** תוכנית Pro של Supabase, לארגון אחד (המחיר בסעיף 1).
 
-1. ב-Supabase: `New project`. שם: `conceptapp-prod`. אזור: `Central EU (Frankfurt)`. תהליך העדכון מחובר לאזור הזה: אזור אחר דורש שינוי של שורה אחת בקוד, בסשן.
-2. סיסמת מסד הנתונים: סיסמה חזקה שהלוח מציע, ישר למנהל הסיסמאות. היא תיכנס לב3.
-3. הארגון עובר ל-Pro. ב-`Organization → Billing`: `Spend cap` דלוק, ומייל שאתה קורא לחשבוניות.
-4. לבדוק: ארגון אחד לשני הפרויקטים, או ארגון חינמי נפרד להדגמה, וכמה עולה פרויקט שני בארגון Pro.
+1. **קודם, לפני `New project` ולפני Pro: באיזה ארגון.** ב-Supabase התוכנית היא של הארגון, וכל פרויקט בארגון Pro משלם על המחשוב שלו. מחליטים עם המחיר מול העיניים: דף המחירים של Supabase, ו-`Organization → Billing` של הארגון של היום. בערך 25 דולר לחודש לארגון Pro, עם פרויקט קטן אחד בפנים, וכל פרויקט נוסף באותו ארגון בערך 10 דולר לחודש (לבדוק את שני המספרים).
+   - **ארגון חדש לייצור (מומלץ):** `New organization`, תוכנית Pro, ובו רק `conceptapp-prod`. הארגון של `conceptapp-dev` נשאר חינמי, וההדגמה לא עולה כסף.
+   - ארגון אחד לשניהם: כשהארגון עובר ל-Pro, גם `conceptapp-dev` נכנס לחשבון, עם המחשוב שלו.
+2. בארגון שבחרת: `New project`. שם: `conceptapp-prod`. אזור: `Central EU (Frankfurt)`. תהליך העדכון מחובר לאזור הזה: אזור אחר דורש שינוי של שורה אחת בקוד, בסשן.
+3. סיסמת מסד הנתונים: סיסמה חזקה שהלוח מציע, ישר למנהל הסיסמאות. היא תיכנס לב3.
+4. רק הארגון שבחרת עובר ל-Pro (בארגון חדש: כבר כשיוצרים אותו). ב-`Organization → Billing` שלו: `Spend cap` דלוק, ומייל שאתה קורא לחשבוניות.
 
-**בדיקה אחרי:** הפרויקט `conceptapp-prod` פעיל באזור Frankfurt, והתקרה להוצאות דלוקה.
+**בדיקה אחרי:** הפרויקט `conceptapp-prod` פעיל באזור Frankfurt, בארגון שבחרת, והתקרה להוצאות דלוקה. אם בחרת ארגון חדש: הארגון של `conceptapp-dev` עדיין בתוכנית החינמית.
 
 ## ב3. תהליך העדכון לייצור
 
@@ -63,7 +65,7 @@
    - `Environment secrets`: `PROD_SUPABASE_DB_PASSWORD` (סיסמת מסד הנתונים מב2) ו-`PROD_SUPABASE_PROJECT_REF` (המזהה של הפרויקט, שמופיע בכתובת שלו בלוח), בשמות האלה בדיוק, עם `PROD_` בהתחלה. רק כאן, ואף פעם לא ב-`Repository secrets`: שם יש כבר שני סודות בשמות דומים בלי `PROD_`, של פרויקט הפיתוח, ולא נוגעים בהם.
    - **בדיקה:** בדף של הסביבה מופיעים ב-`Required reviewers` השם שלך וב-`Deployment branches and tags` הכלל `main`, והתיבה `Allow administrators to bypass configured protection rules` ריקה. ב-`Settings → Secrets and variables → Actions`, ב-`Repository secrets` אין אף שם שמתחיל ב-`PROD_`.
 2. **הרצת ניסיון:** `Actions → Migrate conceptapp-prod → Run workflow`, ענף `main`, ו-`apply` כבוי. ההרצה מחכה לך: `Review deployments`, מסמנים `conceptapp-prod`, `Approve and deploy`. קוראים את הצעד "What would run": כל קובצי המבנה מהתיקייה `supabase/migrations`, מהראשון ועד האחרון. אם הצעד "Find the connection" נעצר כי אין `PROD_SUPABASE_DB_PASSWORD` או `PROD_SUPABASE_PROJECT_REF`, הם לא בסביבה בשמות האלה בדיוק: מתקנים ומריצים שוב. אם הצעד "Not the demo's project" נכשל, הסודות שהוכנסו הם של פרויקט הפיתוח: מתקנים אותם ולא ממשיכים.
-3. **הרצה אמיתית:** שוב `Run workflow`, הפעם עם `apply` דלוק, ואישור.
+3. **הרצה אמיתית:** שוב `Run workflow`, הפעם עם `apply` דלוק, ואישור. בסוף, בדף של ההרצה ב-`Summary`, מופיעות שתי שורות לשחרור: עוד לא מריצים אותן. הן לב7 צעד ב ואילך.
 4. **בדיקה אחרי:**
    - `Storage → Policies`: אין אף מדיניות ל-`documents`. מדיניות שנוספת שם ביד פותחת את המסמכים הרשמיים לכל מי שמחובר, בלי שהפתיחה נרשמת.
    - `Database → Cron` (אולי `Integrations → Cron`, לבדוק): שמונה משימות, כל אחת בשמה: `notifications`, `notifications-clean`, `payroll`, `lists`, `list-photos`, `chat`, `order-taking`, `audit-guard`. בדיקה בקוד שומרת שהרשימה כאן מלאה.
@@ -113,9 +115,16 @@
 דרך המסך (`Project Settings → Vault`, אולי `Integrations → Vault`, לבדוק), ולא דרך עורך ה-SQL, ששומר את מה שהוקלד:
 
 - `app_url`: `https://www.conceptapp.co.il` בדיוק. בלי www חסר, בלי `vercel.app` ובלי `/` בסוף: בקשה שעוברת הפניה בדרך הולכת לאיבוד.
-- `cron_secret`: ערך **חדש**, אותו ערך כמו `CRON_SECRET` של הייצור ב-Vercel (ב7). לא הערך של הפיתוח.
+- `cron_secret`: ערך חדש, לא הערך של הפיתוח. עושים אותו כאן, פעם אחת, ב-PowerShell, בתיקייה של הפרויקט:
 
-**בדיקה אחרי:** שני הערכים מופיעים ב-Vault בשמות האלה בדיוק.
+  ```powershell
+  git pull
+  node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+  ```
+
+  השנייה מדפיסה שורה אחת. מעתיקים אותה ישר ל-Vault, ל-`cron_secret`, ולמנהל הסיסמאות, בשם "CRON_SECRET של הייצור", ולא לשום מקום אחר. בב7 אותו ערך בדיוק נכנס ל-Vercel, ממנהל הסיסמאות. לא מריצים את הפקודה שוב בשביל הייצור: שני ערכים שונים, והאפליקציה דוחה כל קריאה של המשימות. התראות לטלפון וניקוי התמונות והקבצים נעצרים, ושום מסך לא אומר למה.
+
+**בדיקה אחרי:** שני הערכים מופיעים ב-Vault בשמות האלה בדיוק, ו-"CRON_SECRET של הייצור" שמור במנהל הסיסמאות.
 
 ## ב6. המנהל הראשי הראשון
 
@@ -140,9 +149,14 @@ returning user_id;
 
 **למה הסדר הזה:** אם מחליפים קודם את המשתנים באתר הראשי, ההדגמה נעלמת עד שהכתובת שלה מוכנה.
 
+**משתנה ל-`Production` בלבד**, בכל מקום במסמך שכתוב כך, ב-`Settings → Environment Variables` של הפרויקט:
+
+- **משתנה חדש:** `Add` (לבדוק את שם הכפתור), השם והערך, וב-`Environments` רק `Production` מסומן. Vercel מסמן מראש גם את `Preview` ואת `Development`: מורידים מהם את הסימון. `Sensitive` איפה שהטבלה אומרת.
+- **משתנה שכבר קיים:** פותחים אותו (`⋯` → `Edit`, לבדוק). אם מסומן בו רק `Production`, מחליפים בו את הערך. אם מסומנים בו גם `Preview` או `Development`, לא משנים את הערך שלו: ב-Vercel זה משתנה אחד לכל הסביבות שמסומנות בו, וערך חדש בו היה מגיע גם לגרסאות הניסיון של כל ענף, גם של הסוכן הלילי, ולכל מחשב שמושך את המשתנים של `Development`. במקום זה מורידים בו את הסימון מ-`Production` ושומרים: הוא נשאר לגרסאות הניסיון, עם הערך של `conceptapp-dev`. ואז `Add`, משתנה חדש באותו שם, רק עם `Production`, והערך החדש.
+
 1. Vercel עובר ל-Pro, עם `Spend Management` (לבדוק).
 2. **ההדגמה בכתובת משלה:**
-   - פרויקט Vercel שני, מאותו מאגר.
+   - פרויקט Vercel שני, מאותו מאגר. הוא נבנה מיד, עוד בלי משתנים, ולכן אחרי המשתנים יש `Redeploy`.
    - `Settings → Domains`: `demo.conceptapp.co.il`, ואת רשומת ה-DNS ש-Vercel מראה מוסיפים אצל רשם הדומיין.
    - המשתנים, עם הערכים של `conceptapp-dev`, ל-`Production` בלבד. Vercel לא מראה שוב ערך שנשמר כ-`Sensitive`, ולכן את אלה לא מעתיקים מהאתר הראשי:
 
@@ -150,44 +164,63 @@ returning user_id;
      |---|---|
      | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | מהאתר הראשי ב-Vercel, שם הם גלויים. או מ-`conceptapp-dev`: הכפתור `Connect` ו-`Project Settings → API Keys` |
      | `SUPABASE_SECRET_KEY` | ממנהל הסיסמאות. אם הוא לא שם: מפתח סודי חדש ב-`Project Settings → API Keys` של `conceptapp-dev`, בלי למחוק את הישן, שהאתר הראשי משתמש בו עד צעד ב. `Sensitive` |
-     | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | ממנהל הסיסמאות, שני החצאים מאותו זוג. אם אחד מהם לא שם: זוג חדש, בפקודה שבסעיף 4 למטה. בעסקי ההדגמה אף התראה לא מגיעה לטלפון, ולכן זוג חדש לא מפסיק שם כלום. `VAPID_PRIVATE_KEY` הוא `Sensitive` |
+     | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | ממנהל הסיסמאות, שני החצאים מאותו זוג. אם אחד מהם לא שם: זוג חדש, בפקודה של צעד ב (סעיף 5) למטה. בעסקי ההדגמה אף התראה לא מגיעה לטלפון, ולכן זוג חדש לא מפסיק שם כלום. `VAPID_PRIVATE_KEY` הוא `Sensitive` |
      | `VAPID_SUBJECT` | מהאתר הראשי, שם הוא גלוי |
-     | `CRON_SECRET` | ממנהל הסיסמאות. אם הוא לא שם: ערך חדש בפקודה שבסעיף 4 למטה, וגם ב-Vault של `conceptapp-dev`, ב-`cron_secret`, אותו ערך בדיוק. אחרת המשימות של המסד נדחות (נספח). `Sensitive` |
+     | `CRON_SECRET` | ממנהל הסיסמאות, "CRON_SECRET של הפיתוח". אם הוא לא שם: ערך חדש לפיתוח, באותה פקודה כמו בב5, שנשמר במנהל הסיסמאות בשם הזה. הוא נכנס גם ל-Vault של `conceptapp-dev`, אחרי הבדיקה למטה. `Sensitive` |
      | `DEMO_DOOR` | `on` |
      | `EMPLOYEE_DATA_KEKS`, `EMPLOYEE_DATA_KEK_ACTIVE` | לא בהדגמה: הם נכנסים רק לייצור, בב9 |
 
-   - ב-`conceptapp-dev`: `app_url` ב-Vault ו-`Site URL` (ב-`Authentication → URL Configuration`) עוברים לכתובת החדשה, `https://demo.conceptapp.co.il`.
+   - ואז `Redeploy`: ב-`Deployments`, הגרסה העליונה, `⋯` → `Redeploy`. הכתובת של Supabase ו-`DEMO_DOOR` נכנסים לאתר כשהוא נבנה, והבנייה הראשונה הייתה בלעדיהם.
    - ב-Cloudflare Turnstile: ב-`Hostnames` מוסיפים את הכתובת החדשה.
    - לבדוק: לכבות בפרויקט הזה את גרסאות הניסיון (`Preview`), כדי שכל שינוי לא ייבנה פעמיים.
    - **בדיקה:** נכנסים להדגמה בכתובת החדשה, ו-`https://demo.conceptapp.co.il/health` עונה.
+   - **רק אחרי שהבדיקה עברה,** ב-`conceptapp-dev`: `app_url` ב-Vault ו-`Site URL` (ב-`Authentication → URL Configuration`) עוברים לכתובת החדשה, `https://demo.conceptapp.co.il`. אם עשית להדגמה `CRON_SECRET` חדש, גם `cron_secret` ב-Vault מקבל אותו, אותו ערך בדיוק. אחרת המשימות של המסד נדחות (נספח).
 3. **האתר הראשי, צעד א (עדיין על פרויקט הפיתוח):** `DEMO_DOOR` = `off`, ל-`Production` בלבד, ואז `Redeploy`.
    - **בדיקה, בחלון פרטי** (`InPrivate` ב-Edge, `Incognito` ב-Chrome), כדי להיות מחוץ לחשבון: למי שמחובר, גם כאיש הדגמה, `/enter` עובר ל-`/home` בכל מקרה, והבדיקה לא אומרת כלום. בחלון הפרטי: `www.conceptapp.co.il/enter` עובר ל-`/sign-in`; אין "כניסה להדגמה, בלי טלפון"; `/health` עונה 200.
    - אם הבנייה נכשלת על `DEMO_DOOR`, הערך הוא לא `on` ולא `off`. האתר הקודם נשאר באוויר עד שמתקנים.
-4. **האתר הראשי, צעד ב (לייצור):** מחליפים את המשתנים, ל-`Production` בלבד ואף פעם לא ל-`Preview`, ואז `Redeploy`.
+4. **האתר הראשי עולה רק כשאתה משחרר (לפני צעד ב):** עד עכשיו כל מיזוג ל-`main` עולה לאתר הראשי מעצמו, גם מיזוג של הסוכן הלילי. אחרי צעד ב זה האתר של העסקים האמיתיים, והמבנה של המסד שלו מתעדכן רק כשאתה מריץ את Migrate conceptapp-prod: קוד שמגיע לפני המבנה שלו שובר מסכים לעובדים. לכן האתר הראשי יעלה מענף משלו, `production`, שרק אתה מקדם, ורק אחרי Migrate conceptapp-prod.
+   - בפרויקט Vercel של האתר הראשי בלבד: `Settings → Environments → Production`, ב-`Branch Tracking` (אולי `Settings → Git`, `Production Branch`: לבדוק), `production` במקום `main`, ושומרים. הענף עוד לא קיים: הוא נוצר בצעד ב, בשחרור הראשון, ועד אז www נשאר כמו שהוא. אם Vercel לא מקבל שם של ענף שעוד לא קיים, עוצרים ושואלים בסשן.
+   - בפרויקט של ההדגמה לא משנים כלום: הוא ממשיך לעלות מ-`main` בכל מיזוג.
+   - מכאן מיזוג ל-`main` בונה בפרויקט הראשי רק גרסת ניסיון (`Preview`), עם הערכים של `conceptapp-dev`.
+   - **בדיקה:** בפרויקט הראשי כתוב `production`, ובפרויקט של ההדגמה עדיין `main`.
+5. **האתר הראשי, צעד ב (לייצור):**
+   - **קודם, Migrate conceptapp-prod שוב, עכשיו:** מאז ב3 נכנסו ל-`main` שינויים, ואולי גם במבנה של המסד. הרצת ניסיון ואז הרצה אמיתית, כמו בב3 (סעיפים 2 ו-3). השחרור בסוף הצעד הזה הוא שתי השורות מהסיכום של ההרצה האמיתית.
+   - **המשתנים,** כל אחד ל-`Production` בלבד בדרך שלמעלה: אף פעם לא ערך חדש במשתנה ש-`Preview` או `Development` מסומנים בו. בלי `Redeploy`: השחרור בונה את האתר.
 
-   | משתנה | ערך | איך |
-   |---|---|---|
-   | `NEXT_PUBLIC_SUPABASE_URL` | הכתובת של `conceptapp-prod` | הכפתור `Connect` בלוח |
-   | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | מתחיל ב-`sb_publishable_` | `Project Settings → API Keys` |
-   | `SUPABASE_SECRET_KEY` | מתחיל ב-`sb_secret_` | אותו מסך. `Sensitive` |
-   | `VAPID_PUBLIC_KEY` | זוג **חדש** | הפקודה למטה |
-   | `VAPID_PRIVATE_KEY` | החצי השני של הזוג | `Sensitive` |
-   | `VAPID_SUBJECT` | `mailto:` ומייל שאתה קורא | |
-   | `CRON_SECRET` | ערך **חדש**, אותו ערך כמו `cron_secret` ב-Vault (ב5) | הפקודה למטה. `Sensitive` |
-   | `DEMO_DOOR` | `off` | |
-   | `EMPLOYEE_DATA_KEKS`, `EMPLOYEE_DATA_KEK_ACTIVE` | רק בב9, אחרי עורך הדין | |
+     | משתנה | ערך | איך |
+     |---|---|---|
+     | `NEXT_PUBLIC_SUPABASE_URL` | הכתובת של `conceptapp-prod` | הכפתור `Connect` בלוח |
+     | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | מתחיל ב-`sb_publishable_` | `Project Settings → API Keys` |
+     | `SUPABASE_SECRET_KEY` | מתחיל ב-`sb_secret_` | אותו מסך. `Sensitive` |
+     | `VAPID_PUBLIC_KEY` | זוג **חדש** | הפקודה למטה |
+     | `VAPID_PRIVATE_KEY` | החצי השני של הזוג | `Sensitive` |
+     | `VAPID_SUBJECT` | `mailto:` ומייל שאתה קורא | |
+     | `CRON_SECRET` | הערך מב5, ממנהל הסיסמאות ("CRON_SECRET של הייצור"), אותו ערך כמו `cron_secret` ב-Vault | `Sensitive` |
+     | `DEMO_DOOR` | `off` | |
+     | `EMPLOYEE_DATA_KEKS`, `EMPLOYEE_DATA_KEK_ACTIVE` | רק בב9, אחרי עורך הדין | |
 
-   הזוג החדש והסוד החדש, ב-PowerShell, בתיקייה של הפרויקט:
+     הזוג החדש, ב-PowerShell, בתיקייה של הפרויקט:
 
-   ```powershell
-   git pull
-   node tooling/vapid-keys.mjs
-   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-   ```
+     ```powershell
+     git pull
+     node tooling/vapid-keys.mjs
+     ```
 
-   הראשונה מדפיסה שתי שורות, אחת שמתחילה ב-`VAPID_PUBLIC_KEY` ואחת ב-`VAPID_PRIVATE_KEY`; השנייה מדפיסה את הסוד. מעתיקים ישר ל-Vercel ולמנהל הסיסמאות, ולא לשום מקום אחר.
+     היא מדפיסה שתי שורות, אחת שמתחילה ב-`VAPID_PUBLIC_KEY` ואחת ב-`VAPID_PRIVATE_KEY`. מעתיקים ישר ל-Vercel ולמנהל הסיסמאות, ולא לשום מקום אחר.
 
-   - **בדיקה:** נכנסים עם המספר שלך מב6, והקונסולה נפתחת. `www.conceptapp.co.il/health` עונה 200.
+   - **השחרור הראשון:** ב-PowerShell, בתיקייה של הפרויקט, שתי השורות מהסיכום של ההרצה האמיתית, אחת אחת. הן נראות כך, עם הגרסה במקום `COMMIT`:
+
+     ```powershell
+     git fetch origin
+     git push origin COMMIT:refs/heads/production
+     ```
+
+     git עונה `[new branch]`: הענף `production` נוצר בגרסה שהמבנה שלה כבר בייצור, ו-Vercel בונה ממנו את האתר הראשי עם המשתנים החדשים.
+
+   - **בדיקה:**
+     - ב-Vercel, `Deployments`: הגרסה העליונה של `Production` היא מהענף `production`, ב-`Ready`.
+     - נכנסים עם המספר שלך מב6, והקונסולה נפתחת. `www.conceptapp.co.il/health` עונה 200.
+     - **אף ערך של הייצור לא בגרסאות הניסיון:** ב-`Settings → Environment Variables`, מסננים לפי סביבה (לבדוק איפה) ל-`Preview`, ואחר כך ל-`Development`. בשתיהן `NEXT_PUBLIC_SUPABASE_URL` הוא הכתובת של `conceptapp-dev` (המזהה שלו בכתובת), או שהוא לא שם. ובכל אחד מ-`SUPABASE_SECRET_KEY`, `CRON_SECRET`, `VAPID_PRIVATE_KEY` ו-`EMPLOYEE_DATA_KEKS` (אחרי ב9): ברשומה שמסומן בה `Production` לא מסומנים גם `Preview` או `Development`. אם ערך של הייצור הגיע לאחת מהן: מורידים אותו משם, ומחליפים את הסוד (נספח), כי אולי כבר נבנתה איתו גרסת ניסיון.
 
 ## ב8. גיבוי ושחזור ניסיון
 
@@ -208,7 +241,8 @@ returning user_id;
    node tooling/employee-data-key.mjs
    ```
 
-2. שתי השורות שהיא מדפיסה נכנסות ל-Vercel: `EMPLOYEE_DATA_KEKS` ו-`EMPLOYEE_DATA_KEK_ACTIVE`, ל-`Production` בלבד, `Sensitive`. עותק במנהל הסיסמאות: מפתח שאבד הוא תיקים שאף אחד לא יקרא. ואז `Redeploy`.
+2. שתי השורות שהיא מדפיסה נכנסות ל-Vercel, לאתר הראשי: `EMPLOYEE_DATA_KEKS` ו-`EMPLOYEE_DATA_KEK_ACTIVE`, ל-`Production` בלבד בדרך שבב7, `Sensitive`. Vercel מסמן מראש גם את `Preview` ואת `Development`: מורידים מהם את הסימון לפני ששומרים. עותק במנהל הסיסמאות: מפתח שאבד הוא תיקים שאף אחד לא יקרא. ואז `Redeploy` לגרסה הנוכחית של `Production` (עדכון אחרי שעסק אמיתי עלה, בסוף המסמך).
+   - **בדיקה:** ב-`Settings → Environment Variables`, בסינון ל-`Preview` ואחר כך ל-`Development`, אין `EMPLOYEE_DATA_KEKS` ואין `EMPLOYEE_DATA_KEK_ACTIVE`: שתי הרשומות מסומנות `Production` בלבד. אם אחת מהן שם: מורידים אותה משם, ומחליפים את המפתח (נספח) לפני שנשמר בו תיק אמיתי.
 3. ב-SQL של `conceptapp-prod` בלבד, ואף פעם לא בפרויקט הפיתוח. בטבלה יש שורה אחת, ולכן אין `where`:
 
 ```sql
@@ -256,6 +290,28 @@ update private.auth_limits set max_count = 40 where kind = 'verify' and scope = 
 - מבחן הקבלה: העובד הכי פחות טכני מצליח להיכנס בלי עזרה.
 - החובות של העסק אחרי ההתחלה: לעבור על יומן הגישה כל חודש, ולסקור את מסמך הגדרות המאגר עד 31 בדצמבר.
 
+## עדכון אחרי שעסק אמיתי עלה
+
+**למה:** מב7 צעד 4, מיזוג ל-`main` מגיע לאתר ההדגמה בלבד. האתר של העסקים האמיתיים מתעדכן רק כשאתה משחרר, וקודם המבנה של המסד ורק אחר כך הקוד: קוד שמגיע לפני המבנה שלו שובר מסכים לעובדים. **מתי:** כשהיומן של הסוכן או סשן אומרים שיש משהו שהעסקים צריכים. בשעה שקטה, לא בתחילת משמרת. **זמן:** כרבע שעה. **עלות:** אין.
+
+רק אתה: הסוכן הלילי וסשנים של Claude לא מריצים אף אחד מהצעדים כאן (כלל 3).
+
+1. **הרצת ניסיון:** `Actions → Migrate conceptapp-prod → Run workflow`, ענף `main`, `apply` כבוי, ואישור (`Review deployments`, מסמנים `conceptapp-prod`, `Approve and deploy`). קוראים את הצעד "What would run": השינויים במבנה שעוד לא בייצור, או שאין כאלה. אם צעד נכשל, לא ממשיכים: שואלים בסשן.
+2. **הרצה אמיתית:** שוב `Run workflow`, הפעם עם `apply` דלוק, ואישור. גם כשהניסיון לא הראה שינויים: רק ההרצה הזו כותבת בסוף, בדף שלה ב-`Summary`, את הגרסה שהמבנה שלה עכשיו בייצור ואת שתי השורות שמשחררות אותה.
+3. **שחרור:** ב-PowerShell, בתיקייה של הפרויקט, שתי השורות מהסיכום, אחת אחת. שם `COMMIT` כבר מוחלף בגרסה:
+
+   ```powershell
+   git fetch origin
+   git push origin COMMIT:refs/heads/production
+   ```
+
+   - `Everything up-to-date`: הגרסה הזו כבר שוחררה, ואין מה לעשות.
+   - `rejected` או כל שגיאה אחרת: עוצרים ושואלים בסשן, ולא מנסים בכוח. השורה הזו רק מקדמת את הענף, אף פעם לא מחזירה אותו לאחור.
+4. **בדיקה אחרי:** ב-Vercel, בפרויקט הראשי, `Deployments`: הגרסה העליונה של `Production` היא מהענף `production`, ב-`Ready`. `www.conceptapp.co.il/health` עונה 200, ונכנסים עם המספר שלך.
+
+- אם ההרצה האמיתית נכשלה באמצע: לא משחררים, ופותחים סשן. האתר נשאר על הגרסה הקודמת.
+- `Redeploy` באתר הראשי, אחרי שינוי משתנה (ב9, הנספח): ב-`Deployments`, הגרסה הנוכחית של `Production`, מהענף `production`, `⋯` → `Redeploy`. זה בונה שוב את מה ששוחרר, עם המשתנים של עכשיו, ולא מביא שום דבר חדש מ-`main`.
+
 ## נספח: החלפת סוד
 
 כשסוד דלף, או כשמי שידע אותו כבר לא בצוות.
@@ -264,7 +320,7 @@ update private.auth_limits set max_count = 40 where kind = 'verify' and scope = 
 |---|---|---|
 | `SUPABASE_SECRET_KEY` | יוצרים חדש ב-`Project Settings → API Keys`, מכניסים ל-Vercel, `Redeploy`, ואז מוחקים את הישן | קודי השעון בני 6 הספרות ואישור הכניסה לתיק נגזרים ממנו: קוד שמוצג באותו רגע ורבע השעה הפתוחה של תיק נפסקים, וזהו |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | זוג חדש (ב7), ל-Vercel, `Redeploy` | ההתראות לטלפון נפסקות בכל הטלפונים, עד שכל אחד פותח שוב את האפליקציה |
-| `CRON_SECRET` | ב-Vercel וב-`cron_secret` ב-Vault יחד | עד ששניהם שווים, המשימות של המסד נדחות והתראות לטלפון מחכות |
+| `CRON_SECRET` | ערך חדש בפקודה של ב5, למנהל הסיסמאות, ומשם ל-Vercel ול-`cron_secret` ב-Vault יחד | עד ששניהם שווים, המשימות של המסד נדחות והתראות לטלפון מחכות |
 | `PROD_SUPABASE_DB_PASSWORD` (סיסמת מסד הנתונים של הייצור) | ב-Supabase (`Project Settings → Database`), ואז הסוד `PROD_SUPABASE_DB_PASSWORD` בסביבה `conceptapp-prod` ב-GitHub, ולא אחד מ-`Repository secrets`, שהם של פרויקט הפיתוח | שום דבר באפליקציה. רק ההרצה הבאה של Migrate conceptapp-prod צריכה את החדשה |
 | `EMPLOYEE_DATA_KEKS` | מפתח חדש אחרי הישנים (`node tooling/employee-data-key.mjs --id 2`), ו-`EMPLOYEE_DATA_KEK_ACTIVE` עובר למספר החדש. ב-Vercel, `Redeploy` | אף פעם לא מוחקים מפתח ישן: בלעדיו התיקים שנשמרו בו לא נקראים (`.env.example`) |
 | `Auth Token` של Twilio | ב-Twilio, ואז ב-Supabase (ב4) | עד שהחדש ב-Supabase, קודים לא נשלחים |

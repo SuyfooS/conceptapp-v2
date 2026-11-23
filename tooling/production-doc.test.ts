@@ -7,8 +7,12 @@ import { jobs, readRepoFile, topLevel } from "./workflows";
 // a path on someone's computer, and whole: every setting Vercel needs, the
 // workflow, the environment and its secrets by the names GitHub shows, a
 // number for each of Supabase's rate limits, and where each value comes from
-// when Vercel won't show it again. The repo is public, so what it must never
-// hold is checked here too.
+// when Vercel won't show it again. In order, too: the organisation chosen
+// before anything is paid for, the cron secret made once, the demo's site
+// rebuilt after its values, production's values in Production alone with a
+// check of Preview and Development, and the real site released from its own
+// branch only after Migrate conceptapp-prod. The repo is public, so what it
+// must never hold is checked here too.
 
 const doc = readRepoFile("docs/production.md");
 
@@ -191,7 +195,7 @@ describe("docs/production.md", () => {
     const b7 = section("ב7.");
     const demo = rows(stepOf(b7, 2));
     // What the real site's table marks Sensitive is hidden on the main site.
-    const sensitive = rows(stepOf(b7, 4))
+    const sensitive = rows(stepOf(b7, 5))
       .filter((cells) => cells.some((cell) => cell.includes("`Sensitive`")))
       .map(([name = ""]) => name);
     expect(sensitive).toEqual(
@@ -212,6 +216,168 @@ describe("docs/production.md", () => {
     for (const name of settings) {
       if (name === "PUSH_TEST_ORIGIN") continue;
       expect(rowOf(`\`${name}\``), name).toBeDefined();
+    }
+  });
+
+  it("has the organisation chosen, with its price, before the project and before Pro", () => {
+    // In a Pro organisation every project pays for its compute: upgraded
+    // first, the demo's would be paid before Orel chose it.
+    const b2 = section("ב2.");
+    const choose = stepOf(b2, 1);
+    for (const word of ["באיזה ארגון", "מחיר", "`New organization`"]) {
+      expect(choose, word).toContain(word);
+    }
+    expect(stepOf(b2, 2)).toMatch(/בארגון שבחרת: `New project`/);
+    const upgrade = [2, 3, 4].find((n) =>
+      stepOf(b2, n).includes("`Spend cap`"),
+    );
+    expect(upgrade).toBeDefined();
+    expect(stepOf(b2, upgrade ?? 0)).toContain("רק הארגון שבחרת");
+    expect(choose).not.toContain("`Spend cap`");
+  });
+
+  it("makes the cron secret once, in B5, and B7 takes it from the password manager", () => {
+    // Two values and the app refuses every job, with nothing on screen.
+    const make = "randomBytes(32)";
+    expect(doc.split(make)).toHaveLength(2);
+    const made = fences.filter(({ body }) => body.includes(make));
+    expect(made).toHaveLength(1);
+    const lines = (made[0]?.body ?? "")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line !== "");
+    expect(lines[0]).toBe("git pull");
+    const b5 = section("ב5.");
+    expect(b5).toContain(make);
+    expect(b5).toContain("מנהל הסיסמאות");
+    const real = rows(stepOf(section("ב7."), 5)).find(
+      ([name = ""]) => name === "`CRON_SECRET`",
+    );
+    expect(real?.[1]).toContain("ב5");
+    expect(real?.[1]).toContain("מנהל הסיסמאות");
+    expect(real?.join(" ")).not.toContain("חדש");
+    expect(real?.join(" ")).not.toContain("הפקודה");
+  });
+
+  it("puts production's values in Production alone, splitting an entry Preview shares, and checks both", () => {
+    // In Vercel one entry serves every environment ticked on it: a new value
+    // there would reach every branch's preview, the nightly agent's too.
+    const b7 = section("ב7.");
+    const how = b7.slice(
+      b7.indexOf("**משתנה ל-`Production` בלבד**"),
+      b7.search(/^1\. /m),
+    );
+    for (const word of [
+      "`Preview`",
+      "`Development`",
+      "מורידים בו את הסימון מ-`Production`",
+      "`Add`",
+    ]) {
+      expect(how, word).toContain(word);
+    }
+    const stepB = stepOf(b7, 5);
+    expect(stepB).toContain("בדרך שלמעלה");
+    const check = stepB.slice(stepB.indexOf("**בדיקה:**"));
+    const sensitive = rows(stepB)
+      .filter((cells) => cells.some((cell) => cell.includes("`Sensitive`")))
+      .map(([name = ""]) => name);
+    expect(sensitive.length).toBeGreaterThan(0);
+    for (const word of [
+      "`Preview`",
+      "`Development`",
+      "`NEXT_PUBLIC_SUPABASE_URL`",
+      "`conceptapp-dev`",
+      "`EMPLOYEE_DATA_KEKS`",
+      ...sensitive,
+    ]) {
+      expect(check, word).toContain(word);
+    }
+    // B9's keys: the same way in, and the same check.
+    const keys = stepOf(section("ב9."), 2);
+    expect(keys).toContain("בדרך שבב7");
+    const keysCheck = keys.slice(keys.indexOf("**בדיקה:**"));
+    for (const word of [
+      "`Preview`",
+      "`Development`",
+      "`EMPLOYEE_DATA_KEKS`",
+      "`EMPLOYEE_DATA_KEK_ACTIVE`",
+    ]) {
+      expect(keysCheck, word).toContain(word);
+    }
+  });
+
+  it("releases the real site only from production, after Migrate, by the workflow's own lines", () => {
+    // From B7 step 4 a merge to main reaches the demo's site alone; the real
+    // one deploys the branch production, which Orel moves to the commit
+    // whose migrations Migrate conceptapp-prod applied.
+    const workflow = readRepoFile(".github/workflows/migrate-prod.yml");
+    const lines = [...workflow.matchAll(/^\s*echo "(git [^"]+)"$/gm)].map(
+      ([, line = ""]) => line.replace("$GITHUB_SHA", "COMMIT"),
+    );
+    expect(lines).toEqual([
+      "git fetch origin",
+      "git push origin COMMIT:refs/heads/production",
+    ]);
+    const releases = fences.filter(({ body }) =>
+      body.includes("refs/heads/production"),
+    );
+    expect(releases.length).toBeGreaterThanOrEqual(2);
+    for (const { body } of releases) {
+      expect(
+        body
+          .split("\n")
+          .map((line) => line.trim())
+          .filter((line) => line !== ""),
+      ).toEqual(lines);
+    }
+    for (const { body } of fences) {
+      expect(body).not.toContain("--force");
+      expect(body).not.toMatch(/\s\+\S*:refs\//);
+      for (const line of body.split("\n")) {
+        if (!line.includes("git push")) continue;
+        expect(line.trim()).toBe(lines[1]);
+      }
+    }
+
+    const b7 = section("ב7.");
+    const gate = stepOf(b7, 4);
+    expect(gate).toContain("`Branch Tracking`");
+    expect(gate).toContain("`production` במקום `main`");
+    expect(gate).toMatch(/ההדגמה[^\n]*`main`/);
+    // Step B comes after it: Migrate again, the values, then the first release.
+    const stepB = stepOf(b7, 5);
+    expect(stepB).toContain("צעד ב");
+    const migrate = stepB.indexOf("Migrate conceptapp-prod");
+    const table = stepB.search(/^\s*\|/m);
+    const release = stepB.indexOf("refs/heads/production");
+    expect(migrate).toBeGreaterThanOrEqual(0);
+    expect(migrate).toBeLessThan(table);
+    expect(table).toBeLessThan(release);
+
+    const update = section("עדכון אחרי שעסק אמיתי עלה");
+    expect(update).toContain(
+      "Actions → Migrate conceptapp-prod → Run workflow",
+    );
+    const dry = update.indexOf("`apply` כבוי");
+    const apply = update.indexOf("`apply` דלוק");
+    const push = update.indexOf("refs/heads/production");
+    expect(dry).toBeGreaterThanOrEqual(0);
+    expect(dry).toBeLessThan(apply);
+    expect(apply).toBeLessThan(push);
+    // Moving it is Orel's alone.
+    expect(section("שלושה כללים")).toContain("לא מקדמים את הענף `production`");
+  });
+
+  it("redeploys the demo's site after its values, and points the dev project at it once it answers", () => {
+    const demo = stepOf(section("ב7."), 2);
+    const table = demo.lastIndexOf("|");
+    const redeploy = demo.indexOf("`Redeploy`", table);
+    const check = demo.indexOf("**בדיקה:**");
+    expect(table).toBeGreaterThan(0);
+    expect(redeploy).toBeGreaterThan(table);
+    expect(redeploy).toBeLessThan(check);
+    for (const word of ["`app_url`", "`Site URL`"]) {
+      expect(demo.indexOf(word), word).toBeGreaterThan(check);
     }
   });
 
