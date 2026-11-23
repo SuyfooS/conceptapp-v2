@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   getFileHolderState: vi.fn(),
   hasEmployeeKeys: vi.fn(),
   fileOpenFor: vi.fn(),
+  getFileHistory: vi.fn(),
 }));
 vi.mock("../../file-access", () => ({
   currentFilesReader: mocks.currentFilesReader,
@@ -28,6 +29,7 @@ vi.mock("@db/employee-files", () => ({
   hasEmployeeKeys: mocks.hasEmployeeKeys,
 }));
 vi.mock("./step-up", () => ({ fileOpenFor: mocks.fileOpenFor }));
+vi.mock("@db/file-history", () => ({ getFileHistory: mocks.getFileHistory }));
 
 const { currentHolderFile } = await import("./holder-file");
 const { redirect } = await import("next/navigation");
@@ -92,7 +94,21 @@ const fileRead = {
   missing: ["address"],
   youthUntil: null,
   pensionDueOn: null,
+  startedOn: null,
   taxYears: [],
+};
+
+const emptyHistory = {
+  rows: [],
+  more: false,
+  lookups: {
+    members: new Map(),
+    invites: new Map(),
+    shifts: new Map(),
+    swaps: new Map(),
+    departments: new Map(),
+    stations: new Map(),
+  },
 };
 
 beforeEach(() => {
@@ -102,6 +118,7 @@ beforeEach(() => {
   mocks.getFileHolderState.mockReset().mockResolvedValue("ready");
   mocks.hasEmployeeKeys.mockReset().mockReturnValue(true);
   mocks.fileOpenFor.mockReset().mockResolvedValue(true);
+  mocks.getFileHistory.mockReset().mockResolvedValue(emptyHistory);
 });
 
 describe("a holder's file screen", () => {
@@ -240,6 +257,107 @@ describe("a holder's file screen", () => {
 
   it("lets Next's own throws go on to Next", async () => {
     mocks.currentFilesReader.mockImplementation(() => redirect("/enter"));
+    await expect(currentHolderFile(NOA)).rejects.toThrow("NEXT_REDIRECT");
+  });
+});
+
+// Profile H6b-1: "מה קרה בתיק", read only for the open file.
+describe("what happened in the file", () => {
+  it("is read for the open file only, never before its turn", async () => {
+    mocks.getFileHolderState.mockResolvedValue("ack");
+    await currentHolderFile(NOA);
+    mocks.getFileHolderState.mockResolvedValue("ready");
+    mocks.fileOpenFor.mockResolvedValue(false);
+    await currentHolderFile(NOA);
+    mocks.fileOpenFor.mockResolvedValue(true);
+    mocks.hasEmployeeKeys.mockReturnValue(false);
+    await currentHolderFile(NOA);
+    mocks.hasEmployeeKeys.mockReturnValue(true);
+    mocks.getEmployeeFile.mockResolvedValue({
+      ok: false,
+      failure: "denied",
+      reason: "viewing",
+    });
+    await currentHolderFile(NOA);
+    mocks.currentFilesReader.mockResolvedValue({
+      kind: "team",
+      viewing: true,
+      seesTeam: true,
+      businessId: SHOP,
+      businessName: "Shop",
+      timeZone: "Asia/Jerusalem",
+    });
+    await currentHolderFile(NOA);
+    expect(mocks.getFileHistory).not.toHaveBeenCalled();
+  });
+
+  it("comes through as lines: a reveal and a change, by whom", async () => {
+    mocks.getFileHistory.mockResolvedValue({
+      ...emptyHistory,
+      rows: [
+        {
+          id: 2,
+          action: "employee.view",
+          details: { person: NOA, fields: ["bank_account"] },
+          createdAt: "2026-11-22T10:00:00+00:00",
+          actorId: URI,
+        },
+        {
+          id: 1,
+          action: "employee.details",
+          details: { person: NOA, fields: ["bank"] },
+          createdAt: "2026-11-21T10:00:00+00:00",
+          actorId: NOA,
+        },
+      ],
+      more: true,
+      lookups: {
+        ...emptyHistory.lookups,
+        members: new Map([
+          [URI, { active: true, name: "אורי" }],
+          [NOA, { active: true, name: "נועה כהן" }],
+        ]),
+      },
+    });
+    const screen = await currentHolderFile(NOA);
+    expect(mocks.getFileHistory).toHaveBeenCalledWith(SHOP, NOA);
+    if (screen.kind !== "open") throw new Error(screen.kind);
+    expect(screen.history?.more).toBe(true);
+    expect(
+      screen.history?.entries.map((entry) => [entry.line.action, entry.actor]),
+    ).toEqual([
+      ["employee.view", { kind: "member", name: "אורי" }],
+      ["employee.details", { kind: "member", name: "נועה כהן" }],
+    ]);
+  });
+
+  // The review: the address may hold the id in upper case, which the file's
+  // reads take as a uuid, while the log names the person in lower case.
+  it("is read by the id the database returned, not the address as typed", async () => {
+    const screen = await currentHolderFile(NOA.toUpperCase());
+    expect(screen.kind).toBe("open");
+    expect(mocks.getFileHistory).toHaveBeenCalledWith(SHOP, NOA);
+  });
+
+  it("says it couldn't be read by a code and a kind, and the file still opens", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.getFileHistory.mockRejectedValue(
+      Object.assign(new Error("noa@example.com"), { code: "42501" }),
+    );
+    const screen = await currentHolderFile(NOA);
+    expect(screen.kind).toBe("open");
+    if (screen.kind === "open") expect(screen.history).toBeNull();
+    expect(logged).toHaveBeenCalledWith(
+      "reading a file's history failed",
+      "42501",
+      "Error",
+    );
+    expect(JSON.stringify(logged.mock.calls)).not.toContain("noa@example");
+    logged.mockRestore();
+  });
+
+  it("lets Next's own throws go on to Next", async () => {
+    mocks.getFileHistory.mockImplementation(() => redirect("/enter"));
     await expect(currentHolderFile(NOA)).rejects.toThrow("NEXT_REDIRECT");
   });
 });

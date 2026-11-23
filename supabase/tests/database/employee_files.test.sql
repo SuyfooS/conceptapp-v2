@@ -192,7 +192,7 @@ select ok(
      'public.note_step_up(uuid, text, timestamptz)',
      'public.acknowledge_bank(uuid, uuid, uuid, timestamptz, timestamptz)',
      'public.dispute_bank_change(uuid, uuid, timestamptz)',
-     'public.set_direct_groups(uuid, uuid, uuid, text[], timestamptz)',
+     'public.set_direct_groups(uuid, uuid, uuid, text, boolean, timestamptz)',
      'public.set_tax_year_status(uuid, uuid, uuid, smallint, text, text, date, text, timestamptz)',
      'public.audit_guard_status()',
      'public.bank_change_hold(uuid, uuid, timestamptz)'

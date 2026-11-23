@@ -73,6 +73,7 @@ const read = (over: Partial<EmployeeFile> = {}): EmployeeFile => ({
   missing: ["pension"],
   youthUntil: null,
   pensionDueOn: "2026-12-01",
+  startedOn: "2026-10-02",
   taxYears: [
     {
       year: 2026,
@@ -159,5 +160,41 @@ describe("a holder's file", () => {
     expect(data.bank).toBeNull();
     // Held, they still show, though no longer asked.
     expect(holderFileOf(read(), lean, "2026-11-22").bank?.code).toBe(12);
+  });
+});
+
+// Profile H6b: the account's moment goes back to the database as it came,
+// and a minor's file carries the start the checklist counts from.
+describe("what a holder's writes and the checklist need", () => {
+  it("keeps the account's change exactly as the database wrote it", () => {
+    const moment = "2026-11-20T08:00:00.123456+00:00";
+    const data = holderFileOf(
+      read({ file: { ...ROW, bank_changed_at: moment, bank_review: "new" } }),
+      SETTINGS,
+      "2026-11-22",
+    );
+    expect(data.bank?.changedAt).toBe(moment);
+    expect(data.bank?.review).toBe("new");
+  });
+
+  it("gives a minor the open period's start, and an adult no checklist", () => {
+    expect(
+      holderFileOf(read({ youthUntil: "2028-04-15" }), SETTINGS, "2026-11-22")
+        .identity.minor,
+    ).toEqual({ startedOn: "2026-10-02" });
+    expect(
+      holderFileOf(
+        read({ youthUntil: "2028-04-15", startedOn: null }),
+        SETTINGS,
+        "2026-11-22",
+      ).identity.minor,
+    ).toEqual({ startedOn: null });
+    expect(holderFileOf(read(), SETTINGS, "2026-11-22").identity.minor).toBe(
+      null,
+    );
+    expect(
+      holderFileOf(read({ youthUntil: "2026-11-22" }), SETTINGS, "2026-11-22")
+        .identity.minor,
+    ).toBe(null);
   });
 });

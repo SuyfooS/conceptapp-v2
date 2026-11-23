@@ -1,4 +1,4 @@
-import type { FileGroup, FileStatus } from "@domain/employee-file";
+import type { BankReview, FileGroup, FileStatus } from "@domain/employee-file";
 import { type FileLine, fileLineOf, form101LineOf } from "@domain/file-holders";
 import type { createFormatter } from "next-intl";
 import { Fragment, type ReactNode } from "react";
@@ -14,7 +14,10 @@ import type { TeamFiles } from "./file-status";
  * the 101 is in, since `fileLineOf` gives no group without the holder's
  * detail. The same words in every shape: the table's details cell says
  * what the line says, and its 101 cell the line's status, under a column
- * named for the form and the year as the line names them.
+ * named for the form and the year as the line names them. The person's
+ * own "לא שיניתי" on the account is said apart from a change to look at
+ * (H6b-1): it asks the holder to check with them first. The desktop's
+ * "שינוי אחרון" (H6b-2) is the day the file or its 101 was last written.
  */
 
 type T = Translator<"app">;
@@ -53,6 +56,13 @@ function joined(parts: [string, ReactNode][]): ReactNode {
   ));
 }
 
+/** The account to look at: the person's "לא שיניתי", or a change to check. */
+function reviewWords(t: T, review: BankReview) {
+  return review === "disputed"
+    ? t("team.file.line.bankDisputed")
+    : t("team.file.line.bankReview");
+}
+
 /** What the file lacks, or that it is complete: the line's first part, and the table's cell. */
 function fileWords(t: T, format: Format, line: FileLine): string {
   return line.kind === "complete"
@@ -74,7 +84,7 @@ export function fileLineWords(
   const line = fileLineOf(status);
   const parts: [string, ReactNode][] = [["file", fileWords(t, format, line)]];
   if (line.kind !== "count" && line.bankReview) {
-    parts.push(["bank", t("team.file.line.bankReview")]);
+    parts.push(["bank", reviewWords(t, line.bankReview)]);
   }
   if (files.form101) {
     const form = form101LineOf(status);
@@ -96,6 +106,31 @@ export function fileLineWords(
 }
 
 /**
+ * The desktop's "שינוי אחרון" for a holder (H6b-2): the day the file or its
+ * 101 was last written, by anyone, or that nothing was filled yet.
+ */
+export function changedCell(
+  t: T,
+  format: Format,
+  status: FileStatus,
+  timeZone: string,
+): ReactNode {
+  const at = status.detail?.changed_at ?? null;
+  return at === null ? (
+    <span className="text-ink-2">{t("team.file.cells.neverChanged")}</span>
+  ) : (
+    <span dir="ltr">
+      {format.dateTime(new Date(at), {
+        day: "numeric",
+        month: "numeric",
+        year: "numeric",
+        timeZone,
+      })}
+    </span>
+  );
+}
+
+/**
  * The desktop table's two cells: the details for payroll in the line's own
  * words, and this year's 101, whose column already says which form and year.
  */
@@ -113,7 +148,7 @@ export function fileCells(
         <>
           {details}
           <span className="block text-sm text-warning">
-            {t("team.file.line.bankReview")}
+            {reviewWords(t, line.bankReview)}
           </span>
         </>
       ) : (

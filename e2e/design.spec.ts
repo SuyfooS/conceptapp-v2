@@ -176,6 +176,21 @@ const PAGES = [
   "/design/shell/team/noa/file?state=review",
   "/design/shell/team/noa/file?state=open&as=accountant",
   "/design/shell/team/yoav/file?state=open",
+  // What a holder does in the file (H6b-1): an account to look at of each
+  // kind, one changed again meanwhile, "מה קרה בתיק" empty and unread, a
+  // part handed directly, a pension whose day passed; the profile's card of
+  // someone who said "לא שיניתי"; the owner's Today with the accounts to
+  // look at. And (H6b-2) a minor's checklist.
+  "/design/shell/team/noa/file?state=review-new",
+  "/design/shell/team/noa/file?state=review-warned",
+  "/design/shell/team/noa/file?state=moved",
+  "/design/shell/team/noa/file?state=open&history=empty",
+  "/design/shell/team/noa/file?state=open&history=failed",
+  "/design/shell/team/yoav/file?state=open&direct=bank",
+  "/design/shell/team/yoav/file?state=passed",
+  "/design/shell/team/maya/file?state=open",
+  "/design/shell/team/itay?file=holder",
+  "/design/shell/today/owner?files=reviews",
   "/design/shell/me",
   "/design/shell/me?state=empty",
   "/design/shell/me?state=demo",
@@ -6909,4 +6924,124 @@ test("the profile's previous job leads to the old file", async ({ page }) => {
   ).toBeVisible();
   await page.getByRole("link", { name: he.app.file.back, exact: true }).click();
   await expect(page).toHaveURL(/\/design\/shell\/me\?past=1$/);
+});
+
+// What a holder does in the file, on its twins (profile H6b-1): an account
+// changed again meanwhile is said, then confirmed; a missing part marked
+// handed directly, with "ביטול" focused and its undo; the owner's Today
+// listing the accounts to look at, each leading to its file's twin. And
+// (H6b-2) the team twin's filter. The twins keep nothing.
+test("the file twin's account changed meanwhile is said, then confirmed", async ({
+  page,
+}) => {
+  await openFileDemo(page, "/design/shell/team/noa/file?state=moved");
+  const bank = page.getByRole("region", { name: hf.sections.bank });
+  const confirm = bank.getByRole("button", { name: hf.review.confirmNew });
+  await confirm.click();
+  await expect(bank.getByRole("alert")).toHaveText(hf.review.moved);
+  await expect(page).toHaveURL(
+    /\/design\/shell\/team\/noa\/file\?state=review-new$/,
+  );
+  await expect(bank.getByRole("alert")).toBeFocused();
+  await page.waitForLoadState("networkidle");
+  await confirm.click();
+  await expect(page).toHaveURL(/\/design\/shell\/team\/noa\/file\?state=open$/);
+  await expect(
+    page.getByText(heT("app.team.file.review.confirmed", { first: "נועה" })),
+  ).toBeVisible();
+  await expect(confirm).toHaveCount(0);
+});
+
+test("the file twin marks a missing part handed directly, with its undo", async ({
+  page,
+}) => {
+  await openFileDemo(page, "/design/shell/team/yoav/file?state=open");
+  const bank = page.getByRole("region", { name: hf.sections.bank });
+  await bank.getByRole("button", { name: hf.direct.mark }).click();
+  await expect(page).toHaveURL(
+    /\/design\/shell\/team\/yoav\/file\?state=open&direct=bank$/,
+  );
+  const undo = page.getByRole("button", { name: hf.direct.undo });
+  await expect(undo).toBeFocused();
+  await expect(bank.getByText(hf.rows.direct, { exact: true })).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(
+    /\/design\/shell\/team\/yoav\/file\?state=open&direct=$/,
+  );
+  await expect(bank.getByText(hf.rows.missing, { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: hf.sections.bank }),
+  ).toBeFocused();
+});
+
+test("the owner's Today twin lists the accounts to look at", async ({
+  page,
+}) => {
+  await openFileDemo(page, "/design/shell/today/owner?files=reviews");
+  const reviews = page.getByRole("region", {
+    name: heT("app.home.fileReviews.title", { count: 2 }),
+  });
+  const rows = reviews.getByRole("link");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.first()).toContainText("איתי מזרחי");
+  await expect(rows.first()).toContainText(
+    heT("app.home.fileReviews.disputed", { form: "m" }),
+  );
+  await expect(rows.first()).toHaveAttribute(
+    "href",
+    "/design/shell/team/itay/file",
+  );
+  await expect(rows.nth(1)).toHaveAttribute(
+    "href",
+    "/design/shell/team/maya/file",
+  );
+  await expect(rows.nth(1)).toContainText(he.app.home.fileReviews.new);
+});
+
+test("the team twin filters to missing details", async ({ page }) => {
+  await openFileDemo(page, "/design/shell/team?file=holder");
+  const yoav = page
+    .getByRole("link", { name: /יואב לוי/ })
+    .filter({ visible: true });
+  const noa = page
+    .getByRole("link", { name: /נועה כהן/ })
+    .filter({ visible: true });
+  await expect(noa.first()).toBeVisible();
+  await page
+    .getByRole("button", { name: hf.filter.missing, exact: true })
+    .click();
+  await expect(yoav.first()).toBeVisible();
+  await expect(noa).toHaveCount(0);
+  await page.getByRole("button", { name: hf.filter.all, exact: true }).click();
+  await expect(noa.first()).toBeVisible();
+});
+
+// The review: a choice that shows nobody says so, and its button leads back
+// to everyone. Every file is complete with its 101 accepted (?complete=1).
+test("the team twin says a choice shows nobody, and shows everyone again", async ({
+  page,
+}) => {
+  await openFileDemo(page, "/design/shell/team?file=holder&complete=1");
+  const noa = page
+    .getByRole("link", { name: /נועה כהן/ })
+    .filter({ visible: true });
+  const choice = (label: string) =>
+    page.getByRole("button", { name: label, exact: true });
+  const noForm101 = page.getByText(
+    heT("app.team.file.filter.emptyForm101", { year: 2026 }),
+    { exact: true },
+  );
+  await expect(noa.first()).toBeVisible();
+  await choice(hf.filter.missing).click();
+  await expect(
+    page.getByText(hf.filter.emptyMissing, { exact: true }),
+  ).toBeVisible();
+  await expect(noa).toHaveCount(0);
+  await expectCleanPage(page);
+  await choice(hf.filter.form101).click();
+  await expect(noForm101).toBeVisible();
+  await choice(hf.filter.showAll).click();
+  await expect(noa.first()).toBeVisible();
+  await expect(noForm101).toHaveCount(0);
+  await expect(choice(hf.filter.all)).toHaveAttribute("aria-pressed", "true");
 });
