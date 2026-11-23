@@ -74,7 +74,8 @@ app is opened there again, so make it once. The database half (Vault) is in
 CI runs three jobs on every pull request: `check` (Biome, the typecheck, the unit tests and a
 build), `database` (a local Supabase database with the migrations and seed, the pgTAP tests,
 the database lint and the generated types) and `e2e` (Playwright at 390, 820 and 1440 against
-a build and a local Supabase, once the other two pass). A push to `main` runs them again, unless that exact tree already
+a build and a local Supabase, once the other two pass: six jobs side by side, each size in two
+parts by file with `--shard`, each with its own database). A push to `main` runs them again, unless that exact tree already
 passed all three in a pull request run created the same day in Israel
 (`.github/scripts/tested-tree.sh`). Actions → CI → Run workflow forces a full run on `main`.
 
