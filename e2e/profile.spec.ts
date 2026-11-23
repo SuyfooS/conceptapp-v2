@@ -2,6 +2,8 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
+  ageAvatar,
+  avatarStored,
   clearDemoProfile,
   clearSchedule,
   demoActivityActions,
@@ -17,6 +19,7 @@ import {
 } from "./db";
 import { cameraPhoto, hasExif } from "./photo";
 import { secondPage, signIn } from "./session";
+import { STORAGE_SKIP, storageAnswers } from "./storage";
 import { heT } from "./t";
 
 // The profile (#82): a photo, who sees it, and the way out (H1); a line about
@@ -40,6 +43,8 @@ const TAMAR = { local: "050-000-0010", e164: "+972500000010" };
 
 const m = he.app.me;
 const p = he.ui.photoPicker;
+// The daily clean-up's bearer, which CI makes fresh for each run.
+const CRON_SECRET = process.env.CRON_SECRET ?? "";
 
 const main = (page: Page) => page.getByRole("main");
 /** Today's avatar. On desktop the sidebar's foot says the same words, outside main. */
@@ -203,6 +208,106 @@ test("removing the photo offers undo", async ({ page }) => {
   await expect(undo).toBeVisible();
   await expect(photosIn(page)).toHaveCount(0);
   await expect.poll(() => demoPhotoPath(NOA.e164)).toBeNull();
+});
+
+/** Her photo's address once it is no longer `before`, and the profile points at it. */
+async function photoAfter(page: Page, before: string | null): Promise<string> {
+  await expect
+    .poll(() => photosIn(page).first().getAttribute("src"))
+    .not.toBe(before);
+  const src = (await photosIn(page).first().getAttribute("src")) ?? "";
+  expect(src).toMatch(new RegExp(`^/photos/${NOA.id}/`));
+  await expect
+    .poll(() => demoPhotoPath(NOA.e164))
+    .toBe(src.replace(/^\/photos\//, ""));
+  return src;
+}
+
+// 20261127000300_files_server_only.sql: a photo is shown only while the
+// profile points at it, so one replaced is nobody's, whatever address was
+// kept, and Storage gives the person's own token nothing of any photo.
+test("a replaced photo is nobody's, and Storage itself gives nothing of the current one", async ({
+  page,
+  browser,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop",
+    "Once, on a computer: what the server serves is the same at every width",
+  );
+  // Two sign-ins and two uploads.
+  test.slow();
+  await signIn(page, NOA);
+  await page.goto("/me");
+  const first = await setPhoto(page, p.add);
+  await setPhoto(page, p.change);
+  const second = await photoAfter(page, first);
+  expect((await page.request.get(first)).status()).toBe(404);
+  expect((await page.request.get(second)).status()).toBe(200);
+
+  // Nor her manager: only the one she has now.
+  const manager = await secondPage(browser, testInfo);
+  try {
+    await signIn(manager, SHIRAN);
+    expect((await manager.request.get(first)).status()).toBe(404);
+    expect((await manager.request.get(second)).status()).toBe(200);
+  } finally {
+    await manager.context().close();
+  }
+
+  // Her own session, copied from the browser, gets nothing of it from
+  // Storage: no signed link, no file, an empty folder.
+  if (STORAGE_SKIP) {
+    testInfo.annotations.push({ type: "skip", description: STORAGE_SKIP });
+  } else {
+    const asked = await storageAnswers(
+      page,
+      "avatars",
+      second.replace(/^\/photos\//, ""),
+    );
+    expect(asked.sign.signed, asked.sign.body).toBe(false);
+    expect(asked.download).not.toBe(200);
+    expect(asked.list).toEqual([]);
+  }
+});
+
+// The daily clean-up (/cron/list-photos) takes a profile photo a day old that
+// no profile points at (what the door's reset leaves, or a removal Storage
+// refused), and keeps the current one. It writes the shared demo's Storage.
+test("the daily clean-up takes a profile photo nothing points at, and keeps the current one", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop",
+    "Once, on a computer: it writes the shared demo's Storage",
+  );
+  test.skip(!CRON_SECRET, "needs CRON_SECRET (CI sets it)");
+  test.slow();
+  await signIn(page, NOA);
+  await page.goto("/me");
+  const left = await setPhoto(page, p.add);
+  const leftPath = left.replace(/^\/photos\//, "");
+  // The door's reset clears the profile and leaves the file.
+  await clearDemoProfile(NOA.e164);
+  await page.reload();
+  await expect(photosIn(page)).toHaveCount(0);
+  await setPhoto(page, p.add);
+  const current = await photoAfter(page, left);
+  const currentPath = current.replace(/^\/photos\//, "");
+  expect(await avatarStored(leftPath)).toBe(true);
+  expect((await page.request.get(left)).status()).toBe(404);
+
+  // Both more than a day old: only the one nothing points at goes.
+  await ageAvatar(leftPath, 2);
+  await ageAvatar(currentPath, 2);
+  const run = await page.request.post("/cron/list-photos", {
+    headers: { Authorization: `Bearer ${CRON_SECRET}` },
+  });
+  expect(run.status()).toBe(202);
+  await expect
+    .poll(() => avatarStored(leftPath), { timeout: 15_000 })
+    .toBe(false);
+  expect(await avatarStored(currentPath)).toBe(true);
+  expect((await page.request.get(current)).status()).toBe(200);
 });
 
 test("a demo business that keeps its people keeps their photos", async ({

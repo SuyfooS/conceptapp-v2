@@ -6,6 +6,7 @@ import {
   isProfilePhotoPath,
   PROFILE_PHOTO_MAX_BYTES,
   photoDimensions,
+  profilePhotoOwner,
   profilePhotoPath,
   profilePhotoSrc,
   sniffPhotoType,
@@ -387,6 +388,20 @@ describe("profile photo paths", () => {
     expect(isProfilePhotoPath(user, `${user}/abcdefgh.gif`)).toBe(false);
     expect(isProfilePhotoPath(user, `${user}/abc.jpg`)).toBe(false);
     expect(isProfilePhotoPath(user, `${user}/x/abcdefgh.jpg`)).toBe(false);
+  });
+
+  it("says whose a stored photo is, and nobody's for anything else", () => {
+    expect(profilePhotoOwner(`${user}/abcdefgh12.webp`)).toBe(user);
+    expect(profilePhotoOwner(`${user.toUpperCase()}/abcdefgh12.webp`)).toBe(
+      null,
+    );
+    expect(profilePhotoOwner(`../abcdefgh12.webp`)).toBe(null);
+    expect(profilePhotoOwner(`${user}/../abcdefgh12.webp`)).toBe(null);
+    expect(profilePhotoOwner(`${user}/x/abcdefgh12.webp`)).toBe(null);
+    expect(profilePhotoOwner(`${user}/abcdefgh12.gif`)).toBe(null);
+    expect(profilePhotoOwner("not-a-uuid/abcdefgh12.webp")).toBe(null);
+    expect(profilePhotoOwner(`${"-".repeat(36)}/abcdefgh12.webp`)).toBe(null);
+    expect(profilePhotoOwner("")).toBe(null);
   });
 });
 

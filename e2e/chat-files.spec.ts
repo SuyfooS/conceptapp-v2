@@ -3,6 +3,7 @@ import { expect, type Page, type Request, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
   ageChatFile,
+  ageDemoPdfPlaces,
   chatFileObjects,
   chatFileRemoved,
   clearDemoChat,
@@ -12,11 +13,14 @@ import {
   demoChatPdf,
   demoConversation,
   demoPdfPlaces,
+  removeDemoPdfPlaces,
+  reserveDemoPdfPlaces,
   seeDemoChatNotice,
 } from "./db";
 import { fakePdf, minimalPdf } from "./pdf";
 import { cameraPhoto, hasExif } from "./photo";
 import { secondPage, signIn } from "./session";
+import { STORAGE_SKIP, storageAnswers } from "./storage";
 
 // Pictures in chat (C4, supabase/migrations/20261111000500_chat_files.sql).
 // The demo restaurant takes them for these tests ("chatFiles": true in
@@ -427,6 +431,21 @@ test("a phone's photo goes as a thumbnail, opens whole, keeps nothing from the c
   expect(objects.map((o) => o.type)).toEqual(["image/webp", "image/webp"]);
   expect(objects.reduce((sum, o) => sum + o.size, 0)).toBe(file.fileSize);
 
+  // Her own session, copied from the browser, gets nothing of it from
+  // Storage itself: no signed link, no file, an empty folder. No bucket has
+  // a policy (20261127000300): only the app's route serves it.
+  if (STORAGE_SKIP) {
+    testInfo.annotations.push({ type: "skip", description: STORAGE_SKIP });
+  } else {
+    for (const path of [file.thumbPath, file.filePath]) {
+      const asked = await storageAnswers(page, "chat-files", path);
+      expect(asked.sign.signed, asked.sign.body).toBe(false);
+      expect(asked.sign.body).toMatch(/not.?found/i);
+      expect(asked.download).not.toBe(200);
+      expect(asked.list).toEqual([]);
+    }
+  }
+
   // The owner and the manager work here, but the private chat isn't theirs:
   // not found, the same as a file that doesn't exist.
   for (const key of ["owner", "manager"] as const) {
@@ -742,6 +761,71 @@ test("a PDF goes up through its signed upload, and comes back as a download for 
     expect(answer.headers()["content-type"] ?? "").not.toContain("pdf");
   } finally {
     await stranger.close();
+  }
+});
+
+// One person's own PDFs of the last 10 minutes bring at most half the
+// business's space (20261127000300): five places of 10 MiB she reserved a
+// moment ago, nothing in them yet, hold her next PDF back before anything
+// goes up, whatever its size. It is said over the field, the PDF stays in the
+// conversation with its retry, and goes once those minutes are over.
+test("a person's own PDFs of the last minutes wait, and go once they pass", async ({
+  page,
+}) => {
+  test.slow();
+  const watched = watchPuts(page);
+  await enterAs(page, "worker");
+  const places = await reserveDemoPdfPlaces(NOA.e164, YOAV.e164, 5);
+  try {
+    expect(places).toHaveLength(5);
+    await openWithYoav(page);
+    await attachButton(page).click();
+    const chooser = page.waitForEvent("filechooser");
+    await pickFrom(page, "pdf");
+    await (await chooser).setFiles({
+      name: PDF_NAME,
+      mimeType: "application/pdf",
+      buffer: minimalPdf("ConceptApp own PDFs"),
+    });
+    await expect(composer(page).getByText(PDF_SHOWN)).toBeVisible();
+    await page
+      .getByRole("textbox", { name: c.conversation.placeholder })
+      .filter({ visible: true })
+      .fill(PDF_WORDS);
+    await page
+      .getByRole("button", { name: c.conversation.send, exact: true })
+      .filter({ visible: true })
+      .click();
+
+    // Held back: in its own words, not the business's, and kept to try again.
+    await expect(
+      page
+        .getByText(c.pdfFailure.busyOwn, { exact: true })
+        .filter({ visible: true }),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(
+      page
+        .getByText(c.pdfFailure.busy, { exact: true })
+        .filter({ visible: true }),
+    ).toHaveCount(0);
+    const retry = log(page).getByRole("button", {
+      name: c.conversation.failed,
+    });
+    await expect(retry).toBeVisible();
+    await expect(log(page).getByText(PDF_SHOWN)).toBeVisible();
+    expect(watched.puts).toEqual([]);
+    await expectCleanPage(page);
+
+    // Those minutes over, the same PDF goes when tried again.
+    await ageDemoPdfPlaces(places, 11);
+    await retry.click();
+    await expectPutAnswered(page, watched, 200);
+    await expect(
+      log(page).getByRole("link", { name: named(PDF_SHOWN) }),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(retry).toHaveCount(0);
+  } finally {
+    await removeDemoPdfPlaces(places);
   }
 });
 

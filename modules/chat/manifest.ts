@@ -100,9 +100,11 @@ export const manifest = defineManifest({
       .meta({ level: "team" }),
     /**
      * A business's space for chat files, in MB (C4): past it, its oldest
-     * files go first, even before their days are up (Orel, 11 November 2026);
-     * official documents never go for space. The team's, as public.
-     * expired_files reads it (CHAT_FILE_SPACE_MB, anything else as 100).
+     * files go first, even before their days are up (Orel, 11 November 2026),
+     * first what one person holds beyond half of it (CHAT_SENDER_SPACE_DIVISOR,
+     * public.expired_files); official documents never go for space. The
+     * team's, as public.expired_files reads it (CHAT_FILE_SPACE_MB, anything
+     * else as 100).
      */
     fileSpaceMb: z
       .union([z.literal(50), z.literal(100), z.literal(200)])
