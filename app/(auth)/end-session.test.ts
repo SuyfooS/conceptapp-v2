@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Signing out on this device (`endSessionHere`), with what it forgets stood
-// in for: the device's push, the business chosen, and, since the hiring
+// in for: the device's push, the business chosen, the page a link kept for
+// after sign-in (known issue 21), deleted by its name, and, since the hiring
 // file's holders' view (profile H6a), the step-up that keeps a holder's
 // files open: the database's for this sign-in first
 // (20261127000400_file_step_up.sql), then the cookie, deleted on the team's
@@ -53,6 +54,7 @@ const { endSessionHere } = await import("./end-session");
 const { FILE_STEP_UP_COOKIE, FILE_STEP_UP_PATH } = await import(
   "@domain/file-holders"
 );
+const { AFTER_SIGN_IN_COOKIE } = await import("@domain/after-sign-in");
 
 beforeEach(() => {
   mocks.calls = [];
@@ -67,17 +69,19 @@ beforeEach(() => {
 });
 
 describe("signing out here", () => {
-  it("forgets the device, the business and a holder's open files, then ends this session only", async () => {
+  it("forgets the device, the business, a kept page and a holder's open files, then ends this session only", async () => {
     await endSessionHere();
     expect(mocks.calls).toEqual([
       "device",
       "business",
+      "cookie",
       "fileStepUp",
       "cookie",
       "session",
     ]);
     expect(mocks.closeFileStepUp).toHaveBeenCalledWith(USER, SESSION);
     expect(mocks.deleted).toEqual([
+      AFTER_SIGN_IN_COOKIE,
       { name: FILE_STEP_UP_COOKIE, path: FILE_STEP_UP_PATH },
     ]);
     expect(mocks.signOut).toHaveBeenCalledWith({ scope: "local" });
@@ -89,7 +93,13 @@ describe("signing out here", () => {
       Object.assign(new Error(SESSION), { code: "XX000" }),
     );
     await endSessionHere();
-    expect(mocks.calls).toEqual(["device", "business", "cookie", "session"]);
+    expect(mocks.calls).toEqual([
+      "device",
+      "business",
+      "cookie",
+      "cookie",
+      "session",
+    ]);
     expect(mocks.signOut).toHaveBeenCalledWith({ scope: "local" });
     expect(JSON.stringify(logged.mock.calls)).not.toContain(SESSION);
     logged.mockRestore();

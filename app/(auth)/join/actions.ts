@@ -7,6 +7,7 @@ import { CAPTCHA_FIELD, captchaTokenOf } from "@domain/turnstile";
 import { redirect } from "next/navigation";
 import { rememberBusiness } from "../../(app)/business-cookie";
 import { pushSoon } from "../../push/server";
+import { forgetAfterSignIn } from "../after-sign-in";
 import { type SignInError, sendJoinCode, verifyCode } from "../otp";
 import { landingAfterJoin } from "./landing";
 
@@ -28,7 +29,8 @@ export type JoinState =
  * the invite on the server and open the app, in the business just
  * joined (someone in several opens it first): a worker or a manager on their
  * hiring file's welcome where the business uses it, anyone else on Today
- * (`landingAfterJoin`, H5b). The first send answers the same whether the
+ * (`landingAfterJoin`, H5b), never the page an earlier link kept for after
+ * sign-in, which is forgotten. The first send answers the same whether the
  * number already had an account or not: too many and too soon are the code
  * step, whose words are true either way; a malformed number and a failure
  * stay on the invite. A new code asked for too soon reads as one asked for,
@@ -122,6 +124,9 @@ export async function join(
     const rows = await getBusinessModulesForTeam(claim.businessId).catch(
       () => [],
     );
+    // A page kept by an earlier link (known issue 21) goes: joining lands
+    // where H5b says.
+    await forgetAfterSignIn();
     // Straight on: the page would now say the link was used, so nothing here
     // can stay on screen to show a check first.
     redirect(landingAfterJoin(rows, invite.role));

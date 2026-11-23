@@ -5,6 +5,7 @@ import { normalizeIsraeliMobile } from "@domain/phone";
 import { CAPTCHA_FIELD, captchaTokenOf } from "@domain/turnstile";
 import { signedOutPath } from "../(app)/clock/station/station";
 import type { SignedOut } from "../sign-out-form";
+import { takeAfterSignIn } from "./after-sign-in";
 import { endSessionHere, sessionUserHere } from "./end-session";
 import { type SignInError, sendSignInCode, verifyCode } from "./otp";
 
@@ -15,7 +16,10 @@ export type SignInState =
       phone: string;
       error?: SignInError;
       resent?: boolean;
-      /** The code was right: where to go, once the screen has shown it. */
+      /**
+       * The code was right: where to go, once the screen has shown it. The
+       * page a link asked for before sign-in, or Today.
+       */
       to?: string;
     };
 
@@ -27,6 +31,9 @@ export type SignInState =
  * A send or a resend posts the "אני לא רובוט" check's token too (`captcha`),
  * dropped when it isn't one; a send refused for it stays on its step and
  * says so. Accounts are never created here; people arrive through invites.
+ * A right code lands on the page a link asked for before sign-in, taken
+ * only then (`takeAfterSignIn`, known issue 21): a wrong code, a new code
+ * or another number leave it kept.
  */
 export async function signIn(
   prev: SignInState,
@@ -64,7 +71,12 @@ export async function signIn(
     if ("error" in result) {
       return { ...prev, error: result.error, resent: false };
     }
-    return { ...prev, error: undefined, resent: false, to: "/home" };
+    return {
+      ...prev,
+      error: undefined,
+      resent: false,
+      to: (await takeAfterSignIn()) ?? "/home",
+    };
   }
 
   return { step: "phone", error: "failed" };

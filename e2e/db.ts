@@ -904,7 +904,8 @@ export async function scheduleShiftIds(): Promise<SavedShiftId[]> {
  * Put people on next week's Sunday shifts of the demo restaurant through
  * the database functions the app uses, as its manager: a draft, or
  * published to the team. `morning` and `evening` are phone numbers, each
- * with a position key or null. Opens the week if nobody has yet.
+ * with a position key or null. Opens the week if nobody has yet. Returns
+ * the week's first day (YYYY-MM-DD), as its link names it (`?week=`).
  */
 export async function scheduleDemoSunday(
   people: {
@@ -912,7 +913,7 @@ export async function scheduleDemoSunday(
     evening: [phone: string, position: string | null][];
   },
   publish: boolean,
-): Promise<void> {
+): Promise<string> {
   const ids = await sql<{ phone: string; id: string }[]>`
     select phone, id::text from public.profiles
     where phone in ${sql([...people.morning, ...people.evening].map(([p]) => p))}`;
@@ -966,6 +967,7 @@ export async function scheduleDemoSunday(
     await sql`select public.save_week_schedule(${manager}, ${week.id},
       ${sql.json(shifts)})`;
   }
+  return week.starts_on;
 }
 
 /** The tests that waited out midnight, the ones `scheduleDemoToday` serves. */

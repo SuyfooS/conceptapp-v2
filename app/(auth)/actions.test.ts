@@ -1,4 +1,5 @@
 import { sessionCookieName } from "@db/supabase/cookies";
+import { AFTER_SIGN_IN_COOKIE } from "@domain/after-sign-in";
 import {
   AuthApiError,
   AuthRefreshDiscardedError,
@@ -12,7 +13,10 @@ import type { SignInState } from "./actions";
 // has an account or not, and a resend or a check reads the number from the
 // step's own state, never the form's. A send and a resend pass on the "אני
 // לא רובוט" check's token, and one of another shape is dropped; a send the
-// auth server refused for it stays on its step and says so.
+// auth server refused for it stays on its step and says so. A right code
+// lands on the page a link kept for after sign-in (known issue 21), taken
+// from its cookie then and only then, and checked again: one that isn't a
+// page to keep lands on Today, deleted all the same.
 //
 // Signing out (`signOut`), with ending the session and reading the device's
 // station stood in for, and the session read (`sessionUserHere`) as it is,
@@ -34,6 +38,7 @@ const SUPABASE_URL = "http://127.0.0.1:54321";
 const mocks = vi.hoisted(() => ({
   calls: [] as string[],
   cookies: [] as { name: string; value: string }[],
+  deleted: [] as string[],
   endSessionHere: vi.fn(),
   getClaims: vi.fn(),
   signedOutPath: vi.fn(),
@@ -41,7 +46,14 @@ const mocks = vi.hoisted(() => ({
   verifyCode: vi.fn(),
 }));
 vi.mock("next/headers", () => ({
-  cookies: async () => ({ getAll: () => mocks.cookies }),
+  cookies: async () => ({
+    getAll: () => mocks.cookies,
+    get: (name: string) => mocks.cookies.find((c) => c.name === name),
+    delete: (name: string) => {
+      mocks.deleted.push(name);
+      mocks.cookies = mocks.cookies.filter((c) => c.name !== name);
+    },
+  }),
 }));
 vi.mock("@db/supabase/server", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@db/supabase/server")>()),
@@ -90,6 +102,7 @@ beforeEach(() => {
   vi.stubEnv("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", "sb_publishable_test");
   mocks.calls.length = 0;
   mocks.cookies = [sessionCookie(USER)];
+  mocks.deleted = [];
   mocks.endSessionHere.mockReset().mockImplementation(async () => {
     mocks.calls.push("end");
   });
@@ -221,6 +234,52 @@ describe("signing in", () => {
     expect(
       await signIn(codeStep, posted({ intent: "verify", code: "123456" })),
     ).toEqual({ ...codeStep, error: undefined, resent: false, to: "/home" });
+  });
+
+  it("lands on the page a link kept for after sign-in, and takes it", async () => {
+    const week = "/schedule?week=2026-11-22";
+    mocks.cookies.push({ name: AFTER_SIGN_IN_COOKIE, value: week });
+    expect(
+      await signIn(codeStep, posted({ intent: "verify", code: "123456" })),
+    ).toEqual({ ...codeStep, error: undefined, resent: false, to: week });
+    expect(mocks.deleted).toEqual([AFTER_SIGN_IN_COOKIE]);
+    expect(
+      await signIn(codeStep, posted({ intent: "verify", code: "123456" })),
+    ).toMatchObject({ to: "/home" });
+  });
+
+  it("lands on Today for a kept page that isn't one to keep, and takes it all the same", async () => {
+    for (const value of [
+      "//evil.example",
+      "https://evil.example",
+      "/\\evil.example",
+      "/admin",
+      "/clock/pay/export?month=2026-10",
+      "/api/x",
+      "/cron/notifications",
+    ]) {
+      mocks.deleted = [];
+      mocks.cookies.push({ name: AFTER_SIGN_IN_COOKIE, value });
+      expect(
+        await signIn(codeStep, posted({ intent: "verify", code: "123456" })),
+        value,
+      ).toMatchObject({ to: "/home" });
+      expect(mocks.deleted, value).toEqual([AFTER_SIGN_IN_COOKIE]);
+    }
+  });
+
+  it("leaves a kept page for a wrong code, a malformed one, a new code and another number", async () => {
+    mocks.cookies.push({ name: AFTER_SIGN_IN_COOKIE, value: "/lists" });
+    mocks.verifyCode.mockResolvedValueOnce({ error: "wrongCode" });
+    await signIn(codeStep, posted({ intent: "verify", code: "123456" }));
+    await signIn(codeStep, posted({ intent: "verify", code: "12" }));
+    await signIn(phoneStep, posted({ intent: "send", phone: "050-000-0003" }));
+    await signIn(codeStep, posted({ intent: "resend" }));
+    await signIn(codeStep, posted({ intent: "change" }));
+    expect(mocks.deleted).toEqual([]);
+    expect(
+      await signIn(codeStep, posted({ intent: "verify", code: "123456" })),
+    ).toMatchObject({ to: "/lists" });
   });
 
   it("goes back to the phone step for another number", async () => {
