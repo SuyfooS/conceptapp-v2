@@ -1,7 +1,9 @@
 # supabase/
 
 Supabase CLI config, migrations, seed data and the database tests.
-Projects: `conceptapp-dev` now, `conceptapp-prod` when the pilot goes live.
+Projects: `conceptapp-dev` (the demo, and the team's tests) and `conceptapp-prod` (real
+businesses) once a first real business is near; its setup, step by step:
+[`docs/production.md`](../docs/production.md).
 Region: Central EU (Frankfurt).
 
 - `migrations/`: the schema, in order. Add a file with
@@ -35,8 +37,25 @@ Migrations reach `conceptapp-dev` only by hand, and never from a nightly run:
 To have something to open, run it with "apply" and "demo" on. "demo" adds the demo
 businesses from `hosted-demo.sql` that aren't there yet, and leaves the others as
 visitors left them; it is safe to run again, and needs the migrations applied first.
-People come in through the passive door at `/enter` (`packages/domain/passive-sign-in.ts`),
-which needs the three variables in `.env.example` in Vercel and nothing else.
+People come in through the demo door at `/enter` (`packages/domain/passive-sign-in.ts`) on a
+site whose `DEMO_DOOR` is on (the default when unset; `packages/db/env.ts`), which needs the
+three Supabase variables in `.env.example` in Vercel and nothing else.
+
+Migrations reach `conceptapp-prod` only through "Migrate conceptapp-prod"
+(`.github/workflows/migrate-prod.yml`), the same way: by hand, with "apply" off first. It runs
+from `main` only, in the GitHub environment `conceptapp-prod`, which waits for Orel's approval
+on every run and alone holds the project's two secrets, `PROD_SUPABASE_DB_PASSWORD` and
+`PROD_SUPABASE_PROJECT_REF`. Their names are their own: GitHub hands a job the repository
+secret of the same name when its environment has none, and `conceptapp-dev`'s are repository
+secrets, so a missing one stops the run before it connects anywhere. Before anything else it
+checks that the project holds no demo business (one that does is `conceptapp-dev`, its secrets
+entered by mistake), and it never adds the demo or the seed, and never runs a SQL file
+(`tooling/migrate-prod.test.ts`). With "apply" on, its summary ends with the commit it applied
+from and the two lines that release that commit to the site of real businesses, which deploys
+the branch `production`, not `main`: the schema first, then the code. A nightly run and a live
+session never run or approve it, and never push to `production`.
+The setup of the environment and of the project: [`docs/production.md`](../docs/production.md),
+B2 and B3; each release after that: its last section.
 
 Each demo business starts the way `private.demo_businesses` describes it (written by
 `seed.sql` and `hosted-demo.sql`). `public.reset_demo_business` puts one back that way:
@@ -95,10 +114,10 @@ seconds): a send within it of the number's last counted one (on either side, sin
 asked for at once the one the app stamped later may be counted first) is counted for its
 caller only, asks the auth server nothing, and reads on sign-in and on `/join` as a code
 asked for (the earlier code still works), while the file's codes say "in a few seconds".
-It is longer than the auth server's own wait per number (60 seconds unless changed), so
-that wait refuses no code the app lets go, unless someone asked the auth server directly. What the auth server still
-refuses (the project's SMS in an hour, its requests from one address), and a send the SMS
-provider failed, sent nothing: the server gives it back, for the number and the caller
+It is longer than the auth server's own wait per number (`sms_max_frequency`, below), so
+that wait refuses no code the app lets go, unless someone asked the auth server directly.
+What the auth server still refuses (the project's SMS in an hour, its requests from one
+address), and a send the SMS provider failed, sent nothing: the server gives it back, for the number and the caller
 (`public.forget_auth_attempt`), and the screen says something went wrong. The sign-in screen
 answers the same for every valid number, registered or not, and nothing is sent to one with
 no account, which therefore still reaches the code step while the SMS cap is used up or the
@@ -212,33 +231,31 @@ A nightly run never writes these, never calls `/cron/notifications`, `/cron/list
 `/cron/chat-files` on a hosted project and never sends a test notification
 (`docs/AGENT.md`).
 
-### Real sign-in, later
+### Real sign-in in production
 
-Orel put it off on 6 November. When it comes, turn `PASSIVE_SIGN_IN` off, and in the
-dashboards, because `config.toml` is never pushed:
+The site of real businesses has `DEMO_DOOR=off` in Vercel: `/enter` goes straight on to
+`/sign-in`, with no demo people, no one-press sign-in and no demo reset (`proxy.ts`,
+`app/(auth)/enter`). The dashboard's half, which `config.toml` never carries since it is
+never pushed, is in [`docs/production.md`](../docs/production.md): B3 for the API, session and
+storage settings, B4 for sign-in (phone with Twilio Verify, new signups off, no test numbers,
+the rate limits, the site URL, CAPTCHA only once the app sends its token) and B6 for the first
+platform admin. The app's server sends and checks every code and refreshes every session, and
+passes on no caller's address, so Supabase's limits per address are one limit for the whole
+site: B4 sizes them for the site's traffic together, and `private.auth_limits` alone counts each
+number and each caller.
 
-- Authentication, Sign In / Providers, Phone: turn phone sign-in on, with an SMS provider.
-  Supabase won't save test numbers without one, even though it texts them nothing.
-- Test numbers, without the `+` and with a code kept out of the repo, need Test OTPs Valid
-  Until set. Anyone with a test number and its code can sign in, so end this before real
-  people use the project.
-- Authentication: new signups off (`[auth] enable_signup = false`). Accounts come from
-  invites, through the admin API.
-- Authentication, Rate Limits: SMS sent per hour, and token verifications per 5 minutes
-  per address, no looser than `private.auth_limits`; in Twilio Verify, its own limits per
-  number and Fraud Guard. CAPTCHA (Cloudflare Turnstile) only once the app sends its token,
-  or every sign-in stops.
-- In Twilio Verify, keep a code's lifetime at ten minutes, or change the ten minutes in
-  `public.note_auth_attempt` with it: a check after them is refused as a wrong code.
+Two settings in the dashboards go with the app's own counts and wait (above), on both
+projects:
+
+- In Twilio Verify, keep a code's lifetime at the ten minutes `public.note_auth_attempt`
+  counts, or change the two together.
 - Keep the auth server's own wait between two codes to one number (`sms_max_frequency`,
   60 seconds unless changed) a few seconds shorter than the app's
   (`private.auth_send_wait`, 65), and change the two together: where the auth server's is
   the longer, a number with an account gets "something went wrong" on sign-in inside it,
   and one without gets the code step.
-- URL configuration: the site URL is the deployed address, not `127.0.0.1`.
-- The first platform admin: add a user by phone, then in the SQL editor:
 
-  ```sql
-  insert into public.platform_staff (user_id, role)
-  values ('<the user id>', 'platform_admin');
-  ```
+On `conceptapp-dev` test numbers, without the `+` and with a code kept out of the repo, need
+Test OTPs Valid Until set, and Supabase won't save them without an SMS provider, even though
+it texts them nothing. Anyone with a test number and its code can sign in: never on
+`conceptapp-prod`.

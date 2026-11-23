@@ -205,8 +205,10 @@ font files or SF Symbols; asking the device for its own font is fine.
   (only the local seed's, for the tests). Sign-in codes are counted per number and
   per caller (`private.auth_limits`, a quarter of an hour and a day), a check only
   once a code went to the number, and the sign-in screen answers the same for every
-  valid number, registered or not. `PASSIVE_SIGN_IN` in
-  `@domain/passive-sign-in` closes the demo door.
+  valid number, registered or not. `DEMO_DOOR=off` (a deployment setting, read
+  only by `demoDoorOpen` in `@db/env`) closes the demo door on a site: the site of
+  real businesses has it off, the demo's own address on (Orel, 22 November 2026).
+  Production's setup: `docs/production.md`.
 - Run `pnpm check` (Biome + typecheck) before handing work back; `pnpm build`
   for anything touching routing or config.
 - Orel works on Windows PowerShell 5: when giving him commands, one per line,
