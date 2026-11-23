@@ -4,6 +4,7 @@ import {
   weekDates,
 } from "@domain/availability";
 import { shabbatLimits } from "@domain/availability-form";
+import { type CopySource, copySourceOf } from "@domain/copy-week";
 import { draftWeek, type ScheduledShift } from "@domain/schedule";
 import { ISRAEL_TIME_ZONE, ISRAELI_CITIES } from "@domain/shabbat";
 import { shabbatTimes } from "@domain/shabbat-times";
@@ -247,3 +248,72 @@ export const shopRunningAnswers: AvailabilityAnswer[] = [
 
 /** Next week as nobody has saved it yet: the pattern, with nobody on it. */
 export const shopNextShifts = draftWeek(NEXT_WEEK, shopPatterns);
+
+const lastWeek = copySourceOf(
+  {
+    start: THIS_WEEK,
+    savedAt: SHOP_PUBLISHED_AT,
+    publishedAt: SHOP_PUBLISHED_AT,
+    shifts: shopRunningShifts,
+  },
+  shopPositions.map((p) => p.key),
+);
+if (!lastWeek) throw new Error("The shop's week under way has no shifts");
+
+/**
+ * The week under way, as next week's "העתקה מהשבוע שעבר" reads it: Liya, who
+ * left, was on Sunday evening and Monday morning, and is counted, not named.
+ */
+export const shopLastWeek: CopySource = lastWeek;
+
+/**
+ * What the staff sent for next week so far: Tamar only in the mornings, so
+ * Thursday evening isn't copied for her; Omer for the shifts he worked this
+ * week. Itai and Roni sent nothing, and are copied as this week has them.
+ */
+export const shopNextAnswers: AvailabilityAnswer[] = [
+  {
+    userId: "tamar",
+    note: null,
+    updatedAt: "2026-11-16T07:40:00.000Z",
+    ranges: [22, 23, 24, 25, 26, 27].map((day) => ({
+      day: `2026-11-${day}`,
+      start: "08:00",
+      end: "15:00",
+    })),
+  },
+  {
+    userId: "omer",
+    note: null,
+    updatedAt: "2026-11-16T19:10:00.000Z",
+    ranges: [
+      { day: "2026-11-23", start: "15:00", end: "22:00" },
+      { day: "2026-11-25", start: "15:00", end: "22:00" },
+      { day: "2026-11-26", start: "08:00", end: "15:00" },
+    ],
+  },
+];
+
+/** When next week's draft was saved (`?week=next&state=draft`): Monday the 16th. */
+export const SHOP_NEXT_SAVED_AT = "2026-11-16T12:30:00.000Z";
+
+/**
+ * Next week saved as a draft, with Tamar and Itai on Sunday morning, so the
+ * copy keeps Sunday as it is, unless the manager replaces it.
+ */
+export const shopNextDraft: (ScheduledShift & { id: string })[] =
+  shopNextShifts.map((shift, i) => ({
+    ...shift,
+    id: `00000000-0000-4000-9000-${`${i + 101}`.padStart(12, "0")}`,
+    assignees:
+      shift.day === NEXT_WEEK && shift.pattern === "morning"
+        ? [
+            { user: "tamar", position: "cashier" },
+            { user: "itai", position: "sales" },
+          ]
+        : [],
+  }));
+
+export const shopNextDraftBasis = Object.fromEntries(
+  shopNextDraft.map((shift, i) => [shift.id, digest(i + 101)]),
+);
