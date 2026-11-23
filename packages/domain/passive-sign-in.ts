@@ -11,12 +11,32 @@ import { z } from "zod";
  * security is unchanged, so they see their own business and nothing else. The
  * console is not on offer. Anyone with the address can come in and change the
  * demo businesses, and put them back with the door's reset, so real people
- * never join a demo business. False closes the demo door.
+ * never join a demo business.
+ *
+ * Whether a site offers it is a deployment setting (Orel, 22 November 2026,
+ * #1): `DEMO_DOOR`, read in `@db/env` alone, is open on the demo's own site
+ * and closed on the site of real businesses, which has phone sign-in only.
  */
-export const PASSIVE_SIGN_IN = true;
 
-/** Where a signed-out person is sent. */
-export const signInPath = PASSIVE_SIGN_IN ? "/enter" : "/sign-in";
+/**
+ * The door's address on every site, where a signed-out person is sent.
+ * Where the demo door is closed the proxy sends it straight on to
+ * `phoneSignInPath`, so no link to it changes from one site to another.
+ */
+export const signInPath = "/enter";
+
+/** Real sign-in: a phone number and an SMS code. */
+export const phoneSignInPath = "/sign-in";
+
+/**
+ * Where the proxy sends a signed-out person, in one hop: the door where the
+ * demo is offered, else real sign-in.
+ */
+export function doorPath(
+  demoDoorOpen: boolean,
+): typeof signInPath | typeof phoneSignInPath {
+  return demoDoorOpen ? signInPath : phoneSignInPath;
+}
 
 export const DEMO_PEOPLE = [
   "owner",
@@ -98,11 +118,13 @@ export function isDemoBusiness(slug: string | null | undefined): boolean {
   return DEMO_BUSINESSES.some((b) => b.slug === slug);
 }
 
-/** Whether the business at this slug is a demo business whose week renews. */
+/**
+ * Whether the business at this slug is a demo business whose week renews.
+ * Only the slug: whether this site's demo door is open is asked by the
+ * caller (`app/(app)/demo.ts`).
+ */
 export function renewsDemoWeek(slug: string | null | undefined): boolean {
-  return (
-    PASSIVE_SIGN_IN && DEMO_BUSINESSES.some((b) => b.renews && b.slug === slug)
-  );
+  return DEMO_BUSINESSES.some((b) => b.renews && b.slug === slug);
 }
 
 /** The demo businesses a person on offer is in: one, or both for the accountant. */

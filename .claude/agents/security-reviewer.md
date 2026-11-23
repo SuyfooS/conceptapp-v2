@@ -28,7 +28,7 @@ Check, with `file:line`:
    - Real people never join a demo business.
    - Codes are counted per number and per caller.
    - Session cookies stay as configured.
-   - `PASSIVE_SIGN_IN` is respected.
+   - The demo door follows `DEMO_DOOR` (`demoDoorOpen`): in the proxy, on `/enter`, in its two actions and in the demo week's renewal.
 5. **Personal data.**
    - Phones are stored as E.164.
    - No personal data goes in URLs, logs, analytics or push payloads (pushes carry no content).

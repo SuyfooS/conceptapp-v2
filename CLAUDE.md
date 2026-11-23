@@ -203,8 +203,10 @@ font files or SF Symbols; asking the device for its own font is fine.
   demo people, with RLS unchanged, and anyone can come in and reset those businesses,
   so real people never join a demo business: the database takes no invites for one
   (only the local seed's, for the tests). Sign-in codes are counted per number and
-  per caller (`private.auth_limits`). `PASSIVE_SIGN_IN` in
-  `@domain/passive-sign-in` closes the demo door.
+  per caller (`private.auth_limits`). `DEMO_DOOR=off` (a deployment setting, read
+  only by `demoDoorOpen` in `@db/env`) closes the demo door on a site: the site of
+  real businesses has it off, the demo's own address on (Orel, 22 November 2026).
+  Production's setup: `docs/production.md`.
 - Run `pnpm check` (Biome + typecheck) before handing work back; `pnpm build`
   for anything touching routing or config.
 - Orel works on Windows PowerShell 5: when giving him commands, one per line,

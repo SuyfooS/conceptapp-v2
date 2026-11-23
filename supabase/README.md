@@ -1,7 +1,9 @@
 # supabase/
 
 Supabase CLI config, migrations, seed data and the database tests.
-Projects: `conceptapp-dev` now, `conceptapp-prod` when the pilot goes live.
+Projects: `conceptapp-dev` (the demo, and the team's tests) and `conceptapp-prod` (real
+businesses) once a first real business is near; its setup, step by step:
+[`docs/production.md`](../docs/production.md).
 Region: Central EU (Frankfurt).
 
 - `migrations/`: the schema, in order. Add a file with
@@ -35,8 +37,25 @@ Migrations reach `conceptapp-dev` only by hand, and never from a nightly run:
 To have something to open, run it with "apply" and "demo" on. "demo" adds the demo
 businesses from `hosted-demo.sql` that aren't there yet, and leaves the others as
 visitors left them; it is safe to run again, and needs the migrations applied first.
-People come in through the passive door at `/enter` (`packages/domain/passive-sign-in.ts`),
-which needs the three variables in `.env.example` in Vercel and nothing else.
+People come in through the demo door at `/enter` (`packages/domain/passive-sign-in.ts`) on a
+site whose `DEMO_DOOR` is on (the default when unset; `packages/db/env.ts`), which needs the
+three Supabase variables in `.env.example` in Vercel and nothing else.
+
+Migrations reach `conceptapp-prod` only through "Migrate conceptapp-prod"
+(`.github/workflows/migrate-prod.yml`), the same way: by hand, with "apply" off first. It runs
+from `main` only, in the GitHub environment `conceptapp-prod`, which waits for Orel's approval
+on every run and alone holds the project's two secrets, `PROD_SUPABASE_DB_PASSWORD` and
+`PROD_SUPABASE_PROJECT_REF`. Their names are their own: GitHub hands a job the repository
+secret of the same name when its environment has none, and `conceptapp-dev`'s are repository
+secrets, so a missing one stops the run before it connects anywhere. Before anything else it
+checks that the project holds no demo business (one that does is `conceptapp-dev`, its secrets
+entered by mistake), and it never adds the demo or the seed, and never runs a SQL file
+(`tooling/migrate-prod.test.ts`). With "apply" on, its summary ends with the commit it applied
+from and the two lines that release that commit to the site of real businesses, which deploys
+the branch `production`, not `main`: the schema first, then the code. A nightly run and a live
+session never run or approve it, and never push to `production`.
+The setup of the environment and of the project: [`docs/production.md`](../docs/production.md),
+B2 and B3; each release after that: its last section.
 
 Each demo business starts the way `private.demo_businesses` describes it (written by
 `seed.sql` and `hosted-demo.sql`). `public.reset_demo_business` puts one back that way:
@@ -176,26 +195,20 @@ A nightly run never writes these, never calls `/cron/notifications`, `/cron/list
 `/cron/chat-files` on a hosted project and never sends a test notification
 (`docs/AGENT.md`).
 
-### Real sign-in, later
+### Real sign-in in production
 
-Orel put it off on 6 November. When it comes, turn `PASSIVE_SIGN_IN` off, and in the
-dashboards, because `config.toml` is never pushed:
+The site of real businesses has `DEMO_DOOR=off` in Vercel: `/enter` goes straight on to
+`/sign-in`, with no demo people, no one-press sign-in and no demo reset (`proxy.ts`,
+`app/(auth)/enter`). The dashboard's half, which `config.toml` never carries since it is
+never pushed, is in [`docs/production.md`](../docs/production.md): B3 for the API, session and
+storage settings, B4 for sign-in (phone with Twilio Verify, new signups off, no test numbers,
+the rate limits, the site URL, CAPTCHA only once the app sends its token) and B6 for the first
+platform admin. The app's server sends and checks every code and refreshes every session, and
+passes on no caller's address, so Supabase's limits per address are one limit for the whole
+site: B4 sizes them for the site's traffic together, and `private.auth_limits` alone counts each
+number and each caller.
 
-- Authentication, Sign In / Providers, Phone: turn phone sign-in on, with an SMS provider.
-  Supabase won't save test numbers without one, even though it texts them nothing.
-- Test numbers, without the `+` and with a code kept out of the repo, need Test OTPs Valid
-  Until set. Anyone with a test number and its code can sign in, so end this before real
-  people use the project.
-- Authentication: new signups off (`[auth] enable_signup = false`). Accounts come from
-  invites, through the admin API.
-- Authentication, Rate Limits: SMS sent per hour, and token verifications per 5 minutes
-  per address, no looser than `private.auth_limits`; in Twilio Verify, its own limits per
-  number and Fraud Guard. CAPTCHA (Cloudflare Turnstile) only once the app sends its token,
-  or every sign-in stops.
-- URL configuration: the site URL is the deployed address, not `127.0.0.1`.
-- The first platform admin: add a user by phone, then in the SQL editor:
-
-  ```sql
-  insert into public.platform_staff (user_id, role)
-  values ('<the user id>', 'platform_admin');
-  ```
+On `conceptapp-dev` test numbers, without the `+` and with a code kept out of the repo, need
+Test OTPs Valid Until set, and Supabase won't save them without an SMS provider, even though
+it texts them nothing. Anyone with a test number and its code can sign in: never on
+`conceptapp-prod`.
