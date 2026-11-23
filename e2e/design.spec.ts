@@ -1899,7 +1899,8 @@ test("the team demo deletes an invite, changes a role and takes someone off the 
 // said as an alert and the field takes the focus; one the business keeps
 // with a mark nobody sees is saved clean, and her own name with one is not
 // offered, as it would keep no row; someone nobody named reads "בלי שם";
-// whoever may not change the person gets no row. Nothing is stored.
+// whoever may not change the person gets no row, nor does someone made an
+// owner while that change waits for its undo. Nothing is stored.
 test("the person demo fixes a name, with the change back as its undo", async ({
   page,
 }) => {
@@ -2000,6 +2001,42 @@ test("the person demo fixes a name, with the change back as its undo", async ({
   await page.goto("/design/shell/team/noa?as=viewer");
   await expect(main.getByRole("heading", { level: 1 })).toBeVisible();
   await expect(nameRow).toHaveCount(0);
+
+  // Made an owner: "תפקיד" alone as soon as the screen shows her as one,
+  // and no undo of a fix just made, while the change waits for its own
+  // undo, as writing it drops the business's name for her. Taken back, "שם"
+  // again.
+  await page.goto("/design/shell/team/noa");
+  await nameRow.click();
+  await field.fill("נועה כהן-לוי");
+  await submit.click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  const fixed = main.getByRole("status").filter({
+    hasText: heT("app.team.changes.nameChanged", { name: "נועה כהן-לוי" }),
+  });
+  await expect(fixed).toBeVisible();
+  const role = main.getByRole("button", { name: new RegExp(`^${tc.role}`) });
+  await role.click();
+  const roleSheet = page.getByRole("dialog");
+  await roleSheet.locator('input[name="member-role"][value="owner"]').check();
+  await roleSheet.getByRole("button", { name: tc.roleSubmit }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(role).toContainText(tt.roles.owner);
+  await expect(nameRow).toHaveCount(0);
+  await expect(fixed).toHaveCount(0);
+  await main
+    .getByRole("status")
+    .filter({
+      hasText: heT("app.team.changes.roleChanged", {
+        name: "נועה כהן",
+        role: tt.roles.owner,
+      }),
+    })
+    .getByRole("button", { name: he.app.manage.undo })
+    .click();
+  await expect(role).toContainText(tt.roles.worker);
+  await expect(nameRow).toContainText("נועה כהן-לוי");
+  await expect(nameRow).toBeEnabled();
 });
 
 // "השם שלי" on the profile demo: Shiran changes her own name, shown at once

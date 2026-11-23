@@ -27,7 +27,7 @@ import type {
   MemberNameResult,
   TeamChangeActionFailure,
 } from "../team-change-types";
-import { MemberRoleNotes, MemberRoleRow } from "./member-changes";
+import { MemberRoleNotes, MemberRoleRow, useShownRole } from "./member-changes";
 
 type Undo = { message: string; run: () => void };
 
@@ -35,7 +35,10 @@ type Undo = { message: string; run: () => void };
 type Shown = { name: string | null; kept: boolean };
 
 type NameValue = {
-  /** The name is offered to fix: never an owner's (`canFixName`). */
+  /**
+   * The server offers the name to fix: never an owner's (`canFixName`). The
+   * parts wait out a change to owner too (`useFixes`).
+   */
   fixes: boolean;
   /** The name as the screen shows it now; null: none. */
   shown: string | null;
@@ -212,9 +215,22 @@ export function ShownName({ none }: { none: string }) {
 }
 
 /**
+ * Whether the screen offers to fix the name: as the server says (`fixes`),
+ * but never while the role the screen shows is owner. A change to owner is
+ * held for its undo (`roleChangeClears`), and once written the database
+ * drops the business's name for them (`private.drop_owner_name`), so a fix
+ * made in the meantime, or its undo, would be said and then lost.
+ */
+function useFixes(value: NameValue | null): boolean {
+  const shown = useShownRole();
+  return value?.fixes === true && shown?.role.role !== "owner";
+}
+
+/**
  * Their place on the team, in one grouped list: "שם" with the name the
  * business shows, then "תפקיד" with their role, each opening its sheet; under
- * them, the undo or the word of each change. For an owner, "תפקיד" alone.
+ * them, the undo or the word of each change. For an owner, "תפקיד" alone, as
+ * soon as the screen shows them as one.
  */
 export function TeamPlace() {
   return (
@@ -232,13 +248,15 @@ export function TeamPlace() {
 /**
  * "שם" with the name under it, so a long one wraps, which opens the sheet to
  * fix it. Its sheet comes after it: a sheet leaves a hidden mark in its
- * place, and the rows' hairlines count who comes first. None for an owner.
+ * place, and the rows' hairlines count who comes first. None for an owner,
+ * nor while a change to owner waits for its undo (`useFixes`).
  */
 function MemberNameRow() {
   const value = use(NameContext);
+  const fixes = useFixes(value);
   const t = useTranslations("app.team.changes");
   const tTeam = useTranslations("app.team");
-  if (!value?.fixes) return null;
+  if (!value || !fixes) return null;
   return (
     <>
       <ListRow
@@ -346,10 +364,12 @@ function NameForm({ value }: { value: NameValue }) {
 /**
  * Under the group: "השם שוב …" once a fix was taken back, the fix's undo while
  * it lasts, and why the last one was not made, while the sheet is closed;
- * neither once they are an owner, whose name nobody fixes.
+ * neither once they are an owner, whose name nobody fixes, nor while a
+ * change to owner waits for its undo (`useFixes`).
  */
 function MemberNameNotes() {
   const value = use(NameContext);
+  const fixes = useFixes(value);
   const failureText = useNameFailure();
   if (!value) return null;
   return (
@@ -358,10 +378,10 @@ function MemberNameNotes() {
         message={value.toast?.text ?? null}
         stamp={value.toast?.stamp}
       />
-      {value.fixes && value.undo ? (
+      {fixes && value.undo ? (
         <UndoRow message={value.undo.message} onUndo={value.undo.run} />
       ) : null}
-      {value.fixes && value.failure && !value.open ? (
+      {fixes && value.failure && !value.open ? (
         <p role="alert" className="px-1 text-base text-danger">
           {failureText(value.failure)}
         </p>
