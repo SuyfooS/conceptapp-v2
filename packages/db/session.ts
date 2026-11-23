@@ -33,6 +33,7 @@ import {
   isAuthSessionMissingError,
 } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
+import { z } from "zod";
 import type { Database } from "./database.types";
 import { type MemberNames, memberNames } from "./member-names";
 import { isMissingColumn, isMissingFunction } from "./missing";
@@ -571,6 +572,31 @@ export function sessionGone(error: unknown): boolean {
     error.status < 500 &&
     error.status !== 429
   );
+}
+
+/** The claims a sign-in is known by: its person and the auth server's session id. */
+const authSessionClaims = z.object({ sub: z.uuid(), session_id: z.uuid() });
+
+/**
+ * Who is signed in, and on which sign-in: the person and the auth server's
+ * session id, as every access token of that sign-in carries it, renewed or
+ * not. A holder's step-up for the hiring file is kept in the database for
+ * this sign-in alone (`private.file_step_ups`), so another device's, or a
+ * token of another sign-in, opens nothing. Null when nobody is signed in,
+ * the session can't be read, or its claims aren't two uuids: nothing opens
+ * then, and nothing is guessed.
+ */
+export async function currentAuthSession(): Promise<{
+  userId: string;
+  sessionId: string;
+} | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.getClaims();
+  if (error || !data) return null;
+  const claims = authSessionClaims.safeParse(data.claims);
+  return claims.success
+    ? { userId: claims.data.sub, sessionId: claims.data.session_id }
+    : null;
 }
 
 /**

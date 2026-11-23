@@ -12,7 +12,11 @@ import { parseSecretKey } from "./env";
  * rest, keyed by HKDF of SUPABASE_SECRET_KEY with its own info, as the
  * clock's punch key is (@db/punch-key): anyone who holds that key holds the
  * database already, so a separate secret would protect nothing more.
- * Rotating it locks every file screen, which a code opens again.
+ * Rotating it locks every file screen, which a code opens again. The
+ * database keeps the same step-up for the sign-in it was taken on
+ * (`private.file_step_ups`, 20261127000400_file_step_up.sql) and refuses a
+ * holder's read without it, so the cookie is the screens' quick check and
+ * never the only one.
  */
 
 export const FILE_STEP_UP_INFO = "conceptapp/file-step-up/v1";

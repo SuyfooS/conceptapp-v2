@@ -7,6 +7,7 @@ import {
   getFileHolderState,
   hasEmployeeKeys,
   markDirectGroup,
+  phoneChangeHold,
   revealEmployeeFields,
 } from "@db/employee-files";
 import { FILE_GROUPS, REVEAL_FIELDS } from "@domain/employee-file";
@@ -17,10 +18,11 @@ import { refresh } from "next/cache";
 import { z } from "zod";
 import { checkCode, sendCode, signInPhoneOf } from "../../../../(auth)/otp";
 import { logged } from "../../../me/file/file-writer";
-import { fileHolder } from "../../file-access";
+import { type FileHolder, fileHolder } from "../../file-access";
 import type {
   AcknowledgeAnswer,
   ConfirmFileCodeAnswer,
+  FileCodeHold,
   HolderWriteAnswer,
   HolderWriteFailure,
   KeepOpenAnswer,
@@ -30,6 +32,7 @@ import type {
   SendFileCodeAnswer,
 } from "./holder-file-types";
 import {
+  closedInDatabase,
   fileOpenFor,
   fileOpenLeft,
   forgetFileOpen,
@@ -45,12 +48,18 @@ import {
  * on and people.files held. The duties go to the database under the
  * session; the SMS code goes to the number the holder signs in with now
  * (`signInPhoneOf`), never one a browser sends, counted with the sign-in
- * codes; only a right code for that number opens the files on this device
- * (the signed cookie of ./step-up), and a reveal without a fresh one never
- * reaches the database. Each reveal is logged there. A holder's writes
- * (H6b-1: an account confirmed, a part handed directly) go the same way: no
- * fresh step-up, no call to the database, and never on the session's own
- * file. Nothing typed and no value is logged here: a failure logs its code.
+ * codes, and none in the week after the holder's own phone change; only a
+ * right code for that number opens the files, on this sign-in in the
+ * database and on this device in the signed cookie of ./step-up, and a
+ * reveal without a fresh one never reaches the database, which asks for its
+ * own as well (a refusal there locks the screen). Each reveal is logged
+ * there. A holder's writes (H6b-1: an account confirmed, a part handed
+ * directly) go with the secret key, so they ask the database's step-up for
+ * this sign-in first, never the cookie alone, which "נעילת התיק" and
+ * signing out can't take back from a copy: no live step-up there, no write,
+ * and never on the session's own file. Whatever slides or closes the cookie
+ * slides or closes the database's step-up with it. Nothing typed and no
+ * value is logged here: a failure logs its code.
  */
 
 /** "אישור ושליחת קוד": the duties confirmed in today's wording. */
@@ -70,9 +79,22 @@ export async function acknowledgeDutiesAction(
 }
 
 /**
- * A code by SMS to open the files: only once the duties are confirmed and
- * the files can open on this deployment, so no code is spent on a file that
- * couldn't.
+ * The week after the holder's own phone change, said with the day it ends
+ * and the moment, before any code goes or is spent: the code would go to
+ * the new number, which may not be theirs. Null when there is none.
+ */
+async function phoneHoldOf(
+  who: FileHolder,
+): Promise<FileCodeHold | { ok: false; failure: "failed" } | null> {
+  const held = await phoneChangeHold(who.businessId, who.userId);
+  if (!held.ok) return { ok: false, failure: "failed" };
+  return held.hold ? { ok: false, failure: "phoneHold", ...held.hold } : null;
+}
+
+/**
+ * A code by SMS to open the files: only once the duties are confirmed, the
+ * files can open on this deployment and the week after a phone change is
+ * over, so no code is spent on a file that couldn't.
  */
 export async function sendFileCodeAction(
   business: string,
@@ -86,6 +108,8 @@ export async function sendFileCodeAction(
       return { ok: false, failure: state };
     }
     if (state !== "ready") return { ok: false, failure: "noAccess" };
+    const held = await phoneHoldOf(who);
+    if (held) return held;
     const phone = await signInPhoneOf(who.userId);
     const tail = phoneTail(phone);
     if (!phone || !tail) return { ok: false, failure: "noPhone" };
@@ -109,7 +133,10 @@ export async function sendFileCodeAction(
  * The code, checked for the number the holder signs in with now
  * (`checkCode`, on a client that keeps no session, so this browser's stays
  * the holder's whoever the number turns out to be), whose it was compared
- * with the session's, and only then the files opened on this device.
+ * with the session's, and only then the files opened, on this sign-in in
+ * the database and then on this device. In the week after a phone change no
+ * code is checked, so none is spent; one that started between the code's
+ * send and now is refused when the files open, with its day.
  */
 export async function confirmFileCodeAction(
   business: string,
@@ -121,6 +148,8 @@ export async function confirmFileCodeAction(
   const code = typed.success ? normalizeOtpCode(typed.data) : null;
   if (!code) return { ok: false, failure: "wrongCode" };
   try {
+    const held = await phoneHoldOf(who);
+    if (held) return held;
     const phone = await signInPhoneOf(who.userId);
     if (!phone) return { ok: false, failure: "noPhone" };
     const verified = await checkCode(phone, code);
@@ -141,7 +170,8 @@ export async function confirmFileCodeAction(
       console.error("a file code checked for another account");
       return { ok: false, failure: "failed" };
     }
-    await openFileFor(who.businessId, who.userId);
+    const opened = await openFileFor(who.businessId, who.userId);
+    if (!opened.ok) return openRefused(opened);
     refresh();
     return { ok: true };
   } catch (error) {
@@ -149,11 +179,31 @@ export async function confirmFileCodeAction(
   }
 }
 
+/** The database refused to open the files, in the code's terms. */
+function openRefused(refused: FileWriteFailure): ConfirmFileCodeAnswer {
+  switch (refused.failure) {
+    case "phoneHold":
+      return {
+        ok: false,
+        failure: "phoneHold",
+        ...(refused.opensOn ? { opensOn: refused.opensOn } : {}),
+      };
+    case "off":
+    case "ack":
+    case "noAccess":
+    case "unavailable":
+      return { ok: false, failure: refused.failure };
+    default:
+      return { ok: false, failure: "failed" };
+  }
+}
+
 /**
  * One number of someone's file, in this answer only: a POST's, never cached
  * and never in a URL. Without a fresh step-up on this device it asks the
- * database nothing; each one shown is logged there (`employee.view`), and
- * slides the 15 minutes.
+ * database nothing; one the database no longer holds for this sign-in
+ * closes the device's too, and the screen draws itself locked. Each one
+ * shown is logged there (`employee.view`), and slides the 15 minutes.
  */
 export async function revealHolderFieldAction(
   business: string,
@@ -184,6 +234,9 @@ export async function revealHolderFieldAction(
           return { ok: false, failure: revealed.reason };
         case "off":
           return { ok: false, failure: "off" };
+        case "step_up":
+          await closedInDatabase();
+          return { ok: false, failure: "stepUp" };
         default:
           return { ok: false, failure: "noAccess" };
       }
@@ -243,8 +296,9 @@ function writeFailure(
  * `seenChangedAt` going back exactly as it came. Changed again meanwhile,
  * it says so and draws the screen with the newer change; confirmed by
  * someone else meanwhile, it says that. Never the session's own account,
- * and never without a fresh step-up on this device, before any call.
- * Logged there (`employee.bank_ack`); it slides the 15 minutes.
+ * and never without a live step-up for this sign-in in the database, asked
+ * and slid there before any write (`keepFileOpen`), since the write goes
+ * with the secret key. Logged there (`employee.bank_ack`).
  */
 export async function acknowledgeBankAction(
   business: string,
@@ -261,7 +315,9 @@ export async function acknowledgeBankAction(
   // The database refuses it too ('own'): the session's own file is /me/file.
   if (whose.data === who.userId) return { ok: false, failure: "noAccess" };
   try {
-    if (!(await fileOpenFor(who.businessId, who.userId))) {
+    // The database's word, not the cookie's: a copied cookie outlives the
+    // lock and signing out. One it no longer holds closes the cookie too.
+    if (!(await keepFileOpen(who.businessId, who.userId))) {
       return { ok: false, failure: "stepUp" };
     }
     const done = await acknowledgeBank(
@@ -276,7 +332,6 @@ export async function acknowledgeBankAction(
       if (failure === "moved" || failure === "settled") refresh();
       return { ok: false, failure };
     }
-    await keepFileOpen(who.businessId, who.userId);
     refresh();
     return { ok: true };
   } catch (error) {
@@ -294,9 +349,10 @@ export async function acknowledgeBankAction(
  * first), which offers no "ביטול", and an undo after someone else took the
  * change back writes nothing. A part the business doesn't ask is refused
  * for a mark. Never the session's own file (`set_direct_groups` doesn't
- * check it), and never without a fresh step-up, before any call. Logged
- * there (`employee.direct`, for a change only); it slides the 15 minutes,
- * and the page is drawn again either way, with the marks as they are.
+ * check it), and never without a live step-up for this sign-in in the
+ * database, asked and slid there before any write (`keepFileOpen`), as for
+ * an account. Logged there (`employee.direct`, for a change only), and the
+ * page is drawn again either way, with the marks as they are.
  */
 export async function markDirectGroupAction(
   business: string,
@@ -314,7 +370,7 @@ export async function markDirectGroupAction(
   }
   if (whose.data === who.userId) return { ok: false, failure: "noAccess" };
   try {
-    if (!(await fileOpenFor(who.businessId, who.userId))) {
+    if (!(await keepFileOpen(who.businessId, who.userId))) {
       return { ok: false, failure: "stepUp" };
     }
     const done = await markDirectGroup(
@@ -325,7 +381,6 @@ export async function markDirectGroupAction(
       mark.data,
     );
     if (!done.ok) return { ok: false, failure: writeFailure(done, "failed") };
-    await keepFileOpen(who.businessId, who.userId);
     refresh();
     return { ok: true, changed: done.changed };
   } catch (error) {
@@ -337,10 +392,12 @@ export async function markDirectGroupAction(
  * Whether the open file is still open on this device, and how long it has
  * left; it never opens one. Only for the person's activity in the tab that
  * asks (`slide`: the file opening or shown again, a press or a key, coming
- * back to it) do its 15 minutes start again. A tab's own clock and another tab's word only
- * read them, so tabs left alone never keep each other open, and the files
- * close 15 minutes after the last activity in any tab. Anything but a plain
- * `slide` true or false is refused.
+ * back to it) do its 15 minutes start again, the database's step-up for
+ * this sign-in with the cookie (one it no longer holds closes the cookie). A
+ * tab's own clock and another tab's word only read the cookie, asking the
+ * database nothing and writing nothing, so tabs left alone never keep each
+ * other open, and the files close 15 minutes after the last activity in any
+ * tab. Anything but a plain `slide` true or false is refused.
  */
 export async function keepFileOpenAction(
   business: string,
@@ -366,9 +423,10 @@ export async function keepFileOpenAction(
 
 /**
  * "נעילת התיק", the one lock a screen asks for: the files close on this
- * device for whoever presses it, since closing opens nothing. A file that
- * closes in one tab for any other reason forgets nothing: the step-up goes
- * by itself 15 minutes after the last activity.
+ * device for whoever presses it, since closing opens nothing, the
+ * database's step-up for this sign-in first and then the cookie. A file
+ * that closes in one tab for any other reason forgets nothing: the step-up
+ * goes by itself 15 minutes after the last activity.
  */
 export async function lockFileAction(_business: string): Promise<LockAnswer> {
   try {

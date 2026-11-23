@@ -60,14 +60,16 @@ export type RevealField = (typeof REVEAL_FIELDS)[number];
 /**
  * Why a read was refused (`employee.view_denied`): in a view session, not a
  * member (never says more), without the permission, before the duties
- * screen, too many reveals in an hour, "and more today" after the twentieth,
- * or the module off (never logged).
+ * screen, a holder with no live SMS code on this sign-in (`step_up`,
+ * 20261127000400_file_step_up.sql), too many reveals in an hour, "and more
+ * today" after the twentieth, or the module off (never logged).
  */
 export const DENIAL_REASONS = [
   "viewing",
   "not_member",
   "not_holder",
   "ack",
+  "step_up",
   "limit",
   "many",
   "off",

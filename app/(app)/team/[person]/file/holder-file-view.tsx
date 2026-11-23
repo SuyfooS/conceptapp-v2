@@ -26,6 +26,7 @@ import { FileHistorySection } from "./file-history";
 import { LockFileButton } from "./file-open-watch";
 import type {
   FileHistory,
+  FileHold,
   HolderFileActions,
   HolderFileData,
   HolderFileHead,
@@ -53,7 +54,8 @@ export type HolderFilePaths = {
  * H6a): "התיק של נועה" under her name and role, a line that every view is
  * recorded, and then one state at a time, each with at most one main
  * action: the duties screen with "אישור ושליחת קוד"; the locked file with
- * "שליחת קוד"; the code's boxes; or the file itself, with no main action,
+ * "שליחת קוד" (off in the week after the holder's own phone change, which
+ * says from when the files open); the code's boxes; or the file itself, with no main action,
  * in sections only of what the business asks or the file holds, the two
  * numbers as their last digits with "הצגה" for a minute, each missing part
  * said, and "נעילת התיק" at its foot. The ConceptApp team viewing as a role
@@ -73,6 +75,7 @@ export function HolderFileView({
   actions,
   wording,
   code,
+  hold,
 }: {
   screen: Exclude<HolderFileScreen, { kind: "closed" }>;
   paths: HolderFilePaths;
@@ -80,6 +83,8 @@ export function HolderFileView({
   wording: AppWording;
   /** The twin's code step, open on the boxes. */
   code?: { tail: string };
+  /** The twin's locked file in the week after a phone change. */
+  hold?: FileHold;
 }) {
   const t = translator(wording, "app");
   const { head } = screen;
@@ -123,7 +128,9 @@ export function HolderFileView({
         <GatedFile
           kind={screen.kind}
           actions={actions}
+          timeZone={head.timeZone}
           code={code}
+          hold={hold}
           twin={paths.twin}
           duties={
             screen.kind === "duties" ? (

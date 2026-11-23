@@ -105,9 +105,16 @@ values (pg_temp.a(), pg_temp.p(3), pg_temp.sealed('44'));
 -- Noa set it, as set_emergency_contact logs it.
 insert into public.audit_log (business_id, actor_id, action, details)
 values (pg_temp.a(), pg_temp.p(3), 'member.emergency', jsonb_build_object('person', pg_temp.p(3)));
+-- Every holder here has its step-up on the sign-in `sign_in` gives
+-- (20261127000400_file_step_up.sql; employee_files_step_up.test.sql tests
+-- it), so what is read is who holds the files. Anyone the gate refuses is
+-- refused before it is asked.
+insert into private.file_step_ups (user_id, session_id, business_id, active_at)
+select pg_temp.p(n), pg_temp.p(n), pg_temp.a(), now() from unnest(array[1, 5, 12]) as n;
 
 create function pg_temp.sign_in(uid uuid) returns void language sql as $$
-  select set_config('request.jwt.claims', json_build_object('sub', uid, 'role', 'authenticated')::text, true);
+  select set_config('request.jwt.claims',
+    json_build_object('sub', uid, 'role', 'authenticated', 'session_id', uid)::text, true);
   select set_config('role', 'authenticated', true);
 $$;
 create function pg_temp.sign_out() returns void language sql as $$

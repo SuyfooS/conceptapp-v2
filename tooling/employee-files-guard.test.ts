@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
+import { FILE_CLOCK_SKEW_MS, FILE_IDLE_MS } from "@domain/file-holders";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -180,6 +181,30 @@ describe("the hiring file's code", () => {
     const stepUp = read("app/(app)/team/[person]/file/step-up.ts");
     expect(stepUp).toMatch(/httpOnly: true/);
     expect(stepUp).toMatch(/sameSite: "strict"/);
+  });
+
+  it("keeps a holder's step-up in the database for the screens' own times", () => {
+    // 20261127000400_file_step_up.sql: the database checks and slides the
+    // step-up with the cookie's 15 minutes and its minute ahead, so neither
+    // keeps a file open that the other closed.
+    const migration = read(
+      "supabase/migrations/20261127000400_file_step_up.sql",
+    );
+    const idle = `interval '${FILE_IDLE_MS / 60_000} minutes'`;
+    const ahead = `interval '${FILE_CLOCK_SKEW_MS / 60_000} minute'`;
+    for (const name of [
+      "private.file_step_up_live",
+      "public.keep_file_step_up",
+    ]) {
+      const start = migration.indexOf(`create function ${name}(`);
+      expect(start, name).toBeGreaterThan(-1);
+      const body = migration.slice(start, migration.indexOf("\n$$;", start));
+      expect(body, name).toContain(idle);
+      expect(body, name).toContain(ahead);
+      expect(body.match(/interval '[^']*'/g), name).toEqual([idle, ahead]);
+    }
+    // Opening forgets the holder's step-ups lapsed by the same 15 minutes.
+    expect(migration).toContain(`s.active_at <= set_on - ${idle}`);
   });
 
   it("lists what happened in a file with field names only", () => {

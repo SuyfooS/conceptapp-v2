@@ -240,6 +240,19 @@ describe("a holder's file screen", () => {
     expect((await currentHolderFile(NOA)).kind).toBe("unavailable");
   });
 
+  it("is locked when the database holds no step-up for this sign-in, the cookie notwithstanding", async () => {
+    // 20261127000400_file_step_up.sql: a lapsed or other sign-in's step-up.
+    mocks.getEmployeeFile.mockResolvedValue({
+      ok: false,
+      failure: "denied",
+      reason: "step_up",
+    });
+    const screen = await currentHolderFile(NOA);
+    expect(screen.kind).toBe("locked");
+    expect(screen).toMatchObject({ head: { personId: NOA } });
+    expect(mocks.getFileHistory).not.toHaveBeenCalled();
+  });
+
   it("logs a failure by its code and kind, never its message", async () => {
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
     mocks.getEmployeeFile.mockRejectedValue(

@@ -174,6 +174,8 @@ const PAGES = [
   "/design/shell/team/noa/file?state=duties",
   "/design/shell/team/noa/file?state=locked",
   "/design/shell/team/noa/file?state=code",
+  // The locked file in the week after the holder's own phone change.
+  "/design/shell/team/noa/file?state=held",
   "/design/shell/team/noa/file?state=open",
   "/design/shell/team/noa/file?state=viewing",
   "/design/shell/team/noa/file?state=unavailable",
@@ -6001,6 +6003,29 @@ test("the file twin opens with the duties, then a code, and the account shows fo
   await page.clock.fastForward(60_000);
   await expect(bank.getByText("100001")).toHaveCount(0);
   await expect(bank.getByText("•••0001")).toBeVisible();
+});
+
+// The week after the holder's own phone change (20261127000400): no code
+// goes, and the card says from when the files open.
+test("the file twin held after a phone change says when the files open, with no code to send", async ({
+  page,
+}) => {
+  await openFileDemo(page, "/design/shell/team/noa/file?state=held");
+  await expect(
+    page.getByRole("heading", { name: hf.locked.title }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("main")
+      .getByRole("status")
+      .filter({ hasText: hf.code.phoneHold.split("{date}")[0] ?? "" }),
+  ).toHaveText(
+    heT("app.team.file.code.phoneHold", { date: "27 בנובמבר 2026" }),
+  );
+  await expect(
+    page.getByRole("button", { name: hf.locked.send }),
+  ).toBeDisabled();
+  await expect(page.getByLabel(hf.code.label)).toHaveCount(0);
 });
 
 test("the file twin's reveal over the limit says so in words", async ({

@@ -18,7 +18,9 @@ import {
  * §3.3): the owners and the accountant always, and whoever an owner gives
  * people.files. Who sees the files, how long a file stays open after the
  * SMS code (15 minutes from the last activity, the step-up kept in a
- * cookie on `/team`), and the status lines the team screen, a person's
+ * cookie on `/team` and, for the sign-in it was taken on, in the database,
+ * which checks the same 15 minutes and minute ahead:
+ * 20261127000400_file_step_up.sql), and the status lines the team screen, a person's
  * page and the accountant's Home draw from `public.employee_file_status`:
  * a holder's by the groups, anyone else's by a count, never a group's name.
  * Pure: the same in the browser and on the server.

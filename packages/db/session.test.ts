@@ -19,7 +19,10 @@ vi.mock("server-only", () => ({}));
  * defaults of their own), read only when asked; while the function is
  * missing on a project, today's rules from the declarations instead. And
  * the signed-in member (`getCurrentMember`), for the names it keeps: the
- * business's for them, and their own beside it for the console.
+ * business's for them, and their own beside it for the console. And the
+ * sign-in itself (`currentAuthSession`), which a holder's step-up for the
+ * hiring file is kept for: its person and the auth server's session id,
+ * or nothing at all.
  */
 type Answer = { data: unknown; error: { code?: string } | null };
 
@@ -76,7 +79,9 @@ vi.mock("./supabase/server", () => ({
   }),
 }));
 
-const { getCurrentMember, getOwnPlace } = await import("./session");
+const { currentAuthSession, getCurrentMember, getOwnPlace } = await import(
+  "./session"
+);
 
 const BUSINESS = "92000000-0000-4000-b000-000000000001";
 // The core permissions alone: managers hold the team's and the management
@@ -229,6 +234,44 @@ describe("getOwnPlace", () => {
       await expect(getOwnPlace()).rejects.toBe(error);
     }
     expect(db.reads).toEqual([]);
+  });
+});
+
+describe("currentAuthSession", () => {
+  const SESSION = "92000000-0000-4000-8000-000000000001";
+
+  it("gives the person and the sign-in's id, reading nothing else", async () => {
+    db.claims = {
+      data: {
+        claims: { sub: db.user, session_id: SESSION, role: "authenticated" },
+      },
+      error: null,
+    };
+    expect(await currentAuthSession()).toEqual({
+      userId: db.user,
+      sessionId: SESSION,
+    });
+    expect(db.reads).toEqual([]);
+  });
+
+  it("is nothing without a sign-in id, with one that isn't a uuid, or signed out", async () => {
+    for (const claims of [
+      { data: { claims: { sub: db.user } }, error: null },
+      {
+        data: { claims: { sub: db.user, session_id: "not-a-uuid" } },
+        error: null,
+      },
+      {
+        data: { claims: { sub: "someone", session_id: SESSION } },
+        error: null,
+      },
+      { data: null, error: null },
+      { data: null, error: new AuthSessionMissingError() },
+      { data: null, error: new AuthRetryableFetchError("fetch failed", 0) },
+    ]) {
+      db.claims = claims;
+      expect(await currentAuthSession()).toBeNull();
+    }
   });
 });
 

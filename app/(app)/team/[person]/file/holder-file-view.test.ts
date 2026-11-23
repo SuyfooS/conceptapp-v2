@@ -32,7 +32,9 @@ const { historyLine } = await import("./file-history");
 const { demoFileHistory, demoHolderFile, DEMO_HOLDER_NUMBERS } = await import(
   "../../../../design/shell/data"
 );
-const { baseWording, translator } = await import("../../../wording");
+const { baseWording, englishWording, translator } = await import(
+  "../../../wording"
+);
 const he = (await import("@/messages/he.json")).default;
 const en = (await import("@/messages/en.json")).default;
 
@@ -70,12 +72,14 @@ const head = (over: Partial<HolderFileHead> = {}): HolderFileHead => ({
 function draw(
   screen: Exclude<HolderFileScreen, { kind: "closed" }>,
   code?: { tail: string },
+  hold?: { day: string | null; at: string | null },
+  locale: "he" | "en" = "he",
 ): string {
   const missing: string[] = [];
   const provider = {
-    locale: "he",
+    locale,
     timeZone: "Asia/Jerusalem",
-    messages: he,
+    messages: locale === "en" ? en : he,
     onError: (error: Error) => {
       missing.push(error.message);
     },
@@ -88,8 +92,9 @@ function draw(
         screen,
         paths: { profile: "/team/noa", team: "/team" },
         actions,
-        wording: baseWording,
+        wording: locale === "en" ? englishWording : baseWording,
         code,
+        hold,
       }),
     ),
   );
@@ -176,6 +181,42 @@ describe("a holder's file screen", () => {
     expect(text(code)).toContain("0014");
     expect(code).toContain('autoComplete="one-time-code"');
     expect(text(code)).toContain(f.code.resend);
+  });
+
+  it("holds the locked file in the week after a phone change: its day said, no code to send", () => {
+    // 20261127000400: the twin opens on it, as the app does on the answer.
+    const html = draw({ kind: "locked", head: head() }, undefined, {
+      day: "2026-11-27",
+      at: null,
+    });
+    const page = text(html);
+    expect(page).toContain(f.locked.title);
+    expect(page).toContain(
+      heT("app.team.file.code.phoneHold", { date: "27 בנובמבר 2026" }),
+    );
+    // A wait in plain words: a status, never an alert or a refusal's line.
+    expect(html).toMatch(/<p[^>]*role="status"[^>]*>אפשר לפתוח תיקים/);
+    expect(html).not.toContain('role="alert"');
+    for (const failure of Object.values(f.failures)) {
+      expect(page).not.toContain(failure);
+    }
+    expect(html).not.toContain('autoComplete="one-time-code"');
+    const button = html.match(/<button[^>]*>/g) ?? [];
+    expect(button).toHaveLength(1);
+    expect(button[0]).toContain("disabled");
+    expect(page).toContain(f.locked.send);
+
+    const enHtml = draw(
+      { kind: "locked", head: head() },
+      undefined,
+      { day: "2026-11-27", at: null },
+      "en",
+    );
+    const enT = createTranslator({ locale: "en", messages: en });
+    expect(text(enHtml)).toContain(
+      enT("app.team.file.code.phoneHold", { date: "November 27, 2026" }),
+    );
+    expect(enHtml.match(/<button[^>]*>/g)?.[0]).toContain("disabled");
   });
 
   it("opens the file with the numbers' last digits only, and no main action", () => {

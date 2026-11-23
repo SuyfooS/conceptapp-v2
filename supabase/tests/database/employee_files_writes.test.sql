@@ -266,6 +266,9 @@ select is(
   pg_temp.try($$select pg_temp.set(3, 3, jsonb_build_object('bank', pg_temp.bank('valid') -> 'bank' || '{"instruction": "v0"}'))$$),
   '22023', 'an instruction not on screen is refused');
 
+-- As the team changes a number (20261127000400_file_step_up.sql refuses any
+-- other change).
+select set_config('ca.phone_change', pg_temp.p(3)::text, true);
 update auth.users set phone = '972500759999' where id = pg_temp.p(3);
 update private.phone_changes set changed_at = pg_temp.at() - interval '3 days'
 where user_id = pg_temp.p(3);
@@ -305,6 +308,8 @@ select is(pg_temp.try($$select pg_temp.set(3, 3, pg_temp.bank('valid'))$$), 'ok'
   'and after it, one again');
 select is(public.bank_change_hold(pg_temp.a(), pg_temp.p(3), pg_temp.at()), null::jsonb,
   'the week read as over too');
+-- As the team gives a number.
+select set_config('ca.phone_change', pg_temp.p(14)::text, true);
 update auth.users set phone = '972500759998' where id = pg_temp.p(14);
 select is(
   (select count(*)::integer from private.phone_changes c where c.user_id = pg_temp.p(14)),

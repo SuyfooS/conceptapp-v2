@@ -1944,6 +1944,19 @@ describe("buildActivity: each action", () => {
       person: { kind: "member", name: "Noa" },
       reason: null,
     });
+    // A holder with no live SMS code on this sign-in (20261127000400).
+    expect(
+      lineOf(row("employee.view_denied", { person: NOA, reason: "step_up" })),
+    ).toEqual({
+      action: "employee.view_denied",
+      person: { kind: "member", name: "Noa" },
+      reason: "step_up",
+    });
+    expect(lineOf(row("employee.view_denied", { reason: "step_up" }))).toEqual({
+      action: "employee.view_denied",
+      person: null,
+      reason: "step_up",
+    });
   });
 
   it("reads a file sent, an account confirmed or disputed, and the duties confirmed", () => {
