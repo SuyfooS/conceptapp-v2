@@ -1,3 +1,4 @@
+import type { CaptchaSetup } from "@domain/turnstile";
 import { createElement } from "react";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
@@ -7,8 +8,10 @@ import type { SignInState } from "../actions";
 // reads the same for every valid number, word for word but the number, in
 // each of its states, so it never tells whether a code went; its help for a
 // code that didn't come is always there, in Hebrew and in English; and no
-// word anywhere in sign-in says a number isn't registered. The router and
-// links are stood in for; nothing here is sent.
+// word anywhere in sign-in says a number isn't registered. Each step has
+// the "אני לא רובוט" check above its press, in each of its states, and a
+// send refused for it is said where the step says its errors. The router
+// and links are stood in for; nothing here is sent.
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: () => {}, push: () => {}, refresh: () => {} }),
@@ -29,7 +32,11 @@ const MESSAGES = { he, en };
 /** The step as it was: nothing here is posted. */
 const stay = async (prev: SignInState) => prev;
 
-function draw(start: SignInState, locale: "he" | "en" = "he"): string {
+function draw(
+  start: SignInState,
+  locale: "he" | "en" = "he",
+  captcha: CaptchaSetup = { demo: "ready" },
+): string {
   const missing: string[] = [];
   const provider = {
     locale,
@@ -43,7 +50,7 @@ function draw(start: SignInState, locale: "he" | "en" = "he"): string {
     createElement(
       NextIntlClientProvider,
       provider,
-      createElement(SignInForm, { signIn: stay, start }),
+      createElement(SignInForm, { signIn: stay, captcha, start }),
     ),
   );
   expect(missing).toEqual([]);
@@ -71,6 +78,7 @@ const STATES: Omit<Extract<SignInState, { step: "code" }>, "phone">[] = [
   { step: "code", error: "invalidCode" },
   { step: "code", error: "tooMany" },
   { step: "code", error: "rateLimit" },
+  { step: "code", error: "captcha" },
   { step: "code", error: "failed" },
 ];
 
@@ -107,6 +115,70 @@ describe("sign-in's code step", () => {
     expect(page).toContain(before ?? "");
     const resent = text(draw({ step: "code", phone: UNKNOWN, resent: true }));
     expect(resent).toContain(he.auth.signIn.codeResent.split("<ltr>")[0]);
+  });
+});
+
+describe("sign-in's check", () => {
+  const STANDINS = ["waiting", "tap", "failed", "unavailable"] as const;
+
+  it("is above each step's press, its field posted with the form", () => {
+    for (const start of [
+      { step: "phone" },
+      { step: "code", phone: UNKNOWN },
+    ] as const) {
+      const html = draw(start);
+      const box = html.indexOf('data-captcha="ready"');
+      expect(box, start.step).toBeGreaterThan(0);
+      expect(
+        html.indexOf(
+          start.step === "phone" ? 'value="send"' : 'value="resend"',
+        ),
+      ).toBeGreaterThan(box);
+      expect(html).toContain('<input type="hidden" name="captcha" value=""/>');
+    }
+  });
+
+  it("says each of its states on either step, in Hebrew and in English", () => {
+    for (const locale of ["he", "en"] as const) {
+      const words = { he, en }[locale].ui.captcha;
+      const lines = {
+        waiting: words.waiting,
+        tap: words.tap,
+        failed: words.failed,
+        unavailable: words.unavailable,
+      };
+      for (const demo of STANDINS) {
+        for (const start of [
+          { step: "phone" },
+          { step: "code", phone: UNKNOWN },
+        ] as const) {
+          expect(
+            text(draw(start, locale, { demo })),
+            `${demo} ${locale}`,
+          ).toContain(lines[demo]);
+        }
+      }
+    }
+  });
+
+  it("shows a press waiting for it as busy", () => {
+    const phone = draw({ step: "phone" }, "he", { demo: "waiting" });
+    expect(phone).toMatch(
+      /<button[^>]*value="send"[^>]*aria-busy="true"|<button[^>]*aria-busy="true"[^>]*value="send"/,
+    );
+    const code = draw({ step: "code", phone: UNKNOWN }, "he", {
+      demo: "waiting",
+    });
+    expect(code).toMatch(
+      /<button[^>]*value="resend"[^>]*disabled|<button[^>]*disabled[^>]*value="resend"/,
+    );
+  });
+
+  it("says a send refused for it on the phone step, under the number", () => {
+    for (const locale of ["he", "en"] as const) {
+      const page = text(draw({ step: "phone", error: "captcha" }, locale));
+      expect(page).toContain({ he, en }[locale].auth.signIn.errors.captcha);
+    }
   });
 });
 

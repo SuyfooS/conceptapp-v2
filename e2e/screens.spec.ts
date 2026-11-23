@@ -37,8 +37,17 @@ const PAGES = [
   "/design/screens/sign-in?step=code",
   // As the site of real businesses has it: the demo door closed (P9).
   "/design/screens/sign-in?door=off",
+  // The "אני לא רובוט" check (P9b), its stand-in in each state, and a send
+  // the auth server refused for it on either step.
+  "/design/screens/sign-in?captcha=waiting",
+  "/design/screens/sign-in?captcha=tap",
+  "/design/screens/sign-in?captcha=failed",
+  "/design/screens/sign-in?captcha=unavailable",
+  "/design/screens/sign-in?error=captcha",
+  "/design/screens/sign-in?step=code&error=captcha",
   "/design/screens/enter",
   "/design/screens/join",
+  "/design/screens/join?captcha=unavailable",
   "/design/screens/join-expired",
   "/design/screens/join-claimed",
   "/design/screens/no-business",

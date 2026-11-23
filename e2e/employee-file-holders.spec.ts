@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { expect, type Page, type TestInfo, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
+import { captchaSettled } from "./captcha";
 import {
   bumpDemoBankChange,
   clearDemoFileAcks,
@@ -92,6 +93,7 @@ async function open(page: Page, path: string) {
  * the auth server's wait if a code went to this number just now and then
  * pressing the action the gate shows again (a refused send leaves the
  * duties' card up when it started there), and give the code that came.
+ * Each press once the "אני לא רובוט" check is done.
  */
 async function sendFileCode(
   page: Page,
@@ -99,6 +101,7 @@ async function sendFileCode(
   phone: string,
 ): Promise<string> {
   let since = new Date(Date.now() - 1000);
+  await captchaSettled(page);
   await visible(page, "button", action).click();
   const boxes = page.getByLabel(f.code.label);
   const tooSoon = page.getByText(f.code.rateLimit);
@@ -106,6 +109,7 @@ async function sendFileCode(
   if (await tooSoon.isVisible()) {
     await page.waitForTimeout(SMS_COOLDOWN_MS + 500);
     since = new Date(Date.now() - 1000);
+    await captchaSettled(page);
     await visible(page, "button", f.duties.confirm)
       .or(visible(page, "button", f.locked.send))
       .click();

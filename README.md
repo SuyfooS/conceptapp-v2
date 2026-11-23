@@ -66,6 +66,7 @@ Vercel and what to watch. The code's side of it:
 | Variable | What | Where |
 | --- | --- | --- |
 | `DEMO_DOOR` | The demo door on this site: `on` (the default when unset) offers the demo people at `/enter`; `off` closes them, their one-press sign-in and the demo reset, and `/enter` goes straight to `/sign-in`. Read when the site is built, so a change takes a Redeploy, and anything else fails the build | Vercel: `on` on the demo's own project, `off` on the site of real businesses |
+| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Cloudflare Turnstile's public Site Key for the "אני לא רובוט" check before every SMS code (sign-in, joining, the file codes). Unset: Cloudflare's always-passing test key, as locally and in CI; another shape fails the build. Supabase's CAPTCHA, with the widget's Secret Key, goes on only after it (`docs/production.md`, Turnstile) | Vercel: `Production` and `Preview`, never the Secret Key |
 
 - Migrations reach each hosted project only by hand: "Migrate conceptapp-dev"
   (`.github/workflows/migrate-dev.yml`) for the demo's project, and "Migrate conceptapp-prod"

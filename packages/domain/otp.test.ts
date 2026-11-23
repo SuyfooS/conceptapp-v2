@@ -24,6 +24,7 @@ describe("refusalReason", () => {
     ["otp_disabled", "unknownPhone"],
     ["over_sms_send_rate_limit", "rateLimit"],
     ["over_request_rate_limit", "rateLimit"],
+    ["captcha_failed", "captcha"],
     ["unexpected_failure", null],
     [undefined, null],
   ] as const)("reads %j as %j", (code, expected) => {

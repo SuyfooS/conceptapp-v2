@@ -4,6 +4,7 @@ import {
   CODE_JUST_SENT,
   forgetAuthAttempt,
   forgetNumberAttempts,
+  forgetRefusedSend,
   NO_CODE_WAITING,
   noteAuthAttempt,
 } from "@db/auth-limits";
@@ -17,6 +18,8 @@ import { headers } from "next/headers";
 /**
  * Why a code didn't go or wasn't taken. None says a number has no account:
  * sign-in answers every valid number the same (`sendSignInCode`).
+ * `captcha`: the auth server refused the send's "אני לא רובוט" token, or
+ * its lack of one, once Supabase's CAPTCHA is on.
  */
 export type SignInError =
   | "invalidPhone"
@@ -24,6 +27,7 @@ export type SignInError =
   | "tooMany"
   | "invalidCode"
   | "wrongCode"
+  | "captcha"
   | "failed";
 
 /**
@@ -74,25 +78,46 @@ async function count(
 /**
  * What asking for a code came to: sent; a code counted for the number within
  * the app's own wait, so the auth server wasn't asked (`justSent`); the
- * number has no account, counted all the same (`unknownPhone`); too many; or
- * failed.
+ * number has no account, counted all the same (`unknownPhone`); refused for
+ * its "אני לא רובוט" check (`captcha`); too many; or failed.
  */
-type Requested = "sent" | "justSent" | "unknownPhone" | "tooMany" | "failed";
+type Requested =
+  | "sent"
+  | "justSent"
+  | "unknownPhone"
+  | "captcha"
+  | "tooMany"
+  | "failed";
+
+/** How a code goes: what runs first, and the check's token. */
+type SendOptions = {
+  /** Runs once the code may go, before it does. */
+  prepare?: () => Promise<void>;
+  /**
+   * The "אני לא רובוט" check's token from the browser, as `captchaTokenOf`
+   * takes it; none when the check didn't load or failed.
+   */
+  captcha?: string;
+};
 
 /**
  * Count a code and ask the auth server to send it, never making an account.
- * `prepare` runs once the code may go, before it does. The app's own wait
- * between two codes to one number is longer than the auth server's
- * (`private.auth_send_wait`), so the auth server's wait refuses no code the
- * app lets go, unless one was asked of it directly. What it still refuses is
- * one of its limits on everyone (the project's SMS in an hour, its requests
- * from one address), and that try, like one the SMS provider failed, sent
- * nothing and is given back for the number and the caller. Both are logged
- * by their code only.
+ * `prepare` runs once the code may go, before it does. The check's token
+ * goes with it (`captchaToken`), and a send without one goes all the same:
+ * the app can't know whether Supabase's CAPTCHA is on, so the auth server
+ * decides. The app's own wait between two codes to one number is longer
+ * than the auth server's (`private.auth_send_wait`), so the auth server's
+ * wait refuses no code the app lets go, unless one was asked of it
+ * directly. What it still refuses is one of its limits on everyone (the
+ * project's SMS in an hour, its requests from one address), and that try,
+ * like one the SMS provider failed, sent nothing and is given back for the
+ * number and the caller. A send it refuses for the check sent nothing either,
+ * and is given back for the number only (`forgetRefusedSend`): the caller's
+ * try stays counted. All are logged by their code only.
  */
 async function requestCode(
   number: string,
-  prepare?: () => Promise<void>,
+  { prepare, captcha }: SendOptions = {},
 ): Promise<Requested> {
   const attempt = await count("send", number);
   // Only a check can find no code waiting.
@@ -102,10 +127,21 @@ async function requestCode(
   const supabase = await createClient();
   const { error } = await supabase.auth.signInWithOtp({
     phone: number,
-    options: { shouldCreateUser: false },
+    options: {
+      shouldCreateUser: false,
+      ...(captcha ? { captchaToken: captcha } : {}),
+    },
   });
   if (!error) return "sent";
-  if (refusalReason(error.code) === "unknownPhone") return "unknownPhone";
+  const reason = refusalReason(error.code);
+  if (reason === "unknownPhone") return "unknownPhone";
+  if (reason === "captcha") {
+    console.warn("signInWithOtp refused the CAPTCHA token", error.code);
+    await forgetRefusedSend(attempt).catch((cause: Error) => {
+      console.error("giving a refused send back failed", cause.message);
+    });
+    return "captcha";
+  }
   console.error("signInWithOtp failed", error.code, error.status);
   await forgetAuthAttempt(attempt).catch((cause: Error) => {
     console.error("giving a sign-in attempt back failed", cause.message);
@@ -123,16 +159,22 @@ async function requestCode(
  * of the auth server's on everyone, or the SMS provider failing, is a
  * failure, with its try given back (`requestCode`). The SMS cap and the
  * provider are reached only by a number with an account, so meanwhile one
- * without still gets the code step (a known issue in docs/ROADMAP.md).
+ * without still gets the code step (a known issue in docs/ROADMAP.md). A
+ * send refused for its "אני לא רובוט" check (`captcha`) is said the same
+ * for every number: the auth server checks it before it looks the number
+ * up.
  */
 export async function sendSignInCode(
   phone: string,
-): Promise<"invalidPhone" | "tooMany" | "failed" | null> {
+  captcha?: string,
+): Promise<"invalidPhone" | "tooMany" | "failed" | "captcha" | null> {
   // One spelling per number, so each number has one count.
   const number = normalizeIsraeliMobile(phone);
   if (!number) return "invalidPhone";
-  const sent = await requestCode(number);
-  return sent === "tooMany" || sent === "failed" ? sent : null;
+  const sent = await requestCode(number, { captcha });
+  return sent === "tooMany" || sent === "failed" || sent === "captcha"
+    ? sent
+    : null;
 }
 
 /**
@@ -142,17 +184,18 @@ export async function sendSignInCode(
  * before it does), and the hiring file's codes, to the session's own number.
  * A code counted for the number within the app's own wait is said
  * (`rateLimit`; joining answers it as a code asked for, `join`); nothing
- * went, and the auth server wasn't asked. Accounts are never created here;
- * people arrive through invites.
+ * went, and the auth server wasn't asked. The "אני לא רובוט" check's token
+ * goes with it (`captcha`), and a refusal for it is said. Accounts are
+ * never created here; people arrive through invites.
  */
 export async function sendCode(
   phone: string,
-  prepare?: () => Promise<void>,
+  options: SendOptions = {},
 ): Promise<SignInError | null> {
   // One spelling per number, so each number has one count.
   const number = normalizeIsraeliMobile(phone);
   if (!number) return "invalidPhone";
-  const sent = await requestCode(number, prepare);
+  const sent = await requestCode(number, options);
   if (sent === "sent") return null;
   if (sent === "justSent") return "rateLimit";
   if (sent === "unknownPhone") {
@@ -172,18 +215,23 @@ export async function sendCode(
  * seeing a code, and hold the new person out of joining. The database clears
  * nothing for a number with an account (`forgetNumberAttempts`), and once
  * this send makes the account it never clears again. A clear that fails
- * leaves the counts as they were.
+ * leaves the counts as they were. The account is made before the auth
+ * server sees the check's token, so a send it refuses for the check leaves
+ * the account made, which joining needs anyway.
  */
 export async function sendJoinCode(
   phone: string,
-  makeAccount: () => Promise<void>,
+  {
+    makeAccount,
+    captcha,
+  }: { makeAccount: () => Promise<void>; captcha?: string },
 ): Promise<SignInError | null> {
   const number = normalizeIsraeliMobile(phone);
   if (!number) return "invalidPhone";
   await forgetNumberAttempts(number).catch((cause: Error) => {
     console.error("clearing a new number's attempts failed", cause.message);
   });
-  return sendCode(number, makeAccount);
+  return sendCode(number, { prepare: makeAccount, captcha });
 }
 
 type Checked =

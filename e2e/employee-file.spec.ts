@@ -5,6 +5,12 @@ import he from "../messages/he.json" with { type: "json" };
 import { checkBankAccount } from "../packages/domain/bank-account";
 import { HOLD_MS } from "./build-screen";
 import {
+  CAPTCHA_FRAME,
+  captchaSettled,
+  nextAction,
+  TEST_TOKEN,
+} from "./captcha";
+import {
   clearDemoFile,
   codesSentSince,
   demoFileFacts,
@@ -65,7 +71,10 @@ const isDesktop = (testInfo: TestInfo) => testInfo.project.name === "desktop";
 
 async function expectCleanPage(page: Page) {
   await expect(page).toHaveTitle(/ConceptApp$/);
-  const { violations } = await new AxeBuilder({ page }).analyze();
+  // Cloudflare's "אני לא רובוט" box isn't the app's to fix.
+  const { violations } = await new AxeBuilder({ page })
+    .exclude(CAPTCHA_FRAME)
+    .analyze();
   expect(
     violations.flatMap((v) =>
       v.nodes.map((n) => `${v.id}: ${n.target.join(" ")} ${n.failureSummary}`),
@@ -141,9 +150,13 @@ async function fillToBank(page: Page, testInfo: TestInfo) {
   await save(page, testInfo, "address", f.actions.saveAddress);
 }
 
-/** "אישור החשבון בקוד", waiting out the wait between codes if one just went. */
+/**
+ * "אישור החשבון בקוד", waiting out the wait between codes if one just went,
+ * each press once the "אני לא רובוט" check is done.
+ */
 async function askForBankCode(page: Page): Promise<Date> {
   let since = new Date(Date.now() - 1000);
+  await captchaSettled(page);
   await bankConfirm(page).click();
   const code = page.getByLabel(f.bank.code.label);
   const tooSoon = page.getByText(f.bank.code.rateLimit);
@@ -151,6 +164,7 @@ async function askForBankCode(page: Page): Promise<Date> {
   if (await tooSoon.isVisible()) {
     await page.waitForTimeout(SMS_COOLDOWN_MS + 500);
     since = new Date(Date.now() - 1000);
+    await captchaSettled(page);
     await bankConfirm(page).click();
   }
   await expect(code).toBeVisible();
@@ -289,7 +303,10 @@ test("a wrong account number gets a warning in words and is saved with a flag", 
   await expect(checkFirst).toHaveCount(0);
   await expectCleanPage(page);
 
+  // The code goes with Cloudflare's token, beside the account.
+  const posted = nextAction(page, "instruction");
   const since = await askForBankCode(page);
+  expect((await posted).postData()).toContain(TEST_TOKEN);
   // Said with the last four digits of her own number, and no more of it.
   await expect(
     bank.getByText(
@@ -485,6 +502,7 @@ test("an account waits a week after a phone change, and no code goes", async ({
     })
     .check();
   const before = new Date(Date.now() - 1000);
+  await captchaSettled(page);
   await bankConfirm(page).click();
   await expect(
     bank
@@ -995,6 +1013,7 @@ test("a new worker who joins lands on the file's welcome", async ({
     });
     await page.goto(`/join/${token}`);
     const since = new Date(Date.now() - 1000);
+    await captchaSettled(page);
     await page.getByRole("button", { name: j.send }).click();
     await expect(page.getByLabel(j.codeLabel)).toBeVisible();
     await page
@@ -1020,6 +1039,7 @@ test("a new worker who joins lands on the file's welcome", async ({
       await page.goto(`/join/${again}`);
       let next = new Date(Date.now() - 1000);
       const before = await lastCodeId(person.e164);
+      await captchaSettled(page);
       await page.getByRole("button", { name: j.send }).click();
       const code = page.getByLabel(j.codeLabel);
       await expect(code).toBeVisible();
@@ -1029,6 +1049,7 @@ test("a new worker who joins lands on the file's welcome", async ({
       if (!(await codeAfter(person.e164, before))) {
         await page.waitForTimeout(SMS_COOLDOWN_MS + 500);
         next = new Date(Date.now() - 1000);
+        await captchaSettled(page);
         await page.getByRole("button", { name: j.resend }).click();
         await expect(
           page.getByText((j.codeResent.split("<ltr>")[0] ?? "").trim()),

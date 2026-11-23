@@ -26,6 +26,7 @@ describe("a holder's refusals", () => {
       "wrongCode",
       "tooMany",
       "rateLimit",
+      "captcha",
       "noPhone",
       "invalidPhone",
       "limit",
@@ -66,6 +67,7 @@ describe("a holder's refusals", () => {
     expect(holderWordsOf("noAccess", "reveal")).toBe("reveal.noAccess");
     expect(holderWordsOf("limit", "reveal")).toBe("reveal.limit");
     expect(holderWordsOf("keys")).toBe("unavailable");
+    expect(holderWordsOf("captcha", "send")).toBe("code.captcha");
   });
 });
 

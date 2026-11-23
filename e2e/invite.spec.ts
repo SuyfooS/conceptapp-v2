@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
+import { CAPTCHA_FRAME, captchaSettled } from "./captcha";
 import { demoRole, inviteToDemo } from "./db";
 import { signIn } from "./session";
 import { latestCode } from "./sms";
@@ -21,7 +22,10 @@ const inv = he.admin.setup.invite;
 async function expectCleanPage(page: Page) {
   // Metadata streams in after the body (see new-business.spec.ts).
   await expect(page).toHaveTitle(/ConceptApp$/);
-  const { violations } = await new AxeBuilder({ page }).analyze();
+  // Cloudflare's "אני לא רובוט" box isn't the app's to fix.
+  const { violations } = await new AxeBuilder({ page })
+    .exclude(CAPTCHA_FRAME)
+    .analyze();
   // Each failing element and axe's reason, so a CI log alone says what
   // to fix.
   expect(
@@ -110,6 +114,7 @@ test("an invited number joins the demo restaurant as a manager", async ({
   await expectCleanPage(joining);
 
   const since = new Date(Date.now() - 1000);
+  await captchaSettled(joining);
   await joining.getByRole("button", { name: j.send }).click();
   await expect(joining.getByLabel(j.codeLabel)).toBeVisible();
   await expectCleanPage(joining);

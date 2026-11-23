@@ -11,6 +11,16 @@ RTL and LTR without changes.
 
 Import as `@ui/<file>`. `cn()` lives in `@ui/cn`.
 
+`@ui/captcha` is the "אני לא רובוט" check before every SMS code (Cloudflare
+Turnstile, P9b): `useCaptcha(setup, action)` keeps one check for a screen, and
+`CaptchaBox` draws it right above the press it is for, nothing while it asks
+nothing, Cloudflare's own box only when it asks for a tick, and its lines while
+a press waits, when it failed and when it didn't load. A form sends through
+`holdSubmit` (a press made too soon waits and goes by itself), a send in code
+through `take()`. Its controller, `@ui/captcha-control`, has no React and is
+tested on its own. The script is Cloudflare's, never copied here; the gallery
+shows the stand-in only.
+
 ## Third party
 
 Some components follow designs from [React Bits](https://reactbits.dev) (MIT + Commons

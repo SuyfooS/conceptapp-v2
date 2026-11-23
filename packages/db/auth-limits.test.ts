@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // check, or a code sent within the wait for a send; anything else, or a
 // failure but a function not there yet, throws.
 // Joining clears the counts of a number with no account, by the number only.
+// A send refused for its "אני לא רובוט" check is given back to its number
+// only, the caller's try kept.
 
 vi.mock("server-only", () => ({}));
 
@@ -28,6 +30,7 @@ const {
   CODE_JUST_SENT,
   forgetAuthAttempt,
   forgetNumberAttempts,
+  forgetRefusedSend,
   NO_CODE_WAITING,
   noteAuthAttempt,
 } = await import("./auth-limits");
@@ -109,6 +112,33 @@ describe("forgetAuthAttempt", () => {
     await expect(forgetAuthAttempt(ATTEMPT)).resolves.toBeUndefined();
     db.answers.push({ error: { code: "57014", message: "timeout" } });
     await expect(forgetAuthAttempt(ATTEMPT)).rejects.toThrow(
+      "Could not give the attempt back",
+    );
+  });
+});
+
+describe("forgetRefusedSend", () => {
+  it("gives a send refused for its check back to its number only", async () => {
+    await forgetRefusedSend({ ...ATTEMPT, kind: "send" });
+    expect(db.calls).toEqual([
+      {
+        name: "forget_auth_attempt",
+        args: {
+          kind: "send",
+          phone: "+972500000003",
+          // No caller's row is counted without one: the caller's stays.
+          caller: "",
+          at_time: "2026-11-20T08:00:00.000Z",
+        },
+      },
+    ]);
+  });
+
+  it("throws on a failure but a function not there yet", async () => {
+    db.answers.push({ error: { code: "PGRST202", message: "not found" } });
+    await expect(forgetRefusedSend(ATTEMPT)).resolves.toBeUndefined();
+    db.answers.push({ error: { code: "57014", message: "timeout" } });
+    await expect(forgetRefusedSend(ATTEMPT)).rejects.toThrow(
       "Could not give the attempt back",
     );
   });

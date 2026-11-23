@@ -336,7 +336,28 @@ describe("the code", () => {
   it("goes to the number the holder signs in with now, never the profile's", async () => {
     expect(await sendFileCodeAction(SHOP)).toEqual({ ok: true, tail: "0001" });
     expect(mocks.signInPhoneOf).toHaveBeenCalledWith(URI);
-    expect(mocks.sendCode).toHaveBeenCalledWith(URI_PHONE);
+    expect(mocks.sendCode).toHaveBeenCalledWith(URI_PHONE, {
+      captcha: undefined,
+    });
+  });
+
+  it("carries the not-a-robot check's token, and drops one of another shape", async () => {
+    await sendFileCodeAction(SHOP, "XXXX.DUMMY.TOKEN.XXXX");
+    await sendFileCodeAction(SHOP, { token: "x" });
+    await sendFileCodeAction(SHOP, "a".repeat(3000));
+    expect(mocks.sendCode.mock.calls.map((call) => call[1])).toEqual([
+      { captcha: "XXXX.DUMMY.TOKEN.XXXX" },
+      { captcha: undefined },
+      { captcha: undefined },
+    ]);
+  });
+
+  it("says a send refused for the check", async () => {
+    mocks.sendCode.mockResolvedValue("captcha");
+    expect(await sendFileCodeAction(SHOP, "XXXX.DUMMY.TOKEN.XXXX")).toEqual({
+      ok: false,
+      failure: "captcha",
+    });
   });
 
   it("waits for the duties, and goes nowhere without the keys", async () => {

@@ -12,6 +12,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // with no code sent to the number lately is a wrong code, and the auth
 // server isn't asked.
 //
+// Every send carries the "אני לא רובוט" check's token to the auth server,
+// and goes without one when there is none: the auth server decides. A send
+// it refuses for the check is said (`captcha`), the same for every number,
+// and given back to the number only, the caller's try kept. A check never
+// carries a token.
+//
 // The codes a signed-in person proves their phone with (the hiring file's
 // bank change, profile H5a) hold too: the code goes to the number the auth
 // server has now, never the profile's copy; it is checked on a client that
@@ -25,6 +31,7 @@ const mocks = vi.hoisted(() => ({
   noteAuthAttempt: vi.fn(),
   forgetAuthAttempt: vi.fn(),
   forgetNumberAttempts: vi.fn(),
+  forgetRefusedSend: vi.fn(),
   signInWithOtp: vi.fn(),
   cookieVerifyOtp: vi.fn(),
   order: [] as string[],
@@ -42,6 +49,7 @@ vi.mock("@db/auth-limits", () => ({
   noteAuthAttempt: mocks.noteAuthAttempt,
   forgetAuthAttempt: mocks.forgetAuthAttempt,
   forgetNumberAttempts: mocks.forgetNumberAttempts,
+  forgetRefusedSend: mocks.forgetRefusedSend,
 }));
 vi.mock("@db/supabase/admin", () => ({
   createAdminClient: () => ({
@@ -77,6 +85,7 @@ beforeEach(() => {
   mocks.forgetNumberAttempts.mockReset().mockImplementation(async () => {
     mocks.order.push("clear");
   });
+  mocks.forgetRefusedSend.mockReset().mockResolvedValue(undefined);
   mocks.signInWithOtp.mockReset().mockImplementation(async () => {
     mocks.order.push("send");
     return { data: {}, error: null };
@@ -215,7 +224,7 @@ describe("sendCode", () => {
   it("says a second send within the app's own wait, and asks and runs nothing", async () => {
     const prepare = vi.fn();
     mocks.noteAuthAttempt.mockResolvedValue(-2);
-    expect(await sendCode("+972500000003", prepare)).toBe("rateLimit");
+    expect(await sendCode("+972500000003", { prepare })).toBe("rateLimit");
     expect(prepare).not.toHaveBeenCalled();
     expect(mocks.signInWithOtp).not.toHaveBeenCalled();
     expect(mocks.forgetAuthAttempt).not.toHaveBeenCalled();
@@ -250,8 +259,10 @@ describe("sendCode", () => {
 
   it("runs `prepare` after the count and before the send", async () => {
     expect(
-      await sendCode("+972500000003", async () => {
-        mocks.order.push("prepare");
+      await sendCode("+972500000003", {
+        prepare: async () => {
+          mocks.order.push("prepare");
+        },
       }),
     ).toBeNull();
     expect(mocks.order).toEqual(["count", "prepare", "send"]);
@@ -260,7 +271,7 @@ describe("sendCode", () => {
   it("runs nothing past too many", async () => {
     const prepare = vi.fn();
     mocks.noteAuthAttempt.mockResolvedValue(30);
-    expect(await sendCode("+972500000003", prepare)).toBe("tooMany");
+    expect(await sendCode("+972500000003", { prepare })).toBe("tooMany");
     expect(prepare).not.toHaveBeenCalled();
     expect(mocks.signInWithOtp).not.toHaveBeenCalled();
   });
@@ -272,7 +283,7 @@ describe("sendJoinCode", () => {
   };
 
   it("clears a number's counts before it counts, then makes the account and sends", async () => {
-    expect(await sendJoinCode("050-000-0003", makeAccount)).toBeNull();
+    expect(await sendJoinCode("050-000-0003", { makeAccount })).toBeNull();
     expect(mocks.order).toEqual(["clear", "count", "account", "send"]);
     // One spelling per number: the one its counts are kept by.
     expect(mocks.forgetNumberAttempts).toHaveBeenCalledWith("+972500000003");
@@ -285,11 +296,15 @@ describe("sendJoinCode", () => {
     // A number with an account keeps its counts: a code went to it within
     // the wait, or too many.
     mocks.noteAuthAttempt.mockResolvedValueOnce(-2);
-    expect(await sendJoinCode("+972500000003", makeAccount)).toBe("rateLimit");
+    expect(await sendJoinCode("+972500000003", { makeAccount })).toBe(
+      "rateLimit",
+    );
     expect(mocks.order).toEqual(["clear"]);
     mocks.noteAuthAttempt.mockResolvedValue(30);
     mocks.order.length = 0;
-    expect(await sendJoinCode("+972500000003", makeAccount)).toBe("tooMany");
+    expect(await sendJoinCode("+972500000003", { makeAccount })).toBe(
+      "tooMany",
+    );
     expect(mocks.order).toEqual(["clear"]);
     expect(mocks.signInWithOtp).not.toHaveBeenCalled();
   });
@@ -297,15 +312,117 @@ describe("sendJoinCode", () => {
   it("still counts and sends when the clear fails, logged without the number", async () => {
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
     mocks.forgetNumberAttempts.mockRejectedValue(new Error("down"));
-    expect(await sendJoinCode("+972500000003", makeAccount)).toBeNull();
+    expect(await sendJoinCode("+972500000003", { makeAccount })).toBeNull();
     expect(mocks.order).toEqual(["count", "account", "send"]);
     expect(JSON.stringify(logged.mock.calls)).not.toContain("500000003");
     logged.mockRestore();
   });
 
   it("clears nothing for a malformed number", async () => {
-    expect(await sendJoinCode("123", makeAccount)).toBe("invalidPhone");
+    expect(await sendJoinCode("123", { makeAccount })).toBe("invalidPhone");
     expect(mocks.order).toEqual([]);
+  });
+});
+
+/** The check's token, as Cloudflare's test key gives it. */
+const TOKEN = "XXXX.DUMMY.TOKEN.XXXX";
+
+describe("the not-a-robot check (אני לא רובוט)", () => {
+  it("sends its token to the auth server on each send, and goes without one when there is none", async () => {
+    await sendSignInCode("050-000-0003", TOKEN);
+    await sendCode("+972500000003", { captcha: TOKEN });
+    await sendJoinCode("+972500000801", {
+      makeAccount: async () => {},
+      captcha: TOKEN,
+    });
+    for (const [phone] of [
+      ["+972500000003"],
+      ["+972500000003"],
+      ["+972500000801"],
+    ]) {
+      expect(mocks.signInWithOtp).toHaveBeenCalledWith({
+        phone,
+        options: { shouldCreateUser: false, captchaToken: TOKEN },
+      });
+    }
+    mocks.signInWithOtp.mockClear();
+    await sendSignInCode("050-000-0003");
+    await sendCode("+972500000003");
+    await sendJoinCode("+972500000801", { makeAccount: async () => {} });
+    expect(mocks.signInWithOtp).toHaveBeenCalledTimes(3);
+    for (const [call] of mocks.signInWithOtp.mock.calls) {
+      // No key at all: the auth server reads none as no token.
+      expect(call.options).toEqual({ shouldCreateUser: false });
+      expect("captchaToken" in call.options).toBe(false);
+    }
+  });
+
+  it("says a send refused for it on each send, the same for a number with an account and one without", async () => {
+    const warned = vi.spyOn(console, "warn").mockImplementation(() => {});
+    for (const phone of ["+972500000003", "+972509999999"]) {
+      mocks.signInWithOtp.mockResolvedValueOnce(refused("captcha_failed"));
+      expect(await sendSignInCode(phone, TOKEN)).toBe("captcha");
+    }
+    mocks.signInWithOtp.mockResolvedValueOnce(refused("captcha_failed"));
+    expect(await sendCode("+972500000003")).toBe("captcha");
+    mocks.signInWithOtp.mockResolvedValueOnce(refused("captcha_failed"));
+    expect(
+      await sendJoinCode("+972500000801", { makeAccount: async () => {} }),
+    ).toBe("captcha");
+    expect(JSON.stringify(warned.mock.calls)).toContain("captcha_failed");
+    expect(JSON.stringify(warned.mock.calls)).not.toContain(TOKEN);
+    warned.mockRestore();
+  });
+
+  it("gives a refused send back to its number only, never as a failure is", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    mocks.signInWithOtp.mockResolvedValueOnce(refused("captcha_failed"));
+    await sendSignInCode("+972500000003", TOKEN);
+    expect(mocks.forgetRefusedSend).toHaveBeenCalledWith(
+      mocks.noteAuthAttempt.mock.calls[0]?.[0],
+    );
+    expect(mocks.forgetAuthAttempt).not.toHaveBeenCalled();
+    vi.mocked(console.warn).mockRestore();
+  });
+
+  it("still says it when giving the try back fails, logged without the number", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.signInWithOtp.mockResolvedValueOnce(refused("captcha_failed"));
+    mocks.forgetRefusedSend.mockRejectedValueOnce(new Error("down"));
+    expect(await sendCode("+972500000003", { captcha: TOKEN })).toBe("captcha");
+    expect(JSON.stringify(logged.mock.calls)).not.toContain("500000003");
+    logged.mockRestore();
+    vi.mocked(console.warn).mockRestore();
+  });
+
+  it("keeps the order: the clear, the count, the account, then the send with its token", async () => {
+    expect(
+      await sendJoinCode("+972500000801", {
+        makeAccount: async () => {
+          mocks.order.push("account");
+        },
+        captcha: TOKEN,
+      }),
+    ).toBeNull();
+    expect(mocks.order).toEqual(["clear", "count", "account", "send"]);
+  });
+
+  it("is never asked of a check", async () => {
+    await verifyCode("+972500000003", "123456");
+    await checkCode("+972500000003", "123456");
+    for (const [call] of [
+      ...mocks.cookieVerifyOtp.mock.calls,
+      ...mocks.verifyOtp.mock.calls,
+    ]) {
+      expect(call).toEqual({
+        phone: "+972500000003",
+        token: "123456",
+        type: "sms",
+      });
+    }
+    expect(mocks.cookieVerifyOtp).toHaveBeenCalledTimes(1);
+    expect(mocks.verifyOtp).toHaveBeenCalledTimes(1);
   });
 });
 

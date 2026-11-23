@@ -22,6 +22,7 @@ import {
   BusinessSwitchRow,
 } from "@ui/business-switcher";
 import { Button } from "@ui/button";
+import { CaptchaBox, useCaptcha } from "@ui/captcha";
 import { Card, CardText, CardTitle } from "@ui/card";
 import { ChecklistItem } from "@ui/checklist-item";
 import { ChoiceMenu } from "@ui/choice-menu";
@@ -140,6 +141,35 @@ const SCALE = [
   { cls: "text-base", label: "base · 15" },
   { cls: "text-sm", label: "sm · 13" },
 ] as const;
+
+/** The check's states the gallery shows, its stand-in's. */
+const CAPTCHA_STATES = [
+  "ready",
+  "waiting",
+  "tap",
+  "failed",
+  "unavailable",
+] as const;
+type CaptchaShown = (typeof CAPTCHA_STATES)[number];
+
+/**
+ * The "אני לא רובוט" check above a send, as each screen draws it, in one of
+ * its stand-in's states: nothing to read while it asks nothing, the press
+ * busy while it waits, a place of Cloudflare's box's size for a tick, and
+ * the lines for a failure (with its retry) and for a check that didn't load.
+ */
+function CaptchaDemo({ shown }: { shown: CaptchaShown }) {
+  const t = useTranslations("design");
+  const box = useCaptcha({ demo: shown }, "sign-in");
+  return (
+    <Card className="flex flex-col gap-3">
+      <CaptchaBox captcha={box} />
+      <Button size="lg" loading={box.waiting}>
+        {t("captchaSend")}
+      </Button>
+    </Card>
+  );
+}
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -274,6 +304,7 @@ function GalleryBody({
   const [galleryDays, setGalleryDays] = useState([0, 1, 2, 3, 4]);
   const [codeStatus, setCodeStatus] = useState<CodeSlotsStatus>("idle");
   const [codeRun, setCodeRun] = useState(0);
+  const [captchaShown, setCaptchaShown] = useState<CaptchaShown>("tap");
   const [total, setTotal] = useState(120);
   const shownTotal = useCountUp(total, "gallery");
   const [appearance, setAppearance] = useState<Appearance>("system");
@@ -1469,6 +1500,22 @@ function GalleryBody({
               </Button>
             </div>
           </Card>
+        </Section>
+
+        <Section title={t("captcha")}>
+          <Segmented
+            label={t("captcha")}
+            value={captchaShown}
+            onChange={setCaptchaShown}
+            options={CAPTCHA_STATES.map((state) => ({
+              value: state,
+              label: t(`captchaStates.${state}`),
+            }))}
+            className="self-start"
+          />
+          {/* A new stand-in for each state: a check keeps its own. */}
+          <CaptchaDemo key={captchaShown} shown={captchaShown} />
+          <p className="px-1 text-ink-2 text-sm">{t("captchaHint")}</p>
         </Section>
 
         <Section title={t("countUp")}>

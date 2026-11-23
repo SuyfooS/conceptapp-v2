@@ -1,3 +1,4 @@
+import { TURNSTILE_TEST_KEYS } from "@domain/turnstile";
 import { z } from "zod";
 
 /**
@@ -99,6 +100,50 @@ export function parseDemoDoor(source: { DEMO_DOOR?: string }): boolean {
  */
 export function demoDoorOpen(): boolean {
   return parseDemoDoor({ DEMO_DOOR: process.env.DEMO_DOOR });
+}
+
+/**
+ * A Turnstile site key as Cloudflare writes it: a digit, `x`, and some 20
+ * letters and digits (the ConceptApp widget's is 24 in all). A secret key
+ * is longer (35), so one pasted here by mistake is refused and never
+ * reaches a browser.
+ */
+const TurnstileSiteKey = z
+  .string()
+  .trim()
+  .regex(/^[0-3]x[0-9A-Za-z_-]{18,30}$/);
+
+/**
+ * Turnstile's site key on this deployment (`NEXT_PUBLIC_TURNSTILE_SITE_KEY`,
+ * docs/production.md, Turnstile): public, it is in every page that sends
+ * an SMS code. Unset or blank, Cloudflare's test key that always passes,
+ * for local, CI and e2e, where Supabase's CAPTCHA is off. Anything else
+ * throws naming the setting, never the value, so a wrong one fails the
+ * build of /sign-in, which reads it as it is built.
+ */
+export function parseTurnstileSiteKey(source: {
+  NEXT_PUBLIC_TURNSTILE_SITE_KEY?: string;
+}): string {
+  const raw = source.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
+  if (raw.trim() === "") return TURNSTILE_TEST_KEYS.pass;
+  const parsed = TurnstileSiteKey.safeParse(raw);
+  if (!parsed.success) {
+    throw new Error(
+      "NEXT_PUBLIC_TURNSTILE_SITE_KEY: Cloudflare Turnstile's Site Key (unset means its test key), never the Secret Key",
+    );
+  }
+  return parsed.data;
+}
+
+/**
+ * This deployment's Turnstile site key, read on the server by the pages
+ * that send a code and handed to their screens (`CaptchaSetup`). Written
+ * out in full, as a NEXT_PUBLIC_ variable must be to be read at build time.
+ */
+export function turnstileSiteKey(): string {
+  return parseTurnstileSiteKey({
+    NEXT_PUBLIC_TURNSTILE_SITE_KEY: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY,
+  });
 }
 
 /** The hiring file's keys, checked: which one seals, and every one that opens. */

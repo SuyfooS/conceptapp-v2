@@ -81,7 +81,7 @@ describe("the English file's words", () => {
         namespace: namespace ?? "",
       })),
     );
-    // Followed through @ui: the code boxes read their own words.
+    // Followed through @ui: the code boxes and the check read their own words.
     expect(new Set(read.map((one) => one.namespace))).toEqual(
       new Set(FILE_NAMESPACES),
     );
@@ -103,11 +103,12 @@ describe("the English file's words", () => {
       expect(picked.banks).toEqual(messages.banks);
       expect(picked.pensionFunds).toEqual(messages.pensionFunds);
       expect(picked.ui.codeSlots).toEqual(messages.ui.codeSlots);
+      expect(picked.ui.captcha).toEqual(messages.ui.captcha);
       expect(Object.keys(picked).sort()).toEqual(
         ["app", "banks", "pensionFunds", "ui"].sort(),
       );
       expect(Object.keys(picked.app)).toEqual(["file"]);
-      expect(Object.keys(picked.ui)).toEqual(["codeSlots"]);
+      expect(Object.keys(picked.ui)).toEqual(["codeSlots", "captcha"]);
     }
   });
 });

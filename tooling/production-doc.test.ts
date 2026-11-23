@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import he from "../messages/he.json";
 import { jobs, readRepoFile, topLevel } from "./workflows";
 
 // docs/production.md, the step-by-step setup of production for Orel (P9):
@@ -12,7 +13,9 @@ import { jobs, readRepoFile, topLevel } from "./workflows";
 // rebuilt after its values, production's values in Production alone with a
 // check of Preview and Development, and the real site released from its own
 // branch only after Migrate conceptapp-prod. The repo is public, so what it
-// must never hold is checked here too.
+// must never hold is checked here too. Turnstile's "אני לא רובוט" (P9b) goes
+// on in its own order: the code, the public key in Vercel and a rebuild, a
+// look, and only then CAPTCHA in Supabase, with a way back.
 
 const doc = readRepoFile("docs/production.md");
 
@@ -489,6 +492,61 @@ describe("docs/production.md", () => {
     for (const word of ["`app_url`", "`Site URL`"]) {
       expect(demo.indexOf(word), word).toBeGreaterThan(check);
     }
+  });
+
+  it("turns CAPTCHA on only after the site sends Turnstile's token, and checks sign-in", () => {
+    // CAPTCHA on before the site sends the token stops every code.
+    const turnstile = section("Turnstile");
+    expect(stepOf(turnstile, 1)).toContain("`Ready`");
+    const key = stepOf(turnstile, 2);
+    for (const word of [
+      "`NEXT_PUBLIC_TURNSTILE_SITE_KEY`",
+      "`Production`",
+      "`Preview`",
+      "`Site Key`",
+      "`Secret Key`",
+    ]) {
+      expect(key, word).toContain(word);
+    }
+    expect(key).toMatch(/`Secret Key` של הווידג'ט לא נכנס ל-Vercel/);
+    expect(stepOf(turnstile, 3)).toContain("`Redeploy`");
+    expect(stepOf(turnstile, 4)).toContain("חלון פרטי");
+    expect(stepOf(turnstile, 4)).toContain(
+      he.ui.captcha.unavailable.split(".")[0] ?? "",
+    );
+    const on = stepOf(turnstile, 5);
+    expect(on).toContain("`Authentication → Attack Protection`");
+    expect(on).toContain("`Secret Key`");
+    const after = stepOf(turnstile, 6);
+    expect(after).toContain("חלון פרטי");
+    const refused = he.auth.signIn.errors.captcha.split(",")[0] ?? "";
+    expect(refused.length).toBeGreaterThan(10);
+    expect(after).toContain(refused);
+    expect(after).toContain("מכבים את CAPTCHA");
+  });
+
+  it("has production's CAPTCHA turned on with the same widget, checked in B7 step B", () => {
+    const b4 = stepOf(section("ב4."), 7);
+    expect(b4).not.toContain("עוד לא בקוד");
+    expect(b4).toContain("`Authentication → Attack Protection`");
+    expect(b4).toContain("ב7 צעד ב");
+    expect(b4).toContain("`conceptapp-prod`");
+    // Public and the same everywhere: the real site's table leaves it be.
+    const real = rows(stepOf(section("ב7."), 5)).find(
+      ([name = ""]) => name === "`NEXT_PUBLIC_TURNSTILE_SITE_KEY`",
+    );
+    expect(real?.join(" ")).toContain("לא נוגעים בו");
+    expect(real?.join(" ")).not.toContain("`Sensitive`");
+    // Rotating the secret never touches Vercel.
+    const appendix = rows(section("נספח: החלפת סוד")).find(([name = ""]) =>
+      name.includes("Turnstile"),
+    );
+    expect(appendix?.[0]).toContain("`Secret Key`");
+    expect(appendix?.join(" ")).not.toContain("Vercel");
+    expect(section("ב1.")).toContain("Cloudflare (Turnstile)");
+    expect(section("מה הקוד כבר עושה")).toContain(
+      "`NEXT_PUBLIC_TURNSTILE_SITE_KEY`",
+    );
   });
 
   it("names no path on anyone's computer", () => {

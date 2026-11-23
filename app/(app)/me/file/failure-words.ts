@@ -46,13 +46,15 @@ export type CodeKey =
   | "wrongCode"
   | "tooMany"
   | "rateLimit"
+  | "captcha"
   | "noPhone"
   | "failed";
 
 /**
  * A code's refusal as the bank step says it, in `app.file.bank.code`; null
  * for a file's refusal. A send that failed (the SMS service or the auth
- * server) says the code didn't go, never that something wasn't saved; a
+ * server) says the code didn't go, never that something wasn't saved, and
+ * one refused for its "אני לא רובוט" check says so; a
  * check that failed is the file's "not saved", since the account didn't go
  * in either.
  */
@@ -64,6 +66,7 @@ export function codeKey(
     case "wrongCode":
     case "tooMany":
     case "rateLimit":
+    case "captcha":
     case "noPhone":
       return failure;
     case "invalidPhone":

@@ -2,7 +2,17 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import { displayIsraeliMobile } from "../packages/domain/phone";
-import { askForCode } from "./session";
+import {
+  TURNSTILE_ORIGIN,
+  TURNSTILE_TEST_KEYS,
+} from "../packages/domain/turnstile";
+import {
+  CAPTCHA_FRAME,
+  captchaSettled,
+  nextAction,
+  TEST_TOKEN,
+} from "./captcha";
+import { askForCode, SMS_COOLDOWN_MS } from "./session";
 import {
   codeAfter,
   forgetSentCodes,
@@ -21,7 +31,10 @@ const WORKER = { local: "050-000-0003", e164: "+972500000003" };
 const UNKNOWN = { local: "050-999-9999", e164: "+972509999999" };
 
 async function expectAccessible(page: Page) {
-  const { violations } = await new AxeBuilder({ page }).analyze();
+  // Cloudflare's box isn't the app's to fix; the check's own lines are.
+  const { violations } = await new AxeBuilder({ page })
+    .exclude(CAPTCHA_FRAME)
+    .analyze();
   expect(violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - window.innerWidth,
@@ -31,8 +44,13 @@ async function expectAccessible(page: Page) {
 
 async function requestCode(page: Page, phone: string) {
   await page.getByLabel(t.phoneLabel).fill(phone);
+  await captchaSettled(page);
   await page.getByRole("button", { name: t.send }).click();
 }
+
+/** Cloudflare's script, as the check asks for it. */
+const isTurnstileScript = (url: URL) =>
+  url.origin === TURNSTILE_ORIGIN && url.pathname.endsWith("/api.js");
 
 /** The code step's words, its number as a placeholder. */
 async function codeStepWords(page: Page, phone: string): Promise<string> {
@@ -119,6 +137,7 @@ test("a code asked for again at once sends nothing new, reads as for any number,
   // the runner is.
   await noteSentCode(WORKER.e164);
   const sent = await lastCodeId(WORKER.e164);
+  await captchaSettled(page);
   await page.getByRole("button", { name: t.resend }).click();
   await expect(
     page.getByText((t.codeResent.split("<ltr>")[0] ?? "").trim()),
@@ -130,6 +149,7 @@ test("a code asked for again at once sends nothing new, reads as for any number,
   await page.getByRole("button", { name: t.changePhone }).click();
   await page.getByLabel(t.phoneLabel).fill(WORKER.local);
   await noteSentCode(WORKER.e164);
+  await captchaSettled(page);
   await page.getByRole("button", { name: t.send }).click();
   await expect(codeField).toBeVisible();
   await expect(tooSoon).toHaveCount(0);
@@ -180,6 +200,102 @@ test("a code checked when none was sent lately is a wrong code, and the auth ser
   await noteSentCode(WORKER.e164);
   await page.getByLabel(t.codeLabel).fill(code);
   await expect(page).toHaveURL(/\/home$/);
+});
+
+// The "אני לא רובוט" check (P9b), with Cloudflare's real script and its
+// test key that always passes; Supabase's CAPTCHA is off here, so the token
+// goes and nobody checks it.
+test("the send carries Cloudflare's token, and a new code a fresh one", async ({
+  page,
+}) => {
+  const script = page.waitForResponse((response) =>
+    isTurnstileScript(new URL(response.url())),
+  );
+  await page.goto("/sign-in");
+  const ready = page.locator('[data-captcha="ready"]');
+  await expect(ready).toHaveCount(1, { timeout: 20_000 });
+  await expect(page.locator(CAPTCHA_FRAME)).toHaveAttribute(
+    "data-sitekey",
+    TURNSTILE_TEST_KEYS.pass,
+  );
+  expect((await script).ok()).toBe(true);
+
+  await page.getByLabel(t.phoneLabel).fill(WORKER.local);
+  // Held by the app's own wait, so no code goes: the post is what counts.
+  await noteSentCode(WORKER.e164);
+  const sent = nextAction(page);
+  await page.getByRole("button", { name: t.send }).click();
+  expect((await sent).postData()).toContain(TEST_TOKEN);
+  await expect(page.getByLabel(t.codeLabel)).toBeVisible();
+
+  // The code step's own check: drawn anew, its token in hand again.
+  await expect(ready).toHaveCount(1, { timeout: 20_000 });
+  await noteSentCode(WORKER.e164);
+  const again = nextAction(page);
+  await page.getByRole("button", { name: t.resend }).click();
+  expect((await again).postData()).toContain(TEST_TOKEN);
+  await expect(
+    page.getByText((t.codeResent.split("<ltr>")[0] ?? "").trim()),
+  ).toBeVisible();
+});
+
+test("a press before the check is done waits for it, and goes by itself", async ({
+  page,
+}) => {
+  // Cloudflare's script held until the press is made.
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(isTurnstileScript, async (route) => {
+    await held;
+    await route.continue();
+  });
+  // Its own load would wait for the script: the page is enough.
+  await page.goto("/sign-in", { waitUntil: "domcontentloaded" });
+  // The script asked for: the screen is the app's now, not only the HTML.
+  await expect(page.locator("script#cf-turnstile")).toHaveCount(1);
+
+  await page.getByLabel(t.phoneLabel).fill(WORKER.local);
+  await noteSentCode(WORKER.e164);
+  const sent = nextAction(page);
+  const send = page.getByRole("button", { name: t.send });
+  await send.click();
+  await expect(page.getByText(he.ui.captcha.waiting)).toBeVisible();
+  await expect(send).toHaveAttribute("aria-busy", "true");
+  await expect(page.getByLabel(t.codeLabel)).toHaveCount(0);
+
+  release();
+  expect((await sent).postData()).toContain(TEST_TOKEN);
+  await expect(page.getByLabel(t.codeLabel)).toBeVisible();
+  await expect(page.getByText(he.ui.captcha.waiting)).toHaveCount(0);
+});
+
+test("without Cloudflare the screen says so, and while CAPTCHA is off the code still goes", async ({
+  page,
+}) => {
+  await page.route(
+    (url) => url.origin === TURNSTILE_ORIGIN,
+    (route) => route.abort(),
+  );
+  await page.goto("/sign-in");
+  await expect(page.getByText(he.ui.captcha.unavailable)).toBeVisible();
+  await expectAccessible(page);
+
+  const before = await lastCodeId(WORKER.e164);
+  await requestCode(page, WORKER.local);
+  await expect(page.getByLabel(t.codeLabel)).toBeVisible();
+  // The code step says so too, and a press never waits for it.
+  await expect(page.getByText(he.ui.captcha.unavailable)).toBeVisible();
+  if (!(await codeAfter(WORKER.e164, before))) {
+    // A code went to her moments ago: wait it out, as a person would.
+    await page.waitForTimeout(SMS_COOLDOWN_MS + 500);
+    await page.getByRole("button", { name: t.resend }).click();
+    await expect(
+      page.getByText((t.codeResent.split("<ltr>")[0] ?? "").trim()),
+    ).toBeVisible();
+  }
+  await expect.poll(() => codeAfter(WORKER.e164, before)).not.toBeNull();
 });
 
 test("a malformed number is caught before anything is sent", async ({

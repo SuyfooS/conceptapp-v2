@@ -1,7 +1,9 @@
 "use client";
 
 import { clockAt } from "@domain/today";
+import type { CaptchaSetup } from "@domain/turnstile";
 import { Button } from "@ui/button";
+import { CaptchaBox, useCaptcha } from "@ui/captcha";
 import { Card, CardTitle } from "@ui/card";
 import { CodeSlots, type CodeSlotsStatus } from "@ui/code-slots";
 import { EmptyState } from "@ui/empty-state";
@@ -48,12 +50,16 @@ const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
  * SMS, or before a code is spent): the card says from when the files open,
  * a status that takes the focus, and its main action is off while the
  * screen is up. The twin, which keeps nothing, goes to its open state
- * instead (`openedHref`).
+ * instead (`openedHref`). Each code goes with the "אני לא רובוט" check,
+ * drawn right above the press that sends it (`useCaptcha`): a press made
+ * before the check is done waits for it, and each code takes a new token.
+ * While a hold is said no code can go, so no check is drawn.
  */
 export function FileGate({
   kind,
   actions,
   timeZone,
+  captcha,
   code,
   hold,
   openedHref,
@@ -65,6 +71,8 @@ export function FileGate({
   actions: Pick<HolderFileActions, "acknowledge" | "sendCode" | "confirmCode">;
   /** The business's zone, for the time a hold ends today. */
   timeZone: string;
+  /** The check: this deployment's widget, or the twin's stand-in. */
+  captcha: CaptchaSetup;
   /** Opens on the code's boxes, a code sent to the number ending in `tail` (the twin). */
   code?: { tail: string };
   /** Opens held, in the week after a phone change (the twin). */
@@ -81,6 +89,7 @@ export function FileGate({
   const t = useTranslations("app.team.file");
   const format = useFormatter();
   const router = useRouter();
+  const box = useCaptcha(captcha, "file-code");
   const [phase, setPhase] = useState<"start" | "code">(code ? "code" : "start");
   const [tail, setTail] = useState(code?.tail ?? "");
   const [pending, setPending] = useState(false);
@@ -140,8 +149,10 @@ export function FileGate({
   async function send() {
     setPending(true);
     setProblem(null);
+    // Waits while the check is on its way; none when it failed or can't run.
+    const token = await box.take();
     const answer = await actions
-      .sendCode()
+      .sendCode(token)
       .catch((): SendFileCodeAnswer => ({ ok: false, failure: "failed" }));
     setPending(false);
     if (!answer.ok) {
@@ -264,10 +275,11 @@ export function FileGate({
           autoComplete="one-time-code"
         />
         {problemLine}
+        {held ? null : <CaptchaBox captcha={box} />}
         <div className="flex flex-wrap gap-2">
           <Button
             variant="ghost"
-            loading={pending}
+            loading={pending || box.waiting}
             disabled={status === "pending" || status === "success"}
             onClick={() => send()}
             className="text-ink-2"
@@ -287,9 +299,10 @@ export function FileGate({
         </CardTitle>
         {children}
         {problemLine}
+        {held ? null : <CaptchaBox captcha={box} />}
         <Button
           size="lg"
-          loading={pending}
+          loading={pending || box.waiting}
           disabled={held !== null}
           onClick={() => confirmDuties()}
           className="w-full md:w-auto md:self-start"
@@ -310,9 +323,10 @@ export function FileGate({
       body={t("locked.body")}
     >
       {problemLine}
+      {held ? null : <CaptchaBox captcha={box} />}
       <Button
         size="lg"
-        loading={pending}
+        loading={pending || box.waiting}
         disabled={held !== null}
         onClick={() => send()}
       >
@@ -339,6 +353,7 @@ export function GatedFile({
   kind,
   actions,
   timeZone,
+  captcha,
   code,
   hold,
   twin,
@@ -349,6 +364,8 @@ export function GatedFile({
   actions: HolderFileActions;
   /** The business's zone. */
   timeZone: string;
+  /** The gate's "אני לא רובוט" check. */
+  captcha: CaptchaSetup;
   code?: { tail: string };
   /** The twin's week after a phone change. */
   hold?: FileHold;
@@ -388,6 +405,7 @@ export function GatedFile({
         kind={gate}
         actions={actions}
         timeZone={timeZone}
+        captcha={captcha}
         code={code}
         hold={hold}
         openedHref={twin?.opened}

@@ -1,4 +1,4 @@
-import { demoDoorOpen } from "@db/env";
+import { demoDoorOpen, turnstileSiteKey } from "@db/env";
 import { signInPath } from "@domain/passive-sign-in";
 import type { Metadata } from "next";
 import { useTranslations } from "next-intl";
@@ -14,12 +14,18 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default function SignInPage() {
   const t = useTranslations("auth.signIn");
-  // The way back to the demo only on a site that offers it (DEMO_DOOR). Read
-  // when the page is built, so a setting that is neither fails the build.
+  // The way back to the demo only on a site that offers it (DEMO_DOOR), and
+  // the "אני לא רובוט" check's key (NEXT_PUBLIC_TURNSTILE_SITE_KEY). Both are
+  // read when the page is built, so a setting of another shape fails the
+  // build.
   const demoHref = demoDoorOpen() ? signInPath : undefined;
   return (
     <AuthScreen title={t("title")}>
-      <SignInForm signIn={signIn} demoHref={demoHref} />
+      <SignInForm
+        signIn={signIn}
+        captcha={{ siteKey: turnstileSiteKey() }}
+        demoHref={demoHref}
+      />
     </AuthScreen>
   );
 }

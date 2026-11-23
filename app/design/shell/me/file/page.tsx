@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { FileView, fileViewOf } from "../../../../(app)/me/file/file-view";
+import { captchaTwinOf } from "../../../screens/captcha-twin";
 import { demoSaveProfileAction } from "../actions";
 import {
   demoConfirmBankAction,
@@ -24,6 +25,7 @@ type Props = {
     lang?: string;
     ask?: string;
     form101?: string;
+    captcha?: string;
   }>;
 };
 
@@ -44,6 +46,8 @@ type Props = {
 // neither any more though her file holds both (each step says so); and how
 // it takes Form 101: `?form101=link` by an approved system's link,
 // `?form101=off` not in the app, so the done screen sends the file.
+// `?captcha=` the "אני לא רובוט" check before the bank's code, in a state of
+// its stand-in (`captchaTwinOf`).
 export default function FileDemoPage({ searchParams }: Props) {
   return (
     <Suspense>
@@ -53,7 +57,7 @@ export default function FileDemoPage({ searchParams }: Props) {
 }
 
 async function Demo({ searchParams }: Props) {
-  const { step, state, lang, ask, form101 } = await searchParams;
+  const { step, state, lang, ask, form101, captcha } = await searchParams;
   const which = fileDemoStateOf(state);
   const asks = fileDemoAskOf(ask);
   const way = fileDemoForm101Of(form101);
@@ -116,6 +120,7 @@ async function Demo({ searchParams }: Props) {
         saveProfile: demoSaveProfileAction,
         disputeBankChange: demoDisputeBankChangeAction,
       }}
+      captcha={captchaTwinOf(captcha)}
     />
   );
 }

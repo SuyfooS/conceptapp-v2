@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
+import { captchaSettled } from "./captcha";
 import {
   closeSwitchBusinesses,
   invitesBySlug,
@@ -216,6 +217,7 @@ test("a worker on another business's staff gets a link like anyone, and only he 
     try {
       await theirs.goto(link);
       const since = new Date(Date.now() - 1000);
+      await captchaSettled(theirs);
       await theirs.getByRole("button", { name: j.send }).click();
       await theirs
         .getByLabel(j.codeLabel)

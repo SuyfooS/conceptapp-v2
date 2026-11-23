@@ -3,6 +3,7 @@ import { expect, type Page } from "@playwright/test";
 import { createTranslator } from "next-intl";
 import he from "../messages/he.json" with { type: "json" };
 import { type MessageTree, mergeWording } from "../packages/domain/wording";
+import { CAPTCHA_FRAME } from "./captcha";
 import { templateWording } from "./db";
 import { heT } from "./t";
 
@@ -79,7 +80,10 @@ export const heading = (page: Page, level: number, name: string) =>
 
 export async function expectCleanPage(page: Page) {
   await expect(page).toHaveTitle(/ConceptApp$/);
-  const { violations } = await new AxeBuilder({ page }).analyze();
+  // Cloudflare's "אני לא רובוט" box isn't the app's to fix.
+  const { violations } = await new AxeBuilder({ page })
+    .exclude(CAPTCHA_FRAME)
+    .analyze();
   expect(
     violations.flatMap((v) =>
       v.nodes.map((n) => `${v.id}: ${n.target.join(" ")} ${n.failureSummary}`),

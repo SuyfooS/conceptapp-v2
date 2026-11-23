@@ -92,6 +92,7 @@ function draw(
         screen,
         paths: { profile: "/team/noa", team: "/team" },
         actions,
+        captcha: { demo: "ready" },
         wording: locale === "en" ? englishWording : baseWording,
         code,
         hold,
@@ -555,6 +556,7 @@ describe("what a holder does in the open file", () => {
           },
           paths: { profile: "/team/noa", team: "/team" },
           actions,
+          captcha: { demo: "ready" },
           wording: baseWording,
         }),
       ).filter(

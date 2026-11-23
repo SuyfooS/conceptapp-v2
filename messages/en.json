@@ -23,6 +23,13 @@
       "count": "{filled} of {total} digits",
       "accepted": "Code accepted"
     },
+    "captcha": {
+      "waiting": "Checking that you're not a robot.",
+      "tap": "Before a code is sent, tick the box.",
+      "failed": "We couldn't check that you're not a robot. You can check again.",
+      "retry": "Check again",
+      "unavailable": "The check that you're not a robot didn't load. If no code comes, check your internet connection and reload the page."
+    },
     "accentPicker": {
       "presets": {
         "blue": "Blue",
@@ -334,6 +341,16 @@
     "codeWrong": "Wrong code",
     "codeRight": "Right code",
     "codeAgain": "Start over",
+    "captcha": "Not-a-robot check",
+    "captchaHint": "Cloudflare draws its box only when a tick is needed. Here an empty space of its size stands in.",
+    "captchaSend": "Send code",
+    "captchaStates": {
+      "ready": "All good",
+      "waiting": "Waiting",
+      "tap": "Needs a tick",
+      "failed": "Didn't pass",
+      "unavailable": "Didn't load"
+    },
     "countUp": "A number that changes",
     "countUpAdd": "Add",
     "switchTitle": "Switch",
@@ -1050,6 +1067,7 @@
         "tooMany": "There were too many tries. You can try again later.",
         "invalidCode": "The code is 6 digits.",
         "wrongCode": "The code is wrong or has expired. You can ask for a new one.",
+        "captcha": "We couldn't confirm you're not a robot, so no code was sent. You can try again.",
         "failed": "Something went wrong. Try again in a moment."
       }
     },
@@ -1700,6 +1718,7 @@
           "tooMany": "There were many tries. You can try again later.",
           "rateLimit": "You can ask for a new code in a few seconds.",
           "failed": "The code wasn't sent. You can try again.",
+          "captcha": "We couldn't confirm you're not a robot, so no code was sent. You can try again.",
           "noPhone": "To open files, your account needs a phone number.",
           "phoneHold": "You can open files a week after changing your phone number, from {date}. If you didn't ask for the number to change, contact the ConceptApp team.",
           "phoneHoldToday": "You can open files a week after changing your phone number, today from <ltr>{time}</ltr>. If you didn't ask for the number to change, contact the ConceptApp team.",
@@ -4507,6 +4526,7 @@
           "tooMany": "Too many tries. Try again later.",
           "rateLimit": "You can ask for a new code in a few seconds.",
           "failed": "The code wasn't sent. Try again.",
+          "captcha": "We couldn't confirm you're not a robot, so no code was sent. You can try again.",
           "noPhone": "To change the account, your sign-in needs a phone number. Talk to {business}."
         },
         "phoneHold": "You can change the account a week after changing your phone number, from {date}.",

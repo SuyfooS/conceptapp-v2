@@ -46,6 +46,7 @@ const CODE_WORDS: Record<
   wrongCode: { send: "wrongCode", confirm: "wrongCode" },
   tooMany: { send: "tooMany", confirm: "tooMany" },
   rateLimit: { send: "rateLimit", confirm: "rateLimit" },
+  captcha: { send: "captcha", confirm: "captcha" },
   noPhone: { send: "noPhone", confirm: "noPhone" },
   invalidPhone: { send: "noPhone", confirm: "noPhone" },
   failed: { send: "failed", confirm: null },

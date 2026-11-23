@@ -3,6 +3,7 @@ import { phoneEnding } from "@domain/invites";
 import type { Role } from "@domain/modules";
 import { signInPath } from "@domain/passive-sign-in";
 import { namedRoleName } from "@domain/role-access";
+import type { CaptchaSetup } from "@domain/turnstile";
 import { accentProps } from "@ui/accent";
 import { Button } from "@ui/button";
 import { Card } from "@ui/card";
@@ -34,9 +35,12 @@ type OpenInvite = {
 export async function JoinView({
   invite,
   join,
+  captcha,
 }: {
   invite: OpenInvite;
   join: ComponentProps<typeof JoinForm>["join"];
+  /** The "אני לא רובוט" check: this deployment's widget, or the twin's stand-in. */
+  captcha: CaptchaSetup;
 }) {
   const t = await getTranslations("auth.join");
   // A role the business named, by its own name (the roles plan's R11b).
@@ -65,7 +69,11 @@ export async function JoinView({
           </p>
         </Card>
         <Card tone="float" padding="lg" className="relative z-10 mx-3 -mt-16">
-          <JoinForm join={join} ending={phoneEnding(invite.phone)} />
+          <JoinForm
+            join={join}
+            captcha={captcha}
+            ending={phoneEnding(invite.phone)}
+          />
         </Card>
       </div>
     </main>

@@ -9,6 +9,7 @@ import he from "../messages/he.json" with { type: "json" };
 import { daysLeftToRight } from "../packages/domain/share";
 import { type MessageTree, mergeWording } from "../packages/domain/wording";
 import { before, buildScreen, HOLD_MS } from "./build-screen";
+import { CAPTCHA_FRAME } from "./captcha";
 import { hearFileCheck } from "./file-watch";
 import { minimalPdf } from "./pdf";
 import { cameraPhoto } from "./photo";
@@ -176,6 +177,10 @@ const PAGES = [
   "/design/shell/team/noa/file?state=code",
   // The locked file in the week after the holder's own phone change.
   "/design/shell/team/noa/file?state=held",
+  // The "אני לא רובוט" check before the code (P9b), in its stand-in's
+  // states: failed on the locked file, asking for a tick on the code's card.
+  "/design/shell/team/noa/file?state=locked&captcha=failed",
+  "/design/shell/team/noa/file?state=code&captcha=tap",
   "/design/shell/team/noa/file?state=open",
   "/design/shell/team/noa/file?state=viewing",
   "/design/shell/team/noa/file?state=unavailable",
@@ -227,6 +232,11 @@ const PAGES = [
   "/design/shell/me/file?step=bank&state=code",
   "/design/shell/me/file?step=bank&state=hold",
   "/design/shell/me/file?step=bank&state=saved",
+  // The check before the bank's code: didn't load, failed on the code's
+  // card, and asking for a tick in English.
+  "/design/shell/me/file?step=bank&captcha=unavailable",
+  "/design/shell/me/file?step=bank&state=code&captcha=failed",
+  "/design/shell/me/file?lang=en&step=bank&captcha=tap",
   "/design/shell/me/file?step=pension",
   "/design/shell/me/file?step=form101",
   "/design/shell/me/file?state=done",
@@ -1744,6 +1754,59 @@ test("sign-in offers the demo only where the demo door is open", async ({
   await expect(main.getByRole("button", { name: t.send })).toBeVisible();
   await expect(main.getByLabel(t.phoneLabel)).toBeVisible();
   await expect(main.getByRole("link", { name: t.demo })).toHaveCount(0);
+});
+
+// The "אני לא רובוט" check (P9b) as Cloudflare draws it, on the sign-in
+// twin: its test key that always passes settles with a token, and the one
+// that always asks shows the tick's line and Cloudflare's box. Nothing is
+// pressed inside Cloudflare's frame, and axe leaves it out.
+test("the check's live twin draws Cloudflare's own widget", async ({
+  page,
+}) => {
+  await page.goto("/design/screens/sign-in?captcha=live");
+  await expect(page.locator('[data-captcha="ready"]')).toHaveCount(1, {
+    timeout: 20_000,
+  });
+
+  await page.goto("/design/screens/sign-in?captcha=ask");
+  await expect(page.getByText(he.ui.captcha.tap)).toBeVisible({
+    timeout: 20_000,
+  });
+  await expect(page.locator(CAPTCHA_FRAME)).toBeVisible();
+  const { violations } = await new AxeBuilder({ page })
+    .exclude(CAPTCHA_FRAME)
+    .analyze();
+  expect(
+    violations.flatMap((v) =>
+      v.nodes.map((n) => `${v.id}: ${n.target.join(" ")} ${n.failureSummary}`),
+    ),
+  ).toEqual([]);
+});
+
+// The gallery's check: its stand-in in each state, picked above it.
+test("the gallery's check draws each of its states", async ({ page }) => {
+  const d = he.design;
+  const w = he.ui.captcha;
+  await page.goto("/design");
+  const states = page.getByRole("group", { name: d.captcha });
+  const section = page.locator("section").filter({
+    has: page.getByRole("heading", { name: d.captcha, exact: true }),
+  });
+  for (const [state, line] of [
+    ["waiting", w.waiting],
+    ["tap", w.tap],
+    ["failed", w.failed],
+    ["unavailable", w.unavailable],
+  ] as const) {
+    await states.getByRole("button", { name: d.captchaStates[state] }).click();
+    await expect(section.getByText(line)).toBeVisible();
+  }
+  await states.getByRole("button", { name: d.captchaStates.failed }).click();
+  await expect(section.getByRole("button", { name: w.retry })).toBeVisible();
+  await states.getByRole("button", { name: d.captchaStates.ready }).click();
+  for (const line of [w.waiting, w.tap, w.failed, w.unavailable]) {
+    await expect(section.getByText(line)).toHaveCount(0);
+  }
 });
 
 // A demo business takes no invites (#80): its Team screen offers none and

@@ -2,6 +2,7 @@
 
 import { normalizeOtpCode } from "@domain/otp";
 import { normalizeIsraeliMobile } from "@domain/phone";
+import { CAPTCHA_FIELD, captchaTokenOf } from "@domain/turnstile";
 import { signedOutPath } from "../(app)/clock/station/station";
 import type { SignedOut } from "../sign-out-form";
 import { endSessionHere, sessionUserHere } from "./end-session";
@@ -23,7 +24,9 @@ export type SignInState =
  * an `intent`: "send" (or resend) a code, "verify" it, or "change" the
  * number. A valid number gets the same answer whether it has an account or
  * not (`sendSignInCode`), so the screen tells nobody who is registered.
- * Accounts are never created here; people arrive through invites.
+ * A send or a resend posts the "אני לא רובוט" check's token too (`captcha`),
+ * dropped when it isn't one; a send refused for it stays on its step and
+ * says so. Accounts are never created here; people arrive through invites.
  */
 export async function signIn(
   prev: SignInState,
@@ -40,7 +43,10 @@ export async function signIn(
         : form.get("phone");
     const phone = normalizeIsraeliMobile(typeof raw === "string" ? raw : "");
     if (!phone) return { step: "phone", error: "invalidPhone" };
-    const error = await sendSignInCode(phone);
+    const error = await sendSignInCode(
+      phone,
+      captchaTokenOf(form.get(CAPTCHA_FIELD)),
+    );
     if (error && intent === "send") return { step: "phone", error };
     return {
       step: "code",

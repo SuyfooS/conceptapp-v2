@@ -7,6 +7,7 @@ import {
   type TestInfo,
 } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
+import { captchaSettled } from "./captcha";
 import { codeAfter, lastCodeId, latestCode } from "./sms";
 
 const t = he.auth.signIn;
@@ -41,20 +42,24 @@ export const SMS_COOLDOWN_MS = (() => {
  * spec before signed this person in moments ago, the app's own wait between
  * codes holds this one. The screen doesn't say so, since it answers every
  * number the same, so the dev SMS hook's table is asked: with no new code,
- * wait it out and ask for a new one once, as a person would. Returns the
- * time to read the code from (`latestCode`).
+ * wait it out and ask for a new one once, as a person would. Each press
+ * waits for the "אני לא רובוט" check first: the press would wait for it
+ * anyway, and the code field's few seconds would then count Cloudflare's
+ * load too. Returns the time to read the code from (`latestCode`).
  */
 export async function askForCode(page: Page, person: Person): Promise<Date> {
   await page.goto("/sign-in");
   let since = new Date(Date.now() - 1000);
   const before = await lastCodeId(person.e164);
   await page.getByLabel(t.phoneLabel).fill(person.local);
+  await captchaSettled(page);
   await page.getByRole("button", { name: t.send }).click();
   const codeField = page.getByLabel(t.codeLabel);
   await expect(codeField).toBeVisible();
   if (!(await codeAfter(person.e164, before))) {
     await page.waitForTimeout(SMS_COOLDOWN_MS + 500);
     since = new Date(Date.now() - 1000);
+    await captchaSettled(page);
     await page.getByRole("button", { name: t.resend }).click();
     await expect(
       page.getByText((t.codeResent.split("<ltr>")[0] ?? "").trim()),

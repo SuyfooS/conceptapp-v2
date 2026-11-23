@@ -214,6 +214,9 @@ token_verifications = 120
 # Number of Web3 logins that can be made in a 5 minute interval per IP address.
 web3 = 30
 
+# Off here on purpose: locally, in CI and in e2e the app sends Cloudflare's
+# test token, and the hosted projects turn Turnstile on from the dashboard
+# (docs/production.md, Turnstile). Keep it commented.
 # Configure one of the supported captcha providers: `hcaptcha`, `turnstile`.
 # [auth.captcha]
 # enabled = true

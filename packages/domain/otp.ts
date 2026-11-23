@@ -12,11 +12,13 @@ export function normalizeOtpCode(input: string): string | null {
 
 /**
  * What a refused request for a code means, from the auth server's error code:
- * the number has no account, or it asked again too soon. Null otherwise.
+ * the number has no account, it asked again too soon, or the "אני לא רובוט"
+ * check's token didn't pass (`captcha`, once Supabase's CAPTCHA is on). Null
+ * otherwise.
  */
 export function refusalReason(
   code: string | undefined,
-): "unknownPhone" | "rateLimit" | null {
+): "unknownPhone" | "rateLimit" | "captcha" | null {
   if (code === "signup_disabled" || code === "otp_disabled") {
     return "unknownPhone";
   }
@@ -26,5 +28,6 @@ export function refusalReason(
   ) {
     return "rateLimit";
   }
+  if (code === "captcha_failed") return "captcha";
   return null;
 }
