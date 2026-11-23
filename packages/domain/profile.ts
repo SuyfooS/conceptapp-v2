@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { atLeast, isStaff, type Role, type Viewer } from "./modules";
-import { canEditTeam } from "./team";
+import { canEditTeam, parseTeamName, sameTeamName } from "./team";
 
 /**
  * The profile a person's colleagues read (issue #82, H2): one line about
@@ -99,6 +99,11 @@ export function bioLength(text: string): number {
 
 /** A change from the profile screen, as the screen names things. */
 export type ProfileChange = {
+  /**
+   * Their own name (`profiles.full_name`), kept as the team keeps a name
+   * (`parseTeamName`). Never cleared: someone named stays named.
+   */
+  name?: string;
   bio?: string | null;
   cover?: CoverPreset | null;
   addressForm?: AddressForm | null;
@@ -108,10 +113,18 @@ export type ProfileChange = {
 
 /** The same change as set_own_profile takes it: keys are column names. */
 export type ProfilePatch = Partial<
-  Record<"bio" | "cover" | "address_form" | "locale", string | null>
+  Record<
+    "full_name" | "bio" | "cover" | "address_form" | "locale",
+    string | null
+  >
 >;
 
-export type ProfileProblem = "empty" | "bioTooLong" | "invalid";
+export type ProfileProblem =
+  | "empty"
+  | "bioTooLong"
+  | "nameRequired"
+  | "nameTooLong"
+  | "invalid";
 
 /** Everything saving a profile change can answer with, for the screen's words. */
 export type ProfileFailure =
@@ -135,6 +148,9 @@ export type ProfileSaveResult =
 
 const changeSchema = z
   .object({
+    // Generous, as the team's fix takes one: the length is checked after
+    // normalizing, with its own answer. Never null: a name isn't cleared.
+    name: z.string().max(400).optional(),
     // Generous: the length is checked after normalizing, with its own answer.
     bio: z.string().max(4000).nullable().optional(),
     cover: z.enum(COVER_PRESETS).nullable().optional(),
@@ -149,8 +165,18 @@ export function checkProfileChange(
 ): { ok: true; patch: ProfilePatch } | { ok: false; problem: ProfileProblem } {
   const parsed = changeSchema.safeParse(change);
   if (!parsed.success) return { ok: false, problem: "invalid" };
-  const { bio, cover, addressForm, locale } = parsed.data;
+  const { name, bio, cover, addressForm, locale } = parsed.data;
   const patch: ProfilePatch = {};
+  if (name !== undefined) {
+    const kept = parseTeamName(name);
+    if (!kept.ok) {
+      return {
+        ok: false,
+        problem: kept.error === "required" ? "nameRequired" : "nameTooLong",
+      };
+    }
+    patch.full_name = kept.name;
+  }
   if (bio !== undefined) {
     const line = bio === null ? "" : normalizeBio(bio);
     if (bioLength(line) > BIO_MAX) return { ok: false, problem: "bioTooLong" };
@@ -161,6 +187,20 @@ export function checkProfileChange(
   if (locale !== undefined) patch.locale = locale;
   if (Object.keys(patch).length === 0) return { ok: false, problem: "empty" };
   return { ok: true, patch };
+}
+
+/**
+ * The name a business keeps for the person over their own
+ * (`public.member_names`), as `/me` says it beside their own: `shown`, the
+ * name the business shows them by (`CurrentMember.name`), when it is not
+ * their own name `own` as the team keeps names (`sameTeamName`); null when
+ * it is, or when there is none.
+ */
+export function keptNameOf(
+  shown: string | null | undefined,
+  own: string | null | undefined,
+): string | null {
+  return shown && !sameTeamName(shown, own) ? shown : null;
 }
 
 /**

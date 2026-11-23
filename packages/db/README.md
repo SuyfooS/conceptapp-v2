@@ -49,8 +49,10 @@ business's own details: `public.set_business_details(actor, business, patch)`
 saves its name, colour, address and Shabbat city for whoever holds
 `manage.edit` (owners and managers by default, since the roles plan's R7) or the
 team, and logs what changed. So does a profile (`20261109000400_profile_about.sql`):
-`public.set_own_profile(actor, patch)` changes the signed-in person's own name,
-language, line about themselves, cover and form of address, and
+`public.set_own_profile(actor, patch)` changes the signed-in person's own name
+(from "השם שלי" on `/me`, kept as the team keeps names: `parseTeamName`;
+demo people keep theirs, 55000), language, line about themselves, cover and
+form of address, and
 `public.clear_profile_bio(actor, business, person, seen)` lets whoever edits
 the team (`team.edit`, since the roles plan's R6) delete a hurtful line of
 their own role or one below it, the one they read (`seen`; a line rewritten
@@ -162,7 +164,14 @@ over the profile's (`shownName` in @domain/people): the team, colleagues, a
 person and a former member, activity, notifications, chat's directory and
 authors, departments for the console, pay people and access, roles, the
 clock's people and the session's own name all read it. `member_names.test.sql`
-and `team-changes.db.test.ts` cover it.
+and `team-changes.db.test.ts` cover it. Joining writes one too
+(`20261127000500_invite_names.sql`): `public.claim_invite` keeps the invite's
+name as the business's own for the person, read the same way (one line, its
+spaces collapsed); their own name keeps no row, and one kept from before
+goes; an invite with no name leaves the business's; a name with a control
+character keeps none, so a join never fails over it. `/me` says which
+business keeps a name of its own for them (`keptNameOf` in @domain/profile).
+`invite_names.test.sql` covers it.
 
 A week is written shift by shift (`20261115000100_week_in_place.sql`; Orel's
 answers of 15 November 2026). `public.week_shifts(week)` reads a week's shifts
@@ -1166,7 +1175,9 @@ two from `public.team_invite_cancel` and `public.remove_member`, replaced for
 it; `member.role` adds the one left, `was_named` and `was_role_name`), and
 the activity log says its name with its base.
 `public.claim_invite` puts the person in the invite's named role, on a rejoin
-too, locking the role's row first; `public.invite_by_token` says its id and
+too, locking the role's row first (and, since
+`20261127000500_invite_names.sql`, keeps the invite's name as the business's
+own for them, unless it is their own); `public.invite_by_token` says its id and
 names (`named_role`, `role_name`, `role_name_en`, only for an invite that
 names one, so any other reads as before) for the join screen.
 `public.archive_business_role` counts open invites to the role (unclaimed,

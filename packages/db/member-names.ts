@@ -24,7 +24,9 @@ export function nameIn(
 
 /**
  * The names a business keeps for its people over their own
- * (`public.member_names`, 20261117000700_member_names.sql), by person, as
+ * (`public.member_names`, 20261117000700_member_names.sql: a fix from
+ * /team/[person], or the invite's name they joined by,
+ * 20261127000500_invite_names.sql), by person, as
  * `supabase` may read them: under RLS as their profile is read, in that
  * business (its members, and its pay holders also for those who left), or
  * with the secret key for the console and the screens that read the whole

@@ -6,11 +6,13 @@ import {
   closeTeamChangesBusiness,
   closeTeamChangesToInvites,
   openTeamChangesBusiness,
+  openTeamChangesJoiner,
   openTeamChangesOther,
   publishTeamChangesRunningWeek,
   removeTeamChangesWorker,
   TEAM_CHANGES_BUSINESS,
   TEAM_CHANGES_INVITE,
+  TEAM_CHANGES_JOINER,
   TEAM_CHANGES_OTHER,
   TEAM_CHANGES_PEOPLE,
   type TeamChangesWeek,
@@ -27,6 +29,7 @@ import {
   teamChangesUnfilledSettled,
 } from "./db";
 import { secondPage, signIn } from "./session";
+import { latestCode } from "./sms";
 import { heT } from "./t";
 
 // Team changes (Orel, 14 November 2026, issue #1): whoever may invite to a
@@ -514,6 +517,113 @@ test("the owner fixes a name: everywhere in the business and only there, with th
   } finally {
     await manager.context().close();
   }
+});
+
+// Known issue 20: someone already named elsewhere joins by the invite's name,
+// which becomes this business's own name for them, as a fix would; their own
+// name stays theirs, and "השם שלי" on the profile says which is which.
+test("someone already named joins by the invite's name there, and keeps their own", async ({
+  page,
+  browser,
+  baseURL,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop",
+    "it sends a code: once, on the widest screen",
+  );
+  test.setTimeout(90_000);
+  const JOINER = TEAM_CHANGES_JOINER;
+  const INVITED = TEAM_CHANGES_INVITE.name;
+  const RENAMED = "ענבל כהן-לוי";
+  const business = TEAM_CHANGES_BUSINESS.name;
+  const m = he.app.me;
+  const j = he.auth.join;
+  await openTeamChangesJoiner();
+
+  const theirs = await secondPage(browser, testInfo);
+  try {
+    await theirs.goto(`/join/${week.token}`);
+    await expect(
+      theirs.getByRole("heading", {
+        level: 1,
+        name: heT("auth.join.title", { business }),
+      }),
+    ).toBeVisible();
+    await expect(
+      theirs.getByText(
+        heT("auth.join.welcomeNamed", { name: INVITED, role: j.roles.worker }),
+      ),
+    ).toBeVisible();
+    const since = new Date(Date.now() - 1000);
+    await theirs.getByRole("button", { name: j.send }).click();
+    await theirs
+      .getByLabel(j.codeLabel)
+      .fill(await latestCode(JOINER.e164, since));
+    await expect(theirs).toHaveURL(/\/(home|me\/file)$/);
+    expect(await teamChangesName(JOINER.id)).toBe(INVITED);
+    expect(await teamChangesOwnName(JOINER.id)).toBe(JOINER.name);
+
+    // Her profile: the business's name for her as the title, her own in
+    // "השם שלי", and which business keeps which.
+    const heading = (name: string) =>
+      theirs.getByRole("heading", { level: 1, name, exact: true });
+    const ownRow = theirs
+      .getByRole("main")
+      .getByRole("button", { name: new RegExp(`^${m.name.row} `) });
+    await theirs.goto("/me");
+    await expect(heading(INVITED)).toBeVisible();
+    await expect(ownRow).toContainText(JOINER.name);
+    await expect(ownRow).toContainText(
+      heT("app.me.name.kept", { business, name: INVITED }),
+    );
+    await expectCleanPage(theirs);
+    await theirs.screenshot({
+      path: testInfo.outputPath("join-name.png"),
+      fullPage: true,
+    });
+
+    // Changing her own name leaves the business's for her.
+    await ownRow.click();
+    const sheet = theirs.getByRole("dialog", { name: m.name.row });
+    const field = sheet.getByLabel(tt.invite.name, { exact: true });
+    await expect(field).toHaveValue(JOINER.name);
+    await expect(sheet).toContainText(
+      heT("app.me.name.noteKept", { business, name: INVITED }),
+    );
+    await expectCleanPage(theirs);
+    await field.fill(RENAMED);
+    await sheet.getByRole("button", { name: m.name.save }).click();
+    await expect(sheet).toBeHidden();
+    await expect(
+      theirs.getByRole("status").filter({
+        hasText: heT("app.me.name.savedKept", { business, name: INVITED }),
+      }),
+    ).toBeVisible();
+    await expect(heading(INVITED)).toBeVisible();
+    await expect.poll(() => teamChangesOwnName(JOINER.id)).toBe(RENAMED);
+    expect(await teamChangesName(JOINER.id)).toBe(INVITED);
+
+    // The business she keeps the books of calls her by her own.
+    await theirs.context().addCookies([
+      {
+        name: "ca_business",
+        value: TEAM_CHANGES_OTHER.id,
+        url: baseURL ?? "",
+      },
+    ]);
+    await theirs.goto("/me");
+    await expect(heading(RENAMED)).toBeVisible();
+  } finally {
+    await theirs.context().close();
+  }
+
+  // Her new team calls her by the invite's name.
+  await signIn(page, OWNER);
+  await page.goto(`/team/${JOINER.id}`);
+  await expect(
+    page.getByRole("heading", { level: 1, name: INVITED, exact: true }),
+  ).toBeVisible();
+  await expect(nameRow(page)).toContainText(INVITED);
 });
 
 test("someone still in another business is told once, above it, whichever was open", async ({

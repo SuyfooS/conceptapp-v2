@@ -1371,7 +1371,8 @@ export async function demoPhotoPath(phone: string): Promise<string | null> {
 
 /**
  * The person's profile back to how the demo starts: no photo, no line, the
- * default cover, no form of address. The file stays in Storage,
+ * default cover, no form of address, and the demo's name for them, from its
+ * definition as the door's reset reads it. The file stays in Storage,
  * unreferenced, as after the door's reset, until the daily clean-up takes it
  * a day on (20261127000300_files_server_only.sql).
  */
@@ -1379,6 +1380,18 @@ export async function clearDemoProfile(phone: string): Promise<void> {
   await sql`update public.profiles
     set avatar_path = null, bio = null, cover = null, address_form = null
     where phone = ${phone}`;
+  await sql`update public.profiles p set full_name = person.name
+    from private.demo_businesses d,
+      jsonb_to_recordset(d.definition -> 'people')
+        as person (user_id uuid, name text)
+    where p.id = person.user_id and p.phone = ${phone}`;
+}
+
+/** A demo person's own name now (`profiles.full_name`), by phone number. */
+export async function demoOwnName(phone: string): Promise<string | null> {
+  const [row] = await sql<{ name: string | null }[]>`
+    select full_name as name from public.profiles where phone = ${phone}`;
+  return row?.name ?? null;
 }
 
 /** Whether Storage keeps a profile photo, by its path. SQL never removes one. */
@@ -3977,7 +3990,10 @@ export const TEAM_CHANGES_PEOPLE = {
     e164: "+972500000960",
   },
 } as const;
-/** The invite nobody claimed: its number is in no other spec. */
+/**
+ * The invite nobody claimed, but `TEAM_CHANGES_JOINER` in one test: its
+ * number is in no other spec.
+ */
 export const TEAM_CHANGES_INVITE = {
   name: "ענבל מוזמנת",
   phone: "+972500000969",
@@ -4090,6 +4106,33 @@ export async function openTeamChangesOther(): Promise<void> {
   await sql`select public.apply_template(${other.id}, 'retail')`;
   await sql`insert into public.memberships (business_id, user_id, role)
     values (${other.id}, ${TEAM_CHANGES_PEOPLE.leaving.id}, 'accountant')`;
+}
+
+/**
+ * The invite's own number with a login and a name of its own, different
+ * from the invite's: someone already named elsewhere who joins by the
+ * invite (known issue 20). Its id is in no other spec.
+ */
+export const TEAM_CHANGES_JOINER = {
+  id: "00000000-0000-4000-a000-000000000969",
+  name: "ענבל כהן",
+  local: "050-000-0969",
+  e164: TEAM_CHANGES_INVITE.phone,
+} as const;
+
+/**
+ * The joiner keeps the books of the second business (an accountant takes
+ * no place on a staff, so the invite to the first one's staff is open to
+ * her), under her own name, written afresh each time.
+ */
+export async function openTeamChangesJoiner(): Promise<void> {
+  const other = TEAM_CHANGES_OTHER;
+  await ensureLogins([TEAM_CHANGES_JOINER]);
+  await sql`insert into public.businesses (id, slug, name)
+    values (${other.id}, ${other.slug}, ${other.name})`;
+  await sql`select public.apply_template(${other.id}, 'retail')`;
+  await sql`insert into public.memberships (business_id, user_id, role)
+    values (${other.id}, ${TEAM_CHANGES_JOINER.id}, 'accountant')`;
 }
 
 /**

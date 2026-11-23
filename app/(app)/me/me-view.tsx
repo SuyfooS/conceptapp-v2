@@ -17,8 +17,18 @@ export type { AboutLock, MeAbout, MeActions, PhotoLock };
 
 /** What the profile screen shows about the signed-in person. */
 export type MeData = {
-  /** Their full name, or their number as the sidebar shows it. */
+  /**
+   * Their name as the business shows them (its own for them, else theirs),
+   * or their number as the sidebar shows it.
+   */
   name: string;
+  /** Their own name (`profiles.full_name`), the one "השם שלי" changes; null for none. */
+  ownName: string | null;
+  /**
+   * The name the business keeps for them over their own (`keptNameOf`),
+   * which "השם שלי" doesn't change; null for none.
+   */
+  keptName: string | null;
   /** Their photo (`profilePhotoSrc`), or null for initials. */
   photo: string | null;
   role: Role;
@@ -99,6 +109,8 @@ export async function MeView({
   return (
     <ProfileEditor
       name={data.name}
+      ownName={data.ownName}
+      keptName={data.keptName}
       photo={data.photo}
       subtitle={subtitle}
       locked={data.locked}

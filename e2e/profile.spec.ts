@@ -7,6 +7,7 @@ import {
   clearDemoProfile,
   clearSchedule,
   demoActivityActions,
+  demoOwnName,
   demoPhotoPath,
   demoProfile,
   resetDemoShop,
@@ -23,10 +24,11 @@ import { STORAGE_SKIP, storageAnswers } from "./storage";
 import { heT } from "./t";
 
 // The profile (#82): a photo, who sees it, and the way out (H1); a line about
-// yourself, a cover and how the app addresses you (H2). People from
-// supabase/seed.sql. The demo restaurant is opened to profile changes for
-// these tests ("profiles": true); the demo shop keeps its people as they are,
-// like the hosted demo businesses.
+// yourself, a cover and how the app addresses you (H2); one's own name
+// ("השם שלי", known issue 20). People from supabase/seed.sql. The demo
+// restaurant is opened to profile changes for these tests ("profiles":
+// true); the demo shop keeps its people as they are, like the hosted demo
+// businesses.
 const NOA = {
   id: "00000000-0000-4000-a000-000000000003",
   name: "נועה כהן",
@@ -472,6 +474,90 @@ test("the swap screen writes about Noa as she chose", async ({ page }) => {
   }
 });
 
+// "השם שלי": her own name, everywhere her team sees her, read afresh on each
+// screen. A new first name on purpose, since cards show first names. The
+// afterEach puts the demo's name back.
+test("Noa changes her own name, and her team and the requests call her by it", async ({
+  page,
+  browser,
+}, testInfo) => {
+  test.slow();
+  const RENAMED = "נועי כהן";
+  await scheduleDemoSunday(
+    { morning: [[NOA.e164, "waiter"]], evening: [] },
+    true,
+  );
+  await takenDemoSwap("morning", NOA.e164, YOAV.e164);
+  await signIn(page, NOA);
+  await page.goto("/me");
+  const heading = (name: string) =>
+    page.getByRole("heading", { level: 1, name, exact: true });
+  await expect(heading(NOA.name)).toBeVisible();
+  await expect(row(page, m.name.row)).toContainText(NOA.name);
+  await expectCleanPage(page);
+
+  // The sheet holds her name, and asks for one.
+  await row(page, m.name.row).click();
+  const sheet = page.getByRole("dialog", { name: m.name.row });
+  const field = sheet.getByLabel(he.app.team.invite.name, { exact: true });
+  await expect(field).toHaveValue(NOA.name);
+  await expect(sheet).toContainText(m.name.note);
+  await expectCleanPage(page);
+  await field.fill("   ");
+  await sheet.getByRole("button", { name: m.name.save }).click();
+  await expect(sheet).toContainText(he.app.team.invite.errors.name.required);
+
+  // Saved as the team keeps names: one line, its spaces collapsed.
+  await field.fill("  נועי   כהן ");
+  await sheet.getByRole("button", { name: m.name.save }).click();
+  await expect(sheet).toBeHidden();
+  await expect(
+    page.getByRole("status").filter({ hasText: m.name.saved }),
+  ).toBeVisible();
+  await expect(heading(RENAMED)).toBeVisible();
+  await expect(row(page, m.name.row)).toContainText(RENAMED);
+  await expect.poll(() => demoOwnName(NOA.e164)).toBe(RENAMED);
+  await expectCleanPage(page);
+  await page.screenshot({
+    path: testInfo.outputPath("me-name.png"),
+    fullPage: true,
+  });
+  if (testInfo.project.name === "desktop") {
+    // The sidebar's foot follows.
+    await expect(
+      page
+        .getByRole("complementary")
+        .getByRole("link", { name: new RegExp(RENAMED) }),
+    ).toBeVisible();
+  }
+
+  // Her manager reads it on the team and in the request she made.
+  const manager = await secondPage(browser, testInfo);
+  try {
+    await signIn(manager, SHIRAN);
+    await manager.goto("/team");
+    await expect(
+      main(manager).getByRole("link", { name: RENAMED }).first(),
+    ).toBeVisible();
+    await expect(
+      main(manager).getByRole("link", { name: NOA.name }),
+    ).toHaveCount(0);
+    await manager.goto("/schedule/swaps");
+    const giving = heT("app.swaps.handover.from", { form: "x" });
+    const taking = heT("app.swaps.handover.to", { form: "x" });
+    await expect(
+      manager
+        .getByRole("button", {
+          name: new RegExp(`${RENAMED} ${giving}, ${YOAV.name} ${taking}`),
+        })
+        .filter({ visible: true })
+        .first(),
+    ).toBeVisible();
+  } finally {
+    await manager.context().close();
+  }
+});
+
 test("a demo visitor picks a cover but writes no line", async ({ page }) => {
   await signIn(page, TAMAR);
   await page.goto("/me");
@@ -480,6 +566,10 @@ test("a demo visitor picks a cover but writes no line", async ({ page }) => {
     main(page).getByRole("button", { name: m.bio.empty, exact: true }),
   ).toHaveCount(0);
   await expect(row(page, m.bio.row)).toHaveCount(0);
+  // Nor a new name: the row says so and opens nothing.
+  const name = await demoOwnName(TAMAR.e164);
+  await expect(page.getByText(m.name.demo)).toBeVisible();
+  await expect(row(page, m.name.row)).toHaveCount(0);
 
   await row(page, m.cover.row).click();
   const sheet = page.getByRole("dialog", { name: m.cover.sheetTitle });
@@ -492,6 +582,7 @@ test("a demo visitor picks a cover but writes no line", async ({ page }) => {
   await expect
     .poll(() => demoProfile(TAMAR.e164).then((profile) => profile.cover))
     .toBe("waves");
+  expect(await demoOwnName(TAMAR.e164)).toBe(name);
 
   // The door's reset puts it back for the next visitor.
   await resetDemoShop();

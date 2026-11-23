@@ -1573,7 +1573,7 @@
         "nameFailures": {
           "notAllowed": "You can't fix this name. You can fix only the names of people at your level or below, and only an owner fixes an owner's or an accountant's name.",
           "changed": "The name changed in the meantime, so it wasn't fixed. The current name shows now.",
-          "yourself": "Your own name can't be changed from here."
+          "yourself": "You change your own name on your profile, under “My name”."
         },
         "remove": "Remove from the team",
         "removeHint": "{form, select, other {From now on {name} can't see anything in the business, and gets no message about it. The hours already recorded stay for payroll.}}",
@@ -4218,6 +4218,17 @@
         "visible": "Everyone you work with sees this",
         "why": "What's kept and why",
         "notice": "Your photo, your line and your cover are optional, and everyone you work with sees them. How you chose to be addressed shows too, in how the app writes about you. ConceptApp keeps them to show you to your team and uses them for nothing else. You can change or delete them here at any time, and ask ConceptApp to correct anything."
+      },
+      "name": {
+        "row": "My name",
+        "missing": "No name yet. Add one so your team knows who you are",
+        "kept": "At {business}, the team calls you {name}",
+        "demo": "In the demo businesses, names stay as they are",
+        "note": "Your name shows wherever your team sees you, in every business that hasn't given you a name of its own.",
+        "noteKept": "At {business}, the team calls you {name}: that's the name the business gave you, and only the business changes it. The name here shows in every business that hasn't given you one of its own.",
+        "save": "Save the name",
+        "saved": "Name saved",
+        "savedKept": "Name saved. At {business}, the team still calls you {name}"
       },
       "photo": {
         "row": "Photo",

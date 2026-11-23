@@ -4,11 +4,12 @@ import { isMissingFunction } from "./missing";
 import { createAdminClient } from "./supabase/admin";
 
 /*
- * The profile's line, cover and form of address (issue #82, H2). Every write
- * runs with the secret key, through the database's own functions
- * (20261109000400_profile_about.sql), which hold the rules: the table's
- * checks, demo people keeping their name and writing no line, and who may
- * clear someone's line. Nothing written here is logged, the line least of all.
+ * The profile's own name, line, cover and form of address (issue #82, H2;
+ * the name from "השם שלי"). Every write runs with the secret key, through
+ * the database's own functions (20261109000400_profile_about.sql), which hold
+ * the rules: the table's checks, demo people keeping their name and writing
+ * no line, and who may clear someone's line. Nothing written here is logged,
+ * the name and the line least of all.
  */
 
 export type ProfileWritten =
@@ -47,8 +48,9 @@ function written(
 
 /**
  * The signed-in person changes their own profile; what the patch leaves out
- * stays. Callers make sure `actorId` is that person, not someone viewing as
- * a role.
+ * stays. Their name comes as the team keeps names (`parseTeamName`, checked
+ * by the caller). Callers make sure `actorId` is that person, not someone
+ * viewing as a role.
  */
 export async function setOwnProfile(
   actorId: string,

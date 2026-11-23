@@ -4,8 +4,8 @@ import { checkProfileChange, type ProfileSaveResult } from "@domain/profile";
 import type { PhotoSaveResult } from "@domain/profile-photos";
 
 // Stand-ins for the profile's actions on the design demo, where nobody is
-// signed in: nothing is stored. A saved photo, line, cover or form of address
-// stays on the screen until the page is left.
+// signed in: nothing is stored. A saved photo, name, line, cover or form of
+// address stays on the screen until the page is left.
 
 export async function demoSetPhotoAction(
   form: FormData,

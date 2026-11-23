@@ -198,6 +198,10 @@ const PAGES = [
   "/design/shell/me",
   "/design/shell/me?state=empty",
   "/design/shell/me?state=demo",
+  // "השם שלי": a business that keeps its own name for her, and someone
+  // nobody named.
+  "/design/shell/me?name=kept",
+  "/design/shell/me?name=none",
   // The hiring file's way in from the profile (H5a): the card and the rows,
   // and every part in.
   "/design/shell/me?file=missing",
@@ -1949,6 +1953,87 @@ test("the person demo fixes a name, with the change back as its undo", async ({
   await expect(nameRow).toHaveCount(0);
   await page.goto("/design/shell/team/noa?as=viewer");
   await expect(main.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(nameRow).toHaveCount(0);
+});
+
+// "השם שלי" on the profile demo: Shiran changes her own name, shown at once
+// in the title; where the business keeps a name of its own for her, the row,
+// the sheet and the word after saving say that one stays, and so does the
+// title; someone nobody named is asked for one; a demo business keeps names.
+// Nothing is stored.
+test("the profile demo changes her own name, and says where the business keeps its own", async ({
+  page,
+}) => {
+  const m = he.app.me;
+  const tt = he.app.team;
+  const business = "מסעדת הדגמה";
+  const main = page.getByRole("main");
+  const nameRow = main.getByRole("button", {
+    name: new RegExp(`^${m.name.row} `),
+  });
+  const heading = (name: string) =>
+    main.getByRole("heading", { level: 1, name, exact: true });
+  const sheet = page.getByRole("dialog", { name: m.name.row });
+  const field = sheet.getByLabel(tt.invite.name, { exact: true });
+  const save = sheet.getByRole("button", { name: m.name.save });
+
+  await page.goto("/design/shell/me");
+  await expect(nameRow).toContainText("שירן אלון");
+  await nameRow.click();
+  await expect(field).toHaveValue("שירן אלון");
+  await expect(sheet).toContainText(m.name.note);
+  // Nothing to save until a letter differs.
+  await expect(save).toBeDisabled();
+  await field.fill("שירן  אלון");
+  await expect(save).toBeDisabled();
+  await expectCleanPage(page, "", true);
+  await field.fill(" ");
+  await save.click();
+  await expect(sheet).toContainText(tt.invite.errors.name.required);
+  await field.fill("שירן  אלון-כהן");
+  await save.click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(heading("שירן אלון-כהן")).toBeVisible();
+  await expect(nameRow).toContainText("שירן אלון-כהן");
+  await expect(
+    page.getByRole("status").filter({ hasText: m.name.saved }),
+  ).toBeVisible();
+
+  // A business that keeps its own name for her.
+  const kept = { business, name: "שירן א." };
+  await page.goto("/design/shell/me?name=kept");
+  await expect(heading("שירן א.")).toBeVisible();
+  await expect(nameRow).toContainText("שירן אלון");
+  await expect(nameRow).toContainText(heT("app.me.name.kept", kept));
+  await nameRow.click();
+  await expect(sheet).toContainText(heT("app.me.name.noteKept", kept));
+  await field.fill("שירן אלון-כהן");
+  await save.click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(
+    page
+      .getByRole("status")
+      .filter({ hasText: heT("app.me.name.savedKept", kept) }),
+  ).toBeVisible();
+  await expect(heading("שירן א.")).toBeVisible();
+  await expect(nameRow).toContainText("שירן אלון-כהן");
+  await expectCleanPage(page);
+
+  // Someone nobody named: their number for a title, and the row asks.
+  await page.goto("/design/shell/me?name=none");
+  await expect(heading("050-123-4567")).toBeVisible();
+  await expect(nameRow).toContainText(m.name.missing);
+  await nameRow.click();
+  await expect(field).toHaveValue("");
+  await field.fill("שירן אלון");
+  await save.click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(heading("שירן אלון")).toBeVisible();
+
+  // A demo business keeps its people's names: the row says so, and opens
+  // nothing.
+  await page.goto("/design/shell/me?state=demo");
+  await expect(main.getByText(m.name.demo)).toBeVisible();
   await expect(nameRow).toHaveCount(0);
 });
 
