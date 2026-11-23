@@ -46,8 +46,10 @@ ConceptApp project, `claude/v2-rebuild-plan.md`).
 
 ```
 app/                Next.js routes. Route groups: (admin) the console, (app) the app in
-                    its frame, (auth) sign-in, /enter and /join, (station) the clock
-                    station, signed out and outside the frame; (public) when it arrives
+                    its frame, (account) a signed-in person's own screens that need no
+                    business (/me/past/<business>), outside the frame, (auth) sign-in,
+                    /enter and /join, (station) the clock station, signed out and outside
+                    the frame; (public) when it arrives
 modules/<key>/      one folder per module, each exporting a typed manifest
 packages/ui/        components + /design gallery          import "@ui/…"
 packages/db/        schema, migrations, queries, RLS tests import "@db/…"

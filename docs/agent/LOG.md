@@ -3,6 +3,13 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-23 · nightly run · CLAUDE.md names the (account) route group
+
+- Guessed (Orel left no issue, no question open, no בטל). What merged since the last run is the hiring file (H5a to H6a, #222 to #226) and the sheets' keyboard lift (#224), all reviewed several times, and Orel's open #227 (H6b) works in the same files, so the code was left alone. H5c's entry above says CLAUDE.md's Layout line could name `(account)` beside `(station)`; it now does: `(account)`, a signed-in person's own screens that need no business (`/me/past/<business>`), outside the frame.
+- Docs only, no code, migration or words. Checked: `pnpm check`.
+- Restore point: branch `backup/before-night-2026-11-23` at `9af447f` (the tag push was cut off).
+- Next: H6b (#227) with Orel, then his order of 22.11: getting ready for a real business and for size. Defaults applied: none.
+
 ## 2026-11-22 · chat · the owner's and the accountant's view of the file (profile H6a, #82)
 
 - On chat/hiring-file-holders from origin/main 5eb700e (H4 #218, H5a #222, H5b #223 and the sheet keyboard fix #224 merged), rebased on c210342 once H5c (#225, `/me` and a new `app/(account)` group, not `/team`) was merged. The design's §0, §1.2, §1.3, §2.4, §2.5, §2.7, §3.3, §3.5, §4 and §5's H6 row, with Orel's decisions of 8 November on #1: the owners and the accountant always see the file; managers only when an owner switches it on, and otherwise only whether it is complete; only the worker changes the account; no real numbers before the production project and the lawyer, so the module stays off on the hosted project and in the hosted demo.
