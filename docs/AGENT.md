@@ -15,9 +15,20 @@ it knows is this repo and its GitHub issues.
   touch, never a new feature (see "What to work on").
 - Before changing anything, a run saves the version it started from, so Orel
   can go back if he does not like the result (see "Restore point").
-- The agent merges to `main` on its own once every check passes. There are no
-  real users before the pilot goes live in late December, so a bad merge costs
-  a revert, not a customer.
+- The agent merges to `main` on its own once every check passes. `main` reaches
+  the demo's site at once. Once production is live (`docs/production.md`, B7
+  step 4), it no longer reaches the site of real businesses: that site deploys
+  the branch `production`, which only Orel moves forward, after Migrate
+  conceptapp-prod, when he releases. Never push, merge or open a pull request
+  to `production`. A bad merge costs a revert, and reaches a customer only if
+  Orel releases it first.
+- Once `production` exists, every nightly note and every session's summary
+  carries one line on the real businesses, just before "לא אהבת? כתוב כאן בטל":
+  "מחכה לשחרור לעסקים: <n> שינויים", with ", כולל שינוי במבנה" when a migration
+  is among them, or "מחכה לשחרור לעסקים: כלום". Count from
+  `git log --oneline origin/production..origin/main` and
+  `git diff --name-only origin/production origin/main -- supabase/migrations`,
+  read only, after `git fetch origin`. The Sunday note says the same.
 - Everything goes through GitHub (`SuyfooS/conceptapp-v2`). Orel's computer may
   be off; never depend on it.
 - The app is for every kind of business, through global templates, with minimal work per business (Orel, 7 November 2026). Don't write anything new that assumes a restaurant: roles, shifts, departments and defaults are data from a template or a setting. The templates are a shop (`retail`), a restaurant, a café and bar, and `general` for any other kind, which fills in its own positions and shifts. A template switches on only what is built, and no more modules with a tab than the tab bar holds (`fitsTabBar`).
@@ -72,12 +83,14 @@ GitHub sends Orel no notification for what the agent writes, so he reads
 - **Nightly note:** one pinned issue titled `יומן הסוכן`. Each run adds one
   short comment in Hebrew: what was done, whether Orel left it or you guessed
   it and why, the merged commit, the restore point, what is next, and any
-  default applied. Keep it to six lines, and end with "לא אהבת? כתוב כאן בטל".
+  default applied. Keep it to six lines (seven once `production` exists, with
+  the line on the real businesses), and end with "לא אהבת? כתוב כאן בטל".
 - **Urgent:** an issue with label `urgent` (see "Escalate" below). Mention
   @SuyfooS in it.
 - **Weekly (Sundays):** a longer comment on `יומן הסוכן`: what changed this
-  week, which screens to open on the Vercel preview, and the questions still
-  open.
+  week, which screens to open on the Vercel preview (on the demo's own address
+  once production is live), the line on the real businesses, and the questions
+  still open.
 - Orel can also talk to you live in the Claude app (see "Live chat" below).
 - Work never waits on an answer. Take the next unblocked chunk, or proceed
   with the default and log it.
@@ -194,7 +207,10 @@ request that reverts every commit since that night's restore point (`git revert`
 never a rewrite of history), merge it after CI, log it and say so in the note.
 Keep what Orel merged himself since then; if that is not possible, open a
 `question` issue instead of guessing. A revert does not undo a hosted database:
-if a reverted migration reached one, open an `urgent` issue.
+if a reverted migration reached one, open an `urgent` issue. A revert of
+something already released reaches the real businesses only through Orel's
+release: say so in the note, and the line on the real businesses counts it
+("כולל ביטול של משהו ששוחרר").
 
 ## Never
 
@@ -226,8 +242,9 @@ if a reverted migration reached one, open an `urgent` issue.
 - Write a customer's name, a person's, or their data anywhere on GitHub (code, docs,
   tests, issues, PRs, commits): the repo is public (Orel, 22 November 2026). Say
   "a first real business".
-- Run, approve or rerun Migrate conceptapp-prod, or connect to conceptapp-prod in any
-  way: production is Orel's (`docs/production.md`).
+- Run, approve or rerun Migrate conceptapp-prod, connect to conceptapp-prod in any
+  way, or push to the branch `production`: production is Orel's
+  (`docs/production.md`).
 - Delete the repository, other people's branches, or data outside the dev
   project. Never rewrite published history.
 - Lower a quality bar to finish a chunk: no skipped tests, no `any`, no

@@ -400,6 +400,18 @@ describe("docs/production.md", () => {
     ]) {
       expect(when, word).toContain(word);
     }
+    // The agent's brief tells every note and summary to carry that line, and
+    // never to move the branch the real site deploys.
+    const brief = readRepoFile("docs/AGENT.md");
+    for (const word of [
+      "מחכה לשחרור לעסקים: <n> שינויים",
+      "מחכה לשחרור לעסקים: כלום",
+      "כולל שינוי במבנה",
+      "git log --oneline origin/production..origin/main",
+      "push to the branch `production`",
+    ]) {
+      expect(brief, word).toContain(word);
+    }
   });
 
   it("has a first step when the check after a release fails", () => {
