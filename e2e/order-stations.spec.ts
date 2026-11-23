@@ -1,4 +1,3 @@
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
   addDemoOrderStation,
@@ -35,6 +34,7 @@ import {
 } from "./orders-parts";
 import { secondPage, signIn } from "./session";
 import { stubAudio, tones } from "./station-audio";
+import { expect, type Page, test } from "./test";
 
 // The kitchen's screen and the till (waiter mode P8a): a tablet locked from
 // "הכנה" by whoever runs orders shows the kitchen's tickets with nobody's

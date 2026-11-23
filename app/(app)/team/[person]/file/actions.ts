@@ -14,6 +14,7 @@ import { FILE_GROUPS, REVEAL_FIELDS } from "@domain/employee-file";
 import { phoneTail } from "@domain/employee-file-steps";
 import { FILE_IDLE_MS } from "@domain/file-holders";
 import { normalizeOtpCode } from "@domain/otp";
+import { captchaTokenOf } from "@domain/turnstile";
 import { refresh } from "next/cache";
 import { z } from "zod";
 import { checkCode, sendCode, signInPhoneOf } from "../../../../(auth)/otp";
@@ -94,10 +95,13 @@ async function phoneHoldOf(
 /**
  * A code by SMS to open the files: only once the duties are confirmed, the
  * files can open on this deployment and the week after a phone change is
- * over, so no code is spent on a file that couldn't.
+ * over, so no code is spent on a file that couldn't. The "אני לא רובוט"
+ * check's token goes with it (`captcha`, from the browser, dropped when it
+ * isn't one).
  */
 export async function sendFileCodeAction(
   business: string,
+  captcha?: unknown,
 ): Promise<SendFileCodeAnswer> {
   const who = await fileHolder(business);
   if ("failure" in who) return { ok: false, failure: who.failure };
@@ -113,11 +117,12 @@ export async function sendFileCodeAction(
     const phone = await signInPhoneOf(who.userId);
     const tail = phoneTail(phone);
     if (!phone || !tail) return { ok: false, failure: "noPhone" };
-    const error = await sendCode(phone);
+    const error = await sendCode(phone, { captcha: captchaTokenOf(captcha) });
     if (error === null) return { ok: true, tail };
     switch (error) {
       case "rateLimit":
       case "tooMany":
+      case "captcha":
         return { ok: false, failure: error };
       case "invalidPhone":
         return { ok: false, failure: "noPhone" };

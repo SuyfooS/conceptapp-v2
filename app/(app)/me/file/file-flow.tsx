@@ -14,6 +14,7 @@ import {
   stepsDone,
 } from "@domain/employee-file-steps";
 import { formArg, type ProfileLocale } from "@domain/profile";
+import type { CaptchaSetup } from "@domain/turnstile";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { Card, CardText } from "@ui/card";
@@ -96,6 +97,7 @@ export function FileFlow({
   data,
   view,
   actions,
+  captcha,
   base,
   profileHref,
   keep,
@@ -104,6 +106,8 @@ export function FileFlow({
   data: FileScreenData;
   view: FileView;
   actions: FileActions;
+  /** The "אני לא רובוט" check before the bank's code. */
+  captcha: CaptchaSetup;
   /** "" in the app, "/design/shell" on the twin. */
   base: string;
   profileHref: string;
@@ -226,6 +230,7 @@ export function FileFlow({
     form: formArg(data.addressForm),
     busy,
     setBusy: (s, on) => setBusy((was) => ({ ...was, [s]: on })),
+    captcha,
   };
 
   async function switchLanguage() {

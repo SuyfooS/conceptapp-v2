@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
+import { expect, type Page, test } from "./test";
 
 // The code boxes on the sign-in demo: no database and no SMS. Any code there is
 // wrong except 123456, which goes on to the demo app.

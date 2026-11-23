@@ -1,5 +1,4 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
   addRolesSenior,
@@ -18,6 +17,7 @@ import {
 } from "./db";
 import { secondPage, signIn } from "./session";
 import { heT } from "./t";
+import { expect, type Page, test } from "./test";
 
 // Roles and permissions, the owner's own screen (the roles plan's R9; Orel's
 // answers of 15 November 2026, issue #1): only owners change what each role

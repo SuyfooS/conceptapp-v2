@@ -2850,7 +2850,11 @@ read as messages/he.json. Console reads and writes are in `@db/wording`;
   an hour, its requests from one address) or a failing SMS provider, for
   the number and the caller, on sign-in as for joining and the file's
   codes. A send to a number with no account stays counted on sign-in, as a
-  code sent does. `forgetNumberAttempts` clears a
+  code sent does. `forgetRefusedSend` gives back a send the auth server
+  refused for its "אני לא רובוט" check (`captcha_failed`, once Supabase's
+  CAPTCHA is on), for its number only: the caller's try stays counted, so
+  sends with no token can't wear down the auth server's limit per address,
+  which is the whole site's. `forgetNumberAttempts` clears a
   number's counts while it has no account (none reached anyone): for
   joining from an open invite only, before its code is counted; the
   database keeps the counts of a number with an account.
@@ -2861,7 +2865,11 @@ read as messages/he.json. Console reads and writes are in `@db/wording`;
   staff. A taken slug comes back as `slugTaken`.
 - `@db/env`: the public settings and the secret key, checked with Zod, and
   this site's demo door (`DEMO_DOOR`: `demoDoorOpen`, read here alone, for
-  server code and the proxy only).
+  server code and the proxy only). `turnstileSiteKey` (`parseTurnstileSiteKey`)
+  reads `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, the "אני לא רובוט" widget's public
+  key: unset, Cloudflare's always-passing test key; another shape (a secret
+  pasted by mistake too) throws naming the setting. The pages that send a
+  code read it on the server and hand it to their screens.
 - `@db/pages`: reading past PostgREST's `max_rows` (1000 in supabase/config.toml, as on
   hosted Supabase, which cuts a longer read short with no error; kept, since raising it
   locally would only hide the cut). `PAGE_ROWS`; `allPages(page)` asks `page(first, last)`

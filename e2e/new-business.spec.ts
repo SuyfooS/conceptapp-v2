@@ -1,10 +1,10 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import { MODULE_KEYS } from "../packages/domain/modules";
 import { businessBySlug, invitesBySlug } from "./db";
 import { signIn } from "./session";
 import { heT } from "./t";
+import { expect, type Page, test } from "./test";
 
 // Seeded onboarder and platform admin (supabase/seed.sql). admin.spec signs
 // both numbers in long before this spec runs, so the SMS resend cooldown

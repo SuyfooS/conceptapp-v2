@@ -1,5 +1,4 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
   clearShopLists,
@@ -9,6 +8,7 @@ import {
   shopListLines,
 } from "./db";
 import { secondPage, signIn } from "./session";
+import { expect, type Page, test } from "./test";
 
 // Lists, part 5 (L5): lists between departments, in the demo shop (supabase/
 // seed.sql): Itai, Liya and Omer (its manager) on the floor, Liya at the

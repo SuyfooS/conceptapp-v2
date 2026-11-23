@@ -6,8 +6,10 @@ import {
   headerRules,
   NOINDEX,
   OUT_OF_SEARCH,
+  PAGE_CONTENT_POLICY,
   PERMISSIONS_POLICY,
 } from "@domain/security-headers";
+import { TURNSTILE_ORIGIN, TURNSTILE_SCRIPT } from "@domain/turnstile";
 import { describe, expect, it } from "vitest";
 import robots from "../app/robots";
 import nextConfig from "../next.config";
@@ -32,6 +34,65 @@ const allowed = new Map(
 describe("next.config.ts", () => {
   it("sends the security headers and the service worker's own", async () => {
     expect(await nextConfig.headers?.()).toEqual(headerRules());
+  });
+});
+
+describe("the content policy", () => {
+  // Every page: framed by nobody, framing only the site and Cloudflare's
+  // "אני לא רובוט" check (P9b). Scripts stay the browser's default until
+  // nonces, so Cloudflare's script loads as it is.
+  const directives = new Map(
+    PAGE_CONTENT_POLICY.split("; ").map((directive) => {
+      const [name = "", ...sources] = directive.split(" ");
+      return [name, sources];
+    }),
+  );
+
+  it("is on every page", () => {
+    const every = headerRules().find((rule) => rule.source === "/:path*");
+    expect(every?.headers).toContainEqual({
+      key: "Content-Security-Policy",
+      value: PAGE_CONTENT_POLICY,
+    });
+  });
+
+  it("says who frames whom, and nothing else", () => {
+    expect([...directives.keys()]).toEqual(["frame-ancestors", "frame-src"]);
+    expect(directives.get("frame-ancestors")).toEqual(["'none'"]);
+    expect(directives.get("frame-src")).toEqual(["'self'", TURNSTILE_ORIGIN]);
+  });
+
+  it("frames Cloudflare's check from where its script comes", () => {
+    expect(new URL(TURNSTILE_SCRIPT).origin).toBe(TURNSTILE_ORIGIN);
+  });
+
+  it("lets Cloudflare's script in once it names scripts at all", () => {
+    // Today neither is set. One added (with nonces) must keep the check.
+    for (const name of ["script-src", "default-src"]) {
+      const sources = directives.get(name);
+      if (!sources) continue;
+      expect(sources, name).toContain(TURNSTILE_ORIGIN);
+      expect(sources, name).toContain("'self'");
+    }
+  });
+
+  it("breaks no frame of the app's own: it draws none", () => {
+    for (const { file, source } of code) {
+      expect(source, file).not.toMatch(/<(iframe|frame|embed|object)\b/);
+    }
+  });
+
+  it("leaves the service worker's and the served files' own policies as they were", () => {
+    const rules = headerRules();
+    const policyOf = (source: string) =>
+      rules
+        .find((rule) => rule.source === source)
+        ?.headers.find((header) => header.key === "Content-Security-Policy")
+        ?.value;
+    expect(policyOf("/sw.js")).toBe("default-src 'self'; script-src 'self'");
+    for (const path of FILE_ROUTES) {
+      expect(policyOf(`${path}/:path*`), path).toBe(FILE_CONTENT_POLICY);
+    }
   });
 });
 

@@ -5,7 +5,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 // Real sign-in at /sign-in, drawn on the server as its page first is, with
 // its action stood in for: the way to the demo shows only where this site's
 // demo door is open (DEMO_DOOR unset or on). Where it is closed, the site of
-// real businesses, the same screen with nothing in its place.
+// real businesses, the same screen with nothing in its place. The "אני לא
+// רובוט" check is drawn with this site's key, Cloudflare's always-passing
+// test key where none is set, and a key of another shape fails the page.
 
 vi.mock("server-only", () => ({}));
 vi.mock("../actions", () => ({ signIn: vi.fn() }));
@@ -47,6 +49,17 @@ describe("/sign-in", () => {
       expect(html).toContain(he.auth.signIn.demo);
       expect(html).toContain('href="/enter"');
     }
+  });
+
+  it("draws the check with this site's key, the test key where none is set", () => {
+    const unset = draw();
+    expect(unset).toContain('data-sitekey="1x00000000000000000000AA"');
+    expect(unset).toContain('data-captcha="loading"');
+    expect(unset).toContain('name="captcha"');
+    vi.stubEnv("NEXT_PUBLIC_TURNSTILE_SITE_KEY", "3x00000000000000000000FF");
+    expect(draw()).toContain('data-sitekey="3x00000000000000000000FF"');
+    vi.stubEnv("NEXT_PUBLIC_TURNSTILE_SITE_KEY", "not a key");
+    expect(() => draw()).toThrow(/NEXT_PUBLIC_TURNSTILE_SITE_KEY/);
   });
 
   it("offers no way to the demo where it is closed", () => {

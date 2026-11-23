@@ -131,12 +131,16 @@ export type HolderFileScreen =
  */
 export type FileHistory = { entries: ActivityEntry[]; more: boolean } | null;
 
-/** Why a code didn't go, or wasn't taken. */
+/**
+ * Why a code didn't go, or wasn't taken: `captcha`, the auth server refused
+ * the send's "אני לא רובוט" token, once Supabase's CAPTCHA is on.
+ */
 export type HolderCodeFailure =
   | "noPhone"
   | "rateLimit"
   | "tooMany"
   | "wrongCode"
+  | "captcha"
   | "failed";
 
 /** The file's own refusals: the duties first, no keys, the database before its migration. */
@@ -236,7 +240,8 @@ export type MarkDirectAnswer =
 /** The screen's actions, bound to the business (and the reveal to the person), or the twin's. */
 export type HolderFileActions = {
   acknowledge: () => Promise<AcknowledgeAnswer>;
-  sendCode: () => Promise<SendFileCodeAnswer>;
+  /** With the "אני לא רובוט" check's token, when there is one. */
+  sendCode: (captcha?: string) => Promise<SendFileCodeAnswer>;
   confirmCode: (code: string) => Promise<ConfirmFileCodeAnswer>;
   reveal: (field: RevealField) => Promise<RevealHolderAnswer>;
   /** Sliding the step-up (`slide`) for the person's activity here only. */

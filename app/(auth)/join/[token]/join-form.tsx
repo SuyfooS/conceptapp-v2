@@ -1,6 +1,8 @@
 "use client";
 
+import { CAPTCHA_FIELD, type CaptchaSetup } from "@domain/turnstile";
 import { Button } from "@ui/button";
+import { CaptchaBox, useCaptcha } from "@ui/captcha";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useActionState } from "react";
 import { CodeField } from "../../code-field";
@@ -8,18 +10,29 @@ import type { JoinState } from "../actions";
 
 const initial: JoinState = { step: "invite" };
 
-/** Send a code to the invited number, then join with it. */
+/** The presses that send a code, and so wait for the "אני לא רובוט" check. */
+const SENDS = ["send", "resend"] as const;
+
+/**
+ * Send a code to the invited number, then join with it. Each step has the
+ * "אני לא רובוט" check right above its sending press, one check for the
+ * screen (`useCaptcha`).
+ */
 export function JoinForm({
   join,
+  captcha,
   ending,
 }: {
   /** `join` for this link's token, or the design demo's stand-in. */
   join: (prev: JoinState, form: FormData) => Promise<JoinState>;
+  /** The check: this deployment's widget, or the twin's stand-in. */
+  captcha: CaptchaSetup;
   ending: string;
 }) {
   const t = useTranslations("auth.join");
   const errors = useTranslations("auth.signIn.errors");
   const [state, action, pending] = useActionState(join, initial);
+  const box = useCaptcha(captcha, "join");
   const error =
     state.error === "shiftsLeft" || state.error === "elsewhere"
       ? t(state.error)
@@ -35,6 +48,7 @@ export function JoinForm({
       <form
         key="invite"
         action={action}
+        onSubmit={(event) => box.holdSubmit(event, SENDS)}
         className="flex flex-col gap-4"
         noValidate
       >
@@ -44,12 +58,13 @@ export function JoinForm({
             {error}
           </p>
         ) : null}
+        <CaptchaBox captcha={box} name={CAPTCHA_FIELD} />
         <Button
           type="submit"
           name="intent"
           value="send"
           size="lg"
-          loading={pending}
+          loading={pending || box.waiting}
         >
           {t("send")}
         </Button>
@@ -58,7 +73,13 @@ export function JoinForm({
   }
 
   return (
-    <form key="code" action={action} className="flex flex-col gap-4" noValidate>
+    <form
+      key="code"
+      action={action}
+      onSubmit={(event) => box.holdSubmit(event, SENDS)}
+      className="flex flex-col gap-4"
+      noValidate
+    >
       <p className="text-ink-2" aria-live="polite">
         {t.rich(state.resent ? "codeResent" : "codeIntro", { ending, ltr })}
       </p>
@@ -77,11 +98,13 @@ export function JoinForm({
       >
         {t("verify")}
       </Button>
+      <CaptchaBox captcha={box} name={CAPTCHA_FIELD} />
       <Button
         type="submit"
         name="intent"
         value="resend"
         variant="ghost"
+        loading={box.waiting}
         disabled={pending}
         formNoValidate
       >

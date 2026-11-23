@@ -11,6 +11,7 @@ import { clockAt } from "@domain/today";
 import { tidyLine } from "@domain/typed-text";
 import { BankField, type BankFieldValue, EMPTY_BANK } from "@ui/bank-field";
 import { Button } from "@ui/button";
+import { CaptchaBox, useCaptcha } from "@ui/captcha";
 import { Card } from "@ui/card";
 import { ChoiceList, ChoiceRow } from "@ui/choice-row";
 import { CodeSlots, type CodeSlotsStatus } from "@ui/code-slots";
@@ -277,7 +278,11 @@ type Problem =
  * told (14 days), the saved account has "לא שיניתי" under it
  * (`BankChangeNote`), so hiding Today's card never takes the way to say it;
  * never under a change made on this screen or on this device
- * (`bankChangeShown`).
+ * (`bankChangeShown`). Each code goes with the "אני לא רובוט" check, one for
+ * the step (`useCaptcha`): under the account's last choice while it is
+ * typed, the same place in every shape, and in the code's card above
+ * "שליחת קוד חדש". A press made before the check is done (the dock's, a
+ * desktop's, the summary's) waits for it and goes by itself.
  */
 export function BankStep({
   kit,
@@ -316,6 +321,7 @@ export function BankStep({
   // digits' fault they start again, empty.
   const [attempt, setAttempt] = useState(0);
   const [problem, setProblem] = useState<Problem | null>(null);
+  const box = useCaptcha(kit.captcha, "bank-code");
 
   const bankName = (code: number) => {
     const key = String(code) as Parameters<typeof tb>[0];
@@ -435,8 +441,10 @@ export function BankStep({
     }
     setSending(true);
     setProblem(null);
+    // Waits while the check is on its way; none when it failed or can't run.
+    const captcha = await box.take();
     const answer = await kit.actions
-      .sendBankCode({ bank: bankToSend(entered) })
+      .sendBankCode({ bank: bankToSend(entered), captcha })
       .catch((): SendCodeAnswer => ({ ok: false, failure: "failed" }));
     setSending(false);
     if (!answer.ok) {
@@ -693,6 +701,7 @@ export function BankStep({
                   {t("bank.instruction", formArgs(kit))}
                 </span>
               </label>
+              <CaptchaBox captcha={box} />
               {/* On a desktop, what keeps the account back is said beside
                   its action, as the dock says it above its own. */}
               {(tried || block === "warning" || held) &&
@@ -705,7 +714,7 @@ export function BankStep({
                 <Button
                   type="submit"
                   variant="secondary"
-                  loading={sending}
+                  loading={sending || box.waiting}
                   disabled={held}
                 >
                   {t("bank.confirm")}
@@ -728,10 +737,11 @@ export function BankStep({
                 autoFocus
                 autoComplete="one-time-code"
               />
+              <CaptchaBox captcha={box} />
               <div className="flex flex-wrap gap-2">
                 <Button
                   variant="ghost"
-                  loading={sending}
+                  loading={sending || box.waiting}
                   disabled={status === "pending" || status === "success"}
                   onClick={() => askForCode()}
                   className="text-ink-2"
@@ -779,7 +789,7 @@ export function BankStep({
                     // Something missing, or the week after a phone change,
                     // is said above it; anything else, once pressed.
                     disabled: block === "missing" || block === "other" || held,
-                    pending: sending,
+                    pending: sending || box.waiting,
                   }
                 : undefined
           }

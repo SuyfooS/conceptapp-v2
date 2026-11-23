@@ -1,5 +1,4 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
   type DemoDetails,
@@ -12,6 +11,7 @@ import {
 } from "./db";
 import { signIn } from "./session";
 import { setDemoModule } from "./sms";
+import { expect, type Page, test } from "./test";
 
 // Seeded in supabase/seed.sql: the demo restaurant's manager and a worker, and
 // someone on the ConceptApp team, who is in no business.

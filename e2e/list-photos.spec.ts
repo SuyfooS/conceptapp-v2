@@ -1,5 +1,4 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
   agePhotoList,
@@ -11,6 +10,7 @@ import {
 import { cameraPhoto, hasExif } from "./photo";
 import { secondPage, signIn } from "./session";
 import { STORAGE_SKIP, storageAnswers } from "./storage";
+import { expect, type Page, test } from "./test";
 
 // Photos on lists (L6, supabase/migrations/20261110001500_list_photos.sql). The
 // demo restaurant takes photos for these tests ("photos": true in

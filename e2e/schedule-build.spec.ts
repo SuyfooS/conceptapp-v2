@@ -1,5 +1,4 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import { daysLeftToRight } from "../packages/domain/share";
 import { before, buildScreen, HOLD_MS } from "./build-screen";
@@ -29,6 +28,7 @@ import {
 } from "./db";
 import { secondPage, signIn } from "./session";
 import { heT } from "./t";
+import { expect, type Page, test } from "./test";
 
 // Seeded in supabase/seed.sql: the demo restaurant (restaurant template:
 // from Sunday to Thursday a morning shift 09:00–16:00 for three people and

@@ -7,6 +7,7 @@ import type {
 } from "../../../../../(app)/team/[person]/file/holder-file-types";
 import { HolderFileView } from "../../../../../(app)/team/[person]/file/holder-file-view";
 import { baseWording } from "../../../../../(app)/wording";
+import { captchaTwinOf } from "../../../../screens/captcha-twin";
 import {
   business,
   demoFileHistory,
@@ -38,6 +39,7 @@ type Props = {
     as?: string;
     direct?: string;
     history?: string;
+    captcha?: string;
   }>;
 };
 
@@ -77,7 +79,8 @@ type State = (typeof STATES)[number];
 // `passed` Yoav's pension whose day to choose passed; `?direct=bank,pension`
 // the parts marked "נמסר ישירות לשכר", which each mark and its "ביטול"
 // change; `?history=empty` or `failed` "מה קרה בתיק" with nothing yet, or
-// unread.
+// unread. `?captcha=` the "אני לא רובוט" check before the code, in a state
+// of its stand-in (`captchaTwinOf`).
 export default function ShellHolderFile(props: Props) {
   return (
     <Suspense>
@@ -87,10 +90,8 @@ export default function ShellHolderFile(props: Props) {
 }
 
 async function Demo({ params, searchParams }: Props) {
-  const [{ person }, { state, as, direct, history }] = await Promise.all([
-    params,
-    searchParams,
-  ]);
+  const [{ person }, { state, as, direct, history, captcha }] =
+    await Promise.all([params, searchParams]);
   const member = teamMembers.find((m) => m.userId === person);
   if (!member || !teamFileStatus[person]) notFound();
   const which: State = STATES.find((s) => s === state) ?? "duties";
@@ -161,6 +162,7 @@ async function Demo({ params, searchParams }: Props) {
         acknowledgeBank: demoAcknowledgeBankAction.bind(null, which),
         markDirect: demoMarkDirectAction,
       }}
+      captcha={captchaTwinOf(captcha)}
       code={which === "code" ? { tail: "0014" } : undefined}
       hold={which === "held" ? { day: "2026-11-27", at: null } : undefined}
       wording={baseWording}

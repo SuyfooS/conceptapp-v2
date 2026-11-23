@@ -20,6 +20,7 @@ import { form101SetupOf } from "@domain/employee-file-settings";
 import { phoneTail } from "@domain/employee-file-steps";
 import { ID_KINDS } from "@domain/identity-documents";
 import { normalizeOtpCode } from "@domain/otp";
+import { captchaTokenOf } from "@domain/turnstile";
 import { refresh } from "next/cache";
 import { z } from "zod";
 import { checkCode, sendCode, signInPhoneOf } from "../../../(auth)/otp";
@@ -202,15 +203,19 @@ export async function revealOwnAction(
  * what couldn't be. It goes to the number the person signs in with now, as
  * the auth server holds it (`signInPhoneOf`), never the profile's copy and
  * never one the browser sends; counted with the sign-in codes
- * (`private.auth_limits`).
+ * (`private.auth_limits`). The "אני לא רובוט" check's token goes with it
+ * (`captcha`, dropped when it isn't one); nothing else may come along.
  */
 export async function sendBankCodeAction(
   business: string,
-  input: { bank: unknown },
+  input: { bank: unknown; captcha?: unknown },
 ): Promise<SendCodeAnswer> {
   const who = await fileWriter(business);
   if ("failure" in who) return { ok: false, failure: who.failure };
-  const parsed = z.object({ bank: z.unknown() }).strict().safeParse(input);
+  const parsed = z
+    .object({ bank: z.unknown(), captcha: z.unknown().optional() })
+    .strict()
+    .safeParse(input);
   if (!parsed.success || !bankOf(parsed.data.bank, who.today)) {
     return { ok: false, failure: "invalid" };
   }
@@ -232,12 +237,15 @@ export async function sendBankCodeAction(
     const phone = await signInPhoneOf(who.userId);
     const tail = phoneTail(phone);
     if (!phone || !tail) return { ok: false, failure: "noPhone" };
-    const error = await sendCode(phone);
+    const error = await sendCode(phone, {
+      captcha: captchaTokenOf(parsed.data.captcha),
+    });
     if (error === null) return { ok: true, tail };
     switch (error) {
       case "rateLimit":
       case "tooMany":
       case "invalidPhone":
+      case "captcha":
         return { ok: false, failure: error };
       default:
         return { ok: false, failure: "failed" };

@@ -19,8 +19,10 @@ const policy = new Map(
 );
 
 describe("security headers", () => {
-  it("lets no other site frame the app", () => {
-    expect(header("Content-Security-Policy")).toBe("frame-ancestors 'none'");
+  it("lets no other site frame the app, and the app frame only itself and Cloudflare's check", () => {
+    expect(header("Content-Security-Policy")).toBe(
+      "frame-ancestors 'none'; frame-src 'self' https://challenges.cloudflare.com",
+    );
     expect(header("X-Frame-Options")).toBe("DENY");
   });
 

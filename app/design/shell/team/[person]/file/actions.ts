@@ -29,7 +29,10 @@ export async function demoAcknowledgeDutiesAction(): Promise<AcknowledgeAnswer> 
   return { ok: true, open: false };
 }
 
-export async function demoSendFileCodeAction(): Promise<SendFileCodeAnswer> {
+/** The check's token comes along and goes nowhere: nothing is sent. */
+export async function demoSendFileCodeAction(
+  _captcha?: string,
+): Promise<SendFileCodeAnswer> {
   await pause();
   return { ok: true, tail: "0014" };
 }

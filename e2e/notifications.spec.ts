@@ -1,5 +1,4 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
   clearNotifications,
@@ -11,6 +10,7 @@ import {
 } from "./db";
 import { secondPage, signIn } from "./session";
 import { heT } from "./t";
+import { expect, type Page, test } from "./test";
 
 // Notifications in the app (N1): the database writes a line from what
 // happened, the person sees the bell and the inbox, and opening a line marks it

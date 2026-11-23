@@ -1,5 +1,5 @@
-import { expect, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
+import { expect, test } from "./test";
 
 // Install as an app: a phone finds the manifest, its icons and the iPhone
 // home-screen settings on any page, signed in or not.

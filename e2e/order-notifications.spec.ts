@@ -1,4 +1,3 @@
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
   addDemoOrderStation,
@@ -33,6 +32,7 @@ import {
   YOAV,
 } from "./orders-parts";
 import { signIn } from "./session";
+import { expect, type Page, test } from "./test";
 
 // The lines about orders in the app (waiter mode P8b), in the demo
 // restaurant, whose lines never reach a phone (order-push.spec.ts covers the

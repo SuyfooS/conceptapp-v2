@@ -134,12 +134,16 @@ export type RevealAnswer =
   | { ok: true; value: string | null }
   | { ok: false; failure: FileActionFailure | "denied" };
 
-/** Why a code didn't go, or wasn't taken. */
+/**
+ * Why a code didn't go, or wasn't taken: `captcha`, the auth server refused
+ * the send's "אני לא רובוט" token, once Supabase's CAPTCHA is on.
+ */
 export type CodeFailure =
   | "noPhone"
   | "invalidPhone"
   | "rateLimit"
   | "tooMany"
+  | "captcha"
   | "wrongCode";
 
 /** A code's or an account's refusal; in the week after a phone change, with its day. */
@@ -163,8 +167,14 @@ export type ConfirmBankAnswer =
 export type FileActions = {
   saveStep: (step: SavedStep, input: unknown) => Promise<SaveStepAnswer>;
   reveal: (field: "id" | "bank_account") => Promise<RevealAnswer>;
-  /** The account as typed goes too: tried whole before any SMS. */
-  sendBankCode: (input: { bank: unknown }) => Promise<SendCodeAnswer>;
+  /**
+   * The account as typed goes too: tried whole before any SMS. With the
+   * "אני לא רובוט" check's token, when there is one.
+   */
+  sendBankCode: (input: {
+    bank: unknown;
+    captcha?: string;
+  }) => Promise<SendCodeAnswer>;
   confirmBank: (input: {
     code: string;
     bank: unknown;

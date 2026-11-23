@@ -1,3 +1,4 @@
+import { turnstileSiteKey } from "@db/env";
 import { Button } from "@ui/button";
 import { EmptyState } from "@ui/empty-state";
 import { PageBody, PageHeader } from "@ui/page";
@@ -74,6 +75,7 @@ export default async function FilePage({
         saveProfile: saveMyProfileAction,
         disputeBankChange: disputeBankChangeAction.bind(null, business),
       }}
+      captcha={{ siteKey: turnstileSiteKey() }}
     />
   );
 }

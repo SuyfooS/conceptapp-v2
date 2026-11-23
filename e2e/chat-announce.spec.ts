@@ -1,5 +1,4 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Locator, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
   clearDemoChat,
@@ -16,6 +15,7 @@ import {
 } from "./db";
 import { secondPage, signIn } from "./session";
 import { heT } from "./t";
+import { expect, type Locator, type Page, test } from "./test";
 
 // Announcements, removing and muting (C3 of the chat plan). The demo
 // restaurant's reset pins Shiran's 08:10 line in the whole team's group as an

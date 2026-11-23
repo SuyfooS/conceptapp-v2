@@ -1,5 +1,4 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
   archiveDemoDepartment,
@@ -8,6 +7,7 @@ import {
 } from "./db";
 import { signIn } from "./session";
 import { heT } from "./t";
+import { expect, type Page, test } from "./test";
 
 // The business's departments on /manage/departments (L2), while lists are on:
 // add, rename, put people in and take them out, remove with undo, and the

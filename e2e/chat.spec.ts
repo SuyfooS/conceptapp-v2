@@ -1,5 +1,4 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
   clearDemoChat,
@@ -10,6 +9,7 @@ import {
   seeDemoChatNotice,
 } from "./db";
 import { secondPage, signIn } from "./session";
+import { expect, type Page, test } from "./test";
 
 // Chat on screen (C2 of the chat plan). The demo restaurant's reset writes
 // its conversations (private.seed_demo_chat): Uri's thanks and Shiran's two

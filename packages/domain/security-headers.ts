@@ -1,14 +1,28 @@
+import { TURNSTILE_ORIGIN } from "./turnstile";
+
 /**
  * What every response says to the browser about itself (the security check
  * of 8 November 2026, #80), read by next.config.ts on every host the app
  * answers on, conceptapp.co.il and conceptapp-v2.vercel.app alike.
  *
- * The content policy holds `frame-ancestors` alone: no other site may show
- * the app in a frame, so nobody can lay a page over its buttons. A full
- * policy (scripts, styles, images) would need a nonce on every Next.js
- * inline script and so every page rendered per request; until that is
- * worth it, the rest stays the browser's default.
+ * The content policy says who frames whom (`PAGE_CONTENT_POLICY`): no other
+ * site may show the app in a frame, so nobody can lay a page over its
+ * buttons, and the app shows in a frame only its own pages and Cloudflare's
+ * "אני לא רובוט" check (P9b). A full policy (scripts, styles, images) would
+ * need a nonce on every Next.js inline script and so every page rendered
+ * per request; until that is worth it, the rest stays the browser's
+ * default, which loads Cloudflare's script as it is.
  */
+
+/**
+ * The content policy of every page: framed by nobody, framing only the site
+ * and Cloudflare's check. A `script-src` or `default-src` added one day
+ * must let Cloudflare's script in too (tooling/security-headers.test.ts).
+ */
+export const PAGE_CONTENT_POLICY = [
+  "frame-ancestors 'none'",
+  `frame-src 'self' ${TURNSTILE_ORIGIN}`,
+].join("; ");
 
 /**
  * What the app may ask the device for, and only on its own pages, never in
@@ -35,7 +49,7 @@ export type Header = { key: string; value: string };
 
 /** On every response. */
 export const SECURITY_HEADERS: readonly Header[] = [
-  { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+  { key: "Content-Security-Policy", value: PAGE_CONTENT_POLICY },
   // The same for browsers that predate frame-ancestors.
   { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },

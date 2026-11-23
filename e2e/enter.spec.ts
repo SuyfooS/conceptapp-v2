@@ -1,5 +1,4 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
   allowDemoReset,
@@ -8,6 +7,7 @@ import {
   setDemoBusinessDetails,
 } from "./db";
 import { secondPage } from "./session";
+import { expect, type Page, test } from "./test";
 
 // The passive door (Orel, 6 November 2026): one press on a person of a demo
 // business, seeded with these emails in supabase/seed.sql.

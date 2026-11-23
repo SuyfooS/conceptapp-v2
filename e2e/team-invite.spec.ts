@@ -1,8 +1,8 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import { invitesBySlug, inviteToDemo, removeDemoInvites } from "./db";
 import { signIn } from "./session";
+import { expect, type Page, test } from "./test";
 
 // The seeded manager of the demo restaurant (supabase/seed.sql) invites
 // from the Team screen. One new number per screen size; a seeded worker's

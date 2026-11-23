@@ -1,5 +1,4 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
   addDemoShift,
@@ -12,6 +11,7 @@ import {
   waitOutDemoMidnight,
 } from "./db";
 import { signIn } from "./session";
+import { expect, type Page, test } from "./test";
 
 // Seeded in supabase/seed.sql: the demo restaurant, its manager and a worker.
 // The clock is the real one, so nothing here depends on the hour (a shift put

@@ -6,6 +6,7 @@ import { minorChecklistOf, pensionPassed } from "@domain/file-holders";
 import { firstNameOf } from "@domain/people";
 import { displayIsraeliMobile } from "@domain/phone";
 import { formArg } from "@domain/profile";
+import type { CaptchaSetup } from "@domain/turnstile";
 import { Card } from "@ui/card";
 import { EmptyState } from "@ui/empty-state";
 import { PageBody, PageHeader } from "@ui/page";
@@ -73,6 +74,7 @@ export function HolderFileView({
   screen,
   paths,
   actions,
+  captcha,
   wording,
   code,
   hold,
@@ -80,6 +82,8 @@ export function HolderFileView({
   screen: Exclude<HolderFileScreen, { kind: "closed" }>;
   paths: HolderFilePaths;
   actions: HolderFileActions;
+  /** The "אני לא רובוט" check before the code: this deployment's widget, or the twin's stand-in. */
+  captcha: CaptchaSetup;
   wording: AppWording;
   /** The twin's code step, open on the boxes. */
   code?: { tail: string };
@@ -129,6 +133,7 @@ export function HolderFileView({
           kind={screen.kind}
           actions={actions}
           timeZone={head.timeZone}
+          captcha={captcha}
           code={code}
           hold={hold}
           twin={paths.twin}
