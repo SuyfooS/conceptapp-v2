@@ -15,18 +15,28 @@ import {
   useTransition,
 } from "react";
 import { HOLD_MS } from "../../../use-held-write";
-import { GROUP_SECTION, marksAfter, writeOutcome } from "./file-edits-rules";
-import type { HolderFileActions, HolderWriteAnswer } from "./holder-file-types";
+import {
+  GROUP_SECTION,
+  type MarkWords,
+  markSaid,
+  marksAfter,
+  undoRefusal,
+  writeOutcome,
+} from "./file-edits-rules";
+import type { HolderWordsKey } from "./holder-failure-words";
+import type { HolderFileActions } from "./holder-file-types";
+
+export type { MarkWords } from "./file-edits-rules";
 
 /*
  * What a holder does in someone's open file (profile H6b-1): the account's
  * review confirmed, and a part marked "נמסר ישירות לשכר" or the mark taken
  * off, each written at once and the page drawn again by the server. The
- * provider sits above the rows that change, so its toast and its line
- * outlive the redraw. Every word comes from the server but "ביטול" and the
- * refusals; nothing typed and no value travels (the account's moment and a
- * group's name aren't values). No fresh step-up, or the duties first, draws
- * the page again, locked or with the duties, and nothing is said. The twin,
+ * provider sits above the rows that change, so its toast outlives the
+ * redraw. Every word comes from the server but "ביטול" and the refusals;
+ * nothing typed and no value travels (the account's moment and a group's
+ * name aren't values). No fresh step-up, or the duties first, draws the
+ * page again, locked or with the duties, and nothing is said. The twin,
  * which keeps nothing, goes to the state each answer draws instead. What
  * each answer means is ./file-edits-rules'.
  */
@@ -42,12 +52,12 @@ export type FileEditsTwin = {
   direct: string;
 };
 
-/** What a mark's press said, and what its "ביטול" says. */
-export type MarkWords = { done: string; undone: string };
+/** A "ביטול" the server refused: said in its part's row, under its button. */
+type UndoRefused = { group: FileGroup; key: HolderWordsKey; at: number };
 
 type Edits = {
   acknowledgeBank: HolderFileActions["acknowledgeBank"];
-  /** A mark's press, its toast with "ביטול"; the refusal's words, or null when it went. */
+  /** A mark's press, its toast; the refusal's words, or null when it went. */
   mark: (
     group: FileGroup,
     marked: boolean,
@@ -58,6 +68,9 @@ type Edits = {
   say: (message: string, focusTo: string) => void;
   /** No fresh step-up, or the duties first: the page draws itself so. */
   redraw: (failure: "stepUp" | "ack") => void;
+  undoRefused: UndoRefused | null;
+  /** The person's first name, for a refusal that names them. */
+  first: string;
   twin?: FileEditsTwin;
 };
 
@@ -69,7 +82,10 @@ function useEdits(): Edits {
   return edits;
 }
 
-const failed = (): HolderWriteAnswer => ({ ok: false, failure: "failed" });
+const failed = (): { ok: false; failure: "failed" } => ({
+  ok: false,
+  failure: "failed",
+});
 
 type Toast = { text: string; stamp: string; undo?: () => void };
 
@@ -79,34 +95,30 @@ function focusSection(id: string | null) {
 }
 
 /**
- * The open file's writes: one toast for what was done (with "ביטול" for a
- * mark, for as long as a held write would wait), and one line for an undo
- * the server refused, which takes the focus so it is heard; the row stays
- * as the server drew it.
+ * The open file's writes: one toast for what was done, with "ביטול" for as
+ * long as a held write would wait, only after a press that changed the
+ * file; and a "ביטול" the server refused, said in its part's own row with
+ * the way back (`DirectMark`), or in the toast when that part has no row
+ * now (complete); the row stays as the server drew it.
  */
 export function FileEdits({
   actions,
+  first,
   twin,
   children,
 }: {
   actions: Pick<HolderFileActions, "acknowledgeBank" | "markDirect">;
+  first: string;
   twin?: FileEditsTwin;
   children: ReactNode;
 }) {
   const t = useTranslations("app.team.file");
   const router = useRouter();
   const [toast, setToast] = useState<Toast | null>(null);
-  const [refused, setRefused] = useState<{ text: string; at: number } | null>(
-    null,
-  );
-  const line = useRef<HTMLParagraphElement>(null);
+  const [undoRefused, setUndoRefused] = useState<UndoRefused | null>(null);
   /** Where the focus goes once the toast leaves holding it. */
   const back = useRef<string | null>(null);
   const [, startUndo] = useTransition();
-
-  useEffect(() => {
-    if (refused) line.current?.focus();
-  }, [refused]);
 
   function redraw(failure: "stepUp" | "ack") {
     if (twin && failure === "stepUp") router.push(twin.locked);
@@ -114,7 +126,7 @@ export function FileEdits({
   }
 
   function say(message: string, focusTo: string, undo?: () => void) {
-    setRefused(null);
+    setUndoRefused(null);
     back.current = focusTo;
     setToast({ text: message, stamp: `${Date.now()}`, undo });
   }
@@ -126,42 +138,53 @@ export function FileEdits({
     current: readonly FileGroup[],
     undoing = false,
   ): Promise<string | null> {
-    const outcome = writeOutcome(
-      await actions.markDirect(group, marked).catch(failed),
-    );
+    if (!undoing) setUndoRefused(null);
+    const answer = await actions.markDirect(group, marked).catch(failed);
     const focusTo = GROUP_SECTION[group];
-    switch (outcome.kind) {
-      case "done": {
-        const after = marksAfter(current, group, marked);
-        if (twin) router.push(`${twin.direct}${after.join(",")}`);
-        say(
-          undoing ? words.undone : words.done,
-          focusTo,
-          undoing
-            ? undefined
-            : () =>
-                startUndo(async () => {
-                  await mark(group, !marked, words, after, true);
-                }),
-        );
-        return null;
-      }
-      case "redraw":
-        redraw(outcome.failure);
-        return null;
-      default: {
-        const text = t(
-          outcome.kind === "refused" ? outcome.key : "failures.failed",
-        );
-        if (undoing) {
-          // The way back's button went with the toast: the line says why,
-          // and takes the focus.
-          back.current = focusTo;
-          setRefused({ text, at: Date.now() });
-        }
-        return text;
-      }
+    if (answer.ok) {
+      const after = answer.changed
+        ? marksAfter(current, group, marked)
+        : [...current];
+      if (twin && answer.changed)
+        router.push(`${twin.direct}${after.join(",")}`);
+      const said = markSaid(words, answer.changed, undoing);
+      say(
+        said.text,
+        focusTo,
+        said.undo
+          ? () =>
+              startUndo(async () => {
+                await mark(group, !marked, words, after, true);
+              })
+          : undefined,
+      );
+      return null;
     }
+    const outcome = writeOutcome(answer);
+    if (outcome.kind === "redraw") {
+      redraw(outcome.failure);
+      return null;
+    }
+    const key = outcome.kind === "refused" ? outcome.key : "failures.failed";
+    if (!undoing) return t(key, { first });
+    // The way back's button went with the toast: the part's row says what
+    // stayed and what to press there.
+    back.current = focusTo;
+    if (document.querySelector(`[data-direct-mark="${group}"]`)) {
+      setUndoRefused({ group, key, at: Date.now() });
+    } else {
+      const { reason } = undoRefusal(key, false);
+      say(
+        [
+          t("direct.undoRefused", { group: words.group }),
+          reason ? t(reason, { first }) : null,
+        ]
+          .filter(Boolean)
+          .join(" "),
+        focusTo,
+      );
+    }
+    return null;
   }
 
   return (
@@ -172,6 +195,8 @@ export function FileEdits({
           mark(group, marked, words, current),
         say: (message, focusTo) => say(message, focusTo),
         redraw,
+        undoRefused,
+        first,
         twin,
       }}
     >
@@ -195,16 +220,6 @@ export function FileEdits({
         focusAction={toast?.undo !== undefined}
         onFocusLeave={() => focusSection(back.current)}
       />
-      {refused ? (
-        <p
-          ref={line}
-          role="alert"
-          tabIndex={-1}
-          className="px-1 font-medium text-danger outline-none md:max-w-2xl"
-        >
-          {refused.text}
-        </p>
-      ) : null}
       {children}
     </FileEditsContext>
   );
@@ -235,7 +250,7 @@ export function BankReviewAction({
 }) {
   const t = useTranslations("app.team.file");
   const router = useRouter();
-  const { acknowledgeBank, say, redraw, twin } = useEdits();
+  const { acknowledgeBank, say, redraw, first, twin } = useEdits();
   const [pending, start] = useTransition();
   const [line, setLine] = useState<{ text: string; at: number } | null>(null);
   const said = useRef<HTMLParagraphElement>(null);
@@ -264,7 +279,7 @@ export function BankReviewAction({
           redraw(outcome.failure);
           return;
         case "refused":
-          setLine({ text: t(outcome.key), at: Date.now() });
+          setLine({ text: t(outcome.key, { first }), at: Date.now() });
           if (twin && !answer.ok && answer.failure === "moved") {
             router.push(twin.moved);
           }
@@ -300,8 +315,10 @@ export function BankReviewAction({
 /**
  * "סימון שנמסר ישירות לשכר" on a missing part (or "סימון ש{העסק} בחר קרן"
  * for a pension whose day passed), "הסרת הסימון" on a marked one: quiet,
- * under the part's row, written at once with "ביטול" in the toast. A
- * refusal is said under the button, which stays.
+ * under the part's row, written at once with "ביטול" in the toast when the
+ * press changed the file. A refusal is said under the button, which stays;
+ * so is a "ביטול" refused after this part's press, with this button as the
+ * way back, taking the focus so it is heard where the part is.
  */
 export function DirectMark({
   group,
@@ -320,12 +337,35 @@ export function DirectMark({
   /** The parts marked now, for the twin's address. */
   current: readonly FileGroup[];
 }) {
-  const { mark } = useEdits();
+  const t = useTranslations("app.team.file");
+  const { mark, undoRefused, first } = useEdits();
   const [pending, start] = useTransition();
   const [refusal, setRefusal] = useState<string | null>(null);
+  const said = useRef<HTMLParagraphElement>(null);
+  const undone = undoRefused?.group === group ? undoRefused : null;
+
+  useEffect(() => {
+    if (undone) said.current?.focus();
+  }, [undone]);
+
+  const undoLine = (() => {
+    if (!undone) return null;
+    const { wayBack, reason } = undoRefusal(undone.key, true);
+    return [
+      t("direct.undoRefused", { group: words.group }),
+      wayBack ? t("direct.undoWayBack", { label }) : null,
+      reason ? t(reason, { first }) : null,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  })();
+  const line = undoLine ?? refusal;
 
   return (
-    <div className="flex flex-col items-start gap-1 pt-2">
+    <div
+      data-direct-mark={group}
+      className="flex flex-col items-start gap-1 pt-2"
+    >
       <Button
         variant={marked ? "secondary" : "ghost"}
         loading={pending}
@@ -338,9 +378,14 @@ export function DirectMark({
         {label}
       </Button>
       {hint ? <p className="text-ink-2 text-sm">{hint}</p> : null}
-      {refusal ? (
-        <p role="alert" className="font-medium text-danger text-sm">
-          {refusal}
+      {line ? (
+        <p
+          ref={said}
+          role="alert"
+          tabIndex={-1}
+          className="font-medium text-danger text-sm outline-none"
+        >
+          {line}
         </p>
       ) : null}
     </div>

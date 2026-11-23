@@ -12,9 +12,10 @@ type Format = ReturnType<typeof createFormatter>;
 /**
  * One line of "מה קרה בתיק" in words: a change and which parts, the file
  * sent, a year's 101, the account confirmed or disputed, the parts handed
- * directly (as they stand after the change, as the log's own line says),
- * and a number shown. Anything else, the daily read of the file among them,
- * is left out (null). Names of parts only: the rows never held a value.
+ * directly as they stand after the change ("עכשיו מסומן…": the row holds
+ * that set, not which part the press changed), and a number shown.
+ * Anything else, the daily read of the file among them, is left out
+ * (null). Names of parts only: the rows never held a value.
  */
 export function historyLine(
   t: T,
@@ -58,13 +59,14 @@ export function historyLine(
     case "employee.bank_disputed":
       return t("team.file.history.bankDisputed");
     case "employee.direct":
+      // The row holds the set after the change, so the line says what is
+      // marked since, by the file's own names of its parts ("הפרטים
+      // המזהים", as its sections and its toast say them).
       return line.groups.length === 0
         ? t("team.file.history.directCleared")
         : t("team.file.history.direct", {
             groups: list(
-              line.groups.map((group) =>
-                t(`manage.activity.actions.employee.groups.${group}`),
-              ),
+              line.groups.map((group) => t(`team.file.direct.groups.${group}`)),
             ),
           });
     default:

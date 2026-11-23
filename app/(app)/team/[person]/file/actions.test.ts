@@ -25,8 +25,7 @@ const mocks = vi.hoisted(() => ({
   hasEmployeeKeys: vi.fn(),
   revealEmployeeFields: vi.fn(),
   acknowledgeBank: vi.fn(),
-  getDirectGroups: vi.fn(),
-  setDirectGroups: vi.fn(),
+  markDirectGroup: vi.fn(),
   sendCode: vi.fn(),
   checkCode: vi.fn(),
   signInPhoneOf: vi.fn(),
@@ -64,8 +63,7 @@ vi.mock("@db/employee-files", () => ({
   hasEmployeeKeys: mocks.hasEmployeeKeys,
   revealEmployeeFields: mocks.revealEmployeeFields,
   acknowledgeBank: mocks.acknowledgeBank,
-  getDirectGroups: mocks.getDirectGroups,
-  setDirectGroups: mocks.setDirectGroups,
+  markDirectGroup: mocks.markDirectGroup,
 }));
 vi.mock("../../../../(auth)/otp", () => ({
   sendCode: mocks.sendCode,
@@ -151,10 +149,9 @@ beforeEach(() => {
     bankAccount: "100001",
   });
   mocks.acknowledgeBank.mockReset().mockResolvedValue({ ok: true });
-  mocks.getDirectGroups
+  mocks.markDirectGroup
     .mockReset()
-    .mockResolvedValue({ ok: true, groups: ["pension"] });
-  mocks.setDirectGroups.mockReset().mockResolvedValue({ ok: true });
+    .mockResolvedValue({ ok: true, changed: true });
   mocks.sendCode.mockReset().mockResolvedValue(null);
   mocks.checkCode.mockReset().mockResolvedValue({ userId: URI });
   mocks.signInPhoneOf.mockReset().mockResolvedValue(URI_PHONE);
@@ -256,8 +253,7 @@ describe("who may act on a file", () => {
     expect(mocks.checkCode).not.toHaveBeenCalled();
     expect(mocks.revealEmployeeFields).not.toHaveBeenCalled();
     expect(mocks.acknowledgeBank).not.toHaveBeenCalled();
-    expect(mocks.getDirectGroups).not.toHaveBeenCalled();
-    expect(mocks.setDirectGroups).not.toHaveBeenCalled();
+    expect(mocks.markDirectGroup).not.toHaveBeenCalled();
   });
 
   it("lets the accountant, who holds them by role", async () => {
@@ -538,8 +534,7 @@ describe("a holder's writes", () => {
       false,
     );
     expect(mocks.acknowledgeBank).not.toHaveBeenCalled();
-    expect(mocks.getDirectGroups).not.toHaveBeenCalled();
-    expect(mocks.setDirectGroups).not.toHaveBeenCalled();
+    expect(mocks.markDirectGroup).not.toHaveBeenCalled();
   });
 
   it("never write the session's own file", async () => {
@@ -553,7 +548,7 @@ describe("a holder's writes", () => {
       failure: "noAccess",
     });
     expect(mocks.acknowledgeBank).not.toHaveBeenCalled();
-    expect(mocks.getDirectGroups).not.toHaveBeenCalled();
+    expect(mocks.markDirectGroup).not.toHaveBeenCalled();
   });
 
   it("refuse what isn't a person, a moment, a part or a yes or no", async () => {
@@ -568,7 +563,7 @@ describe("a holder's writes", () => {
       expect(answer).toEqual({ ok: false, failure: "failed" });
     }
     expect(mocks.acknowledgeBank).not.toHaveBeenCalled();
-    expect(mocks.getDirectGroups).not.toHaveBeenCalled();
+    expect(mocks.markDirectGroup).not.toHaveBeenCalled();
   });
 });
 
@@ -624,86 +619,73 @@ describe("confirming an account", () => {
 });
 
 describe("marking a part handed directly", () => {
-  it("reads the marks fresh and writes them with this part added, or taken off", async () => {
-    opened();
+  it("sends this one part, marked or taken off, never a set, and says it changed", async () => {
+    const at = Date.now() - 5 * 60_000;
+    opened(at);
     expect(await markDirectGroupAction(SHOP, NOA, "bank", true)).toEqual({
       ok: true,
+      changed: true,
     });
-    expect(mocks.getDirectGroups).toHaveBeenCalledWith(SHOP, NOA);
-    expect(mocks.setDirectGroups).toHaveBeenLastCalledWith(URI, SHOP, NOA, [
+    expect(mocks.markDirectGroup).toHaveBeenLastCalledWith(
+      URI,
+      SHOP,
+      NOA,
       "bank",
-      "pension",
-    ]);
+      true,
+    );
     expect(await markDirectGroupAction(SHOP, NOA, "pension", false)).toEqual({
       ok: true,
+      changed: true,
     });
-    expect(mocks.setDirectGroups).toHaveBeenLastCalledWith(URI, SHOP, NOA, []);
+    expect(mocks.markDirectGroup).toHaveBeenLastCalledWith(
+      URI,
+      SHOP,
+      NOA,
+      "pension",
+      false,
+    );
+    expect(openedAt()).toBeGreaterThan(at);
     expect(mocks.refresh).toHaveBeenCalledTimes(2);
   });
 
-  it("writes nothing for the same set, and still draws the page again", async () => {
+  it("says a press found the part already so, offering nothing to undo, and still draws the page again", async () => {
     opened();
-    expect(await markDirectGroupAction(SHOP, NOA, "pension", true)).toEqual({
+    // Another holder marked it first, on a screen this one hadn't seen.
+    mocks.markDirectGroup.mockResolvedValue({ ok: true, changed: false });
+    expect(await markDirectGroupAction(SHOP, NOA, "bank", true)).toEqual({
       ok: true,
+      changed: false,
     });
+    // And an undo after someone else took the change back.
     expect(await markDirectGroupAction(SHOP, NOA, "bank", false)).toEqual({
       ok: true,
+      changed: false,
     });
-    expect(mocks.setDirectGroups).not.toHaveBeenCalled();
     expect(mocks.refresh).toHaveBeenCalledTimes(2);
   });
 
-  it("marks only what the business asks, and drops a mark on a part it stopped asking", async () => {
+  it("says what the database refused, a part it doesn't ask among them", async () => {
     opened();
-    mocks.currentModuleSettings.mockResolvedValue({
-      askBank: false,
-      askAddress: true,
-      form101: "print",
-    });
-    expect(await markDirectGroupAction(SHOP, NOA, "bank", true)).toEqual({
-      ok: false,
-      failure: "failed",
-    });
-    expect(mocks.setDirectGroups).not.toHaveBeenCalled();
-    mocks.getDirectGroups.mockResolvedValue({
-      ok: true,
-      groups: ["bank", "pension"],
-    });
-    await markDirectGroupAction(SHOP, NOA, "address", true);
-    expect(mocks.setDirectGroups).toHaveBeenLastCalledWith(URI, SHOP, NOA, [
-      "address",
-      "pension",
-    ]);
-  });
-
-  it("says why the marks weren't read, and what the database refused", async () => {
-    opened();
-    const reads = [
-      [{ ok: false, failure: "denied", reason: "ack" }, "ack"],
-      [{ ok: false, failure: "denied", reason: "off" }, "off"],
-      [{ ok: false, failure: "denied", reason: "not_holder" }, "noAccess"],
-      [{ ok: false, failure: "keys" }, "unavailable"],
-      [{ ok: false, failure: "unavailable" }, "unavailable"],
-      [{ ok: false, failure: "failed" }, "failed"],
+    const cases = [
+      ["invalid", "failed"],
+      ["ack", "ack"],
+      ["off", "off"],
+      ["demo", "demo"],
+      ["closed", "closed"],
+      ["notStaff", "notInTeam"],
+      ["notInTeam", "notInTeam"],
+      ["ownerOnly", "noAccess"],
+      ["keys", "unavailable"],
+      ["unavailable", "unavailable"],
+      ["failed", "failed"],
     ] as const;
-    for (const [read, said] of reads) {
-      mocks.getDirectGroups.mockResolvedValueOnce(read);
-      expect(await markDirectGroupAction(SHOP, NOA, "bank", true)).toEqual({
-        ok: false,
-        failure: said,
-      });
+    for (const [failure, said] of cases) {
+      mocks.markDirectGroup.mockResolvedValue({ ok: false, failure });
+      expect(
+        await markDirectGroupAction(SHOP, NOA, "bank", true),
+        failure,
+      ).toEqual({ ok: false, failure: said });
     }
-    expect(mocks.setDirectGroups).not.toHaveBeenCalled();
-    mocks.setDirectGroups.mockResolvedValue({ ok: false, failure: "invalid" });
-    expect(await markDirectGroupAction(SHOP, NOA, "bank", true)).toEqual({
-      ok: false,
-      failure: "failed",
-    });
-    mocks.setDirectGroups.mockResolvedValue({ ok: false, failure: "demo" });
-    expect(await markDirectGroupAction(SHOP, NOA, "bank", true)).toEqual({
-      ok: false,
-      failure: "demo",
-    });
     expect(mocks.refresh).not.toHaveBeenCalled();
   });
 
@@ -713,7 +695,7 @@ describe("marking a part handed directly", () => {
     mocks.acknowledgeBank.mockRejectedValue(
       Object.assign(new Error(MOMENT), { code: "XX000" }),
     );
-    mocks.getDirectGroups.mockRejectedValue(
+    mocks.markDirectGroup.mockRejectedValue(
       Object.assign(new Error(NOA), { code: "XX000" }),
     );
     expect(await acknowledgeBankAction(SHOP, NOA, MOMENT)).toEqual({

@@ -1,19 +1,22 @@
 -- What a holder's screens need from the file's reads
 -- (20261126000600_file_started_and_changed.sql; profile H6b-2): the file
--- gives the open employment period's first day, to its person and to a
--- holder alike, and none for someone whose only period ended; the status
--- gives a holder when the file or its 101 was last written, the newer of
--- the two, null for neither, and a manager no detail at all. Its detail
--- has exactly its ten keys, and the file never a sealed column's name.
--- Times are fixed by hand, never the real clock. Fixed ids (f7…), numbers
--- (050-086-xxxx) and slugs (efc-…), so nothing here meets the seed or
--- another test.
+-- gives the current employment period's first day, to its person and to a
+-- holder alike, also for a fixed-term job whose end is still ahead (with
+-- the pension's due day from it), and none for someone whose only period
+-- ended; the status gives a holder when the file or its 101 was last
+-- written, the newer of the two, null for neither, and a manager no detail
+-- at all. Its detail has exactly its ten keys, and the file never a sealed
+-- column's name. Times are fixed by hand, never the real clock, but for
+-- the end still ahead, a month after the business's today, which the reads
+-- take from the clock themselves. Fixed ids (f7…), numbers (050-086-xxxx)
+-- and slugs (efc-…), so nothing here meets the seed or another test.
 begin;
-select plan(12);
+select plan(14);
 
 -- A: 1 its owner, 2 a manager with no file and no 101, 3 a worker with a
--- file and an open period since 1 September, 5 a worker whose only period
--- ended.
+-- file and an open period since 1 September, 4 a worker on a fixed-term job
+-- since 1 July that a pay holder said ends a month from today, 5 a worker
+-- whose only period ended.
 insert into auth.users (id, aud, role, phone)
 select ('f7000000-0000-4000-a000-' || lpad(n::text, 12, '0'))::uuid,
   'authenticated', 'authenticated', '97250086' || lpad(n::text, 4, '0')
@@ -32,6 +35,7 @@ values
   (pg_temp.a(), pg_temp.p(1), 'owner', true),
   (pg_temp.a(), pg_temp.p(2), 'manager', true),
   (pg_temp.a(), pg_temp.p(3), 'worker', true),
+  (pg_temp.a(), pg_temp.p(4), 'worker', true),
   (pg_temp.a(), pg_temp.p(5), 'worker', true);
 insert into public.business_modules (business_id, module_key, enabled, settings)
 values (pg_temp.a(), 'employee_files', true, '{}');
@@ -41,6 +45,10 @@ update public.employment_periods set started_on = '2026-09-01'
 where business_id = pg_temp.a() and user_id = pg_temp.p(3);
 update public.employment_periods set started_on = '2026-01-04', ended_on = '2026-06-30'
 where business_id = pg_temp.a() and user_id = pg_temp.p(5);
+-- Its end ahead, as set_employment_period takes it (up to a year on).
+update public.employment_periods
+set started_on = '2026-07-01', ended_on = private.file_today(pg_temp.a(), now()) + 30
+where business_id = pg_temp.a() and user_id = pg_temp.p(4);
 
 -- Worker 3's file, last written on 1 October; nothing sealed.
 insert into public.employee_details (business_id, user_id, legal_first_name, updated_at)
@@ -66,12 +74,16 @@ select ok(not has_function_privilege('authenticated', 'private.file_answer(uuid,
   'a session never calls the file''s answer itself');
 
 ------------------------------------------------------------------------------
--- The open period's start
+-- The current period's start
 
 select pg_temp.sign_in(pg_temp.p(1));
 select public.acknowledge_file_duties(pg_temp.a(), '2026-11-v1');
 select is(public.employee_file(pg_temp.a(), pg_temp.p(3)) ->> 'started_on', '2026-09-01',
   'a holder reads the open period''s first day');
+select is(public.employee_file(pg_temp.a(), pg_temp.p(4)) ->> 'started_on', '2026-07-01',
+  'and the first day of a job whose end is still ahead');
+select is(public.employee_file(pg_temp.a(), pg_temp.p(4)) ->> 'pension_due_on', '2026-08-30',
+  'whose pension is due 60 days on, as an open one''s');
 select ok(
   (public.employee_file(pg_temp.a(), pg_temp.p(5)) ? 'started_on')
     and public.employee_file(pg_temp.a(), pg_temp.p(5)) ->> 'started_on' is null,

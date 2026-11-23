@@ -1716,20 +1716,25 @@ per role: owners always hold it, accountants by `private.accountant_perms`
   `employee_files_holder_state.test.sql`.
 - **What a holder writes** (H6b-1): `acknowledgeBank` with the moment the
   screen read, exactly as the database gave it (40001 when it changed
-  since); `setDirectGroups` with the whole set, after `getDirectGroups`
-  read it fresh under the session (the same logged `employee_file` read,
-  opening nothing), so a stale screen never takes back another holder's
-  mark.
+  since); `markDirectGroup` with one part and whether it is marked, which
+  `set_direct_groups` (since `20261126000600_file_started_and_changed.sql`)
+  adds or takes off reading the stored set under the file's lock, so two
+  holders' presses at once each keep the other's, and answers whether the
+  file changed (false, writing nothing, when the part already was so). The
+  screen offers "ביטול" only for a change. A part the business doesn't ask
+  is refused for a mark, never for taking one off.
 - **What happened in a file** (`@db/file-history`, H6b-1): the person's
   `employee.*` rows read from `audit_log` under RLS (holders read them,
   a view never does), a number's reveal included and the daily read of the
   file (`fields` exactly `["file"]`) left out, the newest 40 with the
   actors' names in the business. Field names only: the rows never held a
   value.
-- **The open period and the last change**
+- **The current period and the last change**
   (`20261126000600_file_started_and_changed.sql`, H6b-2):
-  `private.file_answer` gives `started_on`, the open employment period's
-  first day, for a minor's checklist; `employee_file_status` gives a
+  `private.file_answer` gives `started_on`, the current employment period's
+  first day (the newest not ended by the business's today, so a fixed-term
+  job with its end ahead counts, and `private.pension_due_on` reads the
+  same period), for a minor's checklist; `employee_file_status` gives a
   holder `detail.changed_at`, the newer of the file's `updated_at` and
   its 101s' (never a read, never the emergency contact), for the team's
   desktop. The schemas default both to null, so the app reads a database

@@ -424,8 +424,15 @@ test("the owner confirms Noa's new account, after a change meanwhile is said", a
   await expect(bank.getByText(f.review.held)).toBeVisible();
   await expectCleanPage(page);
 
+  // The account's digits shown, as an owner looks before confirming.
+  const show = bank.getByRole("button", { name: he.app.file.masked.show });
+  await show.click();
+  const digits = bank.getByText(/^\d{5,}$/);
+  await expect(digits).toBeVisible();
+
   // Changed again while the screen was open: said, with the focus on it,
-  // and the newer change drawn under the same button.
+  // and the newer change drawn under the same button, its digits hidden
+  // again (the second review: never the old number beside the new bank).
   await bumpDemoBankChange(NOA.id);
   await confirm.click();
   const moved = bank.getByRole("alert");
@@ -433,6 +440,8 @@ test("the owner confirms Noa's new account, after a change meanwhile is said", a
   await expect(moved).toBeFocused();
   await expect(confirm).toBeVisible();
   await page.waitForLoadState("networkidle");
+  await expect(digits).toHaveCount(0);
+  await expect(show).toBeVisible();
 
   await confirm.click();
   await expect(
@@ -584,9 +593,7 @@ test("the accountant marks Yoav's account handed directly, undoes it, and marks 
   await expect(
     shownIn(
       history,
-      heT("app.team.file.history.direct", {
-        groups: he.app.manage.activity.actions.employee.groups.bank,
-      }),
+      heT("app.team.file.history.direct", { groups: f.direct.groups.bank }),
     ),
   ).toBeVisible();
   await expect(shownIn(history, f.history.directCleared)).toBeVisible();

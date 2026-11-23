@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { buildActivity } from "./activity";
 import type { FileStatus } from "./employee-file";
 import {
-  directGroupsAfter,
   FILE_HISTORY_ACTIONS,
   FILE_IDLE_MS,
   fileFilterTags,
@@ -219,38 +218,10 @@ describe("a files-only reader's staff", () => {
   });
 });
 
-// Profile H6b: what a holder does in a file.
-
-describe("a part handed directly", () => {
-  const all = ["identity", "address", "bank", "pension"] as const;
-
-  it("is added in the groups' order, or taken away", () => {
-    expect(directGroupsAfter(["pension"], "bank", true, all)).toEqual([
-      "bank",
-      "pension",
-    ]);
-    expect(directGroupsAfter(["bank", "pension"], "bank", false, all)).toEqual([
-      "pension",
-    ]);
-  });
-
-  it("gives the same set for a part already marked, or already not", () => {
-    expect(directGroupsAfter(["bank"], "bank", true, all)).toEqual(["bank"]);
-    expect(directGroupsAfter([], "bank", false, all)).toEqual([]);
-    expect(directGroupsAfter(["bank", "bank"], "bank", true, all)).toEqual([
-      "bank",
-    ]);
-  });
-
-  it("marks only what the business asks, and drops a mark on a part it stopped asking", () => {
-    const asked = ["identity", "bank", "pension"] as const;
-    expect(directGroupsAfter([], "address", true, asked)).toBeNull();
-    expect(directGroupsAfter(["address"], "bank", true, asked)).toEqual([
-      "bank",
-    ]);
-    expect(directGroupsAfter(["address"], "address", false, asked)).toEqual([]);
-  });
-});
+// Profile H6b: what a holder does in a file. A part handed directly is
+// added or taken off by the database itself, one at a time
+// (employee_files_writes.test.sql); the twin's address, by
+// file-edits-rules.test.ts.
 
 describe("a pension whose day passed", () => {
   it("passed the day after its day, and only while it is missing", () => {

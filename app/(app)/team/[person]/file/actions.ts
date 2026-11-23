@@ -3,17 +3,15 @@
 import {
   acknowledgeBank,
   acknowledgeFileDuties,
-  type FileWriteResult,
-  getDirectGroups,
+  type FileWriteFailure,
   getFileHolderState,
   hasEmployeeKeys,
+  markDirectGroup,
   revealEmployeeFields,
-  setDirectGroups,
 } from "@db/employee-files";
 import { FILE_GROUPS, REVEAL_FIELDS } from "@domain/employee-file";
-import { fileGroupsAsked } from "@domain/employee-file-settings";
 import { phoneTail } from "@domain/employee-file-steps";
-import { directGroupsAfter, FILE_IDLE_MS } from "@domain/file-holders";
+import { FILE_IDLE_MS } from "@domain/file-holders";
 import { normalizeOtpCode } from "@domain/otp";
 import { refresh } from "next/cache";
 import { z } from "zod";
@@ -27,6 +25,7 @@ import type {
   HolderWriteFailure,
   KeepOpenAnswer,
   LockAnswer,
+  MarkDirectAnswer,
   RevealHolderAnswer,
   SendFileCodeAnswer,
 } from "./holder-file-types";
@@ -210,7 +209,7 @@ const MOMENT =
 
 /** A write the database refused, in the screen's terms. */
 function writeFailure(
-  refused: Extract<FileWriteResult, { ok: false }>,
+  refused: FileWriteFailure,
   invalid: HolderWriteFailure,
 ): HolderWriteFailure {
   switch (refused.failure) {
@@ -288,21 +287,23 @@ export async function acknowledgeBankAction(
 /**
  * "סימון שנמסר ישירות לשכר" on one part of someone's file, or "הסרת
  * הסימון" (`marked` false); the toast's "ביטול" sends the other one. The
- * database takes the whole set, so the set is read fresh here and only this
- * part changed in it, never a set the screen sent: a stale screen would
- * take back another holder's mark. Only the parts the business asks go,
- * read from the same settings the database reads, so a mark on a part it
- * stopped asking is dropped by the next press. The same set writes nothing.
- * Never the session's own file (`set_direct_groups` doesn't check it), and
- * never without a fresh step-up, before any call. Logged there
- * (`employee.direct`); it slides the 15 minutes.
+ * database adds or takes off this one part, reading the stored marks under
+ * the file's lock, so two holders' presses at once each keep the other's,
+ * and a stale screen never sends a whole set back. It answers whether the
+ * file changed: not when the part already was so (another holder's press
+ * first), which offers no "ביטול", and an undo after someone else took the
+ * change back writes nothing. A part the business doesn't ask is refused
+ * for a mark. Never the session's own file (`set_direct_groups` doesn't
+ * check it), and never without a fresh step-up, before any call. Logged
+ * there (`employee.direct`, for a change only); it slides the 15 minutes,
+ * and the page is drawn again either way, with the marks as they are.
  */
 export async function markDirectGroupAction(
   business: string,
   person: string,
   group: string,
   marked: boolean,
-): Promise<HolderWriteAnswer> {
+): Promise<MarkDirectAnswer> {
   const who = await fileHolder(business);
   if ("failure" in who) return { ok: false, failure: who.failure };
   const whose = z.uuid().safeParse(person);
@@ -316,49 +317,17 @@ export async function markDirectGroupAction(
     if (!(await fileOpenFor(who.businessId, who.userId))) {
       return { ok: false, failure: "stepUp" };
     }
-    const read = await getDirectGroups(who.businessId, whose.data);
-    if (!read.ok) {
-      if (read.failure !== "denied") {
-        return {
-          ok: false,
-          failure: read.failure === "failed" ? "failed" : "unavailable",
-        };
-      }
-      switch (read.reason) {
-        case "ack":
-        case "off":
-          return { ok: false, failure: read.reason };
-        default:
-          return { ok: false, failure: "noAccess" };
-      }
-    }
-    const next = directGroupsAfter(
-      read.groups,
+    const done = await markDirectGroup(
+      who.userId,
+      who.businessId,
+      whose.data,
       which.data,
       mark.data,
-      fileGroupsAsked({
-        address: who.settings.askAddress,
-        bank: who.settings.askBank,
-      }),
     );
-    if (next === null) return { ok: false, failure: "failed" };
-    const same =
-      next.length === read.groups.length &&
-      next.every((each) => read.groups.includes(each));
-    if (!same) {
-      const done = await setDirectGroups(
-        who.userId,
-        who.businessId,
-        whose.data,
-        next,
-      );
-      if (!done.ok) {
-        return { ok: false, failure: writeFailure(done, "failed") };
-      }
-    }
+    if (!done.ok) return { ok: false, failure: writeFailure(done, "failed") };
     await keepFileOpen(who.businessId, who.userId);
     refresh();
-    return { ok: true };
+    return { ok: true, changed: done.changed };
   } catch (error) {
     return { ok: false, ...logged("marking a file failed", error) };
   }

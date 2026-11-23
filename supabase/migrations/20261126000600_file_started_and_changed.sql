@@ -1,30 +1,45 @@
--- The hiring file (profile H6b-2, issue #82 §2.5, §2.7): what a holder's
--- screens need that the reads didn't give.
+-- The hiring file (profile H6b, issue #82 §2.5, §2.7, §3.3): what a
+-- holder's screens need that the reads didn't give, and one mark at a time.
 --
---   started_on  private.file_answer gives the open employment period's
+--   started_on  private.file_answer gives the current employment period's
 --               first day (null with none), so a minor's file says when
 --               the notice of the terms of work is due, a week on. The
 --               periods themselves are read under the session only with
 --               clock.payroll and the clock on, which a holder may lack.
+--               Current: the newest that hasn't ended by the business's
+--               today, so a fixed-term job whose end a pay holder entered
+--               ahead (a summer job, up to a year ahead) still counts.
+--   the pension private.pension_due_on reads the same current period, for
+--               the same fixed-term job: before, its due day was null.
 --   changed_at  public.employee_file_status gives a holder, in `detail`,
 --               when the file or its 101 was last written, by anyone: the
 --               newer of the file's updated_at and its years' newest.
 --               Never a read, and never the emergency contact (its own
 --               table), so the team's desktop says "שינוי אחרון" without
 --               reading every log row of the business.
+--   the marks   public.set_direct_groups adds or takes off one part
+--               ("נמסר ישירות לשכר") under the file's lock, reading the
+--               stored set there, and says whether anything changed. It
+--               took the whole set a screen read before, so two holders'
+--               presses at once could lose one mark, and a press that
+--               changed nothing was offered an undo that took back another
+--               holder's mark.
 --
--- It replaces private.file_answer and public.employee_file_status
--- (20261126000200_employee_files.sql's), each its newest body with only
--- these changes, the same signatures; revoked and granted again all the
--- same. Nothing else changes.
+-- It replaces private.file_answer, private.pension_due_on and
+-- public.employee_file_status (20261126000200_employee_files.sql's), each
+-- its newest body with only these changes, the same signatures; and
+-- public.set_direct_groups (20261126000200's, its body unchanged since),
+-- dropped and made again with the new arguments and answer. Revoked and
+-- granted again all the same. Nothing else changes.
 
 ------------------------------------------------------------------------------
--- 1. The file, with the open period's start
+-- 1. The file, with the current period's start
 
 -- The file as `reader` reads it ('self' or 'holder'): its plain part, the
 -- sealed values the screens open (never the ID number or the account), the
 -- wrapped key, what is missing, the 18th birthday, the pension's due date,
--- the open employment period's first day and the 101 years.
+-- the current employment period's first day (the newest not ended by the
+-- business's today: open, or ending ahead) and the 101 years.
 create or replace function private.file_answer(business uuid, person uuid, reader text)
 returns jsonb
 language sql
@@ -73,7 +88,10 @@ as $$
       select p.started_on from public.employment_periods p
       where p.business_id = file_answer.business
         and p.user_id = file_answer.person
-        and p.ended_on is null
+        and (
+          p.ended_on is null
+          or p.ended_on >= private.file_today(file_answer.business, now())
+        )
       order by p.started_on desc
       limit 1
     ),
@@ -95,7 +113,36 @@ as $$
 $$;
 
 ------------------------------------------------------------------------------
--- 2. The status, with when each file last changed
+-- 2. The pension's due day, from the same current period
+
+-- When the pension answer is due: 60 days after the current period began
+-- (the newest not ended by the business's today: open, or ending ahead),
+-- while there is none (or 'later') and it wasn't handed directly.
+create or replace function private.pension_due_on(business uuid, person uuid)
+returns date
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select p.started_on + 60
+  from public.employment_periods p
+  left join public.employee_details e
+    on e.business_id = p.business_id and e.user_id = p.user_id
+  where p.business_id = pension_due_on.business
+    and p.user_id = pension_due_on.person
+    and (
+      p.ended_on is null
+      or p.ended_on >= private.file_today(pension_due_on.business, now())
+    )
+    and (e.pension_answer is null or e.pension_answer = 'later')
+    and not ('pension' = any (coalesce(e.direct_groups, '{}'::text[])))
+  order by p.started_on desc
+  limit 1
+$$;
+
+------------------------------------------------------------------------------
+-- 3. The status, with when each file last changed
 
 -- How complete each active manager's and worker's file is (owners are left
 -- out, as for a payroll number), while the module is on. A holder (not in a
@@ -182,10 +229,95 @@ as $$
 $$;
 
 ------------------------------------------------------------------------------
--- 3. Who may call them
+-- 4. One mark at a time
+
+-- It took the whole set (`groups text[]`), which a screen read earlier.
+drop function public.set_direct_groups(uuid, uuid, uuid, text[], timestamptz);
+
+-- A holder marks one part of a file "נמסר ישירות לשכר" (`marked`), any of
+-- the groups the business asks, or takes the mark off any part, one it
+-- stopped asking among them. The stored set is read under the file's lock,
+-- so two holders' presses at once each keep the other's. True when the set
+-- changed; false, writing nothing, when the part already was so (another
+-- holder's press first), so a screen offers "ביטול" only for a change it
+-- made, and an undo after someone else took that change back writes nothing.
+-- The set stays in FILE_GROUPS' order. Logged employee.direct {person,
+-- groups}, with the set after the change.
+create function public.set_direct_groups(
+  actor uuid,
+  business uuid,
+  person uuid,
+  file_group text,
+  marked boolean,
+  at_time timestamptz default now()
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  person_role public.member_role;
+  all_groups constant text[] := array['identity', 'address', 'bank', 'pension'];
+  was_groups text[];
+  new_groups text[];
+begin
+  perform private.check_file_writes(business);
+  perform private.check_file_actor(business, actor);
+  person_role := private.file_person_role(business, person);
+  perform private.check_file_holder(business, actor, person_role);
+
+  if file_group is null
+    or marked is null
+    or not (file_group = any (all_groups))
+    or (marked and not (file_group = any (private.file_groups(business))))
+  then
+    raise exception 'Groups of the file only' using errcode = '22023';
+  end if;
+
+  perform private.file_lock(business, person);
+  select e.direct_groups into was_groups
+  from public.employee_details e
+  where e.business_id = business and e.user_id = person
+  for update;
+  was_groups := coalesce(was_groups, '{}'::text[]);
+  if (file_group = any (was_groups)) = marked then
+    return false;
+  end if;
+
+  select coalesce(array_agg(g.name order by g.place), '{}'::text[])
+  into new_groups
+  from unnest(all_groups) with ordinality as g (name, place)
+  where case when g.name = file_group then marked else g.name = any (was_groups) end;
+
+  insert into public.employee_details as e (business_id, user_id, direct_groups, updated_by, updated_at)
+  values (business, person, new_groups, actor, coalesce(at_time, now()))
+  on conflict (business_id, user_id) do update set
+    direct_groups = excluded.direct_groups,
+    updated_by = excluded.updated_by,
+    updated_at = excluded.updated_at;
+
+  insert into public.audit_log (business_id, actor_id, action, details)
+  values (
+    business, actor, 'employee.direct',
+    jsonb_build_object('person', person, 'groups', to_jsonb(new_groups))
+  );
+  return true;
+end;
+$$;
+
+------------------------------------------------------------------------------
+-- 5. Who may call them
 
 -- Replaced in place, the same signatures, so their grants stay; revoked and
 -- granted again all the same.
 revoke execute on function private.file_answer(uuid, uuid, text) from public, anon, authenticated;
+revoke execute on function private.pension_due_on(uuid, uuid) from public, anon, authenticated;
 revoke execute on function public.employee_file_status(uuid) from public, anon;
 grant execute on function public.employee_file_status(uuid) to authenticated;
+
+-- Made again: the secret key's alone, as before.
+revoke execute on function public.set_direct_groups(uuid, uuid, uuid, text, boolean, timestamptz)
+  from public, anon, authenticated;
+grant execute on function public.set_direct_groups(uuid, uuid, uuid, text, boolean, timestamptz)
+  to service_role;

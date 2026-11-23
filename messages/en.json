@@ -1780,7 +1780,7 @@
           "failed": "Something didn't work. You can try again.",
           "demo": "In a demo business the files stay as they are.",
           "closed": "Files can't be changed here yet.",
-          "notInTeam": "No longer on the team, so the file can't be changed."
+          "notInTeam": "{first} is no longer on the team, so the file can't be changed."
         },
         "direct": {
           "mark": "Mark as handed directly to payroll",
@@ -1790,7 +1790,11 @@
           "marked": "Marked as handed directly to payroll: {group}",
           "pensionMarked": "Marked that {business} chose a fund",
           "unmarked": "Mark removed: {group}",
+          "alreadyMarked": "Already marked meanwhile as handed directly to payroll: {group}",
+          "alreadyUnmarked": "The mark was already removed meanwhile: {group}",
           "undo": "Undo",
+          "undoRefused": "“Undo” didn't go through, so what it says here about {group} stays as it is.",
+          "undoWayBack": "You can change it with “{label}”.",
           "groups": {
             "identity": "the ID details",
             "address": "the address",
@@ -1814,7 +1818,7 @@
           "bankAck": "Confirmed the bank account",
           "bankDisputed": "“I didn't change it” on the bank account",
           "taxYear": "Form 101 for {year}: {status, select, handed_in {handed in} accepted {was accepted} returned {was returned} change_due {an updated form is due} other {mark removed}}",
-          "direct": "Marked “handed directly to payroll”: {groups}",
+          "direct": "Now marked “handed directly to payroll”: {groups}",
           "directCleared": "The “handed directly to payroll” mark was removed",
           "empty": "Nothing changed or shown here yet.",
           "more": "Showing the last {count} actions here.",

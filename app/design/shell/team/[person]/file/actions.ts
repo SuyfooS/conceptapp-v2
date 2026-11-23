@@ -7,6 +7,7 @@ import type {
   HolderWriteAnswer,
   KeepOpenAnswer,
   LockAnswer,
+  MarkDirectAnswer,
   RevealHolderAnswer,
   SendFileCodeAnswer,
 } from "../../../../../(app)/team/[person]/file/holder-file-types";
@@ -63,12 +64,13 @@ export async function demoAcknowledgeBankAction(
   return state === "moved" ? { ok: false, failure: "moved" } : { ok: true };
 }
 
+/** Every press changes the twin's file: its address is the state, drawn as asked. */
 export async function demoMarkDirectAction(
   _group: string,
   _marked: boolean,
-): Promise<HolderWriteAnswer> {
+): Promise<MarkDirectAnswer> {
   await pause();
-  return { ok: true };
+  return { ok: true, changed: true };
 }
 
 export async function demoKeepFileOpenAction(): Promise<KeepOpenAnswer> {

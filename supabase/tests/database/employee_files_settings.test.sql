@@ -6,11 +6,13 @@
 -- they were; and the groups the file counts follow askAddress and askBank
 -- (a stored value that isn't a boolean read as the default), in
 -- private.file_missing, in the worker's own read and in what a holder may
--- mark handed directly. The helpers run for nobody but their callers.
--- Fixed ids (f5…), numbers (050-078-xxxx) and slugs (efs-…), so nothing here
--- meets the seed or another test.
+-- mark handed directly (a mark on a part no longer asked still comes off,
+-- one part at a time since 20261126000600_file_started_and_changed.sql).
+-- The helpers run for nobody but their callers. Fixed ids (f5…), numbers
+-- (050-078-xxxx) and slugs (efs-…), so nothing here meets the seed or
+-- another test.
 begin;
-select plan(22);
+select plan(23);
 
 -- A: 1 its owner, 2 a manager (manage.edit, clock.edit and order_taking.edit
 -- by default), 3 a worker, 4 an owner who left. 5 is on the ConceptApp
@@ -160,11 +162,19 @@ select is(private.file_missing(pg_temp.a(), pg_temp.p(3)), '{address}'::text[],
   'nor is it missing');
 select is(
   pg_temp.refusal(format(
-    'select public.set_direct_groups(%L, %L, %L, %L)',
-    pg_temp.p(1), pg_temp.a(), pg_temp.p(3), '{bank}'
+    'select public.set_direct_groups(%L, %L, %L, %L, true)',
+    pg_temp.p(1), pg_temp.a(), pg_temp.p(3), 'bank'
   )),
   '22023',
   'and a holder can''t mark it handed directly'
+);
+select is(
+  pg_temp.refusal(format(
+    'select public.set_direct_groups(%L, %L, %L, %L, false)',
+    pg_temp.p(1), pg_temp.a(), pg_temp.p(3), 'bank'
+  )),
+  'none',
+  'though a mark on it would still come off'
 );
 
 ------------------------------------------------------------------------------

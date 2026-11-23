@@ -199,6 +199,15 @@ export type HolderWriteAnswer =
   | { ok: true }
   | { ok: false; failure: HolderWriteFailure };
 
+/**
+ * A mark's press went: `changed` when it changed the file, false when the
+ * part already was so (another holder's press first), so "ביטול" is offered
+ * only for a change this press made.
+ */
+export type MarkDirectAnswer =
+  | { ok: true; changed: boolean }
+  | { ok: false; failure: HolderWriteFailure };
+
 /** The screen's actions, bound to the business (and the reveal to the person), or the twin's. */
 export type HolderFileActions = {
   acknowledge: () => Promise<AcknowledgeAnswer>;
@@ -211,5 +220,5 @@ export type HolderFileActions = {
   /** "ראיתי את החשבון החדש": the account as the screen read it (H6b-1). */
   acknowledgeBank: (seenChangedAt: string) => Promise<HolderWriteAnswer>;
   /** "נמסר ישירות לשכר" on one part, or the mark taken off (H6b-1). */
-  markDirect: (group: FileGroup, marked: boolean) => Promise<HolderWriteAnswer>;
+  markDirect: (group: FileGroup, marked: boolean) => Promise<MarkDirectAnswer>;
 };

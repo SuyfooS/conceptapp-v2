@@ -294,6 +294,11 @@ function groupState(
   const business = head.businessName;
   const marked = t("team.file.direct.marked", { group: named });
   const unmarked = t("team.file.direct.unmarked", { group: named });
+  // Found already so: another holder's press came first.
+  const alreadyMarked = t("team.file.direct.alreadyMarked", { group: named });
+  const alreadyUnmarked = t("team.file.direct.alreadyUnmarked", {
+    group: named,
+  });
   if (data.missing.includes(group)) {
     const passed =
       group === "pension" &&
@@ -320,10 +325,13 @@ function groupState(
             }
             hint={passed ? undefined : t("team.file.direct.markHint")}
             words={{
+              group: named,
               done: passed
                 ? t("team.file.direct.pensionMarked", { business })
                 : marked,
               undone: unmarked,
+              already: alreadyMarked,
+              alreadyUndone: alreadyUnmarked,
             }}
             current={data.direct}
           />
@@ -343,7 +351,13 @@ function groupState(
             group={group}
             marked={false}
             label={t("team.file.direct.unmark")}
-            words={{ done: unmarked, undone: marked }}
+            words={{
+              group: named,
+              done: unmarked,
+              undone: marked,
+              already: alreadyUnmarked,
+              alreadyUndone: alreadyMarked,
+            }}
             current={data.direct}
           />
         }
@@ -547,7 +561,7 @@ function OpenFile(props: OpenProps) {
       : null;
 
   return (
-    <FileEdits actions={actions} twin={paths.twin}>
+    <FileEdits actions={actions} first={first} twin={paths.twin}>
       <div className="flex flex-col gap-6 md:gap-8">
         <div
           data-file-grid
@@ -697,6 +711,11 @@ function OpenFile(props: OpenProps) {
                 number={
                   bank.masked ? (
                     <HolderReveal
+                      // Keyed by the change it shows: a newer account
+                      // (changed again while the old one's digits were
+                      // shown) starts at the dots, so "ראיתי את החשבון
+                      // החדש" never sits beside the old number.
+                      key={bank.changedAt ?? "bank"}
                       field="bank_account"
                       label={t("team.file.rows.account")}
                       masked={bank.masked}

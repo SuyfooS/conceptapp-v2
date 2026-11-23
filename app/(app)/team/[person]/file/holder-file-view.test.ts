@@ -1,4 +1,4 @@
-import { createElement } from "react";
+import { createElement, isValidElement, type ReactElement } from "react";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type {
@@ -24,12 +24,15 @@ vi.mock("next/link", () => ({
     createElement("a", { href, ...rest }, children as never),
 }));
 
-const { NextIntlClientProvider, createTranslator } = await import("next-intl");
+const { NextIntlClientProvider, createFormatter, createTranslator } =
+  await import("next-intl");
 const { HolderFileView } = await import("./holder-file-view");
+const { HolderReveal } = await import("./holder-reveal");
+const { historyLine } = await import("./file-history");
 const { demoFileHistory, demoHolderFile, DEMO_HOLDER_NUMBERS } = await import(
   "../../../../design/shell/data"
 );
-const { baseWording } = await import("../../../wording");
+const { baseWording, translator } = await import("../../../wording");
 const he = (await import("@/messages/he.json")).default;
 const en = (await import("@/messages/en.json")).default;
 
@@ -102,6 +105,40 @@ const text = (html: string) =>
     .replace(/&#x27;/g, "'");
 
 const f = he.app.team.file;
+
+/**
+ * The elements a screen is made of, as React gets them, keys and all
+ * (markup has none): the server's own parts called, and an island's props
+ * looked through, its children and the elements it takes, since its hooks
+ * run only inside React.
+ */
+function elementsOf(node: unknown): ReactElement[] {
+  const found: ReactElement[] = [];
+  const walk = (each: unknown) => {
+    if (Array.isArray(each)) {
+      for (const item of each) walk(item);
+      return;
+    }
+    if (!isValidElement(each)) return;
+    found.push(each);
+    const props = each.props as Record<string, unknown>;
+    for (const value of Object.values(props)) walk(value);
+    if (typeof each.type !== "function") return;
+    try {
+      walk((each.type as (props: unknown) => unknown)(props));
+    } catch {
+      // An island: its hooks need React, and its props were looked through.
+    }
+  };
+  // React says so of each hook called outside it.
+  const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    walk(node);
+  } finally {
+    quiet.mockRestore();
+  }
+  return found;
+}
 
 describe("a holder's file screen", () => {
   it("shows the duties with their seven lines and the one action that confirms them", () => {
@@ -459,6 +496,79 @@ describe("what a holder does in the open file", () => {
       }),
     );
     expect(page).toContain(heT("app.team.file.history.more", { count: 40 }));
+  });
+
+  it("starts a newer account at the dots, never beside the old account's digits", () => {
+    // The bank's "הצגה" keeps the digits shown for a minute: keyed by the
+    // change it shows, a change since (said by "החשבון הוחלף שוב בינתיים")
+    // starts it again, hidden (the second review).
+    const reveals = (changedAt: string | null) => {
+      const data = demoHolderFile("noa", "new");
+      return elementsOf(
+        HolderFileView({
+          screen: {
+            kind: "open",
+            head: head(),
+            data: { ...data, bank: data.bank && { ...data.bank, changedAt } },
+            history: NO_HISTORY,
+          },
+          paths: { profile: "/team/noa", team: "/team" },
+          actions,
+          wording: baseWording,
+        }),
+      ).filter(
+        (element) =>
+          element.type === HolderReveal &&
+          (element.props as { field: string }).field === "bank_account",
+      );
+    };
+    const read = "2026-11-20T08:00:00.123456+00:00";
+    const since = "2026-11-20T08:00:05.000001+00:00";
+    expect(reveals(read).length).toBeGreaterThan(0);
+    expect(new Set(reveals(read).map((element) => element.key))).toEqual(
+      new Set([read]),
+    );
+    expect(new Set(reveals(since).map((element) => element.key))).toEqual(
+      new Set([since]),
+    );
+    expect(new Set(reveals(null).map((element) => element.key))).toEqual(
+      new Set(["bank"]),
+    );
+  });
+
+  it("says in the history what is marked since, by the file's own names of its parts", () => {
+    const t = translator(baseWording, "app");
+    const format = createFormatter({
+      locale: "he",
+      timeZone: "Asia/Jerusalem",
+    });
+    const marks = (groups: ("identity" | "pension")[]) =>
+      historyLine(t, format, {
+        id: 7,
+        at: "2026-11-22T12:05:00Z",
+        actor: { kind: "member", name: "גלית הדגמה" },
+        line: {
+          action: "employee.direct",
+          person: { kind: "member", name: "נועה כהן" },
+          groups,
+        },
+      });
+    // The row holds the set after a change: "עכשיו מסומן", never "סימון",
+    // which read as the press that marked them all.
+    expect(marks(["identity", "pension"])).toBe(
+      heT("app.team.file.history.direct", {
+        groups: format.list(
+          [f.direct.groups.identity, f.direct.groups.pension],
+          { type: "conjunction" },
+        ),
+      }),
+    );
+    // As the section's toast names it, not the activity log's other word.
+    expect(marks(["identity"])).toContain(f.direct.groups.identity);
+    expect(marks(["identity"])).not.toContain(
+      he.app.manage.activity.actions.employee.groups.identity,
+    );
+    expect(marks([])).toBe(f.history.directCleared);
   });
 
   it("reminds the business what it owes a minor, and nothing for an adult", () => {

@@ -187,27 +187,6 @@ export const FILE_HISTORY_ACTIONS = [
 /** The newest lines "מה קרה בתיק" shows. */
 export const FILE_HISTORY_SIZE = 40;
 
-/**
- * The parts marked "נמסר ישירות לשכר" after one press: `group` added
- * (`marked`) or taken away, in FILE_GROUPS' order, among the groups the
- * business asks only. The database refuses any other, so a mark on a part
- * the business stopped asking goes with the next press. Null when `group`
- * isn't asked and is being marked.
- */
-export function directGroupsAfter(
-  current: readonly FileGroup[],
-  group: FileGroup,
-  marked: boolean,
-  asked: readonly FileGroup[],
-): FileGroup[] | null {
-  if (marked && !asked.includes(group)) return null;
-  return FILE_GROUPS.filter(
-    (each) =>
-      asked.includes(each) &&
-      (each === group ? marked : current.includes(each)),
-  );
-}
-
 /** The pension is missing and its day to choose (`dueOn`) is behind `today`: the business chooses now. */
 export function pensionPassed(
   missing: readonly FileGroup[],

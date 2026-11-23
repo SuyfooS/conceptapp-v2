@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import he from "@/messages/he.json";
-import { GROUP_SECTION, marksAfter, writeOutcome } from "./file-edits-rules";
+import {
+  GROUP_SECTION,
+  type MarkWords,
+  markSaid,
+  marksAfter,
+  undoRefusal,
+  writeOutcome,
+} from "./file-edits-rules";
 
 /*
  * What the open file's islands do with a holder's write (profile H6b-1):
@@ -77,5 +84,68 @@ describe("a holder's write, on the screen", () => {
     expect(marksAfter(["pension"], "bank", true)).toEqual(["bank", "pension"]);
     expect(marksAfter(["bank", "pension"], "bank", false)).toEqual(["pension"]);
     expect(marksAfter([], "identity", false)).toEqual([]);
+    expect(marksAfter(["bank"], "bank", true)).toEqual(["bank"]);
+  });
+});
+
+// The second review: "ביטול" only for a change the press made, and a
+// refused one said in its part's row.
+describe("a mark's toast", () => {
+  const said: MarkWords = {
+    group: "חשבון הבנק",
+    done: "done",
+    undone: "undone",
+    already: "already",
+    alreadyUndone: "alreadyUndone",
+  };
+
+  it("offers the undo only after a press that changed the file", () => {
+    expect(markSaid(said, true, false)).toEqual({ text: "done", undo: true });
+    // Another holder's press came first: the part already was so, and an
+    // undo here would take back their mark.
+    expect(markSaid(said, false, false)).toEqual({
+      text: "already",
+      undo: false,
+    });
+  });
+
+  it("says what the undo did, or that its change was taken back already, and offers no undo of it", () => {
+    expect(markSaid(said, true, true)).toEqual({ text: "undone", undo: false });
+    expect(markSaid(said, false, true)).toEqual({
+      text: "alreadyUndone",
+      undo: false,
+    });
+  });
+
+  it("names the button there as the way back when pressing again may help, or else says why not", () => {
+    expect(undoRefusal("failures.failed", true)).toEqual({
+      wayBack: true,
+      reason: null,
+    });
+    expect(undoRefusal("failures.failed", false)).toEqual({
+      wayBack: false,
+      reason: null,
+    });
+    expect(undoRefusal("failures.notInTeam", true)).toEqual({
+      wayBack: false,
+      reason: "failures.notInTeam",
+    });
+    expect(undoRefusal("failures.businessChanged", false)).toEqual({
+      wayBack: false,
+      reason: "failures.businessChanged",
+    });
+  });
+
+  it("has words for each, with the part and the button named", () => {
+    for (const key of [
+      "direct.alreadyMarked",
+      "direct.alreadyUnmarked",
+      "direct.undoRefused",
+    ]) {
+      expect(words(key), key).toMatch(/\{group\}/);
+    }
+    expect(words("direct.undoWayBack")).toMatch(/\{label\}/);
+    // A refusal on someone else's file names whose (the second review).
+    expect(words("failures.notInTeam")).toMatch(/^\{first\} /);
   });
 });

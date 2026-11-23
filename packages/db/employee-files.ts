@@ -272,41 +272,6 @@ export async function getEmployeeFile(
 }
 
 /**
- * The parts of someone's file marked "נמסר ישירות לשכר", read fresh for a
- * holder's press (H6b-1): `set_direct_groups` takes the whole set, so a set
- * a screen drew earlier would take back another holder's mark. The same
- * read the holder's screen makes (`employee_file`, under the session,
- * logged once a day), but nothing sealed is opened and no key unwrapped.
- * Without the keys it asks nothing, as every read of a file.
- */
-export async function getDirectGroups(
-  businessId: string,
-  personId: string,
-): Promise<{ ok: true; groups: FileGroup[] } | FileReadFailure> {
-  if (!employeeKeyRing()) return { ok: false, failure: "keys" };
-  const supabase = await createClient();
-  const { data, error } = await supabase.rpc("employee_file", {
-    business: businessId,
-    person: personId,
-  });
-  if (error) {
-    if (isMissingFunction(error)) return { ok: false, failure: "unavailable" };
-    console.error("reading a file's marks failed", error.code, error.message);
-    return { ok: false, failure: "failed" };
-  }
-  const reply = fileReply.safeParse(data);
-  if (!reply.success) return { ok: false, failure: "failed" };
-  const answer = reply.data;
-  if (answer.access === "denied") {
-    return { ok: false, failure: "denied", reason: answer.reason };
-  }
-  if (answer.access !== "holder") {
-    return { ok: false, failure: "denied", reason: "not_holder" };
-  }
-  return { ok: true, groups: answer.file?.direct_groups ?? [] };
-}
-
-/**
  * Whether this deployment holds the file's keys: without them every read
  * says `keys` before the database, so a holder's screen asks first and sends
  * no SMS for a file that couldn't open (H6a).
@@ -956,21 +921,35 @@ export async function disputeBankChange(
   return error ? failedWith("disputing a change failed", error) : { ok: true };
 }
 
-/** A holder marks parts of a file "נמסר ישירות לשכר" (none takes the mark off). */
-export async function setDirectGroups(
+/**
+ * A holder marks one part of a file "נמסר ישירות לשכר" (`marked`), or takes
+ * the mark off (H6b; 20261126000600_file_started_and_changed.sql): the
+ * database adds or takes off that part alone, reading the stored marks
+ * under the file's lock, so two holders' presses at once each keep the
+ * other's, and says whether anything changed (`changed` false: the part
+ * already was so, nothing written). A part the business doesn't ask is
+ * refused for a mark (`invalid`), never for taking one off.
+ */
+export async function markDirectGroup(
   actorId: string,
   businessId: string,
   personId: string,
-  groups: readonly FileGroup[],
-): Promise<FileWriteResult> {
+  group: FileGroup,
+  marked: boolean,
+): Promise<{ ok: true; changed: boolean } | FileWriteFailure> {
   if (!employeeKeyRing()) return { ok: false, failure: "keys" };
-  const { error } = await createAdminClient().rpc("set_direct_groups", {
+  const { data, error } = await createAdminClient().rpc("set_direct_groups", {
     actor: actorId,
     business: businessId,
     person: personId,
-    groups: [...groups],
+    file_group: group,
+    marked,
   });
-  return error ? failedWith("marking a file failed", error) : { ok: true };
+  if (error) return failedWith("marking a file failed", error);
+  // Only a yes or a no: anything else says nothing about the file.
+  return typeof data === "boolean"
+    ? { ok: true, changed: data }
+    : { ok: false, failure: "failed" };
 }
 
 /** A year's Form 101 marked, or its mark taken off (`status` null). */

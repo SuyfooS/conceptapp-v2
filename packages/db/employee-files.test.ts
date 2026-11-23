@@ -932,7 +932,7 @@ describe("a holder's state", () => {
   });
 });
 
-// Profile H6b: what a holder writes, and the marks read fresh first.
+// Profile H6b: what a holder writes.
 describe("a holder's writes", () => {
   const holderReply = (direct: string[]) => ({
     data: {
@@ -956,64 +956,13 @@ describe("a holder's writes", () => {
     error: null,
   });
 
-  it("read the marks under the session, opening nothing", async () => {
-    db.answers.employee_file = () => holderReply(["bank", "pension"]);
-    expect(await files.getDirectGroups(BUSINESS, NOA)).toEqual({
-      ok: true,
-      groups: ["bank", "pension"],
-    });
-    expect(callsTo("employee_file")).toEqual([
-      {
-        fn: "employee_file",
-        args: { business: BUSINESS, person: NOA },
-        as: "session",
-      },
-    ]);
-    expect(callsTo("employee_data_key")).toEqual([]);
-  });
-
-  it("say why the marks weren't read, and fail closed", async () => {
-    db.answers.employee_file = () => ({
-      data: { access: "denied", reason: "ack" },
-      error: null,
-    });
-    expect(await files.getDirectGroups(BUSINESS, NOA)).toEqual({
-      ok: false,
-      failure: "denied",
-      reason: "ack",
-    });
-    db.answers.employee_file = () => ({
-      ...holderReply([]),
-      data: { ...holderReply([]).data, access: "self" },
-    });
-    expect(await files.getDirectGroups(BUSINESS, NOA)).toEqual({
-      ok: false,
-      failure: "denied",
-      reason: "not_holder",
-    });
-    db.answers.employee_file = () => ({
-      data: null,
-      error: { code: "PGRST202", message: "no such function" },
-    });
-    expect(await files.getDirectGroups(BUSINESS, NOA)).toEqual({
-      ok: false,
-      failure: "unavailable",
-    });
-    db.answers.employee_file = () => ({ data: { access: "x" }, error: null });
-    expect(await files.getDirectGroups(BUSINESS, NOA)).toEqual({
-      ok: false,
-      failure: "failed",
-    });
-  });
-
   it("ask nothing without the keys", async () => {
     const saved = process.env.EMPLOYEE_DATA_KEKS;
     delete process.env.EMPLOYEE_DATA_KEKS;
     try {
-      expect(await files.getDirectGroups(BUSINESS, NOA)).toEqual({
-        ok: false,
-        failure: "keys",
-      });
+      expect(
+        await files.markDirectGroup(OWNER, BUSINESS, NOA, "bank", true),
+      ).toEqual({ ok: false, failure: "keys" });
       expect(db.calls).toEqual([]);
     } finally {
       process.env.EMPLOYEE_DATA_KEKS = saved ?? "";
@@ -1047,10 +996,11 @@ describe("a holder's writes", () => {
     });
   });
 
-  it("send the whole set of marks as given", async () => {
+  it("send one part and whether it is marked, and hear whether anything changed", async () => {
+    db.answers.set_direct_groups = () => ({ data: true, error: null });
     expect(
-      await files.setDirectGroups(OWNER, BUSINESS, NOA, ["bank", "pension"]),
-    ).toEqual({ ok: true });
+      await files.markDirectGroup(OWNER, BUSINESS, NOA, "bank", true),
+    ).toEqual({ ok: true, changed: true });
     expect(callsTo("set_direct_groups")).toEqual([
       {
         fn: "set_direct_groups",
@@ -1058,11 +1008,43 @@ describe("a holder's writes", () => {
           actor: OWNER,
           business: BUSINESS,
           person: NOA,
-          groups: ["bank", "pension"],
+          file_group: "bank",
+          marked: true,
         },
         as: "admin",
       },
     ]);
+    // The part already was so: nothing written, and no undo to offer.
+    db.answers.set_direct_groups = () => ({ data: false, error: null });
+    expect(
+      await files.markDirectGroup(OWNER, BUSINESS, NOA, "pension", false),
+    ).toEqual({ ok: true, changed: false });
+    expect(callsTo("set_direct_groups").at(-1)?.args).toMatchObject({
+      file_group: "pension",
+      marked: false,
+    });
+  });
+
+  it("say a refusal, a database before the change, and an answer that isn't a yes or a no", async () => {
+    db.answers.set_direct_groups = () => ({
+      data: null,
+      error: { code: "22023", message: "Groups of the file only" },
+    });
+    expect(
+      await files.markDirectGroup(OWNER, BUSINESS, NOA, "bank", true),
+    ).toEqual({ ok: false, failure: "invalid" });
+    // The old function took the whole set: these arguments find none.
+    db.answers.set_direct_groups = () => ({
+      data: null,
+      error: { code: "PGRST202", message: "no such function" },
+    });
+    expect(
+      await files.markDirectGroup(OWNER, BUSINESS, NOA, "bank", true),
+    ).toEqual({ ok: false, failure: "unavailable" });
+    db.answers.set_direct_groups = () => ({ data: null, error: null });
+    expect(
+      await files.markDirectGroup(OWNER, BUSINESS, NOA, "bank", true),
+    ).toEqual({ ok: false, failure: "failed" });
   });
 
   it("read the open period's start, and none from a database before it", async () => {
