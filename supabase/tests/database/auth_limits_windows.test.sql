@@ -215,7 +215,7 @@ select is(
 select is(
   (select count(*)::int from private.auth_attempts
    where key_hash = encode(sha256(convert_to('caller:7.7.7.3', 'UTF8')), 'hex')),
-  5, 'the stranger''s own counts stay'
+  4, 'the stranger''s own counts stay: three sends and a check, the refused send counted nowhere'
 );
 select ok(
   (select count(*) from private.auth_attempts
