@@ -4322,6 +4322,7 @@ export type Database = {
         Returns: Json;
       };
       file_holder_state: { Args: { business: string }; Returns: string };
+      file_space: { Args: { actor: string; business: string }; Returns: Json };
       finish_list: {
         Args: { actor: string; at_time?: string; list: string };
         Returns: undefined;

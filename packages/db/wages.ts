@@ -1,5 +1,6 @@
 import "server-only";
 import { type WageFailure, type WageRow, wageFailureOf } from "@domain/wages";
+import { readAllPages } from "./pages";
 import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
 
@@ -30,12 +31,22 @@ export async function getWages(
   userId?: string,
 ): Promise<PersonWage[]> {
   const supabase = await createClient();
-  let query = supabase
-    .from("member_wages")
-    .select("id, user_id, hourly_agorot, effective_from, set_at, set_by, note")
-    .eq("business_id", businessId);
-  if (userId) query = query.eq("user_id", userId);
-  const { data, error } = await query.order("effective_from").order("set_at");
+  // Every wage ever, so page by page: cut at 1000, the newest would be the
+  // ones missing.
+  const { data, error } = await readAllPages((first, last) => {
+    let query = supabase
+      .from("member_wages")
+      .select(
+        "id, user_id, hourly_agorot, effective_from, set_at, set_by, note",
+      )
+      .eq("business_id", businessId);
+    if (userId) query = query.eq("user_id", userId);
+    return query
+      .order("effective_from")
+      .order("set_at")
+      .order("id")
+      .range(first, last);
+  });
   if (error) {
     if (isMissingTable(error)) return [];
     throw error;

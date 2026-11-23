@@ -88,6 +88,7 @@ export async function setNotificationPreferences(
   timeZone?: string,
 ): Promise<PreferencesSaveResult> {
   const supabase = await createClient();
+  // bounded: the signed-in person's own row.
   const { data, error } = await supabase.rpc(
     "set_notification_preferences",
     argumentsFor(change, timeZone),

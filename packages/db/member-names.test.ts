@@ -44,6 +44,14 @@ function namesQuery() {
       read.push([`${column} in`, values]);
       return query;
     },
+    order: (column: string) => {
+      read.push(["order", column]);
+      return query;
+    },
+    range: (first: number, last: number) => {
+      read.push(["range", [first, last]]);
+      return query;
+    },
     // biome-ignore lint/suspicious/noThenProperty: a stand-in for the query builder, which is awaited.
     then: (
       resolve: (value: ReturnType<typeof answer>) => unknown,
@@ -95,6 +103,8 @@ describe("memberNames", () => {
       [
         ["select", "user_id, name"],
         ["business_id", BUSINESS],
+        ["order", "user_id"],
+        ["range", [0, 999]],
       ],
     ]);
     // Over their own, and theirs when it keeps none.
@@ -110,6 +120,8 @@ describe("memberNames", () => {
         ["select", "user_id, name"],
         ["business_id", BUSINESS],
         ["user_id in", [NOA, YOAV]],
+        ["order", "user_id"],
+        ["range", [0, 999]],
       ],
     ]);
     expect([...(await memberNames(client, BUSINESS, []))]).toEqual([]);

@@ -3072,6 +3072,22 @@ export async function demoDocumentsBy(
     order by d.sent_at desc`;
 }
 
+/**
+ * How many are on a business's staff now but `person`: who "כל הצוות" on
+ * the send screen reaches (bigger teams), counted as the database counts it.
+ */
+export async function demoStaffCount(
+  business: string,
+  person: string,
+): Promise<number> {
+  const [row] = await sql<{ count: number }[]>`
+    select count(*)::int as count from public.memberships m
+    where m.business_id = ${business} and m.active
+      and m.role in ('owner', 'manager', 'worker')
+      and m.user_id <> ${person}`;
+  return row?.count ?? 0;
+}
+
 /** One document, as the database keeps it; null when there is none. */
 export async function demoDocument(id: string): Promise<DemoDocument | null> {
   const [row] = await sql<DemoDocument[]>`

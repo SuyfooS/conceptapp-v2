@@ -24,6 +24,7 @@ import { z } from "zod";
 import type { Database } from "./database.types";
 import { memberNames, nameIn } from "./member-names";
 import { isMissingColumn, isMissingFunction } from "./missing";
+import { readAllPages } from "./pages";
 import { getPayRolesForTeam } from "./payroll";
 import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
@@ -126,6 +127,7 @@ function matrixOf(rows: readonly MatrixRowOf[]): RoleMatrix {
  * reaches it). An admin read: callers check the team member first.
  */
 async function readMatrix(businessId: string): Promise<RoleMatrix | null> {
+  // bounded: 22 roles at most (20 named) times the keys, about 20.
   const { data, error } = await createAdminClient().rpc(
     "role_permission_matrix",
     { business: businessId },
@@ -246,16 +248,21 @@ async function readRolePeople(
   businessId: string,
   photos: boolean,
 ): Promise<RolePeopleRow[]> {
+  // One row a person on the staff, and nothing caps how many: page by page.
   const people = (named: boolean) =>
-    supabase
-      .from("memberships")
-      .select(
-        named
-          ? "user_id, role, named_role, profiles (full_name, avatar_path)"
-          : "user_id, role, profiles (full_name, avatar_path)",
-      )
-      .eq("business_id", businessId)
-      .eq("active", true);
+    readAllPages((first, last) =>
+      supabase
+        .from("memberships")
+        .select(
+          named
+            ? "user_id, role, named_role, profiles (full_name, avatar_path)"
+            : "user_id, role, profiles (full_name, avatar_path)",
+        )
+        .eq("business_id", businessId)
+        .eq("active", true)
+        .order("user_id")
+        .range(first, last),
+    );
   const [first, names] = await Promise.all([
     people(true),
     memberNames(supabase, businessId),
@@ -316,13 +323,17 @@ async function readRoleInvites(
   businessId: string,
   now: Date,
 ): Promise<RoleInvites> {
-  const { data, error } = await supabase
-    .from("invites")
-    .select("named_role")
-    .eq("business_id", businessId)
-    .is("claimed_at", null)
-    .gt("expires_at", now.toISOString())
-    .not("named_role", "is", null);
+  const { data, error } = await readAllPages((first, last) =>
+    supabase
+      .from("invites")
+      .select("named_role")
+      .eq("business_id", businessId)
+      .is("claimed_at", null)
+      .gt("expires_at", now.toISOString())
+      .not("named_role", "is", null)
+      .order("id")
+      .range(first, last),
+  );
   if (isMissingColumn(error)) return new Map();
   if (error) throw error;
   const counts = new Map<string, number>();
@@ -376,17 +387,26 @@ export type RoleLists = ReadonlyMap<string, number>;
  */
 async function readRoleLists(businessId: string): Promise<RoleLists> {
   const admin = createAdminClient();
+  // Archived templates keep their times, so both page by page.
   const [templates, times] = await Promise.all([
-    admin
-      .from("list_templates")
-      .select("id, recipient_named_role")
-      .eq("business_id", businessId)
-      .is("archived_at", null),
-    admin
-      .from("list_schedules")
-      .select("template_id, recipient_named_role")
-      .eq("business_id", businessId)
-      .not("recipient_named_role", "is", null),
+    readAllPages((first, last) =>
+      admin
+        .from("list_templates")
+        .select("id, recipient_named_role")
+        .eq("business_id", businessId)
+        .is("archived_at", null)
+        .order("id")
+        .range(first, last),
+    ),
+    readAllPages((first, last) =>
+      admin
+        .from("list_schedules")
+        .select("template_id, recipient_named_role")
+        .eq("business_id", businessId)
+        .not("recipient_named_role", "is", null)
+        .order("id")
+        .range(first, last),
+    ),
   ]);
   for (const { error } of [templates, times]) {
     if (isMissingColumn(error)) return new Map();

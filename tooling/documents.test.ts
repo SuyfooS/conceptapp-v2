@@ -1,6 +1,10 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  CHAT_FILE_SPACE_MB,
+  DEFAULT_CHAT_FILE_SPACE_MB,
+} from "@domain/chat-files";
+import {
   DEFAULT_DOCUMENT_SPACE_MB,
   DOCUMENT_CATEGORIES,
   DOCUMENT_CATEGORY_KEYS,
@@ -176,6 +180,46 @@ describe("a document's numbers in the database", () => {
     expect(newest("private\\.chat_settings")).toContain(
       `'documentSpaceMb', ${DEFAULT_DOCUMENT_SPACE_MB}`,
     );
+  });
+
+  it("are what a business's own people read of its spaces", () => {
+    // public.file_space (bigger teams): the documents as their refusal
+    // counts them, and the chat files' space as the clean-up keeps it, so
+    // the screens' numbers are the rules' numbers.
+    const space = newest("public\\.file_space");
+    expect(space).toContain(
+      "'document_bytes', private.documents_held_bytes(business)",
+    );
+    expect(space).toContain(
+      "'document_space_bytes', private.document_space_bytes(business)",
+    );
+    for (const mb of CHAT_FILE_SPACE_MB.filter(
+      (mb) => mb !== DEFAULT_CHAT_FILE_SPACE_MB,
+    )) {
+      expect(space).toContain(`when '${mb}' then ${mb}::bigint`);
+    }
+    expect(space).toContain(`else ${DEFAULT_CHAT_FILE_SPACE_MB}::bigint`);
+    expect(newest("public\\.admin_storage")).toContain(
+      "private.documents_held_bytes(b.id) as document_bytes",
+    );
+  });
+
+  it("let a photo of a page and 1,000 people fit one server action", () => {
+    // Next's default `serverActions.bodySizeLimit` is 1 MB, and
+    // next.config.ts sets none: the largest send to people, with its photo,
+    // stays under it.
+    const to = Array.from(
+      { length: DOCUMENT_RECIPIENTS_MAX },
+      (_, n) => `00000000-0000-4000-a000-${n.toString(16).padStart(12, "0")}`,
+    );
+    const fields = JSON.stringify({
+      direction: "to_people",
+      category: "payslip",
+      title: "x".repeat(DOCUMENT_TITLE_MAX),
+      to,
+      asks: true,
+    });
+    expect(DOCUMENT_PHOTO_MAX_BYTES + fields.length).toBeLessThan(1024 * 1024);
   });
 });
 

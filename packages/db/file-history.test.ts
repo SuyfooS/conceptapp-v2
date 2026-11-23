@@ -35,6 +35,7 @@ function builder(table: string) {
     "filter",
     "order",
     "limit",
+    "range",
   ]) {
     chain[step] = (...args: unknown[]) => {
       query.steps.push([step, ...args]);

@@ -10,6 +10,7 @@ import { z } from "zod";
 import type { Database } from "./database.types";
 import { memberNames, nameIn } from "./member-names";
 import { isMissingColumn, isMissingFunction } from "./missing";
+import { allPages, allPagesIn, readAllPages } from "./pages";
 import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
 import { businessRoleNames } from "./team";
@@ -55,13 +56,18 @@ type PersonRow = {
  */
 export async function getPayPeople(businessId: string): Promise<PayPerson[]> {
   const supabase = await createClient();
+  // Everyone who ever joined, so page by page.
   const [read, names] = await Promise.all([
-    supabase
-      .from("memberships")
-      .select(
-        "user_id, role, active, profiles (full_name, avatar_path, address_form)",
-      )
-      .eq("business_id", businessId),
+    readAllPages((first, last) =>
+      supabase
+        .from("memberships")
+        .select(
+          "user_id, role, active, profiles (full_name, avatar_path, address_form)",
+        )
+        .eq("business_id", businessId)
+        .order("user_id")
+        .range(first, last),
+    ),
     memberNames(supabase, businessId),
   ]);
   let rows: PersonRow[];
@@ -70,12 +76,14 @@ export async function getPayPeople(businessId: string): Promise<PayPerson[]> {
   } else {
     // Before the profile's H2 migration there is no form of address yet.
     if (!isMissingColumn(read.error)) throw read.error;
-    const older = await supabase
-      .from("memberships")
-      .select("user_id, role, active, profiles (full_name, avatar_path)")
-      .eq("business_id", businessId);
-    if (older.error) throw older.error;
-    rows = older.data;
+    rows = await allPages((first, last) =>
+      supabase
+        .from("memberships")
+        .select("user_id, role, active, profiles (full_name, avatar_path)")
+        .eq("business_id", businessId)
+        .order("user_id")
+        .range(first, last),
+    );
   }
   return rows.map((row) => ({
     userId: row.user_id,
@@ -269,16 +277,21 @@ async function readAccessPeople(
   supabase: SupabaseClient<Database>,
   businessId: string,
 ): Promise<AccessPerson[]> {
+  // One row a person on the staff, and nothing caps how many: page by page.
   const people = (named: boolean) =>
-    supabase
-      .from("memberships")
-      .select(
-        named
-          ? "user_id, role, named_role, perms, profiles (full_name, avatar_path)"
-          : "user_id, role, perms, profiles (full_name, avatar_path)",
-      )
-      .eq("business_id", businessId)
-      .eq("active", true);
+    readAllPages((first, last) =>
+      supabase
+        .from("memberships")
+        .select(
+          named
+            ? "user_id, role, named_role, perms, profiles (full_name, avatar_path)"
+            : "user_id, role, perms, profiles (full_name, avatar_path)",
+        )
+        .eq("business_id", businessId)
+        .eq("active", true)
+        .order("user_id")
+        .range(first, last),
+    );
   const [read, roles, names] = await Promise.all([
     people(true),
     businessRoleNames(supabase, businessId),
@@ -392,13 +405,19 @@ export async function getCorrections(
 ): Promise<{ entryId: string; at: string; from: OriginalTimes }[]> {
   if (entryIds.length === 0) return [];
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("audit_log")
-    .select("details, created_at")
-    .eq("business_id", businessId)
-    .eq("action", "clock.correct")
-    .in("details->>entry", [...entryIds]);
-  if (error) throw error;
+  // A month's corrected entries, in parts so the address stays short, and
+  // each part page by page: an entry corrected many times has many rows.
+  const data = await allPagesIn(entryIds, (part, first, last) =>
+    supabase
+      .from("audit_log")
+      .select("details, created_at")
+      .eq("business_id", businessId)
+      .eq("action", "clock.correct")
+      .in("details->>entry", part)
+      .order("created_at")
+      .order("id")
+      .range(first, last),
+  );
   return data.flatMap((row) => {
     const details = row.details as {
       entry?: unknown;

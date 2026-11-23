@@ -54,7 +54,7 @@ import {
 } from "./list-history";
 import { isMissingColumn, isMissingFunction } from "./missing";
 import { isMissingTable } from "./notifications";
-import { allPages } from "./pages";
+import { readAllPages, readAllPagesIn } from "./pages";
 import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
 
@@ -228,10 +228,11 @@ type Supabase = Awaited<ReturnType<typeof createClient>>;
 
 /**
  * The people, the progress, the named roles (`namedRolesOf`) and the last
- * fixes (`fixedTimesOf`) of these lists, read under RLS. Their items are
- * read page by page (`allPages`): a day's lists, with the closed ones still
- * to fix (L6b-2), can pass PostgREST's `max_rows`, past which a read is cut
- * short without an error and the counts would come out wrong.
+ * fixes (`fixedTimesOf`) of these lists, read under RLS. Each read takes the
+ * ids in parts, so the address stays short, and each part page by page
+ * (`readAllPagesIn`): a day's lists, with the closed ones still to fix
+ * (L6b-2), and their people, can pass PostgREST's `max_rows`, past which a
+ * read is cut short without an error and the counts would come out wrong.
  */
 async function partsOf(
   supabase: Supabase,
@@ -251,36 +252,45 @@ async function partsOf(
   let fixed = new Map<string, string>();
   if (ids.length > 0) {
     const [peopleRows, itemRows, namedRows, fixedRows] = await Promise.all([
-      supabase
-        .from("list_people")
-        .select("list_id, user_id")
-        .in("list_id", [...ids]),
-      allPages((first, last) =>
+      readAllPagesIn(ids, (part, first, last) =>
+        supabase
+          .from("list_people")
+          .select("list_id, user_id")
+          .in("list_id", part)
+          .order("list_id")
+          .order("user_id")
+          .range(first, last),
+      ),
+      readAllPagesIn(ids, (part, first, last) =>
         supabase
           .from("list_items")
           .select("list_id, required, done")
-          .in("list_id", [...ids])
+          .in("list_id", part)
           .order("list_id")
           .order("id")
           .range(first, last),
-      ).then(
-        (data) => ({ data, error: null }),
-        // As the other reads answer: a missing table is "notYet".
-        (error: unknown) => ({ data: null, error: error as { code?: string } }),
       ),
       namedRolesOf(
-        supabase
-          .from("lists")
-          .select("id, recipient_named_role")
-          .in("id", [...ids])
-          .not("recipient_named_role", "is", null),
+        readAllPagesIn(ids, (part, first, last) =>
+          supabase
+            .from("lists")
+            .select("id, recipient_named_role")
+            .in("id", part)
+            .not("recipient_named_role", "is", null)
+            .order("id")
+            .range(first, last),
+        ),
       ),
       fixedTimesOf(
-        supabase
-          .from("lists")
-          .select("id, fixed_at")
-          .in("id", [...ids])
-          .not("fixed_at", "is", null),
+        readAllPagesIn(ids, (part, first, last) =>
+          supabase
+            .from("lists")
+            .select("id, fixed_at")
+            .in("id", part)
+            .not("fixed_at", "is", null)
+            .order("id")
+            .range(first, last),
+        ),
       ),
     ]);
     named = namedRows;
@@ -330,28 +340,39 @@ async function summaries(
 /** A window of time, as ISO instants: from, and up to but not including, to. */
 export type Window = { from: string; to: string };
 
-/** Every open list the person may read, and those closed that opened in the window. */
+/**
+ * Every open list the person may read, and those closed that opened in the
+ * window, each page by page (`id` breaking ties, so none falls between two).
+ */
 async function openAndClosed(
   supabase: Supabase,
   businessId: string,
   window: Window,
 ) {
   return Promise.all([
-    supabase
-      .from("lists")
-      .select(LIST_COLUMNS)
-      .eq("business_id", businessId)
-      .eq("status", "open")
-      .order("due_at", { ascending: true, nullsFirst: false })
-      .order("opens_at", { ascending: true }),
-    supabase
-      .from("lists")
-      .select(LIST_COLUMNS)
-      .eq("business_id", businessId)
-      .neq("status", "open")
-      .gte("opens_at", window.from)
-      .lt("opens_at", window.to)
-      .order("opens_at", { ascending: false }),
+    readAllPages((first, last) =>
+      supabase
+        .from("lists")
+        .select(LIST_COLUMNS)
+        .eq("business_id", businessId)
+        .eq("status", "open")
+        .order("due_at", { ascending: true, nullsFirst: false })
+        .order("opens_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(first, last),
+    ),
+    readAllPages((first, last) =>
+      supabase
+        .from("lists")
+        .select(LIST_COLUMNS)
+        .eq("business_id", businessId)
+        .neq("status", "open")
+        .gte("opens_at", window.from)
+        .lt("opens_at", window.to)
+        .order("opens_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(first, last),
+    ),
   ]);
 }
 
@@ -381,20 +402,25 @@ export async function getMyLists(
   const [[open, closed], departments, earlier] = await Promise.all([
     openAndClosed(supabase, businessId, window),
     supabase
+      // bounded: one person's departments, of at most 30 live ones.
       .from("department_members")
       .select("department_id")
       .eq("business_id", businessId)
       .eq("user_id", person.userId),
     fixableSince === null
       ? null
-      : supabase
-          .from("lists")
-          .select(LIST_COLUMNS)
-          .eq("business_id", businessId)
-          .eq("status", "finished")
-          .gte("finished_at", fixableSince)
-          .lt("opens_at", window.from)
-          .order("finished_at", { ascending: false }),
+      : readAllPages((first, last) =>
+          supabase
+            .from("lists")
+            .select(LIST_COLUMNS)
+            .eq("business_id", businessId)
+            .eq("status", "finished")
+            .gte("finished_at", fixableSince)
+            .lt("opens_at", window.from)
+            .order("finished_at", { ascending: false })
+            .order("id", { ascending: false })
+            .range(first, last),
+        ),
   ]);
   for (const { error } of [
     open,
@@ -462,13 +488,18 @@ export async function getListsOn(
   window: Window,
 ): Promise<ListSummary[] | "notYet"> {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("lists")
-    .select(LIST_COLUMNS)
-    .eq("business_id", businessId)
-    .gte("opens_at", window.from)
-    .lt("opens_at", window.to)
-    .order("opens_at", { ascending: true });
+  // A window of a month or more holds many days' lists: page by page.
+  const { data, error } = await readAllPages((first, last) =>
+    supabase
+      .from("lists")
+      .select(LIST_COLUMNS)
+      .eq("business_id", businessId)
+      .gte("opens_at", window.from)
+      .lt("opens_at", window.to)
+      .order("opens_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(first, last),
+  );
   if (error) {
     if (isMissingTable(error)) return "notYet";
     throw error;
@@ -495,12 +526,14 @@ const ITEM_COLUMNS =
  */
 async function itemRows(supabase: Supabase, listId: string) {
   const withFixed = await supabase
+    // bounded: one list's items, at most 60 (and in the two reads below).
     .from("list_items")
     .select(`${ITEM_COLUMNS}, photo_removed_at, fixed_at`)
     .eq("list_id", listId)
     .order("position");
   if (!isMissingColumn(withFixed.error)) return withFixed;
   const withRemoved = await supabase
+    // bounded: one list's items.
     .from("list_items")
     .select(`${ITEM_COLUMNS}, photo_removed_at`)
     .eq("list_id", listId)
@@ -512,6 +545,7 @@ async function itemRows(supabase: Supabase, listId: string) {
     };
   }
   const without = await supabase
+    // bounded: one list's items.
     .from("list_items")
     .select(ITEM_COLUMNS)
     .eq("list_id", listId)
@@ -626,8 +660,17 @@ export async function getList(
         .eq("id", listId)
         .maybeSingle(),
       itemRows(supabase, listId),
-      supabase.from("list_people").select("user_id").eq("list_id", listId),
+      // One list can go to everyone on the staff.
+      readAllPages((first, last) =>
+        supabase
+          .from("list_people")
+          .select("user_id")
+          .eq("list_id", listId)
+          .order("user_id")
+          .range(first, last),
+      ),
       supabase
+        // bounded: one list's passes between departments.
         .from("list_passes")
         .select(
           "id, from_department, to_department, passed_by, passed_at, note",
@@ -636,6 +679,7 @@ export async function getList(
         .order("passed_at"),
       namedRolesOf(
         supabase
+          // bounded: one list.
           .from("lists")
           .select("id, recipient_named_role")
           .eq("id", listId)
@@ -643,6 +687,7 @@ export async function getList(
       ),
       fixedTimesOf(
         supabase
+          // bounded: one list.
           .from("lists")
           .select("id, fixed_at")
           .eq("id", listId)
@@ -754,7 +799,9 @@ function templateRecipientOf(
 
 /**
  * Templates with their items and (for list managers, and the team through
- * the secret key) their schedules.
+ * the secret key) their schedules. A hundred templates of 60 items pass
+ * PostgREST's 1000 rows, so each read takes the ids in parts and each part
+ * page by page, a template's items and times in their order.
  */
 async function templatesFrom(
   supabase: SupabaseClient<Database>,
@@ -763,33 +810,51 @@ async function templatesFrom(
   const ids = rows.map((row) => row.id);
   if (ids.length === 0) return [];
   const [items, schedules, namedTemplates, namedSchedules] = await Promise.all([
-    supabase
-      .from("list_template_items")
-      .select(
-        "id, template_id, kind, label, hint, required, unit, min_value, max_value, default_quantity",
-      )
-      .in("template_id", ids)
-      .order("position"),
-    supabase
-      .from("list_schedules")
-      .select(
-        "id, template_id, days, anchor, shift_key, opens_offset, due_offset, recipient_kind, recipient_user, recipient_department, recipient_shift, recipient_role, active, starts_on, opens_from",
-      )
-      .in("template_id", ids)
-      .order("position"),
-    namedRolesOf(
+    readAllPagesIn(ids, (part, first, last) =>
       supabase
-        .from("list_templates")
-        .select("id, recipient_named_role")
-        .in("id", ids)
-        .not("recipient_named_role", "is", null),
+        .from("list_template_items")
+        .select(
+          "id, template_id, kind, label, hint, required, unit, min_value, max_value, default_quantity",
+        )
+        .in("template_id", part)
+        .order("template_id")
+        .order("position")
+        .order("id")
+        .range(first, last),
     ),
-    namedRolesOf(
+    readAllPagesIn(ids, (part, first, last) =>
       supabase
         .from("list_schedules")
-        .select("id, recipient_named_role")
-        .in("template_id", ids)
-        .not("recipient_named_role", "is", null),
+        .select(
+          "id, template_id, days, anchor, shift_key, opens_offset, due_offset, recipient_kind, recipient_user, recipient_department, recipient_shift, recipient_role, active, starts_on, opens_from",
+        )
+        .in("template_id", part)
+        .order("template_id")
+        .order("position")
+        .order("id")
+        .range(first, last),
+    ),
+    namedRolesOf(
+      readAllPagesIn(ids, (part, first, last) =>
+        supabase
+          .from("list_templates")
+          .select("id, recipient_named_role")
+          .in("id", part)
+          .not("recipient_named_role", "is", null)
+          .order("id")
+          .range(first, last),
+      ),
+    ),
+    namedRolesOf(
+      readAllPagesIn(ids, (part, first, last) =>
+        supabase
+          .from("list_schedules")
+          .select("id, recipient_named_role")
+          .in("template_id", part)
+          .not("recipient_named_role", "is", null)
+          .order("id")
+          .range(first, last),
+      ),
     ),
   ]);
   for (const { error } of [items, schedules]) {
@@ -855,18 +920,23 @@ async function templatesFrom(
 
 /**
  * The business's list templates, in their order: live ones for every member,
- * the removed ones too for list managers (for the undo).
+ * the removed ones too for list managers (for the undo). Page by page: the
+ * removed ones are kept.
  */
 export async function getListTemplates(
   businessId: string,
 ): Promise<ListTemplate[] | "notYet"> {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("list_templates")
-    .select(TEMPLATE_COLUMNS)
-    .eq("business_id", businessId)
-    .order("position")
-    .order("name");
+  const { data, error } = await readAllPages((first, last) =>
+    supabase
+      .from("list_templates")
+      .select(TEMPLATE_COLUMNS)
+      .eq("business_id", businessId)
+      .order("position")
+      .order("name")
+      .order("id")
+      .range(first, last),
+  );
   if (error) {
     if (isMissingTable(error)) return "notYet";
     throw error;
@@ -907,12 +977,16 @@ export async function getListTemplatesForTeam(
   businessId: string,
 ): Promise<ListTemplate[] | "notYet"> {
   const admin = createAdminClient();
-  const { data, error } = await admin
-    .from("list_templates")
-    .select(TEMPLATE_COLUMNS)
-    .eq("business_id", businessId)
-    .order("position")
-    .order("name");
+  const { data, error } = await readAllPages((first, last) =>
+    admin
+      .from("list_templates")
+      .select(TEMPLATE_COLUMNS)
+      .eq("business_id", businessId)
+      .order("position")
+      .order("name")
+      .order("id")
+      .range(first, last),
+  );
   if (error) {
     if (isMissingTable(error)) return "notYet";
     throw error;
@@ -1058,21 +1132,25 @@ export async function getSentLists(
 /**
  * The readings of a template's number item in the window, oldest first, each
  * flagged when it was outside the item's range: the walk-in fridge across a
- * month.
+ * month. Page by page: a few a day over a long window pass 1000.
  */
 export async function getReadings(
   templateItemId: string,
   window: Window,
 ): Promise<Reading[] | "notYet"> {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("list_items")
-    .select("id, list_id, reading, min_value, max_value, done_at, done_by")
-    .eq("template_item_id", templateItemId)
-    .not("reading", "is", null)
-    .gte("done_at", window.from)
-    .lt("done_at", window.to)
-    .order("done_at");
+  const { data, error } = await readAllPages((first, last) =>
+    supabase
+      .from("list_items")
+      .select("id, list_id, reading, min_value, max_value, done_at, done_by")
+      .eq("template_item_id", templateItemId)
+      .not("reading", "is", null)
+      .gte("done_at", window.from)
+      .lt("done_at", window.to)
+      .order("done_at")
+      .order("id")
+      .range(first, last),
+  );
   if (error) {
     if (isMissingTable(error)) return "notYet";
     throw error;
@@ -1118,9 +1196,10 @@ const READING_COLUMNS =
   "id, list_id, template_item_id, label, unit, min_value, max_value, reading, done_at, done_by";
 
 /**
- * The number items of these lists, in each list's order, with their readings:
- * the manager's overview of a day and its week. Under RLS, which lets the
- * reader see the items of the lists they read. Where
+ * The number items of these lists, list by list and in each list's order,
+ * with their readings: the manager's overview of a day and its week. Under
+ * RLS, which lets the reader see the items of the lists they read. A week's
+ * lists are many ids, so in parts, and each part page by page. Where
  * 20261116000300_lists_fix.sql hasn't reached the project yet, none was
  * fixed.
  */
@@ -1129,24 +1208,37 @@ export async function getListReadings(
 ): Promise<ListReading[] | "notYet"> {
   if (listIds.length === 0) return [];
   const supabase = await createClient();
-  const withFixed = await supabase
-    .from("list_items")
-    .select(`${READING_COLUMNS}, fixed_at`)
-    .in("list_id", [...listIds])
-    .eq("kind", "number")
-    .order("position");
+  const withFixed = await readAllPagesIn(listIds, (part, first, last) =>
+    supabase
+      .from("list_items")
+      .select(`${READING_COLUMNS}, fixed_at`)
+      .in("list_id", part)
+      .eq("kind", "number")
+      .order("list_id")
+      .order("position")
+      .order("id")
+      .range(first, last),
+  );
   const { data, error } = !isMissingColumn(withFixed.error)
     ? withFixed
-    : await supabase
-        .from("list_items")
-        .select(READING_COLUMNS)
-        .in("list_id", [...listIds])
-        .eq("kind", "number")
-        .order("position")
-        .then((read) => ({
-          ...read,
-          data: (read.data ?? []).map((row) => ({ ...row, fixed_at: null })),
-        }));
+    : await readAllPagesIn(listIds, (part, first, last) =>
+        supabase
+          .from("list_items")
+          .select(READING_COLUMNS)
+          .in("list_id", part)
+          .eq("kind", "number")
+          .order("list_id")
+          .order("position")
+          .order("id")
+          .range(first, last),
+      ).then((read) =>
+        read.data === null
+          ? read
+          : {
+              data: read.data.map((row) => ({ ...row, fixed_at: null })),
+              error: null,
+            },
+      );
   if (error) {
     if (isMissingTable(error)) return "notYet";
     throw error;
@@ -1290,12 +1382,14 @@ export async function saveListTemplate(
       .eq("business_id", businessId)
       .maybeSingle(),
     admin
+      // bounded: one template's items, at most 60.
       .from("list_template_items")
       .select("id")
       .eq("template_id", saved.data.id)
       .eq("business_id", businessId)
       .order("position"),
     admin
+      // bounded: one template's times, at most 7.
       .from("list_schedules")
       .select("id")
       .eq("template_id", saved.data.id)

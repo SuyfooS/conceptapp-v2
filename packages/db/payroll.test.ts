@@ -63,6 +63,8 @@ function namesQuery() {
     select: () => query,
     eq: () => query,
     in: () => query,
+    order: () => query,
+    range: () => query,
     // biome-ignore lint/suspicious/noThenProperty: a stand-in for the query builder, which is awaited.
     then: (
       resolve: (value: ReturnType<typeof answer>) => unknown,
@@ -93,6 +95,8 @@ function membersQuery() {
       return query;
     },
     eq: () => query,
+    order: () => query,
+    range: () => query,
     // biome-ignore lint/suspicious/noThenProperty: a stand-in for the query builder, which is awaited.
     then: (
       resolve: (value: ReturnType<typeof answer>) => unknown,
@@ -111,6 +115,8 @@ function rolesQuery() {
   const query = {
     select: () => query,
     eq: () => query,
+    order: () => query,
+    range: () => query,
     // biome-ignore lint/suspicious/noThenProperty: a stand-in for the query builder, which is awaited.
     then: (
       resolve: (value: ReturnType<typeof answer>) => unknown,
@@ -152,6 +158,8 @@ function client() {
           filters.push([column, value]);
           return query;
         },
+        order: () => query,
+        range: () => query,
         // biome-ignore lint/suspicious/noThenProperty: a stand-in for the query builder, which is awaited.
         then: (
           resolve: (value: ReturnType<typeof answer>) => unknown,

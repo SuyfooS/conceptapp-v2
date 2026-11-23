@@ -32,6 +32,7 @@ type Query = Promise<unknown> & {
   in: () => Query;
   is: () => Query;
   order: () => Query;
+  range: () => Query;
   maybeSingle: () => Promise<unknown>;
 };
 
@@ -43,6 +44,7 @@ function query(table: string): Query {
     in: () => query(table),
     is: () => query(table),
     order: () => query(table),
+    range: () => query(table),
     maybeSingle: async () => result(),
   });
 }

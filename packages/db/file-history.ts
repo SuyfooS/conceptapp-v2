@@ -87,6 +87,7 @@ export async function getFileHistory(
   const [members, names] = await Promise.all([
     actors.length
       ? supabase
+          // bounded: the people the file's newest 40 lines name.
           .from("memberships")
           .select("user_id, active, profiles (full_name)")
           .eq("business_id", businessId)

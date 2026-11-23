@@ -22,6 +22,7 @@ import type { FileReview } from "@domain/file-holders";
 import type { ModuleRow } from "@domain/modules";
 import type { AddressForm, CoverPreset } from "@domain/profile";
 import type { Position, ShiftPattern } from "@domain/staffing";
+import type { FileSpace } from "@domain/storage-use";
 import type { GivableNamedRole, TeamInvite, TeamMember } from "@domain/team";
 import type {
   FileHistory,
@@ -442,6 +443,9 @@ export const demoModuleRows: ModuleRow[] = [
   { key: "storefront", enabled: false, settings: {} },
   { key: "notifications", enabled: true, settings: {} },
   { key: "lists", enabled: true, settings: {} },
+  // Chat, on as the local seed has it: its settings on
+  // /design/shell/manage/chat, with how full the spaces are (bigger teams).
+  { key: "chat", enabled: true, settings: {} },
   // Taking orders, on as the local seed's restaurant has it (waiter mode
   // P2): its menu on /design/order-taking.
   { key: "order_taking", enabled: true, settings: {} },
@@ -1206,3 +1210,25 @@ export const demoFileReviews: FileReview[] = [
   { userId: "itay", review: "disputed" },
   { userId: "maya", review: "new" },
 ];
+
+/** How full the demo business's spaces for files are (`?space=` on /design/shell/manage/chat). */
+export type DemoSpaceLevel = "quiet" | "near" | "full";
+
+/**
+ * The demo business's spaces as `public.file_space` gives them (bigger
+ * teams): quiet, its documents at 12 of 50 MB and its chat files at 34 of
+ * 100; `near`, documents at 42 and chat files at 86; `full`, documents at
+ * 49.6 of 50 (less than a page's photo left) and chat files at 97.
+ */
+export function demoFileSpace(level: DemoSpaceLevel): FileSpace {
+  const MB = 1024 * 1024;
+  const [documents, chat] =
+    level === "full" ? [49.6, 97] : level === "near" ? [42, 86] : [12, 34];
+  return {
+    filesOpen: true,
+    documentBytes: Math.round(documents * MB),
+    documentSpaceBytes: 50 * MB,
+    chatBytes: Math.round(chat * MB),
+    chatSpaceBytes: 100 * MB,
+  };
+}

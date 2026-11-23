@@ -33,6 +33,16 @@ export type DocumentPeople = Record<
 /** The business's clock: its zone, today's date there, and now (ISO). */
 export type DocumentClock = { timeZone: string; today: string; now: string };
 
+/**
+ * The business's space for documents, once it is filling up or full
+ * (`documentSpaceState`), for the office and whoever sends documents.
+ */
+export type DocumentSpace = {
+  state: "near" | "full";
+  usedBytes: number;
+  spaceBytes: number;
+};
+
 /** `/chat/documents`: the office's documents, or a person's own. */
 export type DocumentsScreenData = {
   business: string;
@@ -68,6 +78,8 @@ export type DocumentsScreenData = {
   months: string[];
   /** The database hasn't documents yet. */
   notYet: boolean;
+  /** For the office and a sender: the space for documents filling or full, else null. */
+  space: DocumentSpace | null;
 };
 
 /** `/chat/documents/[id]`. */
@@ -107,6 +119,8 @@ export type DocumentSendData = {
   people: DocumentRecipientChoice[];
   /** The live departments, each with its people on the staff. */
   departments: { id: string; name: string; members: string[] }[];
+  /** For a sender: the space for documents filling or full, else null. */
+  space: DocumentSpace | null;
 };
 
 /** Today's part. */

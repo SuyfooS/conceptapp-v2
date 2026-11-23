@@ -50,6 +50,7 @@ function query(answer: Answer): Promise<Answer> {
     gt: narrowed,
     limit: narrowed,
     order: narrowed,
+    range: narrowed,
     maybeSingle: narrowed,
   });
 }

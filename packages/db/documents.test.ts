@@ -229,6 +229,24 @@ describe("sendDocument", () => {
     ]);
   });
 
+  it("sends to 1,000 people, and refuses 1,001 without asking", async () => {
+    const people = (count: number) =>
+      Array.from(
+        { length: count },
+        (_, n) => `91000000-0000-4000-a000-${n.toString(16).padStart(12, "0")}`,
+      );
+    admin.answers.send_document = ok(DOCUMENT);
+    expect(
+      await sendDocument(ACTOR, BUSINESS, { ...toPeople, to: people(1000) }),
+    ).toEqual({ ok: true, value: { document: DOCUMENT } });
+    expect(admin.calls[0]?.args.send_to).toEqual(people(1000));
+    admin.calls.length = 0;
+    expect(
+      await sendDocument(ACTOR, BUSINESS, { ...toPeople, to: people(1001) }),
+    ).toEqual({ ok: false, failure: "invalid" });
+    expect(admin.calls).toEqual([]);
+  });
+
   it("sends a demo's sample to the business, with nobody named and no note", async () => {
     admin.answers.send_document = ok(DOCUMENT);
     await sendDocument(ACTOR, BUSINESS, {
