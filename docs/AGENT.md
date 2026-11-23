@@ -34,9 +34,11 @@ it knows is this repo and its GitHub issues.
   template's defaults. The shop's week is always published; the restaurant's is the
   visitor's to build. How each starts is in `private.demo_businesses`, and the door's
   reset puts both back (`public.reset_demo_business`).
-- Real sign-in and its security wait (Orel, 6 November). Until then, the passive door
-  at `/enter`, reaching only the demo people. Migrations reach the hosted project only
-  through the manual workflow (`supabase/README.md`).
+- Sign-in has two doors on `/enter` (Orel, 8 November): a phone number with an SMS
+  code, and the demo door, reaching only the demo people. `DEMO_DOOR=off` closes the
+  demo door on a site: the site of real businesses has it off, the demo's own address
+  on (Orel, 22 November). Migrations reach the hosted project only through the manual
+  workflow (`supabase/README.md`); production's are Orel's (`docs/production.md`).
 - Kept as they are: the whole team sees the whole published schedule, a schedule can be
   published with gaps, and every swap needs a manager's approval.
 - Notifications are back in scope (Orel, 8 and 9 November 2026, issue #1), after the QR
@@ -221,6 +223,11 @@ if a reverted migration reached one, open an `urgent` issue.
   hold `EMPLOYEE_DATA_KEKS`: the keys are Orel's, in Vercel only. A test reads
   only its own rows, with a key of its own, locally or in CI.
 - Contact the pilot restaurant or anyone else outside this repo.
+- Write a customer's name, a person's, or their data anywhere on GitHub (code, docs,
+  tests, issues, PRs, commits): the repo is public (Orel, 22 November 2026). Say
+  "a first real business".
+- Run, approve or rerun Migrate conceptapp-prod, or connect to conceptapp-prod in any
+  way: production is Orel's (`docs/production.md`).
 - Delete the repository, other people's branches, or data outside the dev
   project. Never rewrite published history.
 - Lower a quality bar to finish a chunk: no skipped tests, no `any`, no
@@ -408,6 +415,7 @@ The design rework is under way in day sessions with Orel, toward `docs/design/ta
   `docs/design/apple-rework-plan.md`.
 - Running log: `docs/agent/LOG.md` (plus the `יומן הסוכן` issue).
 - Rules for code and UI: `CLAUDE.md`.
+- Production, the project and the site of real businesses: `docs/production.md`.
 - Product decisions, roadmap and business model: the App Design Document and
   Business Model in Orel's ConceptApp project on claude.ai (links in
   `README.md`). The agent cannot edit those; record decisions in the log.
