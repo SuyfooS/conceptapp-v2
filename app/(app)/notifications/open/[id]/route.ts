@@ -1,7 +1,8 @@
 import { getNotification, readNotifications } from "@db/notifications";
 import { isUuid } from "@domain/activity";
+import { isAppPath } from "@domain/app-path";
 import { BUSINESS_COOKIE } from "@domain/businesses";
-import { INBOX_PATH, isAppPath, linkFor } from "@domain/notifications";
+import { INBOX_PATH, linkFor } from "@domain/notifications";
 import { canWrite } from "@domain/view-as";
 import { NextResponse } from "next/server";
 import { requestOrigin } from "@/app/origin";

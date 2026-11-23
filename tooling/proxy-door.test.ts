@@ -1,3 +1,7 @@
+import {
+  AFTER_SIGN_IN_COOKIE,
+  AFTER_SIGN_IN_MAX_AGE,
+} from "@domain/after-sign-in";
 import { getRedirectUrl } from "next/experimental/testing/server";
 import { NextRequest, NextResponse } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,6 +11,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // demo people beside real sign-in; where it is closed (off) straight to
 // /sign-in, in one hop, and /enter itself goes on there. Signed in, either
 // door leads home. The session read is stood in for.
+//
+// The page a signed-out visitor opened (known issue 21): the redirect to the
+// door keeps it in an httpOnly cookie for 15 minutes, its address bare; only
+// for a page opened in the window, so the router's own fetches, a prefetch,
+// an image or a POST leave the cookie as it is. A page that can't be kept
+// (Today, the console, a file, a route handler) forgets one kept before.
+// Signed in, the cookie is never touched.
 
 const mocks = vi.hoisted(() => ({ userId: null as string | null }));
 vi.mock("@db/supabase/proxy", () => ({
@@ -35,6 +46,67 @@ async function sends(path: string): Promise<string | null> {
   expect(url.origin, path).toBe(SITE);
   return url.pathname;
 }
+
+/** A page opened in the window from another site, as a browser asks for it. */
+const NAVIGATE = {
+  "sec-fetch-mode": "navigate",
+  "sec-fetch-dest": "document",
+  "sec-fetch-site": "cross-site",
+};
+
+/**
+ * The proxy's answer to a request for `path`: opened in the window from
+ * another site unless `headers` say otherwise, with a page kept before when
+ * `kept` is given, on this site unless `site` names another.
+ */
+async function visit(
+  path: string,
+  {
+    method = "GET",
+    headers = NAVIGATE,
+    kept,
+    site = SITE,
+  }: {
+    method?: string;
+    headers?: Record<string, string>;
+    kept?: string;
+    site?: string;
+  } = {},
+): Promise<NextResponse> {
+  const cookie: Record<string, string> =
+    kept === undefined
+      ? {}
+      : { cookie: `${AFTER_SIGN_IN_COOKIE}=${encodeURIComponent(kept)}` };
+  return await proxy(
+    new NextRequest(`${site}${path}`, {
+      method,
+      headers: { ...headers, ...cookie },
+    }),
+  );
+}
+
+/** Where an answer sends the browser, as a path and its query. */
+function door(response: NextResponse): string | null {
+  const to = getRedirectUrl(response);
+  if (to === null) return null;
+  const url = new URL(to);
+  return `${url.pathname}${url.search}`;
+}
+
+/** The page cookie an answer sets or deletes, if any. */
+const keptBy = (response: NextResponse) =>
+  response.cookies.get(AFTER_SIGN_IN_COOKIE);
+
+/** The cookie as the proxy keeps a page, on https. */
+const keeps = (value: string) => ({
+  name: AFTER_SIGN_IN_COOKIE,
+  value,
+  httpOnly: true,
+  sameSite: "lax",
+  path: "/",
+  maxAge: AFTER_SIGN_IN_MAX_AGE,
+  secure: true,
+});
 
 beforeEach(() => {
   mocks.userId = null;
@@ -96,5 +168,133 @@ describe("a setting that is neither", () => {
     vi.stubEnv("DEMO_DOOR", "maybe");
     await expect(sends("/home")).rejects.toThrow(/DEMO_DOOR/);
     await expect(sends("/enter")).rejects.toThrow(/DEMO_DOOR/);
+  });
+});
+
+describe("the page a signed-out visitor opened", () => {
+  const WEEK = "/schedule?week=2026-11-22";
+  const LINE = "/notifications/open/00000000-0000-4000-8000-0000000000aa";
+
+  it("is kept on the way to either door, the door's address bare", async () => {
+    for (const [setting, to] of [
+      ["on", "/enter"],
+      ["off", "/sign-in"],
+    ] as const) {
+      vi.stubEnv("DEMO_DOOR", setting);
+      const response = await visit(WEEK);
+      expect(response.status, setting).toBe(307);
+      expect(door(response), setting).toBe(to);
+      expect(keptBy(response), setting).toMatchObject(keeps(WEEK));
+    }
+  });
+
+  it("is Secure only over https", async () => {
+    const response = await visit(WEEK, { site: "http://127.0.0.1:3100" });
+    expect(keptBy(response)).toMatchObject({ ...keeps(WEEK), secure: false });
+    const forwarded = await visit(WEEK, {
+      site: "http://127.0.0.1:3100",
+      headers: { ...NAVIGATE, "x-forwarded-proto": "https" },
+    });
+    expect(keptBy(forwarded)).toMatchObject(keeps(WEEK));
+  });
+
+  it("is kept for a browser that sends no Sec-Fetch headers (an older Safari) when it asks for a page", async () => {
+    const accept =
+      "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
+    expect(keptBy(await visit(WEEK, { headers: { accept } }))).toMatchObject(
+      keeps(WEEK),
+    );
+    // Its fetches ask for anything: Next.js takes the router's headers off
+    // before the proxy sees them, so that is what tells.
+    for (const kept of [undefined, "/lists"]) {
+      const fetched = await visit(WEEK, { headers: { accept: "*/*" }, kept });
+      expect(door(fetched)).toBe("/enter");
+      expect(fetched.headers.get("set-cookie")).toBeNull();
+    }
+  });
+
+  it("keeps the inbox for a notification opened after the session ended", async () => {
+    const response = await visit(LINE);
+    expect(door(response)).toBe("/enter");
+    expect(keptBy(response)).toMatchObject(keeps("/notifications"));
+  });
+
+  it("keeps nothing for a page that isn't kept, and forgets one kept before", async () => {
+    for (const path of [
+      "/home",
+      "/admin",
+      "/admin/businesses/x",
+      "/photos/u/f.webp",
+      "/chat-files/a/b/c",
+      "/document-files/download",
+      "/clock/pay/export?month=2026-10",
+      "/clock/code/issue",
+      "/schedule/..%2F..%2Fadmin",
+      `/lists?q=${"a".repeat(600)}`,
+    ]) {
+      const none = await visit(path);
+      expect(door(none), path).toBe("/enter");
+      expect(keptBy(none), path).toBeUndefined();
+      expect(none.headers.get("set-cookie"), path).toBeNull();
+      const before = await visit(path, { kept: WEEK });
+      expect(door(before), path).toBe("/enter");
+      expect(keptBy(before), path).toMatchObject({
+        value: "",
+        path: "/",
+        expires: new Date(0),
+      });
+    }
+  });
+
+  it("is left as it was by the router's own fetches, a prefetch, an image and a POST", async () => {
+    const requests: { method?: string; headers?: Record<string, string> }[] = [
+      { headers: { rsc: "1" } },
+      { headers: { rsc: "1", "next-router-prefetch": "1" } },
+      { headers: { rsc: "1", "next-router-segment-prefetch": "/_tree" } },
+      { headers: { "next-action": "abc" } },
+      { headers: { ...NAVIGATE, "sec-purpose": "prefetch" } },
+      { headers: { ...NAVIGATE, "sec-fetch-dest": "image" } },
+      { headers: { ...NAVIGATE, "sec-fetch-mode": "cors" } },
+      { method: "POST" },
+    ];
+    for (const request of requests) {
+      const label = JSON.stringify(request);
+      for (const kept of [undefined, "/lists"]) {
+        const response = await visit(WEEK, { ...request, kept });
+        expect(door(response), label).toBe("/enter");
+        expect(response.headers.get("set-cookie"), label).toBeNull();
+      }
+    }
+    for (const kept of [undefined, "/lists"]) {
+      const response = await visit(`${WEEK}&_rsc=x`, { kept });
+      expect(door(response)).toBe("/enter");
+      expect(response.headers.get("set-cookie")).toBeNull();
+    }
+  });
+
+  it("is never touched for someone signed in", async () => {
+    mocks.userId = USER;
+    for (const kept of [undefined, "/lists"]) {
+      const response = await visit(WEEK, { kept });
+      expect(door(response)).toBeNull();
+      expect(response.headers.get("set-cookie")).toBeNull();
+      for (const path of ["/enter", "/sign-in"]) {
+        const home = await visit(path, { kept });
+        expect(door(home), path).toBe("/home");
+        expect(home.headers.get("set-cookie"), path).toBeNull();
+      }
+    }
+  });
+
+  it("is left as it was by the doors themselves, and the closed door's hop", async () => {
+    for (const path of ["/enter", "/sign-in"]) {
+      const response = await visit(path, { kept: WEEK });
+      expect(door(response), path).toBeNull();
+      expect(response.headers.get("set-cookie"), path).toBeNull();
+    }
+    vi.stubEnv("DEMO_DOOR", "off");
+    const hop = await visit("/enter", { kept: WEEK });
+    expect(door(hop)).toBe("/sign-in");
+    expect(hop.headers.get("set-cookie")).toBeNull();
   });
 });

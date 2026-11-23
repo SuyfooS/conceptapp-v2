@@ -327,6 +327,44 @@ describe("signing out", () => {
       expect(source, file).not.toMatch(/\bauth\.signOut\(/);
     }
   });
+
+  it("forgets a page a link kept for after sign-in", () => {
+    expect(read("app/(auth)/end-session.ts")).toContain(
+      "await forgetAfterSignIn()",
+    );
+  });
+});
+
+describe("the page kept for after sign-in", () => {
+  // Known issue 21: set by the proxy alone, read and deleted by the doors
+  // through one module, and never in an address.
+  it("is named in three places only", () => {
+    const naming = [
+      ...code,
+      { file: "proxy.ts", source: read("proxy.ts") },
+    ].filter(({ source }) => source.includes("AFTER_SIGN_IN_COOKIE"));
+    expect(naming.map(({ file }) => file).sort()).toEqual([
+      "app/(auth)/after-sign-in.ts",
+      "packages/domain/after-sign-in.ts",
+      "proxy.ts",
+    ]);
+  });
+
+  it("is httpOnly, lax and short-lived", () => {
+    const proxy = read("proxy.ts");
+    expect(proxy).toContain("httpOnly: true");
+    expect(proxy).toContain('sameSite: "lax"');
+    expect(proxy).toContain("maxAge: AFTER_SIGN_IN_MAX_AGE");
+  });
+
+  it("is never in the door's address", () => {
+    for (const file of [
+      "app/(auth)/sign-in/page.tsx",
+      "app/(auth)/enter/page.tsx",
+    ]) {
+      expect(read(file), file).not.toContain("searchParams");
+    }
+  });
 });
 
 function read(path: string): string {
