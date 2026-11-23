@@ -1,10 +1,13 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   canTakeFocus,
   type DocLike,
+  FOCUS_LANDING,
   firstOnScreen,
   focusFirst,
   focusLost,
+  focusWhenGone,
   onScreen,
   PAGE_TITLE,
   watchFocusIn,
@@ -185,6 +188,7 @@ describe("focusFirst", () => {
     gone.isConnected = false;
     expect(focusFirst([el(gone)], { doc: at })).toBe(title);
     expect(title.attributes.get("tabindex")).toBe("-1");
+    expect(title.attributes.has(FOCUS_LANDING)).toBe(true);
     expect(title.focused).toEqual({ preventScroll: true });
   });
 
@@ -197,6 +201,25 @@ describe("focusFirst", () => {
     const button = spot("button");
     focusFirst([el(button)], { doc: at });
     expect(button.attributes.has("tabindex")).toBe(false);
+    expect(button.attributes.has(FOCUS_LANDING)).toBe(false);
+  });
+
+  // The browser draws its own ring, in a colour of its own, round a title
+  // focused after a key: only what this gave a tabindex is marked for none.
+  it("marks what it gave a tabindex for no ring, and only that", () => {
+    const { at, spot } = page();
+    const title = spot("h1");
+    focusFirst([el(title)], { doc: at });
+    expect(title.attributes.has(FOCUS_LANDING)).toBe(true);
+    at.activeElement = at.body;
+    const line = spot("p");
+    line.setAttribute("tabindex", "-1");
+    focusFirst([el(line)], { doc: at });
+    expect(at.activeElement).toBe(line);
+    expect(line.attributes.has(FOCUS_LANDING)).toBe(false);
+    expect(
+      readFileSync("app/globals.css", "utf8").replace(/\s+/g, " "),
+    ).toContain(`[${FOCUS_LANDING}]:focus { outline: none; }`);
   });
 
   it("does nothing while the focus is where the person put it", () => {
@@ -227,6 +250,31 @@ describe("focusFirst", () => {
     expect(focusFirst(["[data-file-remove]"], { doc: at, root: field })).toBe(
       remove,
     );
+  });
+});
+
+// What went had the focus: where it lands never moves the page, so
+// someone who scrolled on while a hold counted stays where they are.
+describe("focusWhenGone", () => {
+  it("focuses the first that can take it without moving the page", () => {
+    const { at, spot } = page();
+    const gone = spot("button");
+    gone.isConnected = false;
+    const line = spot("p");
+    expect(focusWhenGone([el(gone), el(line)], { doc: at })).toBe(line);
+    expect(line.focused).toEqual({ preventScroll: true });
+  });
+
+  it("falls back on the title, and leaves a focus the person put", () => {
+    const { at, spot } = page();
+    const title = spot("h1");
+    at.found.set(PAGE_TITLE, [el(title)]);
+    expect(focusWhenGone([], { doc: at })).toBe(title);
+    expect(title.focused).toEqual({ preventScroll: true });
+    const there = spot("button");
+    there.focus();
+    expect(focusWhenGone([el(spot("button"))], { doc: at })).toBeNull();
+    expect(at.activeElement).toBe(there);
   });
 });
 

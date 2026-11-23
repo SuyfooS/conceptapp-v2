@@ -145,6 +145,9 @@ type Phase = "on" | "sending" | "removed";
 
 type Undo = { message: string; run: () => void };
 
+/** Why the last change was not made, and whether it was the removal. */
+type Refusal = { failure: TeamChangeActionFailure; removal: boolean };
+
 type ChangesValue = {
   data: MemberChangesData;
   /** Their role as the screen shows it, a held change included. */
@@ -152,6 +155,8 @@ type ChangesValue = {
   phase: Phase;
   left: LeftCounts | null;
   failure: TeamChangeActionFailure | null;
+  /** The last refusal was the removal's: "הסרה מהצוות" takes the focus back. */
+  removalRefused: boolean;
   /** A removal waits for its undo. */
   removing: boolean;
   /** Something waits for its undo: the role row waits too. */
@@ -163,7 +168,7 @@ type ChangesValue = {
   remove: () => void;
   undoRemoval: () => void;
   toast: { text: string; stamp: string } | null;
-  /** "הסרה מהצוות": the focus comes back to it after "ביטול", or a failure. */
+  /** "הסרה מהצוות": the focus comes back to it after "ביטול", or a refusal. */
   removeButton: RefObject<HTMLButtonElement | null>;
   /** "תפקיד", as last pressed: the focus comes back to it. */
   roleRow: RefObject<HTMLButtonElement | null>;
@@ -215,7 +220,7 @@ export function MemberChangesState({
   }
   const [phase, setPhase] = useState<Phase>("on");
   const [left, setLeft] = useState<LeftCounts | null>(null);
-  const [failure, setFailure] = useState<TeamChangeActionFailure | null>(null);
+  const [refusal, setRefusal] = useState<Refusal | null>(null);
   const [busy, setBusy] = useState(false);
   const [roleUndo, setRoleUndo] = useState<Undo | null>(null);
   // The undo of a written change waits as a held write does, and stops
@@ -254,7 +259,7 @@ export function MemberChangesState({
         setPhase("removed");
       } else {
         setPhase("on");
-        setFailure(result.failure);
+        setRefusal({ failure: result.failure, removal: true });
       }
       return;
     }
@@ -265,7 +270,7 @@ export function MemberChangesState({
     );
     if (!result.ok) {
       setRole(value.from);
-      setFailure(result.failure);
+      setRefusal({ failure: result.failure, removal: false });
     }
   });
 
@@ -277,7 +282,7 @@ export function MemberChangesState({
   async function choose(to: RoleChoice): Promise<boolean> {
     const from = role;
     if (sameRoleChoice(to, from) || busy) return sameRoleChoice(to, from);
-    setFailure(null);
+    setRefusal(null);
     clearUndo();
     // Changing back to a role that holds pay, or a named role that holds
     // more than the viewer, is an owner's: its undo only keeps the write
@@ -298,7 +303,7 @@ export function MemberChangesState({
     const result = await settle(actions.setRole(data.personId, to, from));
     setBusy(false);
     if (!result.ok) {
-      setFailure(result.failure);
+      setRefusal({ failure: result.failure, removal: false });
       return false;
     }
     setRole(to);
@@ -316,7 +321,7 @@ export function MemberChangesState({
     const result = await settle(actions.setRole(data.personId, from, to));
     if (!result.ok) {
       setRole(to);
-      setFailure(result.failure);
+      setRefusal({ failure: result.failure, removal: false });
       return;
     }
     setToast({
@@ -327,7 +332,7 @@ export function MemberChangesState({
 
   function remove() {
     if (phase !== "on") return;
-    setFailure(null);
+    setRefusal(null);
     clearUndo();
     held.hold({ kind: "remove" });
   }
@@ -373,7 +378,8 @@ export function MemberChangesState({
         role,
         phase,
         left,
-        failure,
+        failure: refusal?.failure ?? null,
+        removalRefused: refusal?.removal === true,
         removing,
         holding: held.held !== null,
         roleUndo,
@@ -618,10 +624,12 @@ export function MemberRemoval() {
   const t = useTranslations("app.team.changes");
   const failure = value?.failure ?? null;
   // The removal came back refused: the page drew the button again, with
-  // why under it, and the focus goes back to it.
+  // why under it, and the focus goes back to it. Only the removal's: a
+  // role change's may come while its sheet is open over this button.
+  const refused = value?.removalRefused === true;
   useLayoutEffect(() => {
-    if (failure) focusFirst([value?.removeButton.current], { title: false });
-  }, [failure, value?.removeButton]);
+    if (refused) focusFirst([value?.removeButton.current], { title: false });
+  }, [refused, value?.removeButton]);
   if (!value) return null;
   const { data } = value;
   const ahead = data.ahead.shifts + data.ahead.drafts;
@@ -686,9 +694,11 @@ export function MemberLeft() {
   const sendingLine = useRef<HTMLParagraphElement>(null);
   const leftTitle = useRef<HTMLHeadingElement>(null);
   const phase = value?.phase;
-  // Written: what came off them takes the focus from the line that went.
+  // Written: what came off them takes the focus from the line that went,
+  // where the line was, without moving the page.
   useLayoutEffect(() => {
-    if (phase === "removed") focusFirst([leftTitle.current]);
+    if (phase === "removed")
+      focusFirst([leftTitle.current], { preventScroll: true });
   }, [phase]);
   if (!value) return null;
   const { data, left, removing, removeButton } = value;

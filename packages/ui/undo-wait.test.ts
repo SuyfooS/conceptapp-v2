@@ -5,6 +5,7 @@ import {
   notePointerKinds,
   QUIET_WAIT_MS,
   restsWherePressed,
+  waitForFocusInside,
 } from "./undo-wait";
 
 /*
@@ -186,5 +187,38 @@ describe("the last press", () => {
     expect(restsWherePressed(140, 200)).toBe(false);
     page.dispatchEvent(press("touch", 100, 200));
     expect(restsWherePressed(100, 200)).toBe(false);
+  });
+});
+
+describe("a focus already inside as the wait starts listening", () => {
+  const button = {} as Element;
+  const root = { contains: (node: unknown) => node === button };
+  const ring = () => true;
+
+  // An autoFocus took it as the row was drawn; in dev React then runs the
+  // effect's cleanup (which lets go of everything) and its body again.
+  it("waits again for the keyboard's focus that dev's second run let go", () => {
+    const { wait, heard } = waitWith();
+    wait.focusIn(true, null);
+    wait.dispose();
+    waitForFocusInside(wait, root, { activeElement: button }, ring);
+    expect(wait.waiting()).toBe(true);
+    expect(heard).toEqual([true, false, true]);
+  });
+
+  it("changes nothing for a focus it already heard come in", () => {
+    const { wait, heard } = waitWith();
+    wait.focusIn(true, null);
+    waitForFocusInside(wait, root, { activeElement: button }, ring);
+    expect(heard).toEqual([true]);
+  });
+
+  it("waits for nothing when the focus is elsewhere, or nowhere", () => {
+    const { wait, heard } = waitWith();
+    waitForFocusInside(wait, root, { activeElement: {} as Element }, ring);
+    waitForFocusInside(wait, root, { activeElement: null }, ring);
+    waitForFocusInside(wait, null, { activeElement: button }, ring);
+    waitForFocusInside(wait, root, undefined, ring);
+    expect(heard).toEqual([]);
   });
 });

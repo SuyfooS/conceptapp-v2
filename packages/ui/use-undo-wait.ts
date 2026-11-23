@@ -15,6 +15,7 @@ import {
   notePointerKinds,
   restsWherePressed,
   type UndoWait,
+  waitForFocusInside,
 } from "./undo-wait";
 
 // The press that brings a way back comes before it is drawn.
@@ -67,6 +68,9 @@ export function useUndoWait(
       wait.pressedElsewhere();
     };
     document.addEventListener("pointerdown", elsewhere, { capture: true });
+    // Its `autoFocus` came first, and dev's second run of this effect
+    // follows a cleanup that let go of it.
+    waitForFocusInside(wait, root.current, document, showsFocus);
     return () => {
       document.removeEventListener("pointerdown", elsewhere, { capture: true });
       wait.dispose();

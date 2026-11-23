@@ -353,6 +353,15 @@ body {
 }
 
 /*
+ * A heading or a line the focus was brought to once what held it went
+ * (`@ui/focus-after` marks it): no control, so no ring, as PageHeader's
+ * title shows none. Not the browser's own colour after a key, either.
+ */
+[data-focus-landing]:focus {
+  outline: none;
+}
+
+/*
  * Glass: only on what floats above the content (tab bar, floating title,
  * sheets). Opaque when the device asks for less transparency or more contrast.
  */

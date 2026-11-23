@@ -1,7 +1,7 @@
 "use client";
 
 import { useLocale, useTranslations } from "next-intl";
-import { type Ref, useEffect, useId, useRef } from "react";
+import { type Ref, useEffect, useId, useRef, useState } from "react";
 import { announce } from "./announcer";
 import { Button } from "./button";
 import { cn } from "./cn";
@@ -41,13 +41,28 @@ export type UndoRowProps = {
 };
 
 /**
+ * Whether the page's announcer says an UndoRow's words as it first
+ * appears: not when `quiet`, not from a shape of the screen that isn't
+ * drawn (the other shape of a two-shape screen), and not when the focus
+ * came in with it (`autoFocus`, `active` inside it) and says them.
+ */
+export function saidAsItAppears(
+  row: unknown,
+  { quiet, active }: { quiet: boolean; active: unknown },
+): boolean {
+  return !quiet && onScreen(row) && !row.contains(active as Node | null);
+}
+
+/**
  * What was just removed, with the way back, where the person is looking.
- * A status a screen's checks find by its role, said once as it appears,
- * through the page's announcer (a status drawn with its words already in it
- * is often not heard), unless its own focus says it. Its button is
- * described by its words ("ביטול, נועה כהן הוסרה מהצוות"), its way back
- * waits while it is being reached, and when it goes holding the focus the
- * focus goes where the screen says (`focusAfter`), else to the page's title.
+ * A status a screen's checks find by its role. As it appears it is said
+ * once, through the page's announcer (a status drawn with its words already
+ * in it is often not heard), unless its own focus says it; from then on it
+ * is a status of its own, so a change of its words (a way back that failed)
+ * is heard wherever the focus is. Its button is described by its words
+ * ("ביטול, נועה כהן הוסרה מהצוות"), its way back waits while it is being
+ * reached, and when it goes holding the focus the focus goes where the
+ * screen says (`focusAfter`), else to the page's title.
  */
 export function UndoRow({
   message,
@@ -67,30 +82,33 @@ export function UndoRow({
   const { handlers } = useUndoWait(root, onWaitingChange);
   useFocusWhenGone(root, focusAfter);
   /**
-   * The words last said: a screen shown again from a hidden <Activity>
-   * says nothing new, and neither do the same words drawn again.
+   * It has appeared: said by then if it was to be. A ref, so a screen shown
+   * again from a hidden <Activity>, or React's second run of the effect in
+   * dev, says nothing new.
    */
-  const said = useRef<string | null>(null);
+  const appeared = useRef(false);
+  // Its own status from its first effect on: quiet until then.
+  const [live, setLive] = useState(false);
 
   useEffect(() => {
-    if (said.current === message) return;
-    said.current = message;
-    if (quiet) return;
-    const row = root.current;
-    // The other shape of a two-shape screen, hidden, says nothing; nor
-    // does one whose focus came in with it (`autoFocus`) and says it.
-    if (!row || !onScreen(row) || row.contains(document.activeElement)) return;
-    announce(message, { lang: locale });
+    if (appeared.current) return;
+    appeared.current = true;
+    setLive(true);
+    const active = document.activeElement;
+    if (saidAsItAppears(root.current, { quiet, active })) {
+      announce(message, { lang: locale });
+    }
   }, [message, quiet, locale]);
 
   return (
     <div
       ref={root}
       role="status"
-      // Said through the page's announcer instead, once. Its own aria-live
-      // also keeps it out of what a sheet hides, so it can be reached as
-      // the sheet closes.
-      aria-live="off"
+      // Quiet as it appears, said then through the page's announcer. Then
+      // its role's own: a change of its words is heard, and with no
+      // aria-live of its own, a sheet opened over it hides it with the rest
+      // of the page (Radix spares what has one).
+      aria-live={live ? undefined : "off"}
       {...handlers}
       className={cn(
         "flex min-h-[3.25rem] items-center justify-between gap-3 rounded-card bg-surface-2 ps-4 pe-1.5",

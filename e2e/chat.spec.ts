@@ -9,6 +9,7 @@ import {
   seeDemoChatNotice,
 } from "./db";
 import { secondPage, signIn } from "./session";
+import { countedTabName, needsActionCount } from "./t";
 import { expect, type Page, test } from "./test";
 
 // Chat on screen (C2 of the chat plan). The demo restaurant's reset writes
@@ -78,10 +79,12 @@ const chatTab = (page: Page) =>
   nav(page).getByRole("link", {
     name: new RegExp(`^${literal(he.modules.chat.name)}`),
   });
-/** How many chats the Chat tab says wait (0 when it carries no count). */
+/**
+ * How many chats the Chat tab says wait (0 when it carries no count), from
+ * its words: one is said with no digit ("אחד דורש טיפול").
+ */
 async function tabCount(page: Page): Promise<number> {
-  const text = (await chatTab(page).textContent()) ?? "";
-  return Number(/,\s*(\d+)/.exec(text)?.[1] ?? 0);
+  return needsActionCount((await chatTab(page).textContent()) ?? "");
 }
 const bell = (page: Page) =>
   page.getByRole("main").getByRole("link", {
@@ -283,7 +286,7 @@ test("a message in the kitchen reaches management, and the Chat tab counts it wh
     // the line for her phone is there.
     await shiran.reload();
     await expect(chatTab(shiran)).toHaveAccessibleName(
-      new RegExp(`^${literal(he.modules.chat.name)}\\s*,\\s*${waiting + 1}\\b`),
+      countedTabName(he.modules.chat.name, waiting + 1),
     );
     expect(await bell(shiran).getAttribute("aria-label")).toBe(bellName);
 

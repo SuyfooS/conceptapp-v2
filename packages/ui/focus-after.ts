@@ -113,10 +113,18 @@ export function firstOnScreen(
   return null;
 }
 
+/**
+ * Marks a heading or a line given a tabindex here: it is no control, so
+ * `app/globals.css` draws it no ring when it has the focus, as PageHeader's
+ * title shows none (the browser's own would be drawn after a key).
+ */
+export const FOCUS_LANDING = "data-focus-landing";
+
 /** Puts the focus there, a heading or a line given a tabindex first. */
 function focusOn(target: HTMLElement, preventScroll: boolean) {
   if (!target.hasAttribute("tabindex") && !matching(target, FOCUSABLE)) {
     target.setAttribute("tabindex", "-1");
+    target.setAttribute(FOCUS_LANDING, "");
   }
   target.focus({ preventScroll });
 }
@@ -152,6 +160,20 @@ export function focusFirst(
   if (!target || target === doc.body) return null;
   focusOn(target, chosen ? preventScroll : true);
   return doc.activeElement === target ? target : null;
+}
+
+/**
+ * Where the focus goes once what held it went (`useFocusWhenGone`): as
+ * `focusFirst`, without moving the page. It lands where what went was, a
+ * screen reader follows the focus anyway, and someone who scrolled on
+ * meanwhile (a press elsewhere lets the hold go on, and a mouse's focus
+ * never stops it) stays where they are.
+ */
+export function focusWhenGone(
+  candidates: readonly FocusCandidate[],
+  { doc = thePage() }: { doc?: DocLike } = {},
+): HTMLElement | null {
+  return focusFirst(candidates, { doc, preventScroll: true });
 }
 
 /** An element whose focus is watched. */

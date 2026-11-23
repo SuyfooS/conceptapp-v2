@@ -174,3 +174,21 @@ export function createUndoWait({
     },
   };
 }
+
+/**
+ * A focus already inside a way back's `root` as its wait starts listening
+ * waits as one that came in: an `autoFocus` put it there while the row was
+ * drawn, and in dev React runs the effect's cleanup, which let go of
+ * everything, and its body again right after the mount, with no focus event
+ * between. `ring` says whether that element shows its focus.
+ */
+export function waitForFocusInside(
+  wait: Pick<UndoWait, "focusIn">,
+  root: { contains(node: Node | null): boolean } | null | undefined,
+  doc: { activeElement: Element | null } | undefined,
+  ring: (element: Element) => boolean,
+): void {
+  const active = doc?.activeElement;
+  if (!active || !root?.contains(active)) return;
+  wait.focusIn(ring(active), lastPointerKind());
+}

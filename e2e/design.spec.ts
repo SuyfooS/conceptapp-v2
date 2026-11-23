@@ -1953,6 +1953,9 @@ test("the gallery's undo row takes the focus, waits while it has it, and gives i
   await expect(page.locator('[data-announcer="polite"]')).not.toContainText(
     removed,
   );
+  // Appeared: its role's own status, so a change of its words is heard and
+  // a sheet opened over it hides it (Radix spares an aria-live of its own).
+  await expect(row).not.toHaveAttribute("aria-live");
   await page.waitForTimeout(9_000);
   await expect(row).toBeVisible();
   await page.keyboard.press("Enter");

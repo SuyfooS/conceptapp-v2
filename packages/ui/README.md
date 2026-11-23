@@ -51,10 +51,13 @@ waits, in a closing sheet, or a sheet's own frame), `onScreen` (the Sheet's
 rule), `firstOnScreen(candidates, root)`, and `focusFirst(candidates)`, which
 focuses the first that can take it, else the page's title (`main h1`, reached
 without moving the page), and only when the focus is lost, so it never takes it
-from where the person put it. A heading or a line gets `tabindex="-1"` first.
+from where the person put it. A heading or a line gets `tabindex="-1"` first,
+and `data-focus-landing`, which `app/globals.css` draws with no ring (it is no
+control, and PageHeader's title shows none either).
 `useFocusWhenGone(ref, candidates)` (`@ui/use-focus-after`) does it when an
 element goes while it holds the focus, after the drawing that removed it, so a
-screen's own refocus wins.
+screen's own refocus wins, and without moving the page (`focusWhenGone`): it
+lands where what went was, and someone who scrolled on meanwhile stays put.
 
 `@ui/undo-wait` (no React) is the one rule for a way back that waits while it
 is being reached, StatusToast's and UndoRow's: the keyboard's focus on it with
@@ -62,13 +65,18 @@ no limit; a mouse brought over it; a finger held on it; a focus with no ring
 after a tap or a screen reader's own press, until a press elsewhere, the focus
 leaving, or a minute. After a mouse press a focus with no ring counts, as it
 always did. `useUndoWait(root, onChange)` (`@ui/use-undo-wait`) gives the
-handlers to spread on the root.
+handlers to spread on the root, and takes up a focus already inside it as it
+starts listening (`waitForFocusInside`: an `autoFocus` comes first, and in
+dev React runs the effect's cleanup and body again right after the mount).
 
 `@ui/undo-row` is what was just removed with the way back, where the person is
 looking (it was `app/(app)/manage/undo-row.tsx`). Still `role="status"` for the
-screens' checks, with `aria-live="off"`: it is said once through the
-announcer, unless its own focus says it (`autoFocus`) or the screen brings the
-focus to it (`quiet`). Its button is described by its words.
+screens' checks. As it appears it is quiet (`aria-live="off"`) and said once
+through the announcer, unless its own focus says it (`autoFocus`) or the
+screen brings the focus to it (`quiet`). From its first effect on it is its
+role's own status: a change of its words (a way back that failed) is heard
+wherever the focus is, and with no `aria-live` of its own a sheet opened over
+it hides it with the rest of the page. Its button is described by its words.
 `onWaitingChange` hears the rule above, so a held write pauses as long;
 `focusAfter` says where the focus goes when it leaves holding it, the page's
 title after them; `buttonRef` is for a sheet's `returnFocus`.

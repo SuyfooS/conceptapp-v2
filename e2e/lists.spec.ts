@@ -2,6 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import he from "../messages/he.json" with { type: "json" };
 import { demoLists, endViewSessions, resetDemoLists } from "./db";
 import { secondPage, signIn } from "./session";
+import { countedTabName } from "./t";
 import { expect, type Page, test } from "./test";
 
 // Lists, part 2 (L2): the demo restaurant starts with example lists
@@ -79,8 +80,9 @@ test("a worker fills the kitchen's opening list, finishes it and takes it back",
   const tab = nav(page).getByRole("link", {
     name: new RegExp(`^${literal(he.modules.lists.name)}`),
   });
+  // One is said in words, with no digit ("אחד דורש טיפול").
   await expect(tab).toHaveAccessibleName(
-    new RegExp(`^${literal(he.modules.lists.name)}\\s*,\\s*1\\b`),
+    countedTabName(he.modules.lists.name, 1),
   );
   await tab.click();
   await expect(page).toHaveURL(/\/lists$/);
