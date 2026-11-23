@@ -4,6 +4,7 @@ import {
   afterSignInPath,
   afterSignInPathOf,
   isDocumentNavigation,
+  isOpenedFromOutside,
 } from "./after-sign-in";
 import { isAppPath } from "./app-path";
 import { INBOX_PATH } from "./notifications";
@@ -138,6 +139,37 @@ describe("afterSignInPathOf", () => {
     );
     expect(afterSignInPathOf("/home", "")).toBeNull();
     expect(afterSignInPathOf("/admin", "")).toBeNull();
+  });
+});
+
+describe("isOpenedFromOutside", () => {
+  const from = (site: string | null, path = `/chat/${ID}`) =>
+    isOpenedFromOutside(
+      new Headers(site === null ? {} : { "sec-fetch-site": site }),
+      path,
+    );
+
+  it("is a link from another site or app, an address typed, or a browser that doesn't say", () => {
+    for (const site of ["cross-site", "same-site", "none", null]) {
+      expect(from(site), String(site)).toBe(true);
+    }
+  });
+
+  it("is never a page the app's own sent there: a reload, a tab left open after its session ended", () => {
+    expect(from("same-origin")).toBe(false);
+    expect(from("same-origin", `/chat/with/${ID}`)).toBe(false);
+    expect(from("same-origin", "/schedule")).toBe(false);
+    // The inbox itself is a page like any other.
+    expect(from("same-origin", INBOX_PATH)).toBe(false);
+    expect(from("same-origin", "/notifications/opened")).toBe(false);
+  });
+
+  it("is a phone's notification whatever its window says", () => {
+    for (const site of ["same-origin", "none", "cross-site", null]) {
+      expect(from(site, `/notifications/open/${ID}`), String(site)).toBe(true);
+      expect(from(site, "/notifications/open"), String(site)).toBe(true);
+      expect(from(site, `/Notifications/Open/${ID}`), String(site)).toBe(true);
+    }
   });
 });
 

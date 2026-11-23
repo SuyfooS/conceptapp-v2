@@ -14,10 +14,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 //
 // The page a signed-out visitor opened (known issue 21): the redirect to the
 // door keeps it in an httpOnly cookie for 15 minutes, its address bare; only
-// for a page opened in the window, so the router's own fetches, a prefetch,
-// an image or a POST leave the cookie as it is. A page that can't be kept
-// (Today, the console, a file, a route handler) forgets one kept before.
-// Signed in, the cookie is never touched.
+// for a page opened in the window from outside the app's own pages, so the
+// router's own fetches, a prefetch, an image, a POST, or a reload of a tab
+// left open after its session ended (Sec-Fetch-Site same-origin) leave the
+// cookie as it is; a phone's notification keeps the inbox whatever it says.
+// A page that can't be kept (Today, the console, a file, a route handler)
+// forgets one kept before. Signed in, the cookie is never touched.
 
 const mocks = vi.hoisted(() => ({ userId: null as string | null }));
 vi.mock("@db/supabase/proxy", () => ({
@@ -217,6 +219,46 @@ describe("the page a signed-out visitor opened", () => {
     const response = await visit(LINE);
     expect(door(response)).toBe("/enter");
     expect(keptBy(response)).toMatchObject(keeps("/notifications"));
+  });
+
+  it("keeps the inbox for a notification whatever its window says, the service worker's same-origin too", async () => {
+    for (const site of ["same-origin", "none", "same-site"]) {
+      const response = await visit(LINE, {
+        headers: { ...NAVIGATE, "sec-fetch-site": site },
+        kept: WEEK,
+      });
+      expect(door(response), site).toBe("/enter");
+      expect(keptBy(response), site).toMatchObject(keeps("/notifications"));
+    }
+  });
+
+  it("is kept from a link in another app, an address typed and the same site's other address", async () => {
+    for (const site of ["none", "same-site"]) {
+      const response = await visit(WEEK, {
+        headers: { ...NAVIGATE, "sec-fetch-site": site },
+      });
+      expect(keptBy(response), site).toMatchObject(keeps(WEEK));
+    }
+  });
+
+  it("is left as it was by a page the app's own sent there, as a tab left open after its session ended reloads", async () => {
+    // The last person's chat, reloaded by its tab after they signed out:
+    // kept, the next person to sign in on the device would land on it.
+    const SAME = { ...NAVIGATE, "sec-fetch-site": "same-origin" };
+    for (const path of [
+      "/chat/00000000-0000-4000-8000-0000000000bb",
+      "/chat/with/00000000-0000-4000-8000-0000000000cc",
+      WEEK,
+      // Nor does one that can't be kept forget a link someone followed in.
+      "/home",
+      "/admin",
+    ]) {
+      for (const kept of [undefined, "/lists"]) {
+        const response = await visit(path, { headers: SAME, kept });
+        expect(door(response), path).toBe("/enter");
+        expect(response.headers.get("set-cookie"), path).toBeNull();
+      }
+    }
   });
 
   it("keeps nothing for a page that isn't kept, and forgets one kept before", async () => {

@@ -5,6 +5,7 @@ import {
   AFTER_SIGN_IN_MAX_AGE,
   afterSignInPathOf,
   isDocumentNavigation,
+  isOpenedFromOutside,
 } from "@domain/after-sign-in";
 import { doorPath, phoneSignInPath, signInPath } from "@domain/passive-sign-in";
 import { isSecureRequest } from "@domain/request-origin";
@@ -56,8 +57,11 @@ function isPrivate(pathname: string) {
 /**
  * The page a signed-out visitor opened, kept on the way to the door so
  * sign-in lands there (known issue 21). Only for a page opened in the
- * window: the router's own fetches, prefetches, images and frames leave the
- * cookie as it is. The latest page opened wins: one that can't be kept
+ * window from outside the app's own pages (`isOpenedFromOutside`): the
+ * router's own fetches, prefetches, images and frames leave the cookie as it
+ * is, and so does a page one of the app's own sent there (a reload, a tab
+ * left open after its session ended), but a phone's notification, which
+ * keeps the inbox. The latest page opened wins: one that can't be kept
  * (Today, a file, the console, a route handler) forgets one kept before.
  * The redirect's address stays the bare door.
  */
@@ -66,7 +70,10 @@ function keepForAfterSignIn(
   to: NextResponse,
 ): NextResponse {
   const { pathname, search, protocol } = request.nextUrl;
-  if (!isDocumentNavigation(request.method, request.headers, search)) {
+  if (
+    !isDocumentNavigation(request.method, request.headers, search) ||
+    !isOpenedFromOutside(request.headers, pathname)
+  ) {
     return to;
   }
   const kept = afterSignInPathOf(pathname, search);

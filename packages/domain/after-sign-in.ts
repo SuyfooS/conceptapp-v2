@@ -63,7 +63,10 @@ export const NEVER_AFTER_SIGN_IN = [
 
 /** A phone's notification, opened from outside the app's pages. */
 const NOTIFICATION_OPEN = "/notifications/open";
-/** The inbox, where that line waits unread (INBOX_PATH). */
+/**
+ * The inbox (INBOX_PATH), of the business the app opens in after sign-in:
+ * for someone in two businesses, maybe not the one that holds the line.
+ */
 const INBOX = "/notifications";
 
 /** Parsed against this, a kept page must come back exactly as it was. */
@@ -117,18 +120,46 @@ export function afterSignInPath(raw: unknown): `/${string}` | null {
   return raw;
 }
 
+/** Whether a path opens a phone's notification (its route, never kept). */
+function opensNotification(pathname: string): boolean {
+  return under(pathname.toLowerCase(), NOTIFICATION_OPEN);
+}
+
 /**
  * The page to keep for a request's path and query: a phone's notification
- * opened after the session ended keeps the inbox, where the line waits
- * unread, since its own route is never kept; anything else as
- * `afterSignInPath` says.
+ * opened after the session ended keeps the inbox, since its own route is
+ * never kept, which is the inbox of the business the app opens in, for
+ * someone in two businesses maybe not the one that holds the line; anything
+ * else as `afterSignInPath` says.
  */
 export function afterSignInPathOf(
   pathname: string,
   search: string,
 ): `/${string}` | null {
-  if (under(pathname.toLowerCase(), NOTIFICATION_OPEN)) return INBOX;
+  if (opensNotification(pathname)) return INBOX;
   return afterSignInPath(`${pathname}${search}`);
+}
+
+/**
+ * Whether a page opened in the window came from outside the app's own
+ * pages, the only kind whose path the proxy keeps or forgets: a link from
+ * another site or app, an address typed or a bookmark (`Sec-Fetch-Site`
+ * cross-site, same-site or none), or a browser that doesn't say. One the
+ * app's own page sent there (same-origin: a reload, a link inside the app,
+ * the router falling back to a whole page) is never a link someone followed
+ * in, and leaves the kept page as it was: a tab left open after its session
+ * ended comes to the door that way, and keeping its page would land the next
+ * person to sign in on that device on the last one's screen, a chat with
+ * someone. A phone's notification counts whatever it says: the service
+ * worker opens it, which a browser may report as same-origin, and it keeps
+ * only the inbox.
+ */
+export function isOpenedFromOutside(
+  headers: { get(name: string): string | null },
+  pathname: string,
+): boolean {
+  if (opensNotification(pathname)) return true;
+  return headers.get("sec-fetch-site") !== "same-origin";
 }
 
 /** Headers only the app's own router sends with its fetches. */
