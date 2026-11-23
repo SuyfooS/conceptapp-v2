@@ -1,5 +1,5 @@
 import { ROLES, type Role, type Viewer } from "@domain/modules";
-import { canRemoveMember, mayChangeRole } from "@domain/team";
+import { canFixName, canRemoveMember, mayChangeRole } from "@domain/team";
 import postgres from "postgres";
 import { afterAll, describe, expect, it } from "vitest";
 
@@ -8,7 +8,8 @@ import { afterAll, describe, expect, it } from "vitest";
  * business shows for them is one rule in the database
  * (`public.remove_member`, `public.set_member_role`,
  * `public.set_member_name`, `private.gives_role`) and on the screens
- * (`canRemoveMember`, `mayChangeRole` in @domain/team): every role against
+ * (`canRemoveMember`, `mayChangeRole`, `canFixName`, which never takes an
+ * owner, in @domain/team): every role against
  * every role, and every change between them, asked of both, the screens with what each actor holds
  * as the database answers it (team.edit, the roles plan's R6). pgTAP can't
  * read TypeScript, so this asks SQL, in one transaction it rolls back, each
@@ -162,7 +163,9 @@ describe("team changes, in the database as on the screens", () => {
                 'Renamed', at_time => ${AT}
               )`,
           );
-          const allowed = canRemoveMember(
+          // An owner keeps their own name: nobody renames one, another
+          // owner either.
+          const allowed = canFixName(
             { userId: ACTORS[actor], ...held },
             { userId: TARGETS[target], role: target },
           );

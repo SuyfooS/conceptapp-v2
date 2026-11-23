@@ -1985,7 +1985,15 @@ test("the person demo fixes a name, with the change back as its undo", async ({
   await expect(heading(tt.noName)).toBeVisible();
   await expect(nameRow).toContainText(tt.noName);
 
-  // Not on an owner for a manager, nor for whoever only sees the team.
+  // Never on an owner, who appears by his own name: the owner changes Uri's
+  // role, not his name. Nor for a manager, nor for whoever only sees the
+  // team.
+  await page.goto("/design/shell/team/uri");
+  await expect(heading("אורי בן דוד")).toBeVisible();
+  await expect(
+    main.getByRole("button", { name: new RegExp(`^${tc.role}`) }),
+  ).toBeVisible();
+  await expect(nameRow).toHaveCount(0);
   await page.goto("/design/shell/team/uri?as=manager");
   await expect(main.getByRole("heading", { level: 1 })).toBeVisible();
   await expect(nameRow).toHaveCount(0);

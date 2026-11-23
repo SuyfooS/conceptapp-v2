@@ -1,5 +1,6 @@
 import { mayClearBio } from "@domain/profile";
 import {
+  canFixName,
   canRemoveMember,
   invitableRoles,
   namedRoleShown,
@@ -64,7 +65,8 @@ type Props = {
 // mark nobody sees, which the sheet saves clean as it opens;
 // ?state=ownMarked: her own name with that mark, and none of the
 // business's, which the sheet never offers to save: their own name keeps
-// no row, so only she cleans it, on /me.
+// no row, so only she cleans it, on /me. Never on an owner (`canFixName`):
+// Uri's page has "תפקיד" alone, as he appears by his own name.
 // The hiring file (profile H6a): ?file=holder as the owner, who reads what
 // is missing and opens the file from here; ?file=manager as someone who
 // sees the team without the files, who reads how many; ?file=view as the
@@ -189,6 +191,10 @@ async function Demo({ params, searchParams }: Props) {
               clockedIn: as === "editor" ? null : state === "clocked",
               clockHref: `/design/shell/clock/team/${person}`,
               scheduleHref: "/design/shell/schedule",
+              fixesName: canFixName(viewer, {
+                userId: member.userId,
+                role: member.role,
+              }),
               actions: {
                 remove: demoRemoveMemberAction,
                 setRole: demoSetMemberRoleAction,

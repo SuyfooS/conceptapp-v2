@@ -11,12 +11,15 @@
 -- leaves an old one. The team's fix (public.set_member_name) reads their own
 -- name the same way, so a save of it written clean, or the undo of a fix,
 -- keeps no row; and someone made an owner loses the business's name for
--- them, as an owner who joins does. The log keeps no name, the name is read
--- as their profile is, in that business, and only the server claims. Fixed
--- ids and numbers of its own (9c…, 050-000-93xx) and slugs (inam-…), so
--- nothing here meets the seeded people.
+-- them, as an owner who joins does, and the fix gives no owner one, another
+-- owner's included (42501, hint `owner`). The migration's one-off cleanup of
+-- names kept for owners ran before any test does, so only what it leaves
+-- is checked: no owner on a team keeps one. The log keeps no name, the name
+-- is read as their profile is, in that business, and only the server
+-- claims. Fixed ids and numbers of its own (9c…, 050-000-93xx) and slugs
+-- (inam-…), so nothing here meets the seeded people.
 begin;
-select plan(46);
+select plan(48);
 set local timezone = 'UTC';
 
 insert into auth.users (id, aud, role, phone)
@@ -89,6 +92,25 @@ $$;
 create function pg_temp.kept(person uuid) returns text language sql as $$
   select n.name from public.member_names n
   where n.business_id = '9c000000-0000-4000-b000-000000000002' and n.user_id = person
+$$;
+
+-- Runs a statement and undoes it: 'ok', or the refusal's code and hint.
+create function pg_temp.outcome(statement text) returns text language plpgsql as $$
+declare
+  code text;
+  why text;
+begin
+  begin
+    execute statement;
+    raise exception 'tried' using errcode = 'P0001', hint = 'in-tried';
+  exception when others then
+    get stacked diagnostics code = returned_sqlstate, why = pg_exception_hint;
+    if why = 'in-tried' then
+      return 'ok';
+    end if;
+    return code || coalesce(':' || nullif(why, ''), '');
+  end;
+end;
 $$;
 
 ------------------------------------------------------------------------------
@@ -223,7 +245,7 @@ reset role;
 select is(
   pg_temp.kept('9c000000-0000-4000-a000-000000000008'),
   null,
-  'an owner keeps no name of the business''s, the invite''s nor the old one: only another owner could change it'
+  'an owner keeps no name of the business''s, the invite''s nor the old one: their name there is their own'
 );
 select is(
   (select full_name from public.profiles where id = '9c000000-0000-4000-a000-000000000008'),
@@ -419,6 +441,36 @@ select is(
   pg_temp.kept('9c000000-0000-4000-a000-000000000010'),
   null,
   'who keeps none of the business''s names: their own shows there, which they change'
+);
+
+-- Nor does the team's fix give an owner one: B's first owner renames 10,
+-- just made an owner, and 8, who came back as one; 10 renames the first.
+-- Each would be stuck once the other owners left.
+set local role service_role;
+select is(
+  array[
+    pg_temp.outcome($$select public.set_member_name('9c000000-0000-4000-a000-000000000007',
+      '9c000000-0000-4000-b000-000000000002', '9c000000-0000-4000-a000-000000000010',
+      'Tali', 'Tal Gat', '2026-11-24 09:15+00')$$),
+    pg_temp.outcome($$select public.set_member_name('9c000000-0000-4000-a000-000000000007',
+      '9c000000-0000-4000-b000-000000000002', '9c000000-0000-4000-a000-000000000008',
+      'Gili', 'Gil Or', '2026-11-24 09:15+00')$$),
+    pg_temp.outcome($$select public.set_member_name('9c000000-0000-4000-a000-000000000010',
+      '9c000000-0000-4000-b000-000000000002', '9c000000-0000-4000-a000-000000000007',
+      'First owner', null, '2026-11-24 09:15+00')$$)
+  ],
+  array['42501:owner', '42501:owner', '42501:owner'],
+  'an owner renames no co-owner: one just made an owner, one who came back as one, nor the first'
+);
+reset role;
+select is(
+  (select count(*)::int
+    from public.member_names n
+    join public.memberships m
+      on m.business_id = n.business_id and m.user_id = n.user_id
+    where m.active and m.role = 'owner'::public.member_role),
+  0,
+  'no owner on any team keeps a name of the business''s, as the migration''s cleanup left it'
 );
 
 ------------------------------------------------------------------------------

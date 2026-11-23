@@ -181,6 +181,8 @@ describe("setMemberName", () => {
     const cases: [Failure, string][] = [
       [{ code: "42501", message: "no" }, "notAllowed"],
       [{ code: "42501", hint: null, message: "no" }, "notAllowed"],
+      // An owner, who keeps their own name.
+      [{ code: "42501", hint: "owner", message: "no" }, "notAllowed"],
       [{ code: "22023", hint: "name", message: "no" }, "badName"],
       [{ code: "22023", message: "no" }, "yourself"],
       [{ code: "P0002", message: "no" }, "gone"],

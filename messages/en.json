@@ -1571,7 +1571,7 @@
         "nameBack": "The name is {name} again",
         "nameBackNone": "No name again",
         "nameFailures": {
-          "notAllowed": "You can't fix this name. You can fix only the names of people at your level or below, and only an owner fixes an owner's or an accountant's name.",
+          "notAllowed": "You can't fix this name. You can fix only the names of people at your level or below, and only an owner fixes an accountant's name. Owners always appear by their own name.",
           "changed": "The name changed in the meantime, so it wasn't fixed. The current name shows now.",
           "yourself": "You change your own name on your profile, under “My name”."
         },

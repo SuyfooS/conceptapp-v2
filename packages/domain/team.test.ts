@@ -4,6 +4,7 @@ import {
   buildTeam,
   canCancelInvite,
   canEditTeam,
+  canFixName,
   canRemoveMember,
   canResendInvite,
   canSeeTeam,
@@ -859,6 +860,47 @@ describe("team changes (Orel, 14 November 2026)", () => {
     }
   });
 
+  it("let the same people fix a name, never an owner's, another owner's either", () => {
+    const allowed = Object.fromEntries(
+      allRoles.map((viewer) => [
+        viewer,
+        allRoles.filter((person) =>
+          canFixName(place("v", viewer), place("p", person)),
+        ),
+      ]),
+    );
+    expect(allowed).toEqual({
+      owner: ["manager", "worker", "accountant"],
+      manager: ["manager", "worker"],
+      worker: [],
+      accountant: [],
+    });
+    // An owner still changes another owner's role and takes them off the
+    // team: only the name is their own.
+    expect(canRemoveMember(place("v", "owner"), place("p", "owner"))).toBe(
+      true,
+    );
+    // A worker raised to edit the team: workers only.
+    const raised = {
+      userId: "v",
+      role: "worker" as const,
+      perms: ["team.view", "team.edit"],
+    };
+    expect(canFixName(raised, place("p", "worker"))).toBe(true);
+    expect(canFixName(raised, place("p", "manager"))).toBe(false);
+    // Someone in a named role built on workers counts as a worker.
+    expect(
+      canFixName(place("v", "manager"), {
+        userId: "p",
+        role: "worker",
+        namedRole: "lead",
+      }),
+    ).toBe(true);
+    for (const role of allRoles) {
+      expect(canFixName(place("v", role), place("v", role)), role).toBe(false);
+    }
+  });
+
   it("change a role only between roles the viewer invites to", () => {
     // Every change each viewer may make, as `from -> to`, spelled out.
     const allowed = Object.fromEntries(
@@ -986,12 +1028,15 @@ describe("team changes (Orel, 14 November 2026)", () => {
     // Off the staff: the shifts ahead come off.
     expect(roleChangeClears("worker", "accountant")).toBe(true);
     expect(roleChangeClears("owner", "accountant")).toBe(true);
-    // An owner's place clears personal permissions.
+    // An owner's place clears personal permissions, and the business's own
+    // name for them, so every change to it waits, an accountant's too.
     expect(roleChangeClears("manager", "owner")).toBe(true);
     expect(roleChangeClears("worker", "owner")).toBe(true);
-    // An accountant has none to clear, and no shifts.
-    expect(roleChangeClears("accountant", "owner")).toBe(false);
+    expect(roleChangeClears("accountant", "owner")).toBe(true);
+    // An accountant onto the staff below owner: nothing to clear, no shifts.
     expect(roleChangeClears("accountant", "worker")).toBe(false);
+    expect(roleChangeClears("accountant", "manager")).toBe(false);
+    expect(roleChangeClears("owner", "owner")).toBe(false);
     // Between manager and worker, and down from owner, nothing is lost.
     expect(roleChangeClears("worker", "manager")).toBe(false);
     expect(roleChangeClears("manager", "worker")).toBe(false);
@@ -1003,6 +1048,8 @@ describe("team changes (Orel, 14 November 2026)", () => {
     expect(teamChangeFailureOf("42501")).toBe("notAllowed");
     expect(teamChangeFailureOf("42501", "held")).toBe("beyondHeld");
     expect(teamChangeFailureOf("42501", "pay")).toBe("givesPay");
+    // A name for an owner, who keeps their own: not theirs to fix.
+    expect(teamChangeFailureOf("42501", "owner")).toBe("notAllowed");
     expect(teamChangeFailureOf("P0002")).toBe("gone");
     expect(teamChangeFailureOf("22023")).toBe("yourself");
     expect(teamChangeFailureOf("22023", "archived")).toBe("roleGone");

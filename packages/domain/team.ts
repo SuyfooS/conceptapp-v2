@@ -375,13 +375,26 @@ export type TeamActor = TeamPlace & Viewer;
  * on managers and workers, and a worker raised to edit the team on workers.
  * Never on oneself, which the person's own profile is for. A named role
  * counts as its base: whoever acts on workers acts on a shift lead built on
- * them. The same people fix the name the business shows for them, its own
- * for them in this business only (`public.set_member_name`). The database
- * checks the same (`public.remove_member`, `private.gives_role`), and also
- * that the business keeps an owner (`leavesNoOwner`).
+ * them. The same people fix the name the business shows for them, but never
+ * an owner's (`canFixName`). The database checks the same
+ * (`public.remove_member`, `private.gives_role`), and also that the business
+ * keeps an owner (`leavesNoOwner`).
  */
 export function canRemoveMember(viewer: TeamActor, person: TeamPlace): boolean {
   return viewer.userId !== person.userId && givesByRank(viewer, person.role);
+}
+
+/**
+ * May the viewer fix the name the business shows for the person, its own for
+ * them in this business only (`public.set_member_name`)? Whoever may change
+ * their role (`canRemoveMember`), for anyone but an owner: an owner appears
+ * in the business by their own name, which they change on /me, so no other
+ * owner gives them one that nobody could take back once they are the only
+ * owner. The database refuses the same (42501, hint `owner`), and drops the
+ * business's name for whoever becomes an owner.
+ */
+export function canFixName(viewer: TeamActor, person: TeamPlace): boolean {
+  return person.role !== "owner" && canRemoveMember(viewer, person);
 }
 
 /**
@@ -442,21 +455,25 @@ export function leavesStaff(from: Role, to: Role | null): boolean {
  * A role change that changing back can't undo, so the screen holds it for
  * its undo before writing it, as it holds a removal: leaving the staff takes
  * the shifts still to start off the person (`leavesStaff`), and becoming an
- * owner or an accountant clears their personal permissions
- * (`public.set_member_role`). Between manager and worker, and from an
+ * accountant clears their personal permissions (`public.set_member_role`).
+ * Every change to owner is held too, from any role, an accountant's
+ * included: it clears personal permissions, and the business's own name for
+ * them (`private.drop_owner_name`), so the undo lets go of the write before
+ * the database takes the name. Between manager and worker, and from an
  * accountant onto the staff below owner, nothing is lost: the change is
  * written at once, and its undo is the change back.
  */
 export function roleChangeClears(from: Role, to: Role): boolean {
   if (from === to) return false;
-  return leavesStaff(from, to) || (to === "owner" && from !== "accountant");
+  return leavesStaff(from, to) || to === "owner";
 }
 
 /**
  * Why the database refused a team change, as the screens explain it:
  *
  *   notAllowed  42501: the viewer may not act on this role, or no longer
- *               edits the business's team
+ *               edits the business's team; for a name, also with hint
+ *               `owner`: the person is an owner, who keeps their own name
  *   beyondHeld  42501 with hint `held`: the new role holds by role a
  *               permission the viewer doesn't (an owner set workers above
  *               managers; the roles plan's R3), which only an owner gives

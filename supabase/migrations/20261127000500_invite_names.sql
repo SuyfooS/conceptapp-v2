@@ -36,7 +36,11 @@
 --               the role) loses the business's name for them as well, by a
 --               trigger on public.memberships. The claim keeps its own
 --               delete, for someone who comes back as an owner, whose role
---               doesn't change.
+--               doesn't change. Nor does the team's fix give an owner one:
+--               public.set_member_name refuses an owner (42501, hint
+--               `owner`), another owner's fix included, so an owner always
+--               appears by their own name. Any kept for an owner on a team
+--               before this goes, once (section 5).
 --   fixing one  public.set_member_name, the team's fix on /team/[person],
 --               decides whether a name is their own as the claim does: both
 --               read by private.team_name. An own name that still holds
@@ -45,6 +49,7 @@
 --               the app sends clean, takes the row away. Before, either wrote
 --               a row for their own name that nothing could take back, and
 --               every rename of theirs on /me stopped short of the business.
+--               It never takes an owner (above).
 --   locks       the invite, the named role, the membership, the profile, as
 --               before, then the business's name for them; for someone the
 --               claim makes an owner, the trigger takes the name just after
@@ -54,8 +59,9 @@
 --   the log     invite.claim as before, never a name; a role change logs
 --               member.role as before, and nothing more for the name.
 --   nothing else changes: who may join, the refusals, the return, who may
---   fix a name or change a role and what each answers. No table, column or
---   signature in public, so packages/db/database.types.ts stays as it is.
+--   fix a name (but an owner's, which nobody does now) or change a role and
+--   what each answers. No table, column or signature in public, so
+--   packages/db/database.types.ts stays as it is.
 
 ------------------------------------------------------------------------------
 -- 1. A name as the app keeps one
@@ -281,9 +287,13 @@ $$;
 ------------------------------------------------------------------------------
 -- 3. Fixing one by the same rule
 
--- 20261117000700_member_names.sql's, the same, with only this: whether the
--- new name is their own is decided as the claim decides it, both read as
--- the app keeps names (private.team_name). An own name that still holds
+-- 20261117000700_member_names.sql's, the same, with two changes. An owner
+-- is refused, whoever asks (42501, hint `owner`): an owner's name in the
+-- business is their own, which they change on /me, and one given by
+-- another owner would be stuck once that owner left (canFixName in
+-- @domain/team offers no fix for one). And whether the new name is their
+-- own is decided as the claim decides it, both read as the app keeps names
+-- (private.team_name). An own name that still holds
 -- what nobody sees (one an earlier claim copied) is then their own written
 -- clean, which keeps no row: saving it from /team/[person] writes nothing,
 -- and the undo of a fix, which the app sends through parseTeamName, takes
@@ -337,8 +347,13 @@ begin
     raise exception 'Not in the team' using errcode = 'P0002';
   end if;
 
+  -- An owner appears by their own name: the business keeps none for one.
+  if target.role = 'owner'::public.member_role then
+    raise exception 'An owner keeps their own name' using errcode = '42501', hint = 'owner';
+  end if;
+
   if not private.gives_role(actor_role, target.role) then
-    raise exception 'Only an owner changes the name of an owner, an accountant or a higher role'
+    raise exception 'Only an owner changes the name of an accountant or a higher role'
       using errcode = '42501';
   end if;
 
@@ -431,7 +446,23 @@ create trigger memberships_owner_keeps_no_name
   execute function private.drop_owner_name();
 
 comment on table public.member_names is
-  'The name a business shows for someone on its team, over their own (profiles.full_name), in that business only. Written only by public.set_member_name and, from an invite''s name, public.claim_invite; none kept for an owner, so one goes when someone becomes an owner (private.drop_owner_name); read as the person''s profile is read, per business (private.reads_member_name).';
+  'The name a business shows for someone on its team, over their own (profiles.full_name), in that business only. Written only by public.set_member_name, never for an owner, and, from an invite''s name, public.claim_invite; none kept for an owner, so one goes when someone becomes an owner (private.drop_owner_name); read as the person''s profile is read, per business (private.reads_member_name).';
+
+------------------------------------------------------------------------------
+-- 5. Owners already on a team
+
+-- Once: a name the business kept for an owner on its team before this
+-- (another owner's fix, or a role that became the owner's) goes, so every
+-- owner appears by their own name, as from now on. Someone who left keeps
+-- theirs, as anyone who left does; a claim that brings them back as an
+-- owner takes it then. Nothing is logged, as nothing is when a role change
+-- drops one.
+delete from public.member_names n
+using public.memberships m
+where m.business_id = n.business_id
+  and m.user_id = n.user_id
+  and m.active
+  and m.role = 'owner'::public.member_role;
 
 ------------------------------------------------------------------------------
 -- Who may call what

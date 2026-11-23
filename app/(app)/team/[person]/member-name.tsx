@@ -35,6 +35,8 @@ type Undo = { message: string; run: () => void };
 type Shown = { name: string | null; kept: boolean };
 
 type NameValue = {
+  /** The name is offered to fix: never an owner's (`canFixName`). */
+  fixes: boolean;
   /** The name as the screen shows it now; null: none. */
   shown: string | null;
   /** Whether that is the business's own name for them, not their own. */
@@ -63,19 +65,26 @@ const settle = (run: Promise<MemberNameResult>) =>
  * the fix back, as a change between manager and worker. `name` is the name
  * the server has (null: none), and `kept` whether it is the business's own
  * for them rather than their own; the title, the row and the sentences
- * follow the screen's until the page is read again. The parts below read
- * this state; without it they draw nothing.
+ * follow the screen's until the page is read again. `fixes` false, for an
+ * owner, who appears by their own name (`canFixName`), offers no fix: no
+ * row, sheet, undo or refusal, and the title is the name the server has.
+ * It stays mounted either way, so a role change that makes someone an owner,
+ * or no longer one, keeps that change's own undo and words when the page is
+ * read again. The parts below read this state; without it they draw
+ * nothing.
  */
 export function MemberNameState({
   personId,
   name,
   kept,
+  fixes,
   rename,
   children,
 }: {
   personId: string;
   name: string | null;
   kept: boolean;
+  fixes: boolean;
   rename: MemberChangeActions["rename"];
   children: ReactNode;
 }) {
@@ -90,6 +99,8 @@ export function MemberNameState({
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<TeamChangeActionFailure | null>(null);
   const [open, setOpenState] = useState(false);
+  // Made an owner: a sheet left open closes, and stays closed after.
+  if (!fixes && open) setOpenState(false);
   const [undo, setUndo] = useState<Undo | null>(null);
   const undoTimer = useRef<number | null>(null);
   const [toast, setToast] = useState<{ text: string; stamp: string } | null>(
@@ -177,6 +188,7 @@ export function MemberNameState({
   return (
     <NameContext
       value={{
+        fixes,
         shown: shown.name,
         kept: shown.kept,
         busy,
@@ -202,7 +214,7 @@ export function ShownName({ none }: { none: string }) {
 /**
  * Their place on the team, in one grouped list: "שם" with the name the
  * business shows, then "תפקיד" with their role, each opening its sheet; under
- * them, the undo or the word of each change.
+ * them, the undo or the word of each change. For an owner, "תפקיד" alone.
  */
 export function TeamPlace() {
   return (
@@ -220,13 +232,13 @@ export function TeamPlace() {
 /**
  * "שם" with the name under it, so a long one wraps, which opens the sheet to
  * fix it. Its sheet comes after it: a sheet leaves a hidden mark in its
- * place, and the rows' hairlines count who comes first.
+ * place, and the rows' hairlines count who comes first. None for an owner.
  */
 function MemberNameRow() {
   const value = use(NameContext);
   const t = useTranslations("app.team.changes");
   const tTeam = useTranslations("app.team");
-  if (!value) return null;
+  if (!value?.fixes) return null;
   return (
     <>
       <ListRow
@@ -333,7 +345,8 @@ function NameForm({ value }: { value: NameValue }) {
 
 /**
  * Under the group: "השם שוב …" once a fix was taken back, the fix's undo while
- * it lasts, and why the last one was not made, while the sheet is closed.
+ * it lasts, and why the last one was not made, while the sheet is closed;
+ * neither once they are an owner, whose name nobody fixes.
  */
 function MemberNameNotes() {
   const value = use(NameContext);
@@ -345,10 +358,10 @@ function MemberNameNotes() {
         message={value.toast?.text ?? null}
         stamp={value.toast?.stamp}
       />
-      {value.undo ? (
+      {value.fixes && value.undo ? (
         <UndoRow message={value.undo.message} onUndo={value.undo.run} />
       ) : null}
-      {value.failure && !value.open ? (
+      {value.fixes && value.failure && !value.open ? (
         <p role="alert" className="px-1 text-base text-danger">
           {failureText(value.failure)}
         </p>

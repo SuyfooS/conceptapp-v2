@@ -171,7 +171,7 @@ name as the business's own for the person, read as the app keeps a name
 composed, spaces collapsed, on the invite's name and on their own before they
 are compared; `tooling/team-names.test.ts` keeps its character lists equal to
 the app's); their own name keeps no row, and one kept from before goes; an
-owner keeps none, as only another owner could change it; an invite with no
+owner keeps none, as their name there is their own; an invite with no
 name leaves the business's. Someone with no name takes the clean name as
 their own. The same migration holds both rules beyond the claim:
 `public.set_member_name` decides whether a fix is their own name with
@@ -181,7 +181,13 @@ saved clean from `/team/[person]` or brought back by an undo, keeps no row
 offers no such save); and a member whose role becomes the owner's, by
 `public.set_member_role` or otherwise, loses the business's name for them
 (the trigger `memberships_owner_keeps_no_name`, `private.drop_owner_name`),
-after the membership, as the name's other writers lock. `/me` says which
+after the membership, as the name's other writers lock. Nor does the fix
+give an owner one: `public.set_member_name` refuses an owner, whoever asks,
+another owner included (42501, hint `owner`; `canFixName` in @domain/team
+offers none), so an owner always appears by their own name, and the
+migration drops, once, any name kept for an owner on a team. The screen
+holds every change to owner for its undo (`roleChangeClears`), so the undo
+lets go of the write before the trigger takes the name. `/me` says which
 business keeps a name of its own for them: the session's `memberName` is the
 business's row, even one equal to their own name, which stays when they
 rename themselves, and the row says it beside their own where it differs

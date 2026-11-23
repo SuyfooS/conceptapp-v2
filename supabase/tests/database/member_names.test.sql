@@ -1,7 +1,9 @@
 -- Fixing a name on /team/[person] (20261117000700_member_names.sql; ROADMAP
 -- "תיקון שם"): only the server fixes the name a business shows for someone,
 -- by the rule of changing a role (team.edit and the rank rule), never one's
--- own, never in a demo closed to invites. The name is one line of 1 to 80
+-- own, never an owner's, whose name is their own (hint `owner`,
+-- 20261127000500_invite_names.sql), never in a demo closed to invites. The
+-- name is one line of 1 to 80
 -- characters, its spaces collapsed, and their own name is read the same way;
 -- their own name, or none, keeps no row;
 -- a name the screen didn't show is refused (40001); the same name writes
@@ -359,8 +361,8 @@ select is(
     pg_temp.fix('9a000000-0000-4000-a000-000000000003', '9a000000-0000-4000-a000-000000000002', 'O', null),
     pg_temp.fix('9a000000-0000-4000-a000-000000000003', '9a000000-0000-4000-a000-000000000006', 'G', 'Galit Books')
   ],
-  array['ok', 'ok', 'ok', 'ok', '42501', '42501'],
-  'an owner fixes another owner''s and the accountant''s name; a manager a worker''s and a manager''s, never an owner''s or the accountant''s'
+  array['42501:owner', 'ok', 'ok', 'ok', '42501:owner', '42501'],
+  'nobody fixes an owner''s name, another owner either; an owner fixes the accountant''s; a manager a worker''s and a manager''s, never the accountant''s'
 );
 select is(
   array[
