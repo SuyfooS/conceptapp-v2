@@ -1,8 +1,14 @@
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
-import { parseEmployeeDataKeys, parsePublicEnv, parseSecretKey } from "./env";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  demoDoorOpen,
+  parseDemoDoor,
+  parseEmployeeDataKeys,
+  parsePublicEnv,
+  parseSecretKey,
+} from "./env";
 
 describe("parsePublicEnv", () => {
   it("accepts a URL and a publishable key", () => {
@@ -57,6 +63,52 @@ describe("parseSecretKey", () => {
       expect(message).toMatch(/SUPABASE_SECRET_KEY/);
       if (key) expect(message).not.toContain(key);
     }
+  });
+});
+
+describe("parseDemoDoor", () => {
+  // The demo door per site (Orel, 22 November 2026): unset is the site that
+  // runs today, so it stays open with no change in Vercel.
+  it("is open when unset, empty or on, in any case", () => {
+    for (const value of [undefined, "", "  ", "on", "ON", " on ", "On\n"]) {
+      expect(parseDemoDoor({ DEMO_DOOR: value }), JSON.stringify(value)).toBe(
+        true,
+      );
+    }
+    expect(parseDemoDoor({})).toBe(true);
+  });
+
+  it("is closed when off, in any case", () => {
+    for (const value of ["off", "Off", "OFF", " off ", "off\n"]) {
+      expect(parseDemoDoor({ DEMO_DOOR: value }), JSON.stringify(value)).toBe(
+        false,
+      );
+    }
+  });
+
+  it("refuses anything else, naming the setting, never guessing", () => {
+    for (const value of ["yes", "no", "0", "1", "false", "of", "closed"]) {
+      expect(
+        () => parseDemoDoor({ DEMO_DOOR: value }),
+        JSON.stringify(value),
+      ).toThrow(/DEMO_DOOR/);
+    }
+  });
+});
+
+describe("demoDoorOpen", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("reads this deployment's setting", () => {
+    expect(demoDoorOpen()).toBe(true);
+    vi.stubEnv("DEMO_DOOR", "off");
+    expect(demoDoorOpen()).toBe(false);
+    vi.stubEnv("DEMO_DOOR", "on");
+    expect(demoDoorOpen()).toBe(true);
+    vi.stubEnv("DEMO_DOOR", "maybe");
+    expect(() => demoDoorOpen()).toThrow(/DEMO_DOOR/);
   });
 });
 

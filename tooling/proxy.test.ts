@@ -194,4 +194,23 @@ describe("proxy", () => {
       true,
     );
   });
+
+  it("leaves the health check out", () => {
+    // /health is for an uptime monitor (app/health/route.ts): no session
+    // read or renewed, no cookie set, never a redirect.
+    const block = /matcher: \[([\s\S]*?)\],/.exec(source)?.[1] ?? "";
+    const matcher = [...block.matchAll(/^\s+"([^"]+)",$/gm)].map(
+      ([, pattern = ""]) => pattern,
+    );
+    for (const path of ["/health", "/health/"]) {
+      expect(
+        unstable_doesMiddlewareMatch({ config: { matcher }, url: path }),
+        path,
+      ).toBe(false);
+    }
+    const privateBlock =
+      /export const PRIVATE = \[([\s\S]*?)\];/.exec(source)?.[1] ?? "";
+    expect(privateBlock).not.toContain('"/health');
+    expect(source).not.toContain('"/health');
+  });
 });

@@ -69,6 +69,38 @@ export function parseSecretKey(source: { SUPABASE_SECRET_KEY?: string }) {
   return result.data;
 }
 
+const DemoDoor = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .pipe(z.enum(["on", "off"]));
+
+/**
+ * The demo door on this deployment (`DEMO_DOOR`, Orel, 22 November 2026):
+ * `on`, or unset, offers the demo people at /enter, their one-press sign-in
+ * and the demo reset; `off` closes all three, for the site of real
+ * businesses (docs/production.md, B7). Read where a page is built and where a
+ * request runs, so a change takes a Redeploy. Anything else throws, naming
+ * the setting, so a typo fails the build instead of guessing which site this
+ * is.
+ */
+export function parseDemoDoor(source: { DEMO_DOOR?: string }): boolean {
+  const raw = source.DEMO_DOOR ?? "";
+  if (raw.trim() === "") return true;
+  const parsed = DemoDoor.safeParse(raw);
+  if (!parsed.success) throw new Error("DEMO_DOOR: on or off (unset means on)");
+  return parsed.data === "on";
+}
+
+/**
+ * Whether this deployment's demo door is open. Server code and the proxy
+ * only: in a browser the setting reads as unset, so open
+ * (tooling/demo-door.test.ts keeps it out of client files).
+ */
+export function demoDoorOpen(): boolean {
+  return parseDemoDoor({ DEMO_DOOR: process.env.DEMO_DOOR });
+}
+
 /** The hiring file's keys, checked: which one seals, and every one that opens. */
 export type EmployeeDataKeys = {
   /** The key new data keys are wrapped with. */

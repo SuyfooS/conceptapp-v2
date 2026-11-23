@@ -5,3 +5,7 @@ import { randomBytes } from "node:crypto";
 // seals with it against the local database. A key made here is never kept.
 process.env.EMPLOYEE_DATA_KEKS = `1:${randomBytes(32).toString("base64")}`;
 process.env.EMPLOYEE_DATA_KEK_ACTIVE = "1";
+
+// Every run starts as a deployment with no demo door setting, so open
+// (DEMO_DOOR, P9), whatever the shell holds; a test of the closed door stubs it.
+delete process.env.DEMO_DOOR;

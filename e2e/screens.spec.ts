@@ -33,6 +33,8 @@ const PAGES = [
   "/design/shell/unavailable",
   "/design/screens/skeleton",
   "/design/screens/sign-in",
+  // As the site of real businesses has it: the demo door closed (P9).
+  "/design/screens/sign-in?door=off",
   "/design/screens/enter",
   "/design/screens/join",
   "/design/screens/join-expired",
