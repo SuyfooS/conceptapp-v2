@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  arrived,
   canTakeFocus,
   type DocLike,
   FOCUS_LANDING,
@@ -334,5 +335,32 @@ describe("watchFocusIn", () => {
     watch.stop();
     box.dispatchEvent(focusEvent("focusin"));
     expect(watch.had()).toBe(false);
+  });
+});
+
+// A screen shown again from a hidden <Activity> runs its effects again with
+// what arrived long ago: the focus moves only when it first arrives.
+describe("arrived", () => {
+  it("says a value has arrived once, and not when the effect runs again with it", () => {
+    const seen = { current: null as object | null };
+    const refusal = { failure: "failed" };
+    expect(arrived(seen, refusal)).toBe(true);
+    expect(arrived(seen, refusal)).toBe(false);
+    expect(arrived(seen, refusal)).toBe(false);
+  });
+
+  it("takes nothing there for nothing arrived, and keeps what was seen", () => {
+    const seen = { current: null as object | null };
+    expect(arrived(seen, null)).toBe(false);
+    const card = { shifts: 2 };
+    expect(arrived(seen, card)).toBe(true);
+    expect(arrived(seen, null)).toBe(false);
+    expect(arrived(seen, card)).toBe(false);
+  });
+
+  it("says a new one has arrived, even with the same words (a refusal again)", () => {
+    const seen = { current: null as object | null };
+    expect(arrived(seen, { failure: "failed" })).toBe(true);
+    expect(arrived(seen, { failure: "failed" })).toBe(true);
   });
 });

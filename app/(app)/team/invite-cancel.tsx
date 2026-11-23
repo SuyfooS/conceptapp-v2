@@ -162,7 +162,10 @@ export function InviteCancelUndo() {
   const { held, failure } = cancels;
   return (
     <>
-      {held ? <UndoRow message={held.message} onUndo={cancels.undo} /> : null}
+      {held ? (
+        // Each invite deleted a row of its own, said afresh.
+        <UndoRow key={held.id} message={held.message} onUndo={cancels.undo} />
+      ) : null}
       {failure ? (
         <p role="alert" className="px-1 text-base text-danger">
           {failure === "gone"

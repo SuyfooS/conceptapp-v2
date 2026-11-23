@@ -19,42 +19,64 @@ type RowKey = (typeof ROWS)[number];
  * The gallery's undo row: two rows, each with its remove. Removing one
  * puts "ביטול" in its place with the focus, held as a screen holds a write
  * (`heldTimer`, eight seconds), which waits while "ביטול" is being reached.
- * Undone, the row is back with its button focused; its time up, the row is
- * gone for good and the focus goes to what is left. Nothing is stored.
+ * Removing the other while it is up lets the first go for good and starts
+ * again: a row of its own (keyed by what it undoes), with the focus, its
+ * own wait and its own words. Undone, the row is back with its button
+ * focused; its time up, the row is gone for good and the focus goes to
+ * what is left. "החזרת השורות" brings both back and keeps the focus,
+ * dimmed, with nothing left to bring back. Nothing is stored.
  */
 export function GalleryUndoRows() {
   const t = useTranslations("design");
   const [gone, setGone] = useState<readonly RowKey[]>([]);
   const [held, setHeld] = useState<RowKey | null>(null);
-  const hold = useRef<HeldTimer | null>(null);
+  /** The hold of the row last removed, and which row it holds. */
+  const hold = useRef<{ key: RowKey; timer: HeldTimer } | null>(null);
   const buttons = useRef(new Map<RowKey, HTMLButtonElement>());
   const reset = useRef<HTMLButtonElement>(null);
   const nameOf = (key: RowKey) =>
     key === "first" ? t("undoRowFirst") : t("undoRowSecond");
 
+  function letGo() {
+    hold.current?.timer.clear();
+    hold.current = null;
+  }
+
   function remove(key: RowKey) {
     // An earlier one's time ends now: it stays gone.
-    hold.current?.clear();
+    letGo();
     setGone((now) => [...now, key]);
     setHeld(key);
-    hold.current = heldTimer(HOLD_MS, () => {
+    const timer = heldTimer(HOLD_MS, () => {
       hold.current = null;
       setHeld(null);
     });
+    hold.current = { key, timer };
+  }
+
+  /**
+   * Only a row's own hold waits for it: an earlier row, going as the next
+   * comes, lets go of nothing newer.
+   */
+  function waits(key: RowKey, waiting: boolean) {
+    const now = hold.current;
+    if (now?.key !== key) return;
+    if (waiting) now.timer.pause();
+    else now.timer.resume();
   }
 
   function undo() {
     const key = held;
     if (key === null) return;
-    hold.current?.clear();
-    hold.current = null;
+    letGo();
     setGone((now) => now.filter((one) => one !== key));
     setHeld(null);
   }
 
   function bringBack() {
-    hold.current?.clear();
-    hold.current = null;
+    // Dimmed with nothing to bring back, and still where the focus is.
+    if (gone.length === 0) return;
+    letGo();
     setGone([]);
     setHeld(null);
   }
@@ -85,12 +107,12 @@ export function GalleryUndoRows() {
       ) : null}
       {held ? (
         <UndoRow
+          // Each removal a row of its own, so its autoFocus acts again.
+          key={held}
           message={t("undoRowRemoved", { name: nameOf(held) })}
           onUndo={undo}
           autoFocus
-          onWaitingChange={(waiting) =>
-            waiting ? hold.current?.pause() : hold.current?.resume()
-          }
+          onWaitingChange={(waiting) => waits(held, waiting)}
           // Undone: its own row's button; gone for good: what is left.
           focusAfter={() => [
             buttons.current.get(held) ?? null,
@@ -103,7 +125,8 @@ export function GalleryUndoRows() {
         ref={reset}
         variant="secondary"
         onClick={bringBack}
-        disabled={gone.length === 0}
+        // Not disabled: pressed, it would drop the focus it holds.
+        aria-disabled={gone.length === 0 || undefined}
         className="self-start"
       >
         {t("undoRowReset")}

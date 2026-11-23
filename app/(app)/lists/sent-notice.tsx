@@ -70,6 +70,8 @@ export function SentNotice({
       />
       {shown && !started ? (
         <UndoRow
+          // Each list sent a row of its own, said afresh.
+          key={shown.listId}
           message={shown.message}
           onUndo={() => undo(shown.listId)}
           pending={pending}

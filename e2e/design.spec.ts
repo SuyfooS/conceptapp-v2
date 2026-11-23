@@ -1976,6 +1976,74 @@ test("the gallery's undo row takes the focus, waits while it has it, and gives i
   await expect(remove).toBeVisible();
 });
 
+// Two removals in a row (the second review): the other row removed while
+// the first's "ביטול" is up is a row of its own, which takes the focus
+// again, is said by it, and holds the second for as long as the keyboard
+// is on it; undone, the second row is back with its button focused and the
+// first stays gone. "החזרת השורות" then keeps the focus, dimmed.
+test("the gallery's undo row starts again for a second removal while the first is up", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  const d = he.design;
+  await page.goto("/design");
+  const section = page.locator("section").filter({
+    has: page.getByRole("heading", { name: d.undoRow, exact: true }),
+  });
+  const removeFirst = section.getByRole("button", {
+    name: heT("design.undoRowRemove", { name: d.undoRowFirst }),
+  });
+  const removeSecond = section.getByRole("button", {
+    name: heT("design.undoRowRemove", { name: d.undoRowSecond }),
+  });
+  const removedFirst = heT("design.undoRowRemoved", { name: d.undoRowFirst });
+  const removedSecond = heT("design.undoRowRemoved", {
+    name: d.undoRowSecond,
+  });
+  const undo = section
+    .getByRole("status")
+    .getByRole("button", { name: he.ui.undoRow.undo });
+  const secondRow = section
+    .getByRole("status")
+    .filter({ hasText: removedSecond });
+  const reset = section.getByRole("button", {
+    name: d.undoRowReset,
+    exact: true,
+  });
+
+  await removeFirst.focus();
+  await page.keyboard.press("Enter");
+  await expect(undo).toBeFocused();
+  await expect(undo).toHaveAccessibleDescription(removedFirst);
+
+  // Back to the other row's remove, pressed with the first's undo still up.
+  await page.keyboard.press("Shift+Tab");
+  await expect(removeSecond).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(undo).toHaveCount(1);
+  await expect(undo).toBeFocused();
+  await expect(undo).toHaveAccessibleDescription(removedSecond);
+  await expect(page.locator('[data-announcer="polite"]')).not.toContainText(
+    removedSecond,
+  );
+  // Its own wait: past the eight seconds, still there while it has the focus.
+  await page.waitForTimeout(9_000);
+  await expect(secondRow).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(secondRow).toHaveCount(0);
+  await expect(removeSecond).toBeFocused();
+  await expect(removeFirst).toHaveCount(0);
+
+  // Both back: the button keeps the focus, dimmed, with nothing to bring back.
+  await reset.focus();
+  await page.keyboard.press("Enter");
+  await expect(removeFirst).toBeVisible();
+  await expect(reset).toBeFocused();
+  await expect(reset).toHaveAttribute("aria-disabled", "true");
+  await page.keyboard.press("Enter");
+  await expect(reset).toBeFocused();
+});
+
 // The gallery's stepper says its new number, and at its end keeps the focus
 // on its dimmed button, which changes nothing; the announcer's own entry
 // says its line.

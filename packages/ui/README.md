@@ -58,6 +58,10 @@ control, and PageHeader's title shows none either).
 element goes while it holds the focus, after the drawing that removed it, so a
 screen's own refocus wins, and without moving the page (`focusWhenGone`): it
 lands where what went was, and someone who scrolled on meanwhile stays put.
+An effect that moves the focus to what arrived (a refusal, a card) asks
+`arrived(seenRef, value)` first: a screen shown again from a hidden
+`<Activity>` runs its effects again with the same value, and the focus stays
+where it is then.
 
 `@ui/undo-wait` (no React) is the one rule for a way back that waits while it
 is being reached, StatusToast's and UndoRow's: the keyboard's focus on it with
@@ -79,7 +83,14 @@ wherever the focus is, and with no `aria-live` of its own a sheet opened over
 it hides it with the rest of the page. Its button is described by its words.
 `onWaitingChange` hears the rule above, so a held write pauses as long;
 `focusAfter` says where the focus goes when it leaves holding it, the page's
-title after them; `buttonRef` is for a sheet's `returnFocus`.
+title after them; `buttonRef` is for a sheet's `returnFocus`. `autoFocus`
+acts once, as the row mounts: a screen that can offer a second undo while the
+first is up keys each row by what it undoes (`key={removed.key}`), so each
+removal is a row of its own, with the focus, its own wait and its own words.
+
+Button and IconButton with `aria-disabled` dim as `disabled` does and take no
+press (`pointer-events: none`: no spring, no darker fill), while the focus on
+them stays; the screen's `onClick` ignores the keyboard's press.
 
 ## Third party
 

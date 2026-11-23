@@ -7,8 +7,10 @@ const iconButtonVariants = cva(
   [
     "pressable relative inline-flex size-11 shrink-0 items-center justify-center rounded-full",
     "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
-    // aria-disabled dims as disabled does, and keeps the focus (a stepper at its end).
-    "disabled:pointer-events-none disabled:opacity-50 aria-disabled:opacity-50 [&_svg]:size-5",
+    // aria-disabled dims as disabled does and takes no press, no spring or
+    // darker fill under a finger, while it keeps the focus (a stepper at its
+    // end); the screen's onClick ignores the keyboard's press.
+    "disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&_svg]:size-5",
   ],
   {
     variants: {

@@ -696,6 +696,9 @@ function NumberPart({
         <span
           id={rangeId}
           aria-live="polite"
+          // Said whole as it changes: the range is a node of its own
+          // (`<ltr>`), and the warning's words with it.
+          aria-atomic="true"
           className={cn(
             "text-sm",
             warning ? "font-medium text-warning" : "text-ink-2",
@@ -732,11 +735,12 @@ function RemovePhoto({
       ref={button}
       variant="ghost"
       aria-label={`${remove.label}: ${label}`}
+      // Dimmed, and no press under a finger (Button's aria-disabled).
       aria-disabled={busy || undefined}
       onClick={() => {
         if (!busy) remove.onRemove();
       }}
-      className={cn("text-danger", busy && "opacity-50")}
+      className="text-danger"
     >
       <Trash2 aria-hidden="true" />
       {remove.label}

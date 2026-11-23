@@ -371,6 +371,9 @@ export function CategoriesEditor({
           ) : null}
           {removed ? (
             <UndoRow
+              // Each removal a row of its own (keyed as its row was): another
+              // while this one is up takes the focus again.
+              key={removed.category.id ?? `new:${removed.category.name}`}
               message={t("removed", {
                 name: removed.category.name,
                 count: removed.count,

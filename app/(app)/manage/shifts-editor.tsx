@@ -159,6 +159,8 @@ export function ShiftsEditor({
       </ListGroup>
       {removed ? (
         <UndoRow
+          // Each removal a row of its own, said afresh.
+          key={removed.shift.key}
           message={t("removed", { name: removed.shift.name })}
           onUndo={undo}
         />

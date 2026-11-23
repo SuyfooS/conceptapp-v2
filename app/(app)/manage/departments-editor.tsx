@@ -453,6 +453,9 @@ export function DepartmentsEditor({
           ) : null}
           {removed ? (
             <UndoRow
+              // Each removal a row of its own: another while this one is up
+              // takes the focus again.
+              key={removed.department.key}
               message={
                 removed.items > 0
                   ? t("removedMenu", {

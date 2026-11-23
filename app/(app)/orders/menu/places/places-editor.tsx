@@ -280,6 +280,9 @@ export function PlacesEditor({
           ) : null}
           {removed ? (
             <UndoRow
+              // Each removal a row of its own (keyed as its row was): another
+              // while this one is up takes the focus again.
+              key={removed.place.id ?? `new:${removed.place.name}`}
               message={t("removed", { name: removed.place.name })}
               onUndo={() => void undo()}
               autoFocus

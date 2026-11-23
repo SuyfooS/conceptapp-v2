@@ -202,6 +202,8 @@ export function TemplatesView({
 
       {just ? (
         <UndoRow
+          // Each removal a row of its own, said afresh.
+          key={just.id}
           message={t("removed", { name: just.name })}
           onUndo={() => bringBack(just, true)}
           pending={pending && restoring === just.id}

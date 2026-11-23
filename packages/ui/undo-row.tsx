@@ -17,7 +17,12 @@ export type UndoRowProps = {
   pending?: boolean;
   /**
    * "ביטול" takes the focus as it appears: for when what was pressed went
-   * with what it removed.
+   * with what it removed. It acts once, as the row mounts: a screen that can
+   * offer a second undo while the first is up keys each row by what it
+   * undoes (`key={removed.key}`), so each removal mounts a row of its own,
+   * which takes the focus, waits and is said afresh. Unkeyed, the row there
+   * only changes its words, and the focus stays where the pressed button
+   * went: nowhere.
    */
   autoFocus?: boolean;
   /**
@@ -59,7 +64,8 @@ export function saidAsItAppears(
  * once, through the page's announcer (a status drawn with its words already
  * in it is often not heard), unless its own focus says it; from then on it
  * is a status of its own, so a change of its words (a way back that failed)
- * is heard wherever the focus is. Its button is described by its words
+ * is heard wherever the focus is. Another removal is another row (a `key`
+ * of what it undoes), not new words. Its button is described by its words
  * ("ביטול, נועה כהן הוסרה מהצוות"), its way back waits while it is being
  * reached, and when it goes holding the focus the focus goes where the
  * screen says (`focusAfter`), else to the page's title.

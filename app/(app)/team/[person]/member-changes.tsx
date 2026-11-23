@@ -15,7 +15,7 @@ import {
 import { Button } from "@ui/button";
 import { Card, CardText, CardTitle } from "@ui/card";
 import { ChoiceList, ChoiceRow } from "@ui/choice-row";
-import { firstOnScreen, focusFirst } from "@ui/focus-after";
+import { arrived, firstOnScreen, focusFirst } from "@ui/focus-after";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { Sheet } from "@ui/sheet";
 import { StatusToast } from "@ui/status-toast";
@@ -143,7 +143,11 @@ function useRoleName(data: Pick<MemberChangesData, "namedRoles">) {
  */
 type Phase = "on" | "sending" | "removed";
 
-type Undo = { message: string; run: () => void };
+/**
+ * A role change's way back. `key` is what it undoes (the role it gave), so
+ * another change while it is up is a row of its own (UndoRow's `key`).
+ */
+type Undo = { key: string; message: string; run: () => void };
 
 /** Why the last change was not made, and whether it was the removal. */
 type Refusal = { failure: TeamChangeActionFailure; removal: boolean };
@@ -155,8 +159,11 @@ type ChangesValue = {
   phase: Phase;
   left: LeftCounts | null;
   failure: TeamChangeActionFailure | null;
-  /** The last refusal was the removal's: "הסרה מהצוות" takes the focus back. */
-  removalRefused: boolean;
+  /**
+   * The last refusal, when it was the removal's: "הסרה מהצוות" takes the
+   * focus back as it arrives. Each refusal a new one.
+   */
+  removalRefusal: Refusal | null;
   /** A removal waits for its undo. */
   removing: boolean;
   /** Something waits for its undo: the role row waits too. */
@@ -291,6 +298,7 @@ export function MemberChangesState({
       setRole(to);
       held.hold({ kind: "role", from, to });
       setRoleUndo({
+        key: roleChoiceKey(to),
         message: t("roleChanged", { name: data.name, role: roleName(to) }),
         run: () => {
           if (held.release()) setRole(from);
@@ -308,6 +316,7 @@ export function MemberChangesState({
     }
     setRole(to);
     showUndo({
+      key: roleChoiceKey(to),
       message: t("roleChanged", { name: data.name, role: roleName(to) }),
       run: () => void changeBack(from, to),
     });
@@ -379,7 +388,7 @@ export function MemberChangesState({
         phase,
         left,
         failure: refusal?.failure ?? null,
-        removalRefused: refusal?.removal === true,
+        removalRefusal: refusal?.removal === true ? refusal : null,
         removing,
         holding: held.held !== null,
         roleUndo,
@@ -485,7 +494,9 @@ export function MemberRoleNotes() {
       <StatusToast message={toast?.text ?? null} stamp={toast?.stamp} />
       {roleUndo ? (
         // Quiet: the sheet closes onto it, and its focus says its words.
+        // Another change while it is up is a row of its own.
         <UndoRow
+          key={roleUndo.key}
           message={roleUndo.message}
           onUndo={roleUndo.run}
           quiet
@@ -625,11 +636,16 @@ export function MemberRemoval() {
   const failure = value?.failure ?? null;
   // The removal came back refused: the page drew the button again, with
   // why under it, and the focus goes back to it. Only the removal's: a
-  // role change's may come while its sheet is open over this button.
-  const refused = value?.removalRefused === true;
+  // role change's may come while its sheet is open over this button. Only
+  // as it arrives: the page shown again from a hidden <Activity>, with the
+  // refusal still under the button, leaves the focus where it is.
+  const refusal = value?.removalRefusal ?? null;
+  const focusedRefusal = useRef<Refusal | null>(null);
   useLayoutEffect(() => {
-    if (refused) focusFirst([value?.removeButton.current], { title: false });
-  }, [refused, value?.removeButton]);
+    if (arrived(focusedRefusal, refusal)) {
+      focusFirst([value?.removeButton.current], { title: false });
+    }
+  }, [refusal, value?.removeButton]);
   if (!value) return null;
   const { data } = value;
   const ahead = data.ahead.shifts + data.ahead.drafts;
@@ -695,11 +711,15 @@ export function MemberLeft() {
   const leftTitle = useRef<HTMLHeadingElement>(null);
   const phase = value?.phase;
   // Written: what came off them takes the focus from the line that went,
-  // where the line was, without moving the page.
+  // where the line was, without moving the page. Only as it arrives, not
+  // when the page is shown again from a hidden <Activity>.
+  const card = phase === "removed" ? (value?.left ?? null) : null;
+  const titled = useRef<LeftCounts | null>(null);
   useLayoutEffect(() => {
-    if (phase === "removed")
+    if (arrived(titled, card)) {
       focusFirst([leftTitle.current], { preventScroll: true });
-  }, [phase]);
+    }
+  }, [card]);
   if (!value) return null;
   const { data, left, removing, removeButton } = value;
   const removed = t("removed", { name: data.name, form: data.form });

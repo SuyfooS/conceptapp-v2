@@ -353,7 +353,16 @@ export function CodeSlots({
           />
         </span>
       </div>
-      <span id={countId} className="sr-only" aria-live="polite">
+      {/*
+       * Said whole as it changes: the digits are a node of their own
+       * (`<ltr>`), so a move between equal digits would say the place alone.
+       */}
+      <span
+        id={countId}
+        className="sr-only"
+        aria-live="polite"
+        aria-atomic="true"
+      >
         {said.key === "accepted"
           ? t("accepted")
           : said.key === "count"

@@ -179,6 +179,8 @@ export function PositionsEditor({
       ) : null}
       {removed ? (
         <UndoRow
+          // Each removal a row of its own, said afresh.
+          key={removed.position.key}
           message={t("removed", { name: removed.position.name })}
           onUndo={undo}
         />

@@ -394,7 +394,15 @@ export function SchedulesEditor({
           {shabbat ? `${t("hint")} ${t("shabbat")}` : t("hint")}
         </p>
       ) : null}
-      {removed ? <UndoRow message={t("removed")} onUndo={undo} /> : null}
+      {removed ? (
+        // Each removal a row of its own: its words are the same each time,
+        // so only a new row says the next one.
+        <UndoRow
+          key={removed.schedule.key}
+          message={t("removed")}
+          onUndo={undo}
+        />
+      ) : null}
       <Sheet
         open={open}
         onOpenChange={setOpen}

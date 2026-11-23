@@ -116,10 +116,22 @@ describe("CodeSlots", () => {
       );
       expect(html).toMatch(
         new RegExp(
-          `<span id="[^"]+" class="sr-only" aria-live="polite">${words}</span>`,
+          `<span id="[^"]+" class="sr-only" aria-live="polite" aria-atomic="true">${words}</span>`,
         ),
       );
     }
+  });
+
+  // Its words and its digits are two nodes (`<ltr>`): moving between equal
+  // digits changes the place alone, which is said with its digit only when
+  // the line is said whole.
+  it("says its line whole each time it changes", () => {
+    const html = draw(
+      createElement(CodeSlots, { name: "code", label: "Code" }),
+    );
+    const line = html.match(/<span id="[^"]+" class="sr-only"[^>]*>/)?.[0];
+    expect(line).toContain('aria-live="polite"');
+    expect(line).toContain('aria-atomic="true"');
   });
 
   it("is described by its line first, then by the screen's", () => {

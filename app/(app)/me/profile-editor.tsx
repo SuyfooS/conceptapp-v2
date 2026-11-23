@@ -389,6 +389,9 @@ export function ProfileEditor({
             {undo && undoMessage ? (
               <div className="mt-1">
                 <UndoRow
+                  // The line removed while the photo's way back is up is a
+                  // row of its own; a way back that failed only changes words.
+                  key={undo.kind}
                   message={undoMessage}
                   onUndo={bringBack}
                   pending={undoing}

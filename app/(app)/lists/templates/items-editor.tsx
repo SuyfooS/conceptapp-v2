@@ -305,6 +305,8 @@ export function ItemsEditor({
       )}
       {removed ? (
         <UndoRow
+          // Each removal a row of its own, said afresh.
+          key={removed.item.key}
           message={t("removed", { label: removed.item.label })}
           onUndo={undo}
         />

@@ -1,5 +1,5 @@
 import { NextIntlClientProvider } from "next-intl";
-import { createElement } from "react";
+import { createElement, Fragment } from "react";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 // The words a screen's provider gives it.
@@ -9,7 +9,8 @@ import { ChecklistItem, type ChecklistItemProps } from "./checklist-item";
 
 /*
  * A list's item, heard (accessibility, part 1): a number's range is one
- * line that describes its field and turns into the warning in place; a
+ * line that describes its field and turns into the warning in place, said
+ * whole each time (its range in a node of its own); a
  * check only read says whether it is ticked; a photo's remove stays while
  * the photo saves, doing nothing, so the focus on it stays too.
  */
@@ -58,7 +59,7 @@ describe("a number item", () => {
     const html = reading(null);
     const hint = html.match(/<span id="([^"]+)"[^>]*>In degrees<\/span>/)?.[1];
     const range = html.match(
-      /<span id="([^"]+)" aria-live="polite"[^>]*>2 – 8<\/span>/,
+      /<span id="([^"]+)" aria-live="polite" aria-atomic="true"[^>]*>2 – 8<\/span>/,
     )?.[1];
     expect(hint).toBeDefined();
     expect(range).toBeDefined();
@@ -69,10 +70,37 @@ describe("a number item", () => {
   it("says a reading out of range in the same line, no status of its own", () => {
     const html = reading("Outside 2 – 8");
     expect(html).toMatch(
-      /<span id="[^"]+" aria-live="polite" class="[^"]*text-warning[^"]*">Outside 2 – 8<\/span>/,
+      /<span id="[^"]+" aria-live="polite" aria-atomic="true" class="[^"]*text-warning[^"]*">Outside 2 – 8<\/span>/,
     );
     expect(html).not.toContain('role="status"');
     expect(html).not.toContain(">2 – 8</span>");
+  });
+
+  it("says its line whole, its range with it, when the range is a node of its own", () => {
+    const html = draw({
+      kind: "number",
+      number: {
+        value: "9",
+        onValueChange: () => {},
+        onCommit: () => {},
+        fieldLabel: "Reading of Main fridge",
+        range: createElement(
+          Fragment,
+          null,
+          "Between ",
+          createElement("span", { dir: "ltr" }, "2–8"),
+        ),
+        outOfRange: createElement(
+          Fragment,
+          null,
+          "Outside ",
+          createElement("span", { dir: "ltr" }, "2–8"),
+        ),
+      },
+    });
+    expect(html).toMatch(
+      /<span id="[^"]+" aria-live="polite" aria-atomic="true"[^>]*>Outside <span dir="ltr">2–8<\/span><\/span>/,
+    );
   });
 });
 

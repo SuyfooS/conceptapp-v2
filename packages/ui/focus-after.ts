@@ -176,6 +176,24 @@ export function focusWhenGone(
   return focusFirst(candidates, { doc, preventScroll: true });
 }
 
+/**
+ * Whether `now` has just arrived, noting it in `seen` when it has: for an
+ * effect that moves the focus to what arrived (a refusal, the card that
+ * says it was written). A screen left in a hidden <Activity> and shown
+ * again runs its effects again with the same value, which arrived long
+ * ago: the focus stays where it is then. Null is nothing there, and keeps
+ * what was seen. Compared by identity, so each new one (a refusal again)
+ * arrives.
+ */
+export function arrived<T>(
+  seen: { current: T | null },
+  now: T | null,
+): boolean {
+  if (now === null || now === seen.current) return false;
+  seen.current = now;
+  return true;
+}
+
 /** An element whose focus is watched. */
 export type Watched = Pick<
   EventTarget,
