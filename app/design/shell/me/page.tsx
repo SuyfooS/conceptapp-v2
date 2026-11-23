@@ -1,3 +1,4 @@
+import { displayIsraeliMobile } from "@domain/phone";
 import { Suspense } from "react";
 import { PastJobsSection } from "../../../(account)/me/past/past-jobs";
 import { MyDocumentsSection } from "../../../(app)/chat/documents/my-documents";
@@ -7,7 +8,13 @@ import { ModeRows } from "../../../(app)/mode-rows";
 import { NotificationSettingsLink } from "../../../(app)/notifications/settings-link";
 import { baseWording } from "../../../(app)/wording";
 import { demoSignOut } from "../actions";
-import { business, demoOrdersMode, teamMembers, teamProfiles } from "../data";
+import {
+  business,
+  demoOrdersMode,
+  shiranTeamName,
+  teamMembers,
+  teamProfiles,
+} from "../data";
 import {
   demoRemovePhotoAction,
   demoSaveProfileAction,
@@ -16,7 +23,12 @@ import {
 import { fileScreenDemo, pastJobDemo } from "./file/data";
 
 type Props = {
-  searchParams: Promise<{ state?: string; file?: string; past?: string }>;
+  searchParams: Promise<{
+    state?: string;
+    file?: string;
+    past?: string;
+    name?: string;
+  }>;
 };
 
 // The real profile with mock data: Shiran, the shift manager, with her photo,
@@ -32,6 +44,13 @@ type Props = {
 // card leads to the pension), each as Noa's twin has it (H5b), and each of
 // its links to that twin in the same state. ?past=1 adds "עבודות קודמות"
 // (H5c), a café she left, whose row leads to the old file's twin.
+// ?name=kept is a business that keeps a name of its own for her ("השם שלי"
+// says so, and her title stays its name); ?name=same, one that keeps her own
+// name as its own (the row says nothing more, the sheet and the word after
+// saving do, and the title stays it); ?name=none, someone nobody named (her
+// number for a title, and the row asks for a name); ?name=marked, her own
+// name saved with a right-to-left mark nobody sees, which the sheet saves
+// clean as it opens.
 export default function ShellMe({ searchParams }: Props) {
   return (
     <Suspense>
@@ -41,11 +60,19 @@ export default function ShellMe({ searchParams }: Props) {
 }
 
 async function Demo({ searchParams }: Props) {
-  const { state, file, past } = await searchParams;
+  const { state, file, past, name } = await searchParams;
   const shiran = teamMembers.find((m) => m.userId === "shiran");
   const profile = teamProfiles.shiran;
   const empty = state === "empty";
   const demo = state === "demo";
+  const own =
+    name === "none"
+      ? null
+      : name === "marked" && shiran?.name
+        ? // A right-to-left mark, as an earlier claim may have copied it.
+          `\u{200F}${shiran.name}`
+        : (shiran?.name ?? null);
+  const kept = name === "kept" ? shiranTeamName : name === "same" ? own : null;
   return (
     <MeView
       wording={baseWording}
@@ -111,7 +138,12 @@ async function Demo({ searchParams }: Props) {
         )
       }
       data={{
-        name: shiran?.name ?? "",
+        name:
+          kept ??
+          own ??
+          (shiran?.phone ? displayIsraeliMobile(shiran.phone) : ""),
+        ownName: own,
+        keptName: kept,
         photo: empty ? null : (shiran?.photo ?? null),
         role: "manager",
         businessName: business.name,

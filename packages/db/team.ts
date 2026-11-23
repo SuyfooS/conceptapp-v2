@@ -320,6 +320,12 @@ async function phonesFromProfiles(
 
 /** One member as their profile shows them to whoever sees the team. */
 export type TeamPerson = TeamMember & {
+  /**
+   * The business's own name for them (`public.member_names`), which `name`
+   * shows; null when `name` is their own. The team's fix cleans the first
+   * of what nobody sees, never the second (`unchangedMemberName`).
+   */
+  memberName: string | null;
   /** Their line about themselves, or null. */
   bio: string | null;
   cover: CoverPreset;
@@ -332,7 +338,8 @@ export type TeamPerson = TeamMember & {
  * team reads them (RLS; callers check `canSeeTeam` first), with the role
  * the business named that they hold (R11b). Null when they are not an
  * active member. Before the profile's H2 migration reaches a project, they
- * have no line and the default cover. By the business's name for them.
+ * have no line and the default cover. By the business's name for them, and
+ * that name apart when it keeps one.
  */
 export async function getTeamPerson(
   businessId: string,
@@ -349,6 +356,7 @@ export async function getTeamPerson(
   return {
     userId: row.user_id,
     name: nameOf(row, names),
+    memberName: names.get(row.user_id.toLowerCase()) ?? null,
     phone: phoneOf.get(row.user_id) ?? null,
     role: row.role,
     namedRole: namedOf(roles, row.named_role),
@@ -525,7 +533,8 @@ export async function removeMember(
  * (`changed: false`). Becoming an accountant takes them off the staff as
  * removing does (`left` counts what came off, and the builders are told:
  * `pushSoon()` after); becoming an owner or an accountant clears their
- * personal permissions; between manager and worker they stay. Refused as
+ * personal permissions, and becoming an owner the business's own name for
+ * them (`private.drop_owner_name`); between manager and worker they stay. Refused as
  * `removeMember` is, `elsewhere` for an accountant on another business's
  * staff joining this one's (#80: say it neutrally), and `roleGone` for a
  * named role removed meanwhile.
@@ -573,8 +582,9 @@ const NameChangeRow = z.object({
 /**
  * `actorId` fixes the name the business shows for `personId`
  * (`public.set_member_name`, ROADMAP "תיקון שם"): its own for them, in this
- * business only and everywhere in it, by the rule of changing a role
- * (`canRemoveMember`); their own name is never touched. `to` null, or their
+ * business only and everywhere in it, by the rule of changing a role, but
+ * never for an owner, who appears by their own name (`canFixName`); their
+ * own name is never touched. `to` null, or their
  * own name, keeps none of the business's own, so it shows theirs again (the
  * undo of a first fix). `seen` is the name the screen showed (null: none),
  * so one changed meanwhile stays (`changed`). The same name writes nothing
@@ -585,7 +595,8 @@ const NameChangeRow = z.object({
  * and is not viewing as someone else (`canWrite`), and send a name
  * `parseTeamName` kept; the database checks again. Refused as
  * `setMemberRole` is (`notAllowed`, `gone`, `yourself`, `demo`, `changed`),
- * and `badName` for a name it can't keep. Any other error throws.
+ * `notAllowed` also for an owner (hint `owner`), and `badName` for a name it
+ * can't keep. Any other error throws.
  */
 export async function setMemberName(
   actorId: string,

@@ -10,12 +10,14 @@ import {
   coverOf,
   DEFAULT_COVER,
   formArg,
+  keptNameOf,
   mayClearBio,
   normalizeBio,
   PROFILE_LOCALES,
   profileLocaleOf,
   seenBioOf,
 } from "./profile";
+import { TEAM_NAME_MAX } from "./team";
 
 describe("covers", () => {
   it("draws a stored preset as itself", () => {
@@ -131,6 +133,93 @@ describe("checkProfileChange", () => {
     expect(checkProfileChange({ bio: "👍".repeat(160) }).ok).toBe(true);
   });
 
+  it("keeps their own name as the team keeps a name", () => {
+    expect(checkProfileChange({ name: " נועה   כהן " })).toEqual({
+      ok: true,
+      patch: { full_name: "נועה כהן" },
+    });
+    expect(checkProfileChange({ name: "נועה\n\tכהן" })).toEqual({
+      ok: true,
+      patch: { full_name: "נועה כהן" },
+    });
+    // e and a combining diaeresis become ë.
+    expect(checkProfileChange({ name: "Noe\u0308l" })).toEqual({
+      ok: true,
+      patch: { full_name: "No\u00ebl" },
+    });
+    // What nobody sees is dropped, a maqaf or a dash stays.
+    expect(checkProfileChange({ name: "נועה\u0007 כהן" })).toEqual({
+      ok: true,
+      patch: { full_name: "נועה כהן" },
+    });
+    expect(checkProfileChange({ name: "ורד צוות-לוי" })).toEqual({
+      ok: true,
+      patch: { full_name: "ורד צוות-לוי" },
+    });
+  });
+
+  it("takes a name of 80 characters and no more, and never none", () => {
+    expect(checkProfileChange({ name: "א".repeat(TEAM_NAME_MAX) })).toEqual({
+      ok: true,
+      patch: { full_name: "א".repeat(TEAM_NAME_MAX) },
+    });
+    expect(checkProfileChange({ name: "א".repeat(TEAM_NAME_MAX + 1) })).toEqual(
+      { ok: false, problem: "nameTooLong" },
+    );
+    // An emoji is one character, as Postgres counts it.
+    expect(checkProfileChange({ name: "🙂".repeat(TEAM_NAME_MAX) }).ok).toBe(
+      true,
+    );
+    // Spaces that collapsing drops don't count.
+    expect(
+      checkProfileChange({ name: ` ${"א".repeat(TEAM_NAME_MAX)} ` }).ok,
+    ).toBe(true);
+    for (const name of ["", "   ", "\u0007"]) {
+      expect(checkProfileChange({ name }), JSON.stringify(name)).toEqual({
+        ok: false,
+        problem: "nameRequired",
+      });
+    }
+  });
+
+  it("takes no name nobody sees, and none that turns its sentences around", () => {
+    // A zero-width space, direction marks, a word joiner, a soft hyphen, a
+    // filler, a joiner: pasted alone, still no name.
+    for (const name of [
+      "\u200B",
+      "\u200F\u200E",
+      "\u2060",
+      "\u00AD",
+      "\u3164",
+      " \u200B\u200D ",
+    ]) {
+      expect(checkProfileChange({ name }), JSON.stringify(name)).toEqual({
+        ok: false,
+        problem: "nameRequired",
+      });
+    }
+    // A right-to-left override or an isolate goes, so a sentence with the
+    // name in it ("X מוסר/ת, Y לוקח/ת") keeps its order.
+    expect(checkProfileChange({ name: "\u202Eנועה כהן" })).toEqual({
+      ok: true,
+      patch: { full_name: "נועה כהן" },
+    });
+    expect(checkProfileChange({ name: "\u2067נועה\u2069 כהן\u200B" })).toEqual({
+      ok: true,
+      patch: { full_name: "נועה כהן" },
+    });
+  });
+
+  it("checks a name with the rest of the change", () => {
+    expect(checkProfileChange({ name: "נועה כהן", cover: "dots" })).toEqual({
+      ok: true,
+      patch: { full_name: "נועה כהן", cover: "dots" },
+    });
+    expect(
+      checkProfileChange({ name: "  ", cover: "dots", addressForm: "f" }),
+    ).toEqual({ ok: false, problem: "nameRequired" });
+  });
+
   it("refuses nothing, and anything it doesn't know", () => {
     expect(checkProfileChange({})).toEqual({ ok: false, problem: "empty" });
     expect(checkProfileChange({ bio: undefined })).toEqual({
@@ -146,6 +235,11 @@ describe("checkProfileChange", () => {
       { locale: null },
       { locale: "fr" },
       { bio: 5 },
+      // A name is never cleared, and is text.
+      { name: null },
+      { name: 42 },
+      { name: "א".repeat(401) },
+      { full_name: "נועה כהן" },
       "bio",
       null,
       [],
@@ -155,6 +249,29 @@ describe("checkProfileChange", () => {
         problem: "invalid",
       });
     }
+  });
+});
+
+describe("keptNameOf", () => {
+  it("is none when the business keeps their own name for them", () => {
+    expect(keptNameOf("נועה כהן", "נועה כהן")).toBeNull();
+    // As the team keeps names: a stored double space is the same name.
+    expect(keptNameOf("נועה  כהן", "נועה כהן")).toBeNull();
+    // And one stored with its letters decomposed.
+    expect(keptNameOf("No\u00ebl", "Noe\u0308l")).toBeNull();
+  });
+
+  it("is the business's own name for them when it differs", () => {
+    expect(keptNameOf("נועה כ.", "נועה כהן")).toBe("נועה כ.");
+    // Someone the business named who has no name of their own.
+    expect(keptNameOf("נועה כ.", null)).toBe("נועה כ.");
+    expect(keptNameOf("נועה כ.", undefined)).toBe("נועה כ.");
+  });
+
+  it("is none when the business keeps none", () => {
+    expect(keptNameOf(null, "נועה כהן")).toBeNull();
+    expect(keptNameOf(null, null)).toBeNull();
+    expect(keptNameOf("", "נועה כהן")).toBeNull();
   });
 });
 

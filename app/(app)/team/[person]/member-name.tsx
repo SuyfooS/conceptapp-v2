@@ -1,6 +1,10 @@
 "use client";
 
-import { parseTeamName, sameTeamName, TEAM_NAME_MAX } from "@domain/team";
+import {
+  parseTeamName,
+  TEAM_NAME_MAX,
+  unchangedMemberName,
+} from "@domain/team";
 import { Button } from "@ui/button";
 import { FieldGroup, GroupedField } from "@ui/field-group";
 import { ListGroup, ListRow } from "@ui/list-row";
@@ -23,13 +27,23 @@ import type {
   MemberNameResult,
   TeamChangeActionFailure,
 } from "../team-change-types";
-import { MemberRoleNotes, MemberRoleRow } from "./member-changes";
+import { MemberRoleNotes, MemberRoleRow, useShownRole } from "./member-changes";
 
 type Undo = { message: string; run: () => void };
 
+/** A name the screen shows, and whether it is the business's own for them. */
+type Shown = { name: string | null; kept: boolean };
+
 type NameValue = {
+  /**
+   * The server offers the name to fix: never an owner's (`canFixName`). The
+   * parts wait out a change to owner too (`useFixes`).
+   */
+  fixes: boolean;
   /** The name as the screen shows it now; null: none. */
   shown: string | null;
+  /** Whether that is the business's own name for them, not their own. */
+  kept: boolean;
   busy: boolean;
   failure: TeamChangeActionFailure | null;
   /** The undo of a fix just written: the fix back. */
@@ -52,32 +66,44 @@ const settle = (run: Promise<MemberNameResult>) =>
  * them, shown everywhere in this business and nowhere else; their own name
  * stays theirs. The fix is written at once, and its undo, for a moment, is
  * the fix back, as a change between manager and worker. `name` is the name
- * the server has (null: none); the title, the row and the sentences follow
- * the screen's until the page is read again. The parts below read this
- * state; without it they draw nothing.
+ * the server has (null: none), and `kept` whether it is the business's own
+ * for them rather than their own; the title, the row and the sentences
+ * follow the screen's until the page is read again. `fixes` false, for an
+ * owner, who appears by their own name (`canFixName`), offers no fix: no
+ * row, sheet, undo or refusal, and the title is the name the server has.
+ * It stays mounted either way, so a role change that makes someone an owner,
+ * or no longer one, keeps that change's own undo and words when the page is
+ * read again. The parts below read this state; without it they draw
+ * nothing.
  */
 export function MemberNameState({
   personId,
   name,
+  kept,
+  fixes,
   rename,
   children,
 }: {
   personId: string;
   name: string | null;
+  kept: boolean;
+  fixes: boolean;
   rename: MemberChangeActions["rename"];
   children: ReactNode;
 }) {
   const t = useTranslations("app.team.changes");
   // The name as the server has it, and as the screen shows it.
-  const [seen, setSeen] = useState(name);
-  const [shown, setShown] = useState(name);
-  if (name !== seen) {
-    setSeen(name);
-    setShown(name);
+  const [seen, setSeen] = useState<Shown>({ name, kept });
+  const [shown, setShown] = useState<Shown>({ name, kept });
+  if (name !== seen.name || kept !== seen.kept) {
+    setSeen({ name, kept });
+    setShown({ name, kept });
   }
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<TeamChangeActionFailure | null>(null);
   const [open, setOpenState] = useState(false);
+  // Made an owner: a sheet left open closes, and stays closed after.
+  if (!fixes && open) setOpenState(false);
   const [undo, setUndo] = useState<Undo | null>(null);
   const undoTimer = useRef<number | null>(null);
   const [toast, setToast] = useState<{ text: string; stamp: string } | null>(
@@ -106,27 +132,31 @@ export function MemberNameState({
 
   /**
    * Writes `to`, a name `parseTeamName` kept, for the one the screen shows,
-   * with the fix back as its undo; nothing when it is that one already
-   * (`sameTeamName`). Whether the sheet may close.
+   * with the fix back as its undo; nothing when that writes nothing
+   * (`unchangedMemberName`: a name the business keeps with what nobody sees
+   * is saved clean; their own name keeps no row, however it is stored).
+   * Whether the sheet may close.
    */
   async function fix(to: string): Promise<boolean> {
     const from = shown;
-    if (sameTeamName(to, from)) return true;
+    if (unchangedMemberName(to, from.name, from.kept)) return true;
     if (busy) return false;
     setFailure(null);
     clearUndo();
     setBusy(true);
-    const result = await settle(rename(personId, to, from));
+    const result = await settle(rename(personId, to, from.name));
     setBusy(false);
     if (!result.ok) {
       setFailure(result.failure);
       return false;
     }
     if (!result.changed) return true;
-    const now = result.name;
+    // The server keeps `to` as sent and answers with it, unless it is their
+    // own name, which keeps no row: then it answers with theirs as stored.
+    const now: Shown = { name: result.name, kept: result.name === to };
     setShown(now);
     showUndo({
-      message: t("nameChanged", { name: now ?? to }),
+      message: t("nameChanged", { name: now.name ?? to }),
       run: () => void changeBack(from, now),
     });
     return true;
@@ -136,12 +166,12 @@ export function MemberNameState({
    * The undo of a fix already written: the name it had, or none. The row
    * waits for it, so no fix goes out for a name the server doesn't have yet.
    */
-  async function changeBack(from: string | null, to: string | null) {
+  async function changeBack(from: Shown, to: Shown) {
     clearUndo();
     setFailure(null);
     setShown(from);
     setBusy(true);
-    const result = await settle(rename(personId, from, to));
+    const result = await settle(rename(personId, from.name, to.name));
     setBusy(false);
     if (!result.ok) {
       setShown(to);
@@ -149,7 +179,7 @@ export function MemberNameState({
       return;
     }
     setToast({
-      text: from ? t("nameBack", { name: from }) : t("nameBackNone"),
+      text: from.name ? t("nameBack", { name: from.name }) : t("nameBackNone"),
       stamp: new Date().toISOString(),
     });
   }
@@ -160,7 +190,18 @@ export function MemberNameState({
 
   return (
     <NameContext
-      value={{ shown, busy, failure, undo, toast, open, setOpen, fix }}
+      value={{
+        fixes,
+        shown: shown.name,
+        kept: shown.kept,
+        busy,
+        failure,
+        undo,
+        toast,
+        open,
+        setOpen,
+        fix,
+      }}
     >
       {children}
     </NameContext>
@@ -174,9 +215,22 @@ export function ShownName({ none }: { none: string }) {
 }
 
 /**
+ * Whether the screen offers to fix the name: as the server says (`fixes`),
+ * but never while the role the screen shows is owner. A change to owner is
+ * held for its undo (`roleChangeClears`), and once written the database
+ * drops the business's name for them (`private.drop_owner_name`), so a fix
+ * made in the meantime, or its undo, would be said and then lost.
+ */
+function useFixes(value: NameValue | null): boolean {
+  const shown = useShownRole();
+  return value?.fixes === true && shown?.role.role !== "owner";
+}
+
+/**
  * Their place on the team, in one grouped list: "שם" with the name the
  * business shows, then "תפקיד" with their role, each opening its sheet; under
- * them, the undo or the word of each change.
+ * them, the undo or the word of each change. For an owner, "תפקיד" alone, as
+ * soon as the screen shows them as one.
  */
 export function TeamPlace() {
   return (
@@ -194,13 +248,15 @@ export function TeamPlace() {
 /**
  * "שם" with the name under it, so a long one wraps, which opens the sheet to
  * fix it. Its sheet comes after it: a sheet leaves a hidden mark in its
- * place, and the rows' hairlines count who comes first.
+ * place, and the rows' hairlines count who comes first. None for an owner,
+ * nor while a change to owner waits for its undo (`useFixes`).
  */
 function MemberNameRow() {
   const value = use(NameContext);
+  const fixes = useFixes(value);
   const t = useTranslations("app.team.changes");
   const tTeam = useTranslations("app.team");
-  if (!value) return null;
+  if (!value || !fixes) return null;
   return (
     <>
       <ListRow
@@ -235,18 +291,24 @@ function NameForm({ value }: { value: NameValue }) {
   const t = useTranslations("app.team.changes");
   const tInvite = useTranslations("app.team.invite");
   const failureText = useNameFailure();
+  const field = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState(value.shown ?? "");
   const [error, setError] = useState<"required" | "tooLong" | null>(null);
   const parsed = parseTeamName(draft);
-  // Both as a name is kept: an own name stored with a double space, or with
-  // its letters decomposed, is no fix until a letter really differs.
-  const same = sameTeamName(draft, value.shown);
+  // A name stored with a double space, or with its letters decomposed, is no
+  // fix until a letter really differs. One the business keeps with what
+  // nobody sees (a direction mark, a zero-width space) is, and saving it
+  // cleans it; their own name it never cleans, so there it is none.
+  const same = unchangedMemberName(draft, value.shown, value.kept);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (value.busy) return;
     if (!parsed.ok) {
+      // Said as an alert wherever the focus was, then the field takes it, to
+      // write the name at once.
       setError(parsed.error);
+      field.current?.focus();
       return;
     }
     if (await value.fix(parsed.name)) value.setOpen(false);
@@ -260,6 +322,7 @@ function NameForm({ value }: { value: NameValue }) {
     >
       <FieldGroup className="bg-elevated">
         <GroupedField
+          ref={field}
           name="member-name"
           label={tInvite("name")}
           placeholder={tInvite("namePlaceholder")}
@@ -271,7 +334,11 @@ function NameForm({ value }: { value: NameValue }) {
             setDraft(event.target.value);
             setError(null);
           }}
-          error={error ? tInvite(`errors.name.${error}`) : undefined}
+          error={
+            error ? (
+              <span role="alert">{tInvite(`errors.name.${error}`)}</span>
+            ) : undefined
+          }
           required
         />
       </FieldGroup>
@@ -296,10 +363,13 @@ function NameForm({ value }: { value: NameValue }) {
 
 /**
  * Under the group: "השם שוב …" once a fix was taken back, the fix's undo while
- * it lasts, and why the last one was not made, while the sheet is closed.
+ * it lasts, and why the last one was not made, while the sheet is closed;
+ * neither once they are an owner, whose name nobody fixes, nor while a
+ * change to owner waits for its undo (`useFixes`).
  */
 function MemberNameNotes() {
   const value = use(NameContext);
+  const fixes = useFixes(value);
   const failureText = useNameFailure();
   if (!value) return null;
   return (
@@ -308,10 +378,10 @@ function MemberNameNotes() {
         message={value.toast?.text ?? null}
         stamp={value.toast?.stamp}
       />
-      {value.undo ? (
+      {fixes && value.undo ? (
         <UndoRow message={value.undo.message} onUndo={value.undo.run} />
       ) : null}
-      {value.failure && !value.open ? (
+      {fixes && value.failure && !value.open ? (
         <p role="alert" className="px-1 text-base text-danger">
           {failureText(value.failure)}
         </p>

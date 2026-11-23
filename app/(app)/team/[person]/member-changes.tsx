@@ -348,6 +348,17 @@ export function MemberChangesState({
   );
 }
 
+/**
+ * Their role as the screen shows it, a change held for its undo included,
+ * and whether something waits for one: for what follows the role before the
+ * page is read again (the name row, gone for an owner). Null outside
+ * `MemberChangesState`.
+ */
+export function useShownRole(): { role: RoleChoice; holding: boolean } | null {
+  const value = use(ChangesContext);
+  return value ? { role: value.role, holding: value.holding } : null;
+}
+
 /** What the page offers while the person is on the team; nothing once off it. */
 export function WhileOnTeam({ children }: { children: ReactNode }) {
   const value = use(ChangesContext);

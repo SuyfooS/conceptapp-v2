@@ -375,13 +375,26 @@ export type TeamActor = TeamPlace & Viewer;
  * on managers and workers, and a worker raised to edit the team on workers.
  * Never on oneself, which the person's own profile is for. A named role
  * counts as its base: whoever acts on workers acts on a shift lead built on
- * them. The same people fix the name the business shows for them, its own
- * for them in this business only (`public.set_member_name`). The database
- * checks the same (`public.remove_member`, `private.gives_role`), and also
- * that the business keeps an owner (`leavesNoOwner`).
+ * them. The same people fix the name the business shows for them, but never
+ * an owner's (`canFixName`). The database checks the same
+ * (`public.remove_member`, `private.gives_role`), and also that the business
+ * keeps an owner (`leavesNoOwner`).
  */
 export function canRemoveMember(viewer: TeamActor, person: TeamPlace): boolean {
   return viewer.userId !== person.userId && givesByRank(viewer, person.role);
+}
+
+/**
+ * May the viewer fix the name the business shows for the person, its own for
+ * them in this business only (`public.set_member_name`)? Whoever may change
+ * their role (`canRemoveMember`), for anyone but an owner: an owner appears
+ * in the business by their own name, which they change on /me, so no other
+ * owner gives them one that nobody could take back once they are the only
+ * owner. The database refuses the same (42501, hint `owner`), and drops the
+ * business's name for whoever becomes an owner.
+ */
+export function canFixName(viewer: TeamActor, person: TeamPlace): boolean {
+  return person.role !== "owner" && canRemoveMember(viewer, person);
 }
 
 /**
@@ -442,21 +455,25 @@ export function leavesStaff(from: Role, to: Role | null): boolean {
  * A role change that changing back can't undo, so the screen holds it for
  * its undo before writing it, as it holds a removal: leaving the staff takes
  * the shifts still to start off the person (`leavesStaff`), and becoming an
- * owner or an accountant clears their personal permissions
- * (`public.set_member_role`). Between manager and worker, and from an
+ * accountant clears their personal permissions (`public.set_member_role`).
+ * Every change to owner is held too, from any role, an accountant's
+ * included: it clears personal permissions, and the business's own name for
+ * them (`private.drop_owner_name`), so the undo lets go of the write before
+ * the database takes the name. Between manager and worker, and from an
  * accountant onto the staff below owner, nothing is lost: the change is
  * written at once, and its undo is the change back.
  */
 export function roleChangeClears(from: Role, to: Role): boolean {
   if (from === to) return false;
-  return leavesStaff(from, to) || (to === "owner" && from !== "accountant");
+  return leavesStaff(from, to) || to === "owner";
 }
 
 /**
  * Why the database refused a team change, as the screens explain it:
  *
  *   notAllowed  42501: the viewer may not act on this role, or no longer
- *               edits the business's team
+ *               edits the business's team; for a name, also with hint
+ *               `owner`: the person is an owner, who keeps their own name
  *   beyondHeld  42501 with hint `held`: the new role holds by role a
  *               permission the viewer doesn't (an owner set workers above
  *               managers; the roles plan's R3), which only an owner gives
@@ -554,21 +571,43 @@ export type LeftCounts = {
 export const TEAM_NAME_MAX = 80;
 
 /**
- * A person's name as the team keeps it, an invite's or the one the business
- * gives them (`public.set_member_name`): one line, spaces collapsed, 1 to
- * `TEAM_NAME_MAX` characters. Control characters other than spaces are
- * dropped rather than refused: a pasted name may carry one nobody sees. A
- * maqaf or a dash stays as typed (a name is no sentence to tidy).
+ * What a name never needs: control characters other than spaces, and
+ * Unicode's format and default-ignorable characters, which draw nothing (a
+ * zero-width space, a soft hyphen, a word joiner, a filler, a tag) or turn
+ * the text around them (direction marks, embeddings, overrides, isolates).
+ * The braille blank, which draws nothing either, goes with them. Spaces are
+ * left for collapsing, and the joiners and variation selectors an emoji or
+ * a script is drawn with stay.
+ */
+const UNSEEN =
+  /(?!\s|\u200C|\u200D|\p{Variation_Selector})[\p{Cc}\p{Cf}\p{Default_Ignorable_Code_Point}\u2800]/gu;
+/** A joiner or a selector at a word's edge, where it joins nothing. */
+const LOOSE =
+  /^(?:\u200C|\u200D|\p{Variation_Selector})+|(?:\u200C|\u200D)+$/gu;
+/** Something a name shows: a letter, a digit, punctuation or a symbol. */
+const SHOWN = /[\p{L}\p{N}\p{P}\p{S}]/u;
+
+/**
+ * A person's name as the team keeps it, an invite's, the one the business
+ * gives them (`public.set_member_name`) or their own: one line, spaces
+ * collapsed, 1 to `TEAM_NAME_MAX` characters. What a name never needs
+ * (`UNSEEN`) is dropped rather than refused: a pasted name may carry a
+ * character nobody sees, and one that turns the text around it would reorder
+ * every sentence the name is in. A name with nothing that shows is none
+ * ("required"), so someone named stays named. A maqaf or a dash stays as
+ * typed (a name is no sentence to tidy).
  */
 export function parseTeamName(
   value: unknown,
 ): { ok: true; name: string } | { ok: false; error: "required" | "tooLong" } {
   const name = (typeof value === "string" ? value : "")
+    .replace(UNSEEN, "")
     .normalize("NFC")
-    .replace(/[^\P{Cc}\s]/gu, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!name) return { ok: false, error: "required" };
+    .split(/\s+/)
+    .map((word) => word.replace(LOOSE, ""))
+    .filter(Boolean)
+    .join(" ");
+  if (!SHOWN.test(name)) return { ok: false, error: "required" };
   if ([...name].length > TEAM_NAME_MAX) return { ok: false, error: "tooLong" };
   return { ok: true, name };
 }
@@ -588,6 +627,43 @@ export function sameTeamName(
   const next = parseTeamName(draft);
   const now = parseTeamName(shown);
   return next.ok && now.ok && next.name === now.name;
+}
+
+/**
+ * Whether saving `draft` writes nothing new over `stored`, the name as it is
+ * kept now: the draft as `parseTeamName` keeps it is `stored` with only its
+ * letters composed and its spaces collapsed, which a save would change
+ * nobody could see. Unlike `sameTeamName`, a stored name that still holds
+ * what nobody sees (a direction mark, a zero-width space, kept under older
+ * rules or copied from an invite) is not the draft, so an editor saves it
+ * clean. False when the draft is no name to keep, or nothing is stored.
+ */
+export function unchangedTeamName(
+  draft: unknown,
+  stored: string | null | undefined,
+): boolean {
+  const next = parseTeamName(draft);
+  if (!next.ok || typeof stored !== "string") return false;
+  const now = stored.normalize("NFC").split(/\s+/).filter(Boolean).join(" ");
+  return next.name === now;
+}
+
+/**
+ * Whether the team's fix of `draft` writes nothing over `shown`, the name
+ * the business shows for someone (`public.set_member_name`): `kept` when
+ * that is the business's own name for them (`public.member_names`), false
+ * when it is their own. A name the business keeps is saved clean of what
+ * nobody sees (`unchangedTeamName`). Their own name the business never
+ * touches: a draft that is their own name as the team keeps names
+ * (`sameTeamName`) keeps no row, so it is nothing, even while their own
+ * name still holds a mark, which only they clean, on /me.
+ */
+export function unchangedMemberName(
+  draft: unknown,
+  shown: string | null | undefined,
+  kept: boolean,
+): boolean {
+  return kept ? unchangedTeamName(draft, shown) : sameTeamName(draft, shown);
 }
 
 export type TeamInviteInput = RoleChoice & {

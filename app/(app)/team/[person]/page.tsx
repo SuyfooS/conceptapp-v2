@@ -11,6 +11,7 @@ import { seesFiles } from "@domain/file-holders";
 import { holdsPermission, isStaff, type Viewer } from "@domain/modules";
 import { mayClearBio } from "@domain/profile";
 import {
+  canFixName,
   canRemoveMember,
   canSeeTeam,
   invitableRoles,
@@ -98,18 +99,20 @@ export default async function TeamPersonPage({
   // Whoever may invite to their role changes it, fixes the name the business
   // shows for them and takes them off the team (Orel, 14 November 2026):
   // someone who edits the team, by the rank rule; never while viewing, never
-  // in a demo.
+  // in a demo. An owner's name is their own, which nobody fixes here
+  // (`canFixName`), another owner either.
+  const actor = {
+    userId: member.userId,
+    role: membership.role,
+    perms: membership.perms,
+  };
+  const place = {
+    userId: data.userId,
+    role: data.role,
+    namedRole: data.namedRole?.id ?? null,
+  };
   const mayChange =
-    open &&
-    canWrite(member.viewing) &&
-    canRemoveMember(
-      { userId: member.userId, role: membership.role, perms: membership.perms },
-      {
-        userId: data.userId,
-        role: data.role,
-        namedRole: data.namedRole?.id ?? null,
-      },
-    );
+    open && canWrite(member.viewing) && canRemoveMember(actor, place);
   const timeZone = membership.business.place.timeZone;
   let changes: PersonChanges | null = null;
   if (mayChange) {
@@ -160,6 +163,7 @@ export default async function TeamPersonPage({
       clockedIn,
       clockHref: `/clock/team/${data.userId}`,
       scheduleHref: "/schedule",
+      fixesName: canFixName(actor, place),
       // For this business only: a write held past a switch is refused.
       actions: {
         remove: removeMemberAction.bind(null, businessId),

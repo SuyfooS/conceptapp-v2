@@ -49,8 +49,10 @@ business's own details: `public.set_business_details(actor, business, patch)`
 saves its name, colour, address and Shabbat city for whoever holds
 `manage.edit` (owners and managers by default, since the roles plan's R7) or the
 team, and logs what changed. So does a profile (`20261109000400_profile_about.sql`):
-`public.set_own_profile(actor, patch)` changes the signed-in person's own name,
-language, line about themselves, cover and form of address, and
+`public.set_own_profile(actor, patch)` changes the signed-in person's own name
+(from "השם שלי" on `/me`, kept as the team keeps names: `parseTeamName`;
+demo people keep theirs, 55000), language, line about themselves, cover and
+form of address, and
 `public.clear_profile_bio(actor, business, person, seen)` lets whoever edits
 the team (`team.edit`, since the roles plan's R6) delete a hurtful line of
 their own role or one below it, the one they read (`seen`; a line rewritten
@@ -162,7 +164,34 @@ over the profile's (`shownName` in @domain/people): the team, colleagues, a
 person and a former member, activity, notifications, chat's directory and
 authors, departments for the console, pay people and access, roles, the
 clock's people and the session's own name all read it. `member_names.test.sql`
-and `team-changes.db.test.ts` cover it.
+and `team-changes.db.test.ts` cover it. Joining writes one too
+(`20261127000500_invite_names.sql`): `public.claim_invite` keeps the invite's
+name as the business's own for the person, read as the app keeps a name
+(`private.team_name`, parseTeamName's rule: what nobody sees dropped, letters
+composed, spaces collapsed, on the invite's name and on their own before they
+are compared; `tooling/team-names.test.ts` keeps its character lists equal to
+the app's); their own name keeps no row, and one kept from before goes; an
+owner keeps none, as their name there is their own; an invite with no
+name leaves the business's. Someone with no name takes the clean name as
+their own. The same migration holds both rules beyond the claim:
+`public.set_member_name` decides whether a fix is their own name with
+`private.team_name` on both sides, so an own name that still holds a mark,
+saved clean from `/team/[person]` or brought back by an undo, keeps no row
+(the screen's `unchangedMemberName` in @domain/team, by `TeamPerson.memberName`,
+offers no such save); and a member whose role becomes the owner's, by
+`public.set_member_role` or otherwise, loses the business's name for them
+(the trigger `memberships_owner_keeps_no_name`, `private.drop_owner_name`),
+after the membership, as the name's other writers lock. Nor does the fix
+give an owner one: `public.set_member_name` refuses an owner, whoever asks,
+another owner included (42501, hint `owner`; `canFixName` in @domain/team
+offers none), so an owner always appears by their own name, and the
+migration drops, once, any name kept for an owner on a team. The screen
+holds every change to owner for its undo (`roleChangeClears`), so the undo
+lets go of the write before the trigger takes the name. `/me` says which
+business keeps a name of its own for them: the session's `memberName` is the
+business's row, even one equal to their own name, which stays when they
+rename themselves, and the row says it beside their own where it differs
+(`keptNameOf` in @domain/profile). `invite_names.test.sql` covers it.
 
 A week is written shift by shift (`20261115000100_week_in_place.sql`; Orel's
 answers of 15 November 2026). `public.week_shifts(week)` reads a week's shifts
@@ -1166,7 +1195,10 @@ two from `public.team_invite_cancel` and `public.remove_member`, replaced for
 it; `member.role` adds the one left, `was_named` and `was_role_name`), and
 the activity log says its name with its base.
 `public.claim_invite` puts the person in the invite's named role, on a rejoin
-too, locking the role's row first; `public.invite_by_token` says its id and
+too, locking the role's row first (and, since
+`20261127000500_invite_names.sql`, keeps the invite's name as the business's
+own for them, unless it is their own or they join as an owner);
+`public.invite_by_token` says its id and
 names (`named_role`, `role_name`, `role_name_en`, only for an invite that
 names one, so any other reads as before) for the join screen.
 `public.archive_business_role` counts open invites to the role (unclaimed,

@@ -63,9 +63,11 @@ export async function removeMyPhotoAction(): Promise<PhotoSaveResult> {
 }
 
 /**
- * The signed-in person changes their line, their cover or how the app
- * addresses them. The change is checked here and again by the database,
- * which also keeps demo people from writing a line. Never logged.
+ * The signed-in person changes their own name, their line, their cover or
+ * how the app addresses them. The change is checked here and again by the
+ * database, which also keeps demo people's names and lets them write no line.
+ * Never logged, the name included. Every screen reads names afresh, so the
+ * refresh shows a new one wherever it shows.
  */
 export async function saveMyProfileAction(
   change: unknown,

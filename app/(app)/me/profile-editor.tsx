@@ -4,11 +4,13 @@ import { avatarHue, firstNameOf } from "@domain/people";
 import {
   type AddressForm,
   type CoverPreset,
+  keptNameOf,
   normalizeBio,
   type ProfileChange,
   type ProfileSaveResult,
 } from "@domain/profile";
 import type { PhotoSaveResult } from "@domain/profile-photos";
+import { parseTeamName } from "@domain/team";
 import { Avatar } from "@ui/avatar";
 import { AvatarPhotoPicker } from "@ui/avatar-photo-picker";
 import { Button } from "@ui/button";
@@ -25,6 +27,7 @@ import {
   Palette,
   PenLine,
   Speech,
+  UserRoundPen,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
@@ -35,6 +38,7 @@ import {
   CoverSheet,
   FormSheet,
   failureKey,
+  NameSheet,
   settle,
   WhyDetails,
 } from "./about-sheets";
@@ -52,7 +56,10 @@ export type MeAbout = {
   cover: CoverPreset;
   addressForm: AddressForm | null;
   locked: AboutLock | null;
-  /** In a demo business that keeps its people: a cover and a form, no line. */
+  /**
+   * In a demo business that keeps its people: a cover and a form, no line
+   * and no new name.
+   */
   demo: boolean;
 };
 
@@ -100,7 +107,7 @@ function AboutRow({
 }
 
 type Toast = { message: string; stamp: string };
-type Open = "photo" | "bio" | "cover" | "form" | null;
+type Open = "name" | "photo" | "bio" | "cover" | "form" | null;
 /** What was just removed, kept to bring back until the next change. */
 type Undo =
   | { kind: "photo"; bytes: Blob; failed: boolean }
@@ -116,6 +123,8 @@ type Undo =
  */
 export function ProfileEditor({
   name,
+  ownName,
+  keptName,
   photo,
   subtitle,
   locked,
@@ -131,7 +140,16 @@ export function ProfileEditor({
   file,
   past,
 }: {
+  /** The name the business shows them by, or their number: the title. */
   name: string;
+  /** Their own name (`profiles.full_name`), the one "השם שלי" changes. */
+  ownName: string | null;
+  /**
+   * The name the business keeps for them over their own
+   * (`public.member_names`), which "השם שלי" doesn't change, even one that
+   * is their own name now; null when it keeps none.
+   */
+  keptName: string | null;
   photo: string | null;
   /** "עובד/ת · בצוות מאז נובמבר 2026". */
   subtitle: string;
@@ -166,6 +184,9 @@ export function ProfileEditor({
   const tp = useTranslations("ui.photoPicker");
   const tc = useTranslations("ui.profileCover");
   const [open, setOpen] = useState<Open>(null);
+  // The title follows a new own name, unless the business keeps its own.
+  const [title, setTitle] = useServerValue(name);
+  const [own, setOwn] = useServerValue(ownName);
   const [shown, setShown] = useServerValue(photo);
   const [bio, setBio] = useServerValue(about.bio);
   const [cover, setCover] = useServerValue(about.cover);
@@ -175,7 +196,7 @@ export function ProfileEditor({
   const [undo, setUndo] = useState<Undo | null>(null);
   const [undoing, setUndoing] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
-  const hue = avatarHue(name);
+  const hue = avatarHue(title);
 
   const say = (message: string) =>
     setToast({ message, stamp: Date.now().toString() });
@@ -204,8 +225,28 @@ export function ProfileEditor({
     return result;
   }
 
-  // The line, the cover and the form of address --------------------------
+  // The name, the line, the cover and the form of address ----------------
   const save = (change: ProfileChange) => settle(actions.saveProfile(change));
+
+  async function saveName(text: string): Promise<ProfileSaveResult> {
+    const result = await save({ name: text });
+    if (result.ok) {
+      // As it is kept; the sheet checked it already.
+      const kept = parseTeamName(text);
+      const now = kept.ok ? kept.name : text.trim();
+      setOwn(now);
+      // A business that keeps a name for them goes on showing it, even one
+      // that was their own name until now: the title stays, as the server's
+      // will, and the word says so.
+      if (!keptName) setTitle(now);
+      say(
+        keptName
+          ? t("me.name.savedKept", { business: businessName, name: keptName })
+          : t("me.name.saved"),
+      );
+    }
+    return result;
+  }
 
   async function saveBio(text: string): Promise<ProfileSaveResult> {
     const result = await save({ bio: text });
@@ -291,6 +332,10 @@ export function ProfileEditor({
   const photoLine = locked ? t(`me.photo.${locked}`) : null;
   const cameraLabel = shown ? tp("change") : tp("add");
   const aboutLine = about.locked ? t(`me.${about.locked}`) : null;
+  // Demo people keep their name, as they write no line.
+  const canRename = !about.locked && !about.demo;
+  // The business's name for them, said under their own where it differs.
+  const keptLine = keptNameOf(keptName, own);
   const canWriteBio = !about.locked && !about.demo;
   const canChoose = !about.locked;
   const shownCover = coverDraft ?? cover;
@@ -299,14 +344,14 @@ export function ProfileEditor({
   return (
     <PageBody className="max-w-5xl">
       <ProfileFrame
-        label={name}
+        label={title}
         cover={shownCover}
         hue={hue}
         back={{ href: home, label: t("nav.home") }}
         avatar={
           <>
             <Avatar
-              name={name}
+              name={title}
               photo={shown}
               size="xl"
               className={profileAvatarRing}
@@ -328,7 +373,7 @@ export function ProfileEditor({
         }
         identity={
           <>
-            <PageHeader title={name} subtitle={subtitle} />
+            <PageHeader title={title} subtitle={subtitle} />
             {bio ? (
               <p className="-mt-1 text-pretty text-md">{bio}</p>
             ) : canWriteBio ? (
@@ -363,11 +408,35 @@ export function ProfileEditor({
             </WhyDetails>
           </div>
           <ListGroup>
+            {/* The name under the title, so a long one wraps. */}
+            <AboutRow
+              leading={<UserRoundPen />}
+              title={t("me.name.row")}
+              subtitle={
+                aboutLine ??
+                (about.demo ? (
+                  t("me.name.demo")
+                ) : (
+                  <>
+                    {own ?? t("me.name.missing")}
+                    {keptLine ? (
+                      <span className="block">
+                        {t("me.name.kept", {
+                          business: businessName,
+                          name: keptLine,
+                        })}
+                      </span>
+                    ) : null}
+                  </>
+                ))
+              }
+              onOpen={canRename ? () => setOpen("name") : null}
+            />
             <AboutRow
               leading={<ImageIcon />}
               title={t("me.photo.row")}
               subtitle={photoLine ?? t("me.photo.rowHint")}
-              trailing={<Avatar name={name} photo={shown} size="sm" />}
+              trailing={<Avatar name={title} photo={shown} size="sm" />}
               onOpen={locked ? null : () => setOpen("photo")}
             />
             <AboutRow
@@ -434,11 +503,21 @@ export function ProfileEditor({
         </SignOutForm>
       </ProfileFrame>
 
+      {canRename ? (
+        <NameSheet
+          open={open === "name"}
+          onOpenChange={sheet("name")}
+          name={own}
+          kept={keptName}
+          business={businessName}
+          onSave={saveName}
+        />
+      ) : null}
       {locked ? null : (
         <AvatarPhotoPicker
           open={open === "photo"}
           onOpenChange={sheet("photo")}
-          name={name}
+          name={title}
           photo={shown}
           onSave={savePhoto}
           onRemove={removePhoto}
@@ -468,7 +547,7 @@ export function ProfileEditor({
             open={open === "form"}
             onOpenChange={sheet("form")}
             form={form}
-            firstName={firstNameOf(name)}
+            firstName={firstNameOf(title)}
             onSave={saveForm}
           />
         </>

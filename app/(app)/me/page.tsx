@@ -121,6 +121,10 @@ export default async function MePage() {
         name:
           member.name ??
           (member.phone ? displayIsraeliMobile(member.phone) : ""),
+        ownName: member.ownName,
+        // The business's row, even one equal to their own name, which stays
+        // when they rename themselves; none while viewing as a role.
+        keptName: member.memberName,
         photo: profilePhotoSrc(member.photoPath),
         role: membership.role,
         namedRole: membership.namedRole,

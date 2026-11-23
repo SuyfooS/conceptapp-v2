@@ -4,6 +4,7 @@ import {
   buildTeam,
   canCancelInvite,
   canEditTeam,
+  canFixName,
   canRemoveMember,
   canResendInvite,
   canSeeTeam,
@@ -34,6 +35,8 @@ import {
   type TeamInvite,
   type TeamMember,
   teamChangeFailureOf,
+  unchangedMemberName,
+  unchangedTeamName,
 } from "./team";
 
 const now = new Date("2026-10-23T10:00:00Z");
@@ -556,6 +559,75 @@ describe("parseTeamName", () => {
       error: "required",
     });
   });
+
+  it("keeps no name nobody sees", () => {
+    // A zero-width space, direction marks, a word joiner, a soft hyphen, a
+    // filler, the braille blank, a zero-width no-break space, tags, a lone
+    // joiner, selector or accent, overrides and isolates.
+    for (const value of [
+      "\u200B",
+      "\u200F\u200E",
+      "\u2060",
+      "\u00AD",
+      "\u3164",
+      "\u2800",
+      "\uFEFF",
+      "\u{E0041}\u{E0042}",
+      "\u200D",
+      "\uFE0F",
+      "\u0301",
+      " \u200B \u200C ",
+      "\u202E\u2066\u2069",
+    ]) {
+      expect(parseTeamName(value), JSON.stringify(value)).toEqual({
+        ok: false,
+        error: "required",
+      });
+    }
+  });
+
+  it("drops what turns the text around a name, or draws nothing in it", () => {
+    // An override would reorder every sentence the name is in.
+    expect(parseTeamName("\u202Eנועה כהן")).toEqual({
+      ok: true,
+      name: "נועה כהן",
+    });
+    expect(parseTeamName("\u2067נועה\u2069 \u200Fכהן\u200B")).toEqual({
+      ok: true,
+      name: "נועה כהן",
+    });
+    // Inside a word it joins the halves; between words, one space stays.
+    expect(parseTeamName("נו\u200Bעה \u200B כהן\u00AD")).toEqual({
+      ok: true,
+      name: "נועה כהן",
+    });
+    // An accent behind one meets its letter.
+    expect(parseTeamName("Noe\u200B\u0308l")).toEqual({
+      ok: true,
+      name: "No\u00EBl",
+    });
+  });
+
+  it("keeps the joiners and selectors an emoji or a script is drawn with", () => {
+    const cook = "\u{1F469}\u200D\u{1F373}";
+    expect(parseTeamName(`נועה ${cook}`)).toEqual({
+      ok: true,
+      name: `נועה ${cook}`,
+    });
+    expect(parseTeamName("נועה \u2764\uFE0F")).toEqual({
+      ok: true,
+      name: "נועה \u2764\uFE0F",
+    });
+    expect(parseTeamName("Ma\u200Chsa")).toEqual({
+      ok: true,
+      name: "Ma\u200Chsa",
+    });
+    // At a word's edge they join nothing.
+    expect(parseTeamName("\u200Dנועה\u200C \uFE0Fכהן \u200D")).toEqual({
+      ok: true,
+      name: "נועה כהן",
+    });
+  });
 });
 
 describe("sameTeamName", () => {
@@ -568,6 +640,8 @@ describe("sameTeamName", () => {
     // Decomposed letters are the same name composed.
     expect(sameTeamName("Noël", "Noël")).toBe(true);
     expect(sameTeamName("Noël", "Noël")).toBe(true);
+    // What nobody sees is no fix.
+    expect(sameTeamName("\u202ENoa Cohen\u200B", "Noa Cohen")).toBe(true);
     // A letter that differs is a fix.
     expect(sameTeamName("Peter", "Pe  Ter")).toBe(false);
     expect(sameTeamName("Noel", "Noël")).toBe(false);
@@ -576,9 +650,83 @@ describe("sameTeamName", () => {
   it("is never the same where either is no name", () => {
     expect(sameTeamName("", "Noa Cohen")).toBe(false);
     expect(sameTeamName("   ", "Noa Cohen")).toBe(false);
+    expect(sameTeamName("\u200B", "\u200B")).toBe(false);
     expect(sameTeamName("Noa Cohen", null)).toBe(false);
     expect(sameTeamName("Noa Cohen", "  ")).toBe(false);
     expect(sameTeamName("", null)).toBe(false);
+  });
+});
+
+describe("unchangedTeamName", () => {
+  it("is the stored name, its letters composed and its spaces collapsed", () => {
+    // As the sheet opens on it, and typed without the double space.
+    expect(unchangedTeamName("Pe  Ter", "Pe  Ter")).toBe(true);
+    expect(unchangedTeamName(" Pe Ter ", "Pe  Ter")).toBe(true);
+    expect(unchangedTeamName("Pe Ter", "Pe\tTer")).toBe(true);
+    // Decomposed letters are the same name composed.
+    expect(unchangedTeamName("Noe\u{308}l", "No\u{EB}l")).toBe(true);
+    expect(unchangedTeamName("No\u{EB}l", "Noe\u{308}l")).toBe(true);
+    // A letter that differs is a change.
+    expect(unchangedTeamName("Peter", "Pe  Ter")).toBe(false);
+  });
+
+  it("saves a stored name clean of what nobody sees, which sameTeamName calls the same", () => {
+    // An override, a mark copied from WhatsApp, a zero-width space, an
+    // embedding: the editor opens on the name as stored, and saving it as
+    // it is drops them.
+    for (const stored of [
+      "\u{202E}Noa Cohen",
+      "\u{200F}Noa Cohen",
+      "Noa\u{200B} Cohen",
+      "\u{202B}Noa Cohen\u{202C}",
+      "Noa Cohen\u{7}",
+      "\u{200D}Noa Cohen",
+    ]) {
+      expect(sameTeamName(stored, stored), JSON.stringify(stored)).toBe(true);
+      expect(unchangedTeamName(stored, stored), JSON.stringify(stored)).toBe(
+        false,
+      );
+      expect(unchangedTeamName("Noa Cohen", stored)).toBe(false);
+    }
+    // Once clean, nothing more to save.
+    expect(unchangedTeamName("\u{200F}Noa Cohen", "Noa Cohen")).toBe(true);
+  });
+
+  it("is never unchanged where the draft is no name, or nothing is stored", () => {
+    expect(unchangedTeamName("", "Noa Cohen")).toBe(false);
+    expect(unchangedTeamName("   ", "   ")).toBe(false);
+    expect(unchangedTeamName("\u{200B}", "\u{200B}")).toBe(false);
+    expect(unchangedTeamName("Noa Cohen", null)).toBe(false);
+    expect(unchangedTeamName("Noa Cohen", undefined)).toBe(false);
+  });
+});
+
+describe("unchangedMemberName", () => {
+  const marked = "\u{200F}Noa Cohen";
+
+  it("saves a name the business keeps clean of what nobody sees", () => {
+    expect(unchangedMemberName(marked, marked, true)).toBe(false);
+    expect(unchangedMemberName("Noa Cohen", marked, true)).toBe(false);
+    // Spaced or composed otherwise, it is still the name kept.
+    expect(unchangedMemberName("Noa  Cohen", "Noa Cohen", true)).toBe(true);
+    expect(unchangedMemberName("Noa Levi", marked, true)).toBe(false);
+  });
+
+  it("never offers to clean their own name: that keeps no row, so it writes nothing", () => {
+    // Their own name with a mark an earlier claim copied, and no row: the
+    // sheet opens on it, and neither it nor the name written clean is a fix.
+    expect(unchangedMemberName(marked, marked, false)).toBe(true);
+    expect(unchangedMemberName("Noa Cohen", marked, false)).toBe(true);
+    expect(unchangedMemberName(" Noa  Cohen ", "Noa Cohen", false)).toBe(true);
+    // A name of the business's own for them is.
+    expect(unchangedMemberName("Noa Levi", marked, false)).toBe(false);
+  });
+
+  it("is a fix for someone nobody named, and never for no name", () => {
+    expect(unchangedMemberName("Noa Cohen", null, false)).toBe(false);
+    expect(unchangedMemberName("", null, false)).toBe(false);
+    expect(unchangedMemberName("\u{200B}", "\u{200B}", false)).toBe(false);
+    expect(unchangedMemberName("", "Noa Cohen", true)).toBe(false);
   });
 });
 
@@ -712,6 +860,47 @@ describe("team changes (Orel, 14 November 2026)", () => {
     }
   });
 
+  it("let the same people fix a name, never an owner's, another owner's either", () => {
+    const allowed = Object.fromEntries(
+      allRoles.map((viewer) => [
+        viewer,
+        allRoles.filter((person) =>
+          canFixName(place("v", viewer), place("p", person)),
+        ),
+      ]),
+    );
+    expect(allowed).toEqual({
+      owner: ["manager", "worker", "accountant"],
+      manager: ["manager", "worker"],
+      worker: [],
+      accountant: [],
+    });
+    // An owner still changes another owner's role and takes them off the
+    // team: only the name is their own.
+    expect(canRemoveMember(place("v", "owner"), place("p", "owner"))).toBe(
+      true,
+    );
+    // A worker raised to edit the team: workers only.
+    const raised = {
+      userId: "v",
+      role: "worker" as const,
+      perms: ["team.view", "team.edit"],
+    };
+    expect(canFixName(raised, place("p", "worker"))).toBe(true);
+    expect(canFixName(raised, place("p", "manager"))).toBe(false);
+    // Someone in a named role built on workers counts as a worker.
+    expect(
+      canFixName(place("v", "manager"), {
+        userId: "p",
+        role: "worker",
+        namedRole: "lead",
+      }),
+    ).toBe(true);
+    for (const role of allRoles) {
+      expect(canFixName(place("v", role), place("v", role)), role).toBe(false);
+    }
+  });
+
   it("change a role only between roles the viewer invites to", () => {
     // Every change each viewer may make, as `from -> to`, spelled out.
     const allowed = Object.fromEntries(
@@ -839,12 +1028,15 @@ describe("team changes (Orel, 14 November 2026)", () => {
     // Off the staff: the shifts ahead come off.
     expect(roleChangeClears("worker", "accountant")).toBe(true);
     expect(roleChangeClears("owner", "accountant")).toBe(true);
-    // An owner's place clears personal permissions.
+    // An owner's place clears personal permissions, and the business's own
+    // name for them, so every change to it waits, an accountant's too.
     expect(roleChangeClears("manager", "owner")).toBe(true);
     expect(roleChangeClears("worker", "owner")).toBe(true);
-    // An accountant has none to clear, and no shifts.
-    expect(roleChangeClears("accountant", "owner")).toBe(false);
+    expect(roleChangeClears("accountant", "owner")).toBe(true);
+    // An accountant onto the staff below owner: nothing to clear, no shifts.
     expect(roleChangeClears("accountant", "worker")).toBe(false);
+    expect(roleChangeClears("accountant", "manager")).toBe(false);
+    expect(roleChangeClears("owner", "owner")).toBe(false);
     // Between manager and worker, and down from owner, nothing is lost.
     expect(roleChangeClears("worker", "manager")).toBe(false);
     expect(roleChangeClears("manager", "worker")).toBe(false);
@@ -856,6 +1048,8 @@ describe("team changes (Orel, 14 November 2026)", () => {
     expect(teamChangeFailureOf("42501")).toBe("notAllowed");
     expect(teamChangeFailureOf("42501", "held")).toBe("beyondHeld");
     expect(teamChangeFailureOf("42501", "pay")).toBe("givesPay");
+    // A name for an owner, who keeps their own: not theirs to fix.
+    expect(teamChangeFailureOf("42501", "owner")).toBe("notAllowed");
     expect(teamChangeFailureOf("P0002")).toBe("gone");
     expect(teamChangeFailureOf("22023")).toBe("yourself");
     expect(teamChangeFailureOf("22023", "archived")).toBe("roleGone");

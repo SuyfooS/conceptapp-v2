@@ -28,8 +28,8 @@ import { MemberNameState, ShownName, TeamPlace } from "./member-name";
 
 /**
  * What the viewer may change about the person's place on the team: the name
- * the business shows for them, their role among `roles`, and taking them off
- * it.
+ * the business shows for them (`fixesName`), their role among `roles`, and
+ * taking them off it.
  */
 export type PersonChanges = Pick<
   MemberChangesData,
@@ -42,7 +42,14 @@ export type PersonChanges = Pick<
   | "clockedIn"
   | "clockHref"
   | "scheduleHref"
-> & { actions: MemberChangeActions };
+> & {
+  /**
+   * The name is offered to fix (`canFixName`): never an owner's, who appears
+   * by their own name, so their page has the role only.
+   */
+  fixesName: boolean;
+  actions: MemberChangeActions;
+};
 
 /**
  * How complete the person's hiring file is, for whoever sees the team or
@@ -128,7 +135,8 @@ export function fileCardWords(
  * (`changes`) changes their role and takes them off the team from here
  * (Orel, 14 November 2026), and fixes the name the business shows for them:
  * the business's own name for them, shown everywhere in it and only in it,
- * their own name untouched (ROADMAP "תיקון שם"). A minor shows until when
+ * their own name untouched (ROADMAP "תיקון שם"), for anyone but an owner,
+ * who appears by their own name (`fixesName`). A minor shows until when
  * (payroll P5): the schedule needs it, and only that day, never a birth date
  * or the rest of their details for payroll. While the hiring file is on
  * (H6a, `fileCard`), a manager's or a worker's file comes first: the page's
@@ -335,6 +343,8 @@ export async function PersonView({
           <MemberNameState
             personId={data.userId}
             name={data.name}
+            kept={data.memberName !== null}
+            fixes={changes.fixesName}
             rename={changes.actions.rename}
           >
             {frame}

@@ -34,6 +34,11 @@ import { portraits } from "../portraits";
 export const DEMO_HOLDER_NUMBERS = { id: "000000018", bankAccount: "100001" };
 
 export const business = { name: "מסעדת הדגמה" };
+/**
+ * The name the demo business keeps for Shiran over her own, for
+ * /design/shell/me?name=kept.
+ */
+export const shiranTeamName = "שירן א.";
 /** A business the demo's accountant was taken off the team of. */
 export const leftBusiness = { name: "בית הקפה של נועה" };
 export const user = {

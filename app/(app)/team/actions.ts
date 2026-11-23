@@ -357,11 +357,12 @@ export async function setMemberRoleAction(
 /**
  * Someone who may change a person's role fixes the name the business shows
  * for them (ROADMAP "תיקון שם"): in this business only, everywhere in it;
- * their own name stays theirs. `to` null keeps none of the business's own
- * (the undo of a first fix); `seen`, the name the screen showed, so one
- * changed meanwhile stays ("changed", and the page reads it again). Logged
- * without the name, and nothing logged here holds it either. The page reads
- * the person again.
+ * their own name stays theirs. Never an owner's, who appears by their own
+ * name (`canFixName`; the database refuses one, "notAllowed"). `to` null
+ * keeps none of the business's own (the undo of a first fix); `seen`, the
+ * name the screen showed, so one changed meanwhile stays ("changed", and the
+ * page reads it again). Logged without the name, and nothing logged here
+ * holds it either. The page reads the person again.
  */
 export async function renameMemberAction(
   business: string,

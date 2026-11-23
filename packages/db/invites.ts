@@ -132,7 +132,11 @@ export type ClaimResult =
  * comes back as an accountant with an open entry or shifts still ahead, a
  * staff place for someone on another business's staff (23505), and, as not
  * open, an invite to a role that sees pay that neither an owner nor the team
- * sent (the roles plan's R6).
+ * sent (the roles plan's R6). The invite's name, read as `parseTeamName`
+ * keeps one, becomes the business's own name for them
+ * (`public.member_names`) unless it is their own or they join as an owner;
+ * their own name stays, or is the invite's if they had none
+ * (20261127000500_invite_names.sql).
  */
 export async function claimInvite(
   token: string,

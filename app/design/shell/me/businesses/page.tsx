@@ -33,6 +33,8 @@ export default function ShellMeBusinesses() {
       }
       data={{
         name: demoAccountantName,
+        ownName: demoAccountantName,
+        keptName: null,
         photo: null,
         role: "accountant",
         businessName: business.name,

@@ -1,5 +1,6 @@
 import { mayClearBio } from "@domain/profile";
 import {
+  canFixName,
   canRemoveMember,
   invitableRoles,
   namedRoleShown,
@@ -59,7 +60,13 @@ type Props = {
 // own) says she would see it only by her own access (R11e). "שם" fixes the
 // name the business shows for them with the demo's stand-in, shown at once
 // with the fix back as its undo, the mock name back on reload;
-// ?state=nameless: someone nobody named, whose title and row read "בלי שם".
+// ?state=nameless: someone nobody named, whose title and row read "בלי שם";
+// ?state=marked: a name the business keeps for her with a right-to-left
+// mark nobody sees, which the sheet saves clean as it opens;
+// ?state=ownMarked: her own name with that mark, and none of the
+// business's, which the sheet never offers to save: their own name keeps
+// no row, so only she cleans it, on /me. Never on an owner (`canFixName`):
+// Uri's page has "תפקיד" alone, as he appears by his own name.
 // The hiring file (profile H6a): ?file=holder as the owner, who reads what
 // is missing and opens the file from here; ?file=manager as someone who
 // sees the team without the files, who reads how many; ?file=view as the
@@ -135,7 +142,15 @@ async function Demo({ params, searchParams }: Props) {
       }
       data={{
         ...member,
-        name: state === "nameless" ? null : member.name,
+        name:
+          state === "nameless"
+            ? null
+            : (state === "marked" || state === "ownMarked") && member.name
+              ? `\u{200F}${member.name}`
+              : member.name,
+        // The business's own name for her only where the state says so.
+        memberName:
+          state === "marked" && member.name ? `\u{200F}${member.name}` : null,
         bio: profile?.bio ?? null,
         cover: profile?.cover ?? "glow",
         since: profile?.since ?? "2026-09-01T08:00:00.000Z",
@@ -176,6 +191,10 @@ async function Demo({ params, searchParams }: Props) {
               clockedIn: as === "editor" ? null : state === "clocked",
               clockHref: `/design/shell/clock/team/${person}`,
               scheduleHref: "/design/shell/schedule",
+              fixesName: canFixName(viewer, {
+                userId: member.userId,
+                role: member.role,
+              }),
               actions: {
                 remove: demoRemoveMemberAction,
                 setRole: demoSetMemberRoleAction,

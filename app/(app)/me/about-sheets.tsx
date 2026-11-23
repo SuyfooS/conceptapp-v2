@@ -9,14 +9,16 @@ import {
   type ProfileFailure,
   type ProfileSaveResult,
 } from "@domain/profile";
+import { parseTeamName, TEAM_NAME_MAX, unchangedTeamName } from "@domain/team";
 import { Button } from "@ui/button";
 import { ChoiceList, ChoiceRow } from "@ui/choice-row";
 import { CoverChoices } from "@ui/cover-choices";
+import { FieldGroup, GroupedField } from "@ui/field-group";
 import { Sheet } from "@ui/sheet";
 import { TextArea } from "@ui/text-field";
 import { ChevronDown, Info, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { type FormEvent, type ReactNode, useState } from "react";
+import { type FormEvent, type ReactNode, useRef, useState } from "react";
 
 /** The words a failed profile change shows, in `app.me.failures`. */
 export function failureKey(
@@ -30,6 +32,8 @@ export function failureKey(
     case "empty":
     case "invalid":
     case "bioTooLong":
+    case "nameRequired":
+    case "nameTooLong":
       return "invalid";
     default:
       return "failed";
@@ -81,6 +85,144 @@ type SheetBase = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 };
+
+/**
+ * Changing their own name ("השם שלי"), as the team keeps a name: one line of
+ * up to 80 characters, never none, with the field's words of the business's
+ * own editor. Where the business keeps a name of its own for them (`kept`),
+ * even one that is their own name now, the note says that one stays; only
+ * the business changes it.
+ */
+export function NameSheet({
+  open,
+  onOpenChange,
+  name,
+  kept,
+  business,
+  onSave,
+}: SheetBase & {
+  /** Their own name as saved; null for none. */
+  name: string | null;
+  /** The name the business keeps for them (`public.member_names`), or null. */
+  kept: string | null;
+  business: string;
+  onSave: (name: string) => Promise<ProfileSaveResult>;
+}) {
+  const t = useTranslations("app.me");
+  const tp = useTranslations("ui.photoPicker");
+  return (
+    <Sheet
+      open={open}
+      onOpenChange={onOpenChange}
+      title={t("name.row")}
+      closeLabel={tp("close")}
+    >
+      {/* The sheet's body mounts on each opening, so it starts from the saved name. */}
+      <NameForm
+        name={name}
+        kept={kept}
+        business={business}
+        onSave={onSave}
+        onDone={() => onOpenChange(false)}
+      />
+    </Sheet>
+  );
+}
+
+function NameForm({
+  name,
+  kept,
+  business,
+  onSave,
+  onDone,
+}: {
+  name: string | null;
+  kept: string | null;
+  business: string;
+  onSave: (name: string) => Promise<ProfileSaveResult>;
+  onDone: () => void;
+}) {
+  const t = useTranslations("app.me");
+  const tInvite = useTranslations("app.team.invite");
+  const field = useRef<HTMLInputElement>(null);
+  const [draft, setDraft] = useState(name ?? "");
+  const [error, setError] = useState<"required" | "tooLong" | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<ProfileFailure | null>(null);
+  const parsed = parseTeamName(draft);
+  // One saved with a double space, or with its letters decomposed, is no
+  // change until a letter really differs; one saved with what nobody sees
+  // (a direction mark, a zero-width space) is, and saving it cleans it.
+  const same = unchangedTeamName(draft, name);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (busy) return;
+    if (!parsed.ok) {
+      // Said as an alert wherever the focus was, then the field takes it, to
+      // write the name at once.
+      setError(parsed.error);
+      field.current?.focus();
+      return;
+    }
+    setBusy(true);
+    setFailure(null);
+    const result = await settle(onSave(parsed.name));
+    if (result.ok) {
+      onDone();
+      return;
+    }
+    setBusy(false);
+    setFailure(result.failure);
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      noValidate
+      className="flex flex-col gap-4 px-2 pt-2 pb-1"
+    >
+      <FieldGroup className="bg-elevated">
+        <GroupedField
+          ref={field}
+          name="own-name"
+          label={tInvite("name")}
+          placeholder={tInvite("namePlaceholder")}
+          // Their own name, which the device may offer.
+          autoComplete="name"
+          enterKeyHint="done"
+          maxLength={TEAM_NAME_MAX}
+          value={draft}
+          onChange={(event) => {
+            setDraft(event.target.value);
+            setError(null);
+            setFailure(null);
+          }}
+          error={
+            error ? (
+              <span role="alert">{tInvite(`errors.name.${error}`)}</span>
+            ) : undefined
+          }
+          required
+        />
+      </FieldGroup>
+      <p className="px-2 text-pretty text-base text-ink-2">
+        {/* Even one that is their own name now stays after they save. */}
+        {kept ? t("name.noteKept", { business, name: kept }) : t("name.note")}
+      </p>
+      <Failure failure={failure} />
+      <Button
+        type="submit"
+        size="lg"
+        loading={busy}
+        disabled={same || busy}
+        className="w-full"
+      >
+        {t("name.save")}
+      </Button>
+    </form>
+  );
+}
 
 /**
  * Writing the line about yourself: up to 160 characters, counted as they are
