@@ -143,20 +143,9 @@ export function CopyWeekSheet({
           </p>
         ) : null}
 
-        <SheetSection title={t("copy.daysTitle")}>
-          {copy.days.map((day) => (
-            <ListRow
-              key={day.date}
-              title={t("day", {
-                day: weekday(day.date),
-                date: dayMonth(day.date),
-              })}
-              subtitle={dayLine(day)}
-            />
-          ))}
-        </SheetSection>
-
-        {/* Days with people on them: kept as they are, unless replaced. */}
+        {/* Days with people on them: kept as they are, unless replaced. Above
+            the days, so it is in sight on a phone as the sheet opens, and what
+            it does shows in the rows under it. */}
         {copy.staffedDays > 0 ? (
           <ListGroup className="mt-3 bg-elevated shadow-none">
             <FieldRow
@@ -174,6 +163,19 @@ export function CopyWeekSheet({
             </FieldRow>
           </ListGroup>
         ) : null}
+
+        <SheetSection title={t("copy.daysTitle")}>
+          {copy.days.map((day) => (
+            <ListRow
+              key={day.date}
+              title={t("day", {
+                day: weekday(day.date),
+                date: dayMonth(day.date),
+              })}
+              subtitle={dayLine(day)}
+            />
+          ))}
+        </SheetSection>
 
         {skipped ? (
           <section aria-labelledby={skippedId} className="mt-2 flex flex-col">
