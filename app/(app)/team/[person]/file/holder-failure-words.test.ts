@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import he from "@/messages/he.json";
-import { holderWordsOf } from "./holder-failure-words";
+import { holderWordsOf, holdWordsOf } from "./holder-failure-words";
 
 /*
  * A refusal on a holder's file in words (profile H6a), every key there in
@@ -36,6 +36,7 @@ describe("a holder's refusals", () => {
       "demo",
       "closed",
       "notInTeam",
+      "phoneHold",
       "somethingNew",
     ];
     for (const when of [
@@ -82,5 +83,48 @@ describe("a holder's write refused", () => {
   it("says nothing for no fresh step-up or the duties first", () => {
     expect(holderWordsOf("stepUp", "write")).toBeNull();
     expect(holderWordsOf("ack", "write")).toBeNull();
+  });
+});
+
+// The week after the holder's own phone change (20261127000400): no code
+// goes, and the card says from when the files open.
+describe("a holder's week after a phone change", () => {
+  const ZONE = "Asia/Jerusalem";
+
+  it("says the time when it ends later today, in the business's zone", () => {
+    expect(
+      holdWordsOf(
+        { day: "2026-11-27", at: "2026-11-27T12:30:00.000Z" },
+        "2026-11-27",
+        ZONE,
+      ),
+    ).toEqual({ key: "code.phoneHoldToday", time: "14:30" });
+  });
+
+  it("says the day when it ends on another, the moment known or not", () => {
+    expect(
+      holdWordsOf(
+        { day: "2026-11-30", at: "2026-11-30T08:00:00.000Z" },
+        "2026-11-27",
+        ZONE,
+      ),
+    ).toEqual({ key: "code.phoneHold", day: "2026-11-30" });
+    expect(
+      holdWordsOf({ day: "2026-11-30", at: null }, "2026-11-30", ZONE),
+    ).toEqual({ key: "code.phoneHold", day: "2026-11-30" });
+  });
+
+  it("says it plainly with no day, and every key is there", () => {
+    expect(holdWordsOf({ day: null, at: null }, "2026-11-27", ZONE)).toEqual({
+      key: "code.phoneHoldPlain",
+    });
+    expect(holderWordsOf("phoneHold", "send")).toBe("code.phoneHoldPlain");
+    for (const key of [
+      "code.phoneHold",
+      "code.phoneHoldToday",
+      "code.phoneHoldPlain",
+    ]) {
+      expect(typeof words(key), key).toBe("string");
+    }
   });
 });

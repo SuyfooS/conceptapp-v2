@@ -147,17 +147,42 @@ export type AcknowledgeAnswer =
   | { ok: true; open: boolean }
   | { ok: false; failure: HolderFailure | HolderFileFailure };
 
+/**
+ * The week after the holder's own phone change: no code goes and none is
+ * checked until the day it ends (`opensOn`, the business's `YYYY-MM-DD`)
+ * or the moment it does (`opensAt`, ISO), when known.
+ */
+export type FileCodeHold = {
+  ok: false;
+  failure: "phoneHold";
+  opensOn?: string;
+  opensAt?: string;
+};
+
+/** The week after a phone change as the screen keeps it: its day and moment, when known. */
+export type FileHold = { day: string | null; at: string | null };
+
 /** Sent, to the number ending in `tail`; or why not, before any SMS went. */
 export type SendFileCodeAnswer =
   | { ok: true; tail: string }
   | {
       ok: false;
       failure: HolderFailure | HolderFileFailure | HolderCodeFailure;
-    };
+    }
+  | FileCodeHold;
 
+/**
+ * The files opened on this sign-in and this device, or why not: the code's
+ * refusals, and the database's when it opens them (the duties first, the
+ * week after a phone change, before its migration).
+ */
 export type ConfirmFileCodeAnswer =
   | { ok: true }
-  | { ok: false; failure: HolderFailure | HolderCodeFailure };
+  | {
+      ok: false;
+      failure: HolderFailure | HolderFileFailure | HolderCodeFailure;
+    }
+  | FileCodeHold;
 
 /**
  * A number shown, or why not: no fresh step-up (the screen draws itself

@@ -1700,7 +1700,10 @@
           "tooMany": "There were many tries. You can try again later.",
           "rateLimit": "You can ask for a new code in a few seconds.",
           "failed": "The code wasn't sent. You can try again.",
-          "noPhone": "To open files, your account needs a phone number."
+          "noPhone": "To open files, your account needs a phone number.",
+          "phoneHold": "You can open files a week after changing your phone number, from {date}. If you didn't ask for the number to change, contact the ConceptApp team.",
+          "phoneHoldToday": "You can open files a week after changing your phone number, today from <ltr>{time}</ltr>. If you didn't ask for the number to change, contact the ConceptApp team.",
+          "phoneHoldPlain": "You can open files a week after changing your phone number. If you didn't ask for the number to change, contact the ConceptApp team."
         },
         "sections": {
           "identity": "Identity details",
@@ -3920,8 +3923,8 @@
               "id": "the ID number",
               "bank_account": "the account number"
             },
-            "viewDenied": "A view of {person}'s file was refused: {reason, select, ack {the rules weren't confirmed yet} viewing {viewing as the ConceptApp team} limit {too many views in an hour} many {and more attempts today} other {no access}}",
-            "viewDeniedPlain": "A view of the files was refused: {reason, select, ack {the rules weren't confirmed yet} viewing {viewing as the ConceptApp team} limit {too many views in an hour} many {and more attempts today} other {no access}}",
+            "viewDenied": "A view of {person}'s file was refused: {reason, select, ack {the rules weren't confirmed yet} viewing {viewing as the ConceptApp team} limit {too many views in an hour} many {and more attempts today} step_up {without a valid SMS code} other {no access}}",
+            "viewDeniedPlain": "A view of the files was refused: {reason, select, ack {the rules weren't confirmed yet} viewing {viewing as the ConceptApp team} limit {too many views in an hour} many {and more attempts today} step_up {without a valid SMS code} other {no access}}",
             "submit": "Sent {person}'s file",
             "taxYear": "Form 101 for {year} of {person}: {status, select, handed_in {handed in} accepted {was accepted} returned {was returned} change_due {an updated form is due} other {mark removed}}",
             "ack": "Confirmed what may and may not be done with the details, before viewing files",

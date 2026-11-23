@@ -53,9 +53,14 @@ where business_id = pg_temp.a() and user_id = pg_temp.p(4);
 -- Worker 3's file, last written on 1 October; nothing sealed.
 insert into public.employee_details (business_id, user_id, legal_first_name, updated_at)
 values (pg_temp.a(), pg_temp.p(3), 'Noa', '2026-10-01 09:00:00+00');
+-- The owner's step-up on the sign-in `sign_in` gives
+-- (20261127000400_file_step_up.sql; employee_files_step_up.test.sql tests it).
+insert into private.file_step_ups (user_id, session_id, business_id, active_at)
+values (pg_temp.p(1), pg_temp.p(1), pg_temp.a(), now());
 
 create function pg_temp.sign_in(uid uuid) returns void language sql as $$
-  select set_config('request.jwt.claims', json_build_object('sub', uid, 'role', 'authenticated')::text, true);
+  select set_config('request.jwt.claims',
+    json_build_object('sub', uid, 'role', 'authenticated', 'session_id', uid)::text, true);
   select set_config('role', 'authenticated', true);
 $$;
 -- A person's status row, as the signed-in reader gets it.

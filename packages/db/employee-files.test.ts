@@ -1063,3 +1063,166 @@ describe("a holder's writes", () => {
     });
   });
 });
+
+// The holder's step-up kept in the database for one sign-in
+// (20261127000400_file_step_up.sql), and the week after a phone change it
+// waits for, as the bank does.
+describe("a holder's step-up in the database", () => {
+  const SESSION = "f1000000-0000-4000-8000-000000000001";
+
+  it("opens the files for the holder, the business and this sign-in, with the secret key", async () => {
+    expect(await files.openFileStepUp(OWNER, BUSINESS, SESSION)).toEqual({
+      ok: true,
+    });
+    expect(callsTo("open_file_step_up")).toEqual([
+      {
+        fn: "open_file_step_up",
+        args: { actor: OWNER, business: BUSINESS, auth_session: SESSION },
+        as: "admin",
+      },
+    ]);
+  });
+
+  it("says why they don't open: the week after a phone change with its day, the duties, before its migration", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const cases = [
+      [
+        { code: "55000", hint: "phone_hold", details: "2026-11-30" },
+        { ok: false, failure: "phoneHold", opensOn: "2026-11-30" },
+      ],
+      [
+        { code: "42501", hint: "ack" },
+        { ok: false, failure: "ack" },
+      ],
+      [
+        { code: "42501", hint: "off" },
+        { ok: false, failure: "off" },
+      ],
+      [
+        { code: "42501", hint: null },
+        { ok: false, failure: "noAccess" },
+      ],
+      [
+        { code: "22023", hint: null },
+        { ok: false, failure: "invalid" },
+      ],
+      [{ code: "PGRST202" }, { ok: false, failure: "unavailable" }],
+    ] as const;
+    for (const [error, said] of cases) {
+      db.answers.open_file_step_up = () => ({
+        data: null,
+        error: { message: "refused", ...error },
+      });
+      expect(
+        await files.openFileStepUp(OWNER, BUSINESS, SESSION),
+        error.code,
+      ).toEqual(said);
+    }
+  });
+
+  it("slides only what the database says it slid, and an error is no", async () => {
+    db.answers.keep_file_step_up = () => ({ data: true, error: null });
+    expect(await files.keepFileStepUp(OWNER, BUSINESS, SESSION)).toBe(true);
+    expect(callsTo("keep_file_step_up")[0]).toEqual({
+      fn: "keep_file_step_up",
+      args: { actor: OWNER, business: BUSINESS, auth_session: SESSION },
+      as: "admin",
+    });
+    db.answers.keep_file_step_up = () => ({ data: false, error: null });
+    expect(await files.keepFileStepUp(OWNER, BUSINESS, SESSION)).toBe(false);
+    db.answers.keep_file_step_up = () => ({ data: "yes", error: null });
+    expect(await files.keepFileStepUp(OWNER, BUSINESS, SESSION)).toBe(false);
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    db.answers.keep_file_step_up = () => ({
+      data: null,
+      error: { code: "XX000", message: `about ${SESSION}` },
+    });
+    expect(await files.keepFileStepUp(OWNER, BUSINESS, SESSION)).toBe(false);
+    expect(logged).toHaveBeenCalledWith(
+      "keeping the files open failed",
+      "XX000",
+    );
+    expect(JSON.stringify(logged.mock.calls)).not.toContain(SESSION);
+  });
+
+  it("closes this sign-in's, and never throws", async () => {
+    await files.closeFileStepUp(OWNER, SESSION);
+    expect(callsTo("close_file_step_up")).toEqual([
+      {
+        fn: "close_file_step_up",
+        args: { actor: OWNER, auth_session: SESSION },
+        as: "admin",
+      },
+    ]);
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    db.answers.close_file_step_up = () => ({
+      data: null,
+      error: { code: "PGRST202", message: `about ${SESSION}` },
+    });
+    await expect(files.closeFileStepUp(OWNER, SESSION)).resolves.toBe(
+      undefined,
+    );
+    expect(logged).toHaveBeenCalledWith("closing the files failed", "PGRST202");
+    expect(JSON.stringify(logged.mock.calls)).not.toContain(SESSION);
+  });
+
+  it("reads the week after a phone change, or none", async () => {
+    db.answers.bank_change_hold = () => ({
+      data: { opens_at: "2026-11-30T08:00:00+00:00", opens_on: "2026-11-30" },
+      error: null,
+    });
+    expect(await files.phoneChangeHold(BUSINESS, OWNER)).toEqual({
+      ok: true,
+      hold: { opensOn: "2026-11-30", opensAt: "2026-11-30T08:00:00.000Z" },
+    });
+    expect(callsTo("bank_change_hold").at(-1)).toEqual({
+      fn: "bank_change_hold",
+      args: { business: BUSINESS, person: OWNER },
+      as: "admin",
+    });
+    db.answers.bank_change_hold = () => ({ data: null, error: null });
+    expect(await files.phoneChangeHold(BUSINESS, OWNER)).toEqual({
+      ok: true,
+      hold: null,
+    });
+    // Before its migration reaches the project: no hold, as before.
+    db.answers.bank_change_hold = () => ({
+      data: null,
+      error: { code: "PGRST202", message: "no such function" },
+    });
+    expect(await files.phoneChangeHold(BUSINESS, OWNER)).toEqual({
+      ok: true,
+      hold: null,
+    });
+    // A reply it can't read, or a failure, is no yes.
+    db.answers.bank_change_hold = () => ({
+      data: { opens_on: "soon" },
+      error: null,
+    });
+    expect(await files.phoneChangeHold(BUSINESS, OWNER)).toEqual({
+      ok: false,
+      failure: "failed",
+    });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    db.answers.bank_change_hold = () => ({
+      data: null,
+      error: { code: "XX000", message: "down" },
+    });
+    expect(await files.phoneChangeHold(BUSINESS, OWNER)).toEqual({
+      ok: false,
+      failure: "failed",
+    });
+  });
+
+  it("reads a holder's read refused for no step-up as that reason", async () => {
+    db.answers.employee_file = () => ({
+      data: { access: "denied", reason: "step_up" },
+      error: null,
+    });
+    expect(await files.getEmployeeFile(BUSINESS, NOA)).toEqual({
+      ok: false,
+      failure: "denied",
+      reason: "step_up",
+    });
+  });
+});

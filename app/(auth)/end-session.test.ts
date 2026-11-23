@@ -3,8 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // Signing out on this device (`endSessionHere`), with what it forgets stood
 // in for: the device's push, the business chosen, and, since the hiring
 // file's holders' view (profile H6a), the step-up that keeps a holder's
-// files open, deleted on the team's path it was set on, before the session
-// ends; then only this device's session.
+// files open: the database's for this sign-in first
+// (20261127000400_file_step_up.sql), then the cookie, deleted on the team's
+// path it was set on, before the session ends, even when the database can't
+// be told; then only this device's session.
 
 vi.mock("server-only", () => ({}));
 
@@ -12,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   calls: [] as string[],
   deleted: [] as unknown[],
   signOut: vi.fn(),
+  closeFileStepUp: vi.fn(),
 }));
 vi.mock("next/headers", () => ({
   cookies: async () => ({
@@ -36,6 +39,15 @@ vi.mock("@db/supabase/server", () => ({
   createClient: async () => ({ auth: { signOut: mocks.signOut } }),
   sessionCookieUser: async () => null,
 }));
+vi.mock("@db/session", () => ({
+  currentAuthSession: async () => ({ userId: USER, sessionId: SESSION }),
+}));
+vi.mock("@db/employee-files", () => ({
+  closeFileStepUp: mocks.closeFileStepUp,
+}));
+
+const USER = "00000000-0000-4000-8000-000000000001";
+const SESSION = "00000000-0000-4000-8000-0000000000aa";
 
 const { endSessionHere } = await import("./end-session");
 const { FILE_STEP_UP_COOKIE, FILE_STEP_UP_PATH } = await import(
@@ -49,15 +61,37 @@ beforeEach(() => {
     mocks.calls.push("session");
     return { error: null };
   });
+  mocks.closeFileStepUp.mockReset().mockImplementation(async () => {
+    mocks.calls.push("fileStepUp");
+  });
 });
 
 describe("signing out here", () => {
   it("forgets the device, the business and a holder's open files, then ends this session only", async () => {
     await endSessionHere();
-    expect(mocks.calls).toEqual(["device", "business", "cookie", "session"]);
+    expect(mocks.calls).toEqual([
+      "device",
+      "business",
+      "fileStepUp",
+      "cookie",
+      "session",
+    ]);
+    expect(mocks.closeFileStepUp).toHaveBeenCalledWith(USER, SESSION);
     expect(mocks.deleted).toEqual([
       { name: FILE_STEP_UP_COOKIE, path: FILE_STEP_UP_PATH },
     ]);
     expect(mocks.signOut).toHaveBeenCalledWith({ scope: "local" });
+  });
+
+  it("still ends the session when the database's step-up can't be closed", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.closeFileStepUp.mockRejectedValueOnce(
+      Object.assign(new Error(SESSION), { code: "XX000" }),
+    );
+    await endSessionHere();
+    expect(mocks.calls).toEqual(["device", "business", "cookie", "session"]);
+    expect(mocks.signOut).toHaveBeenCalledWith({ scope: "local" });
+    expect(JSON.stringify(logged.mock.calls)).not.toContain(SESSION);
+    logged.mockRestore();
   });
 });

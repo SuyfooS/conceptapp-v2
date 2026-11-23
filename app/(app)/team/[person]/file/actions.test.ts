@@ -12,7 +12,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // the database without a fresh step-up; keeping open that never opens,
 // under the same gate both ways, and slides only for activity (a tab's clock
 // and another tab's word only read how long is left); and nothing typed or
-// shown in a log. Each is a POST, which Next answers no-store.
+// shown in a log. Each is a POST, which Next answers no-store. The
+// database's step-up for this sign-in (20261127000400_file_step_up.sql) is
+// stood in for, with the session's claims: opened before the cookie is set,
+// slid with it, closed with it, and a cookie it no longer backs closed too;
+// a holder's write asks it before going, so a copied cookie writes nothing
+// after the lock; and in the week after a phone change no code goes and
+// none is checked.
 
 vi.mock("server-only", () => ({}));
 
@@ -26,6 +32,11 @@ const mocks = vi.hoisted(() => ({
   revealEmployeeFields: vi.fn(),
   acknowledgeBank: vi.fn(),
   markDirectGroup: vi.fn(),
+  phoneChangeHold: vi.fn(),
+  openFileStepUp: vi.fn(),
+  keepFileStepUp: vi.fn(),
+  closeFileStepUp: vi.fn(),
+  currentAuthSession: vi.fn(),
   sendCode: vi.fn(),
   checkCode: vi.fn(),
   signInPhoneOf: vi.fn(),
@@ -64,6 +75,13 @@ vi.mock("@db/employee-files", () => ({
   revealEmployeeFields: mocks.revealEmployeeFields,
   acknowledgeBank: mocks.acknowledgeBank,
   markDirectGroup: mocks.markDirectGroup,
+  phoneChangeHold: mocks.phoneChangeHold,
+  openFileStepUp: mocks.openFileStepUp,
+  keepFileStepUp: mocks.keepFileStepUp,
+  closeFileStepUp: mocks.closeFileStepUp,
+}));
+vi.mock("@db/session", () => ({
+  currentAuthSession: mocks.currentAuthSession,
 }));
 vi.mock("../../../../(auth)/otp", () => ({
   sendCode: mocks.sendCode,
@@ -91,6 +109,10 @@ const OTHER = "22222222-2222-4222-a222-222222222222";
 const URI = "33333333-3333-4333-a333-333333333333";
 const NOA = "44444444-4444-4444-a444-444444444444";
 const SOMEONE = "55555555-5555-4555-a555-555555555555";
+/** Uri's sign-in on this device, as the auth server names it. */
+const SESSION = "66666666-6666-4666-a666-666666666666";
+/** The week after a phone change, as `phoneChangeHold` reads it. */
+const HOLD = { opensOn: "2026-11-30", opensAt: "2026-11-30T08:00:00.000Z" };
 const URI_PHONE = "+972500000001";
 const CODE = "123456";
 /** The account's last change as the database writes it. */
@@ -155,6 +177,13 @@ beforeEach(() => {
   mocks.sendCode.mockReset().mockResolvedValue(null);
   mocks.checkCode.mockReset().mockResolvedValue({ userId: URI });
   mocks.signInPhoneOf.mockReset().mockResolvedValue(URI_PHONE);
+  mocks.phoneChangeHold.mockReset().mockResolvedValue({ ok: true, hold: null });
+  mocks.openFileStepUp.mockReset().mockResolvedValue({ ok: true });
+  mocks.keepFileStepUp.mockReset().mockResolvedValue(true);
+  mocks.closeFileStepUp.mockReset().mockResolvedValue(undefined);
+  mocks.currentAuthSession
+    .mockReset()
+    .mockResolvedValue({ userId: URI, sessionId: SESSION });
 });
 
 /** Keeping open, for activity here and only to read, as the watch asks: closed both ways. */
@@ -254,6 +283,9 @@ describe("who may act on a file", () => {
     expect(mocks.revealEmployeeFields).not.toHaveBeenCalled();
     expect(mocks.acknowledgeBank).not.toHaveBeenCalled();
     expect(mocks.markDirectGroup).not.toHaveBeenCalled();
+    expect(mocks.phoneChangeHold).not.toHaveBeenCalled();
+    expect(mocks.openFileStepUp).not.toHaveBeenCalled();
+    expect(mocks.keepFileStepUp).not.toHaveBeenCalled();
   });
 
   it("lets the accountant, who holds them by role", async () => {
@@ -359,6 +391,7 @@ describe("the code", () => {
       failure: "failed",
     });
     expect(mocks.set).not.toHaveBeenCalled();
+    expect(mocks.openFileStepUp).not.toHaveBeenCalled();
     expect(mocks.checkCode).toHaveBeenCalledWith(URI_PHONE, CODE);
 
     const before = Date.now();
@@ -366,6 +399,11 @@ describe("the code", () => {
       ok: true,
     });
     expect(openedAt()).toBeGreaterThanOrEqual(before);
+    // On this sign-in in the database first, and only then on this device.
+    expect(mocks.openFileStepUp).toHaveBeenCalledWith(URI, SHOP, SESSION);
+    expect(mocks.openFileStepUp.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.set.mock.invocationCallOrder[0] ?? 0,
+    );
     const [name, , options] = mocks.set.mock.calls[0] ?? [];
     expect(name).toBe(FILE_STEP_UP_COOKIE);
     expect(options).toMatchObject({
@@ -376,6 +414,82 @@ describe("the code", () => {
     });
     expect(mocks.refresh).toHaveBeenCalled();
     expect(JSON.stringify(logged.mock.calls)).not.toContain(CODE);
+  });
+
+  it("goes nowhere in the week after the holder's own phone change, and says when it ends", async () => {
+    mocks.phoneChangeHold.mockResolvedValue({ ok: true, hold: HOLD });
+    expect(await sendFileCodeAction(SHOP)).toEqual({
+      ok: false,
+      failure: "phoneHold",
+      ...HOLD,
+    });
+    expect(mocks.phoneChangeHold).toHaveBeenCalledWith(SHOP, URI);
+    // A week that can't be read sends nothing either.
+    mocks.phoneChangeHold.mockResolvedValue({ ok: false, failure: "failed" });
+    expect(await sendFileCodeAction(SHOP)).toEqual({
+      ok: false,
+      failure: "failed",
+    });
+    expect(mocks.signInPhoneOf).not.toHaveBeenCalled();
+    expect(mocks.sendCode).not.toHaveBeenCalled();
+  });
+
+  it("checks no code in that week, so none is spent and nothing opens", async () => {
+    mocks.phoneChangeHold.mockResolvedValue({ ok: true, hold: HOLD });
+    expect(await confirmFileCodeAction(SHOP, CODE)).toEqual({
+      ok: false,
+      failure: "phoneHold",
+      ...HOLD,
+    });
+    expect(mocks.checkCode).not.toHaveBeenCalled();
+    expect(mocks.openFileStepUp).not.toHaveBeenCalled();
+    expect(mocks.set).not.toHaveBeenCalled();
+  });
+
+  it("opens nothing on this device when the database doesn't open the files", async () => {
+    const cases = [
+      [{ failure: "phoneHold", opensOn: "2026-11-30" }, "phoneHold"],
+      [{ failure: "off" }, "off"],
+      [{ failure: "ack" }, "ack"],
+      [{ failure: "noAccess" }, "noAccess"],
+      [{ failure: "unavailable" }, "unavailable"],
+      [{ failure: "demo" }, "failed"],
+      [{ failure: "failed" }, "failed"],
+    ] as const;
+    for (const [refused, said] of cases) {
+      mocks.openFileStepUp.mockResolvedValueOnce({ ok: false, ...refused });
+      const answer = await confirmFileCodeAction(SHOP, CODE);
+      expect(answer, refused.failure).toEqual(
+        said === "phoneHold"
+          ? { ok: false, failure: said, opensOn: "2026-11-30" }
+          : { ok: false, failure: said },
+      );
+    }
+    expect(mocks.set).not.toHaveBeenCalled();
+    expect(mocks.cookies.has(FILE_STEP_UP_COOKIE)).toBe(false);
+    expect(mocks.refresh).not.toHaveBeenCalled();
+  });
+
+  it("opens nothing without this sign-in's own id", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.currentAuthSession.mockResolvedValueOnce(null);
+    expect(await confirmFileCodeAction(SHOP, CODE)).toEqual({
+      ok: false,
+      failure: "failed",
+    });
+    // Claims of someone else than the session's member: nothing either.
+    mocks.currentAuthSession.mockResolvedValueOnce({
+      userId: SOMEONE,
+      sessionId: SESSION,
+    });
+    expect(await confirmFileCodeAction(SHOP, CODE)).toEqual({
+      ok: false,
+      failure: "failed",
+    });
+    expect(mocks.openFileStepUp).not.toHaveBeenCalled();
+    expect(mocks.set).not.toHaveBeenCalled();
+    expect(JSON.stringify(logged.mock.calls)).not.toContain(SESSION);
+    logged.mockRestore();
   });
 });
 
@@ -410,6 +524,26 @@ describe("a reveal", () => {
       "bank_account",
     ]);
     expect(openedAt()).toBeGreaterThan(earlier);
+    expect(mocks.keepFileStepUp).toHaveBeenCalledWith(URI, SHOP, SESSION);
+  });
+
+  it("closes the cookie too when the database holds no step-up for this sign-in", async () => {
+    opened();
+    mocks.revealEmployeeFields.mockResolvedValueOnce({
+      ok: false,
+      failure: "denied",
+      reason: "step_up",
+    });
+    expect(await revealHolderFieldAction(SHOP, NOA, "bank_account")).toEqual({
+      ok: false,
+      failure: "stepUp",
+    });
+    expect(mocks.deleted).toHaveBeenCalledWith({
+      name: FILE_STEP_UP_COOKIE,
+      path: "/team",
+    });
+    expect(mocks.cookies.has(FILE_STEP_UP_COOKIE)).toBe(false);
+    expect(mocks.keepFileStepUp).not.toHaveBeenCalled();
   });
 
   it("says the hour's limit and the duties, and refuses what isn't a person or a number", async () => {
@@ -462,6 +596,7 @@ describe("keeping a file open and locking it", () => {
     opened(Date.now() - 16 * 60_000);
     await keepsClosed();
     expect(mocks.set).not.toHaveBeenCalled();
+    expect(mocks.keepFileStepUp).not.toHaveBeenCalled();
 
     const earlier = Date.now() - 60_000;
     opened(earlier);
@@ -469,8 +604,26 @@ describe("keeping a file open and locking it", () => {
       open: true,
       leftMs: FILE_IDLE_MS,
     });
+    expect(mocks.keepFileStepUp).toHaveBeenCalledWith(URI, SHOP, SESSION);
     expect(mocks.set).toHaveBeenCalledTimes(1);
     expect(openedAt()).toBeGreaterThan(earlier);
+    expect(mocks.openFileStepUp).not.toHaveBeenCalled();
+  });
+
+  it("closes the cookie when the database no longer holds the step-up", async () => {
+    opened(Date.now() - 60_000);
+    mocks.keepFileStepUp.mockResolvedValueOnce(false);
+    expect(await keepFileOpenAction(SHOP, true)).toEqual({ open: false });
+    expect(mocks.cookies.has(FILE_STEP_UP_COOKIE)).toBe(false);
+    expect(mocks.set).not.toHaveBeenCalled();
+
+    // Nor without this sign-in's own id, which slides nothing there.
+    opened(Date.now() - 60_000);
+    mocks.currentAuthSession.mockResolvedValueOnce(null);
+    expect(await keepFileOpenAction(SHOP, true)).toEqual({ open: false });
+    expect(mocks.cookies.has(FILE_STEP_UP_COOKIE)).toBe(false);
+    expect(mocks.keepFileStepUp).toHaveBeenCalledTimes(1);
+    expect(mocks.openFileStepUp).not.toHaveBeenCalled();
   });
 
   it("only reads the step-up for a tab's clock or another tab's word, saying how long it has left", async () => {
@@ -486,6 +639,9 @@ describe("keeping a file open and locking it", () => {
     expect(mocks.set).not.toHaveBeenCalled();
     expect(mocks.cookies.get(FILE_STEP_UP_COOKIE)).toBe(before);
     expect(openedAt()).toBe(earlier);
+    // The database is asked nothing, and nothing is written there.
+    expect(mocks.currentAuthSession).not.toHaveBeenCalled();
+    expect(mocks.keepFileStepUp).not.toHaveBeenCalled();
 
     // A moment a little ahead (another server's clock): 15 minutes, no more.
     opened(Date.now() + 30_000);
@@ -506,15 +662,31 @@ describe("keeping a file open and locking it", () => {
     expect(mocks.set).not.toHaveBeenCalled();
   });
 
-  it("locks by deleting the cookie, on the team's path", async () => {
+  it("locks by closing this sign-in's step-up and deleting the cookie, on the team's path", async () => {
     opened();
     expect(await lockFileAction(SHOP)).toEqual({ ok: true });
+    expect(mocks.closeFileStepUp).toHaveBeenCalledWith(URI, SESSION);
+    expect(mocks.closeFileStepUp.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.deleted.mock.invocationCallOrder[0] ?? 0,
+    );
     expect(mocks.deleted).toHaveBeenCalledWith({
       name: FILE_STEP_UP_COOKIE,
       path: "/team",
     });
     expect(mocks.cookies.has(FILE_STEP_UP_COOKIE)).toBe(false);
     expect(mocks.refresh).toHaveBeenCalled();
+  });
+
+  it("locks this device even when the database can't be told", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    opened();
+    mocks.currentAuthSession.mockRejectedValueOnce(
+      Object.assign(new Error(SESSION), { code: "XX000" }),
+    );
+    expect(await lockFileAction(SHOP)).toEqual({ ok: true });
+    expect(mocks.cookies.has(FILE_STEP_UP_COOKIE)).toBe(false);
+    expect(JSON.stringify(logged.mock.calls)).not.toContain(SESSION);
+    logged.mockRestore();
   });
 });
 
@@ -533,6 +705,53 @@ describe("a holder's writes", () => {
     expect((await markDirectGroupAction(SHOP, NOA, "bank", true)).ok).toBe(
       false,
     );
+    expect(mocks.acknowledgeBank).not.toHaveBeenCalled();
+    expect(mocks.markDirectGroup).not.toHaveBeenCalled();
+  });
+
+  it("never go on a copied cookie after the lock: the database's step-up is asked first", async () => {
+    // The cookie copied from a computer left open, still fresh.
+    opened();
+    const copied = mocks.cookies.get(FILE_STEP_UP_COOKIE) ?? "";
+    // "נעילת התיק": the database's step-up for this sign-in goes.
+    expect(await lockFileAction(SHOP)).toEqual({ ok: true });
+    expect(mocks.closeFileStepUp).toHaveBeenCalledWith(URI, SESSION);
+    mocks.keepFileStepUp.mockResolvedValue(false);
+
+    mocks.cookies.set(FILE_STEP_UP_COOKIE, copied);
+    expect(await acknowledgeBankAction(SHOP, NOA, MOMENT)).toEqual({
+      ok: false,
+      failure: "stepUp",
+    });
+    // The copy is closed too, so the screen draws itself locked.
+    expect(mocks.cookies.has(FILE_STEP_UP_COOKIE)).toBe(false);
+    mocks.cookies.set(FILE_STEP_UP_COOKIE, copied);
+    expect(await markDirectGroupAction(SHOP, NOA, "bank", true)).toEqual({
+      ok: false,
+      failure: "stepUp",
+    });
+    expect(mocks.cookies.has(FILE_STEP_UP_COOKIE)).toBe(false);
+
+    expect(mocks.keepFileStepUp).toHaveBeenCalledTimes(2);
+    expect(mocks.keepFileStepUp).toHaveBeenLastCalledWith(URI, SHOP, SESSION);
+    expect(mocks.acknowledgeBank).not.toHaveBeenCalled();
+    expect(mocks.markDirectGroup).not.toHaveBeenCalled();
+    expect(mocks.set).not.toHaveBeenCalled();
+  });
+
+  it("never go without this sign-in's own id", async () => {
+    opened();
+    mocks.currentAuthSession.mockResolvedValue(null);
+    expect(await acknowledgeBankAction(SHOP, NOA, MOMENT)).toEqual({
+      ok: false,
+      failure: "stepUp",
+    });
+    opened();
+    expect(await markDirectGroupAction(SHOP, NOA, "bank", true)).toEqual({
+      ok: false,
+      failure: "stepUp",
+    });
+    expect(mocks.keepFileStepUp).not.toHaveBeenCalled();
     expect(mocks.acknowledgeBank).not.toHaveBeenCalled();
     expect(mocks.markDirectGroup).not.toHaveBeenCalled();
   });
@@ -576,6 +795,12 @@ describe("confirming an account", () => {
     });
     expect(mocks.acknowledgeBank).toHaveBeenCalledWith(URI, SHOP, NOA, MOMENT);
     expect(openedAt()).toBeGreaterThan(at);
+    // Asked of the database, and slid there, once and before the write.
+    expect(mocks.keepFileStepUp).toHaveBeenCalledTimes(1);
+    expect(mocks.keepFileStepUp).toHaveBeenCalledWith(URI, SHOP, SESSION);
+    expect(mocks.keepFileStepUp.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.acknowledgeBank.mock.invocationCallOrder[0] ?? 0,
+    );
     expect(mocks.refresh).toHaveBeenCalledTimes(1);
   });
 
@@ -645,6 +870,16 @@ describe("marking a part handed directly", () => {
       false,
     );
     expect(openedAt()).toBeGreaterThan(at);
+    // Once a press, each before its write.
+    expect(mocks.keepFileStepUp).toHaveBeenCalledTimes(2);
+    expect(mocks.keepFileStepUp).toHaveBeenLastCalledWith(URI, SHOP, SESSION);
+    const [firstAsked, nextAsked] =
+      mocks.keepFileStepUp.mock.invocationCallOrder;
+    const [firstWrite, nextWrite] =
+      mocks.markDirectGroup.mock.invocationCallOrder;
+    expect(firstAsked).toBeLessThan(firstWrite ?? 0);
+    expect(nextAsked).toBeLessThan(nextWrite ?? 0);
+    expect(firstWrite).toBeLessThan(nextAsked ?? 0);
     expect(mocks.refresh).toHaveBeenCalledTimes(2);
   });
 
