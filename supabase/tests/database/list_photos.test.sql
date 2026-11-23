@@ -1,8 +1,10 @@
 -- Photos on lists (20261110001500_list_photos.sql): a private bucket only the
 -- server writes; a photo item's file set, replaced and cleared by
--- set_list_item_photo with set_list_item's rules and its own path rule; the
--- bucket read by whoever sees the list (its holder, the department that asked,
--- managers, a view session as a manager) and by nobody else; demo businesses
+-- set_list_item_photo with set_list_item's rules and its own path rule; a
+-- photo served to whoever sees the list (its holder, the department that
+-- asked, managers, a view session as a manager) and to nobody else, the
+-- bucket itself read by the server only (20261127000300: no policy, so the
+-- route checks the item under the reader's session first); demo businesses
 -- that take none; and photos kept their business's days, then marked removed
 -- by the clean-up (the days a setting for the team, which the app holds to
 -- the manifest's choices). Fixed ids of its own and explicit times.
@@ -60,7 +62,9 @@ $$;
 
 create temporary table ids (name text primary key, id uuid) on commit drop;
 create temporary table paths (name text primary key, path text) on commit drop;
-grant select on ids, paths to authenticated, anon, service_role;
+-- What the server put in the bucket: no session reads it there.
+create temporary table stored (name text primary key) on commit drop;
+grant select on ids, paths, stored to authenticated, anon, service_role;
 
 create function pg_temp.id_of(saved text) returns uuid language sql as $$
   select i.id from ids i where i.name = saved
@@ -78,11 +82,21 @@ $$;
 create function pg_temp.path_of(saved text) returns text language sql as $$
   select p.path from paths p where p.name = saved
 $$;
--- The list-photos files the signed-in person reads, of this test's businesses.
+-- The list-photos files the signed-in person is served, of this test's
+-- businesses, as /list-photos decides: a file the server put that an item of
+-- a list they see (RLS) points at, in the path's business and list, its photo
+-- still kept. Only then the server reads it, with the secret key.
 create function pg_temp.read_files() returns setof text language sql as $$
-  select o.name from storage.objects o
-  where o.bucket_id = 'list-photos' and o.name like '84000000-%'
-  order by o.name
+  select s.name from stored s
+  where s.name like '84000000-%'
+    and exists (
+      select 1 from public.list_items i
+      where i.photo_path = s.name
+        and i.business_id::text = split_part(s.name, '/', 1)
+        and i.list_id::text = split_part(s.name, '/', 2)
+        and i.photo_removed_at is null
+    )
+  order by s.name
 $$;
 
 -- P's departments: the kitchen (3) and the bar (4).
@@ -173,9 +187,13 @@ select ok(
   'the server runs them'
 );
 select ok(
-  has_function_privilege('authenticated', 'private.can_read_list_photo(text)', 'execute')
-  and not has_function_privilege('anon', 'private.can_read_list_photo(text)', 'execute'),
-  'a signed-in reader runs the storage policy''s helper; an anonymous visitor doesn''t'
+  not exists (
+    select 1 from pg_policies p
+    where p.schemaname = 'storage'
+      and (coalesce(p.qual, '') || ' ' || coalesce(p.with_check, '')) ~ '''list-photos'''
+  )
+  and to_regprocedure('private.can_read_list_photo(text)') is null,
+  'no policy of Storage names the list-photos bucket, and private.can_read_list_photo is gone: the server alone reads its files'
 );
 
 select is(
@@ -280,6 +298,8 @@ set local role service_role;
 insert into storage.objects (bucket_id, name)
 select 'list-photos', p.path from paths p where p.name in ('p-c', 'p-orphan', 'q');
 reset role;
+insert into stored
+select p.path from paths p where p.name in ('p-c', 'p-orphan', 'q');
 
 select pg_temp.sign_in('84000000-0000-4000-a000-000000000003');
 select throws_ok(

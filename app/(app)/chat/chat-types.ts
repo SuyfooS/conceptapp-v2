@@ -46,8 +46,8 @@ export type ChatImageResult =
  * notPdf (its name isn't a .pdf, or its bytes aren't a PDF's), notUploaded
  * (Storage holds nothing at its place: the PUT didn't arrive), expired (its 2
  * hours are over, or its place was let go: start again), tooMany (ten unsent
- * from the last day) and busy (the business's PDFs of the last 10 minutes
- * bring its space).
+ * from the last day), busy (the business's PDFs of the last 10 minutes
+ * bring its space) and busyOwn (the sender's own bring half of it).
  */
 export type ChatPdfActionFailure = ChatActionFailure | ChatPdfFailure;
 

@@ -3,9 +3,11 @@
 -- file's place reserved with the sending's own checks, the demo refusal and
 -- the project's room; a message sent with its reservation only when it is the
 -- sender's, for that conversation, unused, under 2 hours old and in Storage at
--- the size and type reserved; the bucket read by whoever reads the message
--- (a private chat's two people alone, no owner, accountant, view session or
--- other business), never a removed message's file or one no longer kept; the
+-- the size and type reserved; a file served to whoever reads its message (a
+-- private chat's two people alone, no owner, accountant, view session or
+-- other business), never a removed message's file or one no longer kept, and
+-- the bucket itself read by the server only (20261127000300: no policy, so
+-- the route checks the message under the reader's session first); the
 -- files due to go (by days, by a business's space oldest first, held past
 -- their undo, reservations never sent, what nothing points at) and marked when
 -- they went, which every reader's sync hears of; the job's file part; and the
@@ -76,7 +78,9 @@ $$;
 create temporary table ids (name text primary key, id uuid) on commit drop;
 create temporary table ups (name text primary key, result jsonb) on commit drop;
 create temporary table sent (name text primary key, result jsonb) on commit drop;
-grant all on ids, ups, sent to authenticated, anon, service_role;
+-- What the server put in the bucket: no session reads it there.
+create temporary table stored (name text primary key) on commit drop;
+grant all on ids, ups, sent, stored to authenticated, anon, service_role;
 
 create function pg_temp.id_of(saved text) returns uuid language sql as $$
   select i.id from ids i where i.name = saved
@@ -106,6 +110,7 @@ create function pg_temp.put(object_name text, bytes integer, mime text, at_time 
 returns void language sql as $$
   insert into storage.objects (bucket_id, name, metadata, created_at)
   values ('chat-files', object_name, jsonb_build_object('size', bytes, 'mimetype', mime), at_time);
+  insert into stored values (object_name);
 $$;
 -- A reservation's picture and thumbnail in the bucket.
 create function pg_temp.put_both(saved text, full_bytes integer, thumb_bytes integer,
@@ -123,11 +128,23 @@ language sql as $$
   insert into ids select saved, (s.result ->> 'message')::uuid from sent s where s.name = saved;
   select i.id from ids i where i.name = saved
 $$;
--- The chat-files names the signed-in person reads, of this test's businesses.
+-- The chat-files names the signed-in person is served, of this test's
+-- businesses, as /chat-files decides: a file the server put that a message
+-- they read (RLS) points at, its picture or thumbnail, in the path's business
+-- and conversation, not removed and its file still kept. Only then the server
+-- reads it, with the secret key.
 create function pg_temp.read_files() returns setof text language sql as $$
-  select o.name from storage.objects o
-  where o.bucket_id = 'chat-files' and o.name like '89000000-%'
-  order by o.name
+  select s.name from stored s
+  where s.name like '89000000-%'
+    and exists (
+      select 1 from public.chat_messages m
+      where (m.file_path = s.name or m.thumb_path = s.name)
+        and m.business_id::text = split_part(s.name, '/', 1)
+        and m.conversation_id::text = split_part(s.name, '/', 2)
+        and m.removed_at is null
+        and m.file_removed_at is null
+    )
+  order by s.name
 $$;
 -- Whether all of these paths are due at `at_time`.
 create function pg_temp.due(at_time timestamptz, variadic wanted text[]) returns boolean
@@ -188,9 +205,13 @@ select ok(
   'the server runs them'
 );
 select ok(
-  has_function_privilege('authenticated', 'private.can_read_chat_file(text)', 'execute')
-  and not has_function_privilege('anon', 'private.can_read_chat_file(text)', 'execute'),
-  'a signed-in reader runs the storage policy''s helper; an anonymous visitor doesn''t'
+  not exists (
+    select 1 from pg_policies p
+    where p.schemaname = 'storage'
+      and (coalesce(p.qual, '') || ' ' || coalesce(p.with_check, '')) ~ '''chat-files'''
+  )
+  and to_regprocedure('private.can_read_chat_file(text)') is null,
+  'no policy of Storage names the chat-files bucket, and private.can_read_chat_file is gone: the server alone reads its files'
 );
 select pg_temp.sign_in('89000000-0000-4000-a000-000000000003');
 select throws_ok(
@@ -277,6 +298,7 @@ select throws_ok(
 );
 set local storage.allow_delete_query = 'true';
 delete from storage.objects where bucket_id = 'chat-files' and name = 'zz-guard/full.bin';
+delete from stored where name = 'zz-guard/full.bin';
 
 -- Shiran's burst, dated before every other reservation here, so none of
 -- them falls in its minute.
@@ -469,13 +491,12 @@ reset role;
 select public.remove_chat_message('89000000-0000-4000-a000-000000000003',
   pg_temp.id_of('g'), '2026-11-05 09:36+00');
 
-select ok(
-  not private.can_read_chat_file(repeat('-', 36) || '/' || repeat('-', 36) || '/' || repeat('a', 32) || '.webp')
-  and not private.can_read_chat_file(null)
-  and not private.can_read_chat_file(upper(pg_temp.up('k', 'path'))),
-  'a name of 36 dashes, none, or one not in lower case is false, not an error'
-);
 select pg_temp.sign_in('89000000-0000-4000-a000-000000000003');
+select is(
+  (select count(*)::integer from storage.objects where bucket_id = 'chat-files'),
+  0,
+  'Noa reads no row of the bucket, not even the files she is served: no download, no list and no signed link of her own'
+);
 select throws_ok(
   $$insert into storage.objects (bucket_id, name)
     values ('chat-files', '89000000-0000-4000-b000-000000000001/' || pg_temp.id_of('kitchen')::text
@@ -559,6 +580,7 @@ select is(
 create function pg_temp.remove_files(variadic saved text[]) returns void language sql as $$
   delete from storage.objects o
   where o.bucket_id = 'chat-files' and o.name in (select pg_temp.paths_of(variadic saved));
+  delete from stored s where s.name in (select pg_temp.paths_of(variadic saved));
 $$;
 
 -- What Noa's sync holds of the kitchen, before and after its picture goes:

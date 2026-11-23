@@ -27,8 +27,10 @@ import { createClient } from "./supabase/server";
  * new random key, and only then pointed at by its item
  * (`public.set_list_item_photo`, which holds the item to the list's own rules);
  * the file it replaced is removed after, and a file nothing points at is
- * removed again. The bucket takes nothing from the browser, and its policy lets
- * a reader read only the photos of lists they see. A demo business takes no
+ * removed again. The bucket takes nothing from the browser and has no policy
+ * (20261127000300_files_server_only.sql): the app's /list-photos route reads
+ * the item under the reader's own session (a list they see), and only then
+ * the file with the secret key. A demo business takes no
  * photos (`list_photos_closed`), and the database refuses one too. A fix of
  * a finished list (L6b-1) points through `public.fix_list_item_photo`
  * instead, by the same rules otherwise.
@@ -202,18 +204,45 @@ export async function removeListItemPhoto(
 }
 
 /**
- * A list photo's bytes as the signed-in person may read them: downloaded
- * under their own session, so the bucket's policy decides (a list they see,
- * in their business, with lists on, an item pointing at the file). Null for
- * anything they may not read, or that isn't a photo the app stores.
+ * A list photo's bytes as the signed-in person may read them, for the
+ * /list-photos route: an item pointing at the file, its photo still kept,
+ * read under their own session (RLS: a list they see, in their business,
+ * with lists on), and only then the file read with the secret key. Null for
+ * anything they may not read, the same whether or not a file is there, or
+ * that isn't a photo the app stores.
  */
 export async function listPhotoBytes(
   path: string,
 ): Promise<{ bytes: Uint8Array<ArrayBuffer>; type: ListPhotoType } | null> {
   if (!isListPhotoPath(path)) return null;
+  const [businessId = "", listId = ""] = path.split("/");
   const supabase = await createClient();
-  const { data, error } = await supabase.storage
-    .from(LIST_PHOTO_BUCKET)
+  const row = await supabase
+    .from("list_items")
+    .select("photo_path, photo_removed_at")
+    .eq("business_id", businessId)
+    .eq("list_id", listId)
+    .eq("photo_path", path)
+    .limit(1)
+    .maybeSingle();
+  if (row.error) {
+    console.error(
+      "a list photo could not be read",
+      row.error.code ?? "without a code",
+    );
+    return null;
+  }
+  if (
+    !row.data ||
+    row.data.photo_path !== path ||
+    row.data.photo_removed_at !== null
+  ) {
+    return null;
+  }
+  // Only now the file, with the secret key's own download: no session reads
+  // the bucket, and no signed link is made for it.
+  const { data, error } = await createAdminClient()
+    .storage.from(LIST_PHOTO_BUCKET)
     .download(path);
   if (error || !data) return null;
   const bytes = new Uint8Array(await data.arrayBuffer());

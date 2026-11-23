@@ -4303,6 +4303,12 @@ export type Database = {
         Returns: string;
       };
       end_view_session: { Args: { actor: string }; Returns: string };
+      expired_avatars: {
+        Args: { at_time?: string; max_rows?: number };
+        Returns: {
+          path: string;
+        }[];
+      };
       expired_files: {
         Args: { at_time?: string; max_rows?: number };
         Returns: {
@@ -4762,6 +4768,7 @@ export type Database = {
         Returns: undefined;
       };
       see_push_ask: { Args: Record<PropertyKey, never>; Returns: undefined };
+      sees_profile_photo: { Args: { photo_path: string }; Returns: boolean };
       send_chat_message: {
         Args: {
           actor: string;
@@ -4819,6 +4826,10 @@ export type Database = {
           ticket: string;
         };
         Returns: undefined;
+      };
+      set_avatar_path: {
+        Args: { new_path?: string; person: string };
+        Returns: string;
       };
       set_business_details: {
         Args: { actor: string; business: string; patch: Json };

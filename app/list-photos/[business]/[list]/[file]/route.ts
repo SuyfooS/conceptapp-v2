@@ -12,11 +12,13 @@ function missing(): Response {
 
 /**
  * A list's photo (L6), as the signed-in person may see it (`listPhotoSrc`
- * points here), the way /photos serves profile photos. Downloaded under their
- * own session, so the bucket's policy decides: a list they see (they hold it,
- * sent it, asked for it, or manage lists), of their business, with lists on
- * there, and an item of it pointing at the file. Anything else, another
- * business's photo included, is not found. The browser keeps it privately for
+ * points here), the way /photos serves profile photos. The database decides,
+ * under their own session: an item pointing at the file, its photo still
+ * kept, of a list they see (they hold it, sent it, asked for it, or manage
+ * lists), of their business, with lists on there. Only then the file is read,
+ * with the secret key: the bucket has no policy, so no session reads it or
+ * signs a link to it (20261127000300_files_server_only.sql). Anything else,
+ * another business's photo included, is not found. The browser keeps it privately for
  * an hour (a new photo gets a new random path, so it is never stale), never
  * through the image optimizer, and never reads it as anything but a picture.
  */

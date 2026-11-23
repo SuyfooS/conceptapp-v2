@@ -1,8 +1,9 @@
 -- Profile photos: a private bucket for JPEG, PNG or WebP up to 2MB. Only the
--- server uploads, replaces and removes photos; a person and the active
--- members of their businesses read theirs; other businesses, former members
--- and anonymous visitors read nothing. `avatar_path` is written by
--- the server only and must point into the person's own folder.
+-- server uploads, replaces, removes and, from 20261127000300, reads photos
+-- (/photos asks public.sees_profile_photo first: storage_server_only.test.sql);
+-- no session reads a row of the bucket, its own photo or a colleague's, nor
+-- an anonymous visitor. `avatar_path` is written by the server only and must
+-- point into the person's own folder.
 begin;
 select plan(14);
 
@@ -73,26 +74,26 @@ values
   ('avatars', '69000000-0000-4000-a000-00000000000d/abcdefgh.webp');
 reset role;
 
--- Reading.
+-- Reading: the server alone, with the secret key.
 select pg_temp.sign_in('69000000-0000-4000-a000-00000000000b');
 select is(
   (select count(*)::int from storage.objects where bucket_id = 'avatars'),
-  1,
-  'a worker reads their own photo and no one else''s outside their business'
+  0,
+  'a worker reads no row of the bucket, not even their own photo'
 );
 reset role;
 select pg_temp.sign_in('69000000-0000-4000-a000-00000000000a');
-select results_eq(
-  $$select name from storage.objects where bucket_id = 'avatars' order by name$$,
-  $$values ('69000000-0000-4000-a000-00000000000b/abcdefgh.jpg')$$,
-  'a colleague reads the photo; a former member''s stays closed'
+select is(
+  (select count(*)::int from storage.objects where bucket_id = 'avatars'),
+  0,
+  'nor a colleague''s'
 );
 reset role;
 select pg_temp.sign_in('69000000-0000-4000-a000-00000000000c');
-select results_eq(
-  $$select name from storage.objects where bucket_id = 'avatars' order by name$$,
-  $$values ('69000000-0000-4000-a000-00000000000c/abcdefgh.png')$$,
-  'a worker of another business reads only their own'
+select is(
+  (select count(*)::int from storage.objects where bucket_id = 'avatars'),
+  0,
+  'nor a worker of another business'
 );
 reset role;
 set local role anon;

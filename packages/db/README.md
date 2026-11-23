@@ -32,9 +32,7 @@ through helpers in the `private` schema (not exposed by the Data API):
 | `private.is_viewing(business, min_role)` | is on the ConceptApp team with an open "view as" session in the business, at that role or above (read policies only; a view as a role the business named ranks as its base) |
 | `private.can_manage_lists(business, person)` | (that person) holds `lists.manage` (`private.holds_perm`: an owner always, managers by default, a role an owner raised, or one given it; since R5) |
 | `private.sees_list(list, person)` | (that person) is an active member of the list's business who holds it, sent it, was given it, is in the department that asked for it or one it passed through, or holds `lists.manage` |
-| `private.can_read_list_photo(object_name)` | may read that file of the `list-photos` bucket: an item of a list they see (or view as a role that holds `lists.manage`) points at it, in its business, with lists on |
 | `private.chat_reads_from(conversation, person)` | (that person) reads the chat, and from when: one of a private chat's two people while on the staff, the active staff in the team's group from when each came onto the staff this time (`memberships.staff_since`, which moves when someone comes back after leaving or from being an accountant), a live department's members on the staff from when each was added or came back, whichever is later, and moderators (`chat.moderate`) all of every group; null for anyone else, with chat off, and for a view session |
-| `private.can_read_chat_file(object_name)` | may read that file of the `chat-files` bucket: a message of the path's conversation and business points at it (its picture or thumbnail), not removed and its file still kept, and they read that message (`private.reads_chat_message`, no branch for owners, the team or a view session); a name of the wrong shape is false, never an error |
 | `private.is_private_action(action)` | (any user) a log row about chats, documents or the hiring file (`chat.*`, `document.*`, `employee.*`), which no view session reads |
 | `private.log_perm(action)` | (any user) the permission a log row is read with besides `manage.view`: its own area's (`clock.edit`, `schedule.edit`, `lists.manage`, `team.view`, `chat.moderate`), `manage.view` for the management page's own families, and null for a family it doesn't name, which no one reads through it (`tooling/log-families.test.ts` makes each family the migrations write name its area) |
 | `private.held_perms()` | the rows (business, permission) of every key they hold as an active member, for a policy's `(business_id, key) in (select …)` |
@@ -58,6 +56,27 @@ the team (`team.edit`, since the roles plan's R6) delete a hurtful line of
 their own role or one below it, the one they read (`seen`; a line rewritten
 since stays, with 40001), logged as `profile.bio_cleared` without the text.
 From the browser, reads follow the policies and nothing writes a profile.
+
+Profile photos (`20261107000200_profile_photos.sql`, read by the server only
+since `20261127000300_files_server_only.sql`) live in the private bucket
+`avatars` at `<user id>/<key>.<jpg|png|webp>`, which `profiles.avatar_path`
+points at. No bucket has a policy, so no session downloads, lists or signs a
+link to a file. `@db/profile-photos` `profilePhotoBytes` serves the app's
+`/photos` route: `public.sees_profile_photo(photo_path)` under the reader's
+own session (true only while the folder's profile points at that photo, for
+the person and their active colleagues, `private.shares_business`; no branch
+for a view session), and only then the secret key's download.
+`setProfilePhoto` uploads under a new random key and points the profile at
+it with `public.set_avatar_path(person, new_path)` (the secret key's: under the
+row's lock, it returns the photo it replaced, to remove; P0002 for no such
+person, 23514 for a path out of their folder, 55000 for a demo business that
+keeps its people); `removeProfilePhoto` calls it with no `new_path`. A removal
+is tried twice and logged by code. `cleanProfilePhotos` removes, a batch at a
+time, the files a day old that no profile points at
+(`public.expired_avatars(at_time, max_rows)`, the secret key's), from the daily
+`/cron/list-photos`, which `private.list_photos_tick` now also asks while one
+is due. `profilePhotoUrls` (signed links under the session) is gone. Covered by
+`storage_server_only.test.sql` and `profile_photos.test.sql`.
 
 Changing the team (`20261114000100_team_changes.sql`; Orel, 14 November 2026)
 goes by the rule of inviting: whoever may invite to a role may take someone off
@@ -514,19 +533,19 @@ departments asked for that wait elsewhere (`lists_pass.test.sql`,
 Photos on lists (L6, `20261110001500_list_photos.sql`) live in the private
 bucket `list-photos`, a JPEG or WebP of at most 400 KB at
 `<business>/<list>/<key>.<webp|jpg>` (the rule `list_items.photo_path` keeps).
-Storage has one policy for it, select, through
-`private.can_read_list_photo(object_name)`: the path's list is of the path's
-business, lists are on there, one of its photo items points at the file, and
-the reader sees the list or views the business as a manager. Nothing lets the
-browser upload, replace or remove a file, as with avatars. `@db/list-photos`
+Storage has no policy for it (`20261127000300_files_server_only.sql` dropped
+its read policy and `private.can_read_list_photo`): nothing lets the browser
+read, upload, replace or remove a file, as with avatars. `@db/list-photos`
 `setListItemPhoto` checks the file the browser re-encoded
 (`@domain/list-photos` `checkListPhoto`), uploads it with the secret key under
 a random key, then calls `public.set_list_item_photo(actor, item, new_path,
 at_time)` (secret key; whoever holds the open list or manages lists, the item a
 photo, the path in its own list's folder; no log row), which returns the file
 it replaced for the server to remove; a refused save removes the upload again.
-`removeListItemPhoto` clears it (no `new_path`). `listPhotoBytes` downloads a
-photo under the reader's own session, for the app's `/list-photos` route. A
+`removeListItemPhoto` clears it (no `new_path`). `listPhotoBytes` serves the
+app's `/list-photos` route: the item pointing at the file, its photo still
+kept, read under the reader's own session (the lists' RLS: a list they see,
+lists on), and only then the secret key's download. A
 demo business takes none unless its definition says `"photos": true`
 (`public.list_photos_closed` for the server, which the list screen and the
 editors ask through `listPhotosAllowed`, so a photo item there is never
@@ -882,8 +901,8 @@ and their times. Every list is read by those who run the lists
 templates, the templates' times and every list through the policies'
 `business_id in (select private.businesses_holding('lists.manage'))`,
 members and views alike, asked once per query, where a view needed the
-manager's rank; a list's photos the same (`private.can_read_list_photo`,
-critique 5). Departments stay on the staff's reads, as lists and chat share
+manager's rank; a list's photos the same (through their items, since
+20261127000300; critique 5). Departments stay on the staff's reads, as lists and chat share
 them. A list still late (`lists.late_team`) and a reading out of its range
 (`lists.out_of_range`) go to `private.list_managers` (now
 `lists.manage` holders) as lines for that permission (`holders_of`,
@@ -2199,8 +2218,9 @@ membership's `perms` too, so the sync knows who holds `chat.moderate`. Covered b
 Chat's files (`20261111000500_chat_files.sql`, chat C4): pictures, kept 90 days. The
 private bucket `chat-files` (10 MiB, JPEG, WebP and, from C5, PDF) holds a picture at
 `<business>/<conversation>/<32 hex>.<webp|jpg>` and its thumbnail beside it at
-`…-s.<ext>`; nothing in the browser writes it (no insert, update or delete policy) and
-`private.can_read_chat_file` (above) is its read policy. The server, with the secret key:
+`…-s.<ext>`; nothing in the browser writes or reads it (no policy at all since
+`20261127000300_files_server_only.sql`, which dropped its read policy and
+`private.can_read_chat_file`). The server, with the secret key:
 `public.chat_files_closed(business)` (a demo business takes no files unless its definition
 says `"chatFiles": true`, the local seed's restaurant only; the trigger
 `chat_messages_demo_file` refuses one too, 55000), `public.reserve_chat_upload(actor,
@@ -2220,7 +2240,8 @@ written, and returns `attached` false for a draft sent already. `public.chat_pag
 `public.expired_files(at_time, max_rows)` lists, oldest first and each thumbnail before its
 picture, the files past their business's `fileDays` (30, 90 or 180), each business's oldest
 past its `fileSpaceMb` (50, 100 or 200 MB; Orel, 11 November 2026: the oldest go first, even
-before their days), removed messages' held files once their undo is over, reservations never
+before their days; since 20261127000300 first what one person holds beyond half of it,
+their oldest first, `CHAT_SENDER_SPACE_DIVISOR`), removed messages' held files once their undo is over, reservations never
 sent after a day, and anything in the bucket older than a day that nothing points at; and
 `public.forget_files(paths, at_time)` marks them (`file_removed_at`, the message stays,
 and its conversation's `changed_at` moves, so every reader's sync hears of it and an open
@@ -2250,8 +2271,8 @@ the person themselves only. `@db/chat-files` has `chatFilesAllowed`,
 `sendChatImage` (checked by `@domain/chat-files`, reserved, both files uploaded with
 `upsert: false`, sent; both removed at once on any refusal, and kept when the sending's end
 is unknown, for the message that may hold them or the clean-up a day on), `chatFileBytes` (for
-`/chat-files`: the message read under the reader's session, the file downloaded under it,
-its type from its bytes), `getConversationPictures` (a conversation's latest pictures still
+`/chat-files`: the message read under the reader's session, then the file with the secret
+key, its type from its bytes), `getConversationPictures` (a conversation's latest pictures still
 kept, for its details, under the reader's session), `cleanChatFiles` (for
 `/cron/chat-files`) and `getStorageUse` (null, and the card hidden, when it can't be
 read);
@@ -2267,7 +2288,9 @@ name ends in `.pdf`, 22023; a person holds at most 10 PDF places unsent from the
 that hold a file or may still be given one, 54000 with hint `pdfs`, since what the browser
 put and never sent waits for the clean-up a day on; a business's PDFs reserved in the last
 10 minutes, sent or not, bring at most its `fileSpaceMb`, 54000 with hint `busy`, so
-nobody fills Storage faster than the job lets files go; the 900 MB guard counts the places
+nobody fills Storage faster than the job lets files go, and since 20261127000300 a
+person's own at most half of it, 54000 with hint `own` (`busyOwn` on screen), so nobody
+alone keeps everyone's PDFs waiting; the 900 MB guard counts the places
 on their way, a PDF's for 10 MiB whatever its size, `private.uploads_on_their_way`; a
 person's reservations, and a business's PDFs, are counted one at a time under advisory
 locks) and makes Storage's signed upload for that one path with the secret key (`upsert`
@@ -2288,7 +2311,7 @@ On any refusal the file gives way to the tombstone, unless a message holds it by
 retry of the same sending is given back its message and never loses its file), and a later
 try of that place is told to start again (`expired`); `cancelChatPdf` lets go the place of
 a sending stopped and says whether it was sent after all. `chatPdfDownload` serves `/chat-files`: the message
-read under the reader's session, the file downloaded under it and streamed on after its
+read under the reader's session, then the file with the secret key, streamed on after its
 first KB proved it a PDF, as a download (`chatPdfDisposition`: `attachment`, the name in
 UTF-8 per RFC 5987 with the ASCII fallback `document.pdf`). `getConversationPdfs` gives a
 conversation's latest PDFs for its details. `public.chat_inbox` gives `last_file_name` too

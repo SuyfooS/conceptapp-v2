@@ -1242,12 +1242,34 @@ export async function demoPhotoPath(phone: string): Promise<string | null> {
 /**
  * The person's profile back to how the demo starts: no photo, no line, the
  * default cover, no form of address. The file stays in Storage,
- * unreferenced, as after the door's reset.
+ * unreferenced, as after the door's reset, until the daily clean-up takes it
+ * a day on (20261127000300_files_server_only.sql).
  */
 export async function clearDemoProfile(phone: string): Promise<void> {
   await sql`update public.profiles
     set avatar_path = null, bio = null, cover = null, address_form = null
     where phone = ${phone}`;
+}
+
+/** Whether Storage keeps a profile photo, by its path. SQL never removes one. */
+export async function avatarStored(path: string): Promise<boolean> {
+  const [row] = await sql<{ kept: boolean }[]>`
+    select exists (
+      select 1 from storage.objects o
+      where o.bucket_id = 'avatars' and o.name = ${path}
+    ) as kept`;
+  return row?.kept ?? false;
+}
+
+/**
+ * Makes a stored profile photo as old as if it was put there `days` days
+ * ago, for the daily clean-up to find once it is a day old and no profile
+ * points at it (`public.expired_avatars`).
+ */
+export async function ageAvatar(path: string, days: number): Promise<void> {
+  await sql`update storage.objects
+    set created_at = now() - make_interval(days => ${days}::integer)
+    where bucket_id = 'avatars' and name = ${path}`;
 }
 
 /**
@@ -3026,6 +3048,51 @@ export async function demoPdfPlaces(
     where u.business_id = ${DEMO_RESTAURANT} and p.phone = ${phone}
       and u.file_kind = 'pdf'
     order by u.created_at desc`;
+}
+
+/**
+ * `count` PDF places of 10 MiB the person (by phone, E.164) reserves in the
+ * demo restaurant for their private chat with `to`, through
+ * public.reserve_chat_upload, as starting a PDF does, and nothing put in
+ * them: each counts 10 MiB of their own PDFs of the last 10 minutes
+ * (20261127000300_files_server_only.sql). Returns the reservations, for
+ * `ageDemoPdfPlaces` and `removeDemoPdfPlaces`.
+ */
+export async function reserveDemoPdfPlaces(
+  phone: string,
+  to: string,
+  count: number,
+): Promise<string[]> {
+  const uploads: string[] = [];
+  for (let n = 1; n <= count; n += 1) {
+    const [row] = await sql<{ upload: string | null }[]>`
+      select public.reserve_chat_upload(
+        (select p.id from public.profiles p where p.phone = ${phone}),
+        ${DEMO_RESTAURANT}::uuid, 'pdf', 'application/pdf', 10485760, null,
+        (select p.id from public.profiles p where p.phone = ${to}),
+        ${`place ${n}.pdf`}
+      ) ->> 'upload' as upload`;
+    if (row?.upload) uploads.push(row.upload);
+  }
+  return uploads;
+}
+
+/** Makes PDF places as old as if they were reserved `minutes` minutes before. */
+export async function ageDemoPdfPlaces(
+  uploads: string[],
+  minutes: number,
+): Promise<void> {
+  if (uploads.length === 0) return;
+  await sql`update private.file_uploads
+    set created_at = created_at - make_interval(mins => ${minutes}::integer)
+    where id in ${sql(uploads)}`;
+}
+
+/** Lets go of PDF places nothing was put in, rows and all. */
+export async function removeDemoPdfPlaces(uploads: string[]): Promise<void> {
+  if (uploads.length === 0) return;
+  await sql`delete from private.file_uploads
+    where id in ${sql(uploads)} and used_at is null`;
 }
 
 /*

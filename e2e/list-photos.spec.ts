@@ -10,6 +10,7 @@ import {
 } from "./db";
 import { cameraPhoto, hasExif } from "./photo";
 import { secondPage, signIn } from "./session";
+import { STORAGE_SKIP, storageAnswers } from "./storage";
 
 // Photos on lists (L6, supabase/migrations/20261110001500_list_photos.sql). The
 // demo restaurant takes photos for these tests ("photos": true in
@@ -114,6 +115,22 @@ test("a photo taken on a list is stored, read back, removed and brought back", a
   const bytes = await stored.body();
   expect(bytes.length).toBeLessThanOrEqual(400 * 1024);
   expect(hasExif(bytes)).toBe(false);
+
+  // Her own session, copied from the browser, gets nothing of it from
+  // Storage itself: no signed link, no file, an empty folder. No bucket has
+  // a policy (20261127000300): only the app's route serves it.
+  if (STORAGE_SKIP) {
+    testInfo.annotations.push({ type: "skip", description: STORAGE_SKIP });
+  } else {
+    const asked = await storageAnswers(
+      page,
+      "list-photos",
+      (await photoListPath(listId)) ?? "",
+    );
+    expect(asked.sign.signed, asked.sign.body).toBe(false);
+    expect(asked.download).not.toBe(200);
+    expect(asked.list).toEqual([]);
+  }
 
   // Removing it offers the way back, where the person looks, and the file
   // goes; the undo stores the same picture again, under a new address.

@@ -255,16 +255,24 @@ from public.chat_messages m
 cross join lateral (values (m.file_path, 40000), (m.thumb_path, 2000)) as f (name, bytes)
 where m.business_id = '20000000-0000-4000-b000-00000000000a' and m.file_path is not null;
 
+-- The bucket has no policy (20261127000300): /chat-files reads the message
+-- under the reader's session, then the file with the secret key.
 select pg_temp.sign_in('20000000-0000-4000-a000-00000000000c');
 select results_eq(
-  $$select count(*)::int from storage.objects
-    where bucket_id = 'chat-files' and name like '20000000-0000-4000-b000-00000000000a/%'$$,
-  array[2],
-  'worker of A reads the picture of A''s team group and its thumbnail'
+  $$select
+      (select count(*)::int from public.chat_messages m
+       where m.business_id = '20000000-0000-4000-b000-00000000000a' and m.file_path is not null),
+      (select count(*)::int from storage.objects
+       where bucket_id = 'chat-files' and name like '20000000-0000-4000-b000-00000000000a/%')$$,
+  $$values (1, 0)$$,
+  'worker of A reads the message of A''s team group that holds a picture, and no file of the bucket itself'
 );
 select pg_temp.sign_in('20000000-0000-4000-a000-00000000000d');
 select is_empty(
-  $$select 1 from storage.objects
+  $$select 1 from public.chat_messages m
+    where m.business_id = '20000000-0000-4000-b000-00000000000a'
+    union all
+    select 1 from storage.objects
     where bucket_id = 'chat-files' and name like '20000000-0000-4000-b000-00000000000a/%'$$,
   'the owner of B reads neither'
 );
