@@ -1,10 +1,13 @@
-import { CAPTCHA_LOAD_MS } from "@domain/turnstile";
+import { CAPTCHA_LOAD_MS, type CaptchaState } from "@domain/turnstile";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   type CaptchaPage,
   captchaControlFor,
+  captchaLineAlerts,
+  captchaLineOf,
   createCaptchaControl,
   createDemoCaptcha,
+  retryFocusOf,
   type TurnstileApi,
   type TurnstileOptions,
 } from "./captcha-control";
@@ -146,6 +149,7 @@ describe("a token", () => {
       state: "ready",
       token: "XXXX.DUMMY.TOKEN.XXXX",
       waiting: false,
+      retried: false,
     });
     expect(await control.take()).toBe("XXXX.DUMMY.TOKEN.XXXX");
     expect(turnstile.resets).toEqual(["w1"]);
@@ -153,6 +157,7 @@ describe("a token", () => {
       state: "loading",
       token: null,
       waiting: false,
+      retried: false,
     });
   });
 
@@ -195,6 +200,7 @@ describe("a press before the check is done", () => {
       state: "loading",
       token: null,
       waiting: false,
+      retried: false,
     });
     expect(turnstile.resets).toEqual(["w1"]);
   });
@@ -224,6 +230,7 @@ describe("a press before the check is done", () => {
       state: "failed",
       token: null,
       waiting: false,
+      retried: false,
     });
 
     const second = setUp();
@@ -265,6 +272,105 @@ describe("a check that failed", () => {
     const { control, turnstile } = setUp();
     control.retry();
     expect(turnstile.resets).toEqual([]);
+    expect(control.snapshot().retried).toBe(false);
+  });
+
+  it("says its try until the try is over: its token gone with a send", async () => {
+    const { control, turnstile } = setUp();
+    turnstile.last()["error-callback"]("600010");
+    control.retry();
+    expect(control.snapshot()).toMatchObject({
+      state: "loading",
+      retried: true,
+    });
+    // A tick asked for, and its answer, are still the try's.
+    turnstile.last()["before-interactive-callback"]();
+    expect(control.snapshot()).toMatchObject({ state: "tap", retried: true });
+    turnstile.last()["after-interactive-callback"]();
+    turnstile.last().callback("PASSED");
+    expect(control.snapshot()).toMatchObject({
+      state: "ready",
+      retried: true,
+    });
+    expect(await control.take()).toBe("PASSED");
+    expect(control.snapshot()).toMatchObject({
+      state: "loading",
+      retried: false,
+    });
+
+    // A form's press spends it just the same.
+    turnstile.last()["error-callback"]("600010");
+    control.retry();
+    turnstile.last().callback("AGAIN");
+    control.spend();
+    expect(control.snapshot().retried).toBe(false);
+
+    // So does a press that waited for the try's token.
+    turnstile.last()["error-callback"]("600010");
+    control.retry();
+    const pressed = control.take();
+    expect(control.snapshot()).toMatchObject({ waiting: true, retried: true });
+    turnstile.last().callback("WAITED");
+    expect(await pressed).toBe("WAITED");
+    expect(control.snapshot().retried).toBe(false);
+  });
+
+  it("ends its try when it fails again, or can't run", () => {
+    const { control, turnstile } = setUp();
+    turnstile.last()["error-callback"]("600010");
+    control.retry();
+    turnstile.last()["error-callback"]("600010");
+    expect(control.snapshot()).toMatchObject({
+      state: "failed",
+      retried: false,
+    });
+    control.retry();
+    turnstile.last()["error-callback"]("110200");
+    expect(control.snapshot()).toMatchObject({
+      state: "unavailable",
+      retried: false,
+    });
+  });
+});
+
+describe("the box's line", () => {
+  const at = (state: CaptchaState, { waiting = false, retried = false } = {}) =>
+    captchaLineOf({ state, waiting, retried });
+
+  it("says nothing while the check asks nothing", () => {
+    expect(at("loading")).toBeNull();
+    expect(at("ready")).toBeNull();
+  });
+
+  it("says the tick, a press waiting, a failure and a check that didn't load", () => {
+    expect(at("tap")).toBe("tap");
+    expect(at("tap", { waiting: true })).toBe("tap");
+    expect(at("loading", { waiting: true })).toBe("waiting");
+    expect(at("failed")).toBe("failed");
+    expect(at("unavailable")).toBe("unavailable");
+    expect(captchaLineAlerts("failed")).toBe(true);
+    expect(captchaLineAlerts("unavailable")).toBe(true);
+    for (const line of ["tap", "waiting", "rechecking", "passed"] as const) {
+      expect(captchaLineAlerts(line), line).toBe(false);
+    }
+  });
+
+  it("says a try from its button, started and then passed", () => {
+    expect(at("loading", { retried: true })).toBe("rechecking");
+    expect(at("ready", { retried: true })).toBe("passed");
+    expect(at("tap", { retried: true })).toBe("tap");
+    expect(at("loading", { waiting: true, retried: true })).toBe("waiting");
+  });
+});
+
+describe("the focus after its retry", () => {
+  it("is the line while the try goes, the button again when it fails, and nothing after", () => {
+    for (const state of ["loading", "tap", "ready"] as const) {
+      expect(retryFocusOf({ state, retried: true }), state).toBe("line");
+      expect(retryFocusOf({ state, retried: false }), state).toBeNull();
+    }
+    expect(retryFocusOf({ state: "failed", retried: false })).toBe("retry");
+    expect(retryFocusOf({ state: "unavailable", retried: false })).toBe("line");
   });
 });
 
@@ -446,7 +552,12 @@ describe("the design twin's stand-in", () => {
     for (const state of ["ready", "tap", "failed", "unavailable"] as const) {
       const demo = createDemoCaptcha(state);
       expect(demo.demo).toBe(true);
-      expect(demo.snapshot()).toEqual({ state, token: null, waiting: false });
+      expect(demo.snapshot()).toEqual({
+        state,
+        token: null,
+        waiting: false,
+        retried: false,
+      });
       expect(await demo.take()).toBeUndefined();
       demo.retry();
       expect(demo.snapshot().state).toBe(state);
@@ -455,6 +566,7 @@ describe("the design twin's stand-in", () => {
       state: "loading",
       token: null,
       waiting: true,
+      retried: false,
     });
   });
 });

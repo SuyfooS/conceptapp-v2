@@ -1,4 +1,10 @@
-import { expect, type Page, type Request } from "@playwright/test";
+import {
+  expect,
+  type Page,
+  type Request,
+  type Response,
+} from "@playwright/test";
+import { TURNSTILE_ORIGIN } from "../packages/domain/turnstile";
 
 /*
  * The "אני לא רובוט" check before every SMS code (P9b), as the browser
@@ -12,6 +18,32 @@ export const CAPTCHA_FRAME = "[data-captcha-frame]";
 
 /** The token Cloudflare's test key gives. */
 export const TEST_TOKEN = "XXXX.DUMMY.TOKEN.XXXX";
+
+/**
+ * Cloudflare's script, at the address the app asks for
+ * (`/turnstile/v0/api.js`) and at the versioned one that address redirects
+ * to (`/turnstile/v0/b/<build>/api.js`).
+ */
+export const isTurnstileScript = (url: URL): boolean =>
+  url.origin === TURNSTILE_ORIGIN && url.pathname.endsWith("/api.js");
+
+/** The statuses that send the browser on to another address. */
+const REDIRECTS = new Set([301, 302, 303, 307, 308]);
+
+/**
+ * The script as it came in the end. Cloudflare answers the address the app
+ * asks for with a 302 to the versioned script, and Playwright reports that
+ * redirect as a response of its own, the first one: so a redirect is passed
+ * over, and what resolves is the versioned script's own answer (or a
+ * failure, which then says so).
+ */
+export function turnstileScript(page: Page): Promise<Response> {
+  return page.waitForResponse(
+    (response) =>
+      isTurnstileScript(new URL(response.url())) &&
+      !REDIRECTS.has(response.status()),
+  );
+}
 
 /**
  * Waits for the screen's check to settle before a press that sends a code:

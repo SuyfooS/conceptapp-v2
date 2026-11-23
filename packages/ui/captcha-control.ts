@@ -54,7 +54,60 @@ export type CaptchaSnapshot = {
   state: CaptchaState;
   token: string | null;
   waiting: boolean;
+  /**
+   * Tried again from "בדיקה מחדש", until that try is over: its token gone
+   * with a send, or the check failed again or can't run. Meanwhile the box
+   * says how it goes, since the button pressed went with the failure.
+   */
+  retried: boolean;
 };
+
+/** What the box says for where the check stands (`ui.captcha`'s words). */
+export type CaptchaLine =
+  | "tap"
+  | "waiting"
+  | "failed"
+  | "unavailable"
+  | "rechecking"
+  | "passed";
+
+/**
+ * The box's line, none while the check asks nothing: the tick asked for,
+ * a press waiting, a failure, a check that didn't load, and after "בדיקה
+ * מחדש" the try itself ("בודקים שוב…", then "הבדיקה עברה…"), so the person
+ * who pressed hears it start and end.
+ */
+export function captchaLineOf({
+  state,
+  waiting,
+  retried,
+}: Pick<CaptchaSnapshot, "state" | "waiting" | "retried">): CaptchaLine | null {
+  if (state === "tap") return "tap";
+  if (waiting) return "waiting";
+  if (state === "failed" || state === "unavailable") return state;
+  if (retried) return state === "ready" ? "passed" : "rechecking";
+  return null;
+}
+
+/** A line that is an alert (failed, didn't load); every other is a status. */
+export function captchaLineAlerts(line: CaptchaLine): boolean {
+  return line === "failed" || line === "unavailable";
+}
+
+/**
+ * Where the keyboard's focus goes while a check is tried again, once it
+ * fell to the page: "בדיקה מחדש" goes with the failure it was for, so the
+ * box's line takes the focus and says how the try goes; a failure again
+ * brings the button back, which takes it. None once the try is over.
+ */
+export function retryFocusOf({
+  state,
+  retried,
+}: Pick<CaptchaSnapshot, "state" | "retried">): "line" | "retry" | null {
+  if (state === "failed") return "retry";
+  if (state === "unavailable" || retried) return "line";
+  return null;
+}
 
 export type CaptchaControl = {
   /** The design twin's stand-in: nothing to load, no token. */
@@ -85,7 +138,7 @@ export type CaptchaControl = {
   take: () => Promise<string | undefined>;
   /** A form's press took the token as it went: the next check starts. */
   spend: () => void;
-  /** "בדיקה מחדש": a failed check, tried again. */
+  /** "בדיקה מחדש": a failed check, tried again (`retried` until it is over). */
   retry: () => void;
   /**
    * A new control took this one's place (the screen's language changed):
@@ -117,6 +170,7 @@ export function createCaptchaControl({
     state: page.scriptFailed ? "unavailable" : "loading",
     token: null,
     waiting: false,
+    retried: false,
   };
   const listeners = new Set<() => void>();
   let widget: { container: HTMLElement; id: string; api: TurnstileApi } | null =
@@ -125,9 +179,11 @@ export function createCaptchaControl({
   let drawn = 0;
   let everDrawn = false;
   const waiters: ((token: string | undefined) => void)[] = [];
+  // A try from "בדיקה מחדש" under way, until its token goes or it ends.
+  let retried = false;
 
-  const publish = (next: Omit<CaptchaSnapshot, "waiting">) => {
-    now = { ...next, waiting: waiters.length > 0 };
+  const publish = (next: Omit<CaptchaSnapshot, "waiting" | "retried">) => {
+    now = { ...next, waiting: waiters.length > 0, retried };
     for (const listener of [...listeners]) listener();
   };
 
@@ -149,9 +205,12 @@ export function createCaptchaControl({
       // A press waits for this token: it goes with it, and the next check starts.
       waiter(kept);
       kept = null;
+      retried = false;
       resetWidget();
       state = nextCaptchaState(state, { kind: "reset" });
     }
+    // A try that failed again, or can't run, is over: the box says so.
+    if (state === "failed" || state === "unavailable") retried = false;
     if (!pressWaits(state)) {
       // Nothing to wait for: every press waiting goes without a token.
       for (const release of waiters.splice(0)) release(undefined);
@@ -252,6 +311,7 @@ export function createCaptchaControl({
     take: () => {
       if (now.state === "ready" && now.token !== null) {
         const token = now.token;
+        retried = false;
         resetWidget();
         publish({
           state: nextCaptchaState(now.state, { kind: "reset" }),
@@ -267,6 +327,7 @@ export function createCaptchaControl({
     },
     spend: () => {
       if (now.token === null) return;
+      retried = false;
       resetWidget();
       publish({
         state: nextCaptchaState(now.state, { kind: "reset" }),
@@ -276,6 +337,7 @@ export function createCaptchaControl({
     retry: () => {
       if (now.state !== "failed") return;
       resetWidget();
+      retried = true;
       apply({ kind: "reset" });
     },
     handOver: (next) => {
@@ -298,6 +360,7 @@ export function createDemoCaptcha(
     state: shown === "waiting" ? "loading" : shown,
     token: null,
     waiting: shown === "waiting",
+    retried: false,
   };
   return {
     demo: true,

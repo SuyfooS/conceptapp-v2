@@ -1,12 +1,17 @@
 import type { CaptchaSetup } from "@domain/turnstile";
 import { NextIntlClientProvider } from "next-intl";
-import { createElement } from "react";
+import { createElement, type ReactElement } from "react";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 // The words a screen's provider gives it.
 import en from "../../messages/en.json";
 import he from "../../messages/he.json";
-import { CaptchaBox, useCaptcha } from "./captcha";
+import { type Captcha, CaptchaBox, useCaptcha } from "./captcha";
+import {
+  type CaptchaControl,
+  createCaptchaControl,
+  type TurnstileOptions,
+} from "./captcha-control";
 
 /*
  * The "אני לא רובוט" check's box (P9b), drawn on the server as a page first
@@ -14,22 +19,90 @@ import { CaptchaBox, useCaptcha } from "./captcha";
  * a press waits, a line and a place for Cloudflare's box when it asks for a
  * tick, and a line that is an alert when it failed (with its retry) or
  * didn't load. The token goes in the form's field only where it has a name;
- * the real widget names its key, and the twin's stand-in none.
+ * the real widget names its key, and the twin's stand-in none. After its
+ * retry, the line says the try (it takes the focus, as the button goes);
+ * in a centred card its parts sit in the middle.
  */
 
 const MESSAGES = { he, en };
 
-function Box({ setup, name }: { setup: CaptchaSetup; name?: string }) {
+type Drawn = {
+  locale?: "he" | "en";
+  name?: string;
+  align?: "start" | "center";
+};
+
+function Box({
+  setup,
+  name,
+  align,
+}: {
+  setup: CaptchaSetup;
+  name?: string;
+  align?: "start" | "center";
+}) {
   return createElement(CaptchaBox, {
     captcha: useCaptcha(setup, "sign-in"),
     name,
+    align,
   });
 }
 
-function draw(
-  setup: CaptchaSetup,
-  { locale = "he", name }: { locale?: "he" | "en"; name?: string } = {},
-): string {
+function draw(setup: CaptchaSetup, drawn: Drawn = {}): string {
+  return drawIn(createElement(Box, { setup, ...drawn }), drawn.locale);
+}
+
+/** A real check's box, as its control stands, with no script on the page. */
+function drawControl(control: CaptchaControl, drawn: Drawn = {}): string {
+  const captcha: Captcha = {
+    ...control.snapshot(),
+    take: control.take,
+    holdSubmit: () => {},
+    retry: control.retry,
+    control,
+    siteKey: null,
+    going: null,
+  };
+  return drawIn(
+    createElement(CaptchaBox, {
+      captcha,
+      name: drawn.name,
+      align: drawn.align,
+    }),
+    drawn.locale,
+  );
+}
+
+/** A real check with Turnstile stood in for, and what Cloudflare answers through. */
+function realCheck(): {
+  control: CaptchaControl;
+  cloudflare: TurnstileOptions;
+} {
+  const control = createCaptchaControl({
+    siteKey: "1x00000000000000000000AA",
+    action: "sign-in",
+    language: "he",
+    page: { scriptFailed: false },
+  });
+  const drawn: TurnstileOptions[] = [];
+  control.attach(
+    {} as HTMLElement,
+    {
+      render: (_, options) => {
+        drawn.push(options);
+        return "w1";
+      },
+      reset: () => {},
+      remove: () => {},
+    },
+    340,
+  );
+  const [cloudflare] = drawn;
+  if (!cloudflare) throw new Error("no widget drawn");
+  return { control, cloudflare };
+}
+
+function drawIn(element: ReactElement, locale: "he" | "en" = "he"): string {
   const missing: string[] = [];
   const provider = {
     locale,
@@ -40,11 +113,7 @@ function draw(
     },
   } as unknown as Parameters<typeof NextIntlClientProvider>[0];
   const html = renderToString(
-    createElement(
-      NextIntlClientProvider,
-      provider,
-      createElement(Box, { setup, name }),
-    ),
+    createElement(NextIntlClientProvider, provider, element),
   );
   expect(missing).toEqual([]);
   return html;
@@ -126,6 +195,70 @@ describe("the check's box", () => {
     expect(html).toContain('data-sitekey="1x00000000000000000000AA"');
     expect(html).toMatch(/data-captcha-frame="true"[^>]*class="hidden"/);
     expect(text(html)).toBe("");
+  });
+
+  it("says a retry's try, started and then passed, on a line that can take the focus", () => {
+    for (const locale of ["he", "en"] as const) {
+      const words = MESSAGES[locale].ui.captcha;
+      const { control, cloudflare } = realCheck();
+      cloudflare["error-callback"]("600010");
+      const failed = drawControl(control, { locale });
+      expect(failed).toMatch(/<p role="alert" tabindex="-1"/);
+      expect(text(failed)).toContain(words.retry);
+
+      control.retry();
+      const trying = drawControl(control, { locale });
+      expect(trying).toContain('data-captcha="loading"');
+      expect(trying).toMatch(/<p role="status" tabindex="-1"/);
+      expect(text(trying)).toBe(words.rechecking);
+      // The button went with the failure: the line is what takes the focus.
+      expect(text(trying)).not.toContain(words.retry);
+
+      // A tick asked for meanwhile is said on the same line.
+      cloudflare["before-interactive-callback"]();
+      expect(text(drawControl(control, { locale }))).toBe(words.tap);
+      cloudflare["after-interactive-callback"]();
+      cloudflare.callback("PASSED");
+      const passed = drawControl(control, { locale });
+      expect(passed).toContain('data-captcha="ready"');
+      expect(passed).toMatch(/<p role="status" tabindex="-1"/);
+      expect(text(passed)).toBe(words.passed);
+
+      // Its token gone with a send, the try is over and nothing is said.
+      control.spend();
+      expect(text(drawControl(control, { locale }))).toBe("");
+
+      // Failed again: the alert and the button are back.
+      cloudflare["error-callback"]("600010");
+      control.retry();
+      cloudflare["error-callback"]("600010");
+      const again = drawControl(control, { locale });
+      expect(again).toMatch(/<p role="alert" tabindex="-1"/);
+      expect(text(again)).toContain(words.failed);
+      expect(text(again)).toContain(words.retry);
+    }
+  });
+
+  it("sits at the column's start, or in a centred card's middle", () => {
+    const start = draw({ demo: "failed" });
+    expect(start).toMatch(/<button[^>]*class="[^"]*\bself-start\b/);
+    expect(start).not.toContain("self-center");
+    const centre = draw({ demo: "failed" }, { align: "center" });
+    expect(centre).toMatch(/<button[^>]*class="[^"]*\bself-center\b/);
+    expect(centre).not.toContain("self-start");
+    // The stand-in for Cloudflare's box, and its own place for a tick.
+    expect(draw({ demo: "tap" }, { align: "center" })).toMatch(
+      /data-captcha-frame="true" class="[^"]*\bself-center\b/,
+    );
+    expect(draw({ demo: "tap" })).not.toContain("self-center");
+    const { control, cloudflare } = realCheck();
+    cloudflare["before-interactive-callback"]();
+    expect(drawControl(control, { align: "center" })).toMatch(
+      /data-captcha-frame="true" class="flex justify-center"/,
+    );
+    expect(drawControl(control)).toMatch(
+      /data-captcha-frame="true" class="flex"/,
+    );
   });
 
   it("has no exclamation marks", () => {

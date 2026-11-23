@@ -323,7 +323,8 @@ export function FileGate({
       body={t("locked.body")}
     >
       {problemLine}
-      {held ? null : <CaptchaBox captcha={box} />}
+      {/* The card is centred: so are the check's retry and Cloudflare's box. */}
+      {held ? null : <CaptchaBox captcha={box} align="center" />}
       <Button
         size="lg"
         loading={pending || box.waiting}

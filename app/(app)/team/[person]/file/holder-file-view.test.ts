@@ -188,6 +188,50 @@ describe("a holder's file screen", () => {
     expect(text(code)).toContain(f.code.resend);
   });
 
+  it("centres the check in the locked card, as its icon, title and send are", () => {
+    // The check's "בדיקה מחדש", its tag and its words.
+    const retryOf = (html: string) =>
+      (html.match(/<button[^>]*>.*?<\/button>/gs) ?? []).find((button) =>
+        text(button).includes(he.ui.captcha.retry),
+      ) ?? "";
+    const failed = { demo: "failed" } as const;
+    const locked = draw(
+      { kind: "locked", head: head() },
+      undefined,
+      undefined,
+      "he",
+      failed,
+    );
+    expect(retryOf(locked)).toMatch(/^<button[^>]*\bself-center\b/);
+    const tap = draw(
+      { kind: "locked", head: head() },
+      undefined,
+      undefined,
+      "he",
+      { demo: "tap" },
+    );
+    expect(tap).toMatch(
+      /data-captcha-frame="true" class="[^"]*\bself-center\b/,
+    );
+    // The duties' and the code's cards keep it at their start.
+    const duties = draw(
+      { kind: "duties", head: head() },
+      undefined,
+      undefined,
+      "he",
+      failed,
+    );
+    expect(retryOf(duties)).toMatch(/^<button[^>]*\bself-start\b/);
+    const code = draw(
+      { kind: "locked", head: head() },
+      { tail: "0014" },
+      undefined,
+      "he",
+      failed,
+    );
+    expect(retryOf(code)).toMatch(/^<button[^>]*\bself-start\b/);
+  });
+
   it("holds the locked file in the week after a phone change: its day said, no code to send", () => {
     // 20261127000400: the twin opens on it, as the app does on the answer.
     const html = draw({ kind: "locked", head: head() }, undefined, {

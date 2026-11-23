@@ -24,9 +24,13 @@ import {
   type CaptchaControl,
   type CaptchaSnapshot,
   captchaControlFor,
+  captchaLineAlerts,
+  captchaLineOf,
   type HeldCaptcha,
+  retryFocusOf,
   type TurnstileApi,
 } from "./captcha-control";
+import { cn } from "./cn";
 
 declare global {
   interface Window {
@@ -43,6 +47,8 @@ export type Captcha = {
   token: string | null;
   /** A press waits for the check: its button shows it is on its way. */
   waiting: boolean;
+  /** Tried again from "בדיקה מחדש", until that try is over. */
+  retried: boolean;
   /** The token for one send (`CaptchaControl.take`), for a send in code. */
   take: () => Promise<string | undefined>;
   /**
@@ -68,6 +74,7 @@ const LOADING: CaptchaSnapshot = {
   state: "loading",
   token: null,
   waiting: false,
+  retried: false,
 };
 
 /**
@@ -164,6 +171,7 @@ export function useCaptcha(
     state: now.state,
     token: now.token,
     waiting: now.waiting || held !== null || going !== null,
+    retried: now.retried,
     take: control.take,
     holdSubmit,
     retry: control.retry,
@@ -196,22 +204,34 @@ function roomOf(container: HTMLElement): number {
  * says to, brought into view if a press waits; and when it failed or didn't
  * load, a line that says so (with "בדיקה מחדש" for a failure). A press
  * never waits for those: the code goes without a token, and the auth server
- * decides. `name` posts the token with a form. Its parts are the parent's
- * own rows, so a box that shows nothing takes no room in the column. The
- * twin's stand-in draws each state with no Cloudflare: an empty place of the
- * box's size for a tick.
+ * decides. "בדיקה מחדש" goes with the failure it was for, so its line takes
+ * the focus and says the try, started and then passed (or the tick it asks
+ * for); a failure again brings the button back with the focus. `name` posts
+ * the token with a form. Its parts are the parent's own rows, so a box that
+ * shows nothing takes no room in the column, and `align` sets them at its
+ * start or in its middle, as the column's own parts are. The twin's
+ * stand-in draws each state with no Cloudflare: an empty place of the box's
+ * size for a tick.
  */
 export function CaptchaBox({
   captcha,
   name,
+  align = "start",
 }: {
   captcha: Captcha;
   /** The form field the token goes in; none for a send in code. */
   name?: string;
+  /** Where its parts sit in the column: a form's start, or a centred card's middle. */
+  align?: "start" | "center";
 }) {
   const t = useTranslations("ui.captcha");
   const frame = useRef<HTMLDivElement>(null);
-  const { state, token, waiting, control, siteKey, going, retry } = captcha;
+  const said = useRef<HTMLParagraphElement>(null);
+  const again = useRef<HTMLButtonElement>(null);
+  // "בדיקה מחדש" pressed: the focus follows the try until it is over.
+  const following = useRef(false);
+  const { state, token, waiting, retried, control, siteKey, going, retry } =
+    captcha;
   if (siteKey) preconnect(TURNSTILE_ORIGIN);
 
   const draw = () => {
@@ -245,17 +265,24 @@ export function CaptchaBox({
     if (asking) frame.current?.scrollIntoView({ block: "center" });
   }, [asking]);
 
-  const line =
-    state === "tap"
-      ? t("tap")
-      : waiting
-        ? t("waiting")
-        : state === "failed"
-          ? t("failed")
-          : state === "unavailable"
-            ? t("unavailable")
-            : null;
-  const alert = state === "failed" || state === "unavailable";
+  // The pressed button went with the failure, and its focus to the page:
+  // the line takes it, so the try is heard, and keeps it while the try
+  // goes (its words change in place); a failure again brings the button
+  // back, which takes it. Focus put elsewhere meanwhile stays there.
+  useEffect(() => {
+    if (!following.current) return;
+    const to = retryFocusOf({ state, retried });
+    if (!retried) following.current = false;
+    const target =
+      to === "retry" ? again.current : to === "line" ? said.current : null;
+    const active = document.activeElement;
+    const lost = !active || active === document.body || !active.isConnected;
+    if (target && lost) target.focus();
+  }, [state, retried]);
+
+  const line = captchaLineOf({ state, waiting, retried });
+  const alert = line !== null && captchaLineAlerts(line);
+  const centred = align === "center";
 
   return (
     <div
@@ -269,10 +296,15 @@ export function CaptchaBox({
       ) : null}
       {line ? (
         <p
+          // An alert is drawn anew, so it is heard; a status line changes
+          // its words in place, keeping the focus.
+          key={alert ? "alert" : "status"}
+          ref={said}
           role={alert ? "alert" : "status"}
-          className="px-1 text-base text-ink-2"
+          tabIndex={-1}
+          className="px-1 text-base text-ink-2 outline-none"
         >
-          {line}
+          {t(line)}
         </p>
       ) : null}
       {control.demo ? (
@@ -280,7 +312,10 @@ export function CaptchaBox({
           <div
             aria-hidden="true"
             data-captcha-frame
-            className="h-[65px] w-full max-w-[300px] rounded-control bg-surface-2"
+            className={cn(
+              "h-[65px] w-full max-w-[300px] rounded-control bg-surface-2",
+              centred && "self-center",
+            )}
           />
         ) : null
       ) : (
@@ -288,11 +323,25 @@ export function CaptchaBox({
           ref={frame}
           data-captcha-frame
           data-sitekey={siteKey ?? undefined}
-          className={state === "tap" ? "flex" : "hidden"}
+          className={
+            state !== "tap"
+              ? "hidden"
+              : centred
+                ? "flex justify-center"
+                : "flex"
+          }
         />
       )}
       {state === "failed" ? (
-        <Button variant="ghost" className="self-start" onClick={retry}>
+        <Button
+          ref={again}
+          variant="ghost"
+          className={centred ? "self-center" : "self-start"}
+          onClick={() => {
+            following.current = true;
+            retry();
+          }}
+        >
           {t("retry")}
         </Button>
       ) : null}

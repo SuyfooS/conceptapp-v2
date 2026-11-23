@@ -9,8 +9,10 @@ import {
 import {
   CAPTCHA_FRAME,
   captchaSettled,
+  isTurnstileScript,
   nextAction,
   TEST_TOKEN,
+  turnstileScript,
 } from "./captcha";
 import { askForCode, SMS_COOLDOWN_MS } from "./session";
 import {
@@ -47,10 +49,6 @@ async function requestCode(page: Page, phone: string) {
   await captchaSettled(page);
   await page.getByRole("button", { name: t.send }).click();
 }
-
-/** Cloudflare's script, as the check asks for it. */
-const isTurnstileScript = (url: URL) =>
-  url.origin === TURNSTILE_ORIGIN && url.pathname.endsWith("/api.js");
 
 /** The code step's words, its number as a placeholder. */
 async function codeStepWords(page: Page, phone: string): Promise<string> {
@@ -208,9 +206,8 @@ test("a code checked when none was sent lately is a wrong code, and the auth ser
 test("the send carries Cloudflare's token, and a new code a fresh one", async ({
   page,
 }) => {
-  const script = page.waitForResponse((response) =>
-    isTurnstileScript(new URL(response.url())),
-  );
+  // Its versioned script's own answer, past Cloudflare's redirect to it.
+  const script = turnstileScript(page);
   await page.goto("/sign-in");
   const ready = page.locator('[data-captcha="ready"]');
   await expect(ready).toHaveCount(1, { timeout: 20_000 });
@@ -242,7 +239,9 @@ test("the send carries Cloudflare's token, and a new code a fresh one", async ({
 test("a press before the check is done waits for it, and goes by itself", async ({
   page,
 }) => {
-  // Cloudflare's script held until the press is made.
+  // Cloudflare's script held until the press is made. Only the address the
+  // app asks for is held: Playwright lets the redirect's next request (the
+  // versioned script) through without routing it.
   let release = () => {};
   const held = new Promise<void>((resolve) => {
     release = resolve;

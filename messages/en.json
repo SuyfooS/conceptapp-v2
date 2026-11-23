@@ -28,6 +28,8 @@
       "tap": "Before a code is sent, tick the box.",
       "failed": "We couldn't check that you're not a robot. You can check again.",
       "retry": "Check again",
+      "rechecking": "Checking again that you're not a robot.",
+      "passed": "The check passed. You can send a code.",
       "unavailable": "The check that you're not a robot didn't load. If no code comes, check your internet connection and reload the page."
     },
     "accentPicker": {

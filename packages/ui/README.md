@@ -15,7 +15,11 @@ Import as `@ui/<file>`. `cn()` lives in `@ui/cn`.
 Turnstile, P9b): `useCaptcha(setup, action)` keeps one check for a screen, and
 `CaptchaBox` draws it right above the press it is for, nothing while it asks
 nothing, Cloudflare's own box only when it asks for a tick, and its lines while
-a press waits, when it failed and when it didn't load. A form sends through
+a press waits, when it failed and when it didn't load. After "בדיקה מחדש",
+which goes with the failure, its line takes the focus and says the try (started,
+then passed, or the tick it asks for), and a failure again gives the button back
+the focus. `align="center"` sets its retry and Cloudflare's box in the middle of
+a centred card (the locked file's `EmptyState`). A form sends through
 `holdSubmit` (a press made too soon waits and goes by itself), a send in code
 through `take()`. The script has 15 seconds from when a box is up, never from
 the screen's first drawing, and a screen whose language changes gets a new
