@@ -10,6 +10,7 @@ import {
   closeAndDraw,
   KEEP_OPEN_WAIT_MS,
   type OpenFileMemory,
+  SLEPT_AFTER_MS,
   type WatchClose,
   type WatchedPage,
   type WatchedWindow,
@@ -20,9 +21,10 @@ import {
  * How long an open hiring file shows in a tab (profile H6a, plan §3.5), on a
  * device of tabs and a stand-in for the server's one step-up, against a
  * clock of their own: the rule's six points, one test each (the rule is in
- * ./open-watch), then the three cases the final check found, then tabs left
- * alone, which never keep each other open, then the screen's own mechanics
- * and `closeAndDraw`.
+ * ./open-watch), then the three cases the final check found, a press kept
+ * for the minute's end, and a check the tab slept through, which asks again
+ * instead of closing; then tabs left alone, which never keep each other
+ * open, then the screen's own mechanics and `closeAndDraw`.
  */
 
 const MINUTE = 60_000;
@@ -744,6 +746,189 @@ describe("watchOpenFile, a press kept for the minute's end", () => {
     await clock.pass(MINUTE);
     expect(a.slides()).toEqual([true, true]);
     expect(server.slid).toHaveLength(2);
+  });
+});
+
+describe("watchOpenFile, a check the tab slept through", () => {
+  // A press asks the server, which slides the step-up, and the phone locks
+  // or the device sleeps before its answer is heard: the tab's timers and
+  // its answers wait, and on waking its give-up runs, or its answer comes,
+  // long after its 10 seconds. Neither says anything of the server now, so
+  // it is asked again instead of the file closing, as a reload would show
+  // it open.
+
+  /**
+   * A tab open for two minutes, then a check for activity there (`ask`, a
+   * press unless said), which reaches the server, so the step-up slides,
+   * and whose answer is lost on the way back, or held for `answerLate` to
+   * give; and another tab with no file, to speak.
+   */
+  async function lostCheck(ask: (a: Tab) => void = (a) => a.page.press()) {
+    const { clock, server, tab, bare } = setup();
+    const keepOpen = server.keepOpenFor("b1");
+    let losing = false;
+    let late: (answer: KeepOpenAnswer | Error) => void = () => {};
+    const a = tab({
+      keepOpen: (slide) => {
+        const sent = keepOpen(slide);
+        if (!losing) return sent;
+        losing = false;
+        return new Promise<KeepOpenAnswer>((resolve, reject) => {
+          late = (answer) =>
+            answer instanceof Error ? reject(answer) : resolve(answer);
+        });
+      },
+    });
+    const start = clock.now();
+    a.watch();
+    await clock.pass(TRIP_MS + 2 * MINUTE);
+    losing = true;
+    ask(a);
+    const asked = clock.now();
+    expect(a.slides()).toEqual([true, true]);
+    return {
+      clock,
+      server,
+      a,
+      other: bare(),
+      start,
+      asked,
+      answerLate: (answer: KeepOpenAnswer | Error) => late(answer),
+    };
+  }
+
+  it("closes nothing on waking: the server is asked once more, only to read, and the file shows for what the step-up has left", async () => {
+    // Just past a busy page's few seconds, and five minutes.
+    for (const slept of [SLEPT_AFTER_MS + 1, 5 * MINUTE]) {
+      const name = `slept ${slept} ms`;
+      const { clock, server, a, start, asked } = await lostCheck();
+      // The device sleeps with the page in sight.
+      a.win.asleep = true;
+      await clock.to(asked + slept);
+      a.win.asleep = false;
+      await clock.pass(0);
+      expect(a.close, name).not.toHaveBeenCalled();
+      expect(a.held(), name).toBe(true);
+      expect(a.slides(), name).toEqual([true, true, false]);
+      await clock.pass(TRIP_MS);
+      expect(a.held(), name).toBe(false);
+      expect(a.close, name).not.toHaveBeenCalled();
+      expect(a.line.told, name).toEqual([{ kind: "active" }]);
+      // Only the opening and the press slid it: the file closes as the
+      // server's 15 minutes from the press end, asked once then.
+      await clock.to(asked + FILE_IDLE_MS + TRIP_MS - 1);
+      expect(a.held(), name).toBe(false);
+      expect(a.keep, name).toHaveBeenCalledTimes(3);
+      await clock.pass(1);
+      expect(a.held(), name).toBe(true);
+      await clock.pass(TRIP_MS);
+      closedAlone(a, server, "closed");
+      expect(server.slid, name).toEqual([start, asked]);
+    }
+  });
+
+  it("on a phone locked meanwhile, closes nothing and asks once, as the page comes back, whether its give-up or its coming back runs first", async () => {
+    for (const order of ["timer", "shown"] as const) {
+      const { clock, a } = await lostCheck();
+      a.page.set("hidden");
+      a.win.asleep = true;
+      await clock.pass(5 * MINUTE);
+      a.win.asleep = false;
+      if (order === "timer") {
+        await clock.pass(0);
+        a.page.set("visible");
+      } else {
+        a.page.set("visible");
+        await clock.pass(0);
+      }
+      expect(a.held(), order).toBe(true);
+      await clock.pass(TRIP_MS);
+      expect(a.close, order).not.toHaveBeenCalled();
+      expect(a.held(), order).toBe(false);
+      expect(a.toldClosed(), order).toBe(false);
+      // Put away, the give-up asks nothing: coming back asks, and slides, as
+      // the person's doing.
+      expect(a.slides().slice(2), order).toEqual([true]);
+    }
+  });
+
+  it("changes nothing when the old check's answer comes after all, before its give-up, before the new answer or after it: not the file, not the other tabs, not the time left", async () => {
+    // As the server gave it at the press (it slid: 15 minutes), closed, or
+    // failed.
+    const olds: [string, KeepOpenAnswer | Error][] = [
+      ["open", OPEN],
+      ["closed", { open: false }],
+      ["failed", new Error("offline")],
+    ];
+    for (const [what, old] of olds) {
+      for (const when of ["first", "before", "after"] as const) {
+        const name = `${what}, ${when}`;
+        const { clock, server, a, start, asked, answerLate } =
+          await lostCheck();
+        a.win.asleep = true;
+        await clock.to(asked + 5 * MINUTE);
+        a.win.asleep = false;
+        if (when === "first") answerLate(old);
+        await clock.pass(0);
+        expect(a.held(), name).toBe(true);
+        expect(a.slides(), name).toEqual([true, true, false]);
+        if (when === "before") answerLate(old);
+        await clock.pass(TRIP_MS);
+        if (when === "after") answerLate(old);
+        await clock.pass(0);
+        expect(a.close, name).not.toHaveBeenCalled();
+        expect(a.held(), name).toBe(false);
+        expect(a.keep, name).toHaveBeenCalledTimes(3);
+        expect(a.line.told, name).toEqual([{ kind: "active" }]);
+        // Its 15 minutes still end with the server's from the press, not 15
+        // minutes from the old answer.
+        await clock.to(asked + FILE_IDLE_MS + TRIP_MS - 1);
+        expect(a.held(), name).toBe(false);
+        await clock.pass(1);
+        expect(a.held(), name).toBe(true);
+        await clock.pass(TRIP_MS);
+        closedAlone(a, server, "closed");
+        expect(server.slid, name).toEqual([start, asked]);
+      }
+    }
+  });
+
+  it("never leaves the file hidden when a look it slept through meets another tab's word first on waking", async () => {
+    // Back to the page, its look's answer lost as the device sleeps.
+    const { clock, a, other } = await lostCheck((t) => {
+      t.page.set("hidden");
+      t.page.set("visible");
+    });
+    expect(a.held()).toBe(true);
+    a.win.asleep = true;
+    await clock.pass(5 * MINUTE);
+    other.tell({ kind: "active" });
+    await clock.pass(0);
+    a.win.asleep = false;
+    a.line.wake();
+    await clock.pass(0);
+    // The word's check, then the look's own again.
+    expect(a.slides().slice(2)).toEqual([false, false]);
+    await clock.pass(TRIP_MS);
+    expect(a.close).not.toHaveBeenCalled();
+    expect(a.held()).toBe(false);
+  });
+
+  it("still closes the file when a check goes unanswered for its wait in a tab awake, its give-up run a few seconds late too", async () => {
+    for (const late of [0, SLEPT_AFTER_MS - KEEP_OPEN_WAIT_MS]) {
+      const name = `late ${late} ms`;
+      const { clock, server, a, asked } = await lostCheck();
+      await clock.to(asked + KEEP_OPEN_WAIT_MS - 1);
+      expect(a.close, name).not.toHaveBeenCalled();
+      // A busy page: its timers held back a few seconds past the wait.
+      a.win.asleep = late > 0;
+      await clock.to(asked + KEEP_OPEN_WAIT_MS + late);
+      a.win.asleep = false;
+      await clock.pass(0);
+      closedAlone(a, server, "failed");
+      expect(a.closedAt(), name).toBe(asked + KEEP_OPEN_WAIT_MS + late);
+      expect(a.keep, name).toHaveBeenCalledTimes(2);
+    }
   });
 });
 

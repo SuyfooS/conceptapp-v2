@@ -2,12 +2,14 @@ import { readFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { createTranslator } from "next-intl";
+import { FILE_TABS_TWIN_CHANNEL } from "../app/(app)/team/[person]/file/file-tabs";
 import { restaurantWording } from "../app/design/order-taking/data";
 import en from "../messages/en.json" with { type: "json" };
 import he from "../messages/he.json" with { type: "json" };
 import { daysLeftToRight } from "../packages/domain/share";
 import { type MessageTree, mergeWording } from "../packages/domain/wording";
 import { before, buildScreen, HOLD_MS } from "./build-screen";
+import { hearFileCheck } from "./file-watch";
 import { minimalPdf } from "./pdf";
 import { cameraPhoto } from "./photo";
 import { stubAudio } from "./station-audio";
@@ -5876,11 +5878,15 @@ test("the file twin opens with the duties, then a code, and the account shows fo
   await expect(
     page.getByRole("heading", { name: hf.duties.title }),
   ).toBeVisible();
+  // The file's own check as it opens is answered before the minute below
+  // passes, on the twin's channel (`hearFileCheck`).
+  const checked = await hearFileCheck(page, FILE_TABS_TWIN_CHANNEL);
   await page.getByRole("button", { name: hf.duties.confirm }).click();
   const boxes = page.getByLabel(hf.code.label);
   await expect(boxes).toBeVisible();
   await boxes.fill("123456");
   await expect(page).toHaveURL(/\/design\/shell\/team\/noa\/file\?state=open$/);
+  await checked();
   const bank = page.getByRole("region", { name: hf.sections.bank });
   await expect(bank.getByText("•••0001")).toBeVisible();
   await bank.getByRole("button", { name: he.app.file.masked.show }).click();
