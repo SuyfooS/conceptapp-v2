@@ -67,6 +67,7 @@ export type AdminBusiness = {
  */
 export async function listBusinesses(): Promise<AdminBusiness[]> {
   const supabase = await createClient();
+  // bounded: every business, set up by the team (page it before 1,000).
   const { data, error } = await supabase.rpc("admin_businesses");
   if (error) throw error;
   return z

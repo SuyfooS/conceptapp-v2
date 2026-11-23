@@ -20,6 +20,7 @@ import { createClient } from "./supabase/server";
 export async function getLiveSwaps(businessId: string): Promise<ShiftSwap[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
+    // bounded: a live request needs a shift still to come (200 a week).
     .from("shift_swaps")
     .select("id, shift_id, requested_by, taken_by, status")
     .eq("business_id", businessId)

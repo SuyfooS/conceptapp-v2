@@ -2229,7 +2229,18 @@ now also drops the reservations sent more than a day before and, while a file is
 the app's `/cron/chat-files` through pg_net with the minute job's Vault secrets.
 `public.admin_storage()` is the console's storage card, for platform staff only (42501
 otherwise): the database's size, Storage per bucket, each business's chat space beside its
-caps and the caps' sum, sizes only, and no chat table read for it. "קראתי" no longer moves
+caps and the caps' sum, sizes only, and no chat table read for it; since
+20261127000100_bigger_teams.sql also each business's `document_bytes`, as the documents'
+refusal counts them (`private.documents_held_bytes`), so the card names a business near its
+own space. `public.file_space(actor, business)` (the same migration, the secret key's) is
+the same for a business's own people: an active member who sees the management page
+(`manage.view`) or sends documents (`private.sends_documents`), 42501 for anyone else, no
+branch for a view session. It gives `files_open`, `document_bytes` beside
+`document_space_bytes`, and `chat_bytes` (the Storage objects under the business's folder,
+as the console counts them) beside `chat_space_bytes`: sizes only, nothing written or
+logged. `@db/chat-files` `getFileSpace(actor, business)` reads it (null before the
+migration, on 42501 and on a shape it doesn't know), for `/manage/chat` and the documents'
+screens. "קראתי" no longer moves
 `chat_conversations.changed_at` (a worker's sync could tell someone confirmed):
 `public.confirm_announcement` is replaced without it, `public.chat_acks.recorded_at` (the
 clock's time of the row) moves `public.chat_stamp(business, conversation)` (the sync's
@@ -2314,7 +2325,8 @@ through server functions with the secret key, for `actor`: `public.reserve_docum
 (a photo of a page, at most 700 KB, which the server uploads itself, or a PDF, at most
 10 MiB, through a signed upload, as chat's), `public.document_upload_place` (finishing a
 PDF), `public.send_document` (every rule checked before the row: the categories each way
-takes, 1 to 200 others on the staff, a title of 1 to 80, a note of at most 300; in a demo
+takes, 1 to 1000 others on the staff, 200 until 20261127000100_bigger_teams.sql, a title
+of 1 to 80, a note of at most 300; in a demo
 business samples only, no note, its category's words as the title; at most 30 a minute),
 `public.open_document` (a recipient's opening marked, the office's first opening of a
 document to the business marked received, and each opening by the office of someone else's
@@ -2723,6 +2735,22 @@ read as messages/he.json. Console reads and writes are in `@db/wording`;
 - `@db/env`: the public settings and the secret key, checked with Zod, and
   this site's demo door (`DEMO_DOOR`: `demoDoorOpen`, read here alone, for
   server code and the proxy only).
+- `@db/pages`: reading past PostgREST's `max_rows` (1000 in supabase/config.toml, as on
+  hosted Supabase, which cuts a longer read short with no error; kept, since raising it
+  locally would only hide the cut). `PAGE_ROWS`; `allPages(page)` asks `page(first, last)`
+  until one comes back short and throws a page's error; `readAllPages` answers as one read
+  does (`{ data, error }`), for the reads that fall back on a missing table or column;
+  `allPagesIn(ids, page)` and `readAllPagesIn` read ids in parts of `IDS_PER_READ` (100, so
+  an address stays near 3.7 KB), each part page by page, in the parts' order; `inParts`.
+  The rule (bigger teams, the first fixes): a read in packages/db of a table that grows
+  with time or with everyone who ever joined, and a call of a function that answers rows
+  (as `team_phones` and `announcement_readers` do, one a person on the staff), pages,
+  ordered by its key last so no row falls between two pages, or says beside its `.from(`
+  or `.rpc(` why it can't pass the cap (`// bounded: …`). `tooling/bounded-reads.test.ts`
+  holds every read to it (the functions from database.types.ts, those whose `Returns` is
+  rows), and names the files kept out for now (taking orders', the hiring file's). The paging is proved by
+  `packages/db/paged-reads.test.ts`, a stand-in for PostgREST that serves at most 1000 rows
+  a request: CI's database job has no PostgREST.
 
 Sign-in is phone + SMS code. Accounts are never created at sign-in
 (`[auth] enable_signup = false`); people arrive through the seed now and

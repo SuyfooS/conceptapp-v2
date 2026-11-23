@@ -3365,6 +3365,18 @@
         "today": "Today: {takenBack, plural, one {1 take-back} other {# take-backs}}, {cancelled, plural, one {1 cancel} other {# cancels}}, {comped, plural, other {# on the house}}",
         "details": "Details in the activity log"
       },
+      "fileSpace": {
+        "title": "Space for files",
+        "documents": "Documents",
+        "chat": "Chat files",
+        "usedOf": "<ltr>{used}</ltr> of <ltr>{space}</ltr> MB",
+        "documentsOk": "Once it runs out, no new document can be sent. Documents are never deleted for space.",
+        "documentsNear": "It is filling up. Once it runs out, no new document can be sent.",
+        "documentsFull": "It is full, so new documents can't be sent now.",
+        "chatOk": "When it fills up, the oldest files go first. The messages themselves stay.",
+        "chatNear": "It is almost full, so the oldest files will soon go, before their time. The messages themselves stay.",
+        "more": "To get more space, ask the ConceptApp team."
+      },
       "team": {
         "title": "Team",
         "subtitle": "Who works here, and inviting new people"
@@ -6089,12 +6101,26 @@
           "demoSample": "Demo businesses take no files: a sample document of the kind you chose goes.",
           "needsFile": "Attach the file first",
           "needsPeople": "Choose to whom first",
+          "tooMany": "{count, plural, other {# people chosen}}, and one document goes to {max, number} people at most.",
+          "tooManyDepartments": "You can send it to each department in turn.",
+          "tooManySplit": "To reach everyone, split the team into departments and send it to each one.",
+          "needsFewer": "Choose {max, number} people at most",
           "needsTitle": "Write a title first",
           "titleInvalid": "A title on one line, up to <ltr>{max}</ltr> characters",
           "photoFailure": {
             "unreadable": "The photo can't be read. Choose another one.",
             "tooBig": "The photo is too big even made smaller. Take it again.",
             "type": "You can attach a photo or a PDF file."
+          }
+        },
+        "space": {
+          "near": {
+            "title": "The space for documents is filling up",
+            "body": "The business's documents take <ltr>{used}</ltr> of <ltr>{space}</ltr> MB. Once it runs out, no new document can be sent, and none is deleted for space. To get more space, ask the ConceptApp team."
+          },
+          "full": {
+            "title": "The space for documents is full",
+            "body": "The business's documents take <ltr>{used}</ltr> of <ltr>{space}</ltr> MB, so new documents can't be sent now. To get more space, ask the ConceptApp team."
           }
         },
         "failure": {
@@ -7740,11 +7766,13 @@
         "other": "Other files"
       },
       "filesCount": "{count, plural, =0 {No files} one {One file} other {# files}}",
-      "byBusiness": "Chat files by business",
-      "businessLabel": "Each business's space for chat files",
+      "byBusiness": "Each business's space",
+      "businessLabel": "Each business's space for chat files and documents",
       "business": "Business",
-      "chatUsed": "In use",
-      "chatCap": "Its space",
+      "chatColumn": "Chat files",
+      "documentsColumn": "Documents",
+      "chatLine": "Chat: <ltr>{used}</ltr> {usedUnit} of <ltr>{plan}</ltr> {planUnit}",
+      "documentsLine": "Documents: <ltr>{used}</ltr> {usedUnit} of <ltr>{plan}</ltr> {planUnit}",
       "closed": "Takes no files",
       "noBusinesses": "No businesses yet",
       "caps": "All businesses' space together",
@@ -7753,7 +7781,11 @@
         "filesRefused": "Files passed <ltr>{guard}</ltr> {guardUnit}, so new chat files aren't kept right now. Messages still go.",
         "storageHigh": "Files passed <ltr>{limit}</ltr> {limitUnit}. Decide what's next before they reach <ltr>{guard}</ltr> {guardUnit}, where new files stop.",
         "capsOver": "All businesses' space together is over <ltr>{guard}</ltr> {guardUnit}: if they all filled it, new files would stop before a business reached its own. Give new businesses less space.",
-        "databaseHigh": "The database passed <ltr>{limit}</ltr> {limitUnit} of the free plan's <ltr>{plan}</ltr> {planUnit}."
+        "databaseHigh": "The database passed <ltr>{limit}</ltr> {limitUnit} of the free plan's <ltr>{plan}</ltr> {planUnit}.",
+        "documentsNear": "{name}: documents take <ltr>{used}</ltr> {usedUnit} of <ltr>{cap}</ltr> {capUnit}. Once it runs out, no new document is sent.",
+        "documentsFull": "{name}: the space for documents is full (<ltr>{used}</ltr> {usedUnit} of <ltr>{cap}</ltr> {capUnit}), so no new document is sent.",
+        "chatNear": "{name}: chat files take <ltr>{used}</ltr> {usedUnit} of <ltr>{cap}</ltr> {capUnit}, so the oldest will go first, before their time.",
+        "raise": "You can give it up to <ltr>{max}</ltr> MB in the business's settings."
       }
     }
   },

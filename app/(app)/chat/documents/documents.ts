@@ -1,4 +1,5 @@
 import { getChatAuthors } from "@db/chat";
+import { getFileSpace } from "@db/chat-files";
 import { getDepartments } from "@db/departments";
 import {
   type DocumentView,
@@ -24,12 +25,14 @@ import {
   indexOf,
 } from "@domain/documents-screen";
 import { isStaff } from "@domain/modules";
+import { documentSpaceState } from "@domain/storage-use";
 import { cache } from "react";
 import type {
   DocumentClock,
   DocumentPageData,
   DocumentPeople,
   DocumentSendData,
+  DocumentSpace,
   DocumentsScreenData,
   DocumentsTodayData,
 } from "./document-screen-types";
@@ -121,6 +124,32 @@ async function besides<T>(read: Promise<T>, what: string): Promise<T | null> {
   }
 }
 
+/**
+ * The business's space for documents once it is filling up or full, for
+ * the office and whoever sends documents (bigger teams): null with room
+ * left, where the business takes no files, before the migration, and when
+ * it can't be read (`besides`). A worker sending to the business learns of
+ * a full space only if their send is refused (`failure.full`).
+ */
+async function spaceFor(
+  userId: string,
+  businessId: string,
+): Promise<DocumentSpace | null> {
+  const space = await besides(getFileSpace(userId, businessId), "space");
+  if (!space?.filesOpen) return null;
+  const state = documentSpaceState(
+    space.documentBytes,
+    space.documentSpaceBytes,
+  );
+  return state === "ok"
+    ? null
+    : {
+        state,
+        usedBytes: space.documentBytes,
+        spaceBytes: space.documentSpaceBytes,
+      };
+}
+
 /** Each document once, newest first. */
 function merged(
   ...lists: readonly (readonly DocumentView[])[]
@@ -155,33 +184,35 @@ export async function currentDocumentsScreen(
   const { businessId, userId, office } = access;
   const reader: DocumentReader = { id: userId, office };
   const asked = person && isUuid(person) ? person.toLowerCase() : null;
-  const [documents, sent, seen, today, theirs, index] = await Promise.all([
-    getDocuments(
-      businessId,
-      office ? { limit: 200 } : { person: userId, limit: 200 },
-    ),
-    // Outside the office, what they sent whether or not they send now: a
-    // sender whose chat.send_documents was switched off (the roles plan's
-    // R8) still reads theirs and their marks (private.sees_document).
-    !office
-      ? getDocuments(businessId, {
-          sentBy: userId,
-          direction: "to_people",
-          limit: 100,
-        })
-      : null,
-    office ? documentsNoticeSeen(businessId) : true,
-    office
-      ? besides(getDocumentsForToday(businessId, reader, 200), "waiting")
-      : null,
-    office && asked
-      ? besides(
-          getDocuments(businessId, { person: asked, limit: 200 }),
-          "a person's",
-        )
-      : null,
-    office ? besides(getDocumentsIndex(businessId), "in brief") : null,
-  ]);
+  const [documents, sent, seen, today, theirs, index, space] =
+    await Promise.all([
+      getDocuments(
+        businessId,
+        office ? { limit: 200 } : { person: userId, limit: 200 },
+      ),
+      // Outside the office, what they sent whether or not they send now: a
+      // sender whose chat.send_documents was switched off (the roles plan's
+      // R8) still reads theirs and their marks (private.sees_document).
+      !office
+        ? getDocuments(businessId, {
+            sentBy: userId,
+            direction: "to_people",
+            limit: 100,
+          })
+        : null,
+      office ? documentsNoticeSeen(businessId) : true,
+      office
+        ? besides(getDocumentsForToday(businessId, reader, 200), "waiting")
+        : null,
+      office && asked
+        ? besides(
+            getDocuments(businessId, { person: asked, limit: 200 }),
+            "a person's",
+          )
+        : null,
+      office ? besides(getDocumentsIndex(businessId), "in brief") : null,
+      office || access.sends ? spaceFor(userId, businessId) : null,
+    ]);
   const notYet = documents === "notYet";
   const list =
     documents === "notYet"
@@ -216,6 +247,7 @@ export async function currentDocumentsScreen(
     person: asked && people[asked] ? asked : null,
     months: documentMonths(office ? brief.documents : list, access.timeZone),
     notYet,
+    space,
   };
 }
 
@@ -254,16 +286,19 @@ export async function currentDocumentPage(
  * The send screen (`/chat/documents/send`): which ways the person sends
  * (to the business while on the staff; to people as a sender), whether the
  * business takes a file of its own ("demo": samples only), and to people,
- * whom: everyone on the staff but them, and the live departments' people.
+ * whom: everyone on the staff but them (every one: a bigger team's
+ * "everyone" is read whole, page by page), and the live departments'
+ * people. A sender is told when the space for documents is filling or full.
  */
 export async function currentSendScreen(): Promise<DocumentSendData | null> {
   const access = await documentsAccess();
   if (!access || access.viewing) return null;
   const { businessId, userId } = access;
-  const [files, colleagues, departments] = await Promise.all([
+  const [files, colleagues, departments, space] = await Promise.all([
     documentFilesAllowed(businessId),
     access.sends ? currentColleagues(businessId) : [],
     access.sends ? getDepartments(businessId) : [],
+    access.sends ? spaceFor(userId, businessId) : null,
   ]);
   const me = userId.toLowerCase();
   const staff = colleagues.filter(
@@ -300,6 +335,7 @@ export async function currentSendScreen(): Promise<DocumentSendData | null> {
                 .map((id) => id.toLowerCase())
                 .filter((id) => onStaff.has(id)),
             })),
+    space,
   };
 }
 

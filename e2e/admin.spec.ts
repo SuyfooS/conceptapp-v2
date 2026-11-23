@@ -37,6 +37,41 @@ async function expectDemoRestaurant(page: Page) {
   ).not.toHaveCount(0);
 }
 
+/**
+ * The storage card gives the demo restaurant's documents beside its chat
+ * files (bigger teams): a line under its name on a phone and a tablet, a
+ * cell of its row on a desktop, beside 50 MB, the seed's space for them.
+ */
+async function expectRestaurantDocuments(page: Page, desktop: boolean) {
+  const storage = page
+    .locator("section")
+    .filter({
+      has: page.getByRole("heading", { name: a.storage.title, exact: true }),
+    })
+    .last();
+  if (desktop) {
+    await expect(
+      storage.getByRole("columnheader", { name: a.storage.documentsColumn }),
+    ).toBeVisible();
+    await expect(
+      storage
+        .getByRole("row", { name: /מסעדת הדגמה/ })
+        .getByRole("cell")
+        .filter({ hasText: /מתוך 50 מגה/ })
+        .filter({ visible: true }),
+    ).toHaveCount(1);
+  } else {
+    await expect(
+      storage
+        .locator("div")
+        .filter({ hasText: "מסעדת הדגמה" })
+        .filter({ hasText: /מסמכים: .* מתוך 50 מגה/ })
+        .filter({ visible: true })
+        .last(),
+    ).toBeVisible();
+  }
+}
+
 test("signed-out visitors are sent to sign in", async ({ page }) => {
   await page.goto("/admin");
   await expect(page).toHaveURL(/\/enter$/);
@@ -48,6 +83,7 @@ test("a platform admin lands in the console and sees every business", async ({
   // Home sends the team to the console: they are in no business.
   await signIn(page, ADMIN, /\/admin$/);
   await expectDemoRestaurant(page);
+  await expectRestaurantDocuments(page, testInfo.project.name === "desktop");
   await expect(
     page
       .getByRole("navigation", { name: he.ui.appShell.mainNav })

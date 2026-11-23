@@ -14,6 +14,8 @@ const PAGES = [
   "/design/console",
   "/design/console?storage=high",
   "/design/console?storage=full",
+  // Businesses near their own spaces, one's documents full (bigger teams).
+  "/design/console?storage=quota",
   "/design/console/new",
   "/design/console/businesses/cafe-noa",
   "/design/console/businesses/demo-restaurant",

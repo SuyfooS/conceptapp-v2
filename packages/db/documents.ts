@@ -45,7 +45,7 @@ import { readAtLeast, withStart } from "./byte-stream";
 import { isSignedUploadFor, occupyPlace } from "./chat-files";
 import { isMissingFunction } from "./missing";
 import { isMissingTable } from "./notifications";
-import { allPages } from "./pages";
+import { allPages, inParts } from "./pages";
 import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
 
@@ -208,18 +208,6 @@ const COLUMNS =
 
 /** Documents one read gives at most. */
 export const DOCUMENTS_READ_MAX = 200;
-
-/** Ids one `in` filter takes, so a read's address stays short (about 3.7 KB). */
-const IDS_PER_READ = 100;
-
-/** `list` in parts of at most `size`. */
-function inParts<T>(list: readonly T[], size = IDS_PER_READ): T[][] {
-  const parts: T[][] = [];
-  for (let at = 0; at < list.length; at += size) {
-    parts.push(list.slice(at, at + size));
-  }
-  return parts;
-}
 
 /** Newest first, `id` breaking ties: the order every list of documents is in. */
 function newestFirst(
@@ -421,6 +409,7 @@ function documentsWhere(
   options: Omit<DocumentsQuery, "person" | "limit">,
 ) {
   let query = supabase
+    // bounded: every caller adds .limit (at most DOCUMENTS_READ_MAX) or pages.
     .from("documents")
     .select(COLUMNS)
     .eq("business_id", businessId);
@@ -968,7 +957,10 @@ export type DocumentFields = {
   /** In a demo business the database writes the category's words instead. */
   title: string;
   note?: string | null;
-  /** To people: whom (the screen resolves a department or everyone), 1 to 200. */
+  /**
+   * To people: whom (the screen resolves a department or everyone), 1 to
+   * 1,000 (`DOCUMENT_RECIPIENTS_MAX`).
+   */
   to?: readonly string[];
   /** To people: ask each for "קראתי". */
   asks?: boolean;
@@ -1015,10 +1007,10 @@ export type DocumentSending = DocumentFields &
 /**
  * Sends a document (`public.send_document`), checked first as the database
  * checks it: the category its way takes, a title of 1 to 80 characters on
- * one line, a note of at most 300, and to people 1 to 200 others on the
- * staff (to the business, nobody: it goes to the office). Its file is a
- * reserved place whose file is in Storage (C7), or in a demo business a
- * sample. The office is told (documents.received), or each recipient
+ * one line, a note of at most 300, and to people 1 to 1,000 others on the
+ * staff (`DOCUMENT_RECIPIENTS_MAX`; to the business, nobody: it goes to the
+ * office). Its file is a reserved place whose file is in Storage (C7), or in
+ * a demo business a sample. The office is told (documents.received), or each recipient
  * (documents.sent, or documents.to_confirm when it asks), and the office's
  * log gets document.send with codes only; the caller runs `pushSoon()` after.
  * Returns the document's id.

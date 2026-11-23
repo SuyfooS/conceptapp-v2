@@ -23,6 +23,7 @@ import { z } from "zod";
 import type { Database } from "./database.types";
 import { type MemberNames, memberNames, nameIn } from "./member-names";
 import { isMissingColumn, isMissingFunction } from "./missing";
+import { allPages, readAllPages } from "./pages";
 import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
 
@@ -46,19 +47,24 @@ type MemberRow = {
  * A business's active members, as the signed-in person may read them (RLS),
  * with the role the business named that each holds (members read it; the
  * roles plan's R11b). Before its migration reaches a project nobody holds
- * one, and the members are read as before.
+ * one, and the members are read as before. Page by page: nothing caps a
+ * business's people, and a document to everyone is built from these.
  */
 async function activeMembers(
   supabase: Client,
   businessId: string,
 ): Promise<MemberRow[]> {
-  const named = await supabase
-    .from("memberships")
-    .select(
-      "user_id, role, named_role, created_at, profiles (full_name, avatar_path, address_form)",
-    )
-    .eq("business_id", businessId)
-    .eq("active", true);
+  const named = await readAllPages((first, last) =>
+    supabase
+      .from("memberships")
+      .select(
+        "user_id, role, named_role, created_at, profiles (full_name, avatar_path, address_form)",
+      )
+      .eq("business_id", businessId)
+      .eq("active", true)
+      .order("user_id")
+      .range(first, last),
+  );
   if (!named.error) return named.data;
   if (!isMissingColumn(named.error)) throw named.error;
   return membersWithoutNamedRoles(supabase, businessId);
@@ -73,22 +79,28 @@ async function membersWithoutNamedRoles(
   supabase: Client,
   businessId: string,
 ): Promise<MemberRow[]> {
-  const read = await supabase
-    .from("memberships")
-    .select(
-      "user_id, role, created_at, profiles (full_name, avatar_path, address_form)",
-    )
-    .eq("business_id", businessId)
-    .eq("active", true);
+  const read = await readAllPages((first, last) =>
+    supabase
+      .from("memberships")
+      .select(
+        "user_id, role, created_at, profiles (full_name, avatar_path, address_form)",
+      )
+      .eq("business_id", businessId)
+      .eq("active", true)
+      .order("user_id")
+      .range(first, last),
+  );
   if (!read.error) return read.data;
   if (!isMissingColumn(read.error)) throw read.error;
-  const older = await supabase
-    .from("memberships")
-    .select("user_id, role, created_at, profiles (full_name, avatar_path)")
-    .eq("business_id", businessId)
-    .eq("active", true);
-  if (older.error) throw older.error;
-  return older.data;
+  return allPages((first, last) =>
+    supabase
+      .from("memberships")
+      .select("user_id, role, created_at, profiles (full_name, avatar_path)")
+      .eq("business_id", businessId)
+      .eq("active", true)
+      .order("user_id")
+      .range(first, last),
+  );
 }
 
 /** A member's name in the business: its own for them, else theirs. */
@@ -111,26 +123,33 @@ type InviteRow = {
 /**
  * The business's invites nobody claimed (open or expired), with the role
  * the business named that each gives (the roles plan's R11b); before its
- * migration none gives one.
+ * migration none gives one. Page by page: expired ones are kept, and pile up
+ * over the years.
  */
 async function openInvites(
   supabase: Client,
   businessId: string,
 ): Promise<InviteRow[]> {
-  const named = await supabase
-    .from("invites")
-    .select("id, full_name, phone, role, named_role, expires_at")
-    .eq("business_id", businessId)
-    .is("claimed_at", null);
+  const named = await readAllPages((first, last) =>
+    supabase
+      .from("invites")
+      .select("id, full_name, phone, role, named_role, expires_at")
+      .eq("business_id", businessId)
+      .is("claimed_at", null)
+      .order("id")
+      .range(first, last),
+  );
   if (!named.error) return named.data;
   if (!isMissingColumn(named.error)) throw named.error;
-  const older = await supabase
-    .from("invites")
-    .select("id, full_name, phone, role, expires_at")
-    .eq("business_id", businessId)
-    .is("claimed_at", null);
-  if (older.error) throw older.error;
-  return older.data;
+  return allPages((first, last) =>
+    supabase
+      .from("invites")
+      .select("id, full_name, phone, role, expires_at")
+      .eq("business_id", businessId)
+      .is("claimed_at", null)
+      .order("id")
+      .range(first, last),
+  );
 }
 
 /** A role the business named, live or archived, by its id. */
@@ -264,7 +283,13 @@ async function teamPhones(
   supabase: Client,
   businessId: string,
 ): Promise<Map<string, string | null>> {
-  const phones = await supabase.rpc("team_phones", { business: businessId });
+  // One row a person on the staff: page by page, as the table reads.
+  const phones = await readAllPages((first, last) =>
+    supabase
+      .rpc("team_phones", { business: businessId })
+      .order("user_id")
+      .range(first, last),
+  );
   if (phones.error && !isMissingFunction(phones.error)) throw phones.error;
   return new Map(
     phones.error
@@ -281,12 +306,15 @@ async function phonesFromProfiles(
   supabase: Client,
   businessId: string,
 ): Promise<[string, string | null][]> {
-  const { data, error } = await supabase
-    .from("memberships")
-    .select("user_id, profiles (phone)")
-    .eq("business_id", businessId)
-    .eq("active", true);
-  if (error) throw error;
+  const data = await allPages((first, last) =>
+    supabase
+      .from("memberships")
+      .select("user_id, profiles (phone)")
+      .eq("business_id", businessId)
+      .eq("active", true)
+      .order("user_id")
+      .range(first, last),
+  );
   return data.map((row) => [row.user_id, row.profiles?.phone ?? null]);
 }
 
@@ -627,6 +655,7 @@ const DepartureRow = z.object({
  */
 export async function ownDepartures(): Promise<Departure[]> {
   const supabase = await createClient();
+  // bounded: the businesses one person was taken off.
   const { data, error } = await supabase.rpc("own_departures");
   if (error) {
     if (isMissingFunction(error)) return [];
@@ -658,6 +687,8 @@ export async function shiftsAhead(
 ): Promise<Pick<LeftCounts, "shifts" | "drafts">> {
   const supabase = await createClient();
   const { data, error } = await supabase
+    // bounded: one person's shifts still to come, at most 200 shifts a week
+    // (raising that cap must page this).
     .from("schedule_shifts")
     .select(
       "day, starts_at, shift_assignments!inner (user_id), schedule_weeks!inner (schedule_published_at)",

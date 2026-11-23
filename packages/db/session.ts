@@ -236,6 +236,7 @@ type Client = Awaited<ReturnType<typeof createClient>>;
  */
 async function ownMemberships(supabase: Client, userId: string) {
   const named = await supabase
+    // bounded: one person's businesses (and in the read below).
     .from("memberships")
     .select(
       "role, perms, created_at, named_role, businesses (id, name, accent, slug, address, shabbat_city, timezone, template_key, business_modules (module_key, enabled, settings))",
@@ -246,6 +247,7 @@ async function ownMemberships(supabase: Client, userId: string) {
   if (!named.error) return { rows: named.data, error: null };
   if (!isMissingColumn(named.error)) return { rows: [], error: named.error };
   const older = await supabase
+    // bounded: one person's businesses.
     .from("memberships")
     .select(
       "role, perms, created_at, businesses (id, name, accent, slug, address, shabbat_city, timezone, template_key, business_modules (module_key, enabled, settings))",
@@ -584,6 +586,7 @@ export async function getOwnPlace(): Promise<OwnPlace | null> {
   const chosen = (await cookies()).get(BUSINESS_COOKIE)?.value ?? null;
   const [memberships, view] = await Promise.all([
     supabase
+      // bounded: one person's businesses.
       .from("memberships")
       .select(
         "business_id, role, perms, created_at, businesses (business_modules (module_key, enabled))",

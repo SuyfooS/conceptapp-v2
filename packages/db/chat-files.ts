@@ -24,6 +24,7 @@ import {
   parseDocumentFilePath,
 } from "@domain/documents";
 import { sniffPhotoType } from "@domain/profile-photos";
+import type { FileSpace } from "@domain/storage-use";
 import { z } from "zod";
 import { readAtLeast, withStart } from "./byte-stream";
 import { type ChatFailure, type ChatTarget, chatFailureOf } from "./chat";
@@ -1023,6 +1024,7 @@ export async function cleanChatFiles(at?: Date): Promise<number> {
   const when = at ? { at_time: at.toISOString() } : {};
   let removed = 0;
   for (let batch = 0; batch < CLEAN_BATCHES; batch += 1) {
+    // bounded: max_rows, CLEAN_BATCH (500) a batch.
     const { data, error } = await admin.rpc("expired_files", {
       max_rows: CLEAN_BATCH,
       ...when,
@@ -1098,6 +1100,8 @@ const storageSchema = z.object({
       files_open: z.boolean(),
       chat_cap_bytes: count,
       document_cap_bytes: count,
+      // Missing until 20261127000100_bigger_teams.sql reaches the project.
+      document_bytes: count.optional(),
     }),
   ),
   chat_caps_bytes: count,
@@ -1124,6 +1128,11 @@ export type StorageUse = {
     /** Its `fileSpaceMb` and (C6) `documentSpaceMb`, in bytes; 0 where files aren't taken. */
     chatCapBytes: number;
     documentCapBytes: number;
+    /**
+     * What its documents hold, as their refusal counts them; null before
+     * 20261127000100_bigger_teams.sql reaches the project.
+     */
+    documentBytes: number | null;
   }[];
   /** The caps added up: they must stay under the free plan's 1 GB with the rest. */
   chatCapsBytes: number;
@@ -1174,8 +1183,58 @@ export async function getStorageUse(): Promise<StorageUse | null> {
       filesOpen: row.files_open,
       chatCapBytes: row.chat_cap_bytes,
       documentCapBytes: row.document_cap_bytes,
+      documentBytes: row.document_bytes ?? null,
     })),
     chatCapsBytes: use.chat_caps_bytes,
     documentCapsBytes: use.document_caps_bytes,
+  };
+}
+
+const fileSpaceSchema = z.object({
+  files_open: z.boolean(),
+  document_bytes: count,
+  document_space_bytes: count,
+  chat_bytes: count,
+  chat_space_bytes: count,
+});
+
+/**
+ * How full a business's spaces for documents and chat files are
+ * (`public.file_space`, with the secret key for `actorId`), for whoever sees
+ * its management page or sends its documents: sizes only. Callers make sure
+ * the actor is the signed-in person, not someone viewing as them. Null, and
+ * nothing said, before 20261127000100_bigger_teams.sql reaches the project,
+ * for anyone the database refuses (42501), and for an answer of a shape it
+ * doesn't know (only the error's code is logged): the screens are whole
+ * without it.
+ */
+export async function getFileSpace(
+  actorId: string,
+  businessId: string,
+): Promise<FileSpace | null> {
+  const { data, error } = await createAdminClient().rpc("file_space", {
+    actor: actorId,
+    business: businessId,
+  });
+  if (error) {
+    if (!isMissingFunction(error) && error.code !== "42501") {
+      console.error("the space for files could not be read", error.code);
+    }
+    return null;
+  }
+  const parsed = fileSpaceSchema.safeParse(data);
+  if (!parsed.success) {
+    console.error(
+      "the space for files could not be read",
+      "a shape it doesn't know",
+    );
+    return null;
+  }
+  return {
+    filesOpen: parsed.data.files_open,
+    documentBytes: parsed.data.document_bytes,
+    documentSpaceBytes: parsed.data.document_space_bytes,
+    chatBytes: parsed.data.chat_bytes,
+    chatSpaceBytes: parsed.data.chat_space_bytes,
   };
 }

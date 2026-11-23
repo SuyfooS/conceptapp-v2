@@ -61,6 +61,7 @@ export async function getBusinessActivity(
     refs.swaps.length ? getSwaps(businessId, refs.swaps) : [],
     refs.invites.length
       ? supabase
+          // bounded: the invites one page of the log names (40 rows).
           .from("invites")
           .select("id, full_name, role")
           .eq("business_id", businessId)
@@ -82,6 +83,7 @@ export async function getBusinessActivity(
   const [members, names, shiftRows, departments, stations] = await Promise.all([
     people.size
       ? supabase
+          // bounded: the people one page of the log names.
           .from("memberships")
           .select("user_id, active, profiles (full_name)")
           .eq("business_id", businessId)
@@ -90,6 +92,7 @@ export async function getBusinessActivity(
     memberNames(supabase, businessId, [...people]),
     shifts.size
       ? supabase
+          // bounded: the shifts one page of the log names.
           .from("schedule_shifts")
           .select("id, day, name, starts_at, ends_at")
           .eq("business_id", businessId)
@@ -182,6 +185,7 @@ async function getSwaps(
 ): Promise<ActivitySwap[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
+    // bounded: the swaps one page of the log names (both reads).
     .from("shift_swaps")
     .select("id, shift_id, shift, requested_by, taken_by")
     .eq("business_id", businessId)
@@ -197,6 +201,7 @@ async function getSwaps(
   }
   if (!isMissingColumn(error)) throw error;
   const before = await supabase
+    // bounded: the swaps one page of the log names.
     .from("shift_swaps")
     .select("id, shift_id, requested_by, taken_by")
     .eq("business_id", businessId)
