@@ -9,8 +9,6 @@
 
 export const PROFILE_PHOTO_BUCKET = "avatars";
 export const PROFILE_PHOTO_MAX_BYTES = 2 * 1024 * 1024;
-/** How long a signed link to a photo works. */
-export const PROFILE_PHOTO_URL_SECONDS = 60 * 60;
 /** The side of the square a photo is stored at, after the browser re-encodes it. */
 export const PROFILE_PHOTO_PIXELS = 512;
 export const PROFILE_PHOTO_QUALITY = 0.85;
@@ -453,4 +451,20 @@ export function isProfilePhotoPath(userId: string, path: string): boolean {
     folder === userId &&
     /^[A-Za-z0-9_-]{8,64}\.(jpg|png|webp)$/.test(file ?? "")
   );
+}
+
+const USER_FOLDER =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/**
+ * Whose photo the path is: its folder, a user id in lower case, when the path
+ * is a photo the app stores (`<user id>/<key>.<jpg|png|webp>`, as
+ * public.expired_avatars lists them), else null. What the server removes
+ * from the bucket is held to it, so nothing else there is ever removed.
+ */
+export function profilePhotoOwner(path: string): string | null {
+  const [folder = ""] = path.split("/");
+  return USER_FOLDER.test(folder) && isProfilePhotoPath(folder, path)
+    ? folder
+    : null;
 }

@@ -31,12 +31,13 @@ function failed(error: unknown): Response {
 /**
  * A chat file (C4: a picture or its thumbnail; C5: a PDF), as the signed-in
  * person may see it (`chatFileSrc` points here), the way /list-photos serves
- * lists' photos. Read under their own session, so the database decides twice:
- * the message pointing at it is one they read (a private chat's for its two
- * people alone, a group's from when they joined it, never for an owner, the
- * team or a view session as such), not removed and its file still kept, and
- * the bucket's policy says the same of the file. Anything else, another
- * business's file included, is not found. Its type comes from its bytes and
+ * lists' photos. The database decides, under their own session: the message
+ * pointing at it is one they read (a private chat's for its two people alone,
+ * a group's from when they joined it, never for an owner, the team or a view
+ * session as such), not removed and its file still kept. Only then the file
+ * is read, with the secret key: the bucket has no policy, so no session reads
+ * it or signs a link to it (20261127000300_files_server_only.sql). Anything
+ * else, another business's file included, is not found. Its type comes from its bytes and
  * must be the path's extension and the message's kind. The browser keeps it
  * privately for a week (a path is random and never used again, so it is
  * never stale, and Storage's and Vercel's transfer stay small), never through

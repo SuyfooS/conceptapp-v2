@@ -215,8 +215,10 @@ end;
 $$;
 
 -- What the signed-in person reads of the business: its templates, archived
--- ones included, their times, its lists, the list photos, and their lines
--- about a list still late and a reading out of its range.
+-- ones included, their times, its lists, the list items pointing at a photo
+-- (what /list-photos serves them, since no session reads the bucket:
+-- 20261127000300), and their lines about a list still late and a reading out
+-- of its range.
 create function pg_temp.reads()
 returns table (templates integer, times integer, lists integer, photos integer, late integer, readings integer)
 language sql as $$
@@ -227,8 +229,9 @@ language sql as $$
      where s.business_id = '98000000-0000-4000-b000-000000000001'),
     (select count(l.id)::integer from public.lists l
      where l.business_id = '98000000-0000-4000-b000-000000000001'),
-    (select count(o.id)::integer from storage.objects o
-     where o.bucket_id = 'list-photos' and o.name like '98000000-%'),
+    (select count(i.id)::integer from public.list_items i
+     where i.business_id = '98000000-0000-4000-b000-000000000001'
+       and i.photo_path is not null and i.photo_removed_at is null),
     (select count(n.id)::integer from public.notifications n
      where n.business_id = '98000000-0000-4000-b000-000000000001' and n.kind = 'lists.late_team'),
     (select count(n.id)::integer from public.notifications n
@@ -873,17 +876,13 @@ select ok(
 );
 
 select ok(
-  (select strpos(p.prosrc, 'businesses_holding(''lists.manage''') > 0
-     and strpos(p.prosrc, 'is_viewing(') = 0
-   from pg_proc p
-   join pg_namespace ns on ns.oid = p.pronamespace
-   where ns.nspname = 'private' and p.proname = 'can_read_list_photo')
+  to_regprocedure('private.can_read_list_photo(text)') is null
   and (select strpos(p.prosrc, 'can_edit_settings') = 0
      and strpos(p.prosrc, 'platform_staff') > 0
    from pg_proc p
    join pg_namespace ns on ns.oid = p.pronamespace
    where ns.nspname = 'public' and p.proname = 'save_list_template'),
-  'a list''s photos follow the same rule for a view (critique 5), and a template''s writers name the team, not the management page'
+  'a list''s photos are its items'', read by the lists'' rule (critique 5), with no helper of their own since 20261127000300, and a template''s writers name the team, not the management page'
 );
 
 select is(
@@ -897,10 +896,8 @@ select is(
 select ok(
   has_function_privilege('authenticated', 'private.can_manage_lists(uuid, uuid)', 'execute')
   and has_function_privilege('authenticated', 'private.sees_list(uuid, uuid)', 'execute')
-  and has_function_privilege('authenticated', 'private.can_read_list_photo(text)', 'execute')
   and not has_function_privilege('anon', 'private.can_manage_lists(uuid, uuid)', 'execute')
   and not has_function_privilege('anon', 'private.sees_list(uuid, uuid)', 'execute')
-  and not has_function_privilege('anon', 'private.can_read_list_photo(text)', 'execute')
   and not has_function_privilege('authenticated', 'private.can_send_lists(uuid, uuid)', 'execute')
   and not has_function_privilege('authenticated', 'private.list_managers(uuid)', 'execute')
   and not has_function_privilege('authenticated', 'private.seed_demo_lists(uuid)', 'execute')
@@ -918,7 +915,7 @@ select ok(
        join pg_namespace ns on ns.oid = p.pronamespace
        where ns.nspname || '.' || p.proname in (
            'private.can_manage_lists', 'private.can_send_lists', 'private.list_managers',
-           'private.sees_list', 'private.seed_demo_lists', 'private.can_read_list_photo',
+           'private.sees_list', 'private.seed_demo_lists',
            'private.notify_for_lists', 'public.save_list_template', 'public.archive_list_template',
            'public.restore_list_template', 'public.next_list_openings',
            'private.lists_tick_business'
@@ -927,7 +924,7 @@ select ok(
          and exists (
            select 1 from unnest(p.proconfig) as c (setting)
            where c.setting in ('search_path=""', 'search_path=')
-         )) = 12,
+         )) = 11,
   'the replaced functions run as their owner with an empty search path, the policies'' helpers for a signed-in reader and the rest for the server alone'
 );
 

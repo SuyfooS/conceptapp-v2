@@ -16,6 +16,7 @@ import { pageGlowClass } from "@ui/page-glow";
 import { Sheet } from "@ui/sheet";
 import { StatusToast } from "@ui/status-toast";
 import { ltrInputClass, TextField } from "@ui/text-field";
+import { useSheetWrite } from "@ui/use-sheet-write";
 import { Ban, History, Plus, Trash2, Undo2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import {
@@ -101,7 +102,10 @@ export function PersonHoursView({
   // The shift's times as the sheet opened on them: what "typed and not
   // saved" is measured from, whatever a refresh reads meanwhile.
   const [baseline, setBaseline] = useState<EntryValues | null>(null);
-  const [saving, start] = useTransition();
+  // A write from the sheet: the sheet stays until its answer (`held`), and
+  // the spinner and the buttons until the page read again after it is drawn
+  // (`saving`), so no second write goes out against what was there before.
+  const { pending: saving, start, held } = useSheetWrite();
   // The toast's "ביטול" runs on its own, so a sheet opened meanwhile isn't held.
   const [, startUndo] = useTransition();
   // Whether a sheet is open as a write comes back (the state, read late).
@@ -455,8 +459,10 @@ export function PersonHoursView({
       <Sheet
         open={open}
         onOpenChange={(next) => {
-          // A save under way finishes first: its answer belongs on this sheet.
-          if (!saving) setOpen(next);
+          // A save under way finishes first: its answer belongs on this
+          // sheet. Only its answer: a refusal shows at once, while the page
+          // read again after it may still be on its way.
+          if (!held()) setOpen(next);
         }}
         title={sheetTitle}
         subtitle={sheetSubtitle}

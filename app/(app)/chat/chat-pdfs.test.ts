@@ -41,6 +41,14 @@ describe("pdfRefusal", () => {
     });
   });
 
+  it("keeps one the sender's own last minutes are full of, saying so in its own words", () => {
+    expect(pdfRefusal("busyOwn")).toEqual({
+      next: "retry",
+      notice: { of: "pdfFailure", key: "busyOwn" },
+      refresh: false,
+    });
+  });
+
   it("makes its place again once its hours are over, and puts it again when nothing arrived", () => {
     expect(pdfRefusal("expired")).toEqual({
       next: "again",
@@ -385,6 +393,21 @@ describe("runPdfJob", () => {
       notice: { of: "pdfFailure", key: "busy" },
       refresh: false,
     });
+    expect(canStopPdf(job, "failed", undefined)).toBe(true);
+  });
+
+  it("keeps one while the sender's own last minutes are full, with nothing to let go", async () => {
+    const job = chosen();
+    const { runner, calls } = scripted({
+      start: [{ ok: false, failure: "busyOwn" }],
+    });
+    expect(await runPdfJob(job, runner)).toEqual({
+      end: "failed",
+      failure: "busyOwn",
+      notice: { of: "pdfFailure", key: "busyOwn" },
+      refresh: false,
+    });
+    expect(calls).toEqual(["start"]);
     expect(canStopPdf(job, "failed", undefined)).toBe(true);
   });
 });

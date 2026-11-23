@@ -12,9 +12,13 @@ function missing(): Response {
 
 /**
  * A profile photo, as the signed-in person may see it (`profilePhotoSrc`
- * points here). Downloaded under their own session, so Storage's policies
- * decide: their own photo and their colleagues', nobody else's. A route
- * rather than signed links in the page: no Storage round trip while a page
+ * points here). The database decides, under their own session
+ * (`public.sees_profile_photo`): their own photo and their active
+ * colleagues', and only while their profile points at it, so a replaced or
+ * removed photo is nobody's. Only then the file is read, with the secret
+ * key: the bucket has no policy, so no session reads it or signs a link to
+ * it (20261127000300_files_server_only.sql). A route rather than signed
+ * links in the page: no Storage round trip while a page
  * renders, nothing from Supabase in the HTML, a stable address the browser
  * keeps privately (a new photo gets a new random path, so it is never stale),
  * and same-origin bytes the profile can read back for its undo.

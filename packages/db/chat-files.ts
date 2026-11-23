@@ -44,9 +44,10 @@ import { createClient } from "./supabase/server";
  * files in Storage before the message is written); on any refusal both files
  * are removed at once, and when the sending's end is unknown (its answer
  * lost) they stay for the message that may hold them, or for the clean-up a
- * day on. The bucket takes nothing from the browser, and its
- * policy lets only the readers of a message read its files: they are served
- * by the app's /chat-files route under the reader's own session. A demo
+ * day on. The bucket takes nothing from the browser and has no policy
+ * (20261127000300_files_server_only.sql): the app's /chat-files route reads
+ * a message under the reader's own session, so only its readers get its
+ * files, and then its file with the secret key. A demo
  * business takes no files (`public.chat_files_closed`), and the database
  * refuses one too. Nothing here logs a file's name or a message's words: a
  * failure is logged by its code.
@@ -301,7 +302,12 @@ export type ChatPdfFailure =
    * The business's PDFs of the last 10 minutes already bring its space
    * (`CHAT_PDF_BURST_MINUTES`): in a few minutes.
    */
-  | "busy";
+  | "busy"
+  /**
+   * The sender's own PDFs of the last 10 minutes already bring half the
+   * business's space (`CHAT_SENDER_SPACE_DIVISOR`): in a few minutes.
+   */
+  | "busyOwn";
 
 export type ChatPdfWrite<T> =
   | { ok: true; value: T }
@@ -330,7 +336,8 @@ function targetOf(
 /**
  * A refusal of a PDF's reservation: the project's Storage full (54000 with
  * hint 'storage'), ten unsent from the last day (hint 'pdfs'), the business's
- * 10 minutes full (hint 'busy'), and a message's reasons for the rest.
+ * 10 minutes full (hint 'busy'), the sender's own half of them (hint 'own'),
+ * and a message's reasons for the rest.
  */
 function pdfReserveFailureOf(error: {
   code?: string;
@@ -339,6 +346,7 @@ function pdfReserveFailureOf(error: {
   if (error.code === "54000" && error.hint === "storage") return "noRoom";
   if (error.code === "54000" && error.hint === "pdfs") return "tooMany";
   if (error.code === "54000" && error.hint === "busy") return "busy";
+  if (error.code === "54000" && error.hint === "own") return "busyOwn";
   return chatFailureOf(error);
 }
 
@@ -437,8 +445,9 @@ export type ChatPdfStart = {
  * browser's own id for the message, checked here and sent with
  * `finishChatPdf`. Reserves its place with the sending's own checks
  * (`public.reserve_chat_upload`, which also refuses an 11th PDF unsent from
- * the last day, and one more once the business's PDFs of the last 10 minutes
- * bring its space), and makes Storage's signed upload for that one path with
+ * the last day, one more once the sender's own PDFs of the last 10 minutes
+ * bring half the business's space, and one more once the business's bring
+ * all of it), and makes Storage's signed upload for that one path with
  * the secret key (`upsert` off), whose URL is all the browser gets.
  */
 export async function startChatPdf(
@@ -552,7 +561,8 @@ async function uploadPlace(
 
 /**
  * The first KB of a stored chat file, read with the secret key: a
- * short-lived signed link for it, asked with `Range: bytes=0-1023`. When
+ * short-lived signed link for it (60 seconds, the server's own fetch, never
+ * given to a browser), asked with `Range: bytes=0-1023`. When
  * Storage doesn't honour the range and sends the whole file, only its first
  * KB is read and the rest of the transfer is cancelled, so at most what was
  * already on its way (never more than the 10 MiB the bucket holds) is spent.
@@ -751,8 +761,8 @@ export async function cancelChatPdf(
  * A chat PDF as the signed-in person may download it, for the /chat-files
  * route: its message read under their own session (RLS: a message they read,
  * so a private chat's PDF for its two people alone), a PDF's, not removed and
- * its file still kept, pointing at the path, and the file downloaded under the
- * same session, so the bucket's policy decides too. Its first KB must be a
+ * its file still kept, pointing at the path, and only then the file read with
+ * the secret key (the bucket has no policy). Its first KB must be a
  * PDF's (`isPdf`): the type always comes from its bytes, and must be the
  * path's and the message's. The file is streamed on as Storage sends it (up to
  * 10 MiB, never held whole), with the name kept for it. Null for anything
@@ -764,30 +774,32 @@ export async function chatPdfDownload(
   const parts = parseChatFilePath(path);
   if (parts?.extension !== "pdf" || parts.thumb) return null;
   const supabase = await createClient();
-  const [row, file] = await Promise.all([
-    supabase
-      .from("chat_messages")
-      .select("file_kind, file_path, file_name, file_removed_at, removed_at")
-      .eq("business_id", parts.businessId)
-      .eq("conversation_id", parts.conversationId)
-      .eq("file_path", path)
-      .maybeSingle(),
-    supabase.storage.from(CHAT_FILE_BUCKET).download(path).asStream(),
-  ]);
-  const stream = (file.data ?? null) as ReadableStream<Uint8Array> | null;
+  const row = await supabase
+    .from("chat_messages")
+    .select("file_kind, file_path, file_name, file_removed_at, removed_at")
+    .eq("business_id", parts.businessId)
+    .eq("conversation_id", parts.conversationId)
+    .eq("file_path", path)
+    .maybeSingle();
   const message = row.data;
   if (
     row.error ||
     !message ||
-    !stream ||
     message.file_kind !== "pdf" ||
     message.removed_at !== null ||
     message.file_removed_at !== null ||
     message.file_path !== path
   ) {
-    await stream?.cancel().catch(() => undefined);
     return null;
   }
+  // Only now the file, with the secret key's own download: no session reads
+  // the bucket, and no signed link is made for it.
+  const file = await createAdminClient()
+    .storage.from(CHAT_FILE_BUCKET)
+    .download(path)
+    .asStream();
+  const stream = (file.data ?? null) as ReadableStream<Uint8Array> | null;
+  if (!stream) return null;
   const start = await readAtLeast(stream, CHAT_PDF_HEAD_BYTES);
   if (!isPdf(start.bytes)) {
     await start.reader.cancel().catch(() => undefined);
@@ -800,8 +812,8 @@ export async function chatPdfDownload(
  * A chat file's bytes as the signed-in person may read them, for the
  * /chat-files route: its message read under their own session (RLS: a message
  * they read, so a private chat's files for its two people alone), not removed
- * and its file still kept, pointing at the path, and the file downloaded under
- * the same session, so the bucket's policy decides too. Its type comes from
+ * and its file still kept, pointing at the path, and only then the file read
+ * with the secret key (the bucket has no policy). Its type comes from
  * its bytes and must be the path's and the message's (a picture; a PDF is
  * `chatPdfDownload`'s). Null for anything else, the same whether or not a
  * file is there.
@@ -815,17 +827,14 @@ export async function chatFileBytes(
   // A PDF is a download of its own (`chatPdfDownload`).
   if (!wanted) return null;
   const supabase = await createClient();
-  const [row, file] = await Promise.all([
-    supabase
-      .from("chat_messages")
-      .select("file_kind, file_path, thumb_path, file_removed_at, removed_at")
-      .eq("business_id", parts.businessId)
-      .eq("conversation_id", parts.conversationId)
-      .or(`file_path.eq."${path}",thumb_path.eq."${path}"`)
-      .maybeSingle(),
-    supabase.storage.from(CHAT_FILE_BUCKET).download(path),
-  ]);
-  if (row.error || !row.data || file.error || !file.data) return null;
+  const row = await supabase
+    .from("chat_messages")
+    .select("file_kind, file_path, thumb_path, file_removed_at, removed_at")
+    .eq("business_id", parts.businessId)
+    .eq("conversation_id", parts.conversationId)
+    .or(`file_path.eq."${path}",thumb_path.eq."${path}"`)
+    .maybeSingle();
+  if (row.error || !row.data) return null;
   const message = row.data;
   if (
     message.file_kind !== "image" ||
@@ -835,6 +844,12 @@ export async function chatFileBytes(
   ) {
     return null;
   }
+  // Only now the file, with the secret key's own download: no session reads
+  // the bucket, and no signed link is made for it.
+  const file = await createAdminClient()
+    .storage.from(CHAT_FILE_BUCKET)
+    .download(path);
+  if (file.error || !file.data) return null;
   const bytes = new Uint8Array(await file.data.arrayBuffer());
   return sniffPhotoType(bytes) === wanted ? { bytes, type: wanted } : null;
 }

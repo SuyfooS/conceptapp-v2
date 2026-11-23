@@ -376,6 +376,8 @@ const PAGES = [
   "/design/chat/kitchen?state=attach",
   "/design/chat/kitchen?state=uploading",
   "/design/chat/kitchen?state=pdfFailed",
+  // One person's PDFs of the last minutes past half the space (sec-files).
+  "/design/chat/kitchen?state=pdfOwn",
   "/design/chat/desserts",
   "/design/chat/noa",
   "/design/chat/noa?state=failed",
@@ -3856,6 +3858,20 @@ test("the chat demo sends a PDF from the attach sheet, stops one on its way, and
   await expect(
     page.getByText(c.pdfFailure.failed).filter({ visible: true }),
   ).toBeVisible();
+  await log.getByRole("button", { name: c.conversation.failed }).click();
+  await expect(log.getByRole("link", { name: /הזמנה לספק/ })).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // One her own PDFs of the last minutes kept back says so in its own words,
+  // keeps its retry, and goes when tried again.
+  await page.goto("/design/chat/kitchen?state=pdfOwn");
+  await expect(
+    page.getByText(c.pdfFailure.busyOwn).filter({ visible: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(c.pdfFailure.busy).filter({ visible: true }),
+  ).toHaveCount(0);
   await log.getByRole("button", { name: c.conversation.failed }).click();
   await expect(log.getByRole("link", { name: /הזמנה לספק/ })).toBeVisible({
     timeout: 10_000,

@@ -25,6 +25,7 @@ export type PdfWords =
   | "noRoom"
   | "tooMany"
   | "busy"
+  | "busyOwn"
   | "notYet"
   | "failed"
   | "cancelled";
@@ -33,7 +34,8 @@ export type PdfWords =
  * What the screen does next with a PDF that was refused (`next`):
  * - `retry`: it stays on screen as not sent, with its way to try again (the
  *   same draft, so it never goes twice): the network, too many in a minute,
- *   the business's PDFs of the last minutes full, a business switched since;
+ *   the business's, or the sender's own, PDFs of the last minutes full, a
+ *   business switched since;
  * - `drop`: it can't go as it is (a demo business, no room in Storage, too
  *   many unsent, over 10 MB, not a PDF, PDFs not open here yet): it leaves
  *   the conversation, and what was written with it goes back to the field;
@@ -71,9 +73,10 @@ export function pdfRefusal(failure: ChatPdfActionFailure): {
     case "notUploaded":
       return { next: "upload", notice: null, refresh: false };
     case "busy":
+    case "busyOwn":
       return {
         next: "retry",
-        notice: { of: "pdfFailure", key: "busy" },
+        notice: { of: "pdfFailure", key: failure },
         refresh: false,
       };
     case "tooFast":
