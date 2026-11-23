@@ -1,6 +1,12 @@
 import type { StorageUse } from "@db/chat-files";
-import { FILES_GUARD_BYTES, STORAGE_PLAN_BYTES } from "@domain/chat-files";
 import {
+  CHAT_FILE_SPACE_MB,
+  FILES_GUARD_BYTES,
+  STORAGE_PLAN_BYTES,
+} from "@domain/chat-files";
+import { DOCUMENT_SPACE_MB } from "@domain/documents";
+import {
+  businessSpaceAlerts,
   DATABASE_PLAN_BYTES,
   DATABASE_TELL_BYTES,
   STORAGE_TELL_BYTES,
@@ -22,15 +28,23 @@ type KnownBucket = (typeof BUCKETS)[number];
 const isKnownBucket = (bucket: string): bucket is KnownBucket =>
   (BUCKETS as readonly string[]).includes(bucket);
 
+/** The most the team can give a business for each, in MB. */
+const SPACE_MOST_MB = {
+  documents: Math.max(...DOCUMENT_SPACE_MB),
+  chat: Math.max(...CHAT_FILE_SPACE_MB),
+};
+
 /**
  * The console's storage card (chat plan §6.6, C4), for the ConceptApp team:
  * how full the free plan is (the database of 500 MB, Storage of 1 GB, which
- * every business shares), Storage by kind, each business's chat files beside
- * its space, and every business's space added up, with a warning before
- * anything is refused: past 900 MB new chat files stop. Sizes and counts
- * only, from `public.admin_storage`: never a file, a conversation or a
- * person. Phone and tablet list the businesses; the desktop has a table.
- * `accents` are the businesses' colours, by id, from the console's list.
+ * every business shares), Storage by kind, each business's chat files and
+ * documents beside their spaces, and every business's space added up, with a
+ * warning before anything is refused: past 900 MB new chat files stop, and
+ * a business whose own space is filling is named (bigger teams), with how
+ * much more it can be given. Sizes and counts only, from
+ * `public.admin_storage`: never a file, a conversation or a person. Phone and
+ * tablet list the businesses; the desktop has a table. `accents` are the
+ * businesses' colours, by id, from the console's list.
  */
 export async function StorageCard({
   use,
@@ -113,6 +127,42 @@ export async function StorageCard({
     });
   }
 
+  // Each business near or past its own space, the most urgent first.
+  for (const alert of businessSpaceAlerts(use.businesses)) {
+    const used = unit(alert.usedBytes);
+    const cap = unit(alert.capBytes);
+    const key =
+      alert.kind === "chat"
+        ? "chatNear"
+        : alert.state === "full"
+          ? "documentsFull"
+          : "documentsNear";
+    const text = t.rich(`alerts.${key}`, {
+      name: alert.name,
+      used: used.value,
+      usedUnit: used.unit,
+      cap: cap.value,
+      capUnit: cap.unit,
+      ltr,
+    });
+    const most = SPACE_MOST_MB[alert.kind];
+    const raise =
+      alert.capBytes < most * 1024 * 1024
+        ? t.rich("alerts.raise", { max: most, ltr })
+        : null;
+    warnings.push({
+      key: `${alert.id}-${alert.kind}`,
+      danger: alert.state === "full",
+      text: raise ? (
+        <>
+          {text} {raise}
+        </>
+      ) : (
+        text
+      ),
+    });
+  }
+
   const chat = unit(use.chatCapsBytes);
   const documents = unit(use.documentCapsBytes);
   // The free plan, one row each: what is used of it, its share, and a bar.
@@ -153,6 +203,21 @@ export async function StorageCard({
       }),
     },
   ];
+  const spaceLine = (
+    key: "chatLine" | "documentsLine",
+    used: number,
+    plan: number,
+  ) => {
+    const a = unit(used);
+    const b = unit(plan);
+    return t.rich(key, {
+      used: a.value,
+      usedUnit: a.unit,
+      plan: b.value,
+      planUnit: b.unit,
+      ltr,
+    });
+  };
   const markOf = (business: { id: string; name: string }) => {
     const accent = accents.get(business.id.toLowerCase());
     return accent ? (
@@ -244,16 +309,35 @@ export async function StorageCard({
                     leading={markOf(business) ?? undefined}
                     title={business.name}
                     subtitle={
-                      business.filesOpen
-                        ? usedOf(business.chatBytes, business.chatCapBytes)
-                        : t("closed")
+                      business.filesOpen ? (
+                        <span className="flex flex-col">
+                          <span>
+                            {spaceLine(
+                              "chatLine",
+                              business.chatBytes,
+                              business.chatCapBytes,
+                            )}
+                          </span>
+                          {business.documentBytes !== null ? (
+                            <span>
+                              {spaceLine(
+                                "documentsLine",
+                                business.documentBytes,
+                                business.documentCapBytes,
+                              )}
+                            </span>
+                          ) : null}
+                        </span>
+                      ) : (
+                        t("closed")
+                      )
                     }
                   />
                 ))}
               </ListGroup>
             </div>
             <div className="hidden xl:block">
-              <BusinessTable use={use} t={t} amount={amount} markOf={markOf} />
+              <BusinessTable use={use} t={t} usedOf={usedOf} markOf={markOf} />
             </div>
           </>
         )}
@@ -265,16 +349,36 @@ export async function StorageCard({
 const th = "px-5 pt-4 pb-2.5 text-start font-medium text-ink-2 text-sm";
 const td = "px-5 py-3 border-line border-t";
 
-/** Desktop: one row per business, its chat files beside its space. */
+/**
+ * A space's cell: what is used of it, and its bar.
+ */
+function SpaceCell({
+  used,
+  space,
+  usedOf,
+}: {
+  used: number;
+  space: number;
+  usedOf: (used: number, plan: number) => ReactNode;
+}) {
+  return (
+    <span className="flex max-w-56 flex-col gap-1.5">
+      <span>{usedOf(used, space)}</span>
+      <CoverageBar filled={storageShare(used, space)} total={100} />
+    </span>
+  );
+}
+
+/** Desktop: one row per business, its chat files and documents beside their spaces. */
 function BusinessTable({
   use,
   t,
-  amount,
+  usedOf,
   markOf,
 }: {
   use: StorageUse;
   t: Awaited<ReturnType<typeof getTranslations<"admin.storage">>>;
-  amount: (bytes: number) => ReactNode;
+  usedOf: (used: number, plan: number) => ReactNode;
   markOf: (business: { id: string; name: string }) => ReactNode;
 }) {
   return (
@@ -287,12 +391,11 @@ function BusinessTable({
               {t("business")}
             </th>
             <th scope="col" className={th}>
-              {t("chatUsed")}
+              {t("chatColumn")}
             </th>
             <th scope="col" className={th}>
-              {t("chatCap")}
+              {t("documentsColumn")}
             </th>
-            <td className={cn(th, "w-48")} />
           </tr>
         </thead>
         <tbody>
@@ -304,23 +407,30 @@ function BusinessTable({
                   {business.name}
                 </span>
               </th>
-              <td className={td}>{amount(business.chatBytes)}</td>
-              <td className={cn(td, "text-ink-2")}>
-                {business.filesOpen
-                  ? amount(business.chatCapBytes)
-                  : t("closed")}
-              </td>
-              <td className={td}>
-                {business.filesOpen ? (
-                  <CoverageBar
-                    filled={storageShare(
-                      business.chatBytes,
-                      business.chatCapBytes,
-                    )}
-                    total={100}
-                  />
-                ) : null}
-              </td>
+              {business.filesOpen ? (
+                <>
+                  <td className={td}>
+                    <SpaceCell
+                      used={business.chatBytes}
+                      space={business.chatCapBytes}
+                      usedOf={usedOf}
+                    />
+                  </td>
+                  <td className={td}>
+                    {business.documentBytes !== null ? (
+                      <SpaceCell
+                        used={business.documentBytes}
+                        space={business.documentCapBytes}
+                        usedOf={usedOf}
+                      />
+                    ) : null}
+                  </td>
+                </>
+              ) : (
+                <td colSpan={2} className={cn(td, "text-ink-2")}>
+                  {t("closed")}
+                </td>
+              )}
             </tr>
           ))}
         </tbody>

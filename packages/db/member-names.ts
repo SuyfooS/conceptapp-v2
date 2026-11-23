@@ -3,6 +3,7 @@ import { shownName } from "@domain/people";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import type { Database } from "./database.types";
+import { readAllPages, readAllPagesIn } from "./pages";
 
 /** The names a business keeps for its people, by their id in lower case. */
 export type MemberNames = ReadonlyMap<string, string>;
@@ -37,12 +38,25 @@ export async function memberNames(
   people?: readonly string[],
 ): Promise<MemberNames> {
   if (people && people.length === 0) return new Map();
-  let query = supabase
-    .from("member_names")
-    .select("user_id, name")
-    .eq("business_id", businessId);
-  if (people) query = query.in("user_id", [...people]);
-  const { data, error } = await query;
+  // Names are kept for those who left too, so page by page, and many people
+  // in parts so the address stays short.
+  const read = (
+    part: readonly string[] | undefined,
+    first: number,
+    last: number,
+  ) => {
+    let query = supabase
+      .from("member_names")
+      .select("user_id, name")
+      .eq("business_id", businessId);
+    if (part) query = query.in("user_id", [...part]);
+    return query.order("user_id").range(first, last);
+  };
+  const { data, error } = people
+    ? await readAllPagesIn(people, (part, first, last) =>
+        read(part, first, last),
+      )
+    : await readAllPages((first, last) => read(undefined, first, last));
   // PostgREST's and Postgres's "no such table", as `isMissingTable` says
   // it (./notifications, which reads these names: no import both ways).
   if (error?.code === "PGRST205" || error?.code === "42P01") return new Map();

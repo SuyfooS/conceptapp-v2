@@ -411,7 +411,7 @@ select throws_ok(
 select throws_ok(
   $$select public.send_document(pg_temp.person('shiran'), pg_temp.biz_r(), 'to_people', 'form',
     'A title', null, '{}'::uuid[], false, null, null, '2026-11-05 09:01+00')$$,
-  '22023', 'One to 200 people', 'nor to nobody'
+  '22023', 'One to 1000 people', 'nor to nobody'
 );
 select throws_ok(
   $$select public.send_document(pg_temp.person('noa'), pg_temp.biz_r(), 'from_person', 'form',

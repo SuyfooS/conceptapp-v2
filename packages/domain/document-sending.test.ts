@@ -55,7 +55,7 @@ describe("what the documents' actions take", () => {
       { ...base, file_path: "x" },
       { ...base, to: [] },
       { ...base, to: ["../admin"] },
-      { ...base, to: Array.from({ length: 201 }, (_, n) => person(n + 1)) },
+      { ...base, to: Array.from({ length: 1001 }, (_, n) => person(n + 1)) },
       { ...base, title: "x".repeat(1001) },
     ]) {
       expect(documentSendInput.safeParse(input).success).toBe(false);
@@ -63,7 +63,7 @@ describe("what the documents' actions take", () => {
     expect(
       documentSendInput.safeParse({
         ...base,
-        to: Array.from({ length: 200 }, (_, n) => person(n + 1)),
+        to: Array.from({ length: 1000 }, (_, n) => person(n + 1)),
       }).success,
     ).toBe(true);
   });

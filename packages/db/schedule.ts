@@ -147,6 +147,8 @@ export async function getOwnPublishedShifts(
 ): Promise<Pick<WeekScheduleShift, "day" | "start" | "end" | "assignees">[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
+    // bounded: one person's shifts over a few days, of at most 200 a
+    // week (raising that cap must page this).
     .from("schedule_shifts")
     .select(
       "day, starts_at, ends_at, shift_assignments!inner (user_id, position_key), schedule_weeks!inner (schedule_published_at)",
@@ -192,6 +194,8 @@ export async function getPublishedShifts(
 > {
   const supabase = await createClient();
   const { data, error } = await supabase
+    // bounded: eight days of published shifts, at most 200 a week
+    // (raising that cap must page this).
     .from("schedule_shifts")
     .select(
       "id, day, name, starts_at, ends_at, pattern_key, shift_assignments (user_id), schedule_weeks!inner (schedule_published_at)",
@@ -289,6 +293,8 @@ export async function getWeekSchedule(weekId: string): Promise<StoredShift[]> {
 async function weekScheduleBefore(weekId: string): Promise<StoredShift[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
+    // bounded: one week, at most 200 shifts (raising that cap must
+    // page this).
     .from("schedule_shifts")
     .select(
       "id, day, name, starts_at, ends_at, needed, pattern_key, shift_assignments (user_id, position_key)",

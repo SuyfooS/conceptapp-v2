@@ -1,4 +1,5 @@
 import {
+  DOCUMENT_RECIPIENTS_MAX,
   type DocumentCategory,
   type DocumentDirection,
   type DocumentMark,
@@ -319,15 +320,15 @@ export type DocumentAudience =
 /**
  * The people a document to people goes to, resolved on the screen so it can
  * say how many: one person, a department's people, or everyone on the staff.
- * Only people on the staff (`staff`, by id), never the sender, at most 200
- * (public.send_document's limit), in a stable order.
+ * Only people on the staff (`staff`, by id), never the sender, in a stable
+ * order: every one of them, never cut short. Whether they fit one document
+ * is `audienceFits`'s.
  */
 export function audienceOf(
   audience: DocumentAudience,
   staff: readonly string[],
   departments: readonly { id: string; members: readonly string[] }[],
   sender: string,
-  max = 200,
 ): string[] {
   const me = sender.toLowerCase();
   const onStaff = new Set(staff.map((id) => id.toLowerCase()));
@@ -351,8 +352,20 @@ export function audienceOf(
       return unhandled;
     }
   }
-  return [...new Set(chosen)]
-    .filter((id) => onStaff.has(id))
-    .sort()
-    .slice(0, max);
+  return [...new Set(chosen)].filter((id) => onStaff.has(id)).sort();
+}
+
+/** Whether the people chosen go in one document: none yet, they fit, or more than it takes. */
+export type AudienceFit = "none" | "fits" | "tooMany";
+
+/**
+ * Whether `people` go in one document (public.send_document takes 1 to
+ * `max`): past it the screen says how many were chosen and sends nothing.
+ */
+export function audienceFits(
+  people: readonly string[],
+  max = DOCUMENT_RECIPIENTS_MAX,
+): AudienceFit {
+  if (people.length === 0) return "none";
+  return people.length > max ? "tooMany" : "fits";
 }

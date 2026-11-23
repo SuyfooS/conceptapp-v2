@@ -1,3 +1,4 @@
+import { getFileSpace } from "@db/chat-files";
 import { getDepartments } from "@db/departments";
 import { getOrderFloor } from "@db/orders";
 import {
@@ -12,6 +13,7 @@ import { notFound } from "next/navigation";
 import { currentWording } from "../../current-wording";
 import { moduleMetadata } from "../../module-screen";
 import { saveModuleSettingsAction } from "../actions";
+import { FileSpaceSummary } from "../file-space-summary";
 import { manageAccess, modulesToManage, readOnlyFor } from "../manage";
 import { ModuleSettingsView } from "../module-settings-view";
 import { OrderFixesLine } from "../order-fixes-line";
@@ -30,6 +32,21 @@ async function orderFixesToday(businessId: string) {
   }
 }
 
+/**
+ * How full the business's spaces for files are, for chat's settings: null
+ * while viewing as a role (the database answers only its own people), where
+ * the business takes no files, before the migration, and when the read
+ * fails, so the settings always draw.
+ */
+async function fileSpaceNow(userId: string, businessId: string) {
+  try {
+    const space = await getFileSpace(userId, businessId);
+    return space?.filesOpen ? space : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function generateMetadata({
   params,
 }: PageProps<"/manage/[module]">): Promise<Metadata> {
@@ -40,7 +57,8 @@ export async function generateMetadata({
 // One module's settings, drawn from what its manifest declares, for whoever
 // sees the management page, saved by whoever edits it and the module too. A
 // module that is off, or has nothing the business may change, does not exist
-// here. Taking orders says today's fixes above them (P5).
+// here. Taking orders says today's fixes above them (P5), and chat how full
+// the business's spaces for documents and chat files are (bigger teams).
 export default async function ManageModulePage({
   params,
 }: PageProps<"/manage/[module]">) {
@@ -60,13 +78,16 @@ export default async function ManageModulePage({
   const manifest: ModuleManifest = manifestFor(key);
   const fields = fieldsFor(manifest.settings, access.level);
   // A setting chosen from the departments (who takes orders): the live ones.
-  const [departments, fixes] = await Promise.all([
+  const [departments, fixes, space] = await Promise.all([
     fields.some(
       (field) => field.kind === "editor" && field.editor === "departments",
     )
       ? getDepartments(access.businessId)
       : [],
     key === "order_taking" ? orderFixesToday(access.businessId) : null,
+    key === "chat" && !access.viewing
+      ? fileSpaceNow(access.userId, access.businessId)
+      : null,
   ]);
   return (
     <ModuleSettingsView
@@ -89,6 +110,8 @@ export default async function ManageModulePage({
             activityHref="/manage/activity"
             wording={wording}
           />
+        ) : space ? (
+          <FileSpaceSummary space={space} wording={wording} />
         ) : undefined
       }
       departments={

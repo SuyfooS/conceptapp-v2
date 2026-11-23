@@ -32,6 +32,7 @@ import type { Database } from "./database.types";
 import { memberNames, nameIn } from "./member-names";
 import { isMissingFunction } from "./missing";
 import { isMissingTable } from "./notifications";
+import { allPagesIn, readAllPages } from "./pages";
 import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
 
@@ -108,6 +109,7 @@ export async function getChatInbox(
   businessId: string,
 ): Promise<ChatInboxRow[] | "notYet"> {
   const supabase = await createClient();
+  // bounded: one person's chats in one business, in the list's order.
   const { data, error } = await supabase.rpc("chat_inbox", {
     business: businessId,
   });
@@ -132,10 +134,15 @@ export async function getChatDirectory(
 ): Promise<ChatDirectory> {
   const supabase = await createClient();
   const [members, names, departments] = await Promise.all([
-    supabase
-      .from("memberships")
-      .select("user_id, role, active, profiles (full_name, avatar_path)")
-      .eq("business_id", businessId),
+    // Everyone who ever joined, so page by page.
+    readAllPages((first, last) =>
+      supabase
+        .from("memberships")
+        .select("user_id, role, active, profiles (full_name, avatar_path)")
+        .eq("business_id", businessId)
+        .order("user_id")
+        .range(first, last),
+    ),
     memberNames(supabase, businessId),
     supabase
       .from("departments")
@@ -350,15 +357,20 @@ export async function getChatAuthors(
   const wanted = [...new Set(ids.filter(isUuid).map((id) => id.toLowerCase()))];
   if (wanted.length === 0) return [];
   const supabase = await createClient();
-  const [{ data, error }, names] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select("id, full_name, avatar_path")
-      .in("id", wanted),
+  // A document's recipients can be hundreds: in parts, so the address stays
+  // short, each one row an id.
+  const [data, names] = await Promise.all([
+    allPagesIn(wanted, (part, first, last) =>
+      supabase
+        .from("profiles")
+        .select("id, full_name, avatar_path")
+        .in("id", part)
+        .order("id")
+        .range(first, last),
+    ),
     memberNames(supabase, businessId, wanted),
   ]);
-  if (error) throw error;
-  const found = new Map((data ?? []).map((row) => [row.id.toLowerCase(), row]));
+  const found = new Map(data.map((row) => [row.id.toLowerCase(), row]));
   return wanted.map((id) => {
     const row = found.get(id);
     return {
@@ -486,6 +498,7 @@ export async function getMessages({
 }): Promise<ChatMessage[]> {
   if (!isUuid(conversationId)) return [];
   const supabase = await createClient();
+  // bounded: page_limit, at most CHAT_PAGE_SIZE (50).
   const { data, error } = await supabase.rpc("chat_page", {
     business: businessId,
     conversation: conversationId.toLowerCase(),
@@ -521,6 +534,7 @@ export async function withOwnDrafts(
   if (own.length === 0) return [...messages];
   const supabase = await createClient();
   const { data, error } = await supabase
+    // bounded: the reader's own among the messages of one screen's page.
     .from("chat_messages")
     .select("id, draft_id")
     .eq("author_id", reader)
@@ -599,6 +613,7 @@ export async function getMessagesById(
   if (!isUuid(conversationId) || wanted.length === 0) return [];
   const supabase = await createClient();
   const { data, error } = await supabase
+    // bounded: the ids a screen sends, at most REMOVED_SENT_MAX.
     .from("chat_messages")
     .select(MESSAGE_COLUMNS)
     .eq("business_id", businessId)
@@ -653,6 +668,7 @@ export async function getOwnConfirmations(
   if (wanted.length === 0) return new Set();
   const supabase = await createClient();
   const { data, error } = await supabase
+    // bounded: the reader's own, of the announcements on one screen.
     .from("chat_acks")
     .select("message_id")
     .in("message_id", wanted);
@@ -838,21 +854,26 @@ export async function chatSeen(conversationId: string): Promise<string | null> {
 /**
  * Who of the group confirmed an announcement, and when (null: not yet), for
  * its author and the moderators (`public.announcement_readers`); nobody for
- * anyone else.
+ * anyone else. One row a member of the group but its author, confirmed or
+ * not, and the whole team's group holds everyone on the staff: page by page.
  */
 export async function announcementReaders(
   messageId: string,
 ): Promise<{ person: string; ackedAt: string | null }[]> {
   if (!isUuid(messageId)) return [];
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("announcement_readers", {
-    message: messageId.toLowerCase(),
-  });
-  if (error) {
-    if (isMissingFunction(error)) return [];
-    throw error;
+  const message = messageId.toLowerCase();
+  const readers = await readAllPages((first, last) =>
+    supabase
+      .rpc("announcement_readers", { message })
+      .order("person")
+      .range(first, last),
+  );
+  if (readers.error) {
+    if (isMissingFunction(readers.error)) return [];
+    throw readers.error;
   }
-  return (data ?? []).map((row) => ({
+  return readers.data.map((row) => ({
     person: row.person,
     ackedAt: row.acked_at ?? null,
   }));

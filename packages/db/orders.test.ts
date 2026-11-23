@@ -26,6 +26,8 @@ vi.mock("./supabase/server", () => ({
         select: () => query,
         eq: () => query,
         in: () => query,
+        order: () => query,
+        range: () => query,
         // biome-ignore lint/suspicious/noThenProperty: PostgREST's builders are awaited
         then: (resolve: (value: unknown) => void) =>
           resolve({

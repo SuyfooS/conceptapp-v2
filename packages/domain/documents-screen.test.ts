@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { DOCUMENT_RECIPIENTS_MAX } from "./documents";
 import {
+  audienceFits,
   audienceOf,
   type DocumentShown,
   documentDirectory,
@@ -276,5 +278,40 @@ describe("to whom a document goes", () => {
         SHIRAN,
       ),
     ).toEqual([]);
+  });
+});
+
+describe("a document to a bigger team", () => {
+  /** The `n`th person on a big staff. */
+  const nth = (n: number) =>
+    `00000000-0000-4000-a000-${n.toString(16).padStart(12, "0")}`;
+  const many = (count: number, from = 0) =>
+    Array.from({ length: count }, (_, n) => nth(from + n));
+
+  it("goes to everyone, never cut short, sorted and never the sender", () => {
+    const staff = many(1501);
+    const sender = nth(700);
+    const everyone = audienceOf({ kind: "everyone" }, staff, [], sender);
+    expect(everyone).toHaveLength(1500);
+    expect(everyone).not.toContain(sender);
+    expect(everyone).toEqual([...everyone].sort());
+    const kitchen = { id: "kitchen", members: many(1200, 100) };
+    expect(
+      audienceOf(
+        { kind: "department", department: "kitchen" },
+        staff,
+        [kitchen],
+        sender,
+      ),
+    ).toHaveLength(1199);
+  });
+
+  it("fits one document up to 1,000 people, and says when more are chosen", () => {
+    expect(audienceFits([])).toBe("none");
+    expect(audienceFits(many(1))).toBe("fits");
+    expect(audienceFits(many(1000))).toBe("fits");
+    expect(audienceFits(many(1001))).toBe("tooMany");
+    expect(audienceFits(many(3), 2)).toBe("tooMany");
+    expect(DOCUMENT_RECIPIENTS_MAX).toBe(1000);
   });
 });

@@ -61,22 +61,26 @@ export const businesses: AdminBusiness[] = [
 const MB = 1024 * 1024;
 
 /** How full the demo's free plan is (`?storage=` on /design/console). */
-export type DemoStorageLevel = "low" | "high" | "full";
+export type DemoStorageLevel = "low" | "high" | "full" | "quota";
 
 /**
  * How full the free plan is, as the console's storage card reads it (sizes
  * only): `high` is a project past 700 MB whose businesses' space adds up past
  * the 900 MB where new chat files stop; `full` is one past those 900 MB,
- * where new chat files are refused now.
+ * where new chat files are refused now; `quota` (bigger teams) is a quiet
+ * project where businesses near their own spaces: one's documents at 47 of
+ * 50 MB, another's at 49.6 (full: less than a page's photo left), and a
+ * third's chat files at 171 of 200 MB.
  */
 export function demoStorage(level: DemoStorageLevel): StorageUse {
-  const high = level !== "low";
+  const high = level === "high" || level === "full";
   const chat = (
     id: string,
     name: string,
     slug: string,
     used: number,
     cap: number,
+    documents = 0,
   ) => ({
     id,
     slug,
@@ -85,30 +89,39 @@ export function demoStorage(level: DemoStorageLevel): StorageUse {
     filesOpen: cap > 0,
     chatCapBytes: cap * MB,
     documentCapBytes: cap > 0 ? 50 * MB : 0,
+    documentBytes: Math.round(documents * MB),
   });
   const businessesUse =
     level === "full"
       ? [
-          chat("4", "השולחן של סבתא", "shulchan", 200, 200),
-          chat("3", "בר הים", "bar-hayam", 199, 200),
-          chat("1", "קפה נועה", "cafe-noa", 197, 200),
-          chat("5", "פיצה בכיכר", "pizza", 196, 200),
+          chat("4", "השולחן של סבתא", "shulchan", 200, 200, 31),
+          chat("3", "בר הים", "bar-hayam", 199, 200, 22),
+          chat("1", "קפה נועה", "cafe-noa", 197, 200, 18),
+          chat("5", "פיצה בכיכר", "pizza", 196, 200, 9.4),
           chat("2", "מסעדת הדגמה", "demo-restaurant", 0, 0),
         ]
       : high
         ? [
-            chat("4", "השולחן של סבתא", "shulchan", 196, 200),
-            chat("3", "בר הים", "bar-hayam", 188, 200),
-            chat("1", "קפה נועה", "cafe-noa", 171, 200),
-            chat("5", "פיצה בכיכר", "pizza", 120, 200),
+            chat("4", "השולחן של סבתא", "shulchan", 196, 200, 28),
+            chat("3", "בר הים", "bar-hayam", 188, 200, 20),
+            chat("1", "קפה נועה", "cafe-noa", 171, 200, 16),
+            chat("5", "פיצה בכיכר", "pizza", 120, 200, 8.2),
             chat("2", "מסעדת הדגמה", "demo-restaurant", 0, 0),
           ]
-        : [
-            chat("3", "בר הים", "bar-hayam", 97, 100),
-            chat("4", "השולחן של סבתא", "shulchan", 64, 100),
-            chat("1", "קפה נועה", "cafe-noa", 12.5, 100),
-            chat("2", "מסעדת הדגמה", "demo-restaurant", 0, 0),
-          ];
+        : level === "quota"
+          ? [
+              chat("3", "בר הים", "bar-hayam", 171, 200, 12),
+              chat("4", "השולחן של סבתא", "shulchan", 64, 100, 49.6),
+              chat("1", "קפה נועה", "cafe-noa", 12.5, 100, 47),
+              chat("5", "פיצה בכיכר", "pizza", 8, 100, 3.1),
+              chat("2", "מסעדת הדגמה", "demo-restaurant", 0, 0),
+            ]
+          : [
+              chat("3", "בר הים", "bar-hayam", 74, 100, 12),
+              chat("4", "השולחן של סבתא", "shulchan", 64, 100, 4.2),
+              chat("1", "קפה נועה", "cafe-noa", 12.5, 100, 0.8),
+              chat("2", "מסעדת הדגמה", "demo-restaurant", 0, 0),
+            ];
   const chatBytes = businessesUse.reduce((sum, b) => sum + b.chatBytes, 0);
   const lists = (high ? 104 : 38) * MB;
   const avatars = 6.4 * MB;

@@ -238,6 +238,7 @@ export async function cleanListPhotos(at?: Date): Promise<number> {
   const admin = createAdminClient();
   let removed = 0;
   for (let batch = 0; batch < CLEAN_BATCHES; batch += 1) {
+    // bounded: max_rows, CLEAN_BATCH (500) a batch.
     const { data, error } = await admin.rpc("expired_list_photos", {
       max_rows: CLEAN_BATCH,
       ...(at ? { at_time: at.toISOString() } : {}),

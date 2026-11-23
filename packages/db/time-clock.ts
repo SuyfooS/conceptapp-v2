@@ -426,14 +426,18 @@ export async function getClockPeople(
   businessId: string,
 ): Promise<ClockPerson[]> {
   const supabase = await createClient();
-  const [{ data, error }, names] = await Promise.all([
-    supabase
-      .from("memberships")
-      .select("user_id, role, active, profiles (full_name)")
-      .eq("business_id", businessId),
+  // Everyone who ever joined, so page by page.
+  const [data, names] = await Promise.all([
+    allPages((first, last) =>
+      supabase
+        .from("memberships")
+        .select("user_id, role, active, profiles (full_name)")
+        .eq("business_id", businessId)
+        .order("user_id")
+        .range(first, last),
+    ),
     memberNames(supabase, businessId),
   ]);
-  if (error) throw error;
   return data.map((row) => ({
     userId: row.user_id,
     name: nameIn(names, row.user_id, row.profiles?.full_name),
@@ -571,16 +575,20 @@ export async function getEntriesToConfirm(
   since: Date,
 ): Promise<TimeEntry[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("time_entries")
-    .select(ENTRY_COLUMNS)
-    .eq("business_id", businessId)
-    .is("cancelled_at", null)
-    .gte("clock_in", since.toISOString())
-    .or("in_proof.in.(none,self),out_proof.in.(none,self)")
-    .order("clock_in");
-  if (error) throw error;
-  return data.map(entryOf).filter((entry) => entryToConfirm(entry) !== null);
+  // A business punching by itself ("self") makes thousands in two months.
+  const rows = await allPages((first, last) =>
+    supabase
+      .from("time_entries")
+      .select(ENTRY_COLUMNS)
+      .eq("business_id", businessId)
+      .is("cancelled_at", null)
+      .gte("clock_in", since.toISOString())
+      .or("in_proof.in.(none,self),out_proof.in.(none,self)")
+      .order("clock_in")
+      .order("id")
+      .range(first, last),
+  );
+  return rows.map(entryOf).filter((entry) => entryToConfirm(entry) !== null);
 }
 
 type CancelledRow = EntryRow & {

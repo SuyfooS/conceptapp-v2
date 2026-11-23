@@ -11,6 +11,7 @@ import {
   demoDocumentMark,
   demoDocumentsBy,
   demoSeededSickNote,
+  demoStaffCount,
   endViewSessions,
   forgetDemoDocuments,
   retireDemoDocuments,
@@ -20,6 +21,7 @@ import {
 import { minimalPdf } from "./pdf";
 import { cameraPhoto } from "./photo";
 import { secondPage, signIn } from "./session";
+import { heT } from "./t";
 import { unzip } from "./unzip";
 
 // Official documents on screen (chat C7; the database is C6's,
@@ -594,6 +596,33 @@ test("a sample's file is the office's and its person's alone, in the shop too", 
     headers: { "sec-fetch-site": "same-origin", "next-router-prefetch": "1" },
   });
   expect(prefetch.status()).toBe(404);
+});
+
+// Bigger teams: "כל הצוות" is everyone on the staff but the sender, never
+// cut short, so the count is the database's. Nothing is sent: a document to
+// everyone would ring every bell in the shared demo.
+test("the send screen counts the whole team as the database does", async ({
+  page,
+}) => {
+  await enterAs(page, "owner");
+  await page.goto("/chat/documents/send?to=people");
+  await page.waitForLoadState("networkidle");
+  await page
+    .getByRole("button", { name: d.send.toEveryone, exact: true })
+    .filter({ visible: true })
+    .click();
+  const count = await demoStaffCount(RESTAURANT, URI.id);
+  expect(count).toBeGreaterThan(1);
+  await expect(
+    page
+      .getByRole("main")
+      .getByRole("status")
+      .filter({
+        hasText: heT("app.chat.documents.send.count", { count }),
+      })
+      .filter({ visible: true }),
+  ).toBeVisible();
+  await expectCleanPage(page);
 });
 
 test("viewing as a manager shows only that documents aren't shown", async ({

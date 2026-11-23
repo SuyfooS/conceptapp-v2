@@ -67,11 +67,9 @@ async function Demo({ params, searchParams }: Props) {
         : key,
     ),
   };
-  // Chat on too, as the console's "מי רואה שכר" twin has its documents.
-  const enabled = [
-    ...enabledModules(manifests, demoModuleRows),
-    "chat" as const,
-  ];
+  // Chat is on in the twin's modules, as the console's "מי רואה שכר" twin
+  // has its documents.
+  const enabled = enabledModules(manifests, demoModuleRows);
   const business = `/design/console/businesses/${slug}`;
   const data = consoleRolesData({
     matrix,
