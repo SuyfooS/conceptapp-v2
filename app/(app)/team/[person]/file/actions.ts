@@ -54,8 +54,10 @@ import {
  * reveal without a fresh one never reaches the database, which asks for its
  * own as well (a refusal there locks the screen). Each reveal is logged
  * there. A holder's writes (H6b-1: an account confirmed, a part handed
- * directly) go the same way: no fresh step-up, no call to the database, and
- * never on the session's own file. Whatever slides or closes the cookie
+ * directly) go with the secret key, so they ask the database's step-up for
+ * this sign-in first, never the cookie alone, which "נעילת התיק" and
+ * signing out can't take back from a copy: no live step-up there, no write,
+ * and never on the session's own file. Whatever slides or closes the cookie
  * slides or closes the database's step-up with it. Nothing typed and no
  * value is logged here: a failure logs its code.
  */
@@ -294,8 +296,9 @@ function writeFailure(
  * `seenChangedAt` going back exactly as it came. Changed again meanwhile,
  * it says so and draws the screen with the newer change; confirmed by
  * someone else meanwhile, it says that. Never the session's own account,
- * and never without a fresh step-up on this device, before any call.
- * Logged there (`employee.bank_ack`); it slides the 15 minutes.
+ * and never without a live step-up for this sign-in in the database, asked
+ * and slid there before any write (`keepFileOpen`), since the write goes
+ * with the secret key. Logged there (`employee.bank_ack`).
  */
 export async function acknowledgeBankAction(
   business: string,
@@ -312,7 +315,9 @@ export async function acknowledgeBankAction(
   // The database refuses it too ('own'): the session's own file is /me/file.
   if (whose.data === who.userId) return { ok: false, failure: "noAccess" };
   try {
-    if (!(await fileOpenFor(who.businessId, who.userId))) {
+    // The database's word, not the cookie's: a copied cookie outlives the
+    // lock and signing out. One it no longer holds closes the cookie too.
+    if (!(await keepFileOpen(who.businessId, who.userId))) {
       return { ok: false, failure: "stepUp" };
     }
     const done = await acknowledgeBank(
@@ -327,7 +332,6 @@ export async function acknowledgeBankAction(
       if (failure === "moved" || failure === "settled") refresh();
       return { ok: false, failure };
     }
-    await keepFileOpen(who.businessId, who.userId);
     refresh();
     return { ok: true };
   } catch (error) {
@@ -345,9 +349,10 @@ export async function acknowledgeBankAction(
  * first), which offers no "ביטול", and an undo after someone else took the
  * change back writes nothing. A part the business doesn't ask is refused
  * for a mark. Never the session's own file (`set_direct_groups` doesn't
- * check it), and never without a fresh step-up, before any call. Logged
- * there (`employee.direct`, for a change only); it slides the 15 minutes,
- * and the page is drawn again either way, with the marks as they are.
+ * check it), and never without a live step-up for this sign-in in the
+ * database, asked and slid there before any write (`keepFileOpen`), as for
+ * an account. Logged there (`employee.direct`, for a change only), and the
+ * page is drawn again either way, with the marks as they are.
  */
 export async function markDirectGroupAction(
   business: string,
@@ -365,7 +370,7 @@ export async function markDirectGroupAction(
   }
   if (whose.data === who.userId) return { ok: false, failure: "noAccess" };
   try {
-    if (!(await fileOpenFor(who.businessId, who.userId))) {
+    if (!(await keepFileOpen(who.businessId, who.userId))) {
       return { ok: false, failure: "stepUp" };
     }
     const done = await markDirectGroup(
@@ -376,7 +381,6 @@ export async function markDirectGroupAction(
       mark.data,
     );
     if (!done.ok) return { ok: false, failure: writeFailure(done, "failed") };
-    await keepFileOpen(who.businessId, who.userId);
     refresh();
     return { ok: true, changed: done.changed };
   } catch (error) {

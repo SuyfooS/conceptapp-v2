@@ -110,8 +110,10 @@ export async function openFileFor(
  * for a step-up that is still fresh only, in the cookie and the database,
  * so this never opens anything. One the database no longer holds (its own
  * 15 minutes, a lock on this sign-in) closes the cookie too. Whether it was
- * open. Actions only, and never for a screen's clock or for another tab's
- * word (`fileOpenLeft`).
+ * open, as the database says: what a holder's write, which goes with the
+ * secret key, asks before it goes, since a copied cookie outlives the lock
+ * and signing out. Actions only, and never for a screen's clock or for
+ * another tab's word (`fileOpenLeft`).
  */
 export async function keepFileOpen(
   business: string,

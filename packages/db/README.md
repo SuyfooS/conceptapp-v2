@@ -1776,7 +1776,11 @@ per role: owners always hold it, accountants by `private.accountant_perms`
   `private.file_step_up_live` counts one for 15 minutes after `active_at`
   and not more than a minute ahead, as `FILE_IDLE_MS` and
   `FILE_CLOCK_SKEW_MS` (`tooling/employee-files-guard.test.ts`). A holder's
-  read, reveal or export without one is `step_up`, logged. Opening is
+  read, reveal or export without one is `step_up`, logged. A holder's write
+  (`acknowledge_bank`, `set_direct_groups`, the secret key's) goes only once
+  the server slid this sign-in's row (`keep_file_step_up` true), never on
+  the cookie alone, which a lock or signing out can't take back from a
+  copy. Opening is
   refused with the module off, before the duties, for anyone but an active
   holder, without a sign-in (22023) and for 7 days after a phone change
   (55000 `phone_hold`, the day as DETAIL). Covered by

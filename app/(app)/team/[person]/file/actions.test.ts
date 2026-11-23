@@ -16,7 +16,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // database's step-up for this sign-in (20261127000400_file_step_up.sql) is
 // stood in for, with the session's claims: opened before the cookie is set,
 // slid with it, closed with it, and a cookie it no longer backs closed too;
-// and in the week after a phone change no code goes and none is checked.
+// a holder's write asks it before going, so a copied cookie writes nothing
+// after the lock; and in the week after a phone change no code goes and
+// none is checked.
 
 vi.mock("server-only", () => ({}));
 
@@ -707,6 +709,53 @@ describe("a holder's writes", () => {
     expect(mocks.markDirectGroup).not.toHaveBeenCalled();
   });
 
+  it("never go on a copied cookie after the lock: the database's step-up is asked first", async () => {
+    // The cookie copied from a computer left open, still fresh.
+    opened();
+    const copied = mocks.cookies.get(FILE_STEP_UP_COOKIE) ?? "";
+    // "נעילת התיק": the database's step-up for this sign-in goes.
+    expect(await lockFileAction(SHOP)).toEqual({ ok: true });
+    expect(mocks.closeFileStepUp).toHaveBeenCalledWith(URI, SESSION);
+    mocks.keepFileStepUp.mockResolvedValue(false);
+
+    mocks.cookies.set(FILE_STEP_UP_COOKIE, copied);
+    expect(await acknowledgeBankAction(SHOP, NOA, MOMENT)).toEqual({
+      ok: false,
+      failure: "stepUp",
+    });
+    // The copy is closed too, so the screen draws itself locked.
+    expect(mocks.cookies.has(FILE_STEP_UP_COOKIE)).toBe(false);
+    mocks.cookies.set(FILE_STEP_UP_COOKIE, copied);
+    expect(await markDirectGroupAction(SHOP, NOA, "bank", true)).toEqual({
+      ok: false,
+      failure: "stepUp",
+    });
+    expect(mocks.cookies.has(FILE_STEP_UP_COOKIE)).toBe(false);
+
+    expect(mocks.keepFileStepUp).toHaveBeenCalledTimes(2);
+    expect(mocks.keepFileStepUp).toHaveBeenLastCalledWith(URI, SHOP, SESSION);
+    expect(mocks.acknowledgeBank).not.toHaveBeenCalled();
+    expect(mocks.markDirectGroup).not.toHaveBeenCalled();
+    expect(mocks.set).not.toHaveBeenCalled();
+  });
+
+  it("never go without this sign-in's own id", async () => {
+    opened();
+    mocks.currentAuthSession.mockResolvedValue(null);
+    expect(await acknowledgeBankAction(SHOP, NOA, MOMENT)).toEqual({
+      ok: false,
+      failure: "stepUp",
+    });
+    opened();
+    expect(await markDirectGroupAction(SHOP, NOA, "bank", true)).toEqual({
+      ok: false,
+      failure: "stepUp",
+    });
+    expect(mocks.keepFileStepUp).not.toHaveBeenCalled();
+    expect(mocks.acknowledgeBank).not.toHaveBeenCalled();
+    expect(mocks.markDirectGroup).not.toHaveBeenCalled();
+  });
+
   it("never write the session's own file", async () => {
     opened();
     expect(await acknowledgeBankAction(SHOP, URI, MOMENT)).toEqual({
@@ -746,7 +795,12 @@ describe("confirming an account", () => {
     });
     expect(mocks.acknowledgeBank).toHaveBeenCalledWith(URI, SHOP, NOA, MOMENT);
     expect(openedAt()).toBeGreaterThan(at);
+    // Asked of the database, and slid there, once and before the write.
+    expect(mocks.keepFileStepUp).toHaveBeenCalledTimes(1);
     expect(mocks.keepFileStepUp).toHaveBeenCalledWith(URI, SHOP, SESSION);
+    expect(mocks.keepFileStepUp.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.acknowledgeBank.mock.invocationCallOrder[0] ?? 0,
+    );
     expect(mocks.refresh).toHaveBeenCalledTimes(1);
   });
 
@@ -816,8 +870,16 @@ describe("marking a part handed directly", () => {
       false,
     );
     expect(openedAt()).toBeGreaterThan(at);
+    // Once a press, each before its write.
     expect(mocks.keepFileStepUp).toHaveBeenCalledTimes(2);
     expect(mocks.keepFileStepUp).toHaveBeenLastCalledWith(URI, SHOP, SESSION);
+    const [firstAsked, nextAsked] =
+      mocks.keepFileStepUp.mock.invocationCallOrder;
+    const [firstWrite, nextWrite] =
+      mocks.markDirectGroup.mock.invocationCallOrder;
+    expect(firstAsked).toBeLessThan(firstWrite ?? 0);
+    expect(nextAsked).toBeLessThan(nextWrite ?? 0);
+    expect(firstWrite).toBeLessThan(nextAsked ?? 0);
     expect(mocks.refresh).toHaveBeenCalledTimes(2);
   });
 
