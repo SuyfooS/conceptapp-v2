@@ -10,6 +10,7 @@ import { baseWording, translator } from "../../wording";
 import {
   currentBuildSwaps,
   currentBuildWeeks,
+  currentCopySource,
   currentScheduleBuild,
 } from "../week";
 import { saveScheduleAction } from "./actions";
@@ -44,11 +45,12 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
 // Whoever builds the schedule builds it here (`buildsSchedule`: owners and
 // managers by default, the roles plan's R3): next week, or with
 // `?week=<its first day>` the week running now (the running-week plan's R3a).
-// Any other week opens next week, and one already over says so. Someone who
-// builds without publishing saves drafts and reads a published week. Once it
-// is published, whoever builds it may share it with the team, unless viewing
-// as a role. Anyone else gets the not-found screen, as on the team
-// availability screen.
+// Any other week opens next week, and one already over says so. A draft with
+// a week before it that someone built offers copying that week onto the
+// screen. Someone who builds without publishing saves drafts and reads a
+// published week. Once it is published, whoever builds it may share it with
+// the team, unless viewing as a role. Anyone else gets the not-found screen,
+// as on the team availability screen.
 export default async function ScheduleBuildPage(props: Props) {
   const { weeks, which } = await askedWeek(props);
   if (!weeks) notFound();
@@ -63,13 +65,17 @@ export default async function ScheduleBuildPage(props: Props) {
     );
   }
   const start = which === "this" ? weeks.thisWeek : weeks.nextWeek;
-  const [data, swaps, thisWeek, nextWeek, member] = await Promise.all([
-    currentScheduleBuild(start),
-    currentBuildSwaps(start),
-    currentScheduleBuild(weeks.thisWeek),
-    currentScheduleBuild(weeks.nextWeek),
-    currentMember(),
-  ]);
+  const [data, swaps, thisWeek, nextWeek, member, lastWeek] = await Promise.all(
+    [
+      currentScheduleBuild(start),
+      currentBuildSwaps(start),
+      currentScheduleBuild(weeks.thisWeek),
+      currentScheduleBuild(weeks.nextWeek),
+      currentMember(),
+      // The week before, for "העתקה מהשבוע שעבר".
+      currentCopySource(start),
+    ],
+  );
   if (!data) notFound();
   // The regular shifts are set on the management page, which opens to those
   // who hold manage.view (`manageAccess`, R7): anyone else who builds is told
@@ -87,6 +93,7 @@ export default async function ScheduleBuildPage(props: Props) {
     <ScheduleBuildView
       data={data}
       swaps={swaps}
+      lastWeek={lastWeek}
       save={saveScheduleAction}
       manageHref={manageHref}
       publishes={weeks.publishes}

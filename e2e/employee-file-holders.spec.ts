@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { expect, type Page, type TestInfo, test } from "@playwright/test";
-import { FILE_TABS_CHANNEL } from "../app/(app)/team/[person]/file/file-tabs";
 import he from "../messages/he.json" with { type: "json" };
 import {
   bumpDemoBankChange,
@@ -27,6 +26,7 @@ import {
   setDemoModuleSettings,
   setDemoPeriodStart,
 } from "./db";
+import { hearFileCheck } from "./file-watch";
 import { enterAs, expectCleanPage } from "./orders-parts";
 import { SMS_COOLDOWN_MS, secondPage } from "./session";
 import { latestCode, setDemoModule } from "./sms";
@@ -139,40 +139,20 @@ async function sessionHere(page: Page): Promise<string> {
   return claims.session_id ?? "";
 }
 
-type Checked = Window & { fileChecked?: Promise<void> };
-
 /**
  * The duties, then the code: the file opens, and its own first check is
- * answered before the test goes on. That check slides the step-up, so its
- * answer sets the cookie again, and its 10 seconds' wait runs until then: a
- * cookie cleared, or time passed on the page's clock, before it answered
- * would race it. Answered open, it tells the device's other tabs a file is
- * in use, which a channel of the same name in this tab hears.
+ * answered before the test goes on (`hearFileCheck`), so a test may then
+ * clear the cookie or move the page's clock.
  */
 async function openFile(page: Page, phone: string) {
   await expect(main(page).getByText(f.duties.title)).toBeVisible();
   const code = await sendFileCode(page, f.duties.confirm, phone);
-  await page.evaluate((name) => {
-    const tabs = new BroadcastChannel(name);
-    (window as Checked).fileChecked = new Promise<void>((resolve) => {
-      tabs.onmessage = (event: MessageEvent) => {
-        if (event.data?.kind !== "active") return;
-        tabs.close();
-        resolve();
-      };
-    });
-  }, FILE_TABS_CHANNEL);
+  const checked = await hearFileCheck(page);
   await page.getByLabel(f.code.label).fill(code);
   await expect(
     main(page).getByRole("heading", { name: f.sections.identity }),
   ).toBeVisible();
-  const checked = await page.evaluate(async () => {
-    const answered = (window as Checked).fileChecked;
-    if (!answered) return false;
-    await answered;
-    return true;
-  });
-  expect(checked, "the file's own first check, waited for").toBe(true);
+  await checked();
 }
 
 test.beforeEach(async () => {
@@ -552,6 +532,20 @@ test("the owner confirms Noa's new account, after a change meanwhile is said", a
   await show.click();
   const digits = bank.getByText(/^\d{5,}$/);
   await expect(digits).toBeVisible();
+  // The reveal slides the step-up, so its answer also carries the page drawn
+  // again (a cookie set in an action), streamed in after the digits: its line
+  // in "מה קרה בתיק" says that drawing landed, read before the change below.
+  // Changed before it landed, the screen would already show the newer change
+  // and the press would confirm it, with nothing to say.
+  const history = main(page).getByRole("region", { name: f.history.title });
+  await expect(
+    shownIn(
+      history,
+      heT("app.team.file.history.reveal", {
+        fields: he.app.manage.activity.actions.employee.viewFields.bank_account,
+      }),
+    ),
+  ).toBeVisible();
 
   // Changed again while the screen was open: said, with the focus on it,
   // and the newer change drawn under the same button, its digits hidden
@@ -562,7 +556,6 @@ test("the owner confirms Noa's new account, after a change meanwhile is said", a
   await expect(moved).toHaveText(f.review.moved);
   await expect(moved).toBeFocused();
   await expect(confirm).toBeVisible();
-  await page.waitForLoadState("networkidle");
   await expect(digits).toHaveCount(0);
   await expect(show).toBeVisible();
 
@@ -581,7 +574,6 @@ test("the owner confirms Noa's new account, after a change meanwhile is said", a
     ),
   ).toEqual([{ action: "employee.bank_ack", actor: URI.id }]);
 
-  const history = main(page).getByRole("region", { name: f.history.title });
   await expect(shownIn(history, f.history.bankAck)).toBeVisible();
   await expect(shownIn(history, people.owner.name)).toBeVisible();
   await expectCleanPage(page);

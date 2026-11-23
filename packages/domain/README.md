@@ -141,4 +141,11 @@ whether someone reads every area's rows of the activity log
 (`LOG_AREA_PERMISSIONS`, the areas of the database's `private.log_perm`,
 kept equal by `tooling/log-families.test.ts`).
 
+`copy-week.ts` is "העתקה מהשבוע שעבר" on the schedule builder: last week as it
+stands once built (`copySourceOf`), what copying it onto the week on the
+screen does day by day and who it leaves out and why (`copyLastWeek`, its
+rules numbered), and whether the week was saved since the screen copied
+into it (`copiedOver`). It changes the screen only; the week's own write
+checks everything again when it is saved.
+
 Import as `@domain/<file>`.

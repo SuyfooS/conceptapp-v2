@@ -4,12 +4,16 @@ import he from "../messages/he.json" with { type: "json" };
 import { daysLeftToRight } from "../packages/domain/share";
 import { before, buildScreen, HOLD_MS } from "./build-screen";
 import {
+  buildDemoThisWeek,
   clearAvailability,
   clearSchedule,
+  type DemoWeekShift,
+  databaseNow,
   decideDemoSwap,
   demoActivityActions,
   demoRunningWeekClock,
   demoSwaps,
+  demoWeekPublished,
   publishDemoRunningWeek,
   requestDemoSwap,
   saveDemoRunningWeek,
@@ -711,6 +715,257 @@ test("a builder drawn before the week was first saved replaces nothing", async (
   ).toBeVisible();
   expect(await scheduleShifts()).toHaveLength(2);
   expect(await scheduleAssignments()).toEqual([
+    { weekday: 0, pattern: "morning", phone: NOA.e164, position: null },
+  ]);
+});
+
+// "העתקה מהשבוע שעבר": this week, as the copies into next week read it.
+// Sunday's morning has Noa (a waiter) and Yoav, its evening Noa, and
+// Monday's morning Yoav. Noa sent 09:00–17:00 for next Sunday, so she can't
+// do its evening; Yoav sent nothing, and is copied.
+const LAST_WEEK: DemoWeekShift[] = [
+  {
+    offset: 0,
+    name: "בוקר",
+    start: "09:00",
+    end: "16:00",
+    needed: 3,
+    pattern: "morning",
+    people: [
+      [NOA.e164, "waiter"],
+      [YOAV.e164, null],
+    ],
+  },
+  {
+    offset: 0,
+    name: "ערב",
+    start: "16:00",
+    end: "23:30",
+    needed: 4,
+    pattern: "evening",
+    people: [[NOA.e164, null]],
+  },
+  {
+    offset: 1,
+    name: "בוקר",
+    start: "09:00",
+    end: "16:00",
+    needed: 3,
+    pattern: "morning",
+    people: [[YOAV.e164, null]],
+  },
+];
+
+/**
+ * This week and next are read from the real clock, by the server and by the
+ * database helpers alike: the copy's specs skip within two hours of the
+ * restaurant's week turning, either side.
+ */
+async function skipNearTheWeekTurn() {
+  const clock = await demoRunningWeekClock();
+  test.skip(
+    clock.sinceStart < 120 || clock.untilEnd < 120,
+    "too close to the restaurant's week turning",
+  );
+  return clock;
+}
+
+/** The copy's sheet and its parts. */
+function copyScreen(page: Page) {
+  const tc = tb.copy;
+  const sheet = page.getByRole("dialog", { name: tc.title });
+  const days = sheet.getByRole("group", { name: tc.daysTitle, exact: true });
+  return {
+    action: page.getByRole("button", { name: tc.action }),
+    sheet,
+    /** Its row for a day (YYYY-MM-DD), as the sheet names it. */
+    day: (date: string) =>
+      days
+        .locator("div", {
+          has: page.getByText(
+            heT("app.build.day", {
+              day: weekdayOf(date),
+              date: dayMonthOf(date),
+            }),
+            { exact: true },
+          ),
+        })
+        .last(),
+    submit: (count: number) =>
+      sheet.getByRole("button", {
+        name: heT("app.build.copy.submit", { count }),
+      }),
+  };
+}
+
+/** The day `days` after `date` (YYYY-MM-DD). */
+const daysAfter = (date: string, days: number) =>
+  new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+
+// The copy only fills the screen: the sheet says what it will do and who it
+// leaves out, "ביטול" takes it back, and saving it writes a draft, with
+// nothing published and nobody told.
+test("a manager copies last week into next week, sees who was left out, and takes it back", async ({
+  page,
+}, testInfo) => {
+  await skipNearTheWeekTurn();
+  await buildDemoThisWeek(LAST_WEEK, true);
+  const since = await databaseNow();
+  const screen = buildScreen(page);
+  const copy = copyScreen(page);
+  await signIn(page, MANAGER);
+  await page.goto("/schedule/build");
+  await expect(
+    page.getByRole("heading", { level: 1, name: tb.title }),
+  ).toBeVisible();
+  const morning = screen.card("בוקר");
+  const evening = screen.card("ערב");
+  await expect(morning).toContainText(tb.nobody);
+
+  await copy.action.click();
+  await expect(copy.sheet).toContainText(
+    heT("app.build.copy.summary", { shifts: 3, people: 2 }),
+  );
+  const unavailable = screen.group(tb.groups.unavailable);
+  await expect(unavailable).toContainText(NOA.name);
+  await expect(unavailable).toContainText(
+    heT("app.build.copy.skippedOn", {
+      shift: "ערב",
+      day: he.app.availability.weekdays.sun,
+    }),
+  );
+  await expect(copy.sheet).toContainText(tb.copy.note);
+  await expectCleanPage(page);
+  await page.screenshot({
+    path: testInfo.outputPath("schedule-build-copy.png"),
+    fullPage: true,
+  });
+
+  await copy.submit(3).click();
+  await expect(copy.sheet).toHaveCount(0);
+  await expect(morning).toContainText(NOA.first);
+  await expect(morning).toContainText(YOAV.first);
+  await expect(evening).toContainText(tb.nobody);
+  await expect(page.getByText(tb.unsaved)).toBeVisible();
+  await page
+    .getByRole("status")
+    .filter({ hasText: heT("app.build.copy.done", { count: 3 }) })
+    .getByRole("button", { name: he.app.manage.undo, exact: true })
+    .click();
+  await expect(
+    page.getByRole("status").filter({ hasText: tb.copy.undone }),
+  ).toBeVisible();
+  await expect(morning).toContainText(tb.nobody);
+  expect(await scheduleAssignments("next")).toEqual([]);
+
+  // Copied again and saved: a draft, published to nobody.
+  await copy.action.click();
+  await copy.submit(3).click();
+  await expect(copy.sheet).toHaveCount(0);
+  await page.getByRole("button", { name: tb.submit }).click();
+  await expect(page.getByRole("status")).toHaveText(tb.saved);
+  expect(await scheduleAssignments("next")).toEqual([
+    { weekday: 0, pattern: "morning", phone: NOA.e164, position: "waiter" },
+    { weekday: 0, pattern: "morning", phone: YOAV.e164, position: null },
+    { weekday: 1, pattern: "morning", phone: YOAV.e164, position: null },
+  ]);
+  expect(await demoWeekPublished("next")).toBe(false);
+  expect(await demoActivityActions("schedule.publish", since)).toBe(0);
+});
+
+test("a day with people on it stays unless the manager replaces it", async ({
+  page,
+}) => {
+  const { startsOn } = await skipNearTheWeekTurn();
+  await buildDemoThisWeek(LAST_WEEK, true);
+  // Next week saved with Yoav on Sunday morning, and nothing on Monday.
+  await scheduleDemoSunday(
+    { morning: [[YOAV.e164, null]], evening: [] },
+    false,
+  );
+  const nextSunday = daysAfter(startsOn, 7);
+  const screen = buildScreen(page);
+  const copy = copyScreen(page);
+  await signIn(page, MANAGER);
+  await page.goto("/schedule/build");
+  const morning = screen.card("בוקר");
+  await expect(morning).toContainText(YOAV.first);
+
+  await copy.action.click();
+  await expect(copy.day(nextSunday)).toContainText(tb.copy.days.kept);
+  // Only Monday's morning, with Yoav.
+  await expect(copy.sheet).toContainText(
+    heT("app.build.copy.summary", { shifts: 1, people: 1 }),
+  );
+  await copy.sheet.getByRole("switch", { name: tb.copy.replace.label }).click();
+  await expect(copy.day(nextSunday)).toContainText(
+    heT("app.build.copy.days.replaced", { count: 2, was: 2 }),
+  );
+  await expect(copy.sheet).toContainText(
+    heT("app.build.copy.summary", { shifts: 3, people: 2 }),
+  );
+  await copy.submit(3).click();
+  await expect(copy.sheet).toHaveCount(0);
+  await expect(morning).toContainText(NOA.first);
+  await expect(morning).toContainText(YOAV.first);
+});
+
+test("copying is offered only for a draft with a last week", async ({
+  page,
+}) => {
+  const { startsOn } = await skipNearTheWeekTurn();
+  const screen = buildScreen(page);
+  const copy = copyScreen(page);
+  await signIn(page, MANAGER);
+  // Nobody built this week: nothing to copy.
+  await page.goto("/schedule/build");
+  await expect(screen.card("בוקר")).toHaveCount(1);
+  await expect(copy.action).toHaveCount(0);
+
+  // Both weeks published: a published week changes only by publishing it.
+  await buildDemoThisWeek(LAST_WEEK, true);
+  await scheduleDemoSunday({ morning: [[NOA.e164, null]], evening: [] }, true);
+  await page.reload();
+  await expect(screen.card("בוקר")).toContainText(NOA.first);
+  await expect(copy.action).toHaveCount(0);
+  await page.goto(`/schedule/build?week=${startsOn}`);
+  await expect(
+    page.getByRole("heading", { level: 1, name: tb.titleRunning }),
+  ).toBeVisible();
+  await expect(copy.action).toHaveCount(0);
+});
+
+// Two managers: one copies last week into next week's draft while the other
+// saves it. The copy is refused rather than written beside or over theirs.
+test("a copy into a week saved meanwhile on another screen is not saved", async ({
+  page,
+}) => {
+  await skipNearTheWeekTurn();
+  await buildDemoThisWeek(LAST_WEEK, true);
+  await scheduleDemoSunday(
+    { morning: [[YOAV.e164, null]], evening: [] },
+    false,
+  );
+  const screen = buildScreen(page);
+  const copy = copyScreen(page);
+  await signIn(page, MANAGER);
+  await page.goto("/schedule/build");
+  await expect(screen.card("בוקר")).toContainText(YOAV.first);
+  await copy.action.click();
+  await copy.submit(1).click();
+  await expect(copy.sheet).toHaveCount(0);
+
+  // The other manager saves next week meanwhile: Noa on Sunday morning.
+  await scheduleDemoSunday({ morning: [[NOA.e164, null]], evening: [] }, false);
+
+  await page.getByRole("button", { name: tb.submit }).click();
+  // (Next's route announcer is an empty alert of its own.)
+  await expect(
+    page.getByRole("alert").filter({ hasText: tb.errors.copySaved }),
+  ).toBeVisible();
+  expect(await scheduleAssignments("next")).toEqual([
     { weekday: 0, pattern: "morning", phone: NOA.e164, position: null },
   ]);
 });

@@ -2054,6 +2054,7 @@
         "teamChanged": "Someone on the schedule is no longer on the team, so the schedule was not saved. Refresh the screen, and the shifts they left show as missing.",
         "weekMoved": "A shift you changed has changed meanwhile, so the schedule was not saved. Refresh the screen to see it as it is now, and change it again.",
         "weekSaved": "The schedule was saved meanwhile on another screen, so the changes here were not saved. Refresh the screen to see it as it is now, and make them again.",
+        "copySaved": "The schedule was saved meanwhile on another screen, so the copy wasn't saved. Refresh the screen to see it as it is now, and you can copy again.",
         "clashMeanwhile": "Something in the schedule changed meanwhile, and now someone would be on two shifts at the same time, so the schedule was not saved. Refresh the screen to see it as it is now, and make the changes again.",
         "edgeClash": "{name} is already on the {shift} shift on {day} at <ltr>{time}</ltr> {week, select, previous {last week} this {this week} next {next week} other {the week after next}}, so the schedule was not {intent, select, save {saved. Put someone else on here or change the hours, and save again.} other {published. Put someone else on here or change the hours, and publish again.}}",
         "edgeClashUnnamed": "Someone here is already on a shift at the same time the week before or the week after, so the schedule was not {intent, select, save {saved. Refresh the screen, check the shifts at the start and end of the week, and save again.} other {published. Refresh the screen, check the shifts at the start and end of the week, and publish again.}}",
@@ -2095,6 +2096,39 @@
         "publish": "Publish the changes and leave",
         "discard": "Leave without saving",
         "stay": "Back to the schedule"
+      },
+      "copy": {
+        "action": "Copy last week",
+        "title": "Copy last week",
+        "subtitle": "From the week of <ltr>{from}–{to}</ltr>",
+        "intro": "Each day gets the shifts of the same day last week, at the same hours and with the same people.",
+        "draftSource": "Last week wasn't published, so its draft is copied as it was saved.",
+        "summary": "{shifts, plural, one {One shift will be copied} other {# shifts will be copied}}, {people, plural, =0 {with nobody on them} one {with one person} other {with # people}}.",
+        "daysTitle": "Day by day",
+        "days": {
+          "copied": "{count, plural, one {One shift} other {# shifts}}",
+          "replaced": "{count, plural, one {One shift} other {# shifts}} instead of {was, plural, one {the one it has} other {the # it has}}",
+          "kept": "People are already on it, so it stays as it is",
+          "none": "It had no shifts last week, so it stays as it is",
+          "past": "The shifts it would get have already started, so it stays as it is"
+        },
+        "replace": {
+          "label": "Also replace days that already have people",
+          "hint": "{count, plural, one {One day gets last week's shifts instead of what is on it.} other {# days get last week's shifts instead of what is on them.}}"
+        },
+        "skippedTitle": "Who wasn't copied",
+        "skippedOn": "{shift}, {day}",
+        "offStaff": "No longer work shifts",
+        "gone": "{count, plural, one {One person who is no longer on the team wasn't copied.} other {# people who are no longer on the team weren't copied.}}",
+        "note": "Nothing is saved or sent to the team until you save or publish.",
+        "submit": "{count, plural, one {Copy one shift} other {Copy # shifts}}",
+        "nothing": {
+          "kept": "Nothing to copy: every day it could copy to already has people on it. To replace them too, turn on the switch.",
+          "past": "Nothing to copy: every shift it would copy has already started this week."
+        },
+        "tooMany": "This can't be copied: the week would have more than <ltr>{max}</ltr> shifts.",
+        "done": "{count, plural, one {One shift copied from last week} other {# shifts copied from last week}}. Nothing is saved yet.",
+        "undone": "The copy was undone, and the schedule is back as it was."
       },
       "editor": {
         "name": "Shift name",

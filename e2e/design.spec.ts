@@ -2,12 +2,14 @@ import { readFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { createTranslator } from "next-intl";
+import { FILE_TABS_TWIN_CHANNEL } from "../app/(app)/team/[person]/file/file-tabs";
 import { restaurantWording } from "../app/design/order-taking/data";
 import en from "../messages/en.json" with { type: "json" };
 import he from "../messages/he.json" with { type: "json" };
 import { daysLeftToRight } from "../packages/domain/share";
 import { type MessageTree, mergeWording } from "../packages/domain/wording";
 import { before, buildScreen, HOLD_MS } from "./build-screen";
+import { hearFileCheck } from "./file-watch";
 import { minimalPdf } from "./pdf";
 import { cameraPhoto } from "./photo";
 import { stubAudio } from "./station-audio";
@@ -67,6 +69,8 @@ const PAGES = [
   "/design/shell/schedule/build?state=meanwhile&publishes=no",
   "/design/shell/schedule/build/running",
   "/design/shell/schedule/build/running?week=next",
+  // Next week saved as a draft, with people on Sunday: a copy keeps it.
+  "/design/shell/schedule/build/running?week=next&state=draft",
   "/design/shell/schedule/shifts",
   "/design/shell/schedule/shifts?at=evening",
   "/design/shell/clock",
@@ -1336,10 +1340,14 @@ test("the builder demo offers sharing once published", async ({ page }) => {
   const ts = he.app.shifts.share;
   const share = page.getByRole("button", { name: ts.action });
   const sheet = page.getByRole("dialog", { name: ts.title });
+  // The restaurant has no week before to copy, and a published week takes
+  // no copy.
+  const copy = page.getByRole("button", { name: tb.copy.action });
 
   await page.goto("/design/shell/schedule/build");
   await expect(page.getByRole("button", { name: tb.publish })).toBeVisible();
   await expect(share).toHaveCount(0);
+  await expect(copy).toHaveCount(0);
   await page.getByRole("button", { name: tb.publish }).click();
   await expect(
     page.getByRole("status").filter({ hasText: tb.published }),
@@ -1387,10 +1395,13 @@ test("the builder demo offers sharing once published", async ({ page }) => {
     await expect(
       page.getByRole("button", { name: tb.publishChanges }),
     ).toHaveCount(0);
+    await expect(copy).toHaveCount(0);
   }
 
   // The shop's week under way, by the shop's own name.
   await page.goto("/design/shell/schedule/build/running");
+  await expect(share).toBeVisible();
+  await expect(copy).toHaveCount(0);
   await share.click();
   expect(await sharedText(sheet)).toContain("חנות הדגמה");
 });
@@ -1600,6 +1611,122 @@ test("the running week's demo locks what has begun and fills the freed evening",
   await expect(
     page.getByRole("heading", { level: 1, name: tb.title }),
   ).toBeVisible();
+});
+
+// Copying last week on the running twin's next week, at every size: the
+// shop's week under way onto next week, drawn from the pattern. The sheet
+// says how many shifts and people it copies, counts Liya, who left, without
+// a name, and lists Tamar, who can only do mornings next week, under those
+// not available, on Thursday evening; nothing is saved until the dock is
+// pressed. Copied, Sunday morning has Tamar and Itai, and the toast's
+// "ביטול", which takes the focus, brings back the pattern's empty morning.
+// On a draft with people on Sunday, Sunday stays as it is unless the sheet's
+// switch replaces it; changed after that copy, the toast goes with its way
+// back, which would have taken the change too.
+test("next week's demo copies last week, says who was left out, and takes it back", async ({
+  page,
+}) => {
+  const tb = he.app.build;
+  const tc = tb.copy;
+  const path = "/design/shell/schedule/build/running?week=next";
+  const screen = buildScreen(page);
+  const copy = page.getByRole("button", { name: tc.action });
+  const sheet = page.getByRole("dialog", { name: tc.title });
+  const sun = { day: he.app.availability.weekdays.sun, date: "22.11" };
+  const morning = screen.card("בוקר", sun);
+  const evening = screen.card("ערב", sun);
+  const days = sheet.getByRole("group", { name: tc.daysTitle, exact: true });
+  const sunday = days
+    .locator("div", {
+      has: page.getByText(heT("app.build.day", sun), { exact: true }),
+    })
+    .last();
+  const submit = (count: number) =>
+    sheet.getByRole("button", {
+      name: heT("app.build.copy.submit", { count }),
+    });
+
+  await page.goto(path);
+  await expect(
+    page.getByRole("heading", { level: 1, name: tb.title }),
+  ).toBeVisible();
+  await expect(morning).toContainText(tb.nobody);
+  await copy.click();
+  await expect(sheet).toContainText(
+    heT("app.build.copy.summary", { shifts: 11, people: 4 }),
+  );
+  await expect(sunday).toContainText(
+    heT("app.build.copy.days.replaced", { count: 2, was: 2 }),
+  );
+  await expect(sheet).toContainText(heT("app.build.copy.gone", { count: 1 }));
+  const unavailable = screen.group(tb.groups.unavailable);
+  await expect(unavailable).toContainText("תמר אברהם");
+  await expect(unavailable).toContainText(
+    heT("app.build.copy.skippedOn", {
+      shift: "ערב",
+      day: he.app.availability.weekdays.thu,
+    }),
+  );
+  await expect(sheet).toContainText(tc.note);
+  // Nobody on next week's Sunday yet: nothing to replace, so no switch.
+  await expect(sheet.getByRole("switch")).toHaveCount(0);
+  await expectCleanPage(page, path, true);
+
+  await submit(11).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(morning).toContainText("תמר");
+  await expect(morning).toContainText("איתי");
+  await expect(page.getByText(tb.unsaved)).toBeVisible();
+  const toast = page
+    .getByRole("status")
+    .filter({ hasText: heT("app.build.copy.done", { count: 11 }) });
+  const undo = toast.getByRole("button", {
+    name: he.app.manage.undo,
+    exact: true,
+  });
+  await expect(undo).toBeFocused();
+  await undo.click();
+  await expect(
+    page.getByRole("status").filter({ hasText: tc.undone }),
+  ).toBeVisible();
+  await expect(morning).toContainText(tb.nobody);
+  await expect(copy).toBeFocused();
+
+  // Saved as a draft with Tamar and Itai on Sunday morning: Sunday stays as
+  // it is, unless the switch replaces it too.
+  await page.goto(`${path}&state=draft`);
+  await expect(evening).toContainText(tb.nobody);
+  await copy.click();
+  await expect(sunday).toContainText(tc.days.kept);
+  await expect(sheet).toContainText(
+    heT("app.build.copy.summary", { shifts: 9, people: 4 }),
+  );
+  const replace = sheet.getByRole("switch", { name: tc.replace.label });
+  await expect(replace).toHaveAttribute("aria-checked", "false");
+  await replace.click();
+  await expect(sunday).toContainText(
+    heT("app.build.copy.days.replaced", { count: 2, was: 2 }),
+  );
+  await submit(11).click();
+  await expect(sheet).toHaveCount(0);
+  // Sunday's evening is this week's now: Roni, without Liya.
+  await expect(evening).toContainText("רוני");
+  await expect(morning).toContainText("תמר");
+
+  // Changed after the copy, here on a shift the copy made: "ביטול" would
+  // take the change with it, so the toast goes with its way back, and the
+  // copy and the change both stay.
+  await expect(undo).toBeFocused();
+  await evening.click();
+  await screen.addButton("מיכל הדגמה").click();
+  await screen.closeSheet();
+  // The page is back for the locators (the sheet hid it), the toast too.
+  await expect(evening).toContainText("מיכל");
+  await expect(evening).toContainText("רוני");
+  await expect(morning).toContainText("תמר");
+  await expect(page.getByText(tb.unsaved)).toBeVisible();
+  // Gone with the change, well inside the 10 seconds it would stay otherwise.
+  await expect(toast).toHaveCount(0, { timeout: 2_000 });
 });
 
 // The demo door per site (P9): the demo's site offers it from sign-in; the
@@ -5753,11 +5880,15 @@ test("the file twin opens with the duties, then a code, and the account shows fo
   await expect(
     page.getByRole("heading", { name: hf.duties.title }),
   ).toBeVisible();
+  // The file's own check as it opens is answered before the minute below
+  // passes, on the twin's channel (`hearFileCheck`).
+  const checked = await hearFileCheck(page, FILE_TABS_TWIN_CHANNEL);
   await page.getByRole("button", { name: hf.duties.confirm }).click();
   const boxes = page.getByLabel(hf.code.label);
   await expect(boxes).toBeVisible();
   await boxes.fill("123456");
   await expect(page).toHaveURL(/\/design\/shell\/team\/noa\/file\?state=open$/);
+  await checked();
   const bank = page.getByRole("region", { name: hf.sections.bank });
   await expect(bank.getByText("•••0001")).toBeVisible();
   await bank.getByRole("button", { name: he.app.file.masked.show }).click();

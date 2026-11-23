@@ -722,17 +722,147 @@ export type SavedAssignment = {
   position: string | null;
 };
 
-/** Who the demo restaurant's saved schedules put on which shift, and in
- * which position. */
-export async function scheduleAssignments(): Promise<SavedAssignment[]> {
+/**
+ * Who the demo restaurant's saved schedules put on which shift, and in
+ * which position: every week's, or only this week's or next week's, on the
+ * restaurant's own clock.
+ */
+export async function scheduleAssignments(
+  week?: "this" | "next",
+): Promise<SavedAssignment[]> {
+  const which = week ?? null;
   return await sql<SavedAssignment[]>`
+    with business as (
+      select (now() at time zone b.timezone)::date as today,
+        coalesce((m.settings ->> 'weekStartsOn')::int, 0) as starts_on
+      from public.businesses b
+      join public.business_modules m
+        on m.business_id = b.id and m.module_key = 'scheduling'
+      where b.id = ${DEMO_RESTAURANT}
+    ),
+    this_week as (
+      select today - ((extract(dow from today)::int - starts_on + 7) % 7)
+        as starts_on
+      from business
+    )
     select extract(dow from s.day)::int as weekday,
       s.pattern_key as pattern, p.phone, a.position_key as position
     from public.schedule_shifts s
+    join public.schedule_weeks w on w.id = s.week_id
     join public.shift_assignments a on a.shift_id = s.id
     join public.profiles p on p.id = a.user_id
+    left join this_week t on true
     where s.business_id = ${DEMO_RESTAURANT}
+      and (${which}::text is null
+        or w.starts_on = t.starts_on
+          + (case when ${which}::text = 'next' then 7 else 0 end))
     order by s.day, s.starts_at, p.phone`;
+}
+
+/**
+ * Whether this week's or next week's schedule at the demo restaurant is
+ * published, on its own clock.
+ */
+export async function demoWeekPublished(
+  week: "this" | "next",
+): Promise<boolean> {
+  const [row] = await sql<{ published: boolean }[]>`
+    with business as (
+      select (now() at time zone b.timezone)::date as today,
+        coalesce((m.settings ->> 'weekStartsOn')::int, 0) as starts_on
+      from public.businesses b
+      join public.business_modules m
+        on m.business_id = b.id and m.module_key = 'scheduling'
+      where b.id = ${DEMO_RESTAURANT}
+    ),
+    this_week as (
+      select today - ((extract(dow from today)::int - starts_on + 7) % 7)
+        as starts_on
+      from business
+    )
+    select exists (
+      select 1 from public.schedule_weeks w, this_week t
+      where w.business_id = ${DEMO_RESTAURANT}
+        and w.starts_on = t.starts_on + ${week === "next" ? 7 : 0}::int
+        and w.schedule_published_at is not null
+    ) as published`;
+  return row?.published ?? false;
+}
+
+/** A shift of a week built for a test, by its day in the week. */
+export type DemoWeekShift = {
+  /** Days from the week's first day: 0 for its first. */
+  offset: number;
+  name: string;
+  start: string;
+  end: string;
+  needed: number;
+  pattern: string | null;
+  /** Phone numbers, each with a position key or null. */
+  people: [phone: string, position: string | null][];
+};
+
+/**
+ * This week's schedule at the demo restaurant, the week a copy into next
+ * week reads, through the database functions the app uses, as its manager:
+ * saved as a draft, or published. Its first write, so days already over take
+ * shifts too (a week never published is free,
+ * 20261115000300_running_week.sql): callers clear the schedule first. Opens
+ * the week if nobody has yet.
+ */
+export async function buildDemoThisWeek(
+  shifts: readonly DemoWeekShift[],
+  publish: boolean,
+): Promise<void> {
+  const phones = [
+    ...new Set(shifts.flatMap((shift) => shift.people.map(([phone]) => phone))),
+  ];
+  const ids =
+    phones.length > 0
+      ? await sql<{ phone: string; id: string }[]>`
+          select phone, id::text from public.profiles
+          where phone in ${sql(phones)}`
+      : [];
+  const [week] = await sql<{ id: string; starts_on: string }[]>`
+    with business as (
+      select (now() at time zone b.timezone)::date as today,
+        coalesce((m.settings ->> 'weekStartsOn')::int, 0) as starts_on
+      from public.businesses b
+      join public.business_modules m
+        on m.business_id = b.id and m.module_key = 'scheduling'
+      where b.id = ${DEMO_RESTAURANT}
+    ),
+    this_week as (
+      select today - ((extract(dow from today)::int - starts_on + 7) % 7)
+        as starts_on
+      from business
+    )
+    select public.open_schedule_week(${DEMO_RESTAURANT}, starts_on,
+        now() + interval '1 day')::text as id,
+      starts_on::text as starts_on
+    from this_week`;
+  if (!week) throw new Error("Could not open this week");
+  const first = Date.parse(`${week.starts_on}T00:00:00Z`);
+  const sent = shifts.map((shift) => ({
+    day: new Date(first + shift.offset * 86_400_000).toISOString().slice(0, 10),
+    name: shift.name,
+    start: shift.start,
+    end: shift.end,
+    needed: shift.needed,
+    pattern: shift.pattern,
+    assignees: shift.people.map(([phone, position]) => ({
+      user: ids.find((row) => row.phone === phone)?.id,
+      position,
+    })),
+  }));
+  const manager = "00000000-0000-4000-a000-000000000002";
+  if (publish) {
+    await sql`select public.publish_week_schedule(${manager}, ${week.id},
+      ${sql.json(sent)})`;
+  } else {
+    await sql`select public.save_week_schedule(${manager}, ${week.id},
+      ${sql.json(sent)})`;
+  }
 }
 
 export type SavedShift = {

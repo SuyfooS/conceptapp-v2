@@ -14,6 +14,7 @@ import {
   scheduleWeekOver,
   startedShifts,
 } from "@db/schedule-errors";
+import { copiedOver } from "@domain/copy-week";
 import {
   builderWeekOf,
   type ShiftJoin,
@@ -52,6 +53,9 @@ export type ScheduleFailure =
   // The screen was drawn before the week's first save, and someone has saved
   // it since: nothing was saved, rather than replacing what they saved.
   | "weekSaved"
+  // The screen copied last week into a week someone saved since it was
+  // read: nothing was saved, rather than two copies.
+  | "copySaved"
   // What was sent would put someone on two shifts at once with a shift that
   // changed meanwhile, which the screen does not show: nothing was saved.
   | "clashMeanwhile"
@@ -138,9 +142,11 @@ const intentOf = (form: FormData) =>
  * is never undone: a change to one is refused (`weekMoved`, with those shifts
  * as they are now: `moved`), and so is a clash with one (`clashMeanwhile`),
  * or with someone's shift in the week before or after, which the screen
- * doesn't show (`edgeClash`, naming it).
- * Workers see nothing of a draft. A published week is only published again,
- * never saved back into a draft.
+ * doesn't show (`edgeClash`, naming it). A screen that copied last week into
+ * the week sends the save moment it read (`copied`), and the week saved
+ * since is refused (`copySaved`), as two copies of empty shifts would both
+ * go in. Workers see nothing of a draft. A published week is only published
+ * again, never saved back into a draft.
  */
 export async function saveScheduleAction(
   _prev: ScheduleState,
@@ -169,6 +175,12 @@ export async function saveScheduleAction(
   }
   // Someone published the week since this screen was opened.
   if (intent === "save" && build.publishedAt) return { failure: "published" };
+  // Copied from last week onto a week saved since it was read: the copy
+  // would go in beside, or over, what was saved meanwhile.
+  const copied = form.get("copied");
+  if (typeof copied === "string" && copiedOver(copied, build.savedAt)) {
+    return { failure: "copySaved", now };
+  }
 
   const keys = positions.map((p) => p.key);
   let parsed: ReturnType<ReturnType<typeof weekSchedule>["safeParse"]>;
