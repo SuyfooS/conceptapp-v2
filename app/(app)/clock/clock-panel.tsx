@@ -92,6 +92,11 @@ export function ClockPanel({
     held: noneHeld,
   } = useSheetWrite();
   const [noneFailure, setNoneFailure] = useState<Failure | null>(null);
+  // The screen's own buttons wait for both: a refusal without a code lets its
+  // sheet close before the page read again after it is drawn, and until then
+  // the screen still shows what was there before (an open shift, say, that
+  // another device closed), so nothing here may send a write against it.
+  const busy = pending || noneBusy;
   const now = useNow(data.now, open !== null || sheet === "none");
 
   // Leaving the screen ends a scan. Next keeps a page it leaves (hidden, in
@@ -281,7 +286,7 @@ export function ClockPanel({
           pause={pause}
           now={now}
           running={running}
-          pending={pending}
+          pending={busy}
           onPunch={punch}
           onBack={() => run("back", actions.endBreak)}
         />
@@ -296,7 +301,7 @@ export function ClockPanel({
           variant="secondary"
           size="lg"
           loading={running === "break"}
-          disabled={pending || data.viewOnly}
+          disabled={busy || data.viewOnly}
           onClick={() => run("break", actions.startBreak)}
         >
           <Coffee aria-hidden="true" />
@@ -309,7 +314,7 @@ export function ClockPanel({
           variant="secondary"
           size="lg"
           loading={running === "out"}
-          disabled={pending || data.viewOnly}
+          disabled={busy || data.viewOnly}
           onClick={() => punch("out", "endShift")}
         >
           <LogOut aria-hidden="true" className="rtl:-scale-x-100" />
@@ -349,7 +354,7 @@ export function ClockPanel({
             variant="ghost"
             className="shrink-0"
             loading={running === "undo"}
-            disabled={pending}
+            disabled={busy}
             onClick={() =>
               run("undo", () => actions.undoClockOut(undoLeft.entryId))
             }
