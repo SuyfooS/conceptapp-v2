@@ -11,11 +11,13 @@
 -- birth date, and payroll's birth date closed once the file holds one and
 -- takes writes; nothing written for what is stored
 -- already; the contact, the sending, the bank's confirmation and dispute,
--- what went directly to payroll and the 101's marks; and nothing deleting a
--- file, a key or the log. Every write at 10:00 on 26 November 2026 in
--- Israel. Fixed ids (f2…), numbers (050-075-xxxx) and slugs (efw-…).
+-- what went directly to payroll (one part at a time since
+-- 20261126000600_file_started_and_changed.sql, saying whether it changed)
+-- and the 101's marks; and nothing deleting a file, a key or the log. Every
+-- write at 10:00 on 26 November 2026 in Israel. Fixed ids (f2…), numbers
+-- (050-075-xxxx) and slugs (efw-…).
 begin;
-select plan(97);
+select plan(104);
 
 -- A: 1 its owner, 2 a manager holding the files who confirmed the duties,
 -- 3 Noa and 4 Yoav, workers, 5 the accountant, 6 a worker who left, 7 a
@@ -459,20 +461,49 @@ select ok(
   'the person says "לא שיניתי", for a holder to look at'
 );
 
+-- One part at a time (20261126000600_file_started_and_changed.sql), the
+-- stored set read under the file's lock, true only for a change.
 select is(
-  pg_temp.try($$select public.set_direct_groups(pg_temp.p(2), pg_temp.a(), pg_temp.p(4), '{pension,identity}', pg_temp.at())$$),
-  'ok', 'a holder marks parts handed directly to payroll');
-select public.set_direct_groups(pg_temp.p(2), pg_temp.a(), pg_temp.p(4), '{identity,pension}', pg_temp.at());
+  public.set_direct_groups(pg_temp.p(2), pg_temp.a(), pg_temp.p(4), 'pension', true, pg_temp.at()),
+  true, 'a holder marks a part handed directly to payroll, and hears it changed');
+select is(
+  public.set_direct_groups(pg_temp.p(2), pg_temp.a(), pg_temp.p(4), 'identity', true, pg_temp.at()),
+  true, 'another part is added to the marks there, never in their place');
+select is(
+  public.set_direct_groups(pg_temp.p(2), pg_temp.a(), pg_temp.p(4), 'pension', true, pg_temp.at()),
+  false, 'a part marked already changes nothing, and says so');
 select results_eq(
   $$select (select f.direct_groups from pg_temp.file(4) f), pg_temp.logged('employee.direct', 2)$$,
-  $$values ('{identity,pension}'::text[], 1)$$,
-  'in the file''s order, and the same set again writes nothing'
+  $$values ('{identity,pension}'::text[], 2)$$,
+  'in the file''s order, one row for each change and none for the press that changed nothing'
 );
 select is(
-  pg_temp.try($$select public.set_direct_groups(pg_temp.p(2), pg_temp.a(), pg_temp.p(4), '{health}', pg_temp.at())$$),
+  public.set_direct_groups(pg_temp.p(2), pg_temp.a(), pg_temp.p(4), 'pension', false, pg_temp.at()),
+  true, 'a mark is taken off');
+select is(
+  public.set_direct_groups(pg_temp.p(2), pg_temp.a(), pg_temp.p(4), 'pension', false, pg_temp.at()),
+  false, 'and taking it off again changes nothing');
+select results_eq(
+  $$select (select f.direct_groups from pg_temp.file(4) f), pg_temp.logged('employee.direct', 2),
+      (select a.details -> 'groups' from public.audit_log a
+       where a.business_id = pg_temp.a() and a.action = 'employee.direct'
+       order by a.id desc limit 1)$$,
+  $$values ('{identity}'::text[], 3, '["identity"]'::jsonb)$$,
+  'the other part stays marked, and the log says the set after the change'
+);
+-- Marked again, as the rest of this file has it.
+select public.set_direct_groups(pg_temp.p(2), pg_temp.a(), pg_temp.p(4), 'pension', true, pg_temp.at());
+select is(
+  pg_temp.try($$select public.set_direct_groups(pg_temp.p(2), pg_temp.a(), pg_temp.p(4), 'health', true, pg_temp.at())$$),
   '22023', 'only the file''s groups');
 select is(
-  pg_temp.try($$select public.set_direct_groups(pg_temp.p(4), pg_temp.a(), pg_temp.p(4), '{pension}', pg_temp.at())$$),
+  pg_temp.try($$select public.set_direct_groups(pg_temp.p(2), pg_temp.a(), pg_temp.p(4), 'health', false, pg_temp.at())$$),
+  '22023', 'nor takes a mark off one outside the file');
+select is(
+  pg_temp.try($$select public.set_direct_groups(pg_temp.p(2), pg_temp.a(), pg_temp.p(4), 'pension', null, pg_temp.at())$$),
+  '22023', 'and says marked or not');
+select is(
+  pg_temp.try($$select public.set_direct_groups(pg_temp.p(4), pg_temp.a(), pg_temp.p(4), 'pension', true, pg_temp.at())$$),
   '42501', 'and only a holder marks them');
 
 select is(

@@ -65,7 +65,9 @@ export type FileCardData = {
 
 /**
  * The card's words while anything needs action (a part missing, or for a
- * holder an account to look at), or null for a file that is complete.
+ * holder an account to look at), or null for a file that is complete. The
+ * person's own "לא שיניתי" on the account is said apart, in their form of
+ * address (`form`, H6b-1).
  */
 export function fileCardWords(
   t: Translator<"app">,
@@ -73,6 +75,7 @@ export function fileCardWords(
   card: FileCardData,
   name: string,
   first: string,
+  form: string,
 ): FileCardWords | null {
   const line = fileLineOf(card.status);
   const missing = line.kind !== "complete";
@@ -86,7 +89,11 @@ export function fileCardWords(
       : line.kind === "count"
         ? t("team.file.card.missingCount", { count: line.count })
         : null,
-    review ? t("team.file.card.bankReview") : null,
+    review
+      ? line.bankReview === "disputed"
+        ? t("team.file.card.bankDisputed", { first, form })
+        : t("team.file.card.bankReview")
+      : null,
   ].filter((text): text is string => text !== null);
   return {
     title: t("team.file.card.title", { name }),
@@ -184,7 +191,7 @@ export async function PersonView({
   });
 
   const cardWords = fileCard
-    ? fileCardWords(t, format, fileCard, name, first)
+    ? fileCardWords(t, format, fileCard, name, first, form)
     : null;
   // A complete file: a quiet row, the file's own screen for a holder.
   const fileRow =

@@ -11,7 +11,10 @@ import type { HolderFileData } from "./holder-file-types";
  * the business asks or the file holds, the numbers by their last digits
  * only, this year's 101 while the business takes it in the app. What the
  * screen doesn't show doesn't travel: no `has` flags, no row times but the
- * instruction's, the bank's change and when it was sent. Pure.
+ * instruction's, the bank's change and when it was sent. The bank's change
+ * goes exactly as the database wrote it, since confirming the account sends
+ * it back (H6b-1), and a minor's file the open period's start, for the
+ * checklist (H6b-2). Pure.
  */
 export function holderFileOf(
   read: EmployeeFile,
@@ -55,6 +58,10 @@ export function holderFileOf(
       birthDate: file?.birth_date ?? null,
       masked: read.masked.id,
       youthUntil: read.youthUntil,
+      minor:
+        read.youthUntil !== null && read.youthUntil > today
+          ? { startedOn: read.startedOn }
+          : null,
     },
     contact:
       asked.includes("address") || heldContact

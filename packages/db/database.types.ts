@@ -4861,10 +4861,11 @@ export type Database = {
           actor: string;
           at_time?: string;
           business: string;
-          groups: string[];
+          file_group: string;
+          marked: boolean;
           person: string;
         };
-        Returns: undefined;
+        Returns: boolean;
       };
       set_emergency_contact: {
         Args: {

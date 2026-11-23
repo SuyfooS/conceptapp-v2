@@ -1,3 +1,4 @@
+import { FILE_GROUPS } from "@domain/employee-file";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import type {
@@ -8,16 +9,19 @@ import { HolderFileView } from "../../../../../(app)/team/[person]/file/holder-f
 import { baseWording } from "../../../../../(app)/wording";
 import {
   business,
+  demoFileHistory,
   demoHolderFile,
   teamFileStatus,
   teamMembers,
   teamProfiles,
 } from "../../../data";
 import {
+  demoAcknowledgeBankAction,
   demoAcknowledgeDutiesAction,
   demoConfirmFileCodeAction,
   demoKeepFileOpenAction,
   demoLockFileAction,
+  demoMarkDirectAction,
   demoRevealHolderAction,
   demoSendFileCodeAction,
 } from "./actions";
@@ -29,7 +33,12 @@ export const generateStaticParams = () =>
 
 type Props = {
   params: Promise<{ person: string }>;
-  searchParams: Promise<{ state?: string; as?: string }>;
+  searchParams: Promise<{
+    state?: string;
+    as?: string;
+    direct?: string;
+    history?: string;
+  }>;
 };
 
 const STATES = [
@@ -41,6 +50,10 @@ const STATES = [
   "unavailable",
   "limit",
   "review",
+  "review-new",
+  "review-warned",
+  "moved",
+  "passed",
 ] as const;
 type State = (typeof STATES)[number];
 
@@ -54,7 +67,14 @@ type State = (typeof STATES)[number];
 // a deployment that can't open files; `limit` the open file over the hour's
 // 30 people; `review` Noa's account one she said she didn't change. As the
 // owner, who sees the team, it leads back to the profile; `?as=accountant`
-// reads it files-only, back to the team's files.
+// reads it files-only, back to the team's files. What a holder does there
+// (H6b-1): `review-new` and `review-warned` an account to look at, which
+// "ראיתי את החשבון החדש" confirms (back to `open`); `moved` one that
+// changed again meanwhile, said on the first press (on to `review-new`);
+// `passed` Yoav's pension whose day to choose passed; `?direct=bank,pension`
+// the parts marked "נמסר ישירות לשכר", which each mark and its "ביטול"
+// change; `?history=empty` or `failed` "מה קרה בתיק" with nothing yet, or
+// unread.
 export default function ShellHolderFile(props: Props) {
   return (
     <Suspense>
@@ -64,7 +84,10 @@ export default function ShellHolderFile(props: Props) {
 }
 
 async function Demo({ params, searchParams }: Props) {
-  const [{ person }, { state, as }] = await Promise.all([params, searchParams]);
+  const [{ person }, { state, as, direct, history }] = await Promise.all([
+    params,
+    searchParams,
+  ]);
   const member = teamMembers.find((m) => m.userId === person);
   if (!member || !teamFileStatus[person]) notFound();
   const which: State = STATES.find((s) => s === state) ?? "duties";
@@ -83,16 +106,34 @@ async function Demo({ params, searchParams }: Props) {
   };
   const keep = accountant ? "&as=accountant" : "";
   const here = `/design/shell/team/${person}/file`;
+  const marked = FILE_GROUPS.filter((group) =>
+    (direct ?? "").split(",").includes(group),
+  );
+  const review =
+    which === "review"
+      ? "disputed"
+      : which === "review-new" || which === "moved"
+        ? "new"
+        : which === "review-warned"
+          ? "warned"
+          : null;
   const screen: Exclude<HolderFileScreen, { kind: "closed" }> =
-    which === "open" || which === "limit" || which === "review"
-      ? {
-          kind: "open",
-          head,
-          data: demoHolderFile(person, which === "review" ? "disputed" : null),
-        }
+    which === "duties" ||
+    which === "locked" ||
+    which === "viewing" ||
+    which === "unavailable"
+      ? { kind: which, head }
       : which === "code"
         ? { kind: "locked", head }
-        : { kind: which, head };
+        : {
+            kind: "open",
+            head,
+            data: demoHolderFile(person, review, marked, which === "passed"),
+            history: demoFileHistory(
+              person,
+              history === "empty" || history === "failed" ? history : "full",
+            ),
+          };
   return (
     <HolderFileView
       screen={screen}
@@ -102,6 +143,9 @@ async function Demo({ params, searchParams }: Props) {
         twin: {
           opened: `${here}?state=open${keep}`,
           locked: `${here}?state=locked${keep}`,
+          confirmed: `${here}?state=open${keep}`,
+          moved: `${here}?state=review-new${keep}`,
+          direct: `${here}?state=${which === "passed" ? "passed" : "open"}${keep}&direct=`,
         },
       }}
       actions={{
@@ -111,6 +155,8 @@ async function Demo({ params, searchParams }: Props) {
         reveal: demoRevealHolderAction.bind(null, which),
         keepOpen: demoKeepFileOpenAction,
         lock: demoLockFileAction,
+        acknowledgeBank: demoAcknowledgeBankAction.bind(null, which),
+        markDirect: demoMarkDirectAction,
       }}
       code={which === "code" ? { tail: "0014" } : undefined}
       wording={baseWording}

@@ -5725,3 +5725,140 @@ export async function setDemoBankReview(
   await sql`update public.employee_details set bank_review = ${review}
     where business_id = ${DEMO_RESTAURANT} and user_id = ${userId}`;
 }
+
+/*
+ * What a holder does in a file (profile H6b, e2e/employee-file-holders.spec.ts):
+ * the marks "נמסר ישירות לשכר" and the log's rows read back by their names
+ * and actors only, an account changed again meanwhile, a row of the log
+ * written as the functions write it, the open period's start moved for a
+ * pension whose day passed, and a minor's 18th birthday. Local database
+ * only, as postgres; `restoreDemoFile` takes back the file, its log rows and
+ * the 18th birthday, and each test puts the period back itself.
+ */
+
+/** The parts of the person's file marked "נמסר ישירות לשכר", in order. */
+export async function demoDirectGroups(userId: string): Promise<string[]> {
+  const rows = await sql<{ groups: string[] }[]>`
+    select direct_groups as groups from public.employee_details
+    where business_id = ${DEMO_RESTAURANT} and user_id = ${userId}`;
+  return rows[0]?.groups ?? [];
+}
+
+/**
+ * The parts of the person's file marked "נמסר ישירות לשכר" set behind an
+ * open screen, as another holder's press would leave them (no log row).
+ */
+export async function setDemoDirectGroups(
+  userId: string,
+  groups: readonly string[],
+): Promise<void> {
+  await sql`update public.employee_details
+    set direct_groups = array(
+      select jsonb_array_elements_text(${sql.json([...groups])}::jsonb)
+    )
+    where business_id = ${DEMO_RESTAURANT} and user_id = ${userId}`;
+}
+
+/** The person's account changed again just now, waiting for a holder. */
+export async function bumpDemoBankChange(userId: string): Promise<void> {
+  await sql`update public.employee_details
+    set bank_changed_at = now(), bank_review = 'new'
+    where business_id = ${DEMO_RESTAURANT} and user_id = ${userId}`;
+}
+
+/** The file's rows about the person, oldest first: what was written, and by whom. */
+export async function demoFileActions(
+  personId: string,
+): Promise<{ action: string; actor: string | null }[]> {
+  return sql<{ action: string; actor: string | null }[]>`
+    select action, actor_id as actor from public.audit_log
+    where business_id = ${DEMO_RESTAURANT}
+      and action like 'employee.%'
+      and details ->> 'person' = ${personId}
+    order by id`;
+}
+
+/** One row of the file's log, as the database's functions write it. */
+export async function logDemoFileRow(
+  actorId: string,
+  action: string,
+  details: Record<string, string | string[]>,
+): Promise<void> {
+  await sql`insert into public.audit_log (business_id, actor_id, action, details)
+    values (${DEMO_RESTAURANT}, ${actorId}, ${action}, ${sql.json(details)})`;
+}
+
+/**
+ * The person's open employment period started `daysAgo`: its first day as
+ * it was, for `restoreDemoPeriodStart`. Periods are written by functions
+ * only; the database's owner may move one.
+ */
+export async function setDemoPeriodStart(
+  userId: string,
+  daysAgo: number,
+): Promise<string> {
+  const [open] = await sql<{ id: string; startedOn: string }[]>`
+    select id, started_on::text as "startedOn" from public.employment_periods
+    where business_id = ${DEMO_RESTAURANT} and user_id = ${userId}
+      and ended_on is null`;
+  if (!open) throw new Error("no open period");
+  await sql`update public.employment_periods
+    set started_on = current_date - ${daysAgo}::int
+    where id = ${open.id}`;
+  return open.startedOn;
+}
+
+export async function restoreDemoPeriodStart(
+  userId: string,
+  startedOn: string,
+): Promise<void> {
+  await sql`update public.employment_periods set started_on = ${startedOn}::date
+    where business_id = ${DEMO_RESTAURANT} and user_id = ${userId}
+      and ended_on is null`;
+}
+
+/**
+ * The person a minor in the demo restaurant (H6b-2): their birth date in
+ * the file, and their 18th birthday as payroll keeps it. Whether they had
+ * payroll details before, for `clearDemoMinor`.
+ */
+export async function setDemoMinor(
+  userId: string,
+  birthDate: string,
+): Promise<boolean> {
+  const [had] = await sql<{ n: number }[]>`
+    select count(*)::int as n from public.member_payroll_details
+    where business_id = ${DEMO_RESTAURANT} and user_id = ${userId}`;
+  await sql`update public.employee_details set birth_date = ${birthDate}::date
+    where business_id = ${DEMO_RESTAURANT} and user_id = ${userId}`;
+  await sql`insert into public.member_payroll_details (business_id, user_id, youth_until)
+    values (${DEMO_RESTAURANT}, ${userId}, (${birthDate}::date + interval '18 years')::date)
+    on conflict (business_id, user_id) do update set youth_until = excluded.youth_until`;
+  return (had?.n ?? 0) > 0;
+}
+
+/** The person's payroll details as they were before `setDemoMinor`. */
+export async function clearDemoMinor(
+  userId: string,
+  hadDetails: boolean,
+): Promise<void> {
+  await sql.begin(async (tx) => {
+    await tx`select set_config('ca.records_purge', ${DEMO_RESTAURANT}, true)`;
+    if (hadDetails) {
+      await tx`update public.member_payroll_details set youth_until = null
+        where business_id = ${DEMO_RESTAURANT} and user_id = ${userId}`;
+    } else {
+      await tx`delete from public.member_payroll_details
+        where business_id = ${DEMO_RESTAURANT} and user_id = ${userId}`;
+    }
+  });
+}
+
+/** The person's 101s gone, as if none was handed in (`restoreDemoFile` puts them back). */
+export async function clearDemoTaxYears(userId: string): Promise<void> {
+  await sql.begin(async (tx) => {
+    await tx`select set_config('ca.records_purge', ${DEMO_RESTAURANT}, true)`;
+    await tx`delete from public.employee_tax_years
+      where business_id = ${DEMO_RESTAURANT} and user_id = ${userId}`;
+  });
+}
