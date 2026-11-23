@@ -90,7 +90,8 @@ type SheetBase = {
  * Changing their own name ("השם שלי"), as the team keeps a name: one line of
  * up to 80 characters, never none, with the field's words of the business's
  * own editor. Where the business keeps a name of its own for them (`kept`),
- * the note says that one stays; only the business changes it.
+ * even one that is their own name now, the note says that one stays; only
+ * the business changes it.
  */
 export function NameSheet({
   open,
@@ -102,7 +103,7 @@ export function NameSheet({
 }: SheetBase & {
   /** Their own name as saved; null for none. */
   name: string | null;
-  /** The name the business keeps for them over it (`keptNameOf`), or null. */
+  /** The name the business keeps for them (`public.member_names`), or null. */
   kept: string | null;
   business: string;
   onSave: (name: string) => Promise<ProfileSaveResult>;
@@ -196,9 +197,8 @@ function NameForm({
         />
       </FieldGroup>
       <p className="px-2 text-pretty text-base text-ink-2">
-        {kept && !sameTeamName(name, kept)
-          ? t("name.noteKept", { business, name: kept })
-          : t("name.note")}
+        {/* Even one that is their own name now stays after they save. */}
+        {kept ? t("name.noteKept", { business, name: kept }) : t("name.note")}
       </p>
       <Failure failure={failure} />
       <Button

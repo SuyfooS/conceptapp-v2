@@ -45,8 +45,10 @@ type Props = {
 // its links to that twin in the same state. ?past=1 adds "עבודות קודמות"
 // (H5c), a café she left, whose row leads to the old file's twin.
 // ?name=kept is a business that keeps a name of its own for her ("השם שלי"
-// says so, and her title stays its name); ?name=none, someone nobody named
-// (her number for a title, and the row asks for a name).
+// says so, and her title stays its name); ?name=same, one that keeps her own
+// name as its own (the row says nothing more, the sheet and the word after
+// saving do, and the title stays it); ?name=none, someone nobody named (her
+// number for a title, and the row asks for a name).
 export default function ShellMe({ searchParams }: Props) {
   return (
     <Suspense>
@@ -62,7 +64,7 @@ async function Demo({ searchParams }: Props) {
   const empty = state === "empty";
   const demo = state === "demo";
   const own = name === "none" ? null : (shiran?.name ?? null);
-  const kept = name === "kept" ? shiranTeamName : null;
+  const kept = name === "kept" ? shiranTeamName : name === "same" ? own : null;
   return (
     <MeView
       wording={baseWording}

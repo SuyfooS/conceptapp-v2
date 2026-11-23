@@ -75,6 +75,13 @@ export type CurrentMember = {
    * business's name for them reaches.
    */
   ownName: string | null;
+  /**
+   * The name the current business keeps for them (`public.member_names`),
+   * or null when it keeps none; null while viewing. A row equal to their own
+   * name is still one: it goes on showing after they rename themselves,
+   * which `name` alone can't tell.
+   */
+  memberName: string | null;
   phone: string | null;
   /** The stored photo's path (`profiles.avatar_path`), or null. */
   photoPath: string | null;
@@ -390,6 +397,7 @@ export async function getCurrentMember(
     userId,
     name: own?.full_name ?? null,
     ownName: own?.full_name ?? null,
+    memberName: null,
     phone: ownPhone,
     photoPath: own?.avatar_path ?? null,
     profile: {
@@ -493,10 +501,12 @@ export async function getCurrentMember(
     since: m.since,
     unread: unreadOf(m.businessId),
   }));
+  const memberName = names.get(userId.toLowerCase()) ?? null;
   return {
     ...person,
     // As the business they are in calls them (`public.member_names`).
-    name: names.get(userId.toLowerCase()) ?? person.name,
+    name: memberName ?? person.name,
+    memberName,
     membership: picked
       ? {
           role: picked.role,

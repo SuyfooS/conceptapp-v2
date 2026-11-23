@@ -1959,8 +1959,8 @@ test("the person demo fixes a name, with the change back as its undo", async ({
 // "השם שלי" on the profile demo: Shiran changes her own name, shown at once
 // in the title; where the business keeps a name of its own for her, the row,
 // the sheet and the word after saving say that one stays, and so does the
-// title; someone nobody named is asked for one; a demo business keeps names.
-// Nothing is stored.
+// title, even where that name is her own until she saves; someone nobody
+// named is asked for one; a demo business keeps names. Nothing is stored.
 test("the profile demo changes her own name, and says where the business keeps its own", async ({
   page,
 }) => {
@@ -2018,6 +2018,28 @@ test("the profile demo changes her own name, and says where the business keeps i
   await expect(heading("שירן א.")).toBeVisible();
   await expect(nameRow).toContainText("שירן אלון-כהן");
   await expectCleanPage(page);
+
+  // A business that keeps her own name as its own (a manager's fix she
+  // later took for herself): the row says nothing more, but it is still the
+  // business's, so the sheet warns, the title stays it, and so does the word.
+  const same = { business, name: "שירן אלון" };
+  await page.goto("/design/shell/me?name=same");
+  await expect(heading("שירן אלון")).toBeVisible();
+  await expect(nameRow).toContainText("שירן אלון");
+  await expect(nameRow).not.toContainText(heT("app.me.name.kept", same));
+  await nameRow.click();
+  await expect(sheet).toContainText(heT("app.me.name.noteKept", same));
+  await field.fill("שירן אלון-כהן");
+  await save.click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(
+    page
+      .getByRole("status")
+      .filter({ hasText: heT("app.me.name.savedKept", same) }),
+  ).toBeVisible();
+  await expect(heading("שירן אלון")).toBeVisible();
+  await expect(nameRow).toContainText("שירן אלון-כהן");
+  await expect(nameRow).toContainText(heT("app.me.name.kept", same));
 
   // Someone nobody named: their number for a title, and the row asks.
   await page.goto("/design/shell/me?name=none");

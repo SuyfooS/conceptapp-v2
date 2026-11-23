@@ -182,6 +182,34 @@ describe("checkProfileChange", () => {
     }
   });
 
+  it("takes no name nobody sees, and none that turns its sentences around", () => {
+    // A zero-width space, direction marks, a word joiner, a soft hyphen, a
+    // filler, a joiner: pasted alone, still no name.
+    for (const name of [
+      "\u200B",
+      "\u200F\u200E",
+      "\u2060",
+      "\u00AD",
+      "\u3164",
+      " \u200B\u200D ",
+    ]) {
+      expect(checkProfileChange({ name }), JSON.stringify(name)).toEqual({
+        ok: false,
+        problem: "nameRequired",
+      });
+    }
+    // A right-to-left override or an isolate goes, so a sentence with the
+    // name in it ("X מוסר/ת, Y לוקח/ת") keeps its order.
+    expect(checkProfileChange({ name: "\u202Eנועה כהן" })).toEqual({
+      ok: true,
+      patch: { full_name: "נועה כהן" },
+    });
+    expect(checkProfileChange({ name: "\u2067נועה\u2069 כהן\u200B" })).toEqual({
+      ok: true,
+      patch: { full_name: "נועה כהן" },
+    });
+  });
+
   it("checks a name with the rest of the change", () => {
     expect(checkProfileChange({ name: "נועה כהן", cover: "dots" })).toEqual({
       ok: true,
@@ -225,7 +253,7 @@ describe("checkProfileChange", () => {
 });
 
 describe("keptNameOf", () => {
-  it("is none when the business shows them by their own name", () => {
+  it("is none when the business keeps their own name for them", () => {
     expect(keptNameOf("נועה כהן", "נועה כהן")).toBeNull();
     // As the team keeps names: a stored double space is the same name.
     expect(keptNameOf("נועה  כהן", "נועה כהן")).toBeNull();
@@ -240,7 +268,7 @@ describe("keptNameOf", () => {
     expect(keptNameOf("נועה כ.", undefined)).toBe("נועה כ.");
   });
 
-  it("is none when nothing is shown", () => {
+  it("is none when the business keeps none", () => {
     expect(keptNameOf(null, "נועה כהן")).toBeNull();
     expect(keptNameOf(null, null)).toBeNull();
     expect(keptNameOf("", "נועה כהן")).toBeNull();

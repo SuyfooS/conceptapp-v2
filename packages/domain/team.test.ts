@@ -556,6 +556,75 @@ describe("parseTeamName", () => {
       error: "required",
     });
   });
+
+  it("keeps no name nobody sees", () => {
+    // A zero-width space, direction marks, a word joiner, a soft hyphen, a
+    // filler, the braille blank, a zero-width no-break space, tags, a lone
+    // joiner, selector or accent, overrides and isolates.
+    for (const value of [
+      "\u200B",
+      "\u200F\u200E",
+      "\u2060",
+      "\u00AD",
+      "\u3164",
+      "\u2800",
+      "\uFEFF",
+      "\u{E0041}\u{E0042}",
+      "\u200D",
+      "\uFE0F",
+      "\u0301",
+      " \u200B \u200C ",
+      "\u202E\u2066\u2069",
+    ]) {
+      expect(parseTeamName(value), JSON.stringify(value)).toEqual({
+        ok: false,
+        error: "required",
+      });
+    }
+  });
+
+  it("drops what turns the text around a name, or draws nothing in it", () => {
+    // An override would reorder every sentence the name is in.
+    expect(parseTeamName("\u202Eנועה כהן")).toEqual({
+      ok: true,
+      name: "נועה כהן",
+    });
+    expect(parseTeamName("\u2067נועה\u2069 \u200Fכהן\u200B")).toEqual({
+      ok: true,
+      name: "נועה כהן",
+    });
+    // Inside a word it joins the halves; between words, one space stays.
+    expect(parseTeamName("נו\u200Bעה \u200B כהן\u00AD")).toEqual({
+      ok: true,
+      name: "נועה כהן",
+    });
+    // An accent behind one meets its letter.
+    expect(parseTeamName("Noe\u200B\u0308l")).toEqual({
+      ok: true,
+      name: "No\u00EBl",
+    });
+  });
+
+  it("keeps the joiners and selectors an emoji or a script is drawn with", () => {
+    const cook = "\u{1F469}\u200D\u{1F373}";
+    expect(parseTeamName(`נועה ${cook}`)).toEqual({
+      ok: true,
+      name: `נועה ${cook}`,
+    });
+    expect(parseTeamName("נועה \u2764\uFE0F")).toEqual({
+      ok: true,
+      name: "נועה \u2764\uFE0F",
+    });
+    expect(parseTeamName("Ma\u200Chsa")).toEqual({
+      ok: true,
+      name: "Ma\u200Chsa",
+    });
+    // At a word's edge they join nothing.
+    expect(parseTeamName("\u200Dנועה\u200C \uFE0Fכהן \u200D")).toEqual({
+      ok: true,
+      name: "נועה כהן",
+    });
+  });
 });
 
 describe("sameTeamName", () => {
@@ -568,6 +637,8 @@ describe("sameTeamName", () => {
     // Decomposed letters are the same name composed.
     expect(sameTeamName("Noël", "Noël")).toBe(true);
     expect(sameTeamName("Noël", "Noël")).toBe(true);
+    // What nobody sees is no fix.
+    expect(sameTeamName("\u202ENoa Cohen\u200B", "Noa Cohen")).toBe(true);
     // A letter that differs is a fix.
     expect(sameTeamName("Peter", "Pe  Ter")).toBe(false);
     expect(sameTeamName("Noel", "Noël")).toBe(false);
@@ -576,6 +647,7 @@ describe("sameTeamName", () => {
   it("is never the same where either is no name", () => {
     expect(sameTeamName("", "Noa Cohen")).toBe(false);
     expect(sameTeamName("   ", "Noa Cohen")).toBe(false);
+    expect(sameTeamName("\u200B", "\u200B")).toBe(false);
     expect(sameTeamName("Noa Cohen", null)).toBe(false);
     expect(sameTeamName("Noa Cohen", "  ")).toBe(false);
     expect(sameTeamName("", null)).toBe(false);

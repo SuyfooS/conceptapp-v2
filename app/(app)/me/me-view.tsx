@@ -25,8 +25,9 @@ export type MeData = {
   /** Their own name (`profiles.full_name`), the one "השם שלי" changes; null for none. */
   ownName: string | null;
   /**
-   * The name the business keeps for them over their own (`keptNameOf`),
-   * which "השם שלי" doesn't change; null for none.
+   * The name the business keeps for them over their own
+   * (`public.member_names`), which "השם שלי" doesn't change, even one that
+   * is their own name now; null when it keeps none.
    */
   keptName: string | null;
   /** Their photo (`profilePhotoSrc`), or null for initials. */

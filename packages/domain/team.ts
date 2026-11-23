@@ -554,21 +554,43 @@ export type LeftCounts = {
 export const TEAM_NAME_MAX = 80;
 
 /**
- * A person's name as the team keeps it, an invite's or the one the business
- * gives them (`public.set_member_name`): one line, spaces collapsed, 1 to
- * `TEAM_NAME_MAX` characters. Control characters other than spaces are
- * dropped rather than refused: a pasted name may carry one nobody sees. A
- * maqaf or a dash stays as typed (a name is no sentence to tidy).
+ * What a name never needs: control characters other than spaces, and
+ * Unicode's format and default-ignorable characters, which draw nothing (a
+ * zero-width space, a soft hyphen, a word joiner, a filler, a tag) or turn
+ * the text around them (direction marks, embeddings, overrides, isolates).
+ * The braille blank, which draws nothing either, goes with them. Spaces are
+ * left for collapsing, and the joiners and variation selectors an emoji or
+ * a script is drawn with stay.
+ */
+const UNSEEN =
+  /(?!\s|\u200C|\u200D|\p{Variation_Selector})[\p{Cc}\p{Cf}\p{Default_Ignorable_Code_Point}\u2800]/gu;
+/** A joiner or a selector at a word's edge, where it joins nothing. */
+const LOOSE =
+  /^(?:\u200C|\u200D|\p{Variation_Selector})+|(?:\u200C|\u200D)+$/gu;
+/** Something a name shows: a letter, a digit, punctuation or a symbol. */
+const SHOWN = /[\p{L}\p{N}\p{P}\p{S}]/u;
+
+/**
+ * A person's name as the team keeps it, an invite's, the one the business
+ * gives them (`public.set_member_name`) or their own: one line, spaces
+ * collapsed, 1 to `TEAM_NAME_MAX` characters. What a name never needs
+ * (`UNSEEN`) is dropped rather than refused: a pasted name may carry a
+ * character nobody sees, and one that turns the text around it would reorder
+ * every sentence the name is in. A name with nothing that shows is none
+ * ("required"), so someone named stays named. A maqaf or a dash stays as
+ * typed (a name is no sentence to tidy).
  */
 export function parseTeamName(
   value: unknown,
 ): { ok: true; name: string } | { ok: false; error: "required" | "tooLong" } {
   const name = (typeof value === "string" ? value : "")
+    .replace(UNSEEN, "")
     .normalize("NFC")
-    .replace(/[^\P{Cc}\s]/gu, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!name) return { ok: false, error: "required" };
+    .split(/\s+/)
+    .map((word) => word.replace(LOOSE, ""))
+    .filter(Boolean)
+    .join(" ");
+  if (!SHOWN.test(name)) return { ok: false, error: "required" };
   if ([...name].length > TEAM_NAME_MAX) return { ok: false, error: "tooLong" };
   return { ok: true, name };
 }

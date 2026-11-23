@@ -1,7 +1,6 @@
 import { photoAllowed } from "@db/profile-photos";
 import { pushAllowed } from "@db/push/devices";
 import { displayIsraeliMobile } from "@domain/phone";
-import { keptNameOf } from "@domain/profile";
 import { profilePhotoSrc } from "@domain/profile-photos";
 import type { Metadata } from "next";
 import { currentPastJobs } from "../../(account)/me/past/past-file";
@@ -123,8 +122,9 @@ export default async function MePage() {
           member.name ??
           (member.phone ? displayIsraeliMobile(member.phone) : ""),
         ownName: member.ownName,
-        // While viewing as a role, `name` is their own: none kept.
-        keptName: keptNameOf(member.name, member.ownName),
+        // The business's row, even one equal to their own name, which stays
+        // when they rename themselves; none while viewing as a role.
+        keptName: member.memberName,
         photo: profilePhotoSrc(member.photoPath),
         role: membership.role,
         namedRole: membership.namedRole,

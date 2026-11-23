@@ -4,12 +4,13 @@ import { avatarHue, firstNameOf } from "@domain/people";
 import {
   type AddressForm,
   type CoverPreset,
+  keptNameOf,
   normalizeBio,
   type ProfileChange,
   type ProfileSaveResult,
 } from "@domain/profile";
 import type { PhotoSaveResult } from "@domain/profile-photos";
-import { parseTeamName, sameTeamName } from "@domain/team";
+import { parseTeamName } from "@domain/team";
 import { Avatar } from "@ui/avatar";
 import { AvatarPhotoPicker } from "@ui/avatar-photo-picker";
 import { Button } from "@ui/button";
@@ -144,8 +145,9 @@ export function ProfileEditor({
   /** Their own name (`profiles.full_name`), the one "השם שלי" changes. */
   ownName: string | null;
   /**
-   * The name the business keeps for them over their own (`keptNameOf`),
-   * which "השם שלי" doesn't change; null for none.
+   * The name the business keeps for them over their own
+   * (`public.member_names`), which "השם שלי" doesn't change, even one that
+   * is their own name now; null when it keeps none.
    */
   keptName: string | null;
   photo: string | null;
@@ -233,10 +235,12 @@ export function ProfileEditor({
       const kept = parseTeamName(text);
       const now = kept.ok ? kept.name : text.trim();
       setOwn(now);
-      // A business's own name for them stays theirs there.
+      // A business that keeps a name for them goes on showing it, even one
+      // that was their own name until now: the title stays, as the server's
+      // will, and the word says so.
       if (!keptName) setTitle(now);
       say(
-        keptName && !sameTeamName(now, keptName)
+        keptName
           ? t("me.name.savedKept", { business: businessName, name: keptName })
           : t("me.name.saved"),
       );
@@ -330,6 +334,8 @@ export function ProfileEditor({
   const aboutLine = about.locked ? t(`me.${about.locked}`) : null;
   // Demo people keep their name, as they write no line.
   const canRename = !about.locked && !about.demo;
+  // The business's name for them, said under their own where it differs.
+  const keptLine = keptNameOf(keptName, own);
   const canWriteBio = !about.locked && !about.demo;
   const canChoose = !about.locked;
   const shownCover = coverDraft ?? cover;
@@ -413,11 +419,11 @@ export function ProfileEditor({
                 ) : (
                   <>
                     {own ?? t("me.name.missing")}
-                    {keptName && !sameTeamName(own, keptName) ? (
+                    {keptLine ? (
                       <span className="block">
                         {t("me.name.kept", {
                           business: businessName,
-                          name: keptName,
+                          name: keptLine,
                         })}
                       </span>
                     ) : null}

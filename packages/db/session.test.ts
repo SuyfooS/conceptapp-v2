@@ -287,8 +287,22 @@ describe("getCurrentMember", () => {
     const member = await getCurrentMember(catalogue);
     expect(member?.membership?.business.id).toBe(BUSINESS);
     expect(member?.name).toBe("Galit X");
+    expect(member?.memberName).toBe("Galit X");
     // The console's, the same in every business.
     expect(member?.ownName).toBe("Galit Books");
+  });
+
+  // A manager fixed her to "Galit Books", and she then named herself so: the
+  // row stays the business's, and goes on showing after her next rename.
+  it("says the business keeps a name for them even when it is their own", async () => {
+    db.tables.member_names = {
+      data: [{ user_id: db.user, name: "Galit Books" }],
+      error: null,
+    };
+    const member = await getCurrentMember(catalogue);
+    expect(member?.name).toBe("Galit Books");
+    expect(member?.ownName).toBe("Galit Books");
+    expect(member?.memberName).toBe("Galit Books");
   });
 
   it("reads the language they chose, and Hebrew for one the app lacks", async () => {
@@ -312,6 +326,7 @@ describe("getCurrentMember", () => {
     const member = await getCurrentMember(catalogue);
     expect(member?.name).toBe("Galit Books");
     expect(member?.ownName).toBe("Galit Books");
+    expect(member?.memberName).toBeNull();
   });
 
   it("has their own name twice while viewing a business as a role", async () => {
@@ -323,5 +338,6 @@ describe("getCurrentMember", () => {
     expect(member?.viewing).toMatchObject({ role: "worker" });
     expect(member?.name).toBe("Galit Books");
     expect(member?.ownName).toBe("Galit Books");
+    expect(member?.memberName).toBeNull();
   });
 });

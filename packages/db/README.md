@@ -170,8 +170,10 @@ name as the business's own for the person, read the same way (one line, its
 spaces collapsed); their own name keeps no row, and one kept from before
 goes; an invite with no name leaves the business's; a name with a control
 character keeps none, so a join never fails over it. `/me` says which
-business keeps a name of its own for them (`keptNameOf` in @domain/profile).
-`invite_names.test.sql` covers it.
+business keeps a name of its own for them: the session's `memberName` is the
+business's row, even one equal to their own name, which stays when they
+rename themselves, and the row says it beside their own where it differs
+(`keptNameOf` in @domain/profile). `invite_names.test.sql` covers it.
 
 A week is written shift by shift (`20261115000100_week_in_place.sql`; Orel's
 answers of 15 November 2026). `public.week_shifts(week)` reads a week's shifts

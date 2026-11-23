@@ -190,17 +190,18 @@ export function checkProfileChange(
 }
 
 /**
- * The name a business keeps for the person over their own
- * (`public.member_names`), as `/me` says it beside their own: `shown`, the
- * name the business shows them by (`CurrentMember.name`), when it is not
- * their own name `own` as the team keeps names (`sameTeamName`); null when
- * it is, or when there is none.
+ * The name a business keeps for the person over their own, as `/me` says it
+ * beside their own: `kept`, its `public.member_names` row
+ * (`CurrentMember.memberName`), when it is not their own name `own` as the
+ * team keeps names (`sameTeamName`); null when it is, or when it keeps none.
+ * A row equal to their own name says nothing here, but it is still the
+ * business's: it stays when they rename themselves.
  */
 export function keptNameOf(
-  shown: string | null | undefined,
+  kept: string | null | undefined,
   own: string | null | undefined,
 ): string | null {
-  return shown && !sameTeamName(shown, own) ? shown : null;
+  return kept && !sameTeamName(kept, own) ? kept : null;
 }
 
 /**
