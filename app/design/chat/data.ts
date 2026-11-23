@@ -311,8 +311,9 @@ export const chatDemoEarlierAnnouncement = {
 export const chatDemoFailed = "אחזור אלייך עד הצהריים";
 
 /**
- * The PDF Shiran is sending in `?state=uploading` (part of it up) and
- * `?state=pdfFailed` (it didn't go), C5.
+ * The PDF Shiran is sending in `?state=uploading` (part of it up),
+ * `?state=pdfFailed` (it didn't go), C5, and `?state=pdfOwn` (it didn't go:
+ * she sent many PDFs in the last minutes).
  */
 export const chatDemoUpload = { name: "הזמנה לספק.pdf", size: 1_363_149 };
 

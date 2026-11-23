@@ -54,8 +54,10 @@ type Props = {
 // attach button opens the attach sheet (`?state=attach` opens with it): a
 // picked photo is made ready as the app does and shown from the browser, a
 // picked PDF goes up with its bar. `?state=uploading` has Shiran's PDF part
-// of the way up, with the way to stop it, and `?state=pdfFailed` one that
-// didn't go, with its retry and what the field says.
+// of the way up, with the way to stop it, `?state=pdfFailed` one that
+// didn't go, with its retry and what the field says, and `?state=pdfOwn` one
+// that didn't go because she sent many PDFs in the last minutes, the same
+// with its own words.
 // `?announce=1` opens the composer as "הודעה מההנהלה", as the
 // announcements' "פרסום הודעה מההנהלה" does. The title's details button
 // opens /design/chat/<id>/info on a phone and a sheet on a tablet.
@@ -135,10 +137,14 @@ async function Demo({ params, searchParams }: Props) {
     state === "photo" ||
     state === "attach" ||
     state === "uploading" ||
-    state === "pdfFailed"
+    state === "pdfFailed" ||
+    state === "pdfOwn"
       ? state
       : null;
-  if ((state === "uploading" || state === "pdfFailed") && !chat.closed) {
+  if (
+    (state === "uploading" || state === "pdfFailed" || state === "pdfOwn") &&
+    !chat.closed
+  ) {
     messages.push({
       id: state,
       author: CHAT_DEMO_READER,
@@ -147,7 +153,7 @@ async function Demo({ params, searchParams }: Props) {
       body: null,
       pdf: { ...chatDemoUpload, href: demoPdfHref("ConceptApp order") },
       sending: state === "uploading",
-      failed: state === "pdfFailed",
+      failed: state === "pdfFailed" || state === "pdfOwn",
       progress: state === "uploading" ? 0.45 : null,
     });
   }
