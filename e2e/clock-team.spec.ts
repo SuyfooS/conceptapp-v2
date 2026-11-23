@@ -1,5 +1,4 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Locator, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
   addDemoShift,
@@ -16,6 +15,7 @@ import {
 } from "./db";
 import { secondPage, signIn } from "./session";
 import { heT } from "./t";
+import { expect, type Locator, type Page, test } from "./test";
 
 // Seeded in supabase/seed.sql: the demo restaurant, its manager and a worker.
 // The worker's hours are written straight to the database, as if they had

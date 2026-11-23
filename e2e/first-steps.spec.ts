@@ -1,5 +1,4 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Locator, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
   addFirstStepsDepartment,
@@ -16,6 +15,7 @@ import {
 } from "./db";
 import { secondPage, signIn } from "./session";
 import { heT } from "./t";
+import { expect, type Locator, type Page, test } from "./test";
 
 // The owner's first steps on Today: what to do first in a business the team
 // just opened, worked out from what it holds, each step by its module and

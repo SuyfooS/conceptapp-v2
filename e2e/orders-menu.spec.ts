@@ -1,5 +1,4 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import { createTranslator } from "next-intl";
 import he from "../messages/he.json" with { type: "json" };
 import { type MessageTree, mergeWording } from "../packages/domain/wording";
@@ -21,6 +20,7 @@ import {
 import { secondPage, signIn } from "./session";
 import { setDemoModule } from "./sms";
 import { heT } from "./t";
+import { expect, type Page, test } from "./test";
 
 // Taking orders' menu on screen (waiter mode P2, issue #191), on the demo
 // restaurant, where the local seed has the module on: the team copies a

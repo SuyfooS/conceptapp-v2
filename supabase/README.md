@@ -144,7 +144,8 @@ where key_hash = encode(sha256(convert_to('phone:+9725…', 'UTF8')), 'hex');
 browser tests sign the same people in many times from one machine, and sets the wait to 2.25
 seconds, just past the local auth server's 2 (`config.toml`). They hold the app's own
 way in only: the auth API is public, so a script calling it directly meets only Supabase's
-and Twilio's limits, and CAPTCHA once it is on (below).
+and Twilio's limits, and, once Supabase's CAPTCHA is on (below), Cloudflare's check before
+every code.
 
 ### Changing someone's sign-in number
 
@@ -261,8 +262,11 @@ The site of real businesses has `DEMO_DOOR=off` in Vercel: `/enter` goes straigh
 `app/(auth)/enter`). The dashboard's half, which `config.toml` never carries since it is
 never pushed, is in [`docs/production.md`](../docs/production.md): B3 for the API, session and
 storage settings, B4 for sign-in (phone with Twilio Verify, new signups off, no test numbers,
-the rate limits, the site URL, CAPTCHA only once the app sends its token) and B6 for the first
-platform admin. The app's server sends and checks every code and refreshes every session, and
+the rate limits, the site URL, CAPTCHA) and B6 for the first platform admin. The app sends
+Cloudflare Turnstile's token with every code (`signInWithOtp`'s `captchaToken`, P9b), so
+CAPTCHA goes on from the dashboard, `Authentication → Attack Protection`, in the order of
+production.md's Turnstile section (and B4 step 7 for production). Locally `[auth.captcha]`
+stays commented out: the app sends Cloudflare's test token, which nobody checks. The app's server sends and checks every code and refreshes every session, and
 passes on no caller's address, so Supabase's limits per address are one limit for the whole
 site: B4 sizes them for the site's traffic together, and `private.auth_limits` alone counts each
 number and each caller.

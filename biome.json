@@ -59,6 +59,23 @@
       }
     },
     {
+      "includes": ["e2e/**/*.spec.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "@playwright/test": "A spec takes Playwright from ./test, whose test serves the stand-in for Cloudflare's Turnstile script (e2e/turnstile-stand-in.js)."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
       "includes": ["packages/domain/**"],
       "linter": {
         "rules": {

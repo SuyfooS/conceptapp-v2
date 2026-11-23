@@ -1,5 +1,4 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
   closeDemoList,
@@ -10,6 +9,7 @@ import {
 } from "./db";
 import { signIn } from "./session";
 import { heT } from "./t";
+import { expect, type Page, test } from "./test";
 
 // Each item's history (lists L6a), on the demo restaurant's lists as their
 // reset leaves them (lists.spec.ts): the kitchen's opening list sent to Noa

@@ -113,6 +113,7 @@ function drawData(
         data,
         view,
         actions,
+        captcha: { demo: "ready" },
         base: "",
         profileHref: "/me",
         preset,
@@ -878,6 +879,7 @@ function useKit(data: Data, busy: Kit["busy"] = {}): Kit {
     form: formArg(data.addressForm),
     busy,
     setBusy: () => {},
+    captcha: { demo: "ready" },
   };
 }
 
@@ -1058,6 +1060,7 @@ describe("the file's frame", () => {
         data,
         view: "identity",
         actions,
+        captcha: { demo: "ready" },
       }) as ReactElement<{
         english: boolean;
         children: ReactElement;
@@ -1083,7 +1086,12 @@ describe("the file's frame", () => {
               missing.push(error.message);
             },
           } as unknown as Parameters<typeof NextIntlClientProvider>[0],
-          FileView({ data, view: "identity", actions }),
+          FileView({
+            data,
+            view: "identity",
+            actions,
+            captcha: { demo: "ready" },
+          }),
         ),
       );
       expect(missing).toEqual([]);

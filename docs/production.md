@@ -22,6 +22,33 @@
 | `DEMO_DOOR` | `packages/db/env.ts` | דלת ההדגמה של כל אתר. `off` באתר של עסקים אמיתיים, `on` (או בלי הגדרה בכלל) באתר ההדגמה. עם `off` הכתובת `/enter` עוברת לכניסה עם טלפון: אין אנשי הדגמה, אין כניסה בלחיצה ואין איפוס. ערך אחר עוצר את הבנייה, והאתר הקודם נשאר באוויר |
 | Migrate conceptapp-prod | `.github/workflows/migrate-prod.yml` | מעדכן את מבנה המסד בפרויקט הייצור. רק בהרצה ידנית, רק מ-`main` ורק אחרי אישור שלך. קודם בודק שזה לא הפרויקט של ההדגמה, ואף פעם לא מוסיף את ההדגמה. בסוף הרצה עם `apply` דלוק הוא כותב בסיכום שלה את הגרסה שממנה הגיע המבנה, ואת שתי השורות שמשחררות אותה לאתר של העסקים האמיתיים |
 | `/health` | `app/health/route.ts` | עונה 200 כשהשרת עונה, בשביל בדיקת זמינות. בלי נתונים, ובלי לשאול את מסד הנתונים |
+| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | `packages/db/env.ts` | "אני לא רובוט" של Cloudflare Turnstile לפני כל קוד ב-SMS (כניסה, הצטרפות, פתיחת תיקים, חשבון בנק). בלי הגדרה: מפתח הבדיקה של Cloudflare, שתמיד עובר. ב-`Production` זו טעות שהמסך לא מראה: הבנייה כותבת עליה אזהרה ביומן, ובודקים את המפתח בצעד 4 של הסעיף הבא. ערך בצורה אחרת עוצר את הבנייה, והאתר הקודם נשאר באוויר. דלת ההדגמה לא שולחת קוד ולא צריכה אותו. ההדלקה: הסעיף הבא |
+
+## Turnstile: "אני לא רובוט" בכל שליחת קוד
+
+**למה:** לפני כל קוד ב-SMS (כניסה, הצטרפות, פתיחת תיקים ואישור חשבון הבנק) Cloudflare בודק שמי שמבקש הוא לא תוכנה, ורק אז שרת הכניסה של Supabase שולח. זה סוגר גם את מי שפונה ל-API של הכניסה ישירות, בלי האפליקציה. **זמן:** כרבע שעה. **עלות:** אין (לבדוק: Turnstile חינמי).
+
+היום זה האתר הראשי, www.conceptapp.co.il ו-conceptapp-v2.vercel.app, על `conceptapp-dev`. לייצור: ב4, סעיף 7. CAPTCHA שנדלק ב-Supabase לפני שהאתר שולח את האסימון של Cloudflare עוצר כל קוד, ולכן הסדר כאן:
+
+1. **קודם הקוד:** השינוי של Turnstile מוזג ל-`main`. ב-Vercel → `Deployments`: הגרסה העליונה של `Production` היא מאחרי המיזוג, ב-`Ready`.
+2. **המפתח הציבורי ב-Vercel:**
+   - ב-Cloudflare → `Turnstile` → הווידג'ט של ConceptApp → `Site Key`.
+   - בפרויקט Vercel הראשי, `Settings → Environment Variables` → `Add`: השם `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, הערך ה-`Site Key`, מסומנים `Production` ו-`Preview` ולא `Development`, בלי `Sensitive`.
+   - זה הערך היחיד שנכנס גם ל-`Preview`: הוא ציבורי (הוא בכל דף ששולח קוד), ואותו ערך בכל מקום.
+   - ה-`Secret Key` של הווידג'ט לא נכנס ל-Vercel אף פעם: רק ל-Supabase, בצעד 5.
+3. **`Redeploy`:** ב-`Deployments`, הגרסה העליונה של `Production`, `⋯` → `Redeploy`. המפתח נכנס לאתר כשהוא נבנה. מב7 צעד 4 זו הגרסה הנוכחית של `Production`, מהענף `production`.
+4. **בדיקה בחלון פרטי** (`InPrivate` ב-Edge, `Incognito` ב-Chrome): `/sign-in` בשתי הכתובות.
+   - **קודם המפתח:** בכל כתובת, `Ctrl+U` (המקור של הדף), ושם `Ctrl+F` ו-`data-sitekey`. הערך שאחריו צריך להיות ה-`Site Key` של הווידג'ט, מצעד 2.
+   - **אם הערך הוא `1x00000000000000000000AA`, עוצרים:** זה מפתח הבדיקה של Cloudflare, שעובר תמיד ובכל כתובת, והאתר משתמש בו כשהמשתנה לא הגיע לבנייה (שם לא מדויק, בלי הסימון `Production`, או שנשמר אחרי ה-`Redeploy`). מתקנים בצעד 2, ושוב `Redeploy` ובדיקה. עם מפתח הבדיקה, CAPTCHA של צעד 5 עוצר כל קוד, ושום דבר על המסך לא מראה את זה לפני כן.
+   - בדרך כלל לא רואים שום דבר חדש: תיבה לסימון מופיעה רק כש-Cloudflare מבקש.
+   - אם מופיע "הבדיקה שזה לא רובוט לא נטענה", עוצרים: הכתובת לא ב-`Hostnames` של הווידג'ט, או שהמפתח לא נכון. ממשיכים לצעד 5 רק כש-`data-sitekey` הוא ה-`Site Key` וזה לא מופיע.
+   - ב-Cloudflare → `Turnstile` → ConceptApp → `Analytics` רואים בדיקה מהדקות האחרונות (לבדוק).
+5. **CAPTCHA ב-Supabase:** ב-`conceptapp-dev`, `Authentication → Attack Protection`: דלוק, ספק Turnstile, וה-`Secret Key` של הווידג'ט, ישר מ-Cloudflare או ממנהל הסיסמאות, ואז `Save` (שמות השדות: לבדוק).
+6. **בדיקה אחרי, בחלון פרטי:** נכנסים עם המספר שלך, והקוד מגיע.
+   - **אם זה לא עובר,** והמסך אומר "לא הצלחנו לוודא שזה לא רובוט": מכבים את CAPTCHA באותו מסך (הכניסה חוזרת לעבוד מיד), ופותחים סשן.
+
+- **גרסאות ניסיון (`Preview`):** הכתובות שלהן לא יכולות להיות ברשימה של הווידג'ט (אין בה כוכביות, ויש בה עד 10 כתובות), ולכן שם המסך אומר שהבדיקה לא נטענה. מצעד 5 כניסה ב-SMS בגרסת ניסיון לא עוברת; דלת ההדגמה עובדת.
+- **מי שהבדיקה לא נטענת אצלו** (חוסם פרסומות, רשת שחוסמת את Cloudflare) רואה את זה על המסך. מצעד 5 הקוד לא נשלח אליו, והמסך אומר למה.
 
 ## ב1. הסכם עם העסק
 
@@ -29,6 +56,7 @@
 
 - תנאי שימוש, והסכם עיבוד מידע לפי תקנה 15 של תקנות הגנת הפרטיות (אבטחת מידע), שעורך הדין מנסח.
 - "מסמך הגדרות מאגר" לשני המאגרים, כפי שעורך הדין יגדיר אותם. תבנית יכין סשן בהמשך.
+- בין נותני השירות שבתנאים ובמדיניות הפרטיות, לצד Supabase, Vercel ו-Twilio: Cloudflare (Turnstile), שבודק את הדפדפן לפני כל קוד ב-SMS.
 - מה לשאול את העסק:
   - מי עושה אצלם את השכר, ובאיזו תוכנה.
   - טופס 101: איזה טופס מאושר הם כבר משתמשים בו.
@@ -103,7 +131,7 @@
    | השאר: מיילים, משתמשים אנונימיים ו-Web3 | | בלי שינוי | לא בשימוש |
 
 6. `Authentication → URL Configuration`: `Site URL` הוא `https://www.conceptapp.co.il`, ובכתובות החזרה הכתובת הזו בלבד.
-7. CAPTCHA: **רק אחרי** שהשינוי של Turnstile עלה לאוויר. הוא עוד לא בקוד. כשהוא שם: `Authentication → Attack Protection`, ספק Turnstile, עם ה-`Secret key` שאצלך. לפני זה כל קוד נעצר.
+7. CAPTCHA: הקוד כבר שולח את האסימון של Turnstile, ו-CAPTCHA של `conceptapp-dev` נדלק בסעיף Turnstile, למעלה. כאן: `Authentication → Attack Protection` של `conceptapp-prod`, ספק Turnstile, עם ה-`Secret Key` של אותו ווידג'ט, ממנהל הסיסמאות. האתר של העסקים האמיתיים שולח את האסימון מהשחרור הראשון, כי `NEXT_PUBLIC_TURNSTILE_SITE_KEY` כבר מסומן בו ל-`Production`. הבדיקה: ב7 צעד ב, קודם `data-sitekey` במקור של `/sign-in`, שהוא ה-`Site Key` ולא מפתח הבדיקה, ואז הכניסה עם המספר שלך, שלא נעצרת על "לא הצלחנו לוודא שזה לא רובוט".
 8. ב-Twilio עצמו: הגבלה של בקשות לכל מספר ו-`Fraud Guard` דלוק; הרשאות מדינה לישראל בלבד; התראה על הוצאה (`Usage Triggers`, לבדוק); ותקרה לטעינה האוטומטית של היתרה.
 9. **שתי הגדרות נשארות כמו שהן**, כי האפליקציה סופרת לפיהן: תוקף הקוד ב-Twilio Verify, 10 דקות, והזמן בין שני קודים לאותו מספר ב-Supabase, 60 שניות (`Phone`, שם ההגדרה: לבדוק). לאפליקציה יש המתנה משלה של 65 שניות בין קודים, ותקרה של 15 קודים ו-30 בדיקות קוד ביום לכל מספר, ואין להן הגדרה כאן. מי שמשנה אחת מהשתיים משנה איתה גם את האפליקציה (`supabase/README.md`).
 
@@ -169,12 +197,13 @@ returning user_id;
      | `VAPID_SUBJECT` | מהאתר הראשי, שם הוא גלוי |
      | `CRON_SECRET` | ממנהל הסיסמאות, "CRON_SECRET של הפיתוח". אם הוא לא שם: ערך חדש לפיתוח, באותה פקודה כמו בב5, שנשמר במנהל הסיסמאות בשם הזה. הוא נכנס גם ל-Vault של `conceptapp-dev`, אחרי הבדיקה למטה. `Sensitive` |
      | `DEMO_DOOR` | `on` |
+     | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | מהאתר הראשי ב-Vercel, שם הוא גלוי. או ה-`Site Key` של הווידג'ט ב-Cloudflare |
      | `EMPLOYEE_DATA_KEKS`, `EMPLOYEE_DATA_KEK_ACTIVE` | לא בהדגמה: הם נכנסים רק לייצור, בב9 |
 
    - ואז `Redeploy`: ב-`Deployments`, הגרסה העליונה, `⋯` → `Redeploy`. הכתובת של Supabase ו-`DEMO_DOOR` נכנסים לאתר כשהוא נבנה, והבנייה הראשונה הייתה בלעדיהם.
-   - ב-Cloudflare Turnstile: ב-`Hostnames` מוסיפים את הכתובת החדשה.
+   - ב-Cloudflare Turnstile לא משנים כלום: `conceptapp.co.il` ב-`Hostnames` של הווידג'ט מכסה גם את `demo.conceptapp.co.il` (לפי Cloudflare, כתובת מכסה את תת-הכתובות שלה: לבדוק). אם בכתובת החדשה המסך אומר שהבדיקה לא נטענה, מוסיפים אותה שם.
    - לבדוק: לכבות בפרויקט הזה את גרסאות הניסיון (`Preview`), כדי שכל שינוי לא ייבנה פעמיים.
-   - **בדיקה:** נכנסים להדגמה בכתובת החדשה, ו-`https://demo.conceptapp.co.il/health` עונה.
+   - **בדיקה:** נכנסים להדגמה בכתובת החדשה, ו-`https://demo.conceptapp.co.il/health` עונה. ובחלון פרטי, ב-`https://demo.conceptapp.co.il/sign-in`: `data-sitekey` במקור של הדף (`Ctrl+U`) הוא ה-`Site Key`, לא `1x00000000000000000000AA` (סעיף Turnstile, צעד 4). אם הוא מפתח הבדיקה, `NEXT_PUBLIC_TURNSTILE_SITE_KEY` לא נכנס לבנייה, וכל קוד ב-SMS בכתובת הזו נעצר: מתקנים אותו בטבלה, ושוב `Redeploy` ובדיקה.
    - **רק אחרי שהבדיקה עברה,** ב-`conceptapp-dev`: `app_url` ב-Vault ו-`Site URL` (ב-`Authentication → URL Configuration`) עוברים לכתובת החדשה, `https://demo.conceptapp.co.il`. אם עשית להדגמה `CRON_SECRET` חדש, גם `cron_secret` ב-Vault מקבל אותו, אותו ערך בדיוק. אחרת המשימות של המסד נדחות (נספח).
 3. **האתר הראשי, צעד א (עדיין על פרויקט הפיתוח):** `DEMO_DOOR` = `off`, ל-`Production` בלבד, ואז `Redeploy`.
    - **בדיקה, בחלון פרטי** (`InPrivate` ב-Edge, `Incognito` ב-Chrome), כדי להיות מחוץ לחשבון: למי שמחובר, גם כאיש הדגמה, `/enter` עובר ל-`/home` בכל מקרה, והבדיקה לא אומרת כלום. בחלון הפרטי: `www.conceptapp.co.il/enter` עובר ל-`/sign-in`; אין "כניסה להדגמה, בלי טלפון"; `/health` עונה 200.
@@ -198,6 +227,7 @@ returning user_id;
      | `VAPID_SUBJECT` | `mailto:` ומייל שאתה קורא | |
      | `CRON_SECRET` | הערך מב5, ממנהל הסיסמאות ("CRON_SECRET של הייצור"), אותו ערך כמו `cron_secret` ב-Vault | `Sensitive` |
      | `DEMO_DOOR` | `off` | |
+     | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | אותו מפתח, כבר מוגדר מהסעיף Turnstile | לא נוגעים בו: הוא גלוי, ואותו ערך גם ב-`Preview` |
      | `EMPLOYEE_DATA_KEKS`, `EMPLOYEE_DATA_KEK_ACTIVE` | רק בב9, אחרי עורך הדין | |
 
      הזוג החדש, ב-PowerShell, בתיקייה של הפרויקט:
@@ -220,6 +250,7 @@ returning user_id;
 
    - **בדיקה:**
      - ב-Vercel, `Deployments`: הגרסה העליונה של `Production` היא מהענף `production`, ב-`Ready`.
+     - **קודם המפתח של Turnstile,** בחלון פרטי, ב-`www.conceptapp.co.il/sign-in`: `data-sitekey` במקור של הדף (`Ctrl+U`) הוא ה-`Site Key`, לא `1x00000000000000000000AA` (סעיף Turnstile, צעד 4). אם הוא מפתח הבדיקה, CAPTCHA של `conceptapp-prod` (ב4, סעיף 7) עוצר כל קוד: עוצרים, בודקים ב-`Settings → Environment Variables` ש-`NEXT_PUBLIC_TURNSTILE_SITE_KEY` מסומן `Production`, ואז `Redeploy` לגרסה העליונה של `Production`, מהענף `production`, ובדיקה שוב.
      - נכנסים עם המספר שלך מב6, והקונסולה נפתחת. `www.conceptapp.co.il/health` עונה 200.
      - **אף ערך של הייצור לא בגרסאות הניסיון:** ב-`Settings → Environment Variables`, מסננים לפי סביבה (לבדוק איפה) ל-`Preview`, ואחר כך ל-`Development`. בשתיהן `NEXT_PUBLIC_SUPABASE_URL` הוא הכתובת של `conceptapp-dev` (המזהה שלו בכתובת), או שהוא לא שם. ובכל אחד מ-`SUPABASE_SECRET_KEY`, `CRON_SECRET`, `VAPID_PRIVATE_KEY` ו-`EMPLOYEE_DATA_KEKS` (אחרי ב9): ברשומה שמסומן בה `Production` לא מסומנים גם `Preview` או `Development`. אם ערך של הייצור הגיע לאחת מהן: מורידים אותו משם, ומחליפים את הסוד (נספח), כי אולי כבר נבנתה איתו גרסת ניסיון.
      - **אם הבדיקה לא עוברת** (הגרסה לא ב-`Ready`, `/health` לא עונה 200 או שהכניסה לא עובדת): עוד אף עסק לא באתר, ולכן לא מחזירים כלום לאחור. פותחים סשן, ולא פותחים עסק בקונסולה עד שהבדיקה עוברת.
@@ -329,3 +360,4 @@ update private.auth_limits set max_count = 40 where kind = 'verify' and scope = 
 | `PROD_SUPABASE_DB_PASSWORD` (סיסמת מסד הנתונים של הייצור) | ב-Supabase (`Project Settings → Database`), ואז הסוד `PROD_SUPABASE_DB_PASSWORD` בסביבה `conceptapp-prod` ב-GitHub, ולא אחד מ-`Repository secrets`, שהם של פרויקט הפיתוח | שום דבר באפליקציה. רק ההרצה הבאה של Migrate conceptapp-prod צריכה את החדשה |
 | `EMPLOYEE_DATA_KEKS` | מפתח חדש אחרי הישנים (`node tooling/employee-data-key.mjs --id 2`), ו-`EMPLOYEE_DATA_KEK_ACTIVE` עובר למספר החדש, שניהם ב-Vercel. ואז `Redeploy` לגרסה הנוכחית של `Production`, מהענף `production` (עדכון אחרי שעסק אמיתי עלה) | אף פעם לא מוחקים מפתח ישן: בלעדיו התיקים שנשמרו בו לא נקראים (`.env.example`) |
 | `Auth Token` של Twilio | ב-Twilio, ואז ב-Supabase (ב4) | עד שהחדש ב-Supabase, קודים לא נשלחים |
+| `Secret Key` של Turnstile | ב-Cloudflare (`Turnstile` → הווידג'ט → `Rotate`, לבדוק), ואז ב-`Attack Protection` של Supabase, בכל פרויקט שהוא דלוק בו | עד שהחדש ב-Supabase, כל קוד נדחה (אולי Cloudflare משאיר את הישן בתוקף זמן מה: לבדוק). ה-`Site Key` לא משתנה |

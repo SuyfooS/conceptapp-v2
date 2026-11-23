@@ -10,11 +10,13 @@ import type { JoinState } from "./actions";
 // the invite step. A new code asked for too soon reads as one asked for, as
 // on sign-in, since the wait runs from a send that a number with an account
 // kept and one with none had cleared; too many and a failure are said. A
-// link that stopped working sends nothing.
+// link that stopped working sends nothing. Each send passes on the "אני לא
+// רובוט" check's token, and one the auth server refused for it is said on
+// its own step, the same for every number.
 
 vi.mock("server-only", () => ({}));
 
-const TOKEN = "t".repeat(43);
+const TOKEN_LINK = "t".repeat(43);
 
 const mocks = vi.hoisted(() => ({
   findInvite: vi.fn(),
@@ -44,12 +46,15 @@ vi.mock("../otp", () => ({
 
 const { join } = await import("./actions");
 
-/** The join form as it posts. */
-const posted = (intent: string) => {
+/** The join form as it posts, with the check's token when it has one. */
+const posted = (intent: string, captcha?: string) => {
   const form = new FormData();
   form.set("intent", intent);
+  if (captcha !== undefined) form.set("captcha", captcha);
   return form;
 };
+
+const TOKEN = "XXXX.DUMMY.TOKEN.XXXX";
 
 const inviteStep: JoinState = { step: "invite" };
 const codeStep: JoinState = { step: "code" };
@@ -75,31 +80,48 @@ beforeEach(() => {
 
 describe("the first send", () => {
   it("goes to the code step, the invite's number, its account made once the code may go", async () => {
-    expect(await join(TOKEN, inviteStep, posted("send"))).toEqual({
+    expect(await join(TOKEN_LINK, inviteStep, posted("send"))).toEqual({
       step: "code",
       error: undefined,
       resent: false,
     });
-    expect(mocks.sendJoinCode).toHaveBeenCalledWith(
-      "+972500000801",
-      expect.any(Function),
-    );
-    await mocks.sendJoinCode.mock.calls[0]?.[1]();
+    expect(mocks.sendJoinCode).toHaveBeenCalledWith("+972500000801", {
+      makeAccount: expect.any(Function),
+      captcha: undefined,
+    });
+    await mocks.sendJoinCode.mock.calls[0]?.[1].makeAccount();
     expect(mocks.ensurePhoneAccount).toHaveBeenCalledWith("+972500000801");
   });
 
+  it("passes the check's token on, and drops one of another shape", async () => {
+    await join(TOKEN_LINK, inviteStep, posted("send", TOKEN));
+    await join(TOKEN_LINK, codeStep, posted("resend", TOKEN));
+    await join(TOKEN_LINK, inviteStep, posted("send", "a".repeat(3000)));
+    expect(
+      mocks.sendJoinCode.mock.calls.map((call) => call[1].captcha),
+    ).toEqual([TOKEN, TOKEN, undefined]);
+  });
+
+  it("keeps a send refused for the check on the invite step, and says so", async () => {
+    mocks.sendJoinCode.mockResolvedValueOnce("captcha");
+    expect(await join(TOKEN_LINK, inviteStep, posted("send"))).toEqual({
+      step: "invite",
+      error: "captcha",
+    });
+  });
+
   it("answers too many and too soon word for word as a code that went", async () => {
-    const sent = await join(TOKEN, inviteStep, posted("send"));
+    const sent = await join(TOKEN_LINK, inviteStep, posted("send"));
     for (const error of ["tooMany", "rateLimit"] as const) {
       mocks.sendJoinCode.mockResolvedValueOnce(error);
-      expect(await join(TOKEN, inviteStep, posted("send"))).toEqual(sent);
+      expect(await join(TOKEN_LINK, inviteStep, posted("send"))).toEqual(sent);
     }
   });
 
   it("keeps a malformed number and a failure on the invite step", async () => {
     for (const error of ["invalidPhone", "failed"] as const) {
       mocks.sendJoinCode.mockResolvedValueOnce(error);
-      expect(await join(TOKEN, inviteStep, posted("send"))).toEqual({
+      expect(await join(TOKEN_LINK, inviteStep, posted("send"))).toEqual({
         step: "invite",
         error,
       });
@@ -109,7 +131,7 @@ describe("the first send", () => {
   it("is a failure on the invite step when sending throws, logged without the number", async () => {
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
     mocks.sendJoinCode.mockRejectedValueOnce(new Error("down"));
-    expect(await join(TOKEN, inviteStep, posted("send"))).toEqual({
+    expect(await join(TOKEN_LINK, inviteStep, posted("send"))).toEqual({
       step: "invite",
       error: "failed",
     });
@@ -120,7 +142,7 @@ describe("the first send", () => {
 
 describe("a new code", () => {
   it("says it went", async () => {
-    expect(await join(TOKEN, codeStep, posted("resend"))).toEqual({
+    expect(await join(TOKEN_LINK, codeStep, posted("resend"))).toEqual({
       step: "code",
       error: undefined,
       resent: true,
@@ -128,17 +150,17 @@ describe("a new code", () => {
   });
 
   it("reads too soon word for word as a new code that went, as sign-in does", async () => {
-    const sent = await join(TOKEN, codeStep, posted("resend"));
+    const sent = await join(TOKEN_LINK, codeStep, posted("resend"));
     mocks.sendJoinCode.mockResolvedValueOnce("rateLimit");
-    const tooSoon = await join(TOKEN, codeStep, posted("resend"));
+    const tooSoon = await join(TOKEN_LINK, codeStep, posted("resend"));
     expect(tooSoon).toEqual(sent);
     expect(tooSoon).toEqual({ step: "code", error: undefined, resent: true });
   });
 
-  it("says too many and a failure on the code step", async () => {
-    for (const error of ["tooMany", "failed"] as const) {
+  it("says too many, a failure and a refusal for the check on the code step", async () => {
+    for (const error of ["tooMany", "failed", "captcha"] as const) {
       mocks.sendJoinCode.mockResolvedValueOnce(error);
-      expect(await join(TOKEN, codeStep, posted("resend"))).toEqual({
+      expect(await join(TOKEN_LINK, codeStep, posted("resend"))).toEqual({
         step: "code",
         error,
         resent: false,
@@ -150,8 +172,8 @@ describe("a new code", () => {
 describe("a link that stopped working", () => {
   it("goes back to its page before anything is sent", async () => {
     mocks.findInvite.mockResolvedValue(null);
-    await expect(join(TOKEN, inviteStep, posted("send"))).rejects.toThrow(
-      `redirect /join/${TOKEN}`,
+    await expect(join(TOKEN_LINK, inviteStep, posted("send"))).rejects.toThrow(
+      `redirect /join/${TOKEN_LINK}`,
     );
     expect(mocks.sendJoinCode).not.toHaveBeenCalled();
   });

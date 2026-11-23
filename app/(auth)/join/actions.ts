@@ -3,6 +3,7 @@
 import { claimInvite, ensurePhoneAccount, findInvite } from "@db/invites";
 import { getBusinessModulesForTeam } from "@db/module-settings";
 import { normalizeOtpCode } from "@domain/otp";
+import { CAPTCHA_FIELD, captchaTokenOf } from "@domain/turnstile";
 import { redirect } from "next/navigation";
 import { rememberBusiness } from "../../(app)/business-cookie";
 import { pushSoon } from "../../push/server";
@@ -33,9 +34,20 @@ export type JoinState =
  * stay on the invite. A new code asked for too soon reads as one asked for,
  * as on sign-in, so the app's wait between codes reads the same for every
  * number; too many and a failure are said on the code step. What "too many"
- * still tells is a known issue (docs/ROADMAP.md, 94). The number always
- * comes from the invite, never from the form. A link that stopped working
- * on the way goes back to its page, which says why.
+ * still tells is a known issue (docs/ROADMAP.md, 94). A send carries the
+ * "אני לא רובוט" check's token (`captcha`, dropped when it isn't one), and
+ * one the auth server refused for it stays on its step and says so. The
+ * auth server's refusal is the same for every number, since its check
+ * comes before it looks the number up, but the app's own wait isn't: a
+ * send with no good token, within the wait after a sign-in code to the
+ * invited number, reads as a code asked for when the number had an account
+ * (its counts kept, so the auth server isn't asked) and as refused for the
+ * check when it had none (its counts cleared). The app can't tell a bad
+ * token itself, and showing the code step for a send refused for its check
+ * would hide the refusal, so that is a known issue too (docs/ROADMAP.md,
+ * 94). The number always comes from the invite, never from the form.
+ * A link that stopped working on the way goes back to its page, which says
+ * why.
  */
 export async function join(
   token: string,
@@ -51,9 +63,10 @@ export async function join(
   if (intent === "send" || intent === "resend") {
     let error: SignInError | null;
     try {
-      error = await sendJoinCode(invite.phone, () =>
-        ensurePhoneAccount(invite.phone),
-      );
+      error = await sendJoinCode(invite.phone, {
+        makeAccount: () => ensurePhoneAccount(invite.phone),
+        captcha: captchaTokenOf(form.get(CAPTCHA_FIELD)),
+      });
     } catch (cause) {
       console.error("join: sending the code failed", (cause as Error).message);
       error = "failed";

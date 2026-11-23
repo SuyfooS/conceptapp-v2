@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
+import { captchaSettled } from "./captcha";
 import {
   closeSwitchBusinesses,
   invitesBySlug,
@@ -15,6 +15,7 @@ import {
 import { secondPage, signIn } from "./session";
 import { latestCode } from "./sms";
 import { heT } from "./t";
+import { expect, type Page, test } from "./test";
 
 // One login in several businesses (payroll P3b; Orel, 8 November 2026): one
 // place on a staff per login and any number as an accountant. Galit keeps the
@@ -216,6 +217,7 @@ test("a worker on another business's staff gets a link like anyone, and only he 
     try {
       await theirs.goto(link);
       const since = new Date(Date.now() - 1000);
+      await captchaSettled(theirs);
       await theirs.getByRole("button", { name: j.send }).click();
       await theirs
         .getByLabel(j.codeLabel)

@@ -1,5 +1,4 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import { dateIn, weekdayOf } from "../packages/domain/availability";
 import { WEEKDAY_KEYS } from "../packages/domain/availability-form";
@@ -21,6 +20,7 @@ import {
 import { MockPushService } from "./mock-push";
 import { secondPage, signIn } from "./session";
 import { heT } from "./t";
+import { expect, type Page, test } from "./test";
 
 // The reminders (notifications part 4): the database writes them once a
 // minute (`private.run_reminders`), each once, in a real business of the

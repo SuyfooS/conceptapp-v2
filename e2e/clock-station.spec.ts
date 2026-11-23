@@ -1,5 +1,4 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import { expectCameraOff, standInCamera } from "./camera";
 import {
@@ -18,6 +17,7 @@ import {
 } from "./db";
 import { secondPage, signIn } from "./session";
 import { heT } from "./t";
+import { expect, type Page, test } from "./test";
 
 // The clock station (#78 phase 5; Orel's lock of 17 November 2026): whoever
 // shows the clock's code locks the business's tablet on it from /clock/code,

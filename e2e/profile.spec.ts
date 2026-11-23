@@ -1,5 +1,4 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
   ageAvatar,
@@ -21,6 +20,7 @@ import { cameraPhoto, hasExif } from "./photo";
 import { secondPage, signIn } from "./session";
 import { STORAGE_SKIP, storageAnswers } from "./storage";
 import { heT } from "./t";
+import { expect, type Page, test } from "./test";
 
 // The profile (#82): a photo, who sees it, and the way out (H1); a line about
 // yourself, a cover and how the app addresses you (H2). People from

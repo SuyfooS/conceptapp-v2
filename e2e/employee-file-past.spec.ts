@@ -1,5 +1,4 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import en from "../messages/en.json" with { type: "json" };
 import he from "../messages/he.json" with { type: "json" };
 import {
@@ -13,6 +12,7 @@ import {
 import { secondPage, signIn } from "./session";
 import { setDemoModule } from "./sms";
 import { heT } from "./t";
+import { expect, type Page, test } from "./test";
 
 // A worker who left reads their old file (profile H5c), at each width: a
 // former worker of the local demo restaurant, which takes file writes

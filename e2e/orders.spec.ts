@@ -1,4 +1,3 @@
-import { expect, type Locator, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
   addOpenDemoEntry,
@@ -53,6 +52,7 @@ import {
 } from "./orders-parts";
 import { secondPage, signIn } from "./session";
 import { setDemoModule } from "./sms";
+import { expect, type Locator, type Page, test } from "./test";
 
 // Taking orders (waiter mode). P3's settings in the console; P4's screens on
 // the demo restaurant, where the local seed has the module on and three

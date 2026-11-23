@@ -122,7 +122,9 @@ Only `app/` imports app code (`@/…`).
   file's Steps (a step of a flow, in words and segments), IdField, BankField (paste and
   split, the check in words, "המספר נכון, לשמור"), SearchField with CityField and
   CountryField, and MaskedValue (shown for a minute); StepRow takes `current` (mock screens
-  at `/design/shell/me/file`).
+  at `/design/shell/me/file`), and CaptchaBox with useCaptcha (Cloudflare Turnstile before
+  every SMS code: drawn only when it asks for a tick, its fallback words; stand-ins at
+  `/design`).
 - ConceptApp's logo (`@ui/logo`, files in `docs/brand`) appears only where
   ConceptApp itself speaks: sign-in, the console, marketing.
 - A business accent is applied with `{...accentProps(accentTokens(hex))}` on a
@@ -208,7 +210,9 @@ font files or SF Symbols; asking the device for its own font is fine.
   valid number, registered or not. `DEMO_DOOR=off` (a deployment setting, read
   only by `demoDoorOpen` in `@db/env`) closes the demo door on a site: the site of
   real businesses has it off, the demo's own address on (Orel, 22 November 2026).
-  Production's setup: `docs/production.md`.
+  Production's setup: `docs/production.md`. Every form that makes the auth server send
+  an SMS code takes a Turnstile token (`useCaptcha`), passed to `signInWithOtp`; the app
+  never refuses a missing one (Supabase's CAPTCHA decides), and the demo door sends none.
 - Run `pnpm check` (Biome + typecheck) before handing work back; `pnpm build`
   for anything touching routing or config.
 - Orel works on Windows PowerShell 5: when giving him commands, one per line,

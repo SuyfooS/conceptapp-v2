@@ -6,6 +6,7 @@ import type {
   StepState,
 } from "@domain/employee-file-steps";
 import { type AddressForm, formArg, type ProfileLocale } from "@domain/profile";
+import type { CaptchaSetup } from "@domain/turnstile";
 import { cn } from "@ui/cn";
 import { DockButton, FloatingDock } from "@ui/floating-dock";
 import { ArrowRight, ChevronRight, Info } from "lucide-react";
@@ -59,6 +60,8 @@ export type Kit = {
   busy: Partial<Record<FileStep, boolean>>;
   /** A step's save went, or came back. */
   setBusy: (step: FileStep, busy: boolean) => void;
+  /** The "אני לא רובוט" check before the bank's code (`BankStep`). */
+  captcha: CaptchaSetup;
 };
 
 /**

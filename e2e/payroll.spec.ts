@@ -1,5 +1,4 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import { addYears } from "../packages/domain/youth";
 import {
@@ -21,6 +20,7 @@ import {
 } from "./db";
 import { signIn } from "./session";
 import { heT } from "./t";
+import { expect, type Page, test } from "./test";
 
 // Hours for payroll (payroll P3), hourly wages (P4), details for payroll (P5)
 // and the hours engine on screen (P7), in the demo shop as supabase/seed.sql

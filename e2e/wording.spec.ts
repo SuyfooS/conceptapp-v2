@@ -1,7 +1,7 @@
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import { demoWording, setDemoWording } from "./db";
 import { signIn } from "./session";
+import { expect, type Page, test } from "./test";
 
 // A business's own sentences (Orel, 7 November 2026): one row replaces a
 // sentence wherever it shows, on the server (the tab bar) and in the browser

@@ -1,5 +1,4 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import { buildScreen, onDate } from "./build-screen";
 import {
@@ -28,6 +27,7 @@ import {
 } from "./db";
 import { secondPage, signIn } from "./session";
 import { heT } from "./t";
+import { expect, type Page, test } from "./test";
 
 // Team changes (Orel, 14 November 2026, issue #1): whoever may invite to a
 // role takes someone off the team from it and changes it; the shifts still to

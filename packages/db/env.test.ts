@@ -8,6 +8,8 @@ import {
   parseEmployeeDataKeys,
   parsePublicEnv,
   parseSecretKey,
+  parseTurnstileSiteKey,
+  turnstileSiteKey,
 } from "./env";
 
 describe("parsePublicEnv", () => {
@@ -109,6 +111,113 @@ describe("demoDoorOpen", () => {
     expect(demoDoorOpen()).toBe(true);
     vi.stubEnv("DEMO_DOOR", "maybe");
     expect(() => demoDoorOpen()).toThrow(/DEMO_DOOR/);
+  });
+});
+
+describe("parseTurnstileSiteKey", () => {
+  // Made up, and put together here so that no file holds a key that looks
+  // real (tooling/captcha.test.ts).
+  const SITE_KEY = `0x4${"A".repeat(7)}exampleKey00`;
+  const SECRET = `0x4${"A".repeat(7)}exampleSecretKeyExample00`;
+
+  /** The message it throws, or "" when it doesn't. */
+  const refusal = (value: string) => {
+    try {
+      parseTurnstileSiteKey({ NEXT_PUBLIC_TURNSTILE_SITE_KEY: value });
+      return "";
+    } catch (error) {
+      return (error as Error).message;
+    }
+  };
+
+  it("is Cloudflare's always-passing test key when unset or blank", () => {
+    for (const value of [undefined, "", "  ", "\n"]) {
+      expect(
+        parseTurnstileSiteKey({ NEXT_PUBLIC_TURNSTILE_SITE_KEY: value }),
+        JSON.stringify(value),
+      ).toBe("1x00000000000000000000AA");
+    }
+    expect(parseTurnstileSiteKey({})).toBe("1x00000000000000000000AA");
+  });
+
+  it("takes a site key as Cloudflare writes it, trimmed, and its test keys", () => {
+    expect(SITE_KEY).toHaveLength(22);
+    expect(
+      parseTurnstileSiteKey({
+        NEXT_PUBLIC_TURNSTILE_SITE_KEY: ` ${SITE_KEY}\n`,
+      }),
+    ).toBe(SITE_KEY);
+    for (const key of [
+      "1x00000000000000000000AA",
+      "2x00000000000000000000AB",
+      "3x00000000000000000000FF",
+    ]) {
+      expect(
+        parseTurnstileSiteKey({ NEXT_PUBLIC_TURNSTILE_SITE_KEY: key }),
+      ).toBe(key);
+    }
+  });
+
+  it("refuses anything else, a secret key too, naming the setting and never the value", () => {
+    expect(SECRET).toHaveLength(35);
+    for (const value of [
+      "nope",
+      "0x",
+      SECRET,
+      "1x0000000000000000000000000000000AA",
+      `${SITE_KEY} ${SITE_KEY}`,
+      "9x00000000000000000000AA",
+    ]) {
+      const message = refusal(value);
+      expect(message, value).toMatch(/NEXT_PUBLIC_TURNSTILE_SITE_KEY/);
+      expect(message, value).not.toContain(value);
+    }
+  });
+});
+
+describe("turnstileSiteKey", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("reads this deployment's setting", () => {
+    vi.stubEnv("NEXT_PUBLIC_TURNSTILE_SITE_KEY", "");
+    expect(turnstileSiteKey()).toBe("1x00000000000000000000AA");
+    vi.stubEnv("NEXT_PUBLIC_TURNSTILE_SITE_KEY", "3x00000000000000000000FF");
+    expect(turnstileSiteKey()).toBe("3x00000000000000000000FF");
+    vi.stubEnv("NEXT_PUBLIC_TURNSTILE_SITE_KEY", "nope");
+    expect(() => turnstileSiteKey()).toThrow(/NEXT_PUBLIC_TURNSTILE_SITE_KEY/);
+  });
+
+  it("says in the log, never throwing, that Production has no key of its own", () => {
+    // Made up, as above.
+    const siteKey = `0x4${"A".repeat(7)}exampleKey00`;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      vi.stubEnv("VERCEL_ENV", "production");
+      for (const unset of ["", "1x00000000000000000000AA"]) {
+        vi.stubEnv("NEXT_PUBLIC_TURNSTILE_SITE_KEY", unset);
+        warn.mockClear();
+        expect(turnstileSiteKey()).toBe("1x00000000000000000000AA");
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(String(warn.mock.calls[0]?.[0])).toMatch(
+          /NEXT_PUBLIC_TURNSTILE_SITE_KEY.*Production.*docs\/production\.md/,
+        );
+      }
+      vi.stubEnv("NEXT_PUBLIC_TURNSTILE_SITE_KEY", siteKey);
+      warn.mockClear();
+      expect(turnstileSiteKey()).toBe(siteKey);
+      expect(warn).not.toHaveBeenCalled();
+      // Previews, CI and a computer use the test key on purpose.
+      vi.stubEnv("NEXT_PUBLIC_TURNSTILE_SITE_KEY", "");
+      for (const env of ["preview", "development", ""]) {
+        vi.stubEnv("VERCEL_ENV", env);
+        expect(turnstileSiteKey()).toBe("1x00000000000000000000AA");
+      }
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
 

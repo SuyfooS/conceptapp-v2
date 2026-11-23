@@ -10,7 +10,9 @@ import type { SignInState } from "./actions";
 // Signing in (`signIn`), with sending and checking the code stood in for:
 // every valid number reaches the code step with the same answer, whether it
 // has an account or not, and a resend or a check reads the number from the
-// step's own state, never the form's.
+// step's own state, never the form's. A send and a resend pass on the "אני
+// לא רובוט" check's token, and one of another shape is dropped; a send the
+// auth server refused for it stays on its step and says so.
 //
 // Signing out (`signOut`), with ending the session and reading the device's
 // station stood in for, and the session read (`sessionUserHere`) as it is,
@@ -113,7 +115,10 @@ describe("signing in", () => {
         await signIn(phoneStep, posted({ intent: "send", phone })),
       ).toEqual({ step: "code", phone: e164, error: undefined, resent: false });
     }
-    expect(mocks.sendSignInCode).toHaveBeenCalledWith("+972509999999");
+    expect(mocks.sendSignInCode).toHaveBeenCalledWith(
+      "+972509999999",
+      undefined,
+    );
   });
 
   it("asks again for the step's own number, never the form's, and says it asked", async () => {
@@ -128,7 +133,54 @@ describe("signing in", () => {
       error: undefined,
       resent: true,
     });
-    expect(mocks.sendSignInCode).toHaveBeenCalledWith("+972500000003");
+    expect(mocks.sendSignInCode).toHaveBeenCalledWith(
+      "+972500000003",
+      undefined,
+    );
+  });
+
+  it("passes the check's token on a send and a resend, and drops one of another shape", async () => {
+    const token = "XXXX.DUMMY.TOKEN.XXXX";
+    await signIn(
+      phoneStep,
+      posted({ intent: "send", phone: "050-000-0003", captcha: token }),
+    );
+    await signIn(codeStep, posted({ intent: "resend", captcha: token }));
+    expect(mocks.sendSignInCode.mock.calls).toEqual([
+      ["+972500000003", token],
+      ["+972500000003", token],
+    ]);
+    mocks.sendSignInCode.mockClear();
+    for (const captcha of ["", "a".repeat(3000), "two words"]) {
+      await signIn(
+        phoneStep,
+        posted({ intent: "send", phone: "050-000-0003", captcha }),
+      );
+    }
+    await signIn(codeStep, posted({ intent: "resend" }));
+    expect(mocks.sendSignInCode.mock.calls.map((call) => call[1])).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    ]);
+  });
+
+  it("keeps a send refused for the check on its step, and says so", async () => {
+    mocks.sendSignInCode.mockResolvedValueOnce("captcha");
+    expect(
+      await signIn(
+        phoneStep,
+        posted({ intent: "send", phone: "050-000-0003" }),
+      ),
+    ).toEqual({ step: "phone", error: "captcha" });
+    mocks.sendSignInCode.mockResolvedValueOnce("captcha");
+    expect(await signIn(codeStep, posted({ intent: "resend" }))).toEqual({
+      step: "code",
+      phone: "+972500000003",
+      error: "captcha",
+      resent: false,
+    });
   });
 
   it("keeps too many and a failure on the phone step, and on the code step for a resend", async () => {

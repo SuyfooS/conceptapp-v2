@@ -75,6 +75,20 @@ export async function forgetAuthAttempt(attempt: AuthAttempt): Promise<void> {
 }
 
 /**
+ * Gives back a send the auth server refused for its "אני לא רובוט" check
+ * (Supabase's CAPTCHA, once on), for its number only: `public.forget_auth_attempt`
+ * with no caller, which matches no caller's row, since none is counted
+ * without one. Nothing went, so the number's next try with a good token
+ * isn't held by the app's wait between codes; the caller's try stays
+ * counted, so sends without a token can't follow one another from one
+ * address without end, each one counted by the auth server against its
+ * limit per address, which is the app server's: the whole site's.
+ */
+export async function forgetRefusedSend(attempt: AuthAttempt): Promise<void> {
+  await forgetAuthAttempt({ ...attempt, caller: null });
+}
+
+/**
  * Clears the codes counted for a number, sent and checked, while it has no
  * account (`public.forget_number_attempts`): none reached anyone, since
  * sign-in sends nothing to such a number. For joining from an open invite

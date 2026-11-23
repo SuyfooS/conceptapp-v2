@@ -21,6 +21,7 @@ export type HolderWordsKey =
   | "code.wrongCode"
   | "code.tooMany"
   | "code.rateLimit"
+  | "code.captcha"
   | "code.noPhone"
   | "code.failed"
   | "code.phoneHoldPlain"
@@ -30,8 +31,8 @@ export type HolderWordsKey =
 
 /**
  * A refusal in words. A send that failed (the SMS service or the auth
- * server) says the code didn't go; anything else that failed, "something
- * didn't work". A holder's write (H6b-1) also says the account changed
+ * server) says the code didn't go, and one refused for its "אני לא רובוט"
+ * check says so; anything else that failed, "something didn't work". A holder's write (H6b-1) also says the account changed
  * again or was confirmed meanwhile, a demo's files kept as they are, real
  * files not open yet, and the person off the team. The week after a phone
  * change has words of its own, with its day (`holdWordsOf`); without one,
@@ -48,6 +49,7 @@ export function holderWordsOf(
     case "wrongCode":
     case "tooMany":
     case "rateLimit":
+    case "captcha":
     case "noPhone":
       return `code.${failure}`;
     case "invalidPhone":

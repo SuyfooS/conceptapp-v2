@@ -1,3 +1,4 @@
+import { turnstileSiteKey } from "@db/env";
 import { findInvite } from "@db/invites";
 import { Spinner } from "@ui/spinner";
 import type { Metadata } from "next";
@@ -43,5 +44,11 @@ async function Invite({
   if (invite?.status !== "open") {
     return <JoinGoneView reason={invite ? invite.status : "missing"} />;
   }
-  return <JoinView invite={invite} join={join.bind(null, token)} />;
+  return (
+    <JoinView
+      invite={invite}
+      join={join.bind(null, token)}
+      captcha={{ siteKey: turnstileSiteKey() }}
+    />
+  );
 }

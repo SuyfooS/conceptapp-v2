@@ -1,3 +1,4 @@
+import type { CaptchaSetup } from "@domain/turnstile";
 import { createElement, isValidElement, type ReactElement } from "react";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
@@ -74,6 +75,7 @@ function draw(
   code?: { tail: string },
   hold?: { day: string | null; at: string | null },
   locale: "he" | "en" = "he",
+  captcha: CaptchaSetup = { demo: "ready" },
 ): string {
   const missing: string[] = [];
   const provider = {
@@ -92,6 +94,7 @@ function draw(
         screen,
         paths: { profile: "/team/noa", team: "/team" },
         actions,
+        captcha,
         wording: locale === "en" ? englishWording : baseWording,
         code,
         hold,
@@ -173,6 +176,8 @@ describe("a holder's file screen", () => {
   it("shows the locked file with its one action, and the code's boxes once sent", () => {
     const lockedHtml = draw({ kind: "locked", head: head() });
     expect(lockedHtml).toContain('data-file-gate="locked"');
+    // The "אני לא רובוט" check, above the send.
+    expect(lockedHtml).toContain('data-captcha="ready"');
     const locked = text(lockedHtml);
     expect(locked).toContain(f.locked.title);
     expect(locked).toContain(f.locked.send);
@@ -181,6 +186,50 @@ describe("a holder's file screen", () => {
     expect(text(code)).toContain("0014");
     expect(code).toContain('autoComplete="one-time-code"');
     expect(text(code)).toContain(f.code.resend);
+  });
+
+  it("centres the check in the locked card, as its icon, title and send are", () => {
+    // The check's "בדיקה מחדש", its tag and its words.
+    const retryOf = (html: string) =>
+      (html.match(/<button[^>]*>.*?<\/button>/gs) ?? []).find((button) =>
+        text(button).includes(he.ui.captcha.retry),
+      ) ?? "";
+    const failed = { demo: "failed" } as const;
+    const locked = draw(
+      { kind: "locked", head: head() },
+      undefined,
+      undefined,
+      "he",
+      failed,
+    );
+    expect(retryOf(locked)).toMatch(/^<button[^>]*\bself-center\b/);
+    const tap = draw(
+      { kind: "locked", head: head() },
+      undefined,
+      undefined,
+      "he",
+      { demo: "tap" },
+    );
+    expect(tap).toMatch(
+      /data-captcha-frame="true" class="[^"]*\bself-center\b/,
+    );
+    // The duties' and the code's cards keep it at their start.
+    const duties = draw(
+      { kind: "duties", head: head() },
+      undefined,
+      undefined,
+      "he",
+      failed,
+    );
+    expect(retryOf(duties)).toMatch(/^<button[^>]*\bself-start\b/);
+    const code = draw(
+      { kind: "locked", head: head() },
+      { tail: "0014" },
+      undefined,
+      "he",
+      failed,
+    );
+    expect(retryOf(code)).toMatch(/^<button[^>]*\bself-start\b/);
   });
 
   it("holds the locked file in the week after a phone change: its day said, no code to send", () => {
@@ -205,6 +254,27 @@ describe("a holder's file screen", () => {
     expect(button).toHaveLength(1);
     expect(button[0]).toContain("disabled");
     expect(page).toContain(f.locked.send);
+    // No check while no code can go: not even a failed one's line and retry.
+    expect(html).not.toContain("data-captcha");
+    for (const [kind, demo] of [
+      ["locked", "failed"],
+      ["duties", "unavailable"],
+    ] as const) {
+      const held = draw(
+        { kind, head: head() },
+        undefined,
+        { day: "2026-11-27", at: null },
+        "he",
+        { demo },
+      );
+      expect(held, kind).not.toContain("data-captcha");
+      expect(held, kind).not.toContain('role="alert"');
+      expect(text(held), kind).not.toContain(he.ui.captcha.retry);
+      // The same states drawn when nothing holds the file.
+      expect(
+        draw({ kind, head: head() }, undefined, undefined, "he", { demo }),
+      ).toContain(`data-captcha="${demo}"`);
+    }
 
     const enHtml = draw(
       { kind: "locked", head: head() },
@@ -555,6 +625,7 @@ describe("what a holder does in the open file", () => {
           },
           paths: { profile: "/team/noa", team: "/team" },
           actions,
+          captcha: { demo: "ready" },
           wording: baseWording,
         }),
       ).filter(

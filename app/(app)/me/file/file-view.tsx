@@ -1,6 +1,7 @@
 import { accentTokens } from "@domain/color";
 import { type FileStep, fileStepOf } from "@domain/employee-file-steps";
 import type { ProfileLocale } from "@domain/profile";
+import type { CaptchaSetup } from "@domain/turnstile";
 import { accentProps } from "@ui/accent";
 import en from "@/messages/en.json";
 import type he from "@/messages/he.json";
@@ -31,6 +32,7 @@ export function FileView({
   data,
   view,
   actions,
+  captcha,
   base = "",
   profileHref = "/me",
   keep,
@@ -39,6 +41,8 @@ export function FileView({
   data: FileScreenData;
   view: View;
   actions: FileActions;
+  /** The "אני לא רובוט" check before the bank's code: this deployment's widget, or the twin's stand-in. */
+  captcha: CaptchaSetup;
   base?: string;
   profileHref?: string;
   /** The twin's own query in each language, kept from step to step. */
@@ -57,6 +61,7 @@ export function FileView({
         data={data}
         view={view}
         actions={actions}
+        captcha={captcha}
         base={base}
         profileHref={profileHref}
         keep={keep}

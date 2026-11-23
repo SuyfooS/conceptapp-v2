@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import { seededPayMonth, shopActivityActions } from "./db";
 import { heT } from "./t";
+import { expect, type Page, test } from "./test";
 import { readWorkbook, sheetCells, unzip } from "./unzip";
 
 // The file for payroll (payroll P8), in the demo shop as supabase/seed.sql

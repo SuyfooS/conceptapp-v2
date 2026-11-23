@@ -1,5 +1,4 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import { before } from "./build-screen";
 import {
@@ -15,6 +14,7 @@ import {
 } from "./db";
 import { signIn } from "./session";
 import { heT } from "./t";
+import { expect, type Page, test } from "./test";
 
 // The seeded platform admin (supabase/seed.sql) opens the demo restaurant
 // as one of its roles from the console, reads it as that role, cannot

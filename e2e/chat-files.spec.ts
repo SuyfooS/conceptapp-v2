@@ -1,5 +1,4 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, type Request, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
   ageChatFile,
@@ -21,6 +20,7 @@ import { fakePdf, minimalPdf } from "./pdf";
 import { cameraPhoto, hasExif } from "./photo";
 import { secondPage, signIn } from "./session";
 import { STORAGE_SKIP, storageAnswers } from "./storage";
+import { expect, type Page, type Request, test } from "./test";
 
 // Pictures in chat (C4, supabase/migrations/20261111000500_chat_files.sql).
 // The demo restaurant takes them for these tests ("chatFiles": true in

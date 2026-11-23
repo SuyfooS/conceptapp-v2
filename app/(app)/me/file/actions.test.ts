@@ -314,8 +314,13 @@ describe("the bank's code", () => {
   it("goes to the number she signs in with now, never the profile's copy or the call's", async () => {
     expect(await send()).toEqual({ ok: true, tail: "0003" });
     expect(mocks.signInPhoneOf).toHaveBeenCalledWith(NOA);
-    expect(mocks.sendCode).toHaveBeenCalledWith(NOA_PHONE);
-    expect(mocks.sendCode).not.toHaveBeenCalledWith(NOA_OLD_PHONE);
+    expect(mocks.sendCode).toHaveBeenCalledWith(NOA_PHONE, {
+      captcha: undefined,
+    });
+    expect(mocks.sendCode).not.toHaveBeenCalledWith(
+      NOA_OLD_PHONE,
+      expect.anything(),
+    );
     // A number from the browser is no part of either call.
     expect(
       await sendBankCodeAction(SHOP, {
@@ -332,6 +337,30 @@ describe("the bank's code", () => {
     ).toEqual({ ok: false, failure: "invalid" });
     await confirmBankAction(SHOP, { code: "123456", bank: account() });
     expect(mocks.checkCode).toHaveBeenCalledWith(NOA_PHONE, "123456");
+  });
+
+  it("carries the not-a-robot check's token, drops one of another shape, and takes nothing else", async () => {
+    await sendBankCodeAction(SHOP, {
+      bank: account(),
+      captcha: "XXXX.DUMMY.TOKEN.XXXX",
+    });
+    await sendBankCodeAction(SHOP, { bank: account(), captcha: 42 });
+    expect(mocks.sendCode.mock.calls.map((call) => call[1])).toEqual([
+      { captcha: "XXXX.DUMMY.TOKEN.XXXX" },
+      { captcha: undefined },
+    ]);
+    expect(
+      await sendBankCodeAction(SHOP, {
+        bank: account(),
+        captcha: "XXXX.DUMMY.TOKEN.XXXX",
+        other: true,
+      } as never),
+    ).toEqual({ ok: false, failure: "invalid" });
+  });
+
+  it("says a send refused for the check", async () => {
+    mocks.sendCode.mockResolvedValue("captcha");
+    expect(await send()).toEqual({ ok: false, failure: "captcha" });
   });
 
   it("goes only for an account that could be kept, tried before any SMS", async () => {

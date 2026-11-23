@@ -1,4 +1,3 @@
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
   addOpenDemoEntry,
@@ -33,6 +32,7 @@ import {
   YOAV,
 } from "./orders-parts";
 import { signIn } from "./session";
+import { expect, type Page, test } from "./test";
 
 // Taking orders with no connection (waiter mode P7): a round sent offline
 // waits on the phone as "עוד לא נשלח" and goes once when the connection is

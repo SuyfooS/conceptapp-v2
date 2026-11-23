@@ -1,5 +1,4 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
   ageDemoSchedules,
@@ -17,6 +16,7 @@ import {
   tickLists,
 } from "./db";
 import { secondPage, signIn } from "./session";
+import { expect, type Page, test } from "./test";
 
 // Lists, part 4 (L4): a template's times. The minute job is off here and the
 // demo's reset opens no scheduled list, so the test opens them with

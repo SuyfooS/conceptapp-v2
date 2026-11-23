@@ -1,8 +1,8 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import { signIn } from "./session";
 import { setDemoModule } from "./sms";
+import { expect, type Page, test } from "./test";
 
 // Seeded in supabase/seed.sql. The demo restaurant starts with the schedule,
 // the clock, lists and chat, the modules that are built, which fill the tab

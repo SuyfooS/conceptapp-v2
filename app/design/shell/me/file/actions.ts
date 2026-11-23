@@ -98,8 +98,10 @@ export async function demoRevealPastAction(
   return { ok: true, value: FILE_DEMO_NUMBERS.passport };
 }
 
+/** The check's token comes along and goes nowhere: nothing is sent. */
 export async function demoSendBankCodeAction(input: {
   bank: unknown;
+  captcha?: string;
 }): Promise<SendCodeAnswer> {
   await pause();
   const parsed = employeeDetailsInput(FILE_DEMO_TODAY).safeParse({

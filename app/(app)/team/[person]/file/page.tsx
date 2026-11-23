@@ -1,3 +1,4 @@
+import { turnstileSiteKey } from "@db/env";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { currentWording } from "../../../current-wording";
@@ -70,6 +71,7 @@ export default async function HolderFilePage({
           screen.head.personId,
         ),
       }}
+      captcha={{ siteKey: turnstileSiteKey() }}
       wording={wording}
     />
   );
