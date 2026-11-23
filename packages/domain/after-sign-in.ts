@@ -66,6 +66,9 @@ const NOTIFICATION_OPEN = "/notifications/open";
 /**
  * The inbox (INBOX_PATH), of the business the app opens in after sign-in:
  * for someone in two businesses, maybe not the one that holds the line.
+ * Where the phone's other notifications lead too (app/push/words.ts: the
+ * one asking a signed-out phone to sign in again, the plain line, the
+ * summary; public/sw.js's own line and fallback).
  */
 const INBOX = "/notifications";
 
@@ -120,17 +123,24 @@ export function afterSignInPath(raw: unknown): `/${string}` | null {
   return raw;
 }
 
-/** Whether a path opens a phone's notification (its route, never kept). */
+/**
+ * Whether a path is where a phone's notification leads: its route (never
+ * kept), or the bare inbox, where the others lead. Not a page under the
+ * inbox, as its settings: that one is a page like any other.
+ */
 function opensNotification(pathname: string): boolean {
-  return under(pathname.toLowerCase(), NOTIFICATION_OPEN);
+  const lower = pathname.toLowerCase();
+  return lower === INBOX || under(lower, NOTIFICATION_OPEN);
 }
 
 /**
  * The page to keep for a request's path and query: a phone's notification
- * opened after the session ended keeps the inbox, since its own route is
- * never kept, which is the inbox of the business the app opens in, for
- * someone in two businesses maybe not the one that holds the line; anything
- * else as `afterSignInPath` says.
+ * opened after the session ended keeps the bare inbox, since its own route
+ * is never kept, which is the inbox of the business the app opens in, for
+ * someone in two businesses maybe not the one that holds the line. The bare
+ * inbox keeps itself without its query, so a tab left on an earlier page of
+ * the last person's lines (`?before=`) carries nothing over. Anything else
+ * as `afterSignInPath` says.
  */
 export function afterSignInPathOf(
   pathname: string,
@@ -151,8 +161,12 @@ export function afterSignInPathOf(
  * ended comes to the door that way, and keeping its page would land the next
  * person to sign in on that device on the last one's screen, a chat with
  * someone. A phone's notification counts whatever it says: the service
- * worker opens it, which a browser may report as same-origin, and it keeps
- * only the inbox.
+ * worker opens it in the app's window already open (`client.navigate`, the
+ * window's own page as its source) or a new one, which a browser may report
+ * as same-origin. Whether it leads to its route or to the bare inbox (the
+ * one asking a signed-out phone to sign in again), it keeps only the bare
+ * inbox, which shows nothing of the last person: it holds only the lines of
+ * whoever signs in.
  */
 export function isOpenedFromOutside(
   headers: { get(name: string): string | null },

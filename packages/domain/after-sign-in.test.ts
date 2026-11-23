@@ -131,6 +131,14 @@ describe("afterSignInPathOf", () => {
   it("keeps the inbox for a notification opened after the session ended", () => {
     expect(afterSignInPathOf(`/notifications/open/${ID}`, "")).toBe(INBOX_PATH);
     expect(afterSignInPathOf("/notifications/open", "")).toBe(INBOX_PATH);
+    // The one asking a signed-out phone to sign in again leads to the bare
+    // inbox, kept bare: no earlier page of the last person's lines.
+    expect(afterSignInPathOf(INBOX_PATH, "")).toBe(INBOX_PATH);
+    expect(afterSignInPathOf(INBOX_PATH, "?before=x")).toBe(INBOX_PATH);
+    // A page under the inbox is a page like any other.
+    expect(afterSignInPathOf("/notifications/settings", "")).toBe(
+      "/notifications/settings",
+    );
   });
 
   it("keeps a page with its query, and nothing for Today", () => {
@@ -159,16 +167,19 @@ describe("isOpenedFromOutside", () => {
     expect(from("same-origin")).toBe(false);
     expect(from("same-origin", `/chat/with/${ID}`)).toBe(false);
     expect(from("same-origin", "/schedule")).toBe(false);
-    // The inbox itself is a page like any other.
-    expect(from("same-origin", INBOX_PATH)).toBe(false);
+    // A page under the inbox is a page like any other.
+    expect(from("same-origin", "/notifications/settings")).toBe(false);
     expect(from("same-origin", "/notifications/opened")).toBe(false);
   });
 
-  it("is a phone's notification whatever its window says", () => {
+  it("is a phone's notification whatever its window says, its route or the bare inbox", () => {
     for (const site of ["same-origin", "none", "cross-site", null]) {
       expect(from(site, `/notifications/open/${ID}`), String(site)).toBe(true);
       expect(from(site, "/notifications/open"), String(site)).toBe(true);
       expect(from(site, `/Notifications/Open/${ID}`), String(site)).toBe(true);
+      // The service worker's window opening the bare inbox (the one asking
+      // a signed-out phone to sign in again) may report same-origin.
+      expect(from(site, INBOX_PATH), String(site)).toBe(true);
     }
   });
 });

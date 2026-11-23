@@ -17,7 +17,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // for a page opened in the window from outside the app's own pages, so the
 // router's own fetches, a prefetch, an image, a POST, or a reload of a tab
 // left open after its session ended (Sec-Fetch-Site same-origin) leave the
-// cookie as it is; a phone's notification keeps the inbox whatever it says.
+// cookie as it is; where a phone's notification leads (its route, or the
+// bare inbox) keeps the bare inbox whatever it says.
 // A page that can't be kept (Today, the console, a file, a route handler)
 // forgets one kept before. Signed in, the cookie is never touched.
 
@@ -230,6 +231,32 @@ describe("the page a signed-out visitor opened", () => {
       expect(door(response), site).toBe("/enter");
       expect(keptBy(response), site).toMatchObject(keeps("/notifications"));
     }
+  });
+
+  it("keeps the bare inbox for a notification that leads there, the service worker's same-origin window too", async () => {
+    // The one asking a signed-out phone to sign in again leads to the bare
+    // inbox; the worker opens it in the app's window already open.
+    for (const site of ["same-origin", "none", "cross-site"]) {
+      for (const path of ["/notifications", "/notifications?before=x"]) {
+        for (const kept of [undefined, "/lists"]) {
+          const response = await visit(path, {
+            headers: { ...NAVIGATE, "sec-fetch-site": site },
+            kept,
+          });
+          expect(door(response), `${site} ${path}`).toBe("/enter");
+          expect(keptBy(response), `${site} ${path}`).toMatchObject(
+            keeps("/notifications"),
+          );
+        }
+      }
+    }
+    // A page under the inbox, from the app's own, is a page like any other.
+    const settings = await visit("/notifications/settings", {
+      headers: { ...NAVIGATE, "sec-fetch-site": "same-origin" },
+      kept: "/lists",
+    });
+    expect(door(settings)).toBe("/enter");
+    expect(settings.headers.get("set-cookie")).toBeNull();
   });
 
   it("is kept from a link in another app, an address typed and the same site's other address", async () => {

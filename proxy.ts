@@ -60,9 +60,10 @@ function isPrivate(pathname: string) {
  * window from outside the app's own pages (`isOpenedFromOutside`): the
  * router's own fetches, prefetches, images and frames leave the cookie as it
  * is, and so does a page one of the app's own sent there (a reload, a tab
- * left open after its session ended), but a phone's notification, which
- * keeps the inbox. The latest page opened wins: one that can't be kept
- * (Today, a file, the console, a route handler) forgets one kept before.
+ * left open after its session ended), but where a phone's notification
+ * leads (its route, or the bare inbox), which keeps the bare inbox. The
+ * latest page opened wins: one that can't be kept (Today, a file, the
+ * console, a route handler) forgets one kept before.
  * The redirect's address stays the bare door.
  */
 function keepForAfterSignIn(
