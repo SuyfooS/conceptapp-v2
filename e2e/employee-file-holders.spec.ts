@@ -437,6 +437,20 @@ test("the owner confirms Noa's new account, after a change meanwhile is said", a
   await show.click();
   const digits = bank.getByText(/^\d{5,}$/);
   await expect(digits).toBeVisible();
+  // The reveal slides the step-up, so its answer also carries the page drawn
+  // again (a cookie set in an action), streamed in after the digits: its line
+  // in "מה קרה בתיק" says that drawing landed, read before the change below.
+  // Changed before it landed, the screen would already show the newer change
+  // and the press would confirm it, with nothing to say.
+  const history = main(page).getByRole("region", { name: f.history.title });
+  await expect(
+    shownIn(
+      history,
+      heT("app.team.file.history.reveal", {
+        fields: he.app.manage.activity.actions.employee.viewFields.bank_account,
+      }),
+    ),
+  ).toBeVisible();
 
   // Changed again while the screen was open: said, with the focus on it,
   // and the newer change drawn under the same button, its digits hidden
@@ -447,7 +461,6 @@ test("the owner confirms Noa's new account, after a change meanwhile is said", a
   await expect(moved).toHaveText(f.review.moved);
   await expect(moved).toBeFocused();
   await expect(confirm).toBeVisible();
-  await page.waitForLoadState("networkidle");
   await expect(digits).toHaveCount(0);
   await expect(show).toBeVisible();
 
@@ -466,7 +479,6 @@ test("the owner confirms Noa's new account, after a change meanwhile is said", a
     ),
   ).toEqual([{ action: "employee.bank_ack", actor: URI.id }]);
 
-  const history = main(page).getByRole("region", { name: f.history.title });
   await expect(shownIn(history, f.history.bankAck)).toBeVisible();
   await expect(shownIn(history, people.owner.name)).toBeVisible();
   await expectCleanPage(page);
