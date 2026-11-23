@@ -24,8 +24,11 @@ select plan(64);
 -- A (the module on): 1 its owner, who confirmed the duties; 2 the
 -- accountant, who hasn't; 3 Noa and 4 Yoav, workers with files; 5 a
 -- manager; 6 a worker who left, with a file; 12 its other owner, who
--- confirmed the duties too and never opens one. B (on): 1 its owner too, 11 a
--- worker with a file. C (off): 8 its owner. 7 is on the ConceptApp team,
+-- confirmed the duties too and never opens one. B (on): 1 its accountant,
+-- who confirmed the duties there too (a login may hold a staff place in one
+-- business alone, memberships_one_staff_idx, and an accountant's anywhere
+-- besides; accountants hold people.files), 11 a worker with a file. C
+-- (off): 8 its owner. 7 is on the ConceptApp team,
 -- viewing A as an owner. 9 asked for a new number before this (a pending
 -- phone_change), 10 is anyone.
 insert into auth.users (id, aud, role, phone, phone_change)
@@ -59,7 +62,7 @@ values
   (pg_temp.biz(1), pg_temp.p(5), 'manager', true),
   (pg_temp.biz(1), pg_temp.p(6), 'worker', false),
   (pg_temp.biz(1), pg_temp.p(12), 'owner', true),
-  (pg_temp.biz(2), pg_temp.p(1), 'owner', true),
+  (pg_temp.biz(2), pg_temp.p(1), 'accountant', true),
   (pg_temp.biz(2), pg_temp.p(11), 'worker', true),
   (pg_temp.biz(3), pg_temp.p(8), 'owner', true);
 insert into public.business_modules (business_id, module_key, enabled, settings)
