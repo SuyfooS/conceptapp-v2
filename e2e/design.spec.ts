@@ -1600,7 +1600,8 @@ test("the running week's demo locks what has begun and fills the freed evening",
 // pressed. Copied, Sunday morning has Tamar and Itai, and the toast's
 // "ביטול", which takes the focus, brings back the pattern's empty morning.
 // On a draft with people on Sunday, Sunday stays as it is unless the sheet's
-// switch replaces it.
+// switch replaces it; changed after that copy, the toast goes with its way
+// back, which would have taken the change too.
 test("next week's demo copies last week, says who was left out, and takes it back", async ({
   page,
 }) => {
@@ -1690,6 +1691,21 @@ test("next week's demo copies last week, says who was left out, and takes it bac
   // Sunday's evening is this week's now: Roni, without Liya.
   await expect(evening).toContainText("רוני");
   await expect(morning).toContainText("תמר");
+
+  // Changed after the copy, here on a shift the copy made: "ביטול" would
+  // take the change with it, so the toast goes with its way back, and the
+  // copy and the change both stay.
+  await expect(undo).toBeFocused();
+  await evening.click();
+  await screen.addButton("מיכל הדגמה").click();
+  await screen.closeSheet();
+  // The page is back for the locators (the sheet hid it), the toast too.
+  await expect(evening).toContainText("מיכל");
+  await expect(evening).toContainText("רוני");
+  await expect(morning).toContainText("תמר");
+  await expect(page.getByText(tb.unsaved)).toBeVisible();
+  // Gone with the change, well inside the 10 seconds it would stay otherwise.
+  await expect(toast).toHaveCount(0, { timeout: 2_000 });
 });
 
 // A demo business takes no invites (#80): its Team screen offers none and

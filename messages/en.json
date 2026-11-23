@@ -2022,7 +2022,7 @@
           "replaced": "{count, plural, one {One shift} other {# shifts}} instead of {was, plural, one {the one it has} other {the # it has}}",
           "kept": "People are already on it, so it stays as it is",
           "none": "It had no shifts last week, so it stays as it is",
-          "past": "Already over"
+          "past": "The shifts it would get have already started, so it stays as it is"
         },
         "replace": {
           "label": "Also replace days that already have people",
@@ -2036,7 +2036,7 @@
         "submit": "{count, plural, one {Copy one shift} other {Copy # shifts}}",
         "nothing": {
           "kept": "Nothing to copy: every day it could copy to already has people on it. To replace them too, turn on the switch.",
-          "past": "Nothing to copy: the days and hours of last week's shifts are already over this week."
+          "past": "Nothing to copy: every shift it would copy has already started this week."
         },
         "tooMany": "This can't be copied: the week would have more than <ltr>{max}</ltr> shifts.",
         "done": "{count, plural, one {One shift copied from last week} other {# shifts copied from last week}}. Nothing is saved yet.",

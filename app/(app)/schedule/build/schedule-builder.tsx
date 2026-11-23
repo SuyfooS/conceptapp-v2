@@ -340,8 +340,10 @@ function focusLeftBySheet(back?: Element | null): boolean {
  * wouldn't be copied and why, and its button puts the copy on the screen
  * only. The toast says nothing is saved yet, with "ביטול" for
  * `COPY_UNDO_MS`, which puts the screen back as it was before the copy. The
- * form then sends the save moment the reading had (`copied`), so a week saved
- * meanwhile on another screen takes no second copy (`copySaved`).
+ * next change on the screen takes that way back away, since it would take
+ * the change with it: the copy then stays as any other work on the screen.
+ * The form then sends the save moment the reading had (`copied`), so a week
+ * saved meanwhile on another screen takes no second copy (`copySaved`).
  */
 export function ScheduleBuilder(props: ScheduleBuilderProps) {
   const t = useTranslations();
@@ -491,6 +493,16 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
     });
   }
 
+  /**
+   * The screen changed after a copy (a shift added, changed, removed or
+   * brought back): "ביטול" would put back the screen as it was before the
+   * copy and take that change with it, so the toast goes with its way back.
+   * The copy stays, as any other work on the screen.
+   */
+  function changedAfterCopy() {
+    setCopyNotice((notice) => (notice?.kind === "copied" ? null : notice));
+  }
+
   /** "ביטול" of a copy: the screen as it was before it. */
   function undoCopy() {
     // What is on its way stands as sent: the builder starts again from it.
@@ -617,6 +629,7 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
         changesPressed={changesPressed}
         shareKind={shareKind}
         onCopied={copyMade}
+        onEdited={changedAfterCopy}
       />
       <StatusToast
         message={toast?.text ?? null}
@@ -690,6 +703,7 @@ function WeekBuilder({
   changesPressed,
   shareKind,
   onCopied,
+  onEdited,
 }: Omit<ScheduleBuilderProps, "save"> & {
   /**
    * When the week was last saved, as the reading on the screen has it ("" is
@@ -731,6 +745,11 @@ function WeekBuilder({
    * the screen back as it was before it, for the toast's "ביטול".
    */
   onCopied: (count: number, undo: () => void) => void;
+  /**
+   * The person changed the screen: a copy's way back, should one be offered,
+   * would take that change with it.
+   */
+  onEdited: () => void;
 }) {
   const t = useTranslations();
   const router = useRouter();
@@ -961,6 +980,8 @@ function WeekBuilder({
     setDirty(true);
     setBlocked(false);
     setLockedBack(null);
+    // A copy's "ביטול" would undo this change too: it goes.
+    onEdited();
   }
 
   function change(id: number, shift: ScheduledShift) {
@@ -1133,7 +1154,9 @@ function WeekBuilder({
     setCopied(readSavedAt ?? "");
     setShownCopy(copy);
     setCopyOpen(false);
-    // The toast's "ביטול" takes the focus as the sheet closes.
+    // The toast's "ביטול" takes the focus as the sheet closes. Said after
+    // `edited`, which takes an earlier copy's way back: this one's comes in
+    // its place.
     opener.current = null;
     onCopied(copy.shifts, () => {
       setRows(before.rows);

@@ -49,10 +49,11 @@ const HREF = "/design/shell/schedule/build/running";
 // left, is counted and not copied, and Tamar, who can only do mornings next
 // week, isn't copied onto Thursday evening. Nothing is stored: the copy is on
 // the screen until the stand-in saves or publishes it, and its toast's
-// "ביטול" brings back the pattern's empty week. &state=draft: next week
-// saved as a draft with Tamar and Itai on Sunday morning, so Sunday stays as
-// it is, unless the sheet's switch replaces it. The week under way is
-// published, and offers no copy.
+// "ביטול" brings back the pattern's empty week, until the next change on the
+// screen takes that way back away. &state=draft: next week saved as a draft
+// with Tamar and Itai on Sunday morning, so Sunday stays as it is, unless the
+// sheet's switch replaces it. The week under way is published, and offers no
+// copy.
 export default function ShellScheduleBuildRunning(props: Props) {
   return (
     <Suspense>
