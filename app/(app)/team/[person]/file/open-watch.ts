@@ -20,14 +20,16 @@ import type { KeepOpenAnswer, LockAnswer } from "./holder-file-types";
  *    tells every tab, which closes its file at once, and forgets the step-up.
  * 3. Anything else closes the file in this tab only, telling no other tab
  *    and forgetting nothing: the server answering closed, a check that fails
- *    or isn't answered within `KEEP_OPEN_WAIT_MS`, another tab's lock heard.
- *    This tab's own 15 minutes passing, a page coming back and a screen Next
- *    shows again close nothing by themselves: the server is asked once, the
- *    file hidden meanwhile, and its answer decides.
+ *    or isn't answered within `KEEP_OPEN_WAIT_MS` while the tab is awake,
+ *    another tab's lock heard. This tab's own 15 minutes passing, a page
+ *    coming back, a screen Next shows again and a check the tab slept
+ *    through (`SLEPT_AFTER_MS`) close nothing by themselves: the server is
+ *    asked once, the file hidden meanwhile, and its answer decides.
  * 4. A tab's 15 minutes end when the server's do: its own check, answered
  *    open, says how long the step-up has left (15 minutes once slid, never
  *    more), counted here from the answer, which comes after the server's own
- *    moment; so when they pass, the server finds the step-up gone unless
+ *    moment (an answer that comes after the tab slept counts for nothing, by
+ *    point 3); so when they pass, the server finds the step-up gone unless
  *    activity in some tab slid it since. A press or a key here, and another
  *    tab's word that a file is in use there, ask the server at most once a
  *    minute, one within the minute kept for its end, never dropped. The word
@@ -35,24 +37,36 @@ import type { KeepOpenAnswer, LockAnswer } from "./holder-file-types";
  * 5. Only a check for the person's activity in this tab slides the step-up:
  *    the file opening, a press or a key, coming back to the page, a screen
  *    Next shows again. Answered open, it tells the other tabs a file is in
- *    use. A check for this tab's own clock or for another tab's word only
- *    reads the step-up, and tells nothing. So tabs left alone never keep
- *    each other open: the files close on the device 15 minutes after the
- *    last activity in any tab, a minute more at most for a press kept for
- *    the minute's end. A kept press slides only while it is fresh
- *    (`PRESS_FRESH_MS`): run long after, in a tab frozen in the background,
- *    its check only reads.
+ *    use. A check for this tab's own clock (its 15 minutes, or a check it
+ *    slept through) or for another tab's word only reads the step-up, and
+ *    tells nothing. So tabs left alone never keep each other open: the files
+ *    close on the device 15 minutes after the last activity in any tab, a
+ *    minute more at most for a press kept for the minute's end. A kept press
+ *    slides only while it is fresh (`PRESS_FRESH_MS`): run long after, in a
+ *    tab frozen in the background, its check only reads.
  * 6. While the file is hidden for an answer, a line says the server is being
- *    asked (`FileOpenWatch`), and no answer within 10 seconds closes the file
- *    in this tab.
+ *    asked (`FileOpenWatch`), and no answer within 10 seconds, the tab awake,
+ *    closes the file in this tab.
  */
 
 /**
  * How long the server's answer is waited for: past it, nobody knows the
  * file is still open, and it closes in this tab (`failed`), never left
- * hidden with nothing said.
+ * hidden with nothing said. A wait the tab slept through says nothing of
+ * the server, and asks it again instead (`SLEPT_AFTER_MS`).
  */
 export const KEEP_OPEN_WAIT_MS = 10_000;
+
+/**
+ * How long after its check a give-up may run, or the answer come, and still
+ * be a tab awake all along: the wait, and a few seconds for a busy page.
+ * Later, the tab slept meanwhile (the phone locked, the device asleep, the
+ * tab frozen in the background, its timers and its answers held back), so
+ * neither says anything of the server now: the check decides nothing, and
+ * the server is asked again with the page in sight, at once or as it comes
+ * back.
+ */
+export const SLEPT_AFTER_MS = KEEP_OPEN_WAIT_MS + 5_000;
 
 /**
  * How old a press kept for the minute's end may be when its check runs and
@@ -184,8 +198,13 @@ export function watchOpenFile({
    * or a press kept for the minute's end). Open: this tab's 15 minutes end
    * when the server says the step-up's do, counted from the answer, the
    * other tabs told if it slid, then `open`. Closed, failed, no answer
-   * within `KEEP_OPEN_WAIT_MS`, or a time left that isn't one: the file
-   * closes in this tab.
+   * within `KEEP_OPEN_WAIT_MS` in a tab awake all along, or a time left
+   * that isn't one: the file closes in this tab. A give-up or an answer
+   * that comes past `SLEPT_AFTER_MS` came after the tab slept, and decides
+   * nothing: with the page in sight and no look since, the server is asked
+   * again, the file hidden meanwhile (a look since asks for itself, and a
+   * page put away asks as it comes back); nothing more from this check is
+   * heard.
    */
   function check(tell: boolean, open?: () => void) {
     const at = now();
@@ -195,29 +214,44 @@ export function watchOpenFile({
     later = undefined;
     pressedAt = null;
     lastCheck = at;
+    const seen = look;
+    // Given up on, or answered: what comes after is heard no more.
+    let done = false;
     let answer: Promise<KeepOpenAnswer>;
     try {
       answer = keepOpen(tells);
     } catch (error) {
       answer = Promise.reject(error);
     }
+    /** Whether the tab slept since the check; if so, asked again as above. */
+    const slept = (): boolean => {
+      if (now() - at <= SLEPT_AFTER_MS) return false;
+      if (page.visibilityState === "visible" && look === seen) {
+        lookAgain(false);
+      }
+      return true;
+    };
     const wait = win.setTimeout(() => {
       waits.delete(wait);
-      finish("failed");
+      done = true;
+      if (!slept()) finish("failed");
     }, KEEP_OPEN_WAIT_MS);
     waits.add(wait);
-    const answered = () => {
+    /** Whether the answer decides: the first word, in a tab awake. */
+    const answered = (): boolean => {
       win.clearTimeout(wait);
       waits.delete(wait);
+      if (done || stopped) return false;
+      done = true;
+      return !slept();
     };
     answer.then(
       (kept) => {
-        answered();
+        if (!answered()) return;
         if (!kept?.open) {
           finish("closed");
           return;
         }
-        if (stopped) return;
         // Never a fresh 15 minutes on a check that only read the step-up,
         // and never more than 15 on any.
         const left = Math.min(kept.leftMs, FILE_IDLE_MS);
@@ -231,8 +265,7 @@ export function watchOpenFile({
         open?.();
       },
       () => {
-        answered();
-        finish("failed");
+        if (answered()) finish("failed");
       },
     );
   }
