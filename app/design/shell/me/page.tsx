@@ -48,7 +48,9 @@ type Props = {
 // says so, and her title stays its name); ?name=same, one that keeps her own
 // name as its own (the row says nothing more, the sheet and the word after
 // saving do, and the title stays it); ?name=none, someone nobody named (her
-// number for a title, and the row asks for a name).
+// number for a title, and the row asks for a name); ?name=marked, her own
+// name saved with a right-to-left mark nobody sees, which the sheet saves
+// clean as it opens.
 export default function ShellMe({ searchParams }: Props) {
   return (
     <Suspense>
@@ -63,7 +65,13 @@ async function Demo({ searchParams }: Props) {
   const profile = teamProfiles.shiran;
   const empty = state === "empty";
   const demo = state === "demo";
-  const own = name === "none" ? null : (shiran?.name ?? null);
+  const own =
+    name === "none"
+      ? null
+      : name === "marked" && shiran?.name
+        ? // A right-to-left mark, as an earlier claim may have copied it.
+          `\u{200F}${shiran.name}`
+        : (shiran?.name ?? null);
   const kept = name === "kept" ? shiranTeamName : name === "same" ? own : null;
   return (
     <MeView

@@ -59,7 +59,9 @@ type Props = {
 // own) says she would see it only by her own access (R11e). "שם" fixes the
 // name the business shows for them with the demo's stand-in, shown at once
 // with the fix back as its undo, the mock name back on reload;
-// ?state=nameless: someone nobody named, whose title and row read "בלי שם".
+// ?state=nameless: someone nobody named, whose title and row read "בלי שם";
+// ?state=marked: a name stored with a right-to-left mark nobody sees, which
+// the sheet saves clean as it opens.
 // The hiring file (profile H6a): ?file=holder as the owner, who reads what
 // is missing and opens the file from here; ?file=manager as someone who
 // sees the team without the files, who reads how many; ?file=view as the
@@ -135,7 +137,12 @@ async function Demo({ params, searchParams }: Props) {
       }
       data={{
         ...member,
-        name: state === "nameless" ? null : member.name,
+        name:
+          state === "nameless"
+            ? null
+            : state === "marked" && member.name
+              ? `\u{200F}${member.name}`
+              : member.name,
         bio: profile?.bio ?? null,
         cover: profile?.cover ?? "glow",
         since: profile?.since ?? "2026-09-01T08:00:00.000Z",

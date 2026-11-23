@@ -8,26 +8,102 @@
 -- name (profiles.full_name) stays theirs; someone with none still takes the
 -- invite's, as before.
 --
---   the name    the invite's, read as public.set_member_name reads a name
---               (one line, its spaces collapsed). Their own name keeps no
---               row (one kept from an earlier time in the business goes); a
---               name with a control character, which no screen writes,
---               keeps none either, so a join never fails over a name; an
---               invite with no name leaves what the business had for them.
---               The invite's own check holds the length (1 to 80, before
---               collapsing).
+--   the name    the invite's, as the app keeps a name (parseTeamName in
+--               @domain/team, and private.team_name below): what nobody sees
+--               dropped, its letters composed, its spaces collapsed. Not
+--               every invite's name came through that rule (the console's
+--               staff list keeps what was pasted, and invites sent before
+--               this last 14 days), and an own name may hold what an earlier
+--               claim copied into it, so both are read that way before they
+--               are compared, and the name written is the clean one. A
+--               character nobody sees never stops a join, never makes a row
+--               for their own name, and never leaves an old row in place.
+--               Their own name keeps no row (one kept from an earlier time in
+--               the business goes); an invite with no name to keep leaves
+--               what the business had for them. Someone with no name takes
+--               the same clean name as their own (before, it was only
+--               trimmed).
+--   an owner    keeps none of the business's: an owner's name there is their
+--               own, which they change on /me. Only another owner could
+--               change one (public.set_member_name never takes oneself), and
+--               the console opens every business with a single owner, by an
+--               invite the ConceptApp team named, so the name would stay as
+--               typed for good. One kept from an earlier time goes too. The
+--               rule is the role, not whether another owner is there today:
+--               that one may leave, and the name would be stuck again.
 --   locks       the invite, the named role, the membership, the profile, as
 --               before, then the business's name for them: after the
 --               membership, as public.set_member_name takes them, so the two
 --               never wait on each other in a circle.
 --   the log     invite.claim as before, never a name.
 --   nothing else changes: who may join, the refusals, the return. No table,
---   column or signature, so packages/db/database.types.ts stays as it is.
+--   column or signature in public, so packages/db/database.types.ts stays as
+--   it is.
+
+------------------------------------------------------------------------------
+-- 1. A name as the app keeps one
+
+-- parseTeamName's rule (@domain/team), for a name that didn't come through
+-- the app: what nobody sees dropped (control characters but spaces, format
+-- and default-ignorable characters, the braille blank; not the joiners and
+-- variation selectors an emoji or a script is drawn with), its letters
+-- composed (NFC), every kind of space collapsed into one, a joiner or a
+-- selector at a word's edge, where it joins nothing, dropped, and the ends
+-- trimmed. Null for nothing left, or for more than 80 characters (a letter
+-- NFC spells in two can make it longer). The app also calls a name of
+-- nothing but marks none, which no rule here tells; no screen writes one.
+-- Postgres has no Unicode classes, so each set is listed by code point, and
+-- tooling/team-names.test.ts keeps every list equal to the app's (U+0000,
+-- which no text holds, aside). No caller but public.claim_invite.
+create function private.team_name(value text)
+returns text
+language sql
+immutable
+set search_path = ''
+as $$
+  select case when char_length(cleaned.name) between 1 and 80 then cleaned.name end
+  from (
+    select btrim(
+      regexp_replace(
+        regexp_replace(
+          regexp_replace(
+            btrim(
+              regexp_replace(
+                normalize(
+                  regexp_replace(
+                    coalesce(value, ''::text),
+                    '[\x0001-\x0008\x000E-\x001F\x007F-\x009F\x00AD\x034F\x0600-\x0605\x061C\x06DD\x070F\x0890\x0891\x08E2\x115F\x1160\x17B4\x17B5\x180E\x200B\x200E\x200F\x202A-\x202E\x2060-\x206F\x2800\x3164\xFFA0\xFFF0-\xFFFB\x110BD\x110CD\x13430-\x1343F\x1BCA0-\x1BCA3\x1D173-\x1D17A\xE0000-\xE00FF\xE01F0-\xE0FFF]',
+                    ''::text, 'g'
+                  ),
+                  NFC
+                ),
+                '[\x0009-\x000D\x0020\x00A0\x1680\x2000-\x200A\x2028\x2029\x202F\x205F\x3000\xFEFF]+',
+                ' '::text, 'g'
+              ),
+              ' '::text
+            ),
+            '(^| )[\x180B-\x180D\x180F\x200C\x200D\xFE00-\xFE0F\xE0100-\xE01EF]+',
+            '\1'::text, 'g'
+          ),
+          '[\x200C\x200D]+( |$)',
+          '\1'::text, 'g'
+        ),
+        ' {2,}', ' '::text, 'g'
+      ),
+      ' '::text
+    ) as name
+  ) as cleaned
+$$;
+
+------------------------------------------------------------------------------
+-- 2. Joining by it
 
 -- 20261115001600_named_roles_give.sql's, the same, with the invite's name
--- written as the business's own name for the claimant (public.member_names),
--- unless it is their own. No caller in the database; the join screen calls
--- it with the secret key (claimInvite in @db/invites).
+-- read as the app keeps names: their own when they have none, as before but
+-- clean, and else written as the business's own name for the claimant
+-- (public.member_names), unless it is their own or they join as an owner.
+-- No caller in the database; the join screen calls it with the secret key
+-- (claimInvite in @db/invites).
 create or replace function public.claim_invite(token_hash text, claimant uuid)
 returns uuid
 language plpgsql
@@ -133,16 +209,21 @@ begin
   set claimed_at = now(), claimed_by = claimant
   where id = inv.id;
 
-  update public.profiles
-  set full_name = btrim(inv.full_name)
-  where id = claimant and full_name is null and inv.full_name is not null;
+  -- The invite's name as the app keeps names; null for none to keep.
+  kept := private.team_name(inv.full_name);
 
-  -- The invite's name, as the business's own for them, read as
-  -- public.set_member_name reads one: none for their own name (the profile
-  -- just above is seen here), and none for a name the table wouldn't keep.
-  kept := nullif(btrim(regexp_replace(coalesce(inv.full_name, ''::text), '\s+', ' ', 'g')), ''::text);
-  if kept is not null and kept !~ '[[:cntrl:]]' then
-    select nullif(btrim(regexp_replace(coalesce(p.full_name, ''::text), '\s+', ' ', 'g')), ''::text)
+  update public.profiles
+  set full_name = kept
+  where id = claimant and full_name is null and kept is not null;
+
+  -- The business's own name for them: none for an owner, whose name there is
+  -- their own; none for their own name, read the same way (the profile just
+  -- above is seen here). Either way, one kept from an earlier time goes.
+  if inv.role = 'owner'::public.member_role then
+    delete from public.member_names n
+    where n.business_id = inv.business_id and n.user_id = claimant;
+  elsif kept is not null then
+    select private.team_name(p.full_name)
     into own_name
     from public.profiles p
     where p.id = claimant;
@@ -179,6 +260,11 @@ $$;
 
 comment on table public.member_names is
   'The name a business shows for someone on its team, over their own (profiles.full_name), in that business only. Written only by public.set_member_name and, from an invite''s name, public.claim_invite; read as the person''s profile is read, per business (private.reads_member_name).';
+
+------------------------------------------------------------------------------
+-- Who may call what
+
+revoke execute on function private.team_name(text) from public, anon, authenticated;
 
 revoke execute on function public.claim_invite(text, uuid)
   from public, anon, authenticated;

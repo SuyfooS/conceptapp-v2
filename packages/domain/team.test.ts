@@ -34,6 +34,7 @@ import {
   type TeamInvite,
   type TeamMember,
   teamChangeFailureOf,
+  unchangedTeamName,
 } from "./team";
 
 const now = new Date("2026-10-23T10:00:00Z");
@@ -651,6 +652,50 @@ describe("sameTeamName", () => {
     expect(sameTeamName("Noa Cohen", null)).toBe(false);
     expect(sameTeamName("Noa Cohen", "  ")).toBe(false);
     expect(sameTeamName("", null)).toBe(false);
+  });
+});
+
+describe("unchangedTeamName", () => {
+  it("is the stored name, its letters composed and its spaces collapsed", () => {
+    // As the sheet opens on it, and typed without the double space.
+    expect(unchangedTeamName("Pe  Ter", "Pe  Ter")).toBe(true);
+    expect(unchangedTeamName(" Pe Ter ", "Pe  Ter")).toBe(true);
+    expect(unchangedTeamName("Pe Ter", "Pe\tTer")).toBe(true);
+    // Decomposed letters are the same name composed.
+    expect(unchangedTeamName("Noe\u{308}l", "No\u{EB}l")).toBe(true);
+    expect(unchangedTeamName("No\u{EB}l", "Noe\u{308}l")).toBe(true);
+    // A letter that differs is a change.
+    expect(unchangedTeamName("Peter", "Pe  Ter")).toBe(false);
+  });
+
+  it("saves a stored name clean of what nobody sees, which sameTeamName calls the same", () => {
+    // An override, a mark copied from WhatsApp, a zero-width space, an
+    // embedding: the editor opens on the name as stored, and saving it as
+    // it is drops them.
+    for (const stored of [
+      "\u{202E}Noa Cohen",
+      "\u{200F}Noa Cohen",
+      "Noa\u{200B} Cohen",
+      "\u{202B}Noa Cohen\u{202C}",
+      "Noa Cohen\u{7}",
+      "\u{200D}Noa Cohen",
+    ]) {
+      expect(sameTeamName(stored, stored), JSON.stringify(stored)).toBe(true);
+      expect(unchangedTeamName(stored, stored), JSON.stringify(stored)).toBe(
+        false,
+      );
+      expect(unchangedTeamName("Noa Cohen", stored)).toBe(false);
+    }
+    // Once clean, nothing more to save.
+    expect(unchangedTeamName("\u{200F}Noa Cohen", "Noa Cohen")).toBe(true);
+  });
+
+  it("is never unchanged where the draft is no name, or nothing is stored", () => {
+    expect(unchangedTeamName("", "Noa Cohen")).toBe(false);
+    expect(unchangedTeamName("   ", "   ")).toBe(false);
+    expect(unchangedTeamName("\u{200B}", "\u{200B}")).toBe(false);
+    expect(unchangedTeamName("Noa Cohen", null)).toBe(false);
+    expect(unchangedTeamName("Noa Cohen", undefined)).toBe(false);
   });
 });
 

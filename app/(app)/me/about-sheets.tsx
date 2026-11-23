@@ -9,7 +9,7 @@ import {
   type ProfileFailure,
   type ProfileSaveResult,
 } from "@domain/profile";
-import { parseTeamName, sameTeamName, TEAM_NAME_MAX } from "@domain/team";
+import { parseTeamName, TEAM_NAME_MAX, unchangedTeamName } from "@domain/team";
 import { Button } from "@ui/button";
 import { ChoiceList, ChoiceRow } from "@ui/choice-row";
 import { CoverChoices } from "@ui/cover-choices";
@@ -18,7 +18,7 @@ import { Sheet } from "@ui/sheet";
 import { TextArea } from "@ui/text-field";
 import { ChevronDown, Info, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { type FormEvent, type ReactNode, useState } from "react";
+import { type FormEvent, type ReactNode, useRef, useState } from "react";
 
 /** The words a failed profile change shows, in `app.me.failures`. */
 export function failureKey(
@@ -144,20 +144,25 @@ function NameForm({
 }) {
   const t = useTranslations("app.me");
   const tInvite = useTranslations("app.team.invite");
+  const field = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState(name ?? "");
   const [error, setError] = useState<"required" | "tooLong" | null>(null);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<ProfileFailure | null>(null);
   const parsed = parseTeamName(draft);
-  // As a name is kept: one saved with a double space is no change until a
-  // letter really differs.
-  const same = sameTeamName(draft, name);
+  // One saved with a double space, or with its letters decomposed, is no
+  // change until a letter really differs; one saved with what nobody sees
+  // (a direction mark, a zero-width space) is, and saving it cleans it.
+  const same = unchangedTeamName(draft, name);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
     if (!parsed.ok) {
+      // Said as an alert wherever the focus was, then the field takes it, to
+      // write the name at once.
       setError(parsed.error);
+      field.current?.focus();
       return;
     }
     setBusy(true);
@@ -179,6 +184,7 @@ function NameForm({
     >
       <FieldGroup className="bg-elevated">
         <GroupedField
+          ref={field}
           name="own-name"
           label={tInvite("name")}
           placeholder={tInvite("namePlaceholder")}
@@ -192,7 +198,11 @@ function NameForm({
             setError(null);
             setFailure(null);
           }}
-          error={error ? tInvite(`errors.name.${error}`) : undefined}
+          error={
+            error ? (
+              <span role="alert">{tInvite(`errors.name.${error}`)}</span>
+            ) : undefined
+          }
           required
         />
       </FieldGroup>

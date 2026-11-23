@@ -1895,9 +1895,10 @@ test("the team demo deletes an invite, changes a role and takes someone off the 
 });
 
 // Fixing a name on the demo (ROADMAP "תיקון שם"): the owner fixes Noa's,
-// shown at once in the title, with the fix back as its undo; someone nobody
-// named reads "בלי שם"; whoever may not change the person gets no row.
-// Nothing is stored.
+// shown at once in the title, with the fix back as its undo; an empty name is
+// said as an alert and the field takes the focus; one stored with a mark
+// nobody sees is saved clean; someone nobody named reads "בלי שם"; whoever
+// may not change the person gets no row. Nothing is stored.
 test("the person demo fixes a name, with the change back as its undo", async ({
   page,
 }) => {
@@ -1921,7 +1922,14 @@ test("the person demo fixes a name, with the change back as its undo", async ({
   const field = sheet.getByLabel(tt.invite.name, { exact: true });
   await field.fill(" ");
   await sheet.getByRole("button", { name: tc.nameSubmit }).click();
-  await expect(sheet).toContainText(tt.invite.errors.name.required);
+  // Said as it shows, and the field takes the focus, read with it.
+  await expect(sheet.getByRole("alert")).toHaveText(
+    tt.invite.errors.name.required,
+  );
+  await expect(field).toBeFocused();
+  await expect(field).toHaveAccessibleDescription(
+    tt.invite.errors.name.required,
+  );
   await field.fill("נועה  כהן-לוי");
   await sheet.getByRole("button", { name: tc.nameSubmit }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -1944,6 +1952,22 @@ test("the person demo fixes a name, with the change back as its undo", async ({
   ).toBeVisible();
   await expectCleanPage(page);
 
+  // A name stored with a mark nobody sees: the sheet saves it clean as it
+  // opens, though it reads the same.
+  await page.goto("/design/shell/team/noa?state=marked");
+  await nameRow.click();
+  await expect(field).toHaveValue("\u{200F}נועה כהן");
+  const submit = sheet.getByRole("button", { name: tc.nameSubmit });
+  await expect(submit).toBeEnabled();
+  await submit.click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(heading("נועה כהן")).toBeVisible();
+  await expect(
+    main.getByRole("status").filter({
+      hasText: heT("app.team.changes.nameChanged", { name: "נועה כהן" }),
+    }),
+  ).toBeVisible();
+
   // Someone nobody named.
   await page.goto("/design/shell/team/noa?state=nameless");
   await expect(heading(tt.noName)).toBeVisible();
@@ -1961,8 +1985,10 @@ test("the person demo fixes a name, with the change back as its undo", async ({
 // "השם שלי" on the profile demo: Shiran changes her own name, shown at once
 // in the title; where the business keeps a name of its own for her, the row,
 // the sheet and the word after saving say that one stays, and so does the
-// title, even where that name is her own until she saves; someone nobody
-// named is asked for one; a demo business keeps names. Nothing is stored.
+// title, even where that name is her own until she saves; an empty name is
+// said as an alert and the field takes the focus; someone nobody named is
+// asked for one; one saved with a mark nobody sees is saved clean; a demo
+// business keeps names. Nothing is stored.
 test("the profile demo changes her own name, and says where the business keeps its own", async ({
   page,
 }) => {
@@ -1991,7 +2017,14 @@ test("the profile demo changes her own name, and says where the business keeps i
   await expectCleanPage(page, "", true);
   await field.fill(" ");
   await save.click();
-  await expect(sheet).toContainText(tt.invite.errors.name.required);
+  // Said as it shows, and the field takes the focus, read with it.
+  await expect(sheet.getByRole("alert")).toHaveText(
+    tt.invite.errors.name.required,
+  );
+  await expect(field).toBeFocused();
+  await expect(field).toHaveAccessibleDescription(
+    tt.invite.errors.name.required,
+  );
   await field.fill("שירן  אלון-כהן");
   await save.click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -2052,6 +2085,19 @@ test("the profile demo changes her own name, and says where the business keeps i
   await field.fill("שירן אלון");
   await save.click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(heading("שירן אלון")).toBeVisible();
+
+  // Her own name saved with a mark nobody sees: the sheet saves it clean as
+  // it opens, though it reads the same.
+  await page.goto("/design/shell/me?name=marked");
+  await nameRow.click();
+  await expect(field).toHaveValue("\u{200F}שירן אלון");
+  await expect(save).toBeEnabled();
+  await save.click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(
+    page.getByRole("status").filter({ hasText: m.name.saved }),
+  ).toBeVisible();
   await expect(heading("שירן אלון")).toBeVisible();
 
   // A demo business keeps its people's names: the row says so, and opens

@@ -1,6 +1,6 @@
 "use client";
 
-import { parseTeamName, sameTeamName, TEAM_NAME_MAX } from "@domain/team";
+import { parseTeamName, TEAM_NAME_MAX, unchangedTeamName } from "@domain/team";
 import { Button } from "@ui/button";
 import { FieldGroup, GroupedField } from "@ui/field-group";
 import { ListGroup, ListRow } from "@ui/list-row";
@@ -107,11 +107,12 @@ export function MemberNameState({
   /**
    * Writes `to`, a name `parseTeamName` kept, for the one the screen shows,
    * with the fix back as its undo; nothing when it is that one already
-   * (`sameTeamName`). Whether the sheet may close.
+   * (`unchangedTeamName`: one stored with what nobody sees is saved clean).
+   * Whether the sheet may close.
    */
   async function fix(to: string): Promise<boolean> {
     const from = shown;
-    if (sameTeamName(to, from)) return true;
+    if (unchangedTeamName(to, from)) return true;
     if (busy) return false;
     setFailure(null);
     clearUndo();
@@ -235,18 +236,23 @@ function NameForm({ value }: { value: NameValue }) {
   const t = useTranslations("app.team.changes");
   const tInvite = useTranslations("app.team.invite");
   const failureText = useNameFailure();
+  const field = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState(value.shown ?? "");
   const [error, setError] = useState<"required" | "tooLong" | null>(null);
   const parsed = parseTeamName(draft);
-  // Both as a name is kept: an own name stored with a double space, or with
-  // its letters decomposed, is no fix until a letter really differs.
-  const same = sameTeamName(draft, value.shown);
+  // A name stored with a double space, or with its letters decomposed, is no
+  // fix until a letter really differs; one stored with what nobody sees (a
+  // direction mark, a zero-width space) is, and saving it cleans it.
+  const same = unchangedTeamName(draft, value.shown);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (value.busy) return;
     if (!parsed.ok) {
+      // Said as an alert wherever the focus was, then the field takes it, to
+      // write the name at once.
       setError(parsed.error);
+      field.current?.focus();
       return;
     }
     if (await value.fix(parsed.name)) value.setOpen(false);
@@ -260,6 +266,7 @@ function NameForm({ value }: { value: NameValue }) {
     >
       <FieldGroup className="bg-elevated">
         <GroupedField
+          ref={field}
           name="member-name"
           label={tInvite("name")}
           placeholder={tInvite("namePlaceholder")}
@@ -271,7 +278,11 @@ function NameForm({ value }: { value: NameValue }) {
             setDraft(event.target.value);
             setError(null);
           }}
-          error={error ? tInvite(`errors.name.${error}`) : undefined}
+          error={
+            error ? (
+              <span role="alert">{tInvite(`errors.name.${error}`)}</span>
+            ) : undefined
+          }
           required
         />
       </FieldGroup>

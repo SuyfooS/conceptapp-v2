@@ -433,7 +433,14 @@ test("the owner fixes a name: everywhere in the business and only there, with th
   await expectCleanPage(page);
   await field.fill("");
   await sheet.getByRole("button", { name: tc.nameSubmit }).click();
-  await expect(sheet).toContainText(tt.invite.errors.name.required);
+  // Said as it shows, and the field takes the focus, read with it.
+  await expect(sheet.getByRole("alert")).toHaveText(
+    tt.invite.errors.name.required,
+  );
+  await expect(field).toBeFocused();
+  await expect(field).toHaveAccessibleDescription(
+    tt.invite.errors.name.required,
+  );
 
   // Fixed at once, in this business: their own name stays theirs.
   await field.fill(FIXED);

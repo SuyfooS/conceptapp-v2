@@ -166,10 +166,14 @@ authors, departments for the console, pay people and access, roles, the
 clock's people and the session's own name all read it. `member_names.test.sql`
 and `team-changes.db.test.ts` cover it. Joining writes one too
 (`20261127000500_invite_names.sql`): `public.claim_invite` keeps the invite's
-name as the business's own for the person, read the same way (one line, its
-spaces collapsed); their own name keeps no row, and one kept from before
-goes; an invite with no name leaves the business's; a name with a control
-character keeps none, so a join never fails over it. `/me` says which
+name as the business's own for the person, read as the app keeps a name
+(`private.team_name`, parseTeamName's rule: what nobody sees dropped, letters
+composed, spaces collapsed, on the invite's name and on their own before they
+are compared; `tooling/team-names.test.ts` keeps its character lists equal to
+the app's); their own name keeps no row, and one kept from before goes; an
+owner keeps none, as only another owner could change it; an invite with no
+name leaves the business's. Someone with no name takes the clean name as
+their own. `/me` says which
 business keeps a name of its own for them: the session's `memberName` is the
 business's row, even one equal to their own name, which stays when they
 rename themselves, and the row says it beside their own where it differs
@@ -1179,7 +1183,8 @@ the activity log says its name with its base.
 `public.claim_invite` puts the person in the invite's named role, on a rejoin
 too, locking the role's row first (and, since
 `20261127000500_invite_names.sql`, keeps the invite's name as the business's
-own for them, unless it is their own); `public.invite_by_token` says its id and
+own for them, unless it is their own or they join as an owner);
+`public.invite_by_token` says its id and
 names (`named_role`, `role_name`, `role_name_en`, only for an invite that
 names one, so any other reads as before) for the join screen.
 `public.archive_business_role` counts open invites to the role (unclaimed,

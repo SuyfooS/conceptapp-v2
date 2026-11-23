@@ -505,7 +505,11 @@ test("Noa changes her own name, and her team and the requests call her by it", a
   await expectCleanPage(page);
   await field.fill("   ");
   await sheet.getByRole("button", { name: m.name.save }).click();
-  await expect(sheet).toContainText(he.app.team.invite.errors.name.required);
+  // Said as it shows, and the field takes the focus, read with it.
+  const required = he.app.team.invite.errors.name.required;
+  await expect(sheet.getByRole("alert")).toHaveText(required);
+  await expect(field).toBeFocused();
+  await expect(field).toHaveAccessibleDescription(required);
 
   // Saved as the team keeps names: one line, its spaces collapsed.
   await field.fill("  נועי   כהן ");

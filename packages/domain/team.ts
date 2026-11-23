@@ -612,6 +612,25 @@ export function sameTeamName(
   return next.ok && now.ok && next.name === now.name;
 }
 
+/**
+ * Whether saving `draft` writes nothing new over `stored`, the name as it is
+ * kept now: the draft as `parseTeamName` keeps it is `stored` with only its
+ * letters composed and its spaces collapsed, which a save would change
+ * nobody could see. Unlike `sameTeamName`, a stored name that still holds
+ * what nobody sees (a direction mark, a zero-width space, kept under older
+ * rules or copied from an invite) is not the draft, so an editor saves it
+ * clean. False when the draft is no name to keep, or nothing is stored.
+ */
+export function unchangedTeamName(
+  draft: unknown,
+  stored: string | null | undefined,
+): boolean {
+  const next = parseTeamName(draft);
+  if (!next.ok || typeof stored !== "string") return false;
+  const now = stored.normalize("NFC").split(/\s+/).filter(Boolean).join(" ");
+  return next.name === now;
+}
+
 export type TeamInviteInput = RoleChoice & {
   name: string;
   /** Canonical E.164. */
