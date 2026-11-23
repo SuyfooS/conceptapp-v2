@@ -1,5 +1,6 @@
+import { demoDoorOpen } from "@db/env";
 import { refreshSession, withSessionCookies } from "@db/supabase/proxy";
-import { signInPath } from "@domain/passive-sign-in";
+import { doorPath, phoneSignInPath, signInPath } from "@domain/passive-sign-in";
 import { type NextRequest, NextResponse } from "next/server";
 
 /**
@@ -36,7 +37,7 @@ export const PRIVATE = [
   "/document-files",
   "/admin",
 ];
-const DOORS = ["/sign-in", "/enter"];
+const DOORS: readonly string[] = [phoneSignInPath, signInPath];
 
 function isPrivate(pathname: string) {
   return PRIVATE.some((p) => pathname === p || pathname.startsWith(`${p}/`));
@@ -45,22 +46,34 @@ function isPrivate(pathname: string) {
 /**
  * Keeps the Supabase session fresh on every page request and sends people
  * to the right side of the door: signed out away from the app, signed in
- * away from the sign-in screen.
+ * away from the sign-in screen. Where this site's demo door is closed
+ * (`DEMO_DOOR=off`), the door is real sign-in, and /enter only an address
+ * on the way to it (tooling/proxy-door.test.ts).
  */
 export async function proxy(request: NextRequest) {
+  // The setting first: a bad value answers no request at all, and the build
+  // has failed on it already.
+  const open = demoDoorOpen();
   const { response, userId } = await refreshSession(request);
   const { pathname } = request.nextUrl;
 
   if (!userId && isPrivate(pathname)) {
     return withSessionCookies(
       response,
-      NextResponse.redirect(new URL(signInPath, request.url)),
+      NextResponse.redirect(new URL(doorPath(open), request.url)),
     );
   }
   if (userId && DOORS.includes(pathname)) {
     return withSessionCookies(
       response,
       NextResponse.redirect(new URL(HOME, request.url)),
+    );
+  }
+  // No demo people here: whoever comes to /enter goes on to real sign-in.
+  if (!open && pathname === signInPath) {
+    return withSessionCookies(
+      response,
+      NextResponse.redirect(new URL(phoneSignInPath, request.url)),
     );
   }
   return response;
