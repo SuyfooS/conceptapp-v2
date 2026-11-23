@@ -1,13 +1,13 @@
 "use server";
 
 import { renewDemoSchedules, resetDemoBusinesses } from "@db/demo";
+import { demoDoorOpen } from "@db/env";
 import { createAdminClient } from "@db/supabase/admin";
 import { createClient } from "@db/supabase/server";
 import {
   demoBusinessOf,
   demoEmailOf,
   demoPersonOf,
-  PASSIVE_SIGN_IN,
 } from "@domain/passive-sign-in";
 import { redirect } from "next/navigation";
 import { rememberBusiness } from "../../(app)/business-cookie";
@@ -25,14 +25,19 @@ export type ResetResult = { ok: boolean };
  * key): the accountant is in both (payroll P3b), and whoever came in on this
  * browser before may have left another chosen. A business whose week renews
  * gets it published first, so there is a schedule to see on arrival.
+ *
+ * Nothing on a site whose demo door is closed (`DEMO_DOOR=off`), asked before
+ * the secret key is: a server action answers a POST from any page, so this
+ * check is the gate, not the page that offers it.
  */
 export async function enterAs(
   person: string,
   business?: string,
 ): Promise<EnterResult> {
+  if (!demoDoorOpen()) return { failed: true };
   const known = demoPersonOf(person);
   const email = demoEmailOf(known);
-  if (!PASSIVE_SIGN_IN || !known || !email) return { failed: true };
+  if (!known || !email) return { failed: true };
   const offered = demoBusinessOf(known, business);
 
   try {
@@ -74,10 +79,11 @@ export async function enterAs(
 
 /**
  * Puts the demo businesses back the way they start, from the door. Anyone at
- * the door may: anyone there can change them too.
+ * the door may: anyone there can change them too. Never on a site whose demo
+ * door is closed (`DEMO_DOOR=off`), asked before the secret key is.
  */
 export async function resetDemo(): Promise<ResetResult> {
-  if (!PASSIVE_SIGN_IN) return { ok: false };
+  if (!demoDoorOpen()) return { ok: false };
   try {
     await resetDemoBusinesses();
     return { ok: true };

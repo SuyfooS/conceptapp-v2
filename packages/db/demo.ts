@@ -2,8 +2,9 @@ import "server-only";
 import { createAdminClient } from "./supabase/admin";
 
 /**
- * The demo businesses, while the door is passive (`@domain/passive-sign-in`).
- * Both run with the secret key: nobody signed in may call them.
+ * The demo businesses, on a site whose demo door is open (`DEMO_DOOR`,
+ * `./env`). Both run with the secret key: nobody signed in may call them,
+ * and their callers ask the door first (tooling/demo-door.test.ts).
  */
 
 /**

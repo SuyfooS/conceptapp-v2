@@ -1708,6 +1708,23 @@ test("next week's demo copies last week, says who was left out, and takes it bac
   await expect(toast).toHaveCount(0, { timeout: 2_000 });
 });
 
+// The demo door per site (P9): the demo's site offers it from sign-in; the
+// site of real businesses (DEMO_DOOR=off, the twin's ?door=off) has the
+// same screen with no way to it and nothing in its place.
+test("sign-in offers the demo only where the demo door is open", async ({
+  page,
+}) => {
+  const t = he.auth.signIn;
+  const main = page.getByRole("main");
+  await page.goto("/design/screens/sign-in");
+  await expect(main.getByRole("link", { name: t.demo })).toBeVisible();
+
+  await page.goto("/design/screens/sign-in?door=off");
+  await expect(main.getByRole("button", { name: t.send })).toBeVisible();
+  await expect(main.getByLabel(t.phoneLabel)).toBeVisible();
+  await expect(main.getByRole("link", { name: t.demo })).toHaveCount(0);
+});
+
 // A demo business takes no invites (#80): its Team screen offers none and
 // says why, at every size; a real one keeps its invite and new links.
 test("the team demo offers no invite in a demo business", async ({ page }) => {
