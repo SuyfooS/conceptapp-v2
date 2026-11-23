@@ -1,3 +1,4 @@
+import type { ActivityEntry } from "@domain/activity";
 import type { Address } from "@domain/address";
 import type {
   BankReview,
@@ -18,7 +19,8 @@ import type { HolderFailure } from "../../file-access";
  * /team/[person]/file) is drawn from, and what its actions answer: the same
  * for the app and its twin on /design. Only what the screen shows travels:
  * the ID and the account number as their last digits, never the numbers,
- * which "הצגה" asks for one at a time.
+ * which "הצגה" asks for one at a time. H6b brought the holder's writes (an
+ * account confirmed, a part handed directly) and "מה קרה בתיק".
  */
 
 /** Whose file it is, and where it is: what every state's header needs. */
@@ -62,6 +64,11 @@ export type HolderFileData = {
     /** "•••0018": never the number. */
     masked: string | null;
     youthUntil: string | null;
+    /**
+     * A minor's checklist (H6b-2): the open period's start, for the notice
+     * of the terms of work a week on; null for an adult.
+     */
+    minor: { startedOn: string | null } | null;
   };
   /** Null while the address isn't asked and the file holds nothing of it. */
   contact: {
@@ -111,7 +118,18 @@ export type HolderFileScreen =
   | { kind: "unavailable"; head: HolderFileHead }
   | { kind: "duties"; head: HolderFileHead }
   | { kind: "locked"; head: HolderFileHead }
-  | { kind: "open"; head: HolderFileHead; data: HolderFileData };
+  | {
+      kind: "open";
+      head: HolderFileHead;
+      data: HolderFileData;
+      history: FileHistory;
+    };
+
+/**
+ * "מה קרה בתיק" (H6b-1): the newest lines, and whether there are older
+ * ones; null when the log couldn't be read, which never keeps the file shut.
+ */
+export type FileHistory = { entries: ActivityEntry[]; more: boolean } | null;
 
 /** Why a code didn't go, or wasn't taken. */
 export type HolderCodeFailure =
@@ -160,6 +178,36 @@ export type KeepOpenAnswer = { open: true; leftMs: number } | { open: false };
 
 export type LockAnswer = { ok: true };
 
+/**
+ * Why a holder's write didn't go (H6b-1): refused before the database (no
+ * fresh step-up: the screen draws itself locked), or by it, in the screen's
+ * terms: the account changed again meanwhile (`moved`), confirmed by
+ * someone else meanwhile (`settled`), a demo that keeps its made-up files,
+ * real files not open yet, or the person off the team.
+ */
+export type HolderWriteFailure =
+  | HolderFailure
+  | HolderFileFailure
+  | "stepUp"
+  | "moved"
+  | "settled"
+  | "demo"
+  | "closed"
+  | "notInTeam";
+
+export type HolderWriteAnswer =
+  | { ok: true }
+  | { ok: false; failure: HolderWriteFailure };
+
+/**
+ * A mark's press went: `changed` when it changed the file, false when the
+ * part already was so (another holder's press first), so "ביטול" is offered
+ * only for a change this press made.
+ */
+export type MarkDirectAnswer =
+  | { ok: true; changed: boolean }
+  | { ok: false; failure: HolderWriteFailure };
+
 /** The screen's actions, bound to the business (and the reveal to the person), or the twin's. */
 export type HolderFileActions = {
   acknowledge: () => Promise<AcknowledgeAnswer>;
@@ -169,4 +217,8 @@ export type HolderFileActions = {
   /** Sliding the step-up (`slide`) for the person's activity here only. */
   keepOpen: (slide: boolean) => Promise<KeepOpenAnswer>;
   lock: () => Promise<LockAnswer>;
+  /** "ראיתי את החשבון החדש": the account as the screen read it (H6b-1). */
+  acknowledgeBank: (seenChangedAt: string) => Promise<HolderWriteAnswer>;
+  /** "נמסר ישירות לשכר" on one part, or the mark taken off (H6b-1). */
+  markDirect: (group: FileGroup, marked: boolean) => Promise<MarkDirectAnswer>;
 };

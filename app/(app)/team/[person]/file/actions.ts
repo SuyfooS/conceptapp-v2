@@ -1,12 +1,15 @@
 "use server";
 
 import {
+  acknowledgeBank,
   acknowledgeFileDuties,
+  type FileWriteFailure,
   getFileHolderState,
   hasEmployeeKeys,
+  markDirectGroup,
   revealEmployeeFields,
 } from "@db/employee-files";
-import { REVEAL_FIELDS } from "@domain/employee-file";
+import { FILE_GROUPS, REVEAL_FIELDS } from "@domain/employee-file";
 import { phoneTail } from "@domain/employee-file-steps";
 import { FILE_IDLE_MS } from "@domain/file-holders";
 import { normalizeOtpCode } from "@domain/otp";
@@ -18,8 +21,11 @@ import { fileHolder } from "../../file-access";
 import type {
   AcknowledgeAnswer,
   ConfirmFileCodeAnswer,
+  HolderWriteAnswer,
+  HolderWriteFailure,
   KeepOpenAnswer,
   LockAnswer,
+  MarkDirectAnswer,
   RevealHolderAnswer,
   SendFileCodeAnswer,
 } from "./holder-file-types";
@@ -41,8 +47,10 @@ import {
  * (`signInPhoneOf`), never one a browser sends, counted with the sign-in
  * codes; only a right code for that number opens the files on this device
  * (the signed cookie of ./step-up), and a reveal without a fresh one never
- * reaches the database. Each reveal is logged there. Nothing typed and no
- * value is logged here: a failure logs its code.
+ * reaches the database. Each reveal is logged there. A holder's writes
+ * (H6b-1: an account confirmed, a part handed directly) go the same way: no
+ * fresh step-up, no call to the database, and never on the session's own
+ * file. Nothing typed and no value is logged here: a failure logs its code.
  */
 
 /** "אישור ושליחת קוד": the duties confirmed in today's wording. */
@@ -187,6 +195,141 @@ export async function revealHolderFieldAction(
     };
   } catch (error) {
     return { ok: false, ...logged("revealing a file's number failed", error) };
+  }
+}
+
+/**
+ * The moment the screen read for the account's last change, as the
+ * database wrote it: a date and a time, a fraction of up to six digits and
+ * an offset. Sent back unchanged, never through a `Date`, which would drop
+ * the microseconds and answer "changed meanwhile" each time.
+ */
+const MOMENT =
+  /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d{1,6})?([+-]\d{2}(:\d{2})?|Z)$/;
+
+/** A write the database refused, in the screen's terms. */
+function writeFailure(
+  refused: FileWriteFailure,
+  invalid: HolderWriteFailure,
+): HolderWriteFailure {
+  switch (refused.failure) {
+    case "moved":
+      return "moved";
+    case "invalid":
+      return invalid;
+    case "ack":
+    case "off":
+    case "demo":
+    case "closed":
+    case "notInTeam":
+      return refused.failure;
+    case "notStaff":
+      return "notInTeam";
+    case "own":
+    case "ownerOnly":
+    case "noAccess":
+      return "noAccess";
+    case "keys":
+    case "unavailable":
+      return "unavailable";
+    default:
+      return "failed";
+  }
+}
+
+/**
+ * "ראיתי את החשבון החדש" (and "בדקתי את מספר החשבון", "בדקתי עם נועה,
+ * החשבון נכון"): someone's account confirmed as the screen read it,
+ * `seenChangedAt` going back exactly as it came. Changed again meanwhile,
+ * it says so and draws the screen with the newer change; confirmed by
+ * someone else meanwhile, it says that. Never the session's own account,
+ * and never without a fresh step-up on this device, before any call.
+ * Logged there (`employee.bank_ack`); it slides the 15 minutes.
+ */
+export async function acknowledgeBankAction(
+  business: string,
+  person: string,
+  seenChangedAt: string,
+): Promise<HolderWriteAnswer> {
+  const who = await fileHolder(business);
+  if ("failure" in who) return { ok: false, failure: who.failure };
+  const whose = z.uuid().safeParse(person);
+  const seen = z.string().max(40).regex(MOMENT).safeParse(seenChangedAt);
+  if (!whose.success || !seen.success) {
+    return { ok: false, failure: "failed" };
+  }
+  // The database refuses it too ('own'): the session's own file is /me/file.
+  if (whose.data === who.userId) return { ok: false, failure: "noAccess" };
+  try {
+    if (!(await fileOpenFor(who.businessId, who.userId))) {
+      return { ok: false, failure: "stepUp" };
+    }
+    const done = await acknowledgeBank(
+      who.userId,
+      who.businessId,
+      whose.data,
+      seen.data,
+    );
+    if (!done.ok) {
+      const failure = writeFailure(done, "settled");
+      // The newer change, or none left to confirm: the screen shows which.
+      if (failure === "moved" || failure === "settled") refresh();
+      return { ok: false, failure };
+    }
+    await keepFileOpen(who.businessId, who.userId);
+    refresh();
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, ...logged("confirming an account failed", error) };
+  }
+}
+
+/**
+ * "סימון שנמסר ישירות לשכר" on one part of someone's file, or "הסרת
+ * הסימון" (`marked` false); the toast's "ביטול" sends the other one. The
+ * database adds or takes off this one part, reading the stored marks under
+ * the file's lock, so two holders' presses at once each keep the other's,
+ * and a stale screen never sends a whole set back. It answers whether the
+ * file changed: not when the part already was so (another holder's press
+ * first), which offers no "ביטול", and an undo after someone else took the
+ * change back writes nothing. A part the business doesn't ask is refused
+ * for a mark. Never the session's own file (`set_direct_groups` doesn't
+ * check it), and never without a fresh step-up, before any call. Logged
+ * there (`employee.direct`, for a change only); it slides the 15 minutes,
+ * and the page is drawn again either way, with the marks as they are.
+ */
+export async function markDirectGroupAction(
+  business: string,
+  person: string,
+  group: string,
+  marked: boolean,
+): Promise<MarkDirectAnswer> {
+  const who = await fileHolder(business);
+  if ("failure" in who) return { ok: false, failure: who.failure };
+  const whose = z.uuid().safeParse(person);
+  const which = z.enum(FILE_GROUPS).safeParse(group);
+  const mark = z.boolean().safeParse(marked);
+  if (!whose.success || !which.success || !mark.success) {
+    return { ok: false, failure: "failed" };
+  }
+  if (whose.data === who.userId) return { ok: false, failure: "noAccess" };
+  try {
+    if (!(await fileOpenFor(who.businessId, who.userId))) {
+      return { ok: false, failure: "stepUp" };
+    }
+    const done = await markDirectGroup(
+      who.userId,
+      who.businessId,
+      whose.data,
+      which.data,
+      mark.data,
+    );
+    if (!done.ok) return { ok: false, failure: writeFailure(done, "failed") };
+    await keepFileOpen(who.businessId, who.userId);
+    refresh();
+    return { ok: true, changed: done.changed };
+  } catch (error) {
+    return { ok: false, ...logged("marking a file failed", error) };
   }
 }
 

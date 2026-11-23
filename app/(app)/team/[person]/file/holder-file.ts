@@ -4,13 +4,50 @@ import {
   getFileHolderState,
   hasEmployeeKeys,
 } from "@db/employee-files";
+import { getFileHistory } from "@db/file-history";
 import { getTeamPerson } from "@db/team";
-import { isUuid } from "@domain/activity";
+import { buildActivity, isUuid } from "@domain/activity";
 import { unstable_rethrow } from "next/navigation";
 import { currentFilesReader } from "../../file-access";
 import { holderFileOf } from "./holder-file-parts";
-import type { HolderFileHead, HolderFileScreen } from "./holder-file-types";
+import type {
+  FileHistory,
+  HolderFileHead,
+  HolderFileScreen,
+} from "./holder-file-types";
 import { fileOpenFor } from "./step-up";
+
+/** An error's code and kind, never its message: a message could carry a value. */
+function codeAndKind(error: unknown): [string, string] {
+  const code =
+    error && typeof error === "object" && "code" in error
+      ? String((error as { code: unknown }).code)
+      : "without a code";
+  return [code, error instanceof Error ? error.name : typeof error];
+}
+
+/**
+ * "מה קרה בתיק" for an open file (H6b-1), under the holder's own session:
+ * the log's rows about the person, as lines. A failure says so in its place
+ * and never keeps the file shut.
+ */
+async function fileHistoryOf(
+  businessId: string,
+  personId: string,
+): Promise<FileHistory> {
+  try {
+    const page = await getFileHistory(businessId, personId);
+    return {
+      entries: buildActivity(page.rows, page.lookups),
+      more: page.more,
+    };
+  } catch (error) {
+    unstable_rethrow(error);
+    const [code, kind] = codeAndKind(error);
+    console.error("reading a file's history failed", code, kind);
+    return null;
+  }
+}
 
 /**
  * Someone's hiring file as the signed-in holder reads it (profile H6a),
@@ -21,7 +58,8 @@ import { fileOpenFor } from "./step-up";
  * (no keys, no SMS); whether the holder confirmed today's duties, asked
  * without a log (`public.file_holder_state`); whether their files are open
  * on this device (the step-up's cookie); and only then the file, under
- * their own session, which logs `employee.view` once a day. Never cached;
+ * their own session, which logs `employee.view` once a day, and with it
+ * what happened in the file (H6b-1), which logs nothing. Never cached;
  * an error logs its code and kind, never a message, and shows the screen
  * that can't open a file.
  */
@@ -104,21 +142,20 @@ export async function currentHolderFile(
       }
     }
     if (read.access !== "holder") return { kind: "closed" };
+    // By the id the database returned, never the address as typed: the log
+    // names the person in lower case, and its filter compares text.
+    const history = await fileHistoryOf(holder.businessId, head.personId);
     return {
       kind: "open",
       head,
       data: holderFileOf(read, holder.settings, holder.today),
+      history,
     };
   } catch (error) {
     // Next's own throws (a prefetch's render stopping at a request-time
     // read, a redirect) go on to Next: they are no failure of the file.
     unstable_rethrow(error);
-    const code =
-      error && typeof error === "object" && "code" in error
-        ? String((error as { code: unknown }).code)
-        : "without a code";
-    // The error's kind, never its message: a message could carry a value.
-    const kind = error instanceof Error ? error.name : typeof error;
+    const [code, kind] = codeAndKind(error);
     console.error("reading a holder's file failed", code, kind);
     return head ? { kind: "unavailable", head } : { kind: "closed" };
   }

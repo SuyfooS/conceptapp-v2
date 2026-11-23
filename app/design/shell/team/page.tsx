@@ -7,6 +7,7 @@ import { TeamView } from "../../../(app)/team/team-view";
 import { baseWording } from "../../../(app)/wording";
 import {
   demoNamedRole,
+  teamFileStatusComplete,
   teamFileStatusFor,
   teamInvites,
   teamMembers,
@@ -14,7 +15,9 @@ import {
 } from "../data";
 import { demoCancelInviteAction, demoResendAction } from "./actions";
 
-type Props = { searchParams: Promise<{ state?: string; file?: string }> };
+type Props = {
+  searchParams: Promise<{ state?: string; file?: string; complete?: string }>;
+};
 
 // The real Team screen with mock people: three members' worth of the demo
 // staff, one open invite and one expired, seen by an owner. Two of the
@@ -31,6 +34,8 @@ type Props = { searchParams: Promise<{ state?: string; file?: string }> };
 // ?file=accountant as the accountant, who holds the files without seeing
 // the team: managers and workers alone, no numbers, no invites, each row
 // leading to the file's twin as the accountant reads it (`?as=accountant`).
+// &complete=1 with any of them has every file complete and its 101 accepted
+// (H6b-2): each choice of the filter but everyone says it shows nobody.
 export default function ShellTeam({ searchParams }: Props) {
   return (
     <Suspense>
@@ -40,7 +45,10 @@ export default function ShellTeam({ searchParams }: Props) {
 }
 
 /** The twin's status lines, as each reader reads them. */
-function filesFor(file: string | undefined): TeamFiles | null {
+function filesFor(
+  file: string | undefined,
+  complete: boolean,
+): TeamFiles | null {
   if (file !== "holder" && file !== "manager" && file !== "accountant") {
     return null;
   }
@@ -50,14 +58,17 @@ function filesFor(file: string | undefined): TeamFiles | null {
     filesOnly: file === "accountant",
     year: 2026,
     form101: true,
-    byPerson: teamFileStatusFor(reader),
+    timeZone: "Asia/Jerusalem",
+    byPerson: complete
+      ? teamFileStatusComplete(reader)
+      : teamFileStatusFor(reader),
   };
 }
 
 async function Demo({ searchParams }: Props) {
-  const { state, file } = await searchParams;
+  const { state, file, complete } = await searchParams;
   const demo = state === "demo";
-  const files = filesFor(file);
+  const files = filesFor(file, complete === "1");
   if (files?.filesOnly) {
     // The accountant reads names and roles only: no numbers, no invites.
     return (
