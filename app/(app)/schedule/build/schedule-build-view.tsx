@@ -1,5 +1,6 @@
 import { weekDates, weekdayOf } from "@domain/availability";
 import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
+import type { CopySource } from "@domain/copy-week";
 import type { ShiftSwap } from "@domain/swaps";
 import { Button } from "@ui/button";
 import { EmptyState } from "@ui/empty-state";
@@ -15,11 +16,13 @@ import { type BuilderWeeks, ScheduleBuilder } from "./schedule-builder";
 
 /**
  * The page around the builder. Also rendered with mock data on
- * /design/shell/schedule/build and /design/shell/schedule/build/running.
+ * /design/shell/schedule/build and /design/shell/schedule/build/running,
+ * whose next week has a last week to copy.
  */
 export function ScheduleBuildView({
   data,
   swaps,
+  lastWeek = null,
   save,
   backHref = "/schedule",
   manageHref = "/manage/scheduling",
@@ -31,6 +34,11 @@ export function ScheduleBuildView({
   data: ScheduleBuildWeek;
   /** The week's waiting swap requests, for the warning before publishing. */
   swaps: ShiftSwap[];
+  /**
+   * The week before, for "העתקה מהשבוע שעבר" on a draft; none offers no
+   * copy.
+   */
+  lastWeek?: CopySource | null;
   save: (prev: ScheduleState, form: FormData) => Promise<ScheduleState>;
   /** Where "back" goes: the schedule's entry, or the demo's. */
   backHref?: string;
@@ -82,6 +90,7 @@ export function ScheduleBuildView({
         shifts={data.shifts}
         basis={data.basis}
         swaps={swaps}
+        lastWeek={lastWeek}
         team={data.team}
         people={data.people}
         hasPattern={data.hasPattern}

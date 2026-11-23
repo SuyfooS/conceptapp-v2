@@ -6,8 +6,13 @@ import { baseWording } from "../../../../../(app)/wording";
 import { demoSaveSchedule } from "../actions";
 import { demoPublishRunning } from "./actions";
 import {
+  SHOP_NEXT_SAVED_AT,
   SHOP_NOW,
   SHOP_PUBLISHED_AT,
+  shopLastWeek,
+  shopNextAnswers,
+  shopNextDraft,
+  shopNextDraftBasis,
   shopNextShifts,
   shopNextWeek,
   shopPositions,
@@ -20,7 +25,7 @@ import {
   shopThisWeek,
 } from "./shop";
 
-type Props = { searchParams: Promise<{ week?: string }> };
+type Props = { searchParams: Promise<{ week?: string; state?: string }> };
 
 const HREF = "/design/shell/schedule/build/running";
 
@@ -39,6 +44,15 @@ const HREF = "/design/shell/schedule/build/running";
 // the app's does before the server: the held state, its toast with the way
 // back, and "ביטול" letting it go unsent, are this twin's to look at. At rest
 // and after a publish, the dock offers sharing the week on WhatsApp.
+//
+// Next week offers "העתקה מהשבוע שעבר", from the week under way: Liya, who
+// left, is counted and not copied, and Tamar, who can only do mornings next
+// week, isn't copied onto Thursday evening. Nothing is stored: the copy is on
+// the screen until the stand-in saves or publishes it, and its toast's
+// "ביטול" brings back the pattern's empty week. &state=draft: next week
+// saved as a draft with Tamar and Itai on Sunday morning, so Sunday stays as
+// it is, unless the sheet's switch replaces it. The week under way is
+// published, and offers no copy.
 export default function ShellScheduleBuildRunning(props: Props) {
   return (
     <Suspense>
@@ -48,8 +62,9 @@ export default function ShellScheduleBuildRunning(props: Props) {
 }
 
 async function Demo({ searchParams }: Props) {
-  const { week } = await searchParams;
+  const { week, state } = await searchParams;
   const next = week === "next";
+  const draft = next && state === "draft";
   const now = new Date(SHOP_NOW);
   const weeks = [
     {
@@ -60,7 +75,11 @@ async function Demo({ searchParams }: Props) {
     {
       which: "next" as const,
       href: `${HREF}?week=next`,
-      gaps: gapsAhead(shopNextShifts, now, ISRAEL_TIME_ZONE).shifts.length,
+      gaps: gapsAhead(
+        draft ? shopNextDraft : shopNextShifts,
+        now,
+        ISRAEL_TIME_ZONE,
+      ).shifts.length,
     },
   ];
   const common = {
@@ -79,19 +98,22 @@ async function Demo({ searchParams }: Props) {
     return (
       <ScheduleBuildView
         {...common}
+        // Another state is another screen, as another reading is in the app.
+        key={draft ? "draft" : "next"}
         data={{
           week: shopNextWeek,
-          savedAt: null,
+          savedAt: draft ? SHOP_NEXT_SAVED_AT : null,
           publishedAt: null,
-          shifts: shopNextShifts,
-          basis: null,
+          shifts: draft ? shopNextDraft : shopNextShifts,
+          basis: draft ? shopNextDraftBasis : null,
           team: shopTeam,
           people: shopTeam,
           hasPattern: true,
-          answers: [],
+          answers: shopNextAnswers,
           positions: shopPositions,
         }}
         swaps={[]}
+        lastWeek={shopLastWeek}
         save={demoSaveSchedule}
         running={running}
       />

@@ -24,6 +24,7 @@ import {
   type ShabbatLimits,
   shabbatLimits,
 } from "@domain/availability-form";
+import { type CopySource, copySourceOf } from "@domain/copy-week";
 import { canOpenModule, isStaff } from "@domain/modules";
 import { type BuildWeeks, draftAhead, weekBuilt } from "@domain/running-week";
 import {
@@ -41,6 +42,7 @@ import type { EndedSwap, ShiftSwap } from "@domain/swaps";
 import type { TeamMember } from "@domain/team";
 import { overnightDay } from "@domain/today";
 import { manifestFor } from "@modules/registry";
+import { unstable_rethrow } from "next/navigation";
 import { cache } from "react";
 import { currentMember } from "../member";
 import { currentModuleSettings, currentModules } from "../modules";
@@ -353,6 +355,74 @@ export const currentScheduleBuild = cache(
       })),
       positions: context.positions,
     };
+  },
+);
+
+/**
+ * The week before the one being built, for "העתקה מהשבוע שעבר": its shifts
+ * as stored, once someone built it (`copySourceOf`), for whoever builds the
+ * schedule, and only for the builder's two weeks. Building next week, it is
+ * the week running now, which the page reads anyway; building the week
+ * running now, the one before it, a draft included (RLS: its builders read
+ * drafts). Null when there is nothing to copy, and when it can't be read:
+ * the builder then offers no copy, and works as before. Memoised per week
+ * for the request.
+ */
+export const currentCopySource = cache(
+  async (start: string): Promise<CopySource | null> => {
+    const [member, scheduling] = await Promise.all([
+      currentMember(),
+      schedulingContext(),
+    ]);
+    const membership = member?.membership;
+    if (!membership || !buildsSchedule(membership) || !scheduling) return null;
+    const { weeks, business, settings } = scheduling;
+    if (start !== weeks.thisWeek && start !== weeks.nextWeek) return null;
+    const from = addDays(start, -7);
+    const keys = settings.positions.map((p) => p.key);
+    try {
+      if (from === weeks.thisWeek) {
+        const build = await currentScheduleBuild(from);
+        return build
+          ? copySourceOf(
+              {
+                start: from,
+                savedAt: build.savedAt,
+                publishedAt: build.publishedAt,
+                shifts: build.shifts,
+              },
+              keys,
+            )
+          : null;
+      }
+      const open = await getWeek(business.id, from);
+      if (
+        !open ||
+        !weekBuilt({
+          savedAt: open.scheduleSavedAt,
+          publishedAt: open.schedulePublishedAt,
+        })
+      ) {
+        return null;
+      }
+      const stored = await getWeekSchedule(open.id);
+      return copySourceOf(
+        {
+          start: from,
+          savedAt: open.scheduleSavedAt,
+          publishedAt: open.schedulePublishedAt,
+          shifts: stored.map(({ seen: _, ...shift }) => shift),
+        },
+        keys,
+      );
+    } catch (error) {
+      unstable_rethrow(error);
+      console.error(
+        "reading last week to copy failed",
+        (error as Error).message,
+      );
+      return null;
+    }
   },
 );
 

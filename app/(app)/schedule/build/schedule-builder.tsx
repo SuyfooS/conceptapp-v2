@@ -8,6 +8,11 @@ import {
 } from "@domain/availability";
 import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
 import {
+  type CopySource,
+  copyLastWeek,
+  type WeekCopy,
+} from "@domain/copy-week";
+import {
   begunShifts,
   edgeWeek,
   gapsAhead,
@@ -42,7 +47,7 @@ import { DockButton, FloatingDock } from "@ui/floating-dock";
 import { Segmented } from "@ui/segmented";
 import { Sheet } from "@ui/sheet";
 import { StatusToast } from "@ui/status-toast";
-import { Info, Save, Send, TriangleAlert } from "lucide-react";
+import { CopyPlus, Info, Save, Send, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -62,6 +67,7 @@ import { HOLD_MS, useHeldWrite } from "../../use-held-write";
 import { type ShareWeek, ShareWeekButton } from "../share-week";
 import type { AvailabilityWeek } from "../week";
 import type { MovedShifts, ScheduleState } from "./actions";
+import { CopyWeekSheet } from "./copy-sheet";
 import { type BuilderSend, publishWaits, sendOf } from "./publish-hold";
 import {
   AddShiftRow,
@@ -90,6 +96,9 @@ const initialState: ScheduleState = {};
 
 /** A little longer than the sheet takes to slide away. */
 const SHEET_CLOSES_MS = 240;
+
+/** How long "ביטול" of a copy from last week stays in the toast. */
+const COPY_UNDO_MS = 10_000;
 
 /** One of the builder's two weeks, for the switch between them. */
 export type BuilderWeek = {
@@ -128,6 +137,11 @@ export type ScheduleBuilderProps = {
    * how many the changes on the screen would end (`swapsEndedBy`).
    */
   swaps: ShiftSwap[];
+  /**
+   * The week before, once someone built it: a draft offers copying it onto
+   * the screen ("העתקה מהשבוע שעבר"). None offers no copy.
+   */
+  lastWeek?: CopySource | null;
   /**
    * Where the regular shifts are set, for a week with none; null for someone
    * who can't open the management page (a worker who builds the schedule):
@@ -175,6 +189,8 @@ export type ScheduleBuilderProps = {
 type Reading = {
   key: string;
   week: ScheduleBuilderProps["week"];
+  /** When the week was last saved, as read: what a copy is made over. */
+  savedAt: string | null;
   shifts: ScheduledShift[];
   basis: ShiftBasis | null;
   swaps: ShiftSwap[];
@@ -318,6 +334,14 @@ function focusLeftBySheet(back?: Element | null): boolean {
  * under way or starting within 12 hours, to check with its people directly;
  * the button is described by them. A week that turned over while the screen
  * was open takes nothing more: it says so, with the way to the running week.
+ *
+ * A draft whose week before was built offers "העתקה מהשבוע שעבר"
+ * (`copyLastWeek`): a sheet says what it would do, day by day, and who
+ * wouldn't be copied and why, and its button puts the copy on the screen
+ * only. The toast says nothing is saved yet, with "ביטול" for
+ * `COPY_UNDO_MS`, which puts the screen back as it was before the copy. The
+ * form then sends the save moment the reading had (`copied`), so a week saved
+ * meanwhile on another screen takes no second copy (`copySaved`).
  */
 export function ScheduleBuilder(props: ScheduleBuilderProps) {
   const t = useTranslations();
@@ -360,12 +384,23 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
     kind: "waiting" | "undone";
     stamp: string;
   } | null>(null);
+  /**
+   * What the toast says of a copy from last week: made, with what puts the
+   * screen back as it was before it, or undone.
+   */
+  const [copyNotice, setCopyNotice] = useState<
+    | { kind: "copied"; count: number; stamp: string; undo: () => void }
+    | { kind: "undone"; stamp: string }
+    | null
+  >(null);
 
   const [state, action, pending] = useActionState(
     async (prev: ScheduleState, payload: BuilderSend) => {
       const { form, sent: answered } = sendOf(payload);
-      // Whatever the toast said of a held publish is over once one goes.
+      // Whatever the toast said of a held publish, or of a copy, is over once
+      // one goes: what it would undo is on its way.
       setHeldNotice(null);
+      setCopyNotice(null);
       try {
         const result = await save(prev, form);
         const target = leaveTo.current;
@@ -446,6 +481,24 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
     setHeldNotice({ kind: "undone", stamp: new Date().toISOString() });
   }
 
+  /** A copy from last week went on the screen: the toast offers its way back. */
+  function copyMade(count: number, undo: () => void) {
+    setCopyNotice({
+      kind: "copied",
+      count,
+      stamp: new Date().toISOString(),
+      undo,
+    });
+  }
+
+  /** "ביטול" of a copy: the screen as it was before it. */
+  function undoCopy() {
+    // What is on its way stands as sent: the builder starts again from it.
+    if (pending || holding || copyNotice?.kind !== "copied") return;
+    copyNotice.undo();
+    setCopyNotice({ kind: "undone", stamp: new Date().toISOString() });
+  }
+
   /** The toast's button went with the focus before there was an answer. */
   const focusAfterAnswer = useRef(false);
   /**
@@ -461,6 +514,10 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
       return;
     }
     focusOnScreen("[data-builder-status]");
+  }
+  /** After a copy's toast, the focus goes back to the copy's button. */
+  function focusAfterCopy() {
+    if (!focusOnScreen("[data-copy-week]:enabled")) focusAfterToast();
   }
   useEffect(() => {
     if (pending || holding || !focusAfterAnswer.current) return;
@@ -478,6 +535,7 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
   const latest: Reading = {
     key: builderKey(props.week.start, props.savedAt, props.publishedAt),
     week: props.week,
+    savedAt: props.savedAt,
     shifts: props.shifts,
     basis: props.basis,
     swaps: props.swaps,
@@ -489,29 +547,46 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
   const { week } = reading;
 
   // A publish held says so with its way back for as long as it waits; let
-  // go, that nobody was told; otherwise what the last write did, once done.
-  const toast: { text: string; stamp: string; undo: boolean } | null =
+  // go, that nobody was told; then a copy from last week, with its way back,
+  // or that it was undone; otherwise what the last write did, once done.
+  const toast: {
+    text: string;
+    stamp: string;
+    undo: "publish" | "copy" | null;
+  } | null =
     holding && heldNotice?.kind === "waiting"
       ? {
           text: t("app.build.hold.waiting"),
           stamp: heldNotice.stamp,
-          undo: true,
+          undo: "publish",
         }
       : heldNotice?.kind === "undone"
         ? {
             text: t("app.build.hold.undone"),
             stamp: heldNotice.stamp,
-            undo: false,
+            undo: null,
           }
-        : state.savedAt && done
-          ? {
-              text: state.published
-                ? t("app.build.published")
-                : t("app.build.saved"),
-              stamp: state.savedAt,
-              undo: false,
-            }
-          : null;
+        : copyNotice
+          ? copyNotice.kind === "copied"
+            ? {
+                text: t("app.build.copy.done", { count: copyNotice.count }),
+                stamp: copyNotice.stamp,
+                undo: "copy",
+              }
+            : {
+                text: t("app.build.copy.undone"),
+                stamp: copyNotice.stamp,
+                undo: null,
+              }
+          : state.savedAt && done
+            ? {
+                text: state.published
+                  ? t("app.build.published")
+                  : t("app.build.saved"),
+                stamp: state.savedAt,
+                undo: null,
+              }
+            : null;
 
   return (
     <div className="flex flex-col gap-5 pb-20 xl:pb-16">
@@ -519,6 +594,7 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
         key={reading.key}
         {...props}
         week={week}
+        readSavedAt={reading.savedAt}
         shifts={reading.shifts}
         basis={reading.basis}
         swaps={reading.swaps}
@@ -540,20 +616,32 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
         sent={sent}
         changesPressed={changesPressed}
         shareKind={shareKind}
+        onCopied={copyMade}
       />
       <StatusToast
         message={toast?.text ?? null}
         stamp={toast?.stamp}
-        // The way back lasts as long as the publish waits for it.
-        duration={toast?.undo ? HOLD_MS : undefined}
+        // The way back lasts as long as the publish waits for it; a copy's,
+        // as long as any other way back in the app.
+        duration={
+          toast?.undo === "publish"
+            ? HOLD_MS
+            : toast?.undo === "copy"
+              ? COPY_UNDO_MS
+              : undefined
+        }
         action={
           toast?.undo
-            ? { label: t("app.manage.undo"), onClick: undoPublish }
+            ? {
+                label: t("app.manage.undo"),
+                onClick: toast.undo === "publish" ? undoPublish : undoCopy,
+              }
             : null
         }
-        // The dock's button went busy with the focus: the way back is next.
-        focusAction={toast?.undo === true}
-        onFocusLeave={focusAfterToast}
+        // The dock's button went busy with the focus, or the copy's sheet
+        // closed with it: the way back is next.
+        focusAction={Boolean(toast?.undo)}
+        onFocusLeave={copyNotice ? focusAfterCopy : focusAfterToast}
         // While the toast waits for the keyboard or a mouse on "ביטול", the
         // publish waits too: it never goes with the way back still offered.
         onWaitingChange={(waiting) => {
@@ -569,10 +657,12 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
 function WeekBuilder({
   week,
   savedAt,
+  readSavedAt,
   publishedAt,
   shifts: initial,
   basis: firstBasis,
   swaps: firstSwaps,
+  lastWeek = null,
   manageHref,
   hasPattern,
   team,
@@ -599,7 +689,13 @@ function WeekBuilder({
   sent,
   changesPressed,
   shareKind,
+  onCopied,
 }: Omit<ScheduleBuilderProps, "save"> & {
+  /**
+   * When the week was last saved, as the reading on the screen has it ("" is
+   * sent for a week never saved): what a copy says it was made over.
+   */
+  readSavedAt: string | null;
   /** The phone's chosen day, kept as the builder starts again. */
   day: string;
   onDay: (day: string) => void;
@@ -630,6 +726,11 @@ function WeekBuilder({
   changesPressed: RefObject<boolean>;
   /** What sharing the week says of the last publish from this screen. */
   shareKind: "changes" | "other";
+  /**
+   * A copy from last week went on the screen: how many shifts, and what puts
+   * the screen back as it was before it, for the toast's "ביטול".
+   */
+  onCopied: (count: number, undo: () => void) => void;
 }) {
   const t = useTranslations();
   const router = useRouter();
@@ -668,6 +769,20 @@ function WeekBuilder({
     kind: "started" | "ended";
     shifts: ScheduledShift[];
   } | null>(null);
+  /**
+   * A copy from last week is on the screen, made over the week as read: the
+   * save moment the reading had ("" for a week never saved), sent with the
+   * week (`copied`). Null while there is none.
+   */
+  const [copied, setCopied] = useState<string | null>(null);
+  const [copyOpen, setCopyOpen] = useState(false);
+  /** The copy's sheet replaces days with people on them too. */
+  const [replace, setReplace] = useState(false);
+  /**
+   * What the copy's sheet showed as it closed, for as long as it slides away:
+   * read again, a copy just put on the screen would leave nothing to copy.
+   */
+  const [shownCopy, setShownCopy] = useState<WeekCopy | null>(null);
 
   // The design demo stores nothing and doesn't start again after a publish,
   // so its own publish shows through `state`: the later of the two is the
@@ -764,6 +879,8 @@ function WeekBuilder({
       setLockedBack(null);
       setRead(rows.map((r) => r.shift));
       setSwaps(swaps.filter((swap) => !ending.includes(swap)));
+      // What was copied is saved now, as the week it was copied into.
+      setCopied(null);
     }
     if (state.moved && basis) {
       putBack(state.moved, basis, state.failure === "weekMoved");
@@ -953,6 +1070,78 @@ function WeekBuilder({
   useEffect(() => {
     if (dirty && nothingLeft) setDirty(false);
   }, [dirty, nothingLeft, setDirty]);
+
+  // Copying last week, offered on a draft only: a published week (this
+  // screen's own publish included) changes only by being published again,
+  // and one that is over takes nothing more. Worked out while its sheet is
+  // open, from the screen as it stands.
+  const offerCopy = lastWeek !== null && !published && !weekOver;
+  const liveCopy =
+    copyOpen && offerCopy && lastWeek
+      ? copyLastWeek({
+          weekStart: week.start,
+          screen: shifts,
+          source: lastWeek,
+          staff: team.map((m) => m.userId),
+          people: people.map((m) => m.userId),
+          answers,
+          replace,
+          now,
+          timeZone,
+        })
+      : null;
+  const sheetCopy = liveCopy ?? shownCopy;
+
+  function openCopy(event: MouseEvent<HTMLElement>) {
+    if (busy) return;
+    opener.current = event.currentTarget;
+    setReplace(false);
+    setCopyOpen(true);
+  }
+
+  function closeCopy() {
+    setShownCopy(liveCopy);
+    setCopyOpen(false);
+    const back = opener.current;
+    if (back) {
+      setTimeout(() => {
+        if (focusLeftBySheet(back)) back.focus();
+      }, SHEET_CLOSES_MS);
+    }
+  }
+
+  /**
+   * The copy goes on the screen as the sheet showed it: the shifts that stay
+   * keep their place and their screen ids, each copy gets one of its own, and
+   * the days' own shifts that made way leave the screen. Nothing is sent: the
+   * toast's "ביטול" puts back the screen as it was before.
+   */
+  function applyCopy() {
+    const copy = liveCopy;
+    if (busy || !copy || copy.shifts === 0 || copy.tooMany) return;
+    const before = { rows, removed, dirty, copied };
+    const next = copy.week.flatMap((place): ShiftRow[] => {
+      if ("copied" in place) {
+        const id = nextId.current;
+        nextId.current += 1;
+        return [{ id, shift: place.copied }];
+      }
+      const row = rows[place.kept];
+      return row ? [row] : [];
+    });
+    edited(next);
+    setCopied(readSavedAt ?? "");
+    setShownCopy(copy);
+    setCopyOpen(false);
+    // The toast's "ביטול" takes the focus as the sheet closes.
+    opener.current = null;
+    onCopied(copy.shifts, () => {
+      setRows(before.rows);
+      setRemoved(before.removed);
+      setDirty(before.dirty);
+      setCopied(before.copied);
+    });
+  }
 
   const guard = useLeaveGuard(unsaved || busy);
   // A way out taken while a publish is held (a tab, the switch to the other
@@ -1346,8 +1535,9 @@ function WeekBuilder({
         />
       ) : null}
 
-      {/* A week only read says why on its own card, below. */}
-      {initial.length === 0 && !readOnly ? (
+      {/* A week only read says why on its own card, below. One that has
+          shifts on the screen now (copied, or added here) needs it no more. */}
+      {initial.length === 0 && rows.length === 0 && !readOnly ? (
         <Card padding="lg" className="md:max-w-xl">
           <CardText>
             {/* The running week, drawn from the regular shifts still to
@@ -1399,6 +1589,19 @@ function WeekBuilder({
         >
           {status}
         </p>
+        {/* A quiet action: publishing stays the screen's main one. */}
+        {offerCopy ? (
+          <Button
+            variant="secondary"
+            data-copy-week
+            disabled={busy}
+            onClick={openCopy}
+            className="self-start md:ms-auto"
+          >
+            <CopyPlus aria-hidden="true" />
+            {t("app.build.copy.action")}
+          </Button>
+        ) : null}
       </div>
 
       {readOnly ? (
@@ -1476,6 +1679,11 @@ function WeekBuilder({
         />
         <input type="hidden" name="basis" value={JSON.stringify(write.basis)} />
         <input type="hidden" name="joins" value={JSON.stringify(write.joins)} />
+        {/* A copy from last week was made over the week as read: a week
+            saved since on another screen takes no second copy. */}
+        {copied === null ? null : (
+          <input type="hidden" name="copied" value={copied} />
+        )}
         {/* Once published and with nothing new, there is nothing to send:
             only what went wrong, should something have. A publish held for
             its undo keeps the dock, busy, until it has gone. */}
@@ -1580,6 +1788,20 @@ function WeekBuilder({
         onRemove={remove}
         onAdd={addShift}
       />
+
+      {lastWeek ? (
+        <CopyWeekSheet
+          open={copyOpen && offerCopy}
+          copy={sheetCopy}
+          source={lastWeek}
+          replace={replace}
+          onReplace={setReplace}
+          onCopy={applyCopy}
+          onClose={closeCopy}
+          nameOf={(user) => nameOf.get(user) ?? t("app.shifts.former")}
+          weekday={weekday}
+        />
+      ) : null}
 
       <Sheet
         // Not while a publish is held: the way out sends it instead (above).

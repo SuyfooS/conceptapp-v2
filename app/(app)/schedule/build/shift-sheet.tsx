@@ -34,6 +34,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { SheetSection } from "./sheet-section";
 
 export type ShiftRow = { id: number; shift: ScheduledShift };
 
@@ -326,25 +327,6 @@ function LockedNotice({ children }: { children: ReactNode }) {
     >
       {children}
     </p>
-  );
-}
-
-function SheetSection({
-  title,
-  children,
-}: {
-  title: ReactNode;
-  children: ReactNode;
-}) {
-  const id = useId();
-  return (
-    // biome-ignore lint/a11y/useSemanticElements: a fieldset would style and announce these rows as a form
-    <div role="group" aria-labelledby={id} className="flex flex-col">
-      <h3 id={id} className="px-3 pt-3 pb-1.5 font-semibold text-ink-2 text-sm">
-        {title}
-      </h3>
-      <ListGroup className="bg-elevated shadow-none">{children}</ListGroup>
-    </div>
   );
 }
 

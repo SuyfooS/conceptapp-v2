@@ -66,6 +66,10 @@ const HREF = "/design/shell/schedule/build";
 // stand-in's publish, and at rest on ?state=meanwhile and
 // ?week=2026-11-01, &publishes=no included), the dock offers sharing it on
 // WhatsApp, with a link to the schedule tab's twin.
+//
+// The restaurant has no week before this one to copy, as the demo
+// restaurant's weeks start empty: "העתקה מהשבוע שעבר" is on the running
+// twin's next week (?week=next), the shop's.
 export default function ShellScheduleBuild(props: Props) {
   return (
     <Suspense>
