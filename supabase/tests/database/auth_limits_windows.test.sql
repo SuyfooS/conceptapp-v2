@@ -6,11 +6,12 @@
 -- no code reach it, so joining from its invite clears its counts
 -- (forget_number_attempts); one with an account keeps them. A send within
 -- the app's own wait of the number's last counted one, the same for every
--- number, answers -2 and is counted for its caller alone. The limits and the
+-- number, answers -2 and is counted for its caller alone, and so does one
+-- stamped a moment before a send already counted. The limits and the
 -- wait are set here, since the local seed lifts the limits and shortens the
 -- wait for the browser tests.
 begin;
-select plan(48);
+select plan(51);
 
 select set_eq(
   $$select kind, scope, per from private.auth_limits$$,
@@ -230,6 +231,16 @@ select is(
   public.note_auth_attempt('send', '+972500005700', '7.7.7.5', '2026-11-20 15:01:50+00'),
   791, 'within the wait, a send is still held by its caller''s limit'
 );
+-- Two codes asked for at once: the app stamps each before it reaches the
+-- database, so the one stamped later may take the number's lock first.
+select is(
+  public.note_auth_attempt('send', '+972500005513', '7.7.7.7', '2026-11-20 16:00:01+00'),
+  0, 'of two codes asked for at once, the one stamped later may be counted first'
+);
+select is(
+  public.note_auth_attempt('send', '+972500005513', '7.7.7.7', '2026-11-20 16:00:00+00'),
+  -2, 'and the one stamped a moment before it meets the wait all the same'
+);
 
 reset role;
 
@@ -288,6 +299,12 @@ select is(
    where kind = 'send'
      and key_hash = encode(sha256(convert_to('caller:7.7.7.4', 'UTF8')), 'hex')),
   4, 'but it is counted for its caller, and the send given back for neither'
+);
+select is(
+  (select count(*)::int from private.auth_attempts
+   where kind = 'send'
+     and key_hash = encode(sha256(convert_to('phone:+972500005513', 'UTF8')), 'hex')),
+  1, 'of two codes asked for at once, one is counted for the number'
 );
 select ok(
   not has_table_privilege('authenticated', 'private.auth_send_wait', 'select, insert, update, delete')

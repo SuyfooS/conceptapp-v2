@@ -7,8 +7,10 @@ import type { JoinState } from "./actions";
 // while it has none (`sendJoinCode`), so too many and too soon, which only a
 // number that kept its counts can meet, are the code step as for a code
 // that went, never the invite step. A malformed number and a failure stay on
-// the invite step. A new code asked for says each as it is. A link that
-// stopped working sends nothing.
+// the invite step. A new code asked for too soon reads as one asked for, as
+// on sign-in, since the wait runs from a send that a number with an account
+// kept and one with none had cleared; too many and a failure are said. A
+// link that stopped working sends nothing.
 
 vi.mock("server-only", () => ({}));
 
@@ -125,8 +127,16 @@ describe("a new code", () => {
     });
   });
 
-  it("says too soon, too many and a failure on the code step", async () => {
-    for (const error of ["rateLimit", "tooMany", "failed"] as const) {
+  it("reads too soon word for word as a new code that went, as sign-in does", async () => {
+    const sent = await join(TOKEN, codeStep, posted("resend"));
+    mocks.sendJoinCode.mockResolvedValueOnce("rateLimit");
+    const tooSoon = await join(TOKEN, codeStep, posted("resend"));
+    expect(tooSoon).toEqual(sent);
+    expect(tooSoon).toEqual({ step: "code", error: undefined, resent: true });
+  });
+
+  it("says too many and a failure on the code step", async () => {
+    for (const error of ["tooMany", "failed"] as const) {
       mocks.sendJoinCode.mockResolvedValueOnce(error);
       expect(await join(TOKEN, codeStep, posted("resend"))).toEqual({
         step: "code",

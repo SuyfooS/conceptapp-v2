@@ -9,7 +9,11 @@
 --                    the auth server nothing. It runs from the last counted
 --                    send, so a send inside it doesn't lengthen it, and the
 --                    sends of one number are taken in turn, so two at once
---                    meet it too. It is longer than the auth server's own
+--                    meet it too. It holds on both sides of a counted send:
+--                    the app stamps a send before it reaches the database,
+--                    so of two sent at once the one stamped earlier may be
+--                    taken second, and a send counted a moment later holds
+--                    it as well. It is longer than the auth server's own
 --                    wait per number (60 seconds unless changed), so that
 --                    wait refuses no code the app lets go, unless a code was
 --                    asked of the auth server directly, past the app. What
@@ -129,14 +133,16 @@ begin
       -- The app's own wait between two codes to one number, the same for
       -- every number, from its last counted send. The number's sends are
       -- taken in turn (the lock its count below takes too), so codes asked
-      -- for at once meet the wait as well.
+      -- for at once meet the wait as well. Both sides of a counted send: the
+      -- order of the lock is not that of the app's stamps, so a send stamped
+      -- a moment after this one may already be counted.
       perform pg_advisory_xact_lock(
         hashtextextended('auth_attempt:send:' || phone_key, 0));
       select w.per into send_wait from private.auth_send_wait w;
       if send_wait is not null and exists (
         select 1 from private.auth_attempts a
         where a.kind = 'send'::text and a.key_hash = phone_key
-          and a.at > at_time - send_wait and a.at <= at_time
+          and a.at > at_time - send_wait and a.at <= at_time + send_wait
       ) then
         caller_only := -2;
       end if;

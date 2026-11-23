@@ -2732,9 +2732,10 @@ read as messages/he.json. Console reads and writes are in `@db/wording`;
   `private.auth_limits`: a quarter of an hour, a day per number),
   `NO_CODE_WAITING` (-1) for a check with no code sent to its number in the
   last ten minutes, or `CODE_JUST_SENT` (-2) for a send within the app's
-  own wait of the number's last counted one (`private.auth_send_wait`, 65
-  seconds, the same for every number); either is counted for its caller
-  only. `forgetAuthAttempt` gives back a send the auth server sent nothing
+  own wait of the number's last counted one, on either side of it
+  (`private.auth_send_wait`, 65 seconds, the same for every number; of two
+  sent at once, the one stamped later may be counted first); either is
+  counted for its caller only. `forgetAuthAttempt` gives back a send the auth server sent nothing
   for, past that wait: one of its limits on everyone (the project's SMS in
   an hour, its requests from one address) or a failing SMS provider, for
   the number and the caller, on sign-in as for joining and the file's

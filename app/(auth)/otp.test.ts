@@ -4,8 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // for. Sign-in answers every valid number the same, whether it has an
 // account or not (`sendSignInCode`). A send within the app's own wait of the
 // number's last counted one asks the auth server nothing, for every number
-// alike: sign-in answers it as a code sent, and joining and the file's codes
-// say it (`sendCode`). Past that wait, the auth server's limits on everyone
+// alike: sign-in answers it as a code sent, and `sendCode` says it, which
+// joining answers as sign-in does and the file's codes say. Past that wait, the auth server's limits on everyone
 // and a failing SMS provider are a failure, with the try given back for the
 // number and the caller. Joining clears the counts of a number with no
 // account first, since none of them reached anyone (`sendJoinCode`). A check

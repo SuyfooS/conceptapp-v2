@@ -1068,7 +1068,7 @@
       "sendIntro": "We will text a code to the number ending in <ltr>{ending}</ltr>.",
       "send": "Send code",
       "codeIntro": "A 6-digit code comes by text to the number ending in <ltr>{ending}</ltr>. If it doesn't come, you can ask for a new one in a minute.",
-      "codeResent": "We sent a new code to the number ending in <ltr>{ending}</ltr>.",
+      "codeResent": "We asked for a new code for the number ending in <ltr>{ending}</ltr>. If it doesn't come, you can ask again in a minute.",
       "codeLabel": "Code from the message",
       "verify": "Join the team",
       "resend": "Send a new code",

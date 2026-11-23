@@ -141,8 +141,9 @@ export async function sendSignInCode(
  * invite's account is made (`prepare`, which runs once the code may go,
  * before it does), and the hiring file's codes, to the session's own number.
  * A code counted for the number within the app's own wait is said
- * (`rateLimit`); nothing went, and the auth server wasn't asked. Accounts are
- * never created here; people arrive through invites.
+ * (`rateLimit`; joining answers it as a code asked for, `join`); nothing
+ * went, and the auth server wasn't asked. Accounts are never created here;
+ * people arrive through invites.
  */
 export async function sendCode(
   phone: string,

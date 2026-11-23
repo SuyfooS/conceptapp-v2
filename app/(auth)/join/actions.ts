@@ -30,9 +30,12 @@ export type JoinState =
  * (`landingAfterJoin`, H5b). The first send answers the same whether the
  * number already had an account or not: too many and too soon are the code
  * step, whose words are true either way; a malformed number and a failure
- * stay on the invite. A new code asked for says each as it is. The number
- * always comes from the invite, never from the form. A link that stopped
- * working on the way goes back to its page, which says why.
+ * stay on the invite. A new code asked for too soon reads as one asked for,
+ * as on sign-in, so the app's wait between codes reads the same for every
+ * number; too many and a failure are said on the code step. What "too many"
+ * still tells is a known issue (docs/ROADMAP.md, 94). The number always
+ * comes from the invite, never from the form. A link that stopped working
+ * on the way goes back to its page, which says why.
  */
 export async function join(
   token: string,
@@ -64,6 +67,15 @@ export async function join(
         return { step: "code", error: undefined, resent: false };
       }
       return { step: "invite", error };
+    }
+    // A new code asked for within the app's wait between codes, which runs
+    // from the number's last counted send: a sign-in code counted for a
+    // number with an account starts it, and joining cleared the counts of a
+    // number with none, so saying it would tell the link's holder which it
+    // was. It reads as one asked for, as on sign-in: nothing went now, and
+    // the earlier code still works.
+    if (intent === "resend" && error === "rateLimit") {
+      return { step: "code", error: undefined, resent: true };
     }
     return {
       step: "code",

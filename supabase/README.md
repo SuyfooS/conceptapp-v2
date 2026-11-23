@@ -91,11 +91,12 @@ code sent to it may still be waiting: a send counted for it in the last ten minu
 code's lifetime in Twilio Verify. Otherwise it is counted for its caller only, and the
 server says "wrong code" without asking the auth server. Between two codes to one number
 the app has its own wait, the same for every number (`private.auth_send_wait`, one row, 65
-seconds): a send within it of the number's last counted one is counted for its caller only,
-asks the auth server nothing, and reads on sign-in as a code sent (the earlier code still
-works), while joining and the file's codes say "in a few seconds". It is longer than the
-auth server's own wait per number (60 seconds unless changed), so that wait refuses no code
-the app lets go, unless someone asked the auth server directly. What the auth server still
+seconds): a send within it of the number's last counted one (on either side, since of two
+asked for at once the one the app stamped later may be counted first) is counted for its
+caller only, asks the auth server nothing, and reads on sign-in and on `/join` as a code
+asked for (the earlier code still works), while the file's codes say "in a few seconds".
+It is longer than the auth server's own wait per number (60 seconds unless changed), so
+that wait refuses no code the app lets go, unless someone asked the auth server directly. What the auth server still
 refuses (the project's SMS in an hour, its requests from one address), and a send the SMS
 provider failed, sent nothing: the server gives it back, for the number and the caller
 (`public.forget_auth_attempt`), and the screen says something went wrong. The sign-in screen
@@ -105,9 +106,13 @@ provider is down (`docs/ROADMAP.md`, known issue 98). So what is counted for suc
 reached nobody: joining from an open invite clears it before the invite's code is counted
 (`public.forget_number_attempts`, which keeps the counts of a number with an account), and a
 stranger's tries can't hold a new person out. On `/join` the first send answers too many and
-too soon as the code step, as for a code that went, so that answer doesn't tell the link's
-holder whether the number already had an account; a new code asked for then says each as
-it is (known issue 94). The team tunes the limits and the wait in those tables, with SQL.
+too soon as the code step, as for a code that went, and a new code asked for too soon reads
+as one asked for, so neither the first answer nor the wait tells the link's holder whether
+the number already had an account. "Too many" said later still does: after five sign-in
+codes to the number and then a new code on `/join`, or one sign-in code and ten wrong checks
+and then a check on `/join`, only a number with an account hears it, and its person sees
+the five codes, or only one stray code in the second way (known issue 94). The team tunes
+the limits and the wait in those tables, with SQL.
 A number locked by the day's window (someone sent it codes and typed many wrong ones) is
 cleared with:
 
