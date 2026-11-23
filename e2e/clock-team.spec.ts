@@ -142,6 +142,45 @@ async function toCancelStep(
 const cancelToast = (page: Page) =>
   page.getByRole("status").filter({ hasText: t.done.cancel });
 
+/**
+ * Has the open sheet's ✕ pressed the moment a refusal is drawn in it, in
+ * the same turn: before the page read again after the write (`refresh()`)
+ * can be drawn, whatever the network does. A quick hand on a slow phone
+ * found the ✕ held until that page came back (23 November 2026). What the
+ * refusal said, once it has pressed.
+ */
+async function closeOnRefusal(
+  page: Page,
+): Promise<() => Promise<string | null>> {
+  await page.evaluate((close) => {
+    const seen = window as unknown as { refused?: string | null };
+    seen.refused = null;
+    const watch = new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          if (!(node instanceof Element)) continue;
+          const alert = node.matches('[role="alert"]')
+            ? node
+            : node.querySelector('[role="alert"]');
+          const dialog = alert?.closest('[role="dialog"]');
+          if (!alert || !dialog) continue;
+          watch.disconnect();
+          seen.refused = alert.textContent;
+          for (const button of dialog.querySelectorAll("button")) {
+            if (button.getAttribute("aria-label") === close) button.click();
+          }
+          return;
+        }
+      }
+    });
+    watch.observe(document.body, { childList: true, subtree: true });
+  }, t.sheet.close);
+  return () =>
+    page.evaluate(
+      () => (window as unknown as { refused?: string | null }).refused ?? null,
+    );
+}
+
 async function expectCleanPage(page: Page) {
   // Metadata streams in after the body (see new-business.spec.ts).
   await expect(page).toHaveTitle(/ConceptApp$/);
@@ -359,10 +398,12 @@ test("a manager adds a shift someone forgot, and hours can't be in the future", 
   await sheet.getByLabel(t.sheet.in).fill("09:00");
   await sheet.getByLabel(t.sheet.out).fill("10:00");
   await sheet.getByLabel(t.sheet.reason).fill(reason);
+  // ✕ the moment it's refused closes the sheet, the page read again after
+  // the refusal back or not.
+  const refused = await closeOnRefusal(page);
   await sheet.getByRole("button", { name: t.sheet.saveAdd }).click();
-  await expect(sheet.getByRole("alert")).toHaveText(t.failure.times);
-  await sheet.getByRole("button", { name: t.sheet.close }).click();
   await expect(sheet).toBeHidden();
+  expect(await refused()).toBe(t.failure.times);
 
   // The worker sees it in their own history, as the manager's, with why.
   await page.context().clearCookies();
@@ -508,10 +549,20 @@ test("the toast's undo brings a cancelled shift back, and the right one added ov
   await expect(add).toBeHidden();
   await expect(heroTotal(page)).toHaveText("7:00");
 
-  // The cancelled one opens from its row, and can't come back over them.
-  await shiftOpener(page, new RegExp(literal(again)), desktop).click();
+  // The cancelled one opens from its row, and can't come back over them:
+  // ✕ the moment it's refused closes it, the page read again after the
+  // refusal back or not.
+  const cancelledRow = shiftOpener(page, new RegExp(literal(again)), desktop);
+  await cancelledRow.click();
   const cancelled = page.getByRole("dialog", { name: t.cancelled.title });
   await expect(cancelled.getByText(cancelledLine(again))).toBeVisible();
+  const refused = await closeOnRefusal(page);
+  await cancelled.getByRole("button", { name: t.cancelled.restore }).click();
+  await expect(cancelled).toBeHidden();
+  expect(await refused()).toBe(t.failure.overlap);
+
+  // Opened again, it says why, read as the screen shows it.
+  await cancelledRow.click();
   await cancelled.getByRole("button", { name: t.cancelled.restore }).click();
   await expect(cancelled.getByRole("alert")).toHaveText(t.failure.overlap);
   await expectCleanPage(page);

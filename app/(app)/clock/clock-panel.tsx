@@ -16,6 +16,7 @@ import { Card } from "@ui/card";
 import { PunchCircle } from "@ui/punch-circle";
 import { StatusToast } from "@ui/status-toast";
 import { preloadQrReader } from "@ui/use-qr-camera";
+import { useSheetWrite } from "@ui/use-sheet-write";
 import { Coffee, Fingerprint, LogOut, ScanQrCode } from "lucide-react";
 import { unstable_rethrow } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -83,8 +84,19 @@ export function ClockPanel({
   const [scanning, setScanning] = useState<Direction | null>(null);
   /** Where the focus goes back to once the camera gives the circle back. */
   const [scanFrom, setScanFrom] = useState<ScanFrom>("circle");
-  const [noneBusy, startNone] = useTransition();
+  // The press without a code holds its sheet until the answer (`noneHeld`),
+  // and its buttons until the page read again after it is drawn.
+  const {
+    pending: noneBusy,
+    start: startNone,
+    held: noneHeld,
+  } = useSheetWrite();
   const [noneFailure, setNoneFailure] = useState<Failure | null>(null);
+  // The screen's own buttons wait for both: a refusal without a code lets its
+  // sheet close before the page read again after it is drawn, and until then
+  // the screen still shows what was there before (an open shift, say, that
+  // another device closed), so nothing here may send a write against it.
+  const busy = pending || noneBusy;
   const now = useNow(data.now, open !== null || sheet === "none");
 
   // Leaving the screen ends a scan. Next keeps a page it leaves (hidden, in
@@ -274,7 +286,7 @@ export function ClockPanel({
           pause={pause}
           now={now}
           running={running}
-          pending={pending}
+          pending={busy}
           onPunch={punch}
           onBack={() => run("back", actions.endBreak)}
         />
@@ -289,7 +301,7 @@ export function ClockPanel({
           variant="secondary"
           size="lg"
           loading={running === "break"}
-          disabled={pending || data.viewOnly}
+          disabled={busy || data.viewOnly}
           onClick={() => run("break", actions.startBreak)}
         >
           <Coffee aria-hidden="true" />
@@ -302,7 +314,7 @@ export function ClockPanel({
           variant="secondary"
           size="lg"
           loading={running === "out"}
-          disabled={pending || data.viewOnly}
+          disabled={busy || data.viewOnly}
           onClick={() => punch("out", "endShift")}
         >
           <LogOut aria-hidden="true" className="rtl:-scale-x-100" />
@@ -342,7 +354,7 @@ export function ClockPanel({
             variant="ghost"
             className="shrink-0"
             loading={running === "undo"}
-            disabled={pending}
+            disabled={busy}
             onClick={() =>
               run("undo", () => actions.undoClockOut(undoLeft.entryId))
             }
@@ -370,8 +382,9 @@ export function ClockPanel({
           <WithoutCodeSheet
             open={sheet === "none"}
             onOpenChange={(next) => {
-              // The answer to a press under way belongs on this sheet.
-              if (!noneBusy) setSheet(next ? "none" : null);
+              // The answer to a press under way belongs on this sheet, and
+              // only the answer: a refusal shows before the page comes back.
+              if (!noneHeld()) setSheet(next ? "none" : null);
             }}
             direction={direction}
             now={now}
