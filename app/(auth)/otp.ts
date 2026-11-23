@@ -1,6 +1,7 @@
 import "server-only";
 import {
   type AuthAttempt,
+  CODE_JUST_SENT,
   forgetAuthAttempt,
   forgetNumberAttempts,
   NO_CODE_WAITING,
@@ -39,15 +40,17 @@ async function callerAddress(): Promise<string | null> {
 /**
  * Count a code about to be sent or checked, or say why it may not go: the
  * number or the caller tried too many lately, no code went to the number
- * lately so there is nothing to check (`noCode`, counted for the caller
- * only), or the count itself failed (and then nothing goes). These limits
- * hold the app's own way in; the auth API called directly is held by
- * Supabase's and Twilio's own limits.
+ * lately so there is nothing to check (`noCode`), a code was counted for the
+ * number within the app's own wait between codes so none goes now
+ * (`justSent`, the same for every number), or the count itself failed (and
+ * then nothing goes). `noCode` and `justSent` are counted for the caller
+ * only. These limits hold the app's own way in; the auth API called directly
+ * is held by Supabase's and Twilio's own limits.
  */
 async function count(
   kind: AuthAttempt["kind"],
   phone: string,
-): Promise<AuthAttempt | "tooMany" | "noCode" | "failed"> {
+): Promise<AuthAttempt | "tooMany" | "noCode" | "justSent" | "failed"> {
   try {
     const attempt: AuthAttempt = {
       kind,
@@ -57,6 +60,7 @@ async function count(
     };
     const answer = await noteAuthAttempt(attempt);
     if (answer === NO_CODE_WAITING) return "noCode";
+    if (answer === CODE_JUST_SENT) return "justSent";
     return answer > 0 ? "tooMany" : attempt;
   } catch (cause) {
     console.error(
@@ -67,21 +71,29 @@ async function count(
   }
 }
 
-/** A code asked of the auth server, once counted, and what it answered. */
-type Requested = {
-  attempt: AuthAttempt;
-  refused: "unknownPhone" | "rateLimit" | "failed" | null;
-};
+/**
+ * What asking for a code came to: sent; a code counted for the number within
+ * the app's own wait, so the auth server wasn't asked (`justSent`); the
+ * number has no account, counted all the same (`unknownPhone`); too many; or
+ * failed.
+ */
+type Requested = "sent" | "justSent" | "unknownPhone" | "tooMany" | "failed";
 
 /**
  * Count a code and ask the auth server to send it, never making an account.
- * `prepare` runs once the code may go, before it does. A refusal the auth
- * server gives no known reason for is logged by its code only.
+ * `prepare` runs once the code may go, before it does. The app's own wait
+ * between two codes to one number is longer than the auth server's
+ * (`private.auth_send_wait`), so the auth server's wait refuses no code the
+ * app lets go, unless one was asked of it directly. What it still refuses is
+ * one of its limits on everyone (the project's SMS in an hour, its requests
+ * from one address), and that try, like one the SMS provider failed, sent
+ * nothing and is given back for the number and the caller. Both are logged
+ * by their code only.
  */
 async function requestCode(
   number: string,
   prepare?: () => Promise<void>,
-): Promise<Requested | "tooMany" | "failed"> {
+): Promise<Requested> {
   const attempt = await count("send", number);
   // Only a check can find no code waiting.
   if (attempt === "noCode") return "failed";
@@ -92,22 +104,26 @@ async function requestCode(
     phone: number,
     options: { shouldCreateUser: false },
   });
-  if (!error) return { attempt, refused: null };
-  const reason = refusalReason(error.code);
-  if (reason) return { attempt, refused: reason };
+  if (!error) return "sent";
+  if (refusalReason(error.code) === "unknownPhone") return "unknownPhone";
   console.error("signInWithOtp failed", error.code, error.status);
-  return { attempt, refused: "failed" };
+  await forgetAuthAttempt(attempt).catch((cause: Error) => {
+    console.error("giving a sign-in attempt back failed", cause.message);
+  });
+  return "failed";
 }
 
 /**
  * Send a sign-in code by SMS, with the same answer for every valid number,
  * whether it has an account or not, so the screen never tells who is
- * registered. A number with no account gets nothing, and a code typed for
- * it is a wrong one. Every send stays counted, for the number and the
- * caller, also one the auth server held for its own short wait: only a
- * number with an account meets that wait, so giving its try back would
- * leave an unknown number's count higher, and "too many" would come to it
- * sooner.
+ * registered. A number with no account gets nothing, its send counted as a
+ * sent one is, and a code typed for it is a wrong one. A send inside the
+ * app's own wait after the number's last counted one asks the auth server
+ * nothing, for every number alike, and the earlier code still works. A limit
+ * of the auth server's on everyone, or the SMS provider failing, is a
+ * failure, with its try given back (`requestCode`). The SMS cap and the
+ * provider are reached only by a number with an account, so meanwhile one
+ * without still gets the code step (a known issue in docs/ROADMAP.md).
  */
 export async function sendSignInCode(
   phone: string,
@@ -116,8 +132,7 @@ export async function sendSignInCode(
   const number = normalizeIsraeliMobile(phone);
   if (!number) return "invalidPhone";
   const sent = await requestCode(number);
-  if (typeof sent === "string") return sent;
-  return sent.refused === "failed" ? "failed" : null;
+  return sent === "tooMany" || sent === "failed" ? sent : null;
 }
 
 /**
@@ -125,8 +140,9 @@ export async function sendSignInCode(
  * or the caller asked for too many lately: joining (`sendJoinCode`), once the
  * invite's account is made (`prepare`, which runs once the code may go,
  * before it does), and the hiring file's codes, to the session's own number.
- * The auth server's short wait is said, and its try given back, since no
- * code went. Accounts are never created here; people arrive through invites.
+ * A code counted for the number within the app's own wait is said
+ * (`rateLimit`); nothing went, and the auth server wasn't asked. Accounts are
+ * never created here; people arrive through invites.
  */
 export async function sendCode(
   phone: string,
@@ -136,21 +152,15 @@ export async function sendCode(
   const number = normalizeIsraeliMobile(phone);
   if (!number) return "invalidPhone";
   const sent = await requestCode(number, prepare);
-  if (typeof sent === "string") return sent;
-  if (sent.refused === "rateLimit") {
-    // Too soon for the auth server: no code went, so the try is given back.
-    await forgetAuthAttempt(sent.attempt).catch((cause: Error) => {
-      console.error("giving a sign-in attempt back failed", cause.message);
-    });
-    return "rateLimit";
-  }
-  if (sent.refused === "unknownPhone") {
+  if (sent === "sent") return null;
+  if (sent === "justSent") return "rateLimit";
+  if (sent === "unknownPhone") {
     // Joining makes the account first, and the file's codes go to the
     // session's own number: a fault, logged without the number.
     console.error("signInWithOtp found no account for a code's number");
     return "failed";
   }
-  return sent.refused;
+  return sent;
 }
 
 /**
@@ -194,6 +204,8 @@ async function checked(
   if (!number) return { error: "wrongCode" };
   const attempt = await count("verify", number);
   if (attempt === "noCode") return { error: "wrongCode" };
+  // Only a send can meet the wait between codes.
+  if (attempt === "justSent") return { error: "failed" };
   if (typeof attempt === "string") return { error: attempt };
   const { data, error } = await client.auth.verifyOtp({
     phone: number,

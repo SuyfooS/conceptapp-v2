@@ -1,14 +1,36 @@
 -- Sign-in codes, after the security sweep of 22 November 2026 (before a first
 -- real business):
 --
+--   a wait           the app's own wait between two codes to one number, the
+--                    same for every number, registered or not
+--                    (private.auth_send_wait, 65 seconds): a send ('send')
+--                    within it of the number's last counted send is counted
+--                    for its caller alone and answers -2, and the server asks
+--                    the auth server nothing. It runs from the last counted
+--                    send, so a send inside it doesn't lengthen it, and the
+--                    sends of one number are taken in turn, so two at once
+--                    meet it too. It is longer than the auth server's own
+--                    wait per number (60 seconds unless changed), so that
+--                    wait refuses no code the app lets go, unless a code was
+--                    asked of the auth server directly, past the app. What
+--                    it still refuses is one of its limits on everyone: the
+--                    project's SMS in an hour, or its requests from one
+--                    address. That send, like one the SMS provider failed,
+--                    sent nothing: the server gives it back, for the number
+--                    and the caller (public.forget_auth_attempt), and answers
+--                    a failure. The SMS cap and the provider are met only by
+--                    a number with an account, since nothing is sent to one
+--                    without, which gets the code step meanwhile.
 --   a code waiting   a check ('verify') is counted for its number only while
 --                    a code sent to it may still be waiting: a send counted
 --                    for the number in the last ten minutes, a code's
 --                    lifetime in Twilio Verify. Otherwise there is nothing to
 --                    check: it is counted for its caller alone and answers
---                    -1, and the server asks the auth server nothing. Filling
---                    the window of a number with an account now takes sending
---                    it codes, which the person sees.
+--                    -1, and the server asks the auth server nothing. A send
+--                    that stays counted for a number with an account is a
+--                    code the auth server sent it (unless giving one back
+--                    failed, which is logged), so filling its windows takes
+--                    sending it codes, which the person sees.
 --   windows          a kind and scope may have more than one window: the
 --                    quarter of an hour as before, and a day for each number
 --                    (15 codes sent, 30 checked), so guessing a number's code
@@ -23,9 +45,28 @@
 --                    number is cleared only until it has one.
 --
 -- public.note_auth_attempt is its version in 20261108000300_sealed.sql with
--- only these changes. The local seed lifts every window (seed.sql). Before
--- this reaches a project the app sees no -1 and one window per scope, as
--- before, and joining clears nothing.
+-- only these changes. The local seed lifts every window and sets the wait
+-- just past the local auth server's (seed.sql). Before this reaches a
+-- project the app sees no -1 or -2 and one window per scope, as before, and
+-- joining clears nothing; and with no wait of the app's own, a code asked
+-- for inside the auth server's wait is a failure on sign-in for a number
+-- with an account, and the code step for one without. So the Migrate
+-- workflow runs when this merges.
+
+-- The app's own wait between two codes sent to one number, one row. Longer
+-- than the auth server's own wait per number (`sms_max_frequency`, 60
+-- seconds unless changed), with a few seconds to spare, since the auth
+-- server marks a code sent a moment after the app counts it. The
+-- ConceptApp team changes the two together.
+create table private.auth_send_wait (
+  only_row boolean primary key default true check (only_row),
+  per interval not null check (per > interval '0 seconds' and per <= interval '15 minutes')
+);
+
+insert into private.auth_send_wait (per) values (interval '65 seconds');
+
+alter table private.auth_send_wait enable row level security;
+revoke all on private.auth_send_wait from public, anon, authenticated;
 
 alter table private.auth_limits
   drop constraint auth_limits_pkey,
@@ -40,9 +81,11 @@ on conflict (kind, scope, per) do nothing;
 -- Count a code sent ('send') or checked ('verify') for `phone` and for
 -- `caller` (either may be null), unless one of them is at a limit, in any of
 -- its windows. Returns 0 when it was counted, else the seconds until it may
--- be; and -1 for a check when no code was sent to the number in a code's
--- lifetime, counted for the caller only, with nothing to check. A refused
--- try is not counted, so a limit lifts on its own.
+-- be; -1 for a check when no code was sent to the number in a code's
+-- lifetime, with nothing to check; and -2 for a send within the app's wait
+-- of the number's last counted send, with nothing to send. Either is counted
+-- for the caller only. A refused try is not counted, so a limit lifts on its
+-- own.
 create or replace function public.note_auth_attempt(
   kind text,
   phone text,
@@ -61,7 +104,10 @@ declare
   freed timestamptz;
   wait integer := 0;
   phone_key text;
-  no_code boolean := false;
+  send_wait interval;
+  -- 0, or what a try counted for its caller only answers: -1, no code
+  -- waiting to check; -2, a code sent within the wait.
+  caller_only integer := 0;
 begin
   if kind is null or kind not in ('send', 'verify') then
     raise exception 'Unknown kind of attempt: %', kind using errcode = '22023';
@@ -69,15 +115,33 @@ begin
 
   if nullif(btrim(phone), '') is not null then
     phone_key := encode(sha256(convert_to('phone:' || btrim(phone), 'UTF8')), 'hex');
-    -- A check is counted for its number only while a code sent to it may
-    -- still be waiting (ten minutes, a code's lifetime in Twilio Verify).
-    if note_auth_attempt.kind = 'verify'::text and not exists (
-      select 1 from private.auth_attempts a
-      where a.kind = 'send'::text and a.key_hash = phone_key
-        and a.at > at_time - interval '10 minutes' and a.at <= at_time
-    ) then
-      no_code := true;
+    if note_auth_attempt.kind = 'verify'::text then
+      -- A check is counted for its number only while a code sent to it may
+      -- still be waiting (ten minutes, a code's lifetime in Twilio Verify).
+      if not exists (
+        select 1 from private.auth_attempts a
+        where a.kind = 'send'::text and a.key_hash = phone_key
+          and a.at > at_time - interval '10 minutes' and a.at <= at_time
+      ) then
+        caller_only := -1;
+      end if;
     else
+      -- The app's own wait between two codes to one number, the same for
+      -- every number, from its last counted send. The number's sends are
+      -- taken in turn (the lock its count below takes too), so codes asked
+      -- for at once meet the wait as well.
+      perform pg_advisory_xact_lock(
+        hashtextextended('auth_attempt:send:' || phone_key, 0));
+      select w.per into send_wait from private.auth_send_wait w;
+      if send_wait is not null and exists (
+        select 1 from private.auth_attempts a
+        where a.kind = 'send'::text and a.key_hash = phone_key
+          and a.at > at_time - send_wait and a.at <= at_time
+      ) then
+        caller_only := -2;
+      end if;
+    end if;
+    if caller_only = 0 then
       scopes := scopes || 'phone'::text;
       keys := keys || phone_key;
     end if;
@@ -122,11 +186,8 @@ begin
   select note_auth_attempt.kind, k.key_hash, at_time
   from unnest(keys) as k (key_hash);
 
-  -- Nothing to check: no code went to the number lately.
-  if no_code then
-    return -1;
-  end if;
-  return 0;
+  -- 0, or counted for the caller only: nothing to check, or nothing to send.
+  return caller_only;
 end;
 $$;
 

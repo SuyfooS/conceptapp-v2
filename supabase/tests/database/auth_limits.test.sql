@@ -3,8 +3,8 @@
 -- refused, with the seconds to wait, and not counted. Numbers and addresses
 -- are kept only as hashes, for a day. The limits are set here, since the
 -- local seed lifts them for the browser tests. These are the quarter-hour
--- windows; the day's windows and a code waiting are in
--- auth_limits_windows.test.sql.
+-- windows; the day's windows, a code waiting and the app's own wait between
+-- codes are in auth_limits_windows.test.sql.
 begin;
 select plan(20);
 
@@ -18,6 +18,8 @@ update private.auth_limits set max_count = 3, per = interval '10 minutes'
 where kind = 'send' and scope = 'caller';
 update private.auth_limits set max_count = 4, per = interval '15 minutes'
 where kind = 'verify';
+-- The wait between two codes to one number below every gap here.
+update private.auth_send_wait set per = interval '1 second';
 
 -- An attempt from two days ago, to be cleared.
 insert into private.auth_attempts (kind, key_hash, at)

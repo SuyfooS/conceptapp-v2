@@ -226,6 +226,12 @@ select public.reset_demo_business('00000000-0000-4000-b000-000000000002');
 -- here.
 update private.auth_limits set max_count = 100000;
 
+-- The app's own wait between two codes to one number stays just past the
+-- local auth server's (config.toml's `[auth.sms] max_frequency`, 2 s), as
+-- the hosted one is past the hosted auth server's (65 s against 60), and
+-- under the half second more the browser tests wait out (e2e/session.ts).
+update private.auth_send_wait set per = interval '2.25 seconds';
+
 -- Dev-only SMS: the auth `send_sms` hook (supabase/config.toml) writes each
 -- login code here instead of sending it, so local sign-in and the Playwright
 -- test can read it. Lives in seed.sql so it can never reach a real project.

@@ -59,7 +59,12 @@ export async function forgetSentCodes(phone: string): Promise<void> {
       and key_hash = encode(sha256(convert_to('phone:' || ${phone}::text, 'UTF8')), 'hex')`;
 }
 
-/** Count a code as sent to `phone` (E.164) now. Local database only. */
+/**
+ * Count a code as sent to `phone` (E.164) now, which also starts the app's
+ * own wait between codes (`public.note_auth_attempt`), so a test can be sure
+ * its next request falls inside it however slow the runner is. Local
+ * database only.
+ */
 export async function noteSentCode(phone: string): Promise<void> {
   await sql`
     insert into private.auth_attempts (kind, key_hash, at)
@@ -82,16 +87,4 @@ export async function setDemoModule(
     update public.business_modules set enabled = ${enabled}
     where business_id = '00000000-0000-4000-b000-000000000001'
       and module_key = ${key}`;
-}
-
-/**
- * Start the auth server's resend wait for `phone` (E.164) now, as if a code
- * had just been sent. The auth server reads it fresh on every request, so a
- * test can be sure its next request falls inside the wait however slow the
- * runner is. Local database only.
- */
-export async function restartSmsWait(phone: string): Promise<void> {
-  await sql`
-    update auth.users set confirmation_sent_at = now()
-    where phone = ${phone.replace(/^\+/, "")}`;
 }

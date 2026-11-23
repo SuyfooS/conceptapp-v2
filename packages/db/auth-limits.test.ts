@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The counts on sign-in codes as the server reads them, with the database
-// stood in for: 0 to go ahead, the seconds to wait, or no code waiting for a
-// check; anything else, or a failure but a function not there yet, throws.
+// stood in for: 0 to go ahead, the seconds to wait, no code waiting for a
+// check, or a code sent within the wait for a send; anything else, or a
+// failure but a function not there yet, throws.
 // Joining clears the counts of a number with no account, by the number only.
 
 vi.mock("server-only", () => ({}));
@@ -24,6 +25,7 @@ vi.mock("./supabase/admin", () => ({
 }));
 
 const {
+  CODE_JUST_SENT,
   forgetAuthAttempt,
   forgetNumberAttempts,
   NO_CODE_WAITING,
@@ -43,12 +45,13 @@ beforeEach(() => {
 });
 
 describe("noteAuthAttempt", () => {
-  it("answers 0, the seconds to wait, or no code waiting, as the database says", async () => {
-    for (const data of [0, 412, -1]) {
+  it("answers 0, the seconds to wait, no code waiting or a code just sent, as the database says", async () => {
+    for (const data of [0, 412, -1, -2]) {
       db.answers.push({ data, error: null });
       expect(await noteAuthAttempt(ATTEMPT)).toBe(data);
     }
     expect(NO_CODE_WAITING).toBe(-1);
+    expect(CODE_JUST_SENT).toBe(-2);
     expect(db.calls[0]).toEqual({
       name: "note_auth_attempt",
       args: {
@@ -61,7 +64,7 @@ describe("noteAuthAttempt", () => {
   });
 
   it("throws on any other answer", async () => {
-    for (const data of [-2, 1.5, "x", null]) {
+    for (const data of [-3, 1.5, "x", null]) {
       db.answers.push({ data, error: null });
       await expect(noteAuthAttempt(ATTEMPT)).rejects.toThrow();
     }

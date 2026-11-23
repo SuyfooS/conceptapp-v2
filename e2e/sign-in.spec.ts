@@ -9,7 +9,6 @@ import {
   lastCodeId,
   latestCode,
   noteSentCode,
-  restartSmsWait,
 } from "./sms";
 
 const t = he.auth.signIn;
@@ -113,10 +112,12 @@ test("a code asked for again at once sends nothing new, reads as for any number,
   const codeField = page.getByLabel(t.codeLabel);
   const tooSoon = page.getByText(t.errors.rateLimit);
 
-  // On the code step, a new code at once: the auth server holds it, and the
-  // screen says what it says for any number. The wait restarts right before
-  // each request, so the test does not depend on how fast the runner is.
-  await restartSmsWait(WORKER.e164);
+  // On the code step, a new code at once: the app's own wait holds it, the
+  // same for every number, without asking the auth server, and the screen
+  // says what it says for any number. A code counted as sent restarts the
+  // wait right before each request, so the test does not depend on how fast
+  // the runner is.
+  await noteSentCode(WORKER.e164);
   const sent = await lastCodeId(WORKER.e164);
   await page.getByRole("button", { name: t.resend }).click();
   await expect(
@@ -128,7 +129,7 @@ test("a code asked for again at once sends nothing new, reads as for any number,
   // Back to the number and asking again at once: the code step, as always.
   await page.getByRole("button", { name: t.changePhone }).click();
   await page.getByLabel(t.phoneLabel).fill(WORKER.local);
-  await restartSmsWait(WORKER.e164);
+  await noteSentCode(WORKER.e164);
   await page.getByRole("button", { name: t.send }).click();
   await expect(codeField).toBeVisible();
   await expect(tooSoon).toHaveCount(0);

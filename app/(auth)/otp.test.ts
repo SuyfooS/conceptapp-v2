@@ -2,12 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The codes sent and checked, with the auth server and the counts stood in
 // for. Sign-in answers every valid number the same, whether it has an
-// account or not, and keeps every send counted (`sendSignInCode`); joining
-// and the file's codes say the auth server's short wait and give its try
-// back (`sendCode`). Joining clears the counts of a number with no account
-// first, since none of them reached anyone (`sendJoinCode`). A check with no
-// code sent to the number lately is a wrong code, and the auth server isn't
-// asked.
+// account or not (`sendSignInCode`). A send within the app's own wait of the
+// number's last counted one asks the auth server nothing, for every number
+// alike: sign-in answers it as a code sent, and joining and the file's codes
+// say it (`sendCode`). Past that wait, the auth server's limits on everyone
+// and a failing SMS provider are a failure, with the try given back for the
+// number and the caller. Joining clears the counts of a number with no
+// account first, since none of them reached anyone (`sendJoinCode`). A check
+// with no code sent to the number lately is a wrong code, and the auth
+// server isn't asked.
 //
 // The codes a signed-in person proves their phone with (the hiring file's
 // bank change, profile H5a) hold too: the code goes to the number the auth
@@ -35,6 +38,7 @@ vi.mock("next/headers", () => ({
 }));
 vi.mock("@db/auth-limits", () => ({
   NO_CODE_WAITING: -1,
+  CODE_JUST_SENT: -2,
   noteAuthAttempt: mocks.noteAuthAttempt,
   forgetAuthAttempt: mocks.forgetAuthAttempt,
   forgetNumberAttempts: mocks.forgetNumberAttempts,
@@ -128,16 +132,49 @@ describe("sendSignInCode", () => {
     expect(mocks.forgetAuthAttempt).not.toHaveBeenCalled();
   });
 
-  it("answers the auth server's short wait the same, and keeps its try counted", async () => {
+  it("answers a second send within the app's own wait as a code sent, for any number, asking the auth server nothing", async () => {
+    for (const phone of ["+972500000003", "+972509999999"]) {
+      // Counted for the caller only, by the database.
+      mocks.noteAuthAttempt.mockResolvedValueOnce(-2);
+      expect(await sendSignInCode(phone)).toBeNull();
+    }
+    expect(mocks.noteAuthAttempt).toHaveBeenCalledTimes(2);
+    expect(mocks.signInWithOtp).not.toHaveBeenCalled();
+    // Nothing to give back: the number was never counted.
+    expect(mocks.forgetAuthAttempt).not.toHaveBeenCalled();
+  });
+
+  it("past the app's own wait, fails on the auth server's limits on everyone and gives the try back, logged by its code", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
     for (const code of [
       "over_sms_send_rate_limit",
       "over_request_rate_limit",
     ]) {
       mocks.signInWithOtp.mockResolvedValueOnce(refused(code));
-      expect(await sendSignInCode("+972500000003")).toBeNull();
+      expect(await sendSignInCode("050-000-0003")).toBe("failed");
     }
-    expect(mocks.noteAuthAttempt).toHaveBeenCalledTimes(2);
-    expect(mocks.forgetAuthAttempt).not.toHaveBeenCalled();
+    expect(mocks.forgetAuthAttempt).toHaveBeenCalledTimes(2);
+    for (const [index, call] of mocks.noteAuthAttempt.mock.calls.entries()) {
+      // The very try that was counted, for the number and the caller.
+      expect(mocks.forgetAuthAttempt).toHaveBeenNthCalledWith(
+        index + 1,
+        call[0],
+      );
+      expect(call[0]).toMatchObject({ kind: "send", phone: "+972500000003" });
+    }
+    const said = JSON.stringify(logged.mock.calls);
+    expect(said).toContain("over_sms_send_rate_limit");
+    expect(said).not.toContain("500000003");
+    logged.mockRestore();
+  });
+
+  it("still fails when giving the try back fails, logged without the number", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.signInWithOtp.mockResolvedValue(refused("over_sms_send_rate_limit"));
+    mocks.forgetAuthAttempt.mockRejectedValue(new Error("down"));
+    expect(await sendSignInCode("+972500000003")).toBe("failed");
+    expect(JSON.stringify(logged.mock.calls)).not.toContain("500000003");
+    logged.mockRestore();
   });
 
   it("sends nothing past too many", async () => {
@@ -160,10 +197,13 @@ describe("sendSignInCode", () => {
     expect(mocks.signInWithOtp).not.toHaveBeenCalled();
   });
 
-  it("fails on another refusal, logged by its code and never the number", async () => {
+  it("fails when the SMS provider does, gives the try back, logged by its code and never the number", async () => {
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
     mocks.signInWithOtp.mockResolvedValue(refused("sms_send_failed"));
     expect(await sendSignInCode("+972500000003")).toBe("failed");
+    expect(mocks.forgetAuthAttempt).toHaveBeenCalledWith(
+      mocks.noteAuthAttempt.mock.calls[0]?.[0],
+    );
     const said = JSON.stringify(logged.mock.calls);
     expect(said).toContain("sms_send_failed");
     expect(said).not.toContain("500000003");
@@ -172,12 +212,31 @@ describe("sendSignInCode", () => {
 });
 
 describe("sendCode", () => {
-  it("says the auth server's short wait, and gives its try back", async () => {
-    mocks.signInWithOtp.mockResolvedValue(refused("over_sms_send_rate_limit"));
-    expect(await sendCode("+972500000003")).toBe("rateLimit");
-    const counted = mocks.noteAuthAttempt.mock.calls[0]?.[0];
-    expect(counted).toMatchObject({ kind: "send", phone: "+972500000003" });
-    expect(mocks.forgetAuthAttempt).toHaveBeenCalledWith(counted);
+  it("says a second send within the app's own wait, and asks and runs nothing", async () => {
+    const prepare = vi.fn();
+    mocks.noteAuthAttempt.mockResolvedValue(-2);
+    expect(await sendCode("+972500000003", prepare)).toBe("rateLimit");
+    expect(prepare).not.toHaveBeenCalled();
+    expect(mocks.signInWithOtp).not.toHaveBeenCalled();
+    expect(mocks.forgetAuthAttempt).not.toHaveBeenCalled();
+  });
+
+  it("past the app's own wait, fails on the auth server's limits and gives the try back", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    for (const code of [
+      "over_sms_send_rate_limit",
+      "over_request_rate_limit",
+      "sms_send_failed",
+    ]) {
+      mocks.signInWithOtp.mockResolvedValueOnce(refused(code));
+      expect(await sendCode("+972500000003")).toBe("failed");
+    }
+    const counted = mocks.noteAuthAttempt.mock.calls.map((call) => call[0]);
+    expect(counted[0]).toMatchObject({ kind: "send", phone: "+972500000003" });
+    expect(mocks.forgetAuthAttempt.mock.calls.map((call) => call[0])).toEqual(
+      counted,
+    );
+    logged.mockRestore();
   });
 
   it("fails for a number with no account, logged without the number", async () => {
@@ -223,13 +282,16 @@ describe("sendJoinCode", () => {
   });
 
   it("answers as sendCode does once cleared", async () => {
-    mocks.signInWithOtp.mockResolvedValue(refused("over_sms_send_rate_limit"));
+    // A number with an account keeps its counts: a code went to it within
+    // the wait, or too many.
+    mocks.noteAuthAttempt.mockResolvedValueOnce(-2);
     expect(await sendJoinCode("+972500000003", makeAccount)).toBe("rateLimit");
-    expect(mocks.forgetAuthAttempt).toHaveBeenCalledTimes(1);
+    expect(mocks.order).toEqual(["clear"]);
     mocks.noteAuthAttempt.mockResolvedValue(30);
     mocks.order.length = 0;
     expect(await sendJoinCode("+972500000003", makeAccount)).toBe("tooMany");
     expect(mocks.order).toEqual(["clear"]);
+    expect(mocks.signInWithOtp).not.toHaveBeenCalled();
   });
 
   it("still counts and sends when the clear fails, logged without the number", async () => {

@@ -4,10 +4,13 @@
 -- (ten minutes). Without one there is nothing to check: the check answers -1
 -- and is counted for its caller alone. A number with no account yet has had
 -- no code reach it, so joining from its invite clears its counts
--- (forget_number_attempts); one with an account keeps them. The limits are
--- set here, since the local seed lifts them for the browser tests.
+-- (forget_number_attempts); one with an account keeps them. A send within
+-- the app's own wait of the number's last counted one, the same for every
+-- number, answers -2 and is counted for its caller alone. The limits and the
+-- wait are set here, since the local seed lifts the limits and shortens the
+-- wait for the browser tests.
 begin;
-select plan(35);
+select plan(48);
 
 select set_eq(
   $$select kind, scope, per from private.auth_limits$$,
@@ -25,6 +28,10 @@ select throws_ok(
     values ('send', 'phone', 1, interval '1 day')$$,
   '23505', null, 'one window of each length for a kind and scope'
 );
+select throws_ok(
+  $$insert into private.auth_send_wait (per) values (interval '1 minute')$$,
+  '23505', null, 'one wait between codes, for every number'
+);
 
 update private.auth_limits set max_count = 2
 where kind = 'send' and scope = 'phone' and per = interval '15 minutes';
@@ -38,6 +45,8 @@ update private.auth_limits set max_count = 5
 where kind = 'verify' and scope = 'phone' and per = interval '1 day';
 update private.auth_limits set max_count = 2
 where kind = 'verify' and scope = 'caller';
+-- As on a hosted project.
+update private.auth_send_wait set per = interval '65 seconds';
 
 -- Numbers with an account: 5509 as the auth server keeps it, with no +, and
 -- 5510 with one. 5508 has none.
@@ -121,8 +130,8 @@ select is(
   0, 'a first code goes'
 );
 select is(
-  public.note_auth_attempt('send', '+972500005507', null, '2026-11-20 11:00:30+00'),
-  0, 'and a second'
+  public.note_auth_attempt('send', '+972500005507', null, '2026-11-20 11:01:30+00'),
+  0, 'and a second, a minute and a half on'
 );
 select is(
   public.note_auth_attempt('send', '+972500005507', null, '2026-11-20 11:15:01+00'),
@@ -141,8 +150,8 @@ select is(
   0, 'a stranger asks for a code for a number with no account'
 );
 select is(
-  public.note_auth_attempt('send', '+972500005508', '7.7.7.3', '2026-11-20 12:00:30+00'),
-  0, 'and again'
+  public.note_auth_attempt('send', '+972500005508', '7.7.7.3', '2026-11-20 12:01:30+00'),
+  0, 'and again, a minute and a half on'
 );
 select is(
   public.note_auth_attempt('send', '+972500005508', '7.7.7.3', '2026-11-20 12:15:01+00'),
@@ -177,6 +186,50 @@ select is(
 );
 select public.forget_number_attempts('+972500005509');
 select public.forget_number_attempts('+972500005510');
+
+-- The app's own wait between two codes to one number, the same for every
+-- number: 5511 has no account, 5509 has one.
+select is(
+  public.note_auth_attempt('send', '+972500005511', '7.7.7.4', '2026-11-20 14:00+00'),
+  0, 'a code is counted for a number'
+);
+select is(
+  public.note_auth_attempt('verify', '+972500005511', '7.7.7.4', '2026-11-20 14:00:10+00'),
+  0, 'a check is not held by the wait between codes'
+);
+select is(
+  public.note_auth_attempt('send', '+972500005511', '7.7.7.4', '2026-11-20 14:01:04+00'),
+  -2, 'a second send within the wait goes nowhere, a code having gone moments ago'
+);
+select is(
+  public.note_auth_attempt('send', '+972500005511', '7.7.7.4', '2026-11-20 14:01:06+00'),
+  0, 'the wait runs from the last counted send: one inside it does not lengthen it'
+);
+select is(
+  public.note_auth_attempt('send', '+972500005509', '7.7.7.6', '2026-11-20 13:01:04+00'),
+  -2, 'a number with an account meets the same wait'
+);
+select is(
+  public.note_auth_attempt('send', '+972500005512', '7.7.7.4', '2026-11-20 14:10+00'),
+  0, 'a code is counted for another number'
+);
+select public.forget_auth_attempt('send', '+972500005512', '7.7.7.4', '2026-11-20 14:10+00');
+select is(
+  public.note_auth_attempt('send', '+972500005512', '7.7.7.4', '2026-11-20 14:10:10+00'),
+  0, 'a send given back, which the auth server never sent, starts no wait'
+);
+select is(
+  (select max(w) from (
+    select public.note_auth_attempt('send', '+97250000' || (5600 + n)::text, '7.7.7.5',
+      '2026-11-20 15:00+00'::timestamptz + n * interval '1 second') as w
+    from generate_series(1, 100) n
+  ) tries),
+  0, 'a caller sends its quarter of an hour''s codes, each to its own number'
+);
+select is(
+  public.note_auth_attempt('send', '+972500005700', '7.7.7.5', '2026-11-20 15:01:50+00'),
+  791, 'within the wait, a send is still held by its caller''s limit'
+);
 
 reset role;
 
@@ -223,6 +276,23 @@ select ok(
   and (select count(*) from private.auth_attempts
    where key_hash = encode(sha256(convert_to('phone:+972500005510', 'UTF8')), 'hex')) = 1,
   'a number with an account keeps its counts, however the auth server spells it'
+);
+select is(
+  (select count(*)::int from private.auth_attempts
+   where kind = 'send'
+     and key_hash = encode(sha256(convert_to('phone:+972500005511', 'UTF8')), 'hex')),
+  2, 'a send within the wait is not counted for its number'
+);
+select is(
+  (select count(*)::int from private.auth_attempts
+   where kind = 'send'
+     and key_hash = encode(sha256(convert_to('caller:7.7.7.4', 'UTF8')), 'hex')),
+  4, 'but it is counted for its caller, and the send given back for neither'
+);
+select ok(
+  not has_table_privilege('authenticated', 'private.auth_send_wait', 'select, insert, update, delete')
+  and not has_table_privilege('anon', 'private.auth_send_wait', 'select, insert, update, delete'),
+  'nobody but the server reads or changes the wait'
 );
 select ok(
   not has_function_privilege('authenticated', 'public.forget_number_attempts(text)', 'execute')

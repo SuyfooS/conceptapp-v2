@@ -20,15 +20,25 @@ export type AuthAttempt = {
 export const NO_CODE_WAITING = -1;
 
 /**
+ * What a send answers when a code was counted for its number within the
+ * app's own wait between two codes (`private.auth_send_wait`), the same for
+ * every number: it was counted for its caller only, and nothing is to be
+ * sent.
+ */
+export const CODE_JUST_SENT = -2;
+
+/**
  * Counts the attempt for its number and its caller, against every window of
  * the limits in `private.auth_limits` (a quarter of an hour, and a day for
  * a number; `public.note_auth_attempt`). Returns 0 when it may go ahead,
  * else the seconds until it may; a refused try is not counted. A check is
  * counted for its number only while a code sent to it may still be waiting
- * (ten minutes), and otherwise answers `NO_CODE_WAITING`. Either may be
- * null, and is then not counted. Runs with the secret key; the database
- * keeps only hashes of both. Before the function reaches a project, nothing
- * is limited, as before.
+ * (ten minutes), and otherwise answers `NO_CODE_WAITING`. A send inside the
+ * app's own wait after the number's last counted send answers
+ * `CODE_JUST_SENT`. Either answer is counted for the caller only. Either
+ * the number or the caller may be null, and is then not counted. Runs with
+ * the secret key; the database keeps only hashes of both. Before the
+ * function reaches a project, nothing is limited, as before.
  */
 export async function noteAuthAttempt(attempt: AuthAttempt): Promise<number> {
   const { data, error } = await createAdminClient().rpc("note_auth_attempt", {
@@ -42,14 +52,15 @@ export async function noteAuthAttempt(attempt: AuthAttempt): Promise<number> {
     if (isMissingFunction(error)) return 0;
     throw new Error(`Could not count the attempt: ${error.message}`);
   }
-  return z.number().int().min(NO_CODE_WAITING).parse(data);
+  return z.number().int().min(CODE_JUST_SENT).parse(data);
 }
 
 /**
- * Gives back an attempt that sent nothing: the auth server refused the code
- * for its own short wait (`public.forget_auth_attempt`). For joining and the
- * file's codes only, never sign-in, where giving a try back would tell a
- * number with an account from one without.
+ * Gives back a send the auth server sent nothing for, for its number and its
+ * caller (`public.forget_auth_attempt`): it refused the code for one of its
+ * own limits (the project's SMS in an hour, its requests from one address),
+ * or the SMS provider failed. Not a send to a number with no account: on
+ * sign-in that stays counted, as a code sent does.
  */
 export async function forgetAuthAttempt(attempt: AuthAttempt): Promise<void> {
   const { error } = await createAdminClient().rpc("forget_auth_attempt", {

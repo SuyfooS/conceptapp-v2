@@ -27,9 +27,12 @@ export type JoinState =
  * the invite on the server and open the app, in the business just
  * joined (someone in several opens it first): a worker or a manager on their
  * hiring file's welcome where the business uses it, anyone else on Today
- * (`landingAfterJoin`, H5b). The number always
- * comes from the invite, never from the form. A link that stopped working on
- * the way goes back to its page, which says why.
+ * (`landingAfterJoin`, H5b). The first send answers the same whether the
+ * number already had an account or not: too many and too soon are the code
+ * step, whose words are true either way; a malformed number and a failure
+ * stay on the invite. A new code asked for says each as it is. The number
+ * always comes from the invite, never from the form. A link that stopped
+ * working on the way goes back to its page, which says why.
  */
 export async function join(
   token: string,
@@ -52,7 +55,16 @@ export async function join(
       console.error("join: sending the code failed", (cause as Error).message);
       error = "failed";
     }
-    if (error && intent === "send") return { step: "invite", error };
+    if (intent === "send" && error) {
+      // Too many, or a code sent to the number within the wait: the code
+      // step, word for word as for a code that went. A number with no
+      // account had its counts cleared and one with an account kept them,
+      // so anything else here would tell the link's holder which it was.
+      if (error === "tooMany" || error === "rateLimit") {
+        return { step: "code", error: undefined, resent: false };
+      }
+      return { step: "invite", error };
+    }
     return {
       step: "code",
       error: error ?? undefined,

@@ -2729,12 +2729,17 @@ read as messages/he.json. Console reads and writes are in `@db/wording`;
   asking first.
 - `@db/auth-limits`: the counts on sign-in codes, with the secret key.
   `noteAuthAttempt` gives 0, the seconds to wait (any window of
-  `private.auth_limits`: a quarter of an hour, a day per number), or
+  `private.auth_limits`: a quarter of an hour, a day per number),
   `NO_CODE_WAITING` (-1) for a check with no code sent to its number in the
-  last ten minutes, counted for its caller only. `forgetAuthAttempt` gives
-  back a send the auth server held for its short wait: for joining and the
-  file's codes only, never sign-in, where giving a try back would tell a
-  registered number from one that isn't. `forgetNumberAttempts` clears a
+  last ten minutes, or `CODE_JUST_SENT` (-2) for a send within the app's
+  own wait of the number's last counted one (`private.auth_send_wait`, 65
+  seconds, the same for every number); either is counted for its caller
+  only. `forgetAuthAttempt` gives back a send the auth server sent nothing
+  for, past that wait: one of its limits on everyone (the project's SMS in
+  an hour, its requests from one address) or a failing SMS provider, for
+  the number and the caller, on sign-in as for joining and the file's
+  codes. A send to a number with no account stays counted on sign-in, as a
+  code sent does. `forgetNumberAttempts` clears a
   number's counts while it has no account (none reached anyone): for
   joining from an open invite only, before its code is counted; the
   database keeps the counts of a number with an account.
