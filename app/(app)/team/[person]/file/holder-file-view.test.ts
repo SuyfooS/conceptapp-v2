@@ -553,9 +553,11 @@ describe("what a holder does in the open file", () => {
           groups,
         },
       });
-    // The row holds the set after a change: "עכשיו מסומן", never "סימון",
-    // which read as the press that marked them all.
-    expect(marks(["identity", "pension"])).toBe(
+    // The row holds the set after its own change: "אחרי השינוי מסומן",
+    // never "סימון", which read as the press that marked them all, nor
+    // "עכשיו", which an older row no longer is.
+    const both = marks(["identity", "pension"]);
+    expect(both).toBe(
       heT("app.team.file.history.direct", {
         groups: format.list(
           [f.direct.groups.identity, f.direct.groups.pension],
@@ -563,10 +565,16 @@ describe("what a holder does in the open file", () => {
         ),
       }),
     );
-    // As the section's toast names it, not the activity log's other word.
+    expect(both).toContain("אחרי השינוי");
+    expect(both).not.toContain("עכשיו");
+    expect(en.app.team.file.history.direct).toContain("After this change");
+    // As the section's toast names it, and the activity log by the same name.
     expect(marks(["identity"])).toContain(f.direct.groups.identity);
-    expect(marks(["identity"])).not.toContain(
-      he.app.manage.activity.actions.employee.groups.identity,
+    expect(he.app.manage.activity.actions.employee.groups).toEqual(
+      f.direct.groups,
+    );
+    expect(en.app.manage.activity.actions.employee.groups).toEqual(
+      en.app.team.file.direct.groups,
     );
     expect(marks([])).toBe(f.history.directCleared);
   });

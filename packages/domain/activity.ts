@@ -802,7 +802,10 @@ export type ActivityLine =
   /** A holder confirmed the duties screen before their first file. */
   | { action: "employee.ack" }
   | {
-      /** A holder marked parts of a file "נמסר ישירות לשכר"; none for the mark taken off. */
+      /**
+       * A holder marked a part of a file "נמסר ישירות לשכר" or took its mark
+       * off: the parts marked after that change, none once the last came off.
+       */
       action: "employee.direct";
       person: ActivityPerson;
       groups: FileGroup[];

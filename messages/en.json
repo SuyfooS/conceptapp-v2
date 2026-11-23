@@ -1818,7 +1818,7 @@
           "bankAck": "Confirmed the bank account",
           "bankDisputed": "“I didn't change it” on the bank account",
           "taxYear": "Form 101 for {year}: {status, select, handed_in {handed in} accepted {was accepted} returned {was returned} change_due {an updated form is due} other {mark removed}}",
-          "direct": "Now marked “handed directly to payroll”: {groups}",
+          "direct": "After this change, marked “handed directly to payroll”: {groups}",
           "directCleared": "The “handed directly to payroll” mark was removed",
           "empty": "Nothing changed or shown here yet.",
           "more": "Showing the last {count} actions here.",
@@ -3878,7 +3878,7 @@
             "ack": "Confirmed what may and may not be done with the details, before viewing files",
             "bankAck": "Confirmed {person}'s new bank account",
             "bankDisputed": "“I didn't change it” on {person}'s bank account",
-            "direct": "Marked “handed directly to payroll” for {groups} in {person}'s file",
+            "direct": "In {person}'s file, after this change, marked “handed directly to payroll”: {groups}",
             "directCleared": "Removed the “handed directly to payroll” mark in {person}'s file",
             "groups": {
               "identity": "the ID details",

@@ -17,7 +17,7 @@
 -- write at 10:00 on 26 November 2026 in Israel. Fixed ids (f2…), numbers
 -- (050-075-xxxx) and slugs (efw-…).
 begin;
-select plan(102);
+select plan(104);
 
 -- A: 1 its owner, 2 a manager holding the files who confirmed the duties,
 -- 3 Noa and 4 Yoav, workers, 5 the accountant, 6 a worker who left, 7 a
@@ -496,6 +496,12 @@ select public.set_direct_groups(pg_temp.p(2), pg_temp.a(), pg_temp.p(4), 'pensio
 select is(
   pg_temp.try($$select public.set_direct_groups(pg_temp.p(2), pg_temp.a(), pg_temp.p(4), 'health', true, pg_temp.at())$$),
   '22023', 'only the file''s groups');
+select is(
+  pg_temp.try($$select public.set_direct_groups(pg_temp.p(2), pg_temp.a(), pg_temp.p(4), 'health', false, pg_temp.at())$$),
+  '22023', 'nor takes a mark off one outside the file');
+select is(
+  pg_temp.try($$select public.set_direct_groups(pg_temp.p(2), pg_temp.a(), pg_temp.p(4), 'pension', null, pg_temp.at())$$),
+  '22023', 'and says marked or not');
 select is(
   pg_temp.try($$select public.set_direct_groups(pg_temp.p(4), pg_temp.a(), pg_temp.p(4), 'pension', true, pg_temp.at())$$),
   '42501', 'and only a holder marks them');

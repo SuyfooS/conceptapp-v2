@@ -14,6 +14,7 @@ import {
   restoreDemoFile,
   restoreDemoPeriodStart,
   setDemoBankReview,
+  setDemoDirectGroups,
   setDemoFileGaps,
   setDemoMinor,
   setDemoModuleSettings,
@@ -530,7 +531,7 @@ test("a disputed account shows on Today, on the team and in the file, and is con
   ).toHaveCount(0);
 });
 
-test("the accountant marks Yoav's account handed directly, undoes it, and marks it again", async ({
+test("the accountant marks Yoav's account handed directly, undoes it, and marks it again, a stale press and a dropped undo said", async ({
   page,
 }, testInfo) => {
   await enterAs(page, "accountant");
@@ -562,12 +563,76 @@ test("the accountant marks Yoav's account handed directly, undoes it, and marks 
     main(page).getByRole("heading", { name: f.sections.bank }),
   ).toBeFocused();
 
+  // A screen drawn before another holder's press, here written behind it:
+  // its press finds the account marked already, says so, writes nothing and
+  // offers no "ביטול", and the page is drawn with the marks as they are.
+  const stale = await page.context().newPage();
+  await open(stale, `/team/${YOAV.id}/file`);
+  const staleBank = main(stale).getByRole("region", {
+    name: f.sections.bank,
+  });
+  const staleMark = staleBank.getByRole("button", { name: f.direct.mark });
+  await expect(staleMark).toBeVisible();
+  await setDemoDirectGroups(YOAV.id, ["bank"]);
+  await staleMark.click();
+  await expect(
+    stale.getByText(
+      heT("app.team.file.direct.alreadyMarked", {
+        group: f.direct.groups.bank,
+      }),
+    ),
+  ).toBeVisible();
+  await expect(stale.getByRole("button", { name: f.direct.undo })).toHaveCount(
+    0,
+  );
+  await expect(
+    staleBank.getByText(f.rows.direct, { exact: true }),
+  ).toBeVisible();
+  expect(await demoDirectGroups(YOAV.id)).toEqual(["bank"]);
+  await stale.close();
+  // Taken off behind the screen again, so this page's press below changes
+  // the file.
+  await setDemoDirectGroups(YOAV.id, []);
+
   await bank.getByRole("button", { name: f.direct.mark }).click();
   await expect(page.getByText(marked)).toBeVisible();
   await expect.poll(() => demoDirectGroups(YOAV.id)).toEqual(["bank"]);
-  // Let the toast go: the way back is offered for its time only.
-  await main(page).getByRole("heading", { level: 1 }).click();
-  await expect(page.getByText(marked)).toHaveCount(0, { timeout: 15_000 });
+  const unmark = bank.getByRole("button", { name: f.direct.unmark });
+  await expect(unmark).toBeVisible();
+
+  // Its "ביטול" dropped on the way (the network, here): said in the bank's
+  // own row, under the button that is now the way back, with the focus on
+  // it so it is heard where the part is; the mark stays.
+  const filePath = (url: URL) => url.pathname === `/team/${YOAV.id}/file`;
+  let dropped = 0;
+  await page.route(filePath, async (route) => {
+    const request = route.request();
+    if (
+      request.method() !== "POST" ||
+      dropped > 0 ||
+      !(request.postData() ?? "").includes('"bank"')
+    ) {
+      await route.fallback();
+      return;
+    }
+    dropped += 1;
+    await route.abort();
+  });
+  await page.getByRole("button", { name: f.direct.undo }).click();
+  const refused = bank.getByRole("alert");
+  await expect(refused).toHaveText(
+    `${heT("app.team.file.direct.undoRefused", {
+      group: f.direct.groups.bank,
+    })} ${heT("app.team.file.direct.undoWayBack", { label: f.direct.unmark })}`,
+  );
+  await expect(refused).toBeFocused();
+  expect(dropped).toBe(1);
+  await page.unroute(filePath);
+  expect(await demoDirectGroups(YOAV.id)).toEqual(["bank"]);
+  await expect(unmark).toBeVisible();
+  // The toast went with its "ביטול".
+  await expect(page.getByText(marked)).toHaveCount(0);
+  await expectCleanPage(page);
 
   const direct = (await demoFileActions(YOAV.id)).filter(
     (row) => row.action === "employee.direct",

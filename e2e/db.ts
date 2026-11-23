@@ -5728,6 +5728,21 @@ export async function demoDirectGroups(userId: string): Promise<string[]> {
   return rows[0]?.groups ?? [];
 }
 
+/**
+ * The parts of the person's file marked "נמסר ישירות לשכר" set behind an
+ * open screen, as another holder's press would leave them (no log row).
+ */
+export async function setDemoDirectGroups(
+  userId: string,
+  groups: readonly string[],
+): Promise<void> {
+  await sql`update public.employee_details
+    set direct_groups = array(
+      select jsonb_array_elements_text(${sql.json([...groups])}::jsonb)
+    )
+    where business_id = ${DEMO_RESTAURANT} and user_id = ${userId}`;
+}
+
 /** The person's account changed again just now, waiting for a holder. */
 export async function bumpDemoBankChange(userId: string): Promise<void> {
   await sql`update public.employee_details

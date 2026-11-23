@@ -12,7 +12,7 @@
 -- (050-078-xxxx) and slugs (efs-…), so nothing here meets the seed or
 -- another test.
 begin;
-select plan(23);
+select plan(24);
 
 -- A: 1 its owner, 2 a manager (manage.edit, clock.edit and order_taking.edit
 -- by default), 3 a worker, 4 an owner who left. 5 is on the ConceptApp
@@ -160,6 +160,9 @@ select is(private.file_groups(pg_temp.a()), '{identity,address,pension}'::text[]
   'the account not asked, the file no longer counts it');
 select is(private.file_missing(pg_temp.a(), pg_temp.p(3)), '{address}'::text[],
   'nor is it missing');
+-- A mark made while the account was still asked.
+update public.employee_details set direct_groups = '{bank}'
+where business_id = pg_temp.a() and user_id = pg_temp.p(3);
 select is(
   pg_temp.refusal(format(
     'select public.set_direct_groups(%L, %L, %L, %L, true)',
@@ -169,12 +172,17 @@ select is(
   'and a holder can''t mark it handed directly'
 );
 select is(
-  pg_temp.refusal(format(
-    'select public.set_direct_groups(%L, %L, %L, %L, false)',
-    pg_temp.p(1), pg_temp.a(), pg_temp.p(3), 'bank'
-  )),
-  'none',
-  'though a mark on it would still come off'
+  public.set_direct_groups(pg_temp.p(1), pg_temp.a(), pg_temp.p(3), 'bank', false),
+  true,
+  'a mark on a part no longer asked still comes off'
+);
+select is(
+  (
+    select e.direct_groups from public.employee_details e
+    where e.business_id = pg_temp.a() and e.user_id = pg_temp.p(3)
+  ),
+  '{}'::text[],
+  'and the file no longer holds it'
 );
 
 ------------------------------------------------------------------------------
