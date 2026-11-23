@@ -368,6 +368,104 @@ describe("docs/production.md", () => {
     expect(section("שלושה כללים")).toContain("לא מקדמים את הענף `production`");
   });
 
+  it("releases from step B's own run, never B3's, which shows only what came since", () => {
+    // B3's lines name an older commit than the schema step B applies: run on
+    // the first day, they would put code older than the database on the site.
+    const run = stepOf(section("ב3."), 3);
+    expect(run).not.toContain("ב7 צעד ב ואילך");
+    expect(run).toContain("לא מריצים בכלל");
+    const stepB = stepOf(section("ב7."), 5);
+    const rerun = stepB.slice(0, stepB.search(/^\s*\|/m));
+    expect(rerun).toContain('"עדכון אחרי שעסק אמיתי עלה"');
+    expect(rerun).toContain("רק מה שנוסף מאז ב3, או כלום");
+    expect(rerun).not.toContain("כמו בב3");
+  });
+
+  it("says when to release: the line every note and summary carries, at least weekly", () => {
+    // From step B a merge reaches the demo alone, a fix and a revert too:
+    // the agent's note and each session's summary say what is waiting.
+    const update = section("עדכון אחרי שעסק אמיתי עלה");
+    const when = update.slice(
+      update.indexOf("**מתי:**"),
+      update.indexOf("**זמן:**"),
+    );
+    for (const word of [
+      '"מחכה לשחרור לעסקים"',
+      '"כלום"',
+      "`יומן הסוכן`",
+      "סשן",
+      "פעם בשבוע",
+      '"כולל שינוי במבנה"',
+      "`בטל`",
+    ]) {
+      expect(when, word).toContain(word);
+    }
+  });
+
+  it("has a first step when the check after a release fails", () => {
+    // A revert on main no longer reaches the real site by itself, and
+    // production never moves backwards: the previous version is brought back
+    // in Vercel, and a session opened.
+    const update = section("עדכון אחרי שעסק אמיתי עלה");
+    const step = stepOf(update, 4);
+    const check = step.slice(0, step.search(/^- /m));
+    for (const word of [
+      "אם הבדיקה לא עוברת",
+      "סשן",
+      "`Ready`",
+      "`Instant Rollback`",
+      "`Undo Rollback`",
+      "המבנה של המסד לא חוזר",
+    ]) {
+      expect(check, word).toContain(word);
+    }
+    // The first release's check too, with no business on the site yet.
+    const stepB = stepOf(section("ב7."), 5);
+    const first = stepB.slice(stepB.indexOf("**בדיקה:**"));
+    expect(first).toContain("**אם הבדיקה לא עוברת**");
+    expect(first).toContain("סשן");
+  });
+
+  it("redeploys the release itself after a value changes, never the top version", () => {
+    // A changed value reaches only a new build, and from B7 step 4 the top
+    // deployment is usually a preview of main, with development's values.
+    const redeploy =
+      "`Redeploy` לגרסה הנוכחית של `Production`, מהענף `production`";
+    const appendix = rows(section("נספח: החלפת סוד"));
+    const vercel = appendix.filter((cells) =>
+      cells.join(" ").includes("Vercel"),
+    );
+    expect(vercel.map(([name = ""]) => name)).toEqual(
+      expect.arrayContaining([
+        "`SUPABASE_SECRET_KEY`",
+        "`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`",
+        "`CRON_SECRET`",
+        "`EMPLOYEE_DATA_KEKS`",
+      ]),
+    );
+    for (const [name = "", where = ""] of vercel) {
+      expect(where, name).toContain(redeploy);
+    }
+    const whereOf = (name: string) =>
+      appendix.find(([cell = ""]) => cell === name)?.[1] ?? "";
+    // Vault takes the cron secret once the site runs it; the old secret key
+    // goes once the site runs the new one.
+    const cron = whereOf("`CRON_SECRET`");
+    expect(cron.indexOf("`cron_secret`")).toBeGreaterThan(
+      cron.indexOf("`Ready`"),
+    );
+    expect(cron.indexOf("`Ready`")).toBeGreaterThan(cron.indexOf(redeploy));
+    const key = whereOf("`SUPABASE_SECRET_KEY`");
+    const remove = key.indexOf("מוחקים את הישן רק כשהיא `Ready`");
+    expect(remove).toBeGreaterThan(key.indexOf(redeploy));
+    expect(key.indexOf(redeploy)).toBeGreaterThanOrEqual(0);
+    // B9's keys the same way, and the update section says which version.
+    expect(stepOf(section("ב9."), 2)).toContain(redeploy);
+    expect(section("עדכון אחרי שעסק אמיתי עלה")).toContain(
+      "הגרסה הנוכחית של `Production`, מהענף `production`, `⋯` → `Redeploy`. לא הגרסה העליונה",
+    );
+  });
+
   it("redeploys the demo's site after its values, and points the dev project at it once it answers", () => {
     const demo = stepOf(section("ב7."), 2);
     const table = demo.lastIndexOf("|");
