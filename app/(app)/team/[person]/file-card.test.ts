@@ -59,6 +59,7 @@ describe("the file's card on a profile", () => {
       card("yoav", "holder"),
       "יואב לוי",
       "יואב",
+      "m",
     );
     expect(words).toMatchObject({
       title: heT("app.team.file.card.title", { name: "יואב לוי" }),
@@ -78,6 +79,7 @@ describe("the file's card on a profile", () => {
       card("yoav", "team"),
       "יואב לוי",
       "יואב",
+      "m",
     );
     expect(words?.lines).toEqual([
       heT("app.team.file.card.missingCount", { count: 2 }),
@@ -96,6 +98,7 @@ describe("the file's card on a profile", () => {
       card("maya", "holder"),
       "מאיה פרץ",
       "מאיה",
+      "f",
     );
     expect(words?.share?.message).toBe(
       heT("app.team.file.card.shareMessage", {
@@ -113,17 +116,38 @@ describe("the file's card on a profile", () => {
       card("yoav", "team", { viewing: true, share: false }),
       "יואב לוי",
       "יואב",
+      "m",
     );
     expect(viewing?.share).toBeNull();
     expect(viewing?.note).toBe(he.app.team.file.viewing);
   });
 
+  // Profile H6b-1: the person's own “לא שיניתי” is said apart.
+  it("says the person's own “לא שיניתי” on the account, in their form", () => {
+    const words = fileCardWords(
+      t,
+      format,
+      card("itay", "holder"),
+      "איתי מזרחי",
+      "איתי",
+      "m",
+    );
+    expect(words?.lines).toEqual([
+      heT("app.team.file.card.bankDisputed", { first: "איתי", form: "m" }),
+    ]);
+    expect(words?.lines).not.toContain(he.app.team.file.card.bankReview);
+    // Anyone else reads no detail, so no account to look at.
+    expect(
+      fileCardWords(t, format, card("itay", "team"), "איתי מזרחי", "איתי", "m"),
+    ).toBeNull();
+  });
+
   it("is no card once the file is complete", () => {
     expect(
-      fileCardWords(t, format, card("noa", "holder"), "נועה כהן", "נועה"),
+      fileCardWords(t, format, card("noa", "holder"), "נועה כהן", "נועה", "f"),
     ).toBeNull();
     expect(
-      fileCardWords(t, format, card("noa", "team"), "נועה כהן", "נועה"),
+      fileCardWords(t, format, card("noa", "team"), "נועה כהן", "נועה", "f"),
     ).toBeNull();
   });
 
@@ -134,6 +158,7 @@ describe("the file's card on a profile", () => {
       card("yoav", "holder"),
       "יואב לוי",
       "יואב",
+      "m",
     );
     if (!words) throw new Error("no card");
     const missing: string[] = [];

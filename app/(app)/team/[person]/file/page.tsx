@@ -4,10 +4,12 @@ import { currentWording } from "../../../current-wording";
 import { currentMember } from "../../../member";
 import { baseWording, translator } from "../../../wording";
 import {
+  acknowledgeBankAction,
   acknowledgeDutiesAction,
   confirmFileCodeAction,
   keepFileOpenAction,
   lockFileAction,
+  markDirectGroupAction,
   revealHolderFieldAction,
   sendFileCodeAction,
 } from "./actions";
@@ -27,7 +29,8 @@ export async function generateMetadata(): Promise<Metadata> {
 // is /me/file. The address names the person and nothing else: no value is
 // ever in a URL. Dynamic and per person, so it answers no-store, and
 // nothing here is cached; the file itself is read only once the duties are
-// confirmed and an SMS code opened the files on this device.
+// confirmed and an SMS code opened the files on this device. A holder's
+// writes there (H6b-1) are bound to the person too.
 export default async function HolderFilePage({
   params,
 }: PageProps<"/team/[person]/file">) {
@@ -43,8 +46,8 @@ export default async function HolderFilePage({
     <HolderFileView
       screen={screen}
       paths={{ profile: `/team/${screen.head.personId}`, team: "/team" }}
-      // For this business (and the reveal for this person) only: an action
-      // held past a switch is refused.
+      // For this business (and the reveal and the writes for this person)
+      // only: an action held past a switch is refused.
       actions={{
         acknowledge: acknowledgeDutiesAction.bind(null, business),
         sendCode: sendFileCodeAction.bind(null, business),
@@ -56,6 +59,16 @@ export default async function HolderFilePage({
         ),
         keepOpen: keepFileOpenAction.bind(null, business),
         lock: lockFileAction.bind(null, business),
+        acknowledgeBank: acknowledgeBankAction.bind(
+          null,
+          business,
+          screen.head.personId,
+        ),
+        markDirect: markDirectGroupAction.bind(
+          null,
+          business,
+          screen.head.personId,
+        ),
       }}
       wording={wording}
     />

@@ -3,21 +3,31 @@
 // sets itself), so its Hebrew stays here rather than in messages/; the
 // Hebrew-literal check in tooling/ allows this one file.
 
-import type { ActivityLookups, ActivityRow } from "@domain/activity";
+import type {
+  ActivityEntry,
+  ActivityLookups,
+  ActivityRow,
+} from "@domain/activity";
 import type { AvailabilityAnswer } from "@domain/availability";
 import { accountHint } from "@domain/bank-account";
 import type { BusinessDetails } from "@domain/business-details";
 import {
   type BankReview,
+  FILE_GROUPS,
+  type FileGroup,
   type FileStatus,
   maskedHint,
 } from "@domain/employee-file";
+import type { FileReview } from "@domain/file-holders";
 import type { ModuleRow } from "@domain/modules";
 import type { AddressForm, CoverPreset } from "@domain/profile";
 import type { Position, ShiftPattern } from "@domain/staffing";
 import type { FileSpace } from "@domain/storage-use";
 import type { GivableNamedRole, TeamInvite, TeamMember } from "@domain/team";
-import type { HolderFileData } from "../../(app)/team/[person]/file/holder-file-types";
+import type {
+  FileHistory,
+  HolderFileData,
+} from "../../(app)/team/[person]/file/holder-file-types";
 import { portraits } from "../portraits";
 
 /** What the holder twin's "הצגה" shows: the test range's ID and an account that checks valid. */
@@ -926,21 +936,23 @@ export const demoOrdersMode = {
  * Noa complete with this year's 101 in, Yoav without his account and his
  * pension and no 101 yet, Maya, a minor, without her identity details and
  * with a new account to look at, Shiran complete with an updated 101 due,
- * and the rest complete. Owners have no row. Whoever sees the team without
- * the files reads the same rows without `detail` (`teamFileStatusFor`).
+ * Itay complete after his "לא שיניתי" on the account (H6b-1), and the rest
+ * complete. Each file last written on the day beside it (H6b-2), Yoav's
+ * never. Owners have no row. Whoever sees the team without the files reads
+ * the same rows without `detail` (`teamFileStatusFor`).
  */
 export const teamFileStatus: Record<string, FileStatus> = Object.fromEntries(
   (
     [
-      ["shiran", [], "change_due", null],
-      ["noa", [], "handed_in", null],
-      ["yoav", ["bank", "pension"], null, null],
-      ["maya", ["identity"], "accepted", "new"],
-      ["itay", [], "accepted", null],
-      ["shira", [], "handed_in", null],
-      ["omer", [], "accepted", null],
+      ["shiran", [], "change_due", null, "2026-11-18T07:30:00Z"],
+      ["noa", [], "handed_in", null, "2026-11-20T08:00:00Z"],
+      ["yoav", ["bank", "pension"], null, null, null],
+      ["maya", ["identity"], "accepted", "new", "2026-11-21T16:10:00Z"],
+      ["itay", [], "accepted", "disputed", "2026-11-22T06:45:00Z"],
+      ["shira", [], "handed_in", null, "2026-09-20T09:05:00Z"],
+      ["omer", [], "accepted", null, "2026-10-02T12:00:00Z"],
     ] as const
-  ).map(([userId, missing, status, review]) => [
+  ).map(([userId, missing, status, review, changed]) => [
     userId,
     {
       user_id: userId,
@@ -957,6 +969,7 @@ export const teamFileStatus: Record<string, FileStatus> = Object.fromEntries(
         bank_review: review,
         youth_until: userId === "maya" ? "2027-04-15" : null,
         submitted_at: missing.length === 0 ? "2026-09-20T09:05:00Z" : null,
+        changed_at: changed,
       },
     },
   ]),
@@ -976,6 +989,37 @@ export function teamFileStatusFor(
       );
 }
 
+/**
+ * The same rows with every file complete, its 101 accepted and no account
+ * to look at (the team twin's ?complete=1): no choice of the filter but
+ * "כולם" shows anyone, so each says so, with its way back to everyone.
+ */
+export function teamFileStatusComplete(
+  reader: "holder" | "team",
+): Record<string, FileStatus> {
+  return Object.fromEntries(
+    Object.entries(teamFileStatusFor(reader)).map(
+      ([id, row]): [string, FileStatus] => [
+        id,
+        {
+          ...row,
+          complete: true,
+          missing: 0,
+          form101_in: true,
+          detail: row.detail && {
+            ...row.detail,
+            missing: [],
+            status: "accepted",
+            change_due_by: null,
+            bank_review: null,
+            submitted_at: row.detail.submitted_at ?? "2026-09-20T09:05:00Z",
+          },
+        },
+      ],
+    ),
+  );
+}
+
 /** Noa's made-up file, as a holder opens it: complete, from the test ranges. */
 const DEMO_HOLDER_FILE: HolderFileData = {
   today: "2026-11-24",
@@ -993,6 +1037,7 @@ const DEMO_HOLDER_FILE: HolderFileData = {
     birthDate: "1995-01-01",
     masked: maskedHint("0018"),
     youthUntil: null,
+    minor: null,
   },
   contact: {
     address: {
@@ -1025,37 +1070,53 @@ const DEMO_HOLDER_FILE: HolderFileData = {
   submittedAt: "2026-09-20T09:05:00Z",
 };
 
+/** The account's last change, as the database writes a moment: microseconds and an offset. */
+export const DEMO_BANK_CHANGED_AT = "2026-11-20T08:00:00.123456+00:00";
+
 /**
  * A demo person's file as a holder opens it on the twin: Noa's, with what
  * their status row says is missing left out and its account to look at;
- * `review` makes Noa's account one she said she didn't change.
+ * `review` makes the account one to look at of that kind (`disputed`: one
+ * she said she didn't change). `direct` marks parts "נמסר ישירות לשכר"
+ * (H6b-1), out of what is missing; `passed` makes Yoav's pension one he
+ * would choose later whose day passed. A minor's file starts four days ago,
+ * for the checklist (H6b-2).
  */
 export function demoHolderFile(
   person: string,
   review: BankReview | null = null,
+  direct: readonly FileGroup[] = [],
+  passed = false,
 ): HolderFileData {
   const status = teamFileStatus[person]?.detail;
-  const missing = status?.missing ?? [];
+  const held = status?.missing ?? [];
+  const missing = held.filter((group) => !direct.includes(group));
+  const marked = FILE_GROUPS.filter((group) => direct.includes(group));
   const member = teamMembers.find((m) => m.userId === person);
   const base = DEMO_HOLDER_FILE;
+  const youthUntil = status?.youth_until ?? null;
+  const minor = youthUntil ? { startedOn: "2026-11-20" } : null;
   return {
     ...base,
     missing,
-    identity: missing.includes("identity")
+    direct: marked,
+    identity: held.includes("identity")
       ? {
           ...base.identity,
           legalName: null,
           kind: null,
           birthDate: null,
           masked: null,
-          youthUntil: status?.youth_until ?? null,
+          youthUntil,
+          minor,
         }
       : {
           ...base.identity,
           legalName: member?.name ?? base.identity.legalName,
-          youthUntil: status?.youth_until ?? null,
+          youthUntil,
+          minor,
         },
-    bank: missing.includes("bank")
+    bank: held.includes("bank")
       ? {
           code: null,
           branch: null,
@@ -1070,11 +1131,13 @@ export function demoHolderFile(
           ...base.bank,
           review: review ?? status?.bank_review ?? null,
           changedAt:
-            (review ?? status?.bank_review) ? "2026-11-20T08:00:00Z" : null,
+            (review ?? status?.bank_review) ? DEMO_BANK_CHANGED_AT : null,
         },
-    pension: missing.includes("pension")
-      ? { answer: null, fund: null, dueOn: null }
-      : base.pension,
+    pension: passed
+      ? { answer: "later", fund: null, dueOn: "2026-11-01" }
+      : held.includes("pension")
+        ? { answer: null, fund: null, dueOn: null }
+        : base.pension,
     taxYear: status?.status
       ? {
           status: status.status,
@@ -1086,6 +1149,67 @@ export function demoHolderFile(
     submittedAt: status?.submitted_at ?? null,
   };
 }
+
+/**
+ * "מה קרה בתיק" on the file twin (H6b-1), newest first, as the log's lines
+ * read: the accountant showed Noa's account, Noa said "לא שיניתי" after a
+ * change made in her own SMS-confirmed session, and before that she sent
+ * her file and the owner marked her 101 handed in. `empty` has nothing
+ * recorded yet; `failed` couldn't be read.
+ */
+export function demoFileHistory(
+  person: string,
+  which: "full" | "empty" | "failed" = "full",
+): FileHistory {
+  if (which === "failed") return null;
+  if (which === "empty") return { entries: [], more: false };
+  const name = teamMembers.find((m) => m.userId === person)?.name ?? null;
+  const them = { kind: "member", name } as const;
+  const entries: ActivityEntry[] = [
+    {
+      id: 5,
+      at: "2026-11-22T12:05:00Z",
+      actor: { kind: "member", name: "גלית הדגמה" },
+      line: { action: "employee.view", person: them, fields: ["bank_account"] },
+    },
+    {
+      id: 4,
+      at: "2026-11-21T07:40:00Z",
+      actor: them,
+      line: { action: "employee.bank_disputed", person: them },
+    },
+    {
+      id: 3,
+      at: "2026-11-20T08:00:00Z",
+      actor: them,
+      line: { action: "employee.details", person: them, fields: ["bank"] },
+    },
+    {
+      id: 2,
+      at: "2026-09-22T10:15:00Z",
+      actor: { kind: "member", name: "אורי בן דוד" },
+      line: {
+        action: "employee.tax_year",
+        person: them,
+        year: 2026,
+        status: "handed_in",
+      },
+    },
+    {
+      id: 1,
+      at: "2026-09-20T09:05:00Z",
+      actor: them,
+      line: { action: "employee.submit", person: them },
+    },
+  ];
+  return { entries, more: false };
+}
+
+/** The owner's Today twin's accounts to look at (H6b-1): Itay's "לא שיניתי", then Maya's new one. */
+export const demoFileReviews: FileReview[] = [
+  { userId: "itay", review: "disputed" },
+  { userId: "maya", review: "new" },
+];
 
 /** How full the demo business's spaces for files are (`?space=` on /design/shell/manage/chat). */
 export type DemoSpaceLevel = "quiet" | "near" | "full";

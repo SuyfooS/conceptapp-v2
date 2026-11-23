@@ -24,6 +24,8 @@ const mocks = vi.hoisted(() => ({
   getFileHolderState: vi.fn(),
   hasEmployeeKeys: vi.fn(),
   revealEmployeeFields: vi.fn(),
+  acknowledgeBank: vi.fn(),
+  markDirectGroup: vi.fn(),
   sendCode: vi.fn(),
   checkCode: vi.fn(),
   signInPhoneOf: vi.fn(),
@@ -60,6 +62,8 @@ vi.mock("@db/employee-files", () => ({
   getFileHolderState: mocks.getFileHolderState,
   hasEmployeeKeys: mocks.hasEmployeeKeys,
   revealEmployeeFields: mocks.revealEmployeeFields,
+  acknowledgeBank: mocks.acknowledgeBank,
+  markDirectGroup: mocks.markDirectGroup,
 }));
 vi.mock("../../../../(auth)/otp", () => ({
   sendCode: mocks.sendCode,
@@ -68,10 +72,12 @@ vi.mock("../../../../(auth)/otp", () => ({
 }));
 
 const {
+  acknowledgeBankAction,
   acknowledgeDutiesAction,
   confirmFileCodeAction,
   keepFileOpenAction,
   lockFileAction,
+  markDirectGroupAction,
   revealHolderFieldAction,
   sendFileCodeAction,
 } = await import("./actions");
@@ -87,6 +93,8 @@ const NOA = "44444444-4444-4444-a444-444444444444";
 const SOMEONE = "55555555-5555-4555-a555-555555555555";
 const URI_PHONE = "+972500000001";
 const CODE = "123456";
+/** The account's last change as the database writes it. */
+const MOMENT = "2026-11-20T08:00:00.123456+00:00";
 
 /** Uri, the shop's owner, as the session reads him. */
 const uri = (over: Record<string, unknown> = {}) => ({
@@ -140,6 +148,10 @@ beforeEach(() => {
     id: null,
     bankAccount: "100001",
   });
+  mocks.acknowledgeBank.mockReset().mockResolvedValue({ ok: true });
+  mocks.markDirectGroup
+    .mockReset()
+    .mockResolvedValue({ ok: true, changed: true });
   mocks.sendCode.mockReset().mockResolvedValue(null);
   mocks.checkCode.mockReset().mockResolvedValue({ userId: URI });
   mocks.signInPhoneOf.mockReset().mockResolvedValue(URI_PHONE);
@@ -158,6 +170,10 @@ const actions = {
   confirm: (business: string) => confirmFileCodeAction(business, CODE),
   reveal: (business: string) =>
     revealHolderFieldAction(business, NOA, "bank_account"),
+  confirmAccount: (business: string) =>
+    acknowledgeBankAction(business, NOA, MOMENT),
+  mark: (business: string) =>
+    markDirectGroupAction(business, NOA, "bank", true),
 };
 
 describe("who may act on a file", () => {
@@ -178,6 +194,8 @@ describe("who may act on a file", () => {
       "viewOnly",
       "viewOnly",
       "viewOnly",
+      "viewOnly",
+      "viewOnly",
     ]);
     await keepsClosed();
     expect(mocks.set).not.toHaveBeenCalled();
@@ -190,6 +208,8 @@ describe("who may act on a file", () => {
       "businessChanged",
       "businessChanged",
       "businessChanged",
+      "businessChanged",
+      "businessChanged",
     ]);
     await keepsClosed(OTHER);
     expect(mocks.set).not.toHaveBeenCalled();
@@ -198,7 +218,7 @@ describe("who may act on a file", () => {
   it("nothing with the module off", async () => {
     mocks.currentModules.mockResolvedValue(["scheduling"]);
     opened();
-    expect(await refused()).toEqual(["off", "off", "off", "off"]);
+    expect(await refused()).toEqual(["off", "off", "off", "off", "off", "off"]);
     await keepsClosed();
     expect(mocks.set).not.toHaveBeenCalled();
   });
@@ -223,6 +243,8 @@ describe("who may act on a file", () => {
       "noAccess",
       "noAccess",
       "noAccess",
+      "noAccess",
+      "noAccess",
     ]);
     await keepsClosed();
     expect(mocks.set).not.toHaveBeenCalled();
@@ -230,6 +252,8 @@ describe("who may act on a file", () => {
     expect(mocks.sendCode).not.toHaveBeenCalled();
     expect(mocks.checkCode).not.toHaveBeenCalled();
     expect(mocks.revealEmployeeFields).not.toHaveBeenCalled();
+    expect(mocks.acknowledgeBank).not.toHaveBeenCalled();
+    expect(mocks.markDirectGroup).not.toHaveBeenCalled();
   });
 
   it("lets the accountant, who holds them by role", async () => {
@@ -491,5 +515,201 @@ describe("keeping a file open and locking it", () => {
     });
     expect(mocks.cookies.has(FILE_STEP_UP_COOKIE)).toBe(false);
     expect(mocks.refresh).toHaveBeenCalled();
+  });
+});
+
+// Profile H6b-1: a holder's writes, gated like the reveal.
+describe("a holder's writes", () => {
+  it("never reach the database without a fresh step-up", async () => {
+    expect(await acknowledgeBankAction(SHOP, NOA, MOMENT)).toEqual({
+      ok: false,
+      failure: "stepUp",
+    });
+    expect(await markDirectGroupAction(SHOP, NOA, "bank", true)).toEqual({
+      ok: false,
+      failure: "stepUp",
+    });
+    opened(Date.now() - FILE_IDLE_MS - 1000);
+    expect((await markDirectGroupAction(SHOP, NOA, "bank", true)).ok).toBe(
+      false,
+    );
+    expect(mocks.acknowledgeBank).not.toHaveBeenCalled();
+    expect(mocks.markDirectGroup).not.toHaveBeenCalled();
+  });
+
+  it("never write the session's own file", async () => {
+    opened();
+    expect(await acknowledgeBankAction(SHOP, URI, MOMENT)).toEqual({
+      ok: false,
+      failure: "noAccess",
+    });
+    expect(await markDirectGroupAction(SHOP, URI, "bank", true)).toEqual({
+      ok: false,
+      failure: "noAccess",
+    });
+    expect(mocks.acknowledgeBank).not.toHaveBeenCalled();
+    expect(mocks.markDirectGroup).not.toHaveBeenCalled();
+  });
+
+  it("refuse what isn't a person, a moment, a part or a yes or no", async () => {
+    opened();
+    for (const answer of [
+      await acknowledgeBankAction(SHOP, "noa", MOMENT),
+      await acknowledgeBankAction(SHOP, NOA, "yesterday"),
+      await acknowledgeBankAction(SHOP, NOA, `${MOMENT}0`),
+      await markDirectGroupAction(SHOP, NOA, "salary", true),
+      await markDirectGroupAction(SHOP, NOA, "bank", "yes" as never),
+    ]) {
+      expect(answer).toEqual({ ok: false, failure: "failed" });
+    }
+    expect(mocks.acknowledgeBank).not.toHaveBeenCalled();
+    expect(mocks.markDirectGroup).not.toHaveBeenCalled();
+  });
+});
+
+describe("confirming an account", () => {
+  it("sends the moment as it came, slides the 15 minutes and draws the page again", async () => {
+    const at = Date.now() - 5 * 60_000;
+    opened(at);
+    expect(await acknowledgeBankAction(SHOP, NOA, MOMENT)).toEqual({
+      ok: true,
+    });
+    expect(mocks.acknowledgeBank).toHaveBeenCalledWith(URI, SHOP, NOA, MOMENT);
+    expect(openedAt()).toBeGreaterThan(at);
+    expect(mocks.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("says a change since and a confirmation since, drawing the page with what is there now", async () => {
+    opened();
+    mocks.acknowledgeBank.mockResolvedValue({ ok: false, failure: "moved" });
+    expect(await acknowledgeBankAction(SHOP, NOA, MOMENT)).toEqual({
+      ok: false,
+      failure: "moved",
+    });
+    mocks.acknowledgeBank.mockResolvedValue({ ok: false, failure: "invalid" });
+    expect(await acknowledgeBankAction(SHOP, NOA, MOMENT)).toEqual({
+      ok: false,
+      failure: "settled",
+    });
+    expect(mocks.refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it("puts the database's refusals in the screen's terms", async () => {
+    opened();
+    const cases = [
+      ["ack", "ack"],
+      ["own", "noAccess"],
+      ["ownerOnly", "noAccess"],
+      ["demo", "demo"],
+      ["closed", "closed"],
+      ["notStaff", "notInTeam"],
+      ["notInTeam", "notInTeam"],
+      ["keys", "unavailable"],
+      ["stepUp", "failed"],
+    ] as const;
+    for (const [failure, said] of cases) {
+      mocks.acknowledgeBank.mockResolvedValue({ ok: false, failure });
+      expect(await acknowledgeBankAction(SHOP, NOA, MOMENT), failure).toEqual({
+        ok: false,
+        failure: said,
+      });
+    }
+    expect(mocks.refresh).not.toHaveBeenCalled();
+  });
+});
+
+describe("marking a part handed directly", () => {
+  it("sends this one part, marked or taken off, never a set, and says it changed", async () => {
+    const at = Date.now() - 5 * 60_000;
+    opened(at);
+    expect(await markDirectGroupAction(SHOP, NOA, "bank", true)).toEqual({
+      ok: true,
+      changed: true,
+    });
+    expect(mocks.markDirectGroup).toHaveBeenLastCalledWith(
+      URI,
+      SHOP,
+      NOA,
+      "bank",
+      true,
+    );
+    expect(await markDirectGroupAction(SHOP, NOA, "pension", false)).toEqual({
+      ok: true,
+      changed: true,
+    });
+    expect(mocks.markDirectGroup).toHaveBeenLastCalledWith(
+      URI,
+      SHOP,
+      NOA,
+      "pension",
+      false,
+    );
+    expect(openedAt()).toBeGreaterThan(at);
+    expect(mocks.refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it("says a press found the part already so, offering nothing to undo, and still draws the page again", async () => {
+    opened();
+    // Another holder marked it first, on a screen this one hadn't seen.
+    mocks.markDirectGroup.mockResolvedValue({ ok: true, changed: false });
+    expect(await markDirectGroupAction(SHOP, NOA, "bank", true)).toEqual({
+      ok: true,
+      changed: false,
+    });
+    // And an undo after someone else took the change back.
+    expect(await markDirectGroupAction(SHOP, NOA, "bank", false)).toEqual({
+      ok: true,
+      changed: false,
+    });
+    expect(mocks.refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it("says what the database refused, a part it doesn't ask among them", async () => {
+    opened();
+    const cases = [
+      ["invalid", "failed"],
+      ["ack", "ack"],
+      ["off", "off"],
+      ["demo", "demo"],
+      ["closed", "closed"],
+      ["notStaff", "notInTeam"],
+      ["notInTeam", "notInTeam"],
+      ["ownerOnly", "noAccess"],
+      ["keys", "unavailable"],
+      ["unavailable", "unavailable"],
+      ["failed", "failed"],
+    ] as const;
+    for (const [failure, said] of cases) {
+      mocks.markDirectGroup.mockResolvedValue({ ok: false, failure });
+      expect(
+        await markDirectGroupAction(SHOP, NOA, "bank", true),
+        failure,
+      ).toEqual({ ok: false, failure: said });
+    }
+    expect(mocks.refresh).not.toHaveBeenCalled();
+  });
+
+  it("logs no person, part or moment", async () => {
+    opened();
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.acknowledgeBank.mockRejectedValue(
+      Object.assign(new Error(MOMENT), { code: "XX000" }),
+    );
+    mocks.markDirectGroup.mockRejectedValue(
+      Object.assign(new Error(NOA), { code: "XX000" }),
+    );
+    expect(await acknowledgeBankAction(SHOP, NOA, MOMENT)).toEqual({
+      ok: false,
+      failure: "failed",
+    });
+    expect(await markDirectGroupAction(SHOP, NOA, "bank", true)).toEqual({
+      ok: false,
+      failure: "failed",
+    });
+    const said = JSON.stringify(logged.mock.calls);
+    for (const value of [NOA, MOMENT, "bank"]) {
+      expect(said).not.toContain(value);
+    }
+    logged.mockRestore();
   });
 });

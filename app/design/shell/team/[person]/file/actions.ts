@@ -4,8 +4,10 @@ import { FILE_IDLE_MS } from "@domain/file-holders";
 import type {
   AcknowledgeAnswer,
   ConfirmFileCodeAnswer,
+  HolderWriteAnswer,
   KeepOpenAnswer,
   LockAnswer,
+  MarkDirectAnswer,
   RevealHolderAnswer,
   SendFileCodeAnswer,
 } from "../../../../../(app)/team/[person]/file/holder-file-types";
@@ -17,7 +19,8 @@ import { FILE_DEMO_CODE } from "../../../me/file/data";
 // taken, a code "goes" to the number ending in 0014, the twin's code opens
 // it and any other is wrong, "הצגה" shows the made-up numbers (or, on
 // `limit`, says the hour's limit was reached), and keeping open and locking
-// change nothing: the twin's address holds its state.
+// change nothing: the twin's address holds its state. A holder's writes
+// (H6b-1) go, but for an account that changed again meanwhile (`moved`).
 
 const pause = () => new Promise((resolve) => setTimeout(resolve, 300));
 
@@ -51,6 +54,23 @@ export async function demoRevealHolderAction(
     value:
       field === "id" ? DEMO_HOLDER_NUMBERS.id : DEMO_HOLDER_NUMBERS.bankAccount,
   };
+}
+
+export async function demoAcknowledgeBankAction(
+  state: string,
+  _seenChangedAt: string,
+): Promise<HolderWriteAnswer> {
+  await pause();
+  return state === "moved" ? { ok: false, failure: "moved" } : { ok: true };
+}
+
+/** Every press changes the twin's file: its address is the state, drawn as asked. */
+export async function demoMarkDirectAction(
+  _group: string,
+  _marked: boolean,
+): Promise<MarkDirectAnswer> {
+  await pause();
+  return { ok: true, changed: true };
 }
 
 export async function demoKeepFileOpenAction(): Promise<KeepOpenAnswer> {

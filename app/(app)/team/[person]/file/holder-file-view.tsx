@@ -2,6 +2,7 @@ import type { Address } from "@domain/address";
 import { formatBankCode } from "@domain/banks";
 import { cityName, cityOf } from "@domain/cities";
 import type { FileGroup } from "@domain/employee-file";
+import { minorChecklistOf, pensionPassed } from "@domain/file-holders";
 import { firstNameOf } from "@domain/people";
 import { displayIsraeliMobile } from "@domain/phone";
 import { formArg } from "@domain/profile";
@@ -14,9 +15,17 @@ import { createFormatter } from "next-intl";
 import type { ReactNode } from "react";
 import { type AppWording, type Translator, translator } from "../../../wording";
 import { roleLabel } from "../../role-label";
+import {
+  BankReviewAction,
+  DirectMark,
+  FileEdits,
+  type FileEditsTwin,
+} from "./file-edits";
 import { GatedFile } from "./file-gate";
+import { FileHistorySection } from "./file-history";
 import { LockFileButton } from "./file-open-watch";
 import type {
+  FileHistory,
   HolderFileActions,
   HolderFileData,
   HolderFileHead,
@@ -36,7 +45,7 @@ export type HolderFilePaths = {
   /** The team screen, for a files-only reader. */
   team: string;
   /** The twin's states for what the app does by drawing itself again. */
-  twin?: { opened: string; locked: string };
+  twin?: { opened: string } & FileEditsTwin;
 };
 
 /**
@@ -50,7 +59,13 @@ export type HolderFilePaths = {
  * said, and "נעילת התיק" at its foot. The ConceptApp team viewing as a role
  * and a deployment that can't open files get words only. Phone: one column;
  * tablet: the sections in two, the gate's card in the middle; desktop:
- * three. Also drawn with mock data on /design/shell/team/[person]/file.
+ * three. H6b-1 brought what a holder does there: an account to look at
+ * confirmed, the open file's one main action while there is one; a part
+ * marked "נמסר ישירות לשכר" (a pension whose day passed, "{העסק} בחר קרן"),
+ * or the mark taken off, quiet, with "ביטול"; and "מה קרה בתיק" under the
+ * parts, a list on a phone and a tablet and a table on a desktop. H6b-2, a
+ * minor's checklist in the identity part. Also drawn with mock data on
+ * /design/shell/team/[person]/file.
  */
 export function HolderFileView({
   screen,
@@ -123,6 +138,7 @@ export function HolderFileView({
               format={format}
               head={head}
               data={screen.data}
+              history={screen.history}
               actions={actions}
               paths={paths}
               first={first}
@@ -182,16 +198,20 @@ function Field({
   label,
   children,
   hint,
+  action,
 }: {
   label: ReactNode;
   children: ReactNode;
   hint?: ReactNode;
+  /** What a holder may do about it, under what it says (H6b-1). */
+  action?: ReactNode;
 }) {
   return (
     <div className="flex flex-col gap-0.5 px-4 py-3 not-first:border-line not-first:border-t">
       <dt className="text-ink-2 text-sm">{label}</dt>
       <dd className="text-pretty font-medium text-md">{children}</dd>
       {hint ? <dd className="text-ink-2 text-sm">{hint}</dd> : null}
+      {action ? <dd>{action}</dd> : null}
     </div>
   );
 }
@@ -252,6 +272,7 @@ type OpenProps = {
   format: Format;
   head: HolderFileHead;
   data: HolderFileData;
+  history: FileHistory;
   actions: HolderFileActions;
   paths: HolderFilePaths;
   first: string;
@@ -260,19 +281,60 @@ type OpenProps = {
 /**
  * A group missing from the file, or handed straight to payroll: said in its
  * section, with where to send a link from for a reader who sees the team;
- * nothing otherwise.
+ * nothing otherwise. Under it, quiet, what a holder does about it (H6b-1):
+ * "סימון שנמסר ישירות לשכר" on a missing part ("סימון ש{העסק} בחר קרן" on a
+ * pension whose day passed, which the row says instead of the link), and
+ * "הסרת הסימון" on a marked one.
  */
 function groupState(
   { t, data, head, first }: Pick<OpenProps, "t" | "data" | "head" | "first">,
   group: FileGroup,
 ): ReactNode {
+  const named = t(`team.file.direct.groups.${group}`);
+  const business = head.businessName;
+  const marked = t("team.file.direct.marked", { group: named });
+  const unmarked = t("team.file.direct.unmarked", { group: named });
+  // Found already so: another holder's press came first.
+  const alreadyMarked = t("team.file.direct.alreadyMarked", { group: named });
+  const alreadyUnmarked = t("team.file.direct.alreadyUnmarked", {
+    group: named,
+  });
   if (data.missing.includes(group)) {
+    const passed =
+      group === "pension" &&
+      pensionPassed(data.missing, data.pension.dueOn, data.today);
     return (
       <Field
         key="group"
         label={t(`team.file.groups.${group}`)}
         hint={
-          head.seesTeam ? t("team.file.rows.missingHint", { first }) : undefined
+          passed
+            ? t("team.file.rows.pensionPassed", { business })
+            : head.seesTeam
+              ? t("team.file.rows.missingHint", { first })
+              : undefined
+        }
+        action={
+          <DirectMark
+            group={group}
+            marked
+            label={
+              passed
+                ? t("team.file.direct.pension", { business })
+                : t("team.file.direct.mark")
+            }
+            hint={passed ? undefined : t("team.file.direct.markHint")}
+            words={{
+              group: named,
+              done: passed
+                ? t("team.file.direct.pensionMarked", { business })
+                : marked,
+              undone: unmarked,
+              already: alreadyMarked,
+              alreadyUndone: alreadyUnmarked,
+            }}
+            current={data.direct}
+          />
         }
       >
         <span className="text-warning">{t("team.file.rows.missing")}</span>
@@ -281,12 +343,70 @@ function groupState(
   }
   if (data.direct.includes(group)) {
     return (
-      <Field key="group" label={t(`team.file.groups.${group}`)}>
+      <Field
+        key="group"
+        label={t(`team.file.groups.${group}`)}
+        action={
+          <DirectMark
+            group={group}
+            marked={false}
+            label={t("team.file.direct.unmark")}
+            words={{
+              group: named,
+              done: unmarked,
+              undone: marked,
+              already: alreadyUnmarked,
+              alreadyUndone: alreadyMarked,
+            }}
+            current={data.direct}
+          />
+        }
+      >
         {t("team.file.rows.direct")}
       </Field>
     );
   }
   return null;
+}
+
+/**
+ * A minor's file (H6b-2, issue #82 §2.7): what the business owes before and
+ * after the start, as a reminder in the identity part, on a fill of its own,
+ * not a card. Nothing is marked: the business keeps these itself.
+ */
+function MinorChecklist({
+  t,
+  format,
+  data,
+}: Pick<OpenProps, "t" | "format" | "data">) {
+  const { identity } = data;
+  if (!identity.minor) return null;
+  const list = minorChecklistOf(
+    identity.birthDate,
+    identity.youthUntil,
+    identity.minor.startedOn,
+    data.today,
+  );
+  if (!list) return null;
+  return (
+    <div className="mx-4 mb-4 flex flex-col gap-2 rounded-control bg-surface-2 p-3">
+      <h3 className="font-semibold text-base">{t("team.file.minor.title")}</h3>
+      <ul className="flex list-disc flex-col gap-1.5 ps-5 text-pretty text-sm">
+        <li>{t("team.file.minor.before")}</li>
+        <li>
+          {list.noticeBy === null
+            ? t("team.file.minor.noticeNoStart")
+            : t.rich(
+                list.noticePassed
+                  ? "team.file.minor.noticePassed"
+                  : "team.file.minor.notice",
+                { date: dayOf(format, list.noticeBy), ltr },
+              )}
+        </li>
+        {list.under15 ? <li>{t("team.file.minor.under15")}</li> : null}
+      </ul>
+    </div>
+  );
 }
 
 /**
@@ -352,7 +472,8 @@ function addressWords(t: T, address: Address, locale: "he" | "en"): ReactNode {
 }
 
 function OpenFile(props: OpenProps) {
-  const { t, wording, format, head, data, actions, paths, first } = props;
+  const { t, wording, format, head, data, history, actions, paths, first } =
+    props;
   const locale = wording.locale ?? "he";
   const form = formArg(head.addressForm);
   const tb = translator(wording, "banks");
@@ -398,6 +519,14 @@ function OpenFile(props: OpenProps) {
       case "employer":
         return t("team.file.rows.pensionEmployer", { business });
       case "later":
+        // Handed directly, or its day passed: the part's own row says so
+        // (H6b-1), and "later" is no longer what happens.
+        if (
+          data.direct.includes("pension") ||
+          pensionPassed(data.missing, pension.dueOn, data.today)
+        ) {
+          return null;
+        }
         if (pension.dueOn === null) {
           return t("team.file.rows.pensionLaterNone", { first, form });
         }
@@ -414,238 +543,275 @@ function OpenFile(props: OpenProps) {
     }
   })();
 
+  /** The account's review confirmed: its words by the review, in the person's form. */
+  const reviewAction =
+    bank?.review && bank.changedAt
+      ? {
+          label:
+            bank.review === "new"
+              ? t("team.file.review.confirmNew")
+              : bank.review === "warned"
+                ? t("team.file.review.confirmWarned")
+                : t("team.file.review.confirmDisputed", { first }),
+          hint:
+            bank.review === "disputed"
+              ? t("team.file.review.notTheirs", { first, form })
+              : t("team.file.review.held"),
+        }
+      : null;
+
   return (
-    <div className="flex flex-col gap-6 md:gap-8">
-      <div
-        data-file-grid
-        className="grid items-start gap-6 md:grid-cols-2 md:gap-8 xl:grid-cols-3"
-      >
-        <Section id="identity" title={t("team.file.sections.identity")}>
-          <Rows
-            before={[
-              groupState(props, "identity"),
-              identity.legalName ? (
-                <Field key="legalName" label={t("team.file.rows.legalName")}>
-                  {identity.legalName}
-                </Field>
-              ) : null,
-              identity.kind ? (
-                <Field key="document" label={t("team.file.rows.document")}>
-                  {identity.kind === "passport" && identity.country
-                    ? t("team.file.rows.passportOf", {
-                        country:
-                          countries.of(identity.country) ?? identity.country,
-                      })
-                    : identity.kind === "other" && identity.documentName
-                      ? identity.documentName
-                      : t("team.file.rows.documentKind", {
-                          kind: identity.kind,
-                        })}
-                </Field>
-              ) : null,
-            ]}
-            number={
-              identity.masked && identity.kind ? (
-                <HolderReveal
-                  field="id"
-                  label={t("team.file.rows.number", { kind: identity.kind })}
-                  masked={identity.masked}
-                  reveal={actions.reveal}
-                  lockedHref={paths.twin?.locked}
-                />
-              ) : null
-            }
-            after={[
-              identity.expiresOn && identity.kind !== "il" ? (
-                <Field key="expires" label={t("team.file.rows.expires")}>
-                  <span dir="ltr">{dayOf(format, identity.expiresOn)}</span>
-                </Field>
-              ) : null,
-              identity.birthDate ? (
-                <Field
-                  key="birthDate"
-                  label={t("team.file.rows.birthDate")}
-                  hint={
-                    identity.youthUntil
-                      ? t.rich("team.person.youth", {
-                          ltr,
-                          until: format.dateTime(
-                            new Date(`${identity.youthUntil}T12:00:00Z`),
-                            {
-                              month: "numeric",
-                              year: "numeric",
-                              timeZone: "UTC",
-                            },
-                          ),
-                        })
-                      : undefined
-                  }
-                >
-                  <span dir="ltr">{dayOf(format, identity.birthDate)}</span>
-                </Field>
-              ) : null,
-            ]}
-          />
-        </Section>
-
-        {contact ? (
-          <Section id="contact" title={t("team.file.sections.contact")}>
-            <dl>
-              {groupState(props, "address")}
-              {contact.address ? (
-                <Field label={t("team.file.rows.address")}>
-                  {addressWords(t, contact.address, locale)}
-                </Field>
-              ) : null}
-              {contact.email ? (
-                <Field label={t("team.file.rows.email")}>
-                  <span dir="ltr" className="[overflow-wrap:anywhere]">
-                    {contact.email}
-                  </span>
-                </Field>
-              ) : null}
-              {contact.workLanguage ? (
-                <Field label={t("team.file.rows.workLanguage")}>
-                  {contact.workLanguage}
-                </Field>
-              ) : null}
-              {contact.emergency ? (
-                <Field
-                  label={t("team.file.rows.emergency")}
-                  hint={
-                    <a
-                      href={`tel:${contact.emergency.phone}`}
-                      dir="ltr"
-                      className="inline-flex min-h-11 items-center font-medium text-base text-ink underline underline-offset-4"
-                    >
-                      {displayIsraeliMobile(contact.emergency.phone)}
-                    </a>
-                  }
-                >
-                  {contact.emergency.name}
-                </Field>
-              ) : null}
-            </dl>
-          </Section>
-        ) : null}
-
-        {bank ? (
-          <Section id="bank" title={t("team.file.sections.bank")}>
-            {review ? <Notice>{review}</Notice> : null}
+    <FileEdits actions={actions} first={first} twin={paths.twin}>
+      <div className="flex flex-col gap-6 md:gap-8">
+        <div
+          data-file-grid
+          className="grid items-start gap-6 md:grid-cols-2 md:gap-8 xl:grid-cols-3"
+        >
+          <Section id="identity" title={t("team.file.sections.identity")}>
             <Rows
               before={[
-                groupState(props, "bank"),
-                bank.code !== null ? (
-                  <Field key="bankName" label={t("team.file.rows.bankName")}>
-                    {t.rich("team.file.rows.bankOf", {
-                      name: bankName(bank.code),
-                      code: formatBankCode(bank.code),
-                      ltr,
-                    })}
+                groupState(props, "identity"),
+                identity.legalName ? (
+                  <Field key="legalName" label={t("team.file.rows.legalName")}>
+                    {identity.legalName}
                   </Field>
                 ) : null,
-                bank.branch !== null ? (
-                  <Field key="branch" label={t("team.file.rows.branch")}>
-                    <span dir="ltr">{bank.branch}</span>
+                identity.kind ? (
+                  <Field key="document" label={t("team.file.rows.document")}>
+                    {identity.kind === "passport" && identity.country
+                      ? t("team.file.rows.passportOf", {
+                          country:
+                            countries.of(identity.country) ?? identity.country,
+                        })
+                      : identity.kind === "other" && identity.documentName
+                        ? identity.documentName
+                        : t("team.file.rows.documentKind", {
+                            kind: identity.kind,
+                          })}
                   </Field>
                 ) : null,
               ]}
               number={
-                bank.masked ? (
+                identity.masked && identity.kind ? (
                   <HolderReveal
-                    field="bank_account"
-                    label={t("team.file.rows.account")}
-                    masked={bank.masked}
+                    field="id"
+                    label={t("team.file.rows.number", { kind: identity.kind })}
+                    masked={identity.masked}
                     reveal={actions.reveal}
                     lockedHref={paths.twin?.locked}
                   />
                 ) : null
               }
               after={[
-                bank.holder ? (
+                identity.expiresOn && identity.kind !== "il" ? (
+                  <Field key="expires" label={t("team.file.rows.expires")}>
+                    <span dir="ltr">{dayOf(format, identity.expiresOn)}</span>
+                  </Field>
+                ) : null,
+                identity.birthDate ? (
                   <Field
-                    key="holder"
-                    label={t("team.file.rows.holder")}
+                    key="birthDate"
+                    label={t("team.file.rows.birthDate")}
                     hint={
-                      bank.instructionAt
-                        ? t.rich("team.file.rows.instruction", {
-                            date: momentOf(format, bank.instructionAt),
+                      identity.youthUntil
+                        ? t.rich("team.person.youth", {
                             ltr,
+                            until: format.dateTime(
+                              new Date(`${identity.youthUntil}T12:00:00Z`),
+                              {
+                                month: "numeric",
+                                year: "numeric",
+                                timeZone: "UTC",
+                              },
+                            ),
                           })
                         : undefined
                     }
                   >
-                    {bank.holder === "family"
-                      ? t("team.file.rows.holderFamily", {
-                          holder: bank.holderName ?? "",
-                        })
-                      : t("team.file.rows.holderSelf", { first })}
+                    <span dir="ltr">{dayOf(format, identity.birthDate)}</span>
                   </Field>
                 ) : null,
               ]}
             />
+            <MinorChecklist t={t} format={format} data={data} />
           </Section>
-        ) : null}
 
-        <Section id="pension" title={t("team.file.sections.pension")}>
-          <dl>
-            {groupState(props, "pension")}
-            {pensionWords ? (
-              <Field label={t("team.file.rows.fund")}>{pensionWords}</Field>
-            ) : null}
-          </dl>
-        </Section>
+          {contact ? (
+            <Section id="contact" title={t("team.file.sections.contact")}>
+              <dl>
+                {groupState(props, "address")}
+                {contact.address ? (
+                  <Field label={t("team.file.rows.address")}>
+                    {addressWords(t, contact.address, locale)}
+                  </Field>
+                ) : null}
+                {contact.email ? (
+                  <Field label={t("team.file.rows.email")}>
+                    <span dir="ltr" className="[overflow-wrap:anywhere]">
+                      {contact.email}
+                    </span>
+                  </Field>
+                ) : null}
+                {contact.workLanguage ? (
+                  <Field label={t("team.file.rows.workLanguage")}>
+                    {contact.workLanguage}
+                  </Field>
+                ) : null}
+                {contact.emergency ? (
+                  <Field
+                    label={t("team.file.rows.emergency")}
+                    hint={
+                      <a
+                        href={`tel:${contact.emergency.phone}`}
+                        dir="ltr"
+                        className="inline-flex min-h-11 items-center font-medium text-base text-ink underline underline-offset-4"
+                      >
+                        {displayIsraeliMobile(contact.emergency.phone)}
+                      </a>
+                    }
+                  >
+                    {contact.emergency.name}
+                  </Field>
+                ) : null}
+              </dl>
+            </Section>
+          ) : null}
 
-        {data.form101 ? (
-          <Section
-            id="form101"
-            title={t("team.file.sections.form101", { year: data.year })}
-          >
-            <dl>
-              <Field
-                label={t("team.file.rows.status")}
-                hint={
-                  taxYear?.status === "returned" && taxYear.returnedReason
-                    ? t("team.file.rows.returnedReason", {
-                        reason: taxYear.returnedReason,
-                      })
-                    : undefined
+          {bank ? (
+            <Section id="bank" title={t("team.file.sections.bank")}>
+              {review ? <Notice>{review}</Notice> : null}
+              {review && reviewAction && bank.changedAt ? (
+                // A review always has a moment; one set by hand without it
+                // shows the notice alone.
+                <BankReviewAction
+                  changedAt={bank.changedAt}
+                  label={reviewAction.label}
+                  hint={reviewAction.hint}
+                  confirmed={t("team.file.review.confirmed", { first })}
+                />
+              ) : null}
+              <Rows
+                before={[
+                  groupState(props, "bank"),
+                  bank.code !== null ? (
+                    <Field key="bankName" label={t("team.file.rows.bankName")}>
+                      {t.rich("team.file.rows.bankOf", {
+                        name: bankName(bank.code),
+                        code: formatBankCode(bank.code),
+                        ltr,
+                      })}
+                    </Field>
+                  ) : null,
+                  bank.branch !== null ? (
+                    <Field key="branch" label={t("team.file.rows.branch")}>
+                      <span dir="ltr">{bank.branch}</span>
+                    </Field>
+                  ) : null,
+                ]}
+                number={
+                  bank.masked ? (
+                    <HolderReveal
+                      // Keyed by the change it shows: a newer account
+                      // (changed again while the old one's digits were
+                      // shown) starts at the dots, so "ראיתי את החשבון
+                      // החדש" never sits beside the old number.
+                      key={bank.changedAt ?? "bank"}
+                      field="bank_account"
+                      label={t("team.file.rows.account")}
+                      masked={bank.masked}
+                      reveal={actions.reveal}
+                      lockedHref={paths.twin?.locked}
+                    />
+                  ) : null
                 }
-              >
-                {t.rich("team.file.rows.form101", {
-                  status: taxYear?.status ?? "none",
-                  date: taxYear?.changeDueBy
-                    ? dayOf(format, taxYear.changeDueBy)
-                    : "",
-                  ltr,
-                })}
-              </Field>
-              {taxYear?.route ? (
-                <Field label={t("team.file.rows.form101Way")}>
-                  {t("team.file.rows.form101Route", {
-                    route: taxYear.route,
-                    provider: data.form101.provider ?? "",
-                  })}
-                </Field>
+                after={[
+                  bank.holder ? (
+                    <Field
+                      key="holder"
+                      label={t("team.file.rows.holder")}
+                      hint={
+                        bank.instructionAt
+                          ? t.rich("team.file.rows.instruction", {
+                              date: momentOf(format, bank.instructionAt),
+                              ltr,
+                            })
+                          : undefined
+                      }
+                    >
+                      {bank.holder === "family"
+                        ? t("team.file.rows.holderFamily", {
+                            holder: bank.holderName ?? "",
+                          })
+                        : t("team.file.rows.holderSelf", { first })}
+                    </Field>
+                  ) : null,
+                ]}
+              />
+            </Section>
+          ) : null}
+
+          <Section id="pension" title={t("team.file.sections.pension")}>
+            <dl>
+              {groupState(props, "pension")}
+              {pensionWords ? (
+                <Field label={t("team.file.rows.fund")}>{pensionWords}</Field>
               ) : null}
             </dl>
           </Section>
-        ) : null}
-      </div>
 
-      <Card className="flex flex-col gap-3 md:max-w-2xl" padding="lg">
-        <p className="text-ink-2">
-          {data.submittedAt
-            ? t.rich("team.file.rows.sent", {
-                business,
-                date: momentOf(format, data.submittedAt),
-                ltr,
-              })
-            : t("team.file.rows.notSent", { first, form })}
-        </p>
-        <LockFileButton />
-        <p className="text-ink-2 text-sm">{t("team.file.lock.hint")}</p>
-      </Card>
-    </div>
+          {data.form101 ? (
+            <Section
+              id="form101"
+              title={t("team.file.sections.form101", { year: data.year })}
+            >
+              <dl>
+                <Field
+                  label={t("team.file.rows.status")}
+                  hint={
+                    taxYear?.status === "returned" && taxYear.returnedReason
+                      ? t("team.file.rows.returnedReason", {
+                          reason: taxYear.returnedReason,
+                        })
+                      : undefined
+                  }
+                >
+                  {t.rich("team.file.rows.form101", {
+                    status: taxYear?.status ?? "none",
+                    date: taxYear?.changeDueBy
+                      ? dayOf(format, taxYear.changeDueBy)
+                      : "",
+                    ltr,
+                  })}
+                </Field>
+                {taxYear?.route ? (
+                  <Field label={t("team.file.rows.form101Way")}>
+                    {t("team.file.rows.form101Route", {
+                      route: taxYear.route,
+                      provider: data.form101.provider ?? "",
+                    })}
+                  </Field>
+                ) : null}
+              </dl>
+            </Section>
+          ) : null}
+        </div>
+
+        <FileHistorySection t={t} format={format} history={history} />
+
+        <Card className="flex flex-col gap-3 md:max-w-2xl" padding="lg">
+          <p className="text-ink-2">
+            {data.submittedAt
+              ? t.rich("team.file.rows.sent", {
+                  business,
+                  date: momentOf(format, data.submittedAt),
+                  ltr,
+                })
+              : t("team.file.rows.notSent", { first, form })}
+          </p>
+          <LockFileButton />
+          <p className="text-ink-2 text-sm">{t("team.file.lock.hint")}</p>
+        </Card>
+      </div>
+    </FileEdits>
   );
 }

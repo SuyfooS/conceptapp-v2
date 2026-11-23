@@ -38,6 +38,8 @@ const SERVER_ONLY = [
   "app/(app)/team/file-status.ts",
   "app/(app)/team/[person]/file/holder-file.ts",
   "app/(app)/team/[person]/file/step-up.ts",
+  // Profile H6b-1: what happened in a file, read from the log.
+  "packages/db/file-history.ts",
 ];
 
 const code = ["app", "packages", "modules", "tooling", "e2e"].flatMap(files);
@@ -132,6 +134,9 @@ describe("the hiring file's code", () => {
       "app/(app)/team/file-access.ts",
       "app/(app)/team/file-lines.tsx",
       "app/(app)/team/[person]/file-card.tsx",
+      // Profile H6b: Today's accounts to look at, and the team's filter.
+      "app/(app)/home/file-reviews.tsx",
+      "app/(app)/team/file-filter.tsx",
     ];
     expect(screens.length).toBeGreaterThan(10);
     for (const path of screens) {
@@ -162,7 +167,8 @@ describe("the hiring file's code", () => {
       "app/(app)/team/[person]/file/holder-file.ts",
       "app/(app)/team/file-status.ts",
     ].flatMap(consoleArgs);
-    expect(reads).toEqual([",code,kind", "what,code,kind"]);
+    // A holder's file, what happened in it (H6b-1), and the status.
+    expect(reads).toEqual([",code,kind", ",code,kind", "what,code,kind"]);
     // The page reads the person from its address and nothing else.
     const page = read("app/(app)/team/[person]/file/page.tsx");
     expect(page).toMatch(
@@ -174,6 +180,35 @@ describe("the hiring file's code", () => {
     const stepUp = read("app/(app)/team/[person]/file/step-up.ts");
     expect(stepUp).toMatch(/httpOnly: true/);
     expect(stepUp).toMatch(/sameSite: "strict"/);
+  });
+
+  it("lists what happened in a file with field names only", () => {
+    // Profile H6b-1: the log's own columns, about one person, by the
+    // action alone; never a value, which the rows never held.
+    const history = read("packages/db/file-history.ts");
+    const selects = [...history.matchAll(/\.select\(("[^"]*"|\w+)\)/g)].map(
+      ([, args = ""]) => args,
+    );
+    expect(selects).toEqual([
+      "COLUMNS",
+      '"user_id, active, profiles (full_name)"',
+    ]);
+    expect(history).toContain(
+      'const COLUMNS = "id, action, details, created_at, actor_id";',
+    );
+    const filters = [
+      ...history.matchAll(/\.(eq|neq|in|filter)\("([^"]+)"/g),
+    ].map(([, how, column]) => `${how} ${column}`);
+    expect(filters).toEqual([
+      "eq business_id",
+      "eq details->>person",
+      "filter action",
+      "eq action",
+      "neq details->>fields",
+      "eq business_id",
+      "in user_id",
+    ]);
+    expect(history).not.toMatch(/console\.log|_enc|"use cache/);
   });
 
   it("puts no value of a file in a URL", () => {

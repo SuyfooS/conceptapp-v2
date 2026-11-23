@@ -1,5 +1,6 @@
 import { instantIn, weekdayOf } from "@domain/availability";
 import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
+import type { FileReview } from "@domain/file-holders";
 import type { FirstStepsData } from "@domain/first-steps";
 import type { ModuleNavEntry, Role } from "@domain/modules";
 import { firstNameOf } from "@domain/people";
@@ -88,6 +89,7 @@ import type {
 } from "../schedule/week";
 import { type AppWording, type Translator, translator } from "../wording";
 import { BankChangeCard } from "./bank-change-card";
+import { FileReviewsSection } from "./file-reviews";
 import { FirstStepsCard } from "./first-steps-card";
 import { MyBusinesses } from "./my-businesses";
 import { RefreshOnReturn } from "./refresh-on-return";
@@ -190,6 +192,12 @@ export type TodayData = {
    * the staff, viewing as a role, or when it couldn't be read.
    */
   file?: FileToday | null;
+  /**
+   * The staff's accounts to look at, for an owner who holds the files
+   * (H6b-1: `currentFileReviews`), drawn with the team's names: none for
+   * anyone else, in a view, or when the read failed.
+   */
+  reviews?: FileReview[] | null;
 };
 
 type T = Translator<"app">;
@@ -614,6 +622,15 @@ export async function TodayView({
             tone={data.firstSteps ? "flat" : "accent"}
           />
         ))}
+
+        {data.reviews?.length && data.team ? (
+          <FileReviewsSection
+            t={t}
+            reviews={data.reviews}
+            members={data.team.members}
+            path={path}
+          />
+        ) : null}
 
         {file && filePart.card ? (
           <FileTodayCard

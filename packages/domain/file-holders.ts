@@ -1,3 +1,4 @@
+import { addDays } from "./availability";
 import {
   type BankReview,
   FILE_GROUPS,
@@ -163,4 +164,139 @@ export function fileStaff<T extends { role: Role }>(
   return members.filter(
     (member) => member.role === "manager" || member.role === "worker",
   );
+}
+
+// ---------------------------------------------------------------------------
+// What a holder does in a file (profile H6b)
+
+/**
+ * The log's rows "מה קרה בתיק" lists, besides a number's reveal (an
+ * `employee.view` with `id` or `bank_account`): the file's changes, its
+ * sending, the 101's marks, the account confirmed or disputed, and the
+ * parts handed directly. Never the daily read of the file itself.
+ */
+export const FILE_HISTORY_ACTIONS = [
+  "employee.details",
+  "employee.submit",
+  "employee.tax_year",
+  "employee.bank_ack",
+  "employee.bank_disputed",
+  "employee.direct",
+] as const;
+
+/** The newest lines "מה קרה בתיק" shows. */
+export const FILE_HISTORY_SIZE = 40;
+
+/** The pension is missing and its day to choose (`dueOn`) is behind `today`: the business chooses now. */
+export function pensionPassed(
+  missing: readonly FileGroup[],
+  dueOn: string | null,
+  today: string,
+): boolean {
+  return missing.includes("pension") && dueOn !== null && dueOn < today;
+}
+
+/** An account a holder should look at, by person. */
+export type FileReview = { userId: string; review: BankReview };
+
+/** "לא שיניתי" first, then an account the check doubts, then new ones. */
+const REVIEW_ORDER: Record<BankReview, number> = {
+  disputed: 0,
+  warned: 1,
+  new: 2,
+};
+
+/**
+ * The accounts to look at, from a holder's status rows (anyone else's have
+ * no detail, so none): "לא שיניתי" first, then a number the bank's check
+ * doubts, then new ones, by name within each (`names`, unnamed last).
+ */
+export function fileReviewsOf(
+  statuses: readonly FileStatus[],
+  names: ReadonlyMap<string, string | null> = new Map(),
+): FileReview[] {
+  const reviews: FileReview[] = [];
+  for (const status of statuses) {
+    const review = status.detail?.bank_review;
+    if (review) reviews.push({ userId: status.user_id, review });
+  }
+  return orderFileReviews(reviews, names);
+}
+
+/** The accounts to look at in their order: by kind, then by name (unnamed last). */
+export function orderFileReviews(
+  reviews: readonly FileReview[],
+  names: ReadonlyMap<string, string | null>,
+): FileReview[] {
+  const nameOf = (userId: string) => names.get(userId) ?? null;
+  return [...reviews].sort((a, b) => {
+    const kind = REVIEW_ORDER[a.review] - REVIEW_ORDER[b.review];
+    if (kind !== 0) return kind;
+    const one = nameOf(a.userId);
+    const two = nameOf(b.userId);
+    if (one === null || two === null) {
+      return (one === null ? 1 : 0) - (two === null ? 1 : 0);
+    }
+    return one.localeCompare(two, "he");
+  });
+}
+
+/**
+ * What a minor's file reminds the business of (H6b-2, issue #82 §2.7): the
+ * notice of the terms of work within a week of the start (`noticeBy`, null
+ * without a start), whether that day is behind `today`, and whether they are
+ * under 15, who may work only in the holidays. Null for an adult, and from
+ * the 18th birthday (`youthUntil`) on. The age goes by the birth date, or
+ * by the 18th birthday when the file holds none.
+ */
+export type MinorChecklist = {
+  noticeBy: string | null;
+  noticePassed: boolean;
+  under15: boolean;
+};
+
+export function minorChecklistOf(
+  birthDate: string | null,
+  youthUntil: string | null,
+  startedOn: string | null,
+  today: string,
+): MinorChecklist | null {
+  if (youthUntil === null || youthUntil <= today) return null;
+  const fifteenth = birthDate
+    ? `${Number(birthDate.slice(0, 4)) + 15}${birthDate.slice(4)}`
+    : `${Number(youthUntil.slice(0, 4)) - 3}${youthUntil.slice(4)}`;
+  const noticeBy = startedOn ? addDays(startedOn, 7) : null;
+  return {
+    noticeBy,
+    noticePassed: noticeBy !== null && noticeBy < today,
+    under15: today < fifteenth,
+  };
+}
+
+/** The team's filter of the files (H6b-2): everyone, files missing details, an open 101. */
+export const FILE_FILTERS = ["all", "missing", "form101"] as const;
+export type FileFilter = (typeof FILE_FILTERS)[number];
+export type FileTag = Exclude<FileFilter, "all">;
+
+/**
+ * Which of the filter's choices a file shows under, from what the reader
+ * sees: missing anything; this year's 101 open while the business takes it
+ * in the app, which for a holder is none yet, returned or an updated one
+ * due, and for anyone else not in.
+ */
+export function fileFilterTags(
+  status: FileStatus,
+  form101: boolean,
+): FileTag[] {
+  const tags: FileTag[] = [];
+  if (!status.complete) tags.push("missing");
+  if (form101) {
+    const open = status.detail
+      ? status.detail.status === null ||
+        status.detail.status === "returned" ||
+        status.detail.status === "change_due"
+      : !status.form101_in;
+    if (open) tags.push("form101");
+  }
+  return tags;
 }

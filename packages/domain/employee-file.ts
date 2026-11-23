@@ -498,6 +498,9 @@ export const fileReply = z.discriminatedUnion("access", [
     missing: fileGroups,
     youth_until: day.nullable(),
     pension_due_on: day.nullable(),
+    // The open employment period's first day (H6b-2,
+    // 20261126000600_file_started_and_changed.sql): absent before it.
+    started_on: day.nullable().default(null),
     tax_years: z.array(taxYearRow),
   }),
   denied,
@@ -563,6 +566,9 @@ export const statusRow = z.object({
       bank_review: z.enum(BANK_REVIEWS).nullable(),
       youth_until: day.nullable(),
       submitted_at: z.string().nullable(),
+      // When the file or its 101 was last written, by anyone (H6b-2):
+      // absent before 20261126000600_file_started_and_changed.sql.
+      changed_at: z.string().nullable().default(null),
     })
     .nullable(),
 });

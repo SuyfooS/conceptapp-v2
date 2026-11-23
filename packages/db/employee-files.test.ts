@@ -931,3 +931,135 @@ describe("a holder's state", () => {
     }
   });
 });
+
+// Profile H6b: what a holder writes.
+describe("a holder's writes", () => {
+  const holderReply = (direct: string[]) => ({
+    data: {
+      access: "holder",
+      demo: false,
+      file: storedFile({ direct_groups: direct }),
+      sealed: {
+        address: null,
+        email: null,
+        work_language: null,
+        id_name: null,
+        bank_holder: null,
+        emergency: null,
+      },
+      key: null,
+      missing: [],
+      youth_until: null,
+      pension_due_on: null,
+      tax_years: [],
+    },
+    error: null,
+  });
+
+  it("ask nothing without the keys", async () => {
+    const saved = process.env.EMPLOYEE_DATA_KEKS;
+    delete process.env.EMPLOYEE_DATA_KEKS;
+    try {
+      expect(
+        await files.markDirectGroup(OWNER, BUSINESS, NOA, "bank", true),
+      ).toEqual({ ok: false, failure: "keys" });
+      expect(db.calls).toEqual([]);
+    } finally {
+      process.env.EMPLOYEE_DATA_KEKS = saved ?? "";
+    }
+  });
+
+  it("send the account's moment as the read gave it, and say a change or a confirmation since", async () => {
+    const moment = "2026-11-20T08:00:00.123456+00:00";
+    expect(await files.acknowledgeBank(OWNER, BUSINESS, NOA, moment)).toEqual({
+      ok: true,
+    });
+    expect(callsTo("acknowledge_bank")).toEqual([
+      {
+        fn: "acknowledge_bank",
+        args: {
+          actor: OWNER,
+          business: BUSINESS,
+          person: NOA,
+          seen_changed_at: moment,
+        },
+        as: "admin",
+      },
+    ]);
+    db.answers.acknowledge_bank = () => ({
+      data: null,
+      error: { code: "22023", message: "Nothing to confirm" },
+    });
+    expect(await files.acknowledgeBank(OWNER, BUSINESS, NOA, moment)).toEqual({
+      ok: false,
+      failure: "invalid",
+    });
+  });
+
+  it("send one part and whether it is marked, and hear whether anything changed", async () => {
+    db.answers.set_direct_groups = () => ({ data: true, error: null });
+    expect(
+      await files.markDirectGroup(OWNER, BUSINESS, NOA, "bank", true),
+    ).toEqual({ ok: true, changed: true });
+    expect(callsTo("set_direct_groups")).toEqual([
+      {
+        fn: "set_direct_groups",
+        args: {
+          actor: OWNER,
+          business: BUSINESS,
+          person: NOA,
+          file_group: "bank",
+          marked: true,
+        },
+        as: "admin",
+      },
+    ]);
+    // The part already was so: nothing written, and no undo to offer.
+    db.answers.set_direct_groups = () => ({ data: false, error: null });
+    expect(
+      await files.markDirectGroup(OWNER, BUSINESS, NOA, "pension", false),
+    ).toEqual({ ok: true, changed: false });
+    expect(callsTo("set_direct_groups").at(-1)?.args).toMatchObject({
+      file_group: "pension",
+      marked: false,
+    });
+  });
+
+  it("say a refusal, a database before the change, and an answer that isn't a yes or a no", async () => {
+    db.answers.set_direct_groups = () => ({
+      data: null,
+      error: { code: "22023", message: "Groups of the file only" },
+    });
+    expect(
+      await files.markDirectGroup(OWNER, BUSINESS, NOA, "bank", true),
+    ).toEqual({ ok: false, failure: "invalid" });
+    // The old function took the whole set: these arguments find none.
+    db.answers.set_direct_groups = () => ({
+      data: null,
+      error: { code: "PGRST202", message: "no such function" },
+    });
+    expect(
+      await files.markDirectGroup(OWNER, BUSINESS, NOA, "bank", true),
+    ).toEqual({ ok: false, failure: "unavailable" });
+    db.answers.set_direct_groups = () => ({ data: null, error: null });
+    expect(
+      await files.markDirectGroup(OWNER, BUSINESS, NOA, "bank", true),
+    ).toEqual({ ok: false, failure: "failed" });
+  });
+
+  it("read the open period's start, and none from a database before it", async () => {
+    db.answers.employee_file = () => ({
+      ...holderReply([]),
+      data: { ...holderReply([]).data, started_on: "2026-09-01" },
+    });
+    expect(await files.getEmployeeFile(BUSINESS, NOA)).toMatchObject({
+      ok: true,
+      startedOn: "2026-09-01",
+    });
+    db.answers.employee_file = () => holderReply([]);
+    expect(await files.getEmployeeFile(BUSINESS, NOA)).toMatchObject({
+      ok: true,
+      startedOn: null,
+    });
+  });
+});
