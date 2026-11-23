@@ -9,8 +9,9 @@
 -- (20261127000300); the list's file name, and a private chat with nothing in
 -- it yet listed for neither of its two; at most 10 PDF places unsent from the
 -- last day a person, of those that hold a file or may still be given one; a
--- person's own PDFs of the last 10 minutes within half the business's space
--- (20261127000300), and the business's within all of it;
+-- person's own PDFs of the last 10 minutes in a business within half its space
+-- (20261127000300), their pictures and their PDFs elsewhere apart, and the
+-- business's within all of it;
 -- the project's guard counting the places on their way; which PDF paths a
 -- signed upload may still write, for the clean-up's tombstones; and an unsent
 -- place due after a day. Fixed ids of its own, explicit times, and Storage's
@@ -19,7 +20,7 @@
 -- once all meet the counts; one transaction can't show that here, and
 -- tooling/chat-pdfs.test.ts checks the lock comes before the counts.)
 begin;
-select plan(53);
+select plan(55);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -547,6 +548,34 @@ select is(
   '54000/own',
   'with his own PDFs of the last 10 minutes bringing half the business''s space, Yoav''s next waits, whatever its size'
 );
+select is(
+  pg_temp.refusal($$select public.reserve_chat_upload('8a000000-0000-4000-a000-000000000004',
+    '8a000000-0000-4000-b000-000000000001', 'image', 'image/webp', 42000,
+    pg_temp.id_of('team'), at_time => '2026-11-09 08:01+00')$$),
+  'none',
+  'while his picture goes: the server puts it itself, and only his PDFs count'
+);
+-- Yoav moves to Q's staff (one business's staff at a time), his five PDFs in P
+-- still in their 10 minutes, and then comes back.
+update public.memberships set active = false
+where business_id = '8a000000-0000-4000-b000-000000000001'
+  and user_id = '8a000000-0000-4000-a000-000000000004';
+insert into public.memberships (business_id, user_id, role, active, created_at)
+values ('8a000000-0000-4000-b000-000000000002', '8a000000-0000-4000-a000-000000000004', 'worker',
+  true, '2026-11-09 08:00:40+00');
+select is(
+  pg_temp.refusal($$select public.reserve_chat_upload('8a000000-0000-4000-a000-000000000004',
+    '8a000000-0000-4000-b000-000000000002', 'pdf', 'application/pdf', 1000,
+    pg_temp.id_of('q-team'), upload_name => 'y-q.pdf', at_time => '2026-11-09 08:01+00')$$),
+  'none',
+  'and on another business''s staff his PDF there goes: his share is of each business''s space'
+);
+update public.memberships set active = false
+where business_id = '8a000000-0000-4000-b000-000000000002'
+  and user_id = '8a000000-0000-4000-a000-000000000004';
+update public.memberships set active = true
+where business_id = '8a000000-0000-4000-b000-000000000001'
+  and user_id = '8a000000-0000-4000-a000-000000000004';
 -- Noa's four of 10 MiB, put and sent after his.
 select count(pg_temp.reserve_pdf('n' || g, '8a000000-0000-4000-a000-000000000003',
   pg_temp.id_of('team'), 10485760, '2026-11-09 08:01:00+00'::timestamptz + g * interval '1 second'))
