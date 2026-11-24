@@ -2085,6 +2085,35 @@ test("the gallery's code boxes lose a wrong code's mark with a new code", async 
   await expect(field).not.toHaveAttribute("aria-busy");
 });
 
+// A code too short is the screen's to mark (`invalid`), apart from the
+// drain: the digits stay, nothing is red, and the field is invalid with its
+// why, first in its description (accessibility, part 2).
+test("the gallery's code boxes mark a short code invalid and keep its digits", async ({
+  page,
+}) => {
+  const d = he.design;
+  await page.goto("/design");
+  const field = page.getByRole("textbox", { name: d.codeSlots, exact: true });
+  const boxes = page.locator("[data-status]").filter({ has: field });
+  const posted = page.locator('input[type="hidden"][name="gallery-code"]');
+  await field.focus();
+  await page.keyboard.type("123");
+  await expect(posted).toHaveValue("123");
+
+  await page.getByRole("button", { name: d.codeShort, exact: true }).click();
+  await expect(field).toHaveAttribute("aria-invalid", "true");
+  await expect(boxes).toHaveAttribute("data-status", "idle");
+  await expect(posted).toHaveValue("123");
+  await expect(field).toHaveAccessibleDescription(
+    new RegExp(`^${he.auth.signIn.errors.invalidCode.replace(".", "\\.")}`),
+  );
+
+  await page.getByRole("button", { name: d.codeNew, exact: true }).click();
+  await expect(boxes).toHaveAttribute("data-status", "idle");
+  await expect(field).not.toHaveAttribute("aria-invalid");
+  await expect(posted).toHaveValue("123");
+});
+
 // The gallery's stepper says its new number, and at its end keeps the focus
 // on its dimmed button, which changes nothing; the announcer's own entry
 // says its line.

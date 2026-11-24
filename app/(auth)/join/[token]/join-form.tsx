@@ -3,10 +3,11 @@
 import { CAPTCHA_FIELD, type CaptchaSetup } from "@domain/turnstile";
 import { Button } from "@ui/button";
 import { CaptchaBox, useCaptcha } from "@ui/captcha";
+import { arrived, focusFirst } from "@ui/focus-after";
 import { useTranslations } from "next-intl";
-import { type ReactNode, useActionState } from "react";
+import { type ReactNode, useActionState, useLayoutEffect, useRef } from "react";
 import { CodeField } from "../../code-field";
-import { useAnswerCount } from "../../step-results";
+import { aboutTheCode, useAnswerCount } from "../../step-results";
 import type { JoinState } from "../actions";
 
 const initial: JoinState = { step: "invite" };
@@ -18,26 +19,33 @@ const SENDS = ["send", "resend"] as const;
  * Send a code to the invited number, then join with it. Each step has the
  * "אני לא רובוט" check right above its sending press, one check for the
  * screen (`useCaptcha`). Each refusal is drawn anew, so the same one twice
- * is heard twice; the number is the invite's, so no field of it is marked.
- * The code step's answers, a refusal or a new code, are its field's to say
- * (`CodeField`), once each.
+ * is heard twice, and the press, busy meanwhile, takes back the focus it
+ * lost; the number is the invite's, so no field of it is marked. The code
+ * step's words as it arrives, and its answers, a refusal or a new code, are
+ * its field's to say (`CodeField`), once each.
  */
 export function JoinForm({
   join,
   captcha,
   ending,
+  start = initial,
 }: {
   /** `join` for this link's token, or the design demo's stand-in. */
   join: (prev: JoinState, form: FormData) => Promise<JoinState>;
   /** The check: this deployment's widget, or the twin's stand-in. */
   captcha: CaptchaSetup;
   ending: string;
+  /** The first step: the invite's; a test draws another whole. */
+  start?: JoinState;
 }) {
   const t = useTranslations("auth.join");
   const errors = useTranslations("auth.signIn.errors");
-  const [state, action, pending] = useActionState(join, initial);
+  const [state, action, pending] = useActionState(join, start);
   const box = useCaptcha(captcha, "join");
   const answer = useAnswerCount(state);
+  const send = useRef<HTMLButtonElement>(null);
+  // The state the screen starts with is read whole as it is drawn.
+  const seen = useRef<JoinState | null>(state);
   const error =
     state.error === "shiftsLeft" || state.error === "elsewhere"
       ? t(state.error)
@@ -45,6 +53,14 @@ export function JoinForm({
         ? errors(state.error)
         : undefined;
   const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
+
+  // A code that didn't go, once per answer (`arrived`): its line says it,
+  // and the press, busy meanwhile, takes back the focus it lost, to be tried
+  // again. Never from where the person put it.
+  useLayoutEffect(() => {
+    if (!arrived(seen, state)) return;
+    if (state.step === "invite" && state.error) focusFirst([send.current]);
+  }, [state]);
 
   if (state.step === "invite") {
     // Each step is its own form (key), so the code step's button is a new
@@ -65,6 +81,7 @@ export function JoinForm({
         ) : null}
         <CaptchaBox captcha={box} name={CAPTCHA_FIELD} />
         <Button
+          ref={send}
           type="submit"
           name="intent"
           value="send"
@@ -77,6 +94,10 @@ export function JoinForm({
     );
   }
 
+  const words = t.markup(state.resent ? "codeResent" : "codeIntro", {
+    ending,
+    ltr: (chunks) => chunks,
+  });
   return (
     <form
       key="code"
@@ -85,20 +106,18 @@ export function JoinForm({
       className="flex flex-col gap-4"
       noValidate
     >
-      {/* No live region: a new code is said by its field (`resent`). */}
+      {/* No live region: its field says it (`intro`, `resent`). */}
       <p className="text-ink-2">
         {t.rich(state.resent ? "codeResent" : "codeIntro", { ending, ltr })}
       </p>
       <CodeField
         label={t("codeLabel")}
+        intro={words}
         error={error}
-        resent={
-          state.resent
-            ? t.markup("codeResent", { ending, ltr: (chunks) => chunks })
-            : undefined
-        }
+        resent={state.resent ? words : undefined}
         answer={answer}
         wrongCode={state.error === "wrongCode"}
+        invalid={aboutTheCode(state.error)}
         pending={pending}
       />
       <Button

@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import he from "../messages/he.json" with { type: "json" };
 import { buildScreen, onDate } from "./build-screen";
+import { captchaSettled } from "./captcha";
 import {
   closeTeamChangesBusiness,
   closeTeamChangesToInvites,
@@ -270,13 +271,19 @@ test("the owner changes a role, takes a worker off the team with an undo, and de
     await expect(page).toHaveURL(new RegExp(`/team/${STAYING.id}$`));
     await expect.poll(teamChangesInviteCancelled).toBe(true);
 
+    // The visitor's page, still open, sends: the link stopped working on
+    // the way, so the press comes back to the same page, which says why with
+    // the focus on its title (accessibility, part 2). Opened again, the same.
+    const gone = visitor.getByRole("heading", {
+      level: 1,
+      name: he.auth.join.gone.missing.title,
+    });
+    await captchaSettled(visitor);
+    await visitor.getByRole("button", { name: he.auth.join.send }).click();
+    await expect(gone).toBeVisible();
+    await expect(gone).toBeFocused();
     await visitor.goto(link);
-    await expect(
-      visitor.getByRole("heading", {
-        level: 1,
-        name: he.auth.join.gone.missing.title,
-      }),
-    ).toBeVisible();
+    await expect(gone).toBeVisible();
     await page.goto("/team");
     await expect(page.getByRole("main")).not.toContainText(
       TEAM_CHANGES_INVITE.name,

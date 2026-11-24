@@ -84,7 +84,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { NextIntlClientProvider, useTranslations } from "next-intl";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useId, useState } from "react";
 import { direction, type Locale } from "@/i18n/config";
 import enMessages from "@/messages/en.json";
 import heMessages from "@/messages/he.json";
@@ -218,6 +218,7 @@ function GalleryBody({
   const tWeek = useTranslations("app.shifts.week");
   const tBuild = useTranslations("app.build");
   const tCode = useTranslations("app.clock.code");
+  const tCodeRefused = useTranslations("auth.signIn.errors");
   const tClock = useTranslations("app.clock");
   const tMe = useTranslations("app.me");
   const tNav = useTranslations("app.nav");
@@ -318,6 +319,9 @@ function GalleryBody({
   const [day, setDay] = useState("0");
   const [galleryDays, setGalleryDays] = useState([0, 1, 2, 3, 4]);
   const [codeStatus, setCodeStatus] = useState<CodeSlotsStatus>("idle");
+  // A code too short: marked invalid with its why, the digits kept.
+  const [codeShort, setCodeShort] = useState(false);
+  const codeShortId = useId();
   const [codeRun, setCodeRun] = useState(0);
   const [captchaShown, setCaptchaShown] = useState<CaptchaShown>("tap");
   const [total, setTotal] = useState(120);
@@ -1497,18 +1501,41 @@ function GalleryBody({
               name="gallery-code"
               label={t("codeSlots")}
               status={codeStatus}
+              invalid={codeShort}
+              describedBy={codeShort ? codeShortId : undefined}
               slotClassName="bg-surface-2 shadow-none"
             />
+            {codeShort ? (
+              <p id={codeShortId} className="px-1 text-danger text-sm">
+                {tCodeRefused("invalidCode")}
+              </p>
+            ) : null}
             <div className="flex flex-wrap gap-2">
               <Button
                 variant="secondary"
-                onClick={() => setCodeStatus("error")}
+                onClick={() => {
+                  setCodeShort(false);
+                  setCodeStatus("error");
+                }}
               >
                 {t("codeWrong")}
               </Button>
+              {/* A refusal that keeps the digits: marked, with its why. */}
               <Button
                 variant="secondary"
-                onClick={() => setCodeStatus("success")}
+                onClick={() => {
+                  setCodeShort(true);
+                  setCodeStatus("idle");
+                }}
+              >
+                {t("codeShort")}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setCodeShort(false);
+                  setCodeStatus("success");
+                }}
               >
                 {t("codeRight")}
               </Button>
@@ -1516,6 +1543,7 @@ function GalleryBody({
               <Button
                 variant="secondary"
                 onClick={async () => {
+                  setCodeShort(false);
                   setCodeStatus("pending");
                   await pause();
                   setCodeStatus((now) => (now === "pending" ? "idle" : now));
@@ -1526,6 +1554,7 @@ function GalleryBody({
               <Button
                 variant="ghost"
                 onClick={() => {
+                  setCodeShort(false);
                   setCodeStatus("idle");
                   setCodeRun((run) => run + 1);
                 }}

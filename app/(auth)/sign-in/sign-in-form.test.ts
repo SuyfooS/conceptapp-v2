@@ -198,8 +198,9 @@ const attribute = (tag: string, name: string) =>
 
 // Each answer is heard (accessibility, part 2): a number refused on its
 // field, a code that didn't go on a line of its own, and a refused code the
-// code field's own, said once (no alert as well); a new code is said by the
-// field, not by a live line of the screen.
+// code field's own, said once (no alert as well); a new code, and the
+// step's words as it arrives, are said by the field, not by a live line of
+// the screen.
 describe("sign-in's refusals", () => {
   it("say a number refused on its field, marked and read with it", () => {
     const html = draw({ step: "phone", error: "invalidPhone" });
@@ -236,7 +237,7 @@ describe("sign-in's refusals", () => {
     }
   });
 
-  it("tie a refused code to the code field, with no alert as well", () => {
+  it("tie a refused code to the code field, why first, with no alert as well, marked invalid only for the digits", () => {
     for (const error of [
       "wrongCode",
       "invalidCode",
@@ -250,11 +251,18 @@ describe("sign-in's refusals", () => {
         `<p id="([^"]+)"[^>]*>${he.auth.signIn.errors[error]}</p>`,
       ).exec(html)?.[1];
       expect(id, error).toBeTruthy();
-      const described = attribute(codeInput(html), "aria-describedby");
-      expect(described?.split(" "), error).toContain(id);
-      // The field says it as the focus comes back, or the announcer where
-      // it had the focus: an alert would say it a second time.
+      const field = codeInput(html);
+      const described = attribute(field, "aria-describedby");
+      // Why first: VoiceOver says a description as a hint, which a swipe
+      // cuts off.
+      expect(described?.split(" ")[0], error).toBe(id);
+      // The announcer says it as the answer comes, and the description has
+      // it for a return: an alert would say it a second time.
       expect(html, error).not.toContain('role="alert"');
+      // A wrong code, drained, and one too short, kept, are the digits'.
+      expect(attribute(field, "aria-invalid"), error).toBe(
+        error === "wrongCode" || error === "invalidCode" ? "true" : undefined,
+      );
     }
     // With nothing refused, the field is described by its own line only.
     const html = draw({ step: "code", phone: UNKNOWN });

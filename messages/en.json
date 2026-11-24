@@ -361,6 +361,7 @@
     "skeleton": "Before the data arrives",
     "codeSlots": "Code from a message",
     "codeWrong": "Wrong code",
+    "codeShort": "Short code",
     "codeRight": "Right code",
     "codeNew": "New code",
     "codeAgain": "Start over",

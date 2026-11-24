@@ -342,24 +342,70 @@ test("a malformed number is caught before anything is sent, and said on its fiel
   page,
 }) => {
   await page.goto("/sign-in");
+  const polite = announcer(page, "polite");
+  const assertive = announcer(page, "assertive");
   await requestCode(page, "123");
-  await expect(page.getByText(t.errors.invalidPhone)).toBeVisible();
-  // The field takes the focus the busy press lost, and is read as invalid,
-  // with why.
+  await expect(
+    page.getByRole("main").getByText(t.errors.invalidPhone),
+  ).toBeVisible();
+  // The field takes the focus the busy press lost, and is read as invalid;
+  // why is said after that read, by the announcer (a description alone is
+  // a hint for VoiceOver), and is out of the description meanwhile.
   const field = page.getByLabel(t.phoneLabel);
   await expect(field).toBeFocused();
   await expect(field).toHaveAttribute("aria-invalid", "true");
-  await expect(field).toHaveAccessibleDescription(t.errors.invalidPhone);
+  await expect(saidSince(polite, t.errors.invalidPhone)).toHaveCount(1);
+  await expect(field).not.toHaveAttribute("aria-describedby");
   // The field says it: no line of its own as well.
   await expect(page.getByRole("main").getByRole("alert")).toHaveCount(0);
+  // A return to the field reads why with it.
+  await field.blur();
+  await field.focus();
+  await expect(field).toHaveAccessibleDescription(t.errors.invalidPhone);
 
   // Sent again from the field itself, where the focus already is: said all
-  // the same.
+  // the same, at once, and out of the description again.
+  await captchaSettled(page);
   await field.press("Enter");
-  await expect(page.locator('[data-announcer="polite"]')).toContainText(
-    t.errors.invalidPhone,
-  );
+  await expect(saidSince(assertive, t.errors.invalidPhone)).toHaveCount(1);
   await expect(field).toBeFocused();
+  await expect(field).not.toHaveAttribute("aria-describedby");
+});
+
+// The person moved the focus on while the press was busy (to the demo
+// door's link, enabled all along): the answer leaves it there, and is said
+// at once all the same. The twin's action is held until the focus moved.
+test("a number refused after the focus moved on leaves it where it was put, and is said", async ({
+  page,
+}) => {
+  let answer = () => {};
+  const held = new Promise<void>((resolve) => {
+    answer = () => resolve();
+  });
+  await page.route("**/design/screens/sign-in", async (route) => {
+    if (route.request().method() === "POST") await held;
+    await route.continue();
+  });
+  await page.goto("/design/screens/sign-in");
+  const field = page.getByLabel(t.phoneLabel);
+  const send = page.getByRole("button", { name: t.send });
+  const demo = page.getByRole("link", { name: t.demo });
+  const assertive = announcer(page, "assertive");
+  await field.fill("050");
+  await send.click();
+  await expect(send).toHaveAttribute("aria-busy", "true");
+  await demo.focus();
+  answer();
+
+  await expect(
+    page.getByRole("main").getByText(t.errors.invalidPhone),
+  ).toBeVisible();
+  await expect(saidSince(assertive, t.errors.invalidPhone)).toHaveCount(1);
+  await expect(demo).toBeFocused();
+  await expect(field).not.toBeFocused();
+  // Marked, and read with why when the person comes back to it.
+  await expect(field).toHaveAttribute("aria-invalid", "true");
+  await expect(field).toHaveAccessibleDescription(t.errors.invalidPhone);
 });
 
 test("a code that didn't go for another reason is said above the press each time, and the number isn't marked", async ({
@@ -391,6 +437,9 @@ test("a code that didn't go for another reason is said above the press each time
   await send.click();
   await expect(refused).toHaveText(t.errors.failed);
   await expect(field).not.toHaveAttribute("aria-invalid");
+  // The press, busy meanwhile, takes back the focus it lost, to be tried
+  // again.
+  await expect(send).toBeFocused();
 
   // The same failure again is a new line, so it is heard again.
   await refused.evaluate((line) => line.setAttribute("data-heard", ""));
@@ -398,5 +447,30 @@ test("a code that didn't go for another reason is said above the press each time
   await expect(page.locator("[data-heard]")).toHaveCount(0);
   await expect(refused).toHaveText(t.errors.failed);
   await expect(field).not.toHaveAttribute("aria-invalid");
+  await expect(send).toBeFocused();
   await expectAccessible(page);
+});
+
+// Joining's invite step has no field: each code that didn't go is a line of
+// its own above the press, drawn anew each time (the answer's count is its
+// key), and the press takes back the focus it lost. A press the twin's
+// action doesn't know answers as a failure.
+test("joining's invite step says a code that didn't go above the press each time, and gives the press its focus back", async ({
+  page,
+}) => {
+  const j = he.auth.join;
+  const refused = page.getByRole("main").getByRole("alert");
+  await page.goto("/design/screens/join");
+  const send = page.getByRole("button", { name: j.send });
+  await send.evaluate((button) => button.setAttribute("value", "unknown"));
+  await send.click();
+  await expect(refused).toHaveText(t.errors.failed);
+  await expect(send).toBeFocused();
+
+  // The same failure again is a new line, so it is heard again.
+  await refused.evaluate((line) => line.setAttribute("data-heard", ""));
+  await send.click();
+  await expect(page.locator("[data-heard]")).toHaveCount(0);
+  await expect(refused).toHaveText(t.errors.failed);
+  await expect(send).toBeFocused();
 });

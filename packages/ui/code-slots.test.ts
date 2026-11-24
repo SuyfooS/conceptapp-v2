@@ -165,7 +165,9 @@ describe("CodeSlots", () => {
     expect(line).toContain('aria-atomic="true"');
   });
 
-  it("is described by its line first, then by the screen's", () => {
+  // VoiceOver says a description as a hint, after a pause and cut off by
+  // the next swipe: why comes first (accessibility, part 2).
+  it("is described by the screen's why first, then by its own line", () => {
     const html = draw(
       createElement(CodeSlots, {
         name: "code",
@@ -175,7 +177,7 @@ describe("CodeSlots", () => {
     );
     const line = html.match(/<span id="([^"]+)" class="sr-only"/)?.[1];
     const field = html.match(/<input type="text"[^>]*>/)?.[0] ?? "";
-    expect(field).toContain(`aria-describedby="${line} why-refused"`);
+    expect(field).toContain(`aria-describedby="why-refused ${line}"`);
     const alone = draw(
       createElement(CodeSlots, { name: "code", label: "Code" }),
     );
@@ -183,5 +185,28 @@ describe("CodeSlots", () => {
     expect(alone.match(/<input type="text"[^>]*>/)?.[0]).toContain(
       `aria-describedby="${own}"`,
     );
+  });
+
+  // A refusal that keeps the digits (a code too short) is the screen's to
+  // mark: the boxes aren't drained or red, the field is invalid.
+  it("is marked invalid by the screen apart from the drain, and by a refusal it starts with", () => {
+    const field = (props: Partial<Parameters<typeof CodeSlots>[0]>) => {
+      const html = draw(
+        createElement(CodeSlots, { name: "code", label: "Code", ...props }),
+      );
+      return {
+        input: html.match(/<input type="text"[^>]*>/)?.[0] ?? "",
+        status: html.match(/data-status="([^"]+)"/)?.[1],
+      };
+    };
+    const short = field({ invalid: true });
+    expect(short.input).toContain('aria-invalid="true"');
+    expect(short.status).toBe("idle");
+    const refused = field({ status: "error" });
+    expect(refused.input).toContain('aria-invalid="true"');
+    expect(refused.status).toBe("error");
+    for (const status of ["idle", "pending", "success"] as const) {
+      expect(field({ status }).input, status).not.toContain("aria-invalid");
+    }
   });
 });

@@ -6,14 +6,21 @@ import { announce } from "@ui/announcer";
 import { Button } from "@ui/button";
 import { CaptchaBox, useCaptcha } from "@ui/captcha";
 import { FieldGroup, GroupedPhoneField } from "@ui/field-group";
-import { arrived } from "@ui/focus-after";
+import { arrived, focusFirst } from "@ui/focus-after";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useActionState, useEffect, useId, useRef } from "react";
+import { useActionState, useId, useLayoutEffect, useRef } from "react";
 import type { SignInState } from "../actions";
 import { authFieldsClass } from "../auth-screen";
 import { CodeField } from "../code-field";
-import { aboutTheNumber, useAnswerCount } from "../step-results";
+import {
+  aboutTheCode,
+  aboutTheNumber,
+  answerHeard,
+  focusAt,
+  useAnswerCount,
+  useQuietWhy,
+} from "../step-results";
 
 const initial: SignInState = { step: "phone" };
 
@@ -28,11 +35,13 @@ const SENDS = ["send", "resend"] as const;
  * screen, `useCaptcha`): a press made before the check is done waits and
  * goes by itself, and a new code always takes a new token.
  *
- * Each answer is heard. A number refused is said on its field, which takes
- * the focus; a code that didn't go for any other reason is a line of its
- * own above the press, drawn anew each time, and the number isn't marked.
- * The code step's answers, a refusal or a new code, are its field's to say
- * (`CodeField`), once each.
+ * Each answer is heard. A number refused is said by the announcer and
+ * marked on its field, which takes back a focus that was lost; a code that
+ * didn't go for any other reason is a line of its own above the press,
+ * drawn anew each time, the press taking back the focus it lost, and the
+ * number isn't marked. Never the focus from where the person put it. The
+ * code step's words as it arrives, and its answers, a refusal or a new
+ * code, are its field's to say (`CodeField`), once each.
  */
 export function SignInForm({
   signIn,
@@ -55,24 +64,36 @@ export function SignInForm({
   const noCode = useId();
   const answer = useAnswerCount(state);
   const phone = useRef<HTMLInputElement>(null);
-  const seen = useRef<SignInState | null>(null);
+  const send = useRef<HTMLButtonElement>(null);
+  // The state the screen starts with is its `autoFocus`'s, read whole: a
+  // send made before the page could answer it comes back with the page.
+  const seen = useRef<SignInState | null>(state);
+  const { quiet, hush } = useQuietWhy(phone);
   const error = state.error ? t(`errors.${state.error}`) : undefined;
   const onTheNumber = aboutTheNumber(state.error);
 
-  // A number refused, once per answer: not when the screen is shown again
-  // (`arrived`).
-  useEffect(() => {
+  // A refusal on the phone step, once per answer: not when the screen is
+  // shown again (`arrived`). In the drawing's own pass, so a field that
+  // keeps the focus is drawn without why in its description.
+  useLayoutEffect(() => {
     if (!arrived(seen, state)) return;
-    if (state.step !== "phone" || !aboutTheNumber(state.error)) return;
-    const field = phone.current;
-    // Sent from the field itself (Enter, or the phone keyboard's "Go"),
-    // the focus is there already and wouldn't read it again.
-    if (field && document.activeElement === field) {
-      announce(t("errors.invalidPhone"));
-    } else {
-      field?.focus();
+    if (state.step !== "phone" || !state.error) return;
+    if (!aboutTheNumber(state.error)) {
+      // Its own line says it (an alert, drawn anew): the press, busy
+      // meanwhile, takes back the focus it lost, to be tried again.
+      focusFirst([send.current]);
+      return;
     }
-  }, [state, t]);
+    const field = phone.current;
+    if (!field) return;
+    const said = answerHeard({
+      error: t("errors.invalidPhone"),
+      at: focusAt(field),
+    });
+    if (said.focus) field.focus();
+    if (said.say) announce(said.say.words, { politeness: said.say.politeness });
+    if (said.quiet) hush(answer);
+  }, [state, t, answer, hush]);
 
   if (state.step === "phone") {
     return (
@@ -89,6 +110,7 @@ export function SignInForm({
             name="phone"
             label={t("phoneLabel")}
             error={onTheNumber ? error : undefined}
+            quietMessage={quiet === answer}
             className="font-medium text-xl"
             required
             autoFocus
@@ -101,6 +123,7 @@ export function SignInForm({
           </p>
         ) : null}
         <Button
+          ref={send}
           type="submit"
           name="intent"
           value="send"
@@ -118,6 +141,11 @@ export function SignInForm({
     );
   }
 
+  const shownPhone = displayIsraeliMobile(state.phone);
+  const words = t.markup(state.resent ? "codeResent" : "codeIntro", {
+    phone: shownPhone,
+    ltr: (chunks) => chunks,
+  });
   return (
     <form
       action={action}
@@ -125,26 +153,21 @@ export function SignInForm({
       className="flex flex-col gap-5"
       noValidate
     >
-      {/* No live region: a new code is said by its field (`resent`). */}
+      {/* No live region: its field says it (`intro`, `resent`). */}
       <p className="px-1 text-ink-2">
         {t.rich(state.resent ? "codeResent" : "codeIntro", {
-          phone: displayIsraeliMobile(state.phone),
+          phone: shownPhone,
           ltr: (chunks) => <span dir="ltr">{chunks}</span>,
         })}
       </p>
       <CodeField
         label={t("codeLabel")}
+        intro={words}
         error={error}
-        resent={
-          state.resent
-            ? t.markup("codeResent", {
-                phone: displayIsraeliMobile(state.phone),
-                ltr: (chunks) => chunks,
-              })
-            : undefined
-        }
+        resent={state.resent ? words : undefined}
         answer={answer}
         wrongCode={state.error === "wrongCode"}
+        invalid={aboutTheCode(state.error)}
         pending={pending}
         to={state.to}
       />
