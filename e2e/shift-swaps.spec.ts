@@ -30,8 +30,23 @@ const button = (page: Page, text: string) =>
   page
     .getByRole("button", { name: new RegExp(`^${text}, `) })
     .filter({ visible: true });
+// The screen's own words, not the toast that says the same once a step went
+// through (a status of its own).
 const shown = (page: Page, text: string) =>
-  page.getByText(text).filter({ visible: true });
+  page
+    .getByText(text)
+    .filter({ visible: true })
+    .and(page.locator('xpath=//*[not(ancestor-or-self::*[@role="status"])]'));
+/** What a step that went through says, in its screen's toast. */
+const toast = (page: Page, text: string) =>
+  page.getByRole("status").filter({ hasText: text });
+/** The button that opens a shift's sheet: its place on the screen. */
+const shiftTarget = (page: Page) =>
+  page
+    .getByRole("button", {
+      name: new RegExp(`^${he.app.shifts.board.open.split("{")[0]}`),
+    })
+    .filter({ visible: true });
 // "מה קרה לבקשות שלך": the same rows on every size.
 const pastList = (page: Page) =>
   page.getByRole("list", { name: past.title }).filter({ visible: true });
@@ -112,6 +127,11 @@ test("a worker gives a shift away, a colleague takes it, the worker cancels", as
   await expect(giving).toHaveCount(0);
   await expect(shown(page, sw.open)).toBeVisible();
   await expect(button(page, sw.buttons.cancel)).toBeVisible();
+  // Said wherever the focus is, and the focus is back on her shift, whose
+  // "מסירת המשמרת" gave way to the request (accessibility, part 3).
+  await expect(toast(page, sw.open)).toBeVisible();
+  await expect(shiftTarget(page)).toHaveCount(1);
+  await expect(shiftTarget(page)).toBeFocused();
   expect(await demoSwaps()).toEqual([
     { status: "open", from: NOA.e164, to: null },
   ]);
@@ -144,6 +164,9 @@ test("a worker gives a shift away, a colleague takes it, the worker cancels", as
   await expect(taking).toHaveCount(0);
   await expect(shown(yoav, sw.offers.takenByYou)).toBeVisible();
   await expect(button(yoav, sw.buttons.take)).toHaveCount(0);
+  // Said, and the focus is on the offer's words, where its button was.
+  await expect(toast(yoav, sw.offers.takenByYou)).toBeVisible();
+  await expect(offers.getByText(sw.offers.takenByYou)).toBeFocused();
   expect(await demoSwaps()).toEqual([
     { status: "taken", from: NOA.e164, to: YOAV.e164 },
   ]);
@@ -162,6 +185,9 @@ test("a worker gives a shift away, a colleague takes it, the worker cancels", as
   await button(page, sw.buttons.cancel).click();
   await expect(button(page, sw.buttons.give)).toBeVisible();
   expect((await demoSwaps()).map((s) => s.status)).toEqual(["cancelled"]);
+  // "ביטול הבקשה" went with the focus: it is on her shift, and it is said.
+  await expect(toast(page, sw.cancelled)).toBeVisible();
+  await expect(shiftTarget(page)).toBeFocused();
   // What became of it stays in sight, and her shift says nothing more.
   await expect(pastList(page)).toContainText(past.withdrawnFrom);
   await expect(shown(page, sw.declined)).toHaveCount(0);
@@ -279,6 +305,9 @@ test("a manager approves a taken request and the colleague takes the shift", asy
 
   await button(page, ap.buttons.approve).click();
   await expect(shown(page, ap.empty)).toBeVisible();
+  // The request went with the focus, and nothing else waits: it is on what
+  // was decided (accessibility, part 3).
+  await expect(page.locator("[data-settled]").first()).toBeFocused();
   // It says what was decided, since the decision cannot be undone.
   await expect(
     page.getByRole("status").filter({

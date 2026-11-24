@@ -18,6 +18,12 @@ export type WeekDay = {
   markLabel?: string;
   /** A small line under the date, such as candle lighting on Friday. */
   note?: string;
+  /**
+   * What the note says, in words, for screen readers ("כניסת שבת 16:23"):
+   * read in its place, the time alone only shown. Without it, the note is
+   * read as it shows.
+   */
+  noteLabel?: string;
   /** How much of the day is filled, 0 to 1. Shown as a thin track. */
   coverage?: number;
 };
@@ -66,6 +72,7 @@ export function WeekStrip({ days, value, onChange, label }: WeekStripProps) {
             {d.note ? (
               <span
                 dir="ltr"
+                aria-hidden={d.noteLabel ? true : undefined}
                 className={cn(
                   "text-[10.5px] leading-[13px]",
                   !selected && "text-ink-2",
@@ -73,6 +80,9 @@ export function WeekStrip({ days, value, onChange, label }: WeekStripProps) {
               >
                 {d.note}
               </span>
+            ) : null}
+            {d.note && d.noteLabel ? (
+              <span className="sr-only">{d.noteLabel}</span>
             ) : null}
             {d.marked && d.markLabel ? (
               <span className="sr-only">{d.markLabel}</span>

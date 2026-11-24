@@ -13,6 +13,7 @@ import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
+import type { SwapIntent } from "./actions";
 import type { SwapAction } from "./shift-sheet";
 import {
   type AppT,
@@ -32,6 +33,7 @@ import {
   timeRange,
 } from "./shift-text";
 import { SwapButton } from "./swap-button";
+import { shiftTarget } from "./swap-focus";
 
 /**
  * A shift on the board: published ones have an id, and so does a draft's
@@ -41,16 +43,22 @@ export type BoardShift = ScheduledShift & { id?: string };
 
 /**
  * A tap target covering its card, so the card keeps real buttons of its own
- * above it. Opens the shift's sheet, or goes to `href` for a draft.
+ * above it. Opens the shift's sheet, or goes to `href` for a draft. A
+ * published shift's is its place on the screen (`shift`, its id, as
+ * `shiftTarget` finds it): the focus comes back to it once a swap step
+ * took the button pressed away.
  */
 export function CardTarget({
   label,
   onOpen,
   href,
+  shift,
 }: {
   label: string;
   onOpen?: () => void;
   href?: string;
+  /** The published shift it opens. */
+  shift?: string;
 }) {
   const target =
     "absolute inset-0 rounded-[inherit] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
@@ -62,6 +70,7 @@ export function CardTarget({
       type="button"
       aria-label={label}
       onClick={onOpen}
+      data-shift-target={shift}
       className={target}
     />
   );
@@ -112,6 +121,8 @@ export type ShiftCardProps = {
   manager: boolean;
   swap: SwapAction;
   onOpen: (id: string) => void;
+  /** A swap step on the card went through ("ביטול הבקשה"), for the board's toast. */
+  onSwapped?: (intent: SwapIntent) => void;
   /**
    * Set for a draft's shift: where it leads, the screen that builds its week.
    * The card then opens no sheet and offers nothing to give away or take.
@@ -130,6 +141,7 @@ export function ShiftCard({
   manager,
   swap,
   onOpen,
+  onSwapped,
   draftHref,
 }: ShiftCardProps) {
   const t = useTranslations("app");
@@ -161,6 +173,7 @@ export function ShiftCard({
         <CardTarget
           label={t("shifts.board.open", { shift: label })}
           onOpen={() => onOpen(id)}
+          shift={id}
         />
       ) : (
         <CardTarget label={label} href={draftHref} />
@@ -232,6 +245,8 @@ export function ShiftCard({
                 intent="cancel"
                 id={request.id}
                 subject={label}
+                onDone={onSwapped}
+                focusAfter={() => [shiftTarget(id)]}
               />
             </>
           ) : (
@@ -324,6 +339,7 @@ export function MyShiftHero({
   data,
   swap,
   onOpen,
+  onSwapped,
 }: {
   shift: WeekScheduleShift;
   /** "המשמרת שלך" or "המשמרת הבאה שלך". */
@@ -335,6 +351,8 @@ export function MyShiftHero({
   data: ShiftData;
   swap: SwapAction;
   onOpen: (id: string) => void;
+  /** "ביטול הבקשה" on the card went through, for the board's toast. */
+  onSwapped?: (intent: SwapIntent) => void;
 }) {
   const t = useTranslations("app");
   const format = useFormatter();
@@ -356,6 +374,7 @@ export function MyShiftHero({
         <CardTarget
           label={t("shifts.board.open", { shift: subject })}
           onOpen={() => onOpen(shift.id)}
+          shift={shift.id}
         />
         <div className="flex items-center justify-between gap-2.5">
           <span className="font-medium text-base">{label}</span>
@@ -394,6 +413,8 @@ export function MyShiftHero({
                 intent="cancel"
                 id={request.id}
                 subject={subject}
+                onDone={onSwapped}
+                focusAfter={() => [shiftTarget(shift.id)]}
               />
             </>
           ) : (

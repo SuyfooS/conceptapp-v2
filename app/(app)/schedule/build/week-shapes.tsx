@@ -42,6 +42,8 @@ export type DayInfo = {
   /** Candle lighting or havdalah, on a business closed on Shabbat. */
   shabbatTime: string | null;
   shabbatNote: ReactNode;
+  /** The same in plain words, for the strip's screen readers ("כניסת שבת 16:23"). */
+  shabbatLabel: string | null;
   /** "לא בעבודה: נועה, יואב": who is away that day (known issue 19), or null. */
   awayNote: string | null;
 };
@@ -88,6 +90,7 @@ export function PhoneWeek({
           marked: !d.muted && d.filled < d.needed,
           markLabel: t("dayMissing"),
           note: d.shabbatTime ?? undefined,
+          noteLabel: d.shabbatLabel ?? undefined,
           coverage: !d.muted && d.needed > 0 ? d.filled / d.needed : undefined,
         }))}
       />

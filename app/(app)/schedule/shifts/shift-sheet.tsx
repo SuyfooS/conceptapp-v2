@@ -5,10 +5,17 @@ import { dayMonth } from "@domain/availability-form";
 import { firstNameOf } from "@domain/people";
 import { myRequestFor, type Offer } from "@domain/swaps";
 import { Avatar } from "@ui/avatar";
+import { focusFirst } from "@ui/focus-after";
 import { Sheet } from "@ui/sheet";
 import { useTranslations } from "next-intl";
-import { type ReactNode, useCallback, useState } from "react";
-import type { SwapState } from "./actions";
+import {
+  type ReactNode,
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import type { SwapIntent, SwapState } from "./actions";
 import {
   formOf,
   hasStarted,
@@ -23,6 +30,7 @@ import {
   weekdayName,
 } from "./shift-text";
 import { SwapButton } from "./swap-button";
+import { shiftTarget } from "./swap-focus";
 
 export type SwapAction = (
   state: SwapState,
@@ -69,8 +77,12 @@ function Consequence({
  * One shift in a sheet: who is on it, and what the person can do about it.
  * Giving a shift away and taking one are confirmed here, each saying what
  * will happen. `shifts` are the published shifts the id is looked up in,
- * `offers` the colleagues' requests for them. `onGiven` runs once a shift
- * was given away.
+ * `offers` the colleagues' requests for them. `onSwapped` runs once a step
+ * went through, with the step (the board's toast says what came of it), and
+ * `onGiven` once a shift was given away. Closed, the focus goes back to what
+ * opened it; after a step, to the shift's own place on the screen
+ * (`shiftTarget`), which the screen read again keeps, while the button that
+ * opened it may have given way to what came of the step.
  */
 export function ShiftSheet({
   id,
@@ -80,6 +92,7 @@ export function ShiftSheet({
   offers,
   data,
   swap,
+  onSwapped,
   onGiven,
 }: {
   id: string | null;
@@ -89,14 +102,42 @@ export function ShiftSheet({
   offers: readonly Offer<WeekScheduleShift>[];
   data: ShiftData;
   swap: SwapAction;
+  onSwapped?: (intent: SwapIntent) => void;
   onGiven?: () => void;
 }) {
   const t = useTranslations("app");
   const shift = shifts.find((s) => s.id === id);
+  // What held the focus as it opened, and whether a step went through since.
+  const opener = useRef<Element | null>(null);
+  const stepped = useRef(false);
+  useLayoutEffect(() => {
+    if (!open) return;
+    opener.current = document.activeElement;
+    stepped.current = false;
+  }, [open]);
+
+  function done(intent: SwapIntent) {
+    stepped.current = true;
+    onOpenChange(false);
+    onSwapped?.(intent);
+    if (intent === "give") onGiven?.();
+  }
+
+  // Put there as focusFirst puts it (a line given a tabindex, the page's
+  // title last), only while nothing else took it as the sheet closed.
+  function returnFocus() {
+    const target = id ? shiftTarget(id) : null;
+    const candidates = stepped.current ? [target] : [opener.current, target];
+    opener.current = null;
+    stepped.current = false;
+    return focusFirst(candidates, { preventScroll: true });
+  }
+
   return (
     <Sheet
       open={open && shift !== undefined}
       onOpenChange={onOpenChange}
+      returnFocus={returnFocus}
       closeLabel={t("shifts.sheet.close")}
       title={
         shift
@@ -115,8 +156,7 @@ export function ShiftSheet({
           offers={offers.filter((o) => o.shift.id === shift.id)}
           data={data}
           swap={swap}
-          onDone={() => onOpenChange(false)}
-          onGiven={onGiven}
+          onDone={done}
         />
       ) : null}
     </Sheet>
@@ -129,14 +169,12 @@ function SheetBody({
   data,
   swap,
   onDone,
-  onGiven,
 }: {
   shift: WeekScheduleShift;
   offers: readonly Offer<WeekScheduleShift>[];
   data: ShiftData;
   swap: SwapAction;
-  onDone: () => void;
-  onGiven?: () => void;
+  onDone: (intent: SwapIntent) => void;
 }) {
   const t = useTranslations("app");
   const subject = shiftLabel(t, shift);
@@ -203,10 +241,7 @@ function SheetBody({
               variant="primary"
               size="lg"
               block
-              onDone={() => {
-                onDone();
-                onGiven?.();
-              }}
+              onDone={onDone}
             />
           }
         >

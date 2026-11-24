@@ -27,6 +27,7 @@ import {
   usePushAskOnce,
 } from "../notifications/push-ask";
 import { type ShareWeek, ShareWeekButton } from "./share-week";
+import type { SwapIntent } from "./shifts/actions";
 import {
   type BoardShift,
   CardTarget,
@@ -56,6 +57,7 @@ import {
   shiftOutcome,
   timeRange,
 } from "./shifts/shift-text";
+import { SwapToast, useSwapNotice } from "./shifts/swap-notice";
 
 export type WeekKey = "this" | "next";
 
@@ -148,6 +150,7 @@ export function WeekBoard({
   });
   const sheet = useShiftSheet();
   const pushAsk = usePushAskOnce(ask);
+  const swapped = useSwapNotice();
 
   const week = weeks.find((w) => w.key === weekKey) ?? weeks[0];
   const published = weeks.flatMap((w) =>
@@ -270,6 +273,13 @@ export function WeekBoard({
                   date: dayNumber(date),
                   muted: date < data.today,
                   note: note?.time,
+                  // The time alone says nothing: "כניסת שבת 16:23".
+                  noteLabel: note
+                    ? t.markup(`shifts.board.${note.kind}`, {
+                        time: note.time,
+                        ltr: (chunks) => chunks,
+                      })
+                    : undefined,
                   coverage: manager && need > 0 ? have / need : undefined,
                   marked: manager ? need > 0 : ownDay,
                   markTone: "accent" as const,
@@ -306,6 +316,7 @@ export function WeekBoard({
                 manager={manager}
                 swap={swap}
                 onOpen={sheet.show}
+                onSwapped={swapped.onSwapped}
                 draftHref={draftLink}
               />
             )}
@@ -398,8 +409,10 @@ export function WeekBoard({
         offers={offers}
         data={data}
         swap={swap}
+        onSwapped={swapped.onSwapped}
         onGiven={pushAsk.offer}
       />
+      <SwapToast notice={swapped.notice} />
     </>
   );
 }
@@ -438,6 +451,7 @@ function DayShifts({
   manager,
   swap,
   onOpen,
+  onSwapped,
   draftHref,
 }: {
   shifts: BoardShift[];
@@ -446,6 +460,7 @@ function DayShifts({
   manager: boolean;
   swap: SwapAction;
   onOpen: (id: string) => void;
+  onSwapped: (intent: SwapIntent) => void;
   /** Where a draft's shifts lead: its week's builder. None once published. */
   draftHref?: string;
 }) {
@@ -477,6 +492,7 @@ function DayShifts({
             data={data}
             swap={swap}
             onOpen={onOpen}
+            onSwapped={onSwapped}
           />
         </div>
       ) : null}
@@ -491,6 +507,7 @@ function DayShifts({
             manager={manager}
             swap={swap}
             onOpen={onOpen}
+            onSwapped={onSwapped}
             draftHref={draftHref}
           />
         ))}
@@ -527,10 +544,12 @@ function FullWeek({
         const note = shabbatNote(week, day);
         const { have, need } = coverageOf(shifts);
         const heading = dayLabel(t, day);
+        // Today is more than its filled circle: its words, in the day's name too.
+        const todayWord = t("build.today");
         return (
           <section
             key={day}
-            aria-label={heading}
+            aria-label={today ? `${heading}, ${todayWord}` : heading}
             className="flex min-w-0 flex-col gap-2 border-line p-2 not-first:border-s"
           >
             <div className="flex flex-col items-center gap-0.5 pt-1.5 pb-1">
@@ -544,6 +563,7 @@ function FullWeek({
               >
                 {dayNumber(day)}
               </span>
+              {today ? <span className="sr-only">{todayWord}</span> : null}
               <span className="min-h-[18px] text-center text-ink-2 text-sm">
                 {note
                   ? t.rich(`shifts.board.${note.kind}`, {
@@ -652,6 +672,7 @@ function WeekShift({
         <CardTarget
           label={t("shifts.board.open", { shift: label })}
           onOpen={() => onOpen(id)}
+          shift={id}
         />
       ) : (
         <CardTarget label={label} href={draftHref} />

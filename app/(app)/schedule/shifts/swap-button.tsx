@@ -1,8 +1,10 @@
 "use client";
 
 import { Button } from "@ui/button";
+import type { FocusCandidate } from "@ui/focus-after";
+import { useFocusWhenGone } from "@ui/use-focus-after";
 import { useTranslations } from "next-intl";
-import { useActionState } from "react";
+import { useActionState, useRef } from "react";
 import type { SwapIntent, SwapState } from "./actions";
 
 const initialState: SwapState = {};
@@ -11,7 +13,9 @@ const initialState: SwapState = {};
  * One swap step as a button: give a shift away, withdraw the request or
  * take a colleague's. `action` is `swapAction`, or the design demo's
  * stand-in. A refusal is explained under the button; `onDone` runs once the
- * step went through.
+ * step went through, with the step, so the screen can say what came of it.
+ * On a card (`focusAfter`), the screen read again draws what came of it in
+ * the button's place: the focus, gone with the button, goes there.
  */
 export function SwapButton({
   action,
@@ -22,6 +26,7 @@ export function SwapButton({
   size,
   block = false,
   onDone,
+  focusAfter,
 }: {
   action: (state: SwapState, form: FormData) => Promise<SwapState>;
   intent: SwapIntent;
@@ -32,15 +37,24 @@ export function SwapButton({
   size?: "md" | "lg";
   /** Full width, for the main action of a sheet. */
   block?: boolean;
-  onDone?: () => void;
+  onDone?: (intent: SwapIntent) => void;
+  /**
+   * Where the focus goes when the button goes while it holds it (the shift's
+   * card, `shiftTarget`), the page's title after them. Not for one in a
+   * sheet: the sheet's close gives the focus back.
+   */
+  focusAfter?: () => readonly FocusCandidate[];
 }) {
   const t = useTranslations("app.shifts.swap");
+  // Watched only on a card: in a sheet, the button goes as the sheet closes.
+  const form = useRef<HTMLFormElement>(null);
+  useFocusWhenGone(form, focusAfter);
   // `onDone` runs here and not in an effect: the screen's refresh can remove
   // this button in the same update that ends the pending state.
   const [state, formAction, pending] = useActionState(
-    async (prev: SwapState, form: FormData) => {
-      const next = await action(prev, form);
-      if (!next.failure) onDone?.();
+    async (prev: SwapState, data: FormData) => {
+      const next = await action(prev, data);
+      if (!next.failure) onDone?.(intent);
       return next;
     },
     initialState,
@@ -49,6 +63,7 @@ export function SwapButton({
 
   return (
     <form
+      ref={focusAfter ? form : undefined}
       action={formAction}
       className={
         block ? "flex flex-col gap-2" : "flex flex-col items-start gap-1"

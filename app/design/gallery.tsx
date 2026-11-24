@@ -217,6 +217,7 @@ function GalleryBody({
   const tDays = useTranslations("days");
   const tWeek = useTranslations("app.shifts.week");
   const tBuild = useTranslations("app.build");
+  const tBoard = useTranslations("app.shifts.board");
   const tCode = useTranslations("app.clock.code");
   const tCodeRefused = useTranslations("auth.signIn.errors");
   const tClock = useTranslations("app.clock");
@@ -738,13 +739,30 @@ function GalleryBody({
             label={t("week")}
             value={day}
             onChange={setDay}
-            days={DAYS.map((key, i) => ({
-              key: String(i),
-              label: tDays(`${key}.short`),
-              date: String(18 + i),
-              marked: i === 1 || i === 3,
-              markLabel: t("openShift"),
-            }))}
+            days={DAYS.map((key, i) => {
+              // Shabbat's times under Friday and Saturday: shown as the time,
+              // read in words (`noteLabel`).
+              const shabbat =
+                key === "fri"
+                  ? ({ kind: "candleLighting", time: "16:23" } as const)
+                  : key === "sat"
+                    ? ({ kind: "havdalah", time: "17:22" } as const)
+                    : null;
+              return {
+                key: String(i),
+                label: tDays(`${key}.short`),
+                date: String(18 + i),
+                marked: i === 1 || i === 3,
+                markLabel: t("openShift"),
+                note: shabbat?.time,
+                noteLabel: shabbat
+                  ? tBoard.markup(shabbat.kind, {
+                      time: shabbat.time,
+                      ltr: (chunks) => chunks,
+                    })
+                  : undefined,
+              };
+            })}
           />
           <Segmented
             label={t("week")}

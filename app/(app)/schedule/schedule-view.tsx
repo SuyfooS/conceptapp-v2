@@ -288,7 +288,15 @@ function ShiftsRow({ t, data }: { t: T; data: PublishedSchedule }) {
             : t("shifts.entry.notPublished")
       }
       trailing={
-        mine.length > 0 ? <Badge tone="accent">{mine.length}</Badge> : null
+        mine.length > 0 ? (
+          // The number alone says nothing at the end of the row's name.
+          <Badge tone="accent">
+            <span aria-hidden="true">{mine.length}</span>
+            <span className="sr-only">
+              {t("shifts.mine.count", { count: mine.length })}
+            </span>
+          </Badge>
+        ) : null
       }
     />
   );

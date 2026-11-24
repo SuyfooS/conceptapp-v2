@@ -42,6 +42,8 @@ import {
   timeRange,
 } from "./shift-text";
 import { SwapButton } from "./swap-button";
+import { shiftTarget } from "./swap-focus";
+import { SwapToast, useSwapNotice } from "./swap-notice";
 
 export function MyShiftsBoard({
   mine,
@@ -62,6 +64,7 @@ export function MyShiftsBoard({
   const t = useTranslations("app");
   const sheet = useShiftSheet();
   const pushAsk = usePushAskOnce(ask);
+  const swapped = useSwapNotice();
   const offers = offersFor(
     data.swaps,
     shifts,
@@ -100,6 +103,7 @@ export function MyShiftsBoard({
             data={data}
             swap={swap}
             onOpen={sheet.show}
+            onSwapped={swapped.onSwapped}
           />
         ) : (
           <Card padding="lg">
@@ -137,6 +141,7 @@ export function MyShiftsBoard({
                     <CardTarget
                       label={t("shifts.board.open", { shift: label })}
                       onOpen={() => sheet.show(shift.id)}
+                      shift={shift.id}
                     />
                     <DayTile date={shift.day} />
                     <div className="flex min-w-0 flex-1 flex-col">
@@ -168,6 +173,8 @@ export function MyShiftsBoard({
                               intent="cancel"
                               id={request.id}
                               subject={label}
+                              onDone={swapped.onSwapped}
+                              focusAfter={() => [shiftTarget(shift.id)]}
                             />
                           </div>
                         </>
@@ -230,7 +237,13 @@ export function MyShiftsBoard({
                       photo={photoOf(data, request.requestedBy)}
                     />
                     <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                      <span className="font-medium">
+                      {/* The offer's place on the screen: once it is taken
+                          its button goes, and the focus comes back here,
+                          to the words that say so. */}
+                      <span
+                        data-shift-target={shift.id}
+                        className="font-medium"
+                      >
                         {state === "takenByYou"
                           ? t("shifts.swap.offers.takenByYou")
                           : t("shifts.swap.offers.from", {
@@ -279,8 +292,10 @@ export function MyShiftsBoard({
         offers={offers}
         data={data}
         swap={swap}
+        onSwapped={swapped.onSwapped}
         onGiven={pushAsk.offer}
       />
+      <SwapToast notice={swapped.notice} />
     </div>
   );
 }

@@ -2356,6 +2356,7 @@
         "taken": "{form, select, other {{name} is taking the shift}}. Waiting for approval.",
         "declined": "The swap was not approved. The shift stays yours.",
         "removed": "Your request was cancelled because the schedule changed. The shift stays yours.",
+        "cancelled": "Request withdrawn; the shift stays yours",
         "offers": {
           "title": "Shifts you can take",
           "count": "{count, plural, one {One shift} other {# shifts}}",
