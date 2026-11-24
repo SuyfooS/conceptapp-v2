@@ -180,6 +180,11 @@ export function focusWhenGone(
 export type LandingPage = DocLike &
   Pick<EventTarget, "addEventListener" | "removeEventListener">;
 
+/** Where the browser's going back and forward is heard, if anywhere. */
+type Travels = Partial<
+  Pick<EventTarget, "addEventListener" | "removeEventListener">
+>;
+
 /**
  * Calls `drawn` after each change to what `page` draws (an element added,
  * removed, shown or hidden); returns what stops it.
@@ -211,17 +216,22 @@ export const watchDrawing: WatchDrawing = (page, drawn) => {
  * and then whole, so the title that took the focus can be gone a moment
  * later. Only while the focus is lost (`focusFirst`), without moving the
  * page; it ends for good once the focus is put anywhere else, a key is
- * pressed or the screen touched, after `ms`, or on the stop it returns.
+ * pressed, the screen touched or the browser goes back or forward (another
+ * screen, whose title is not this one), after `ms`, or on the stop it
+ * returns.
  */
 export function landOnTitle({
   ms,
   doc = thePage() as LandingPage | undefined,
   watch = watchDrawing,
+  history = globalThis as Travels,
 }: {
   /** The longest it keeps landing there. */
   ms: number;
   doc?: LandingPage;
   watch?: WatchDrawing;
+  /** Where going back or forward is heard: the window. */
+  history?: Travels;
 }): () => void {
   if (!doc) return () => {};
   const page = doc;
@@ -254,6 +264,7 @@ export function landOnTitle({
   page.addEventListener("focusin", moved, true);
   page.addEventListener("keydown", stop, true);
   page.addEventListener("pointerdown", stop, true);
+  history.addEventListener?.("popstate", stop);
 
   function stop() {
     if (over) return;
@@ -263,6 +274,7 @@ export function landOnTitle({
     page.removeEventListener("focusin", moved, true);
     page.removeEventListener("keydown", stop, true);
     page.removeEventListener("pointerdown", stop, true);
+    history.removeEventListener?.("popstate", stop);
   }
 
   land();

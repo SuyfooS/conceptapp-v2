@@ -425,6 +425,22 @@ describe("landOnTitle", () => {
     expect(at.activeElement).toBe(at.body);
   });
 
+  it("ends when the browser goes back or forward", () => {
+    const { at, spot } = page();
+    const first = spot("h1");
+    at.found.set(PAGE_TITLE, [el(first)]);
+    const { watch, watched, redraw } = drawing();
+    const history = new EventTarget();
+    landOnTitle({ ms: 15_000, doc: at, watch, history });
+    history.dispatchEvent(new Event("popstate"));
+    expect(watched.stopped).toBe(true);
+    // The screen gone back to draws its own title: the focus stays put.
+    const next = spot("h1");
+    drawnAgain(at, first, next);
+    redraw();
+    expect(next.focused).toBeNull();
+  });
+
   it("ends after its time", () => {
     const { at, spot } = page();
     const { watch, watched, redraw } = drawing();
