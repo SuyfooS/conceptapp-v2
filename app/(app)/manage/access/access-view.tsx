@@ -22,12 +22,12 @@ import { pageGlowClass } from "@ui/page-glow";
 import { PersonAvatar } from "@ui/person-row";
 import { StatusToast } from "@ui/status-toast";
 import { Switch } from "@ui/switch";
+import { UndoRow } from "@ui/undo-row";
 import { TriangleAlert } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { NoteView } from "../../clock/pay/note-view";
 import type { NotePayView } from "../../clock/pay/pay-types";
-import { UndoRow } from "../undo-row";
 import type {
   AccessActions,
   AccessData,
@@ -39,7 +39,11 @@ import type {
 /** How long the way back stays, before a removal is written. */
 const UNDO_MS = 6000;
 
-type Undo = { message: string; run: () => void };
+/**
+ * A way back. `key` is what it undoes (a role's switch as it turned, a
+ * person), so another while it is up is a row of its own (UndoRow's `key`).
+ */
+type Undo = { key: string; message: string; run: () => void };
 
 /** One way back, shown for six seconds under what it undoes. */
 function useUndoSlot() {
@@ -208,6 +212,7 @@ export function AccessView({
     ).then((done) => {
       if (!done) return;
       roleUndo.show({
+        key: `${role}:${granted ? "on" : "off"}`,
         message: t(granted ? "done.roleOn" : "done.roleOff", { role }),
         run: () => {
           roleUndo.clear();
@@ -273,6 +278,7 @@ export function AccessView({
     };
     setHolding(person.userId);
     personUndo.show({
+      key: person.userId,
       message: roleCovers(person)
         ? t("done.removedRoleCovers", {
             name: nameOf(person),
@@ -403,6 +409,7 @@ export function AccessView({
           </ListGroup>
           {roleUndo.shown ? (
             <UndoRow
+              key={roleUndo.shown.key}
               message={roleUndo.shown.message}
               onUndo={roleUndo.shown.run}
             />
@@ -493,6 +500,7 @@ export function AccessView({
           )}
           {personUndo.shown ? (
             <UndoRow
+              key={personUndo.shown.key}
               message={personUndo.shown.message}
               onUndo={personUndo.shown.run}
             />

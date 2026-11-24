@@ -22,17 +22,36 @@ type Content = {
 /** What only a row that sends its form has. */
 type NoSubmit = { submit?: never; name?: never; value?: never };
 
+/**
+ * Dimmed, and it takes no press, for as long as it can't help. "focusable"
+ * keeps it where the focus can reach it, for a row the focus comes back to
+ * while it can't help (a role change waiting for its undo): no `disabled`,
+ * `aria-disabled` instead, and a press does nothing.
+ */
+type RowDisabled = boolean | "focusable";
+
+/** What a button row has: dimmed, or on its way. */
+type ButtonRow = {
+  disabled?: RowDisabled;
+  /** On its way (a switch of business): `aria-busy`, its spinner the caller's. */
+  busy?: boolean;
+};
+
 export type ListRowProps = Content &
   (
-    | ({ href: string; onClick?: never; disabled?: never } & NoSubmit)
+    | ({
+        href: string;
+        onClick?: never;
+        disabled?: never;
+        busy?: never;
+      } & NoSubmit)
     | ({
         /** Gets the click, whose `currentTarget` is the row, to focus later. */
         onClick: (event: MouseEvent<HTMLButtonElement>) => void;
-        /** Dimmed, and it takes no press, for as long as it can't help. */
-        disabled?: boolean;
         href?: never;
-      } & NoSubmit)
-    | {
+      } & ButtonRow &
+        NoSubmit)
+    | ({
         /**
          * Sends the form it is in, with `name` and `value` when given: a row
          * that works before the page's script has loaded, as a server
@@ -41,17 +60,22 @@ export type ListRowProps = Content &
         submit: true;
         name?: string;
         value?: string;
-        disabled?: boolean;
         href?: never;
         onClick?: never;
-      }
-    | ({ href?: never; onClick?: never; disabled?: never } & NoSubmit)
+      } & ButtonRow)
+    | ({
+        href?: never;
+        onClick?: never;
+        disabled?: never;
+        busy?: never;
+      } & NoSubmit)
   );
 
 const base =
   "relative flex min-h-16 w-full items-center gap-3 px-4 py-2.5 text-start not-first:before:absolute not-first:before:end-0 not-first:before:top-0 not-first:before:h-px not-first:before:bg-line not-first:before:content-['']";
-const interactiveClass =
-  "transition-colors duration-150 ease-calm hover:bg-surface-2 active:bg-surface-3 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent";
+const focusClass =
+  "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent";
+const interactiveClass = `transition-colors duration-150 ease-calm hover:bg-surface-2 active:bg-surface-3 ${focusClass}`;
 // The current row's bar, which keeps every colour of the row readable.
 const currentClass =
   "after:absolute after:inset-y-2 after:start-0 after:w-1 after:rounded-full after:bg-accent after:content-['']";
@@ -68,6 +92,7 @@ export function ListRow({
   name,
   value,
   disabled = false,
+  busy = false,
   current = false,
   className,
 }: ListRowProps) {
@@ -81,6 +106,21 @@ export function ListRow({
     current && currentClass,
   );
   const ariaCurrent = current ? "true" : undefined;
+  // A row the focus can still reach shows where it is, and nothing else.
+  const pressClass = disabled
+    ? cn("opacity-50", disabled === "focusable" && focusClass)
+    : interactiveClass;
+  const buttonProps = {
+    disabled: disabled === true,
+    "aria-disabled": disabled === "focusable" ? true : undefined,
+    "aria-busy": busy || undefined,
+    "aria-current": ariaCurrent,
+  } as const;
+  // A row waiting with the focus on it takes no press, a submit included.
+  const refuse =
+    disabled === "focusable"
+      ? (event: MouseEvent<HTMLButtonElement>) => event.preventDefault()
+      : undefined;
   const content = (
     <>
       {leading ? (
@@ -121,13 +161,9 @@ export function ListRow({
         type="submit"
         name={name}
         value={value}
-        disabled={disabled}
-        aria-current={ariaCurrent}
-        className={cn(
-          row,
-          disabled ? "opacity-50" : interactiveClass,
-          className,
-        )}
+        {...buttonProps}
+        onClick={refuse}
+        className={cn(row, pressClass, className)}
       >
         {content}
       </button>
@@ -137,14 +173,9 @@ export function ListRow({
     return (
       <button
         type="button"
-        onClick={onClick}
-        disabled={disabled}
-        aria-current={ariaCurrent}
-        className={cn(
-          row,
-          disabled ? "opacity-50" : interactiveClass,
-          className,
-        )}
+        onClick={refuse ?? onClick}
+        {...buttonProps}
+        className={cn(row, pressClass, className)}
       >
         {content}
       </button>

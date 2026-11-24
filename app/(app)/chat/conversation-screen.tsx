@@ -2061,9 +2061,10 @@ export function ConversationScreen(props: Props) {
               ref={top}
               type="button"
               onClick={() => void loadOlder()}
-              // Keeps the focus while they load, where disabled would drop it.
+              // Keeps the focus while they load, where disabled would drop it,
+              // and takes no press meanwhile (no spring under a finger).
               aria-disabled={loadingOlder || undefined}
-              className="pressable flex min-h-11 items-center gap-1.5 rounded-full px-4 font-medium text-base text-ink-2 focus-visible:outline-2 focus-visible:outline-accent"
+              className="pressable flex min-h-11 items-center gap-1.5 rounded-full px-4 font-medium text-base text-ink-2 focus-visible:outline-2 focus-visible:outline-accent aria-disabled:pointer-events-none"
             >
               {loadingOlder ? (
                 <Spinner className="size-4" />

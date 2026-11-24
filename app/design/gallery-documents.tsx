@@ -52,6 +52,7 @@ export function GalleryFileField() {
         chosen={
           picked ? { kind: "image", src: picked, alt: ts("chosen") } : null
         }
+        readyLabel={ts("ready")}
         remove={{ label: ts("removeChosen"), onRemove: () => setPicked(null) }}
       />
       <FileField

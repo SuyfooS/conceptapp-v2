@@ -9,6 +9,7 @@ import {
   Trash2,
 } from "lucide-react";
 import Image from "next/image";
+import { useTranslations } from "next-intl";
 import { type ReactNode, useId, useRef, useState } from "react";
 import { Badge } from "./badge";
 import { Button } from "./button";
@@ -17,6 +18,7 @@ import { PICKED_PHOTO_ACCEPT } from "./photo-encode";
 import { Spinner } from "./spinner";
 import { Stepper } from "./stepper";
 import { fieldInputClass, ltrInputClass } from "./text-field";
+import { useFocusWhenGone } from "./use-focus-after";
 
 export type ChecklistItemKind = "check" | "number" | "note" | "photo";
 
@@ -151,8 +153,10 @@ const rowClass =
  * check has its count under it, a stepper that says how many were given.
  * An item with a story has it in a quiet row of its own at the end, outside
  * the check's label, so pressing it never ticks. Read-only lists show the
- * same without the controls. A checkbox is named by its label alone; the
- * rest of the row describes it.
+ * same without the controls, a check saying whether it is ticked in words.
+ * A checkbox is named by its label alone; the rest of the row describes it.
+ * A number's range is one line under it that describes it, and turns into
+ * the warning in place, so the change is heard.
  */
 export function ChecklistItem({
   kind,
@@ -172,6 +176,7 @@ export function ChecklistItem({
   note,
   photo,
 }: ChecklistItemProps) {
+  const t = useTranslations("ui.checklist");
   const fieldId = useId();
   const shortId = useId();
   const labelId = useId();
@@ -180,6 +185,7 @@ export function ChecklistItem({
   const commentId = useId();
   const doneId = useId();
   const historyId = useId();
+  const rangeId = useId();
   const title = (
     <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
       <span id={labelId} className="font-medium text-md text-ink">
@@ -276,6 +282,13 @@ export function ChecklistItem({
 
   if (kind === "check") {
     const checked = check?.checked ?? done;
+    // Only read: no checkbox says it, so the words do.
+    const state =
+      readOnly || !check ? (
+        <span className="sr-only">
+          {checked ? t("checked") : t("notChecked")}
+        </span>
+      ) : null;
     const circle = (
       <span
         aria-hidden="true"
@@ -292,6 +305,7 @@ export function ChecklistItem({
     const text = (
       <span className="flex min-w-0 flex-1 flex-col gap-0.5 text-start">
         {title}
+        {state}
         {hint ? (
           <span id={hintId} className="text-ink-2 text-sm">
             {hint}
@@ -415,63 +429,14 @@ export function ChecklistItem({
       </div>
 
       {kind === "number" && number ? (
-        <div className="flex flex-col gap-1.5">
-          <div className="flex items-center gap-2">
-            {number.minus && !readOnly ? (
-              <button
-                type="button"
-                aria-pressed={number.minus.on}
-                aria-label={`${number.minus.label}: ${label}`}
-                onClick={number.minus.onToggle}
-                className={cn(
-                  "pressable min-h-11 shrink-0 rounded-full px-4 font-semibold text-base transition-colors duration-150",
-                  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
-                  number.minus.on
-                    ? "bg-accent text-accent-ink"
-                    : "bg-surface-2 text-ink",
-                )}
-              >
-                {number.minus.label}
-              </button>
-            ) : null}
-            <input
-              id={fieldId}
-              dir="ltr"
-              inputMode="decimal"
-              enterKeyHint="done"
-              autoComplete="off"
-              value={number.value}
-              readOnly={readOnly}
-              aria-label={number.fieldLabel}
-              aria-describedby={hint ? hintId : undefined}
-              aria-invalid={number.outOfRange ? true : undefined}
-              onChange={(event) => number.onValueChange(event.target.value)}
-              onBlur={number.onCommit}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") event.currentTarget.blur();
-              }}
-              className={cn(
-                fieldInputClass,
-                ltrInputClass,
-                "max-w-40 tabular-nums read-only:bg-surface-2",
-                number.outOfRange &&
-                  "border-warning aria-invalid:border-warning aria-invalid:focus-visible:outline-warning/25",
-              )}
-            />
-            {number.unit ? (
-              <span dir="ltr" className="shrink-0 text-base text-ink-2">
-                {number.unit}
-              </span>
-            ) : null}
-          </div>
-          {number.outOfRange ? (
-            <span role="status" className="font-medium text-sm text-warning">
-              {number.outOfRange}
-            </span>
-          ) : number.range ? (
-            <span className="text-ink-2 text-sm">{number.range}</span>
-          ) : null}
-        </div>
+        <NumberPart
+          number={number}
+          label={label}
+          readOnly={readOnly}
+          fieldId={fieldId}
+          describedBy={hint ? hintId : undefined}
+          rangeId={rangeId}
+        />
       ) : null}
 
       {kind === "note" && note ? (
@@ -524,10 +489,10 @@ function PhotoPart({
   const [tall, setTall] = useState(false);
   const busy = Boolean(photo.busy);
   const take = readOnly || photo.locked ? null : (photo.take ?? null);
+  // Kept while it saves, so the focus on it has somewhere to stay.
   const remove =
-    readOnly || photo.locked || !photo.src || busy
-      ? null
-      : (photo.remove ?? null);
+    readOnly || photo.locked || !photo.src ? null : (photo.remove ?? null);
+  const takeButton = useRef<HTMLButtonElement>(null);
   // How to take one, until there is one.
   const showHint = Boolean(take?.hint) && !photo.src;
   const note = (text: ReactNode) => (
@@ -616,6 +581,7 @@ function PhotoPart({
                   }}
                 />
                 <Button
+                  ref={takeButton}
                   variant="secondary"
                   disabled={busy}
                   aria-label={`${photo.src ? take.replaceLabel : take.label}: ${label}`}
@@ -628,15 +594,12 @@ function PhotoPart({
               </>
             ) : null}
             {remove ? (
-              <Button
-                variant="ghost"
-                aria-label={`${remove.label}: ${label}`}
-                onClick={remove.onRemove}
-                className="text-danger"
-              >
-                <Trash2 aria-hidden="true" />
-                {remove.label}
-              </Button>
+              <RemovePhoto
+                remove={remove}
+                label={label}
+                busy={busy}
+                after={() => [takeButton.current]}
+              />
             ) : null}
           </div>
           {showHint ? (
@@ -649,5 +612,138 @@ function PhotoPart({
 
       {photo.after}
     </div>
+  );
+}
+
+/**
+ * A number item's field: the minus beside it where the keypad has none, its
+ * unit, and under it one line, there from the start, that says its range
+ * and turns into the warning in place when a reading is outside it, so the
+ * change is heard. It describes the field, with the item's hint.
+ */
+function NumberPart({
+  number,
+  label,
+  readOnly,
+  fieldId,
+  describedBy,
+  rangeId,
+}: {
+  number: NonNullable<ChecklistItemProps["number"]>;
+  label: string;
+  readOnly: boolean;
+  fieldId: string;
+  /** The item's hint, when it has one. */
+  describedBy?: string;
+  rangeId: string;
+}) {
+  const warning = number.outOfRange ? number.outOfRange : null;
+  const ranged = number.range != null || warning !== null;
+  const described =
+    [describedBy, ranged ? rangeId : null].filter(Boolean).join(" ") ||
+    undefined;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-2">
+        {number.minus && !readOnly ? (
+          <button
+            type="button"
+            aria-pressed={number.minus.on}
+            aria-label={`${number.minus.label}: ${label}`}
+            onClick={number.minus.onToggle}
+            className={cn(
+              "pressable min-h-11 shrink-0 rounded-full px-4 font-semibold text-base transition-colors duration-150",
+              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
+              number.minus.on
+                ? "bg-accent text-accent-ink"
+                : "bg-surface-2 text-ink",
+            )}
+          >
+            {number.minus.label}
+          </button>
+        ) : null}
+        <input
+          id={fieldId}
+          dir="ltr"
+          inputMode="decimal"
+          enterKeyHint="done"
+          autoComplete="off"
+          value={number.value}
+          readOnly={readOnly}
+          aria-label={number.fieldLabel}
+          aria-describedby={described}
+          aria-invalid={number.outOfRange ? true : undefined}
+          onChange={(event) => number.onValueChange(event.target.value)}
+          onBlur={number.onCommit}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") event.currentTarget.blur();
+          }}
+          className={cn(
+            fieldInputClass,
+            ltrInputClass,
+            "max-w-40 tabular-nums read-only:bg-surface-2",
+            number.outOfRange &&
+              "border-warning aria-invalid:border-warning aria-invalid:focus-visible:outline-warning/25",
+          )}
+        />
+        {number.unit ? (
+          <span dir="ltr" className="shrink-0 text-base text-ink-2">
+            {number.unit}
+          </span>
+        ) : null}
+      </div>
+      {ranged ? (
+        <span
+          id={rangeId}
+          aria-live="polite"
+          // Said whole as it changes: the range is a node of its own
+          // (`<ltr>`), and the warning's words with it.
+          aria-atomic="true"
+          className={cn(
+            "text-sm",
+            warning ? "font-medium text-warning" : "text-ink-2",
+          )}
+        >
+          {warning ?? number.range}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * A photo's remove: while the photo saves it stays, dimmed and doing
+ * nothing, so the focus on it stays too; when it goes holding the focus
+ * (the photo removed), the focus goes to the take button, unless the
+ * screen's own undo took it first.
+ */
+function RemovePhoto({
+  remove,
+  label,
+  busy,
+  after,
+}: {
+  remove: { label: string; onRemove: () => void };
+  label: string;
+  busy: boolean;
+  after: () => readonly (HTMLElement | null)[];
+}) {
+  const button = useRef<HTMLButtonElement>(null);
+  useFocusWhenGone(button, after);
+  return (
+    <Button
+      ref={button}
+      variant="ghost"
+      aria-label={`${remove.label}: ${label}`}
+      // Dimmed, and no press under a finger (Button's aria-disabled).
+      aria-disabled={busy || undefined}
+      onClick={() => {
+        if (!busy) remove.onRemove();
+      }}
+      className="text-danger"
+    >
+      <Trash2 aria-hidden="true" />
+      {remove.label}
+    </Button>
   );
 }

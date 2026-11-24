@@ -123,6 +123,16 @@ test("Galit switches from the shop to the restaurant and sees its pay month", as
   });
 
   await switchTo(page, SHOP, RESTAURANT, desktop);
+  // Heard where it arrived; on a phone or a tablet, where the pressed row
+  // went, the focus is on Home's title (the desktop's menu keeps its own).
+  await expect(page.locator('[data-announcer="polite"]')).toContainText(
+    heT("ui.businesses.switched", { name: RESTAURANT }),
+  );
+  if (!desktop) {
+    await expect(
+      page.locator("main h1").filter({ visible: true }).first(),
+    ).toBeFocused();
+  }
   // The choice stays: the next visit opens the restaurant again.
   await page.reload();
   await expect(homeIn(page, RESTAURANT)).toBeVisible();

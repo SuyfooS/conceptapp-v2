@@ -19,6 +19,7 @@ import { ListGroup, ListRow, type ListRowProps } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { ProfileCover } from "@ui/profile-cover";
 import { StatusToast } from "@ui/status-toast";
+import { UndoRow } from "@ui/undo-row";
 import { VisibilityNote } from "@ui/visibility-note";
 import {
   Camera,
@@ -32,7 +33,6 @@ import {
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import { type SignOutAction, SignOutForm } from "@/app/sign-out-form";
-import { UndoRow } from "../manage/undo-row";
 import {
   BioSheet,
   CoverSheet,
@@ -389,6 +389,9 @@ export function ProfileEditor({
             {undo && undoMessage ? (
               <div className="mt-1">
                 <UndoRow
+                  // The line removed while the photo's way back is up is a
+                  // row of its own; a way back that failed only changes words.
+                  key={undo.kind}
                   message={undoMessage}
                   onUndo={bringBack}
                   pending={undoing}

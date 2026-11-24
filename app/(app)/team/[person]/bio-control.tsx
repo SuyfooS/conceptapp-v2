@@ -3,18 +3,20 @@
 import type { ProfileFailure, ProfileSaveResult } from "@domain/profile";
 import { onLeavingBusiness } from "@ui/leaving-business";
 import { ListGroup } from "@ui/list-row";
+import { UndoRow } from "@ui/undo-row";
 import { Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import {
   createContext,
   type ReactNode,
+  type RefObject,
   use,
   useEffect,
   useLayoutEffect,
   useRef,
   useState,
 } from "react";
-import { UndoRow } from "../../manage/undo-row";
+import { type HeldTimer, heldTimer } from "../../held-timer";
 import { settle } from "../../me/about-sheets";
 
 /** How long a delete waits for "ביטול" before it is sent. */
@@ -33,6 +35,10 @@ type BioValue = {
   canClear: boolean;
   clear: () => void;
   undo: () => void;
+  /** Its "ביטול" is being reached: the delete waits as long. */
+  waits: (waiting: boolean) => void;
+  /** "מחיקת המשפט": the focus comes back to it after "ביטול". */
+  clearButton: RefObject<HTMLButtonElement | null>;
 };
 
 const BioContext = createContext<BioValue | null>(null);
@@ -70,7 +76,9 @@ export function BioState({
   const [seen, setSeen] = useState(bio);
   const [phase, setPhase] = useState<Phase>("shown");
   const [failure, setFailure] = useState<ProfileFailure | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The hold, which stops while its "ביטול" is being reached.
+  const timer = useRef<HeldTimer | null>(null);
+  const clearButton = useRef<HTMLButtonElement>(null);
   // The line the delete on hold is for, as the screen showed it.
   const meant = useRef<string | null>(null);
   // The server's line changed (it was deleted, or rewritten): show it.
@@ -98,14 +106,19 @@ export function BioState({
     meant.current = shown;
     setFailure(null);
     setPhase("pending");
-    timer.current = setTimeout(send, BIO_HOLD_MS);
+    timer.current = heldTimer(BIO_HOLD_MS, () => void send());
   }
 
   function undo() {
     if (timer.current === null) return;
-    clearTimeout(timer.current);
+    timer.current.clear();
     timer.current = null;
     setPhase("shown");
+  }
+
+  function waits(waiting: boolean) {
+    if (waiting) timer.current?.pause();
+    else timer.current?.resume();
   }
 
   /**
@@ -116,7 +129,7 @@ export function BioState({
   function sendHeld(): Promise<void> | null {
     const line = meant.current;
     if (timer.current === null || line === null) return null;
-    clearTimeout(timer.current);
+    timer.current.clear();
     timer.current = null;
     setShown(null);
     setPhase("shown");
@@ -146,7 +159,18 @@ export function BioState({
   useEffect(() => onLeavingBusiness(sendHeld), [clearBio, personId]);
 
   return (
-    <BioContext value={{ bio: shown, phase, failure, canClear, clear, undo }}>
+    <BioContext
+      value={{
+        bio: shown,
+        phase,
+        failure,
+        canClear,
+        clear,
+        undo,
+        waits,
+        clearButton,
+      }}
+    >
       {children}
     </BioContext>
   );
@@ -163,12 +187,23 @@ export function BioLine({ noBio }: { noBio: string }) {
   );
 }
 
-/** "המשפט של נועה כהן נמחק" with "ביטול", for as long as the hold lasts. */
+/**
+ * "המשפט של נועה כהן נמחק" with "ביטול", for as long as the hold lasts. The
+ * delete went with the line: "ביטול" takes the focus, under the name, and
+ * the hold waits while it has it. Undone, "מחיקת המשפט" takes it back; sent,
+ * the page's title.
+ */
 export function BioUndo({ message }: { message: string }) {
-  const { phase, undo } = useBio();
+  const { phase, undo, waits, clearButton } = useBio();
   return phase === "pending" ? (
     <div className="mt-1">
-      <UndoRow message={message} onUndo={undo} />
+      <UndoRow
+        message={message}
+        onUndo={undo}
+        autoFocus
+        onWaitingChange={waits}
+        focusAfter={() => [clearButton.current]}
+      />
     </div>
   ) : null;
 }
@@ -196,7 +231,7 @@ export function PersonActions({
   clearHint: string;
 }) {
   const t = useTranslations("app.team.person.failures");
-  const { bio, phase, failure, canClear, clear } = useBio();
+  const { bio, phase, failure, canClear, clear, clearButton } = useBio();
   const clearable = canClear && bio !== null && phase === "shown";
   if (!call && !place && !clearable && !failure) return null;
   return (
@@ -209,6 +244,7 @@ export function PersonActions({
             <>
               <ListGroup>
                 <button
+                  ref={clearButton}
                   type="button"
                   onClick={clear}
                   className="flex min-h-[3.25rem] w-full items-center justify-center gap-2 px-4 font-medium text-danger transition-colors duration-150 ease-calm hover:bg-surface-2 active:bg-surface-3 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent [&_svg]:size-5"

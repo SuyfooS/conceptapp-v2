@@ -1,8 +1,9 @@
 "use client";
 
 import { Eye, EyeOff } from "lucide-react";
-import { useLayoutEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "./button";
+import { focusFirst } from "./focus-after";
 
 /** What a page says about itself: whether it is on screen, and when that changes. */
 export type PageVisibility = Pick<
@@ -91,7 +92,10 @@ export function watchShown(
  * A holder's reveal of someone else's number (H6a) can also answer a line
  * of its own (over the hour's limit), said instead of the failed words, or
  * `held` when the screen drew itself again (the file locked): nothing said,
- * and the button can be pressed again.
+ * and the button can be pressed again. The value is a live region of its
+ * own: the number asked for is said as it shows, and the hidden words when
+ * it hides by itself. Neither ever goes through the page's announcer. The
+ * button is busy while it asks, so its answer gives it the focus back.
  */
 export function MaskedValue({
   label,
@@ -121,6 +125,20 @@ export function MaskedValue({
   const [pending, setPending] = useState(false);
   /** What is said under it: the failed words, or the reveal's own line. */
   const [said, setSaid] = useState<string | null>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  const asked = useRef(false);
+
+  // The answer came: the button, disabled while it waited, has the focus
+  // again ("הסתרה" now), unless it was put somewhere else meanwhile.
+  useEffect(() => {
+    if (pending) {
+      asked.current = true;
+      return;
+    }
+    if (!asked.current) return;
+    asked.current = false;
+    focusFirst([button.current], { title: false });
+  }, [pending]);
 
   // A layout effect, so a screen hidden with the number shown drops it
   // before it is hidden, and shows the dots again when it comes back.
@@ -149,6 +167,8 @@ export function MaskedValue({
           <span className="text-ink-2 text-sm">{label}</span>
           <span
             dir="ltr"
+            aria-live="polite"
+            aria-atomic="true"
             className="self-start font-medium text-md tabular-nums"
           >
             {shown ?? (
@@ -160,6 +180,7 @@ export function MaskedValue({
           </span>
         </div>
         <Button
+          ref={button}
           variant="secondary"
           loading={pending}
           onClick={() => (shown === null ? reveal() : setShown(null))}

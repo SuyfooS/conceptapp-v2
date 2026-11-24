@@ -5,7 +5,7 @@
   "ui": {
     "appShell": {
       "mainNav": "ניווט ראשי",
-      "needsAction": ", {count} דורשים טיפול",
+      "needsAction": ", {count, plural, one {אחד דורש טיפול} other {# דורשים טיפול}}",
       "profile": "הפרופיל שלי"
     },
     "businesses": {
@@ -17,10 +17,15 @@
       "unreadElsewhere": "{businesses, plural, one {{count, plural, one {התראה חדשה בעסק אחר} other {# התראות חדשות בעסק אחר}}} other {{count} התראות חדשות בעסקים אחרים}}",
       "menu": "החלפת עסק. העסק עכשיו: {name}",
       "menuUnread": "החלפת עסק. העסק עכשיו: {name}. {businesses, plural, one {{count, plural, one {התראה חדשה בעסק אחר} other {# התראות חדשות בעסק אחר}}} other {{count} התראות חדשות בעסקים אחרים}}",
+      "switching": "עוברים לעסק {name}",
+      "switched": "עברת לעסק {name}",
       "close": "סגירה"
     },
     "codeSlots": {
       "count": "{filled} מתוך {total} ספרות",
+      "typed": "{filled} מתוך {total} ספרות: <ltr>{digits}</ltr>",
+      "at": "ספרה {position} מתוך {total}: <ltr>{digit}</ltr>",
+      "atEmpty": "ספרה {position} מתוך {total}, ריקה",
       "accepted": "הקוד התקבל"
     },
     "captcha": {
@@ -60,6 +65,7 @@
       "remove": "הסרת התמונה",
       "note": "התמונה נחתכת לעיגול, מהמרכז. מה שהטלפון שומר בתוך הקובץ, כמו מקום הצילום, לא נשמר אצלנו.",
       "preparing": "מכינים את התמונה…",
+      "ready": "התמונה מוכנה. אפשר לשמור אותה או לבחור אחרת.",
       "saved": "התמונה נשמרה",
       "failures": {
         "unreadable": "אי אפשר לפתוח את הקובץ הזה. כדאי לבחור תמונה אחרת.",
@@ -96,6 +102,13 @@
       "note": "ההודעה לא נשלחת מהאפליקציה. בוואטסאפ בוחרים למי לשלוח אותה.",
       "preview": "ההודעה",
       "close": "סגירה"
+    },
+    "undoRow": {
+      "undo": "ביטול"
+    },
+    "checklist": {
+      "checked": "סומן",
+      "notChecked": "לא סומן"
     }
   },
   "days": {
@@ -262,6 +275,8 @@
     "rowCurrentText": "פס בצבע העסק בתחילתה, וקוראי מסך אומרים שהיא הנוכחית",
     "rowDisabled": "שורה שלא זמינה כרגע",
     "rowDisabledText": "מעומעמת, ואי אפשר ללחוץ עליה עד שהיא חוזרת",
+    "rowWaits": "מחכה לביטול",
+    "rowWaitsText": "אפשר להגיע אליה, ואי אפשר ללחוץ עד שהביטול נגמר",
     "badges": "תגיות",
     "layout": "פריסה ומספרים",
     "layoutLink": "לדמו: אותה אפליקציה בטלפון, בטאבלט ובמחשב",
@@ -314,6 +329,8 @@
     "sheetSubtitle": "2 מתוך 3",
     "sheetClose": "סגירה",
     "sheetDone": "סיום",
+    "sheetToast": "הודעה מתוך החלונית",
+    "sheetToastText": "השינוי נשמר",
     "sheetRole": "מלצר/ית",
     "share": "שיתוף",
     "shareOpen": "פתיחת השיתוף",
@@ -330,6 +347,9 @@
     "floating": "מה שצף מעל התוכן",
     "toastShow": "הצגת הודעה קצרה",
     "toastText": "הטיוטה נשמרה.",
+    "toastUndoShow": "הודעה עם ביטול",
+    "toastUndoText": "השורה הוסרה",
+    "toastUndoBack": "השורה חזרה",
     "dockShow": "הצגת הפעולה הראשית",
     "dockHide": "הסתרת הפעולה הראשית",
     "dockQuiet": "שמירה",
@@ -998,7 +1018,17 @@
     "fileCity": "יישוב",
     "fileCountry": "מדינה",
     "fileDemo": "תיק העובד, במסכים לדוגמה",
-    "filePastDemo": "התיק של מי שעזב, במסך לדוגמה"
+    "filePastDemo": "התיק של מי שעזב, במסך לדוגמה",
+    "undoRow": "שורת ביטול",
+    "undoRowFirst": "משמרת בוקר",
+    "undoRowSecond": "משמרת ערב",
+    "undoRowRemove": "הסרת {name}",
+    "undoRowRemoved": "הוסר מהרשימה: {name}",
+    "undoRowReset": "החזרת השורות",
+    "announcer": "הודעות לקורא מסך",
+    "announcerSay": "השמעת הודעה",
+    "announcerLine": "כך נשמעת הודעה שלא מופיעה על המסך",
+    "announcerHint": "קורא מסך אומר אותה. על המסך לא רואים כלום."
   },
   "shell": {
     "metaTitle": "דמו פריסה",
@@ -6360,6 +6390,7 @@
           "chosen": "הקובץ שבחרת",
           "removeChosen": "הסרת הקובץ",
           "preparing": "מכינים את התמונה",
+          "ready": "הקובץ מוכן לשליחה",
           "uploadLabel": "העלאת הקובץ",
           "uploading": "מעלים את הקובץ · <ltr>{percent}%</ltr>",
           "checking": "בודקים את הקובץ",

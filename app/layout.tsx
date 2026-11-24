@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { NextIntlClientProvider } from "next-intl";
 import { getTranslations } from "next-intl/server";
 import "@fontsource-variable/heebo";
+import { Announcer } from "@ui/announcer";
 import { defaultLocale, direction } from "@/i18n/config";
 import "./globals.css";
 
@@ -46,6 +47,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className="h-full"
     >
       <body className="min-h-full bg-bg text-ink">
+        {/* First, and kept across navigations: a line said just before one
+            is heard on the next screen. It has no words of its own. */}
+        <Announcer />
         <NextIntlClientProvider>{children}</NextIntlClientProvider>
       </body>
     </html>

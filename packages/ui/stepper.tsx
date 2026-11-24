@@ -2,6 +2,7 @@
 
 import { Minus, Plus } from "lucide-react";
 import type { KeyboardEventHandler } from "react";
+import { announce } from "./announcer";
 import { cn } from "./cn";
 import { IconButton } from "./icon-button";
 
@@ -19,6 +20,11 @@ export type StepperProps = {
    * with `htmlFor` (a count beside an item's own name, say).
    */
   label?: string;
+  /**
+   * What is said after a press of minus or plus, the new number given: the
+   * number alone by default ("3"), never on typing.
+   */
+  spoken?: (value: number) => string;
   /** Room for four digits (an order's count), not two. */
   wide?: boolean;
   invalid?: boolean;
@@ -32,8 +38,28 @@ export type StepperProps = {
 };
 
 /**
+ * The number one step from `value` (as typed: an empty field counts from
+ * nothing), kept between `min` and `max`; null when the step changes
+ * nothing, at an end.
+ */
+export function stepped(
+  value: string,
+  by: number,
+  min: number,
+  max: number,
+): string | null {
+  const current = Number(value);
+  const from = Number.isFinite(current) ? current : min;
+  const next = String(Math.min(max, Math.max(min, from + by)));
+  return next === value ? null : next;
+}
+
+/**
  * A count: minus, the number, plus. Most changes are one tap either way, and
- * the number is still a field for whoever wants to type it.
+ * the number is still a field for whoever wants to type it. A press says
+ * the new number to a screen reader (`spoken`), as the field it doesn't
+ * move the focus to would. At an end its button dims and does nothing, but
+ * keeps the focus, so the keyboard isn't thrown to the top of the page.
  */
 export function Stepper({
   id,
@@ -44,6 +70,7 @@ export function Stepper({
   decreaseLabel,
   increaseLabel,
   label,
+  spoken,
   wide = false,
   invalid,
   describedBy,
@@ -53,9 +80,13 @@ export function Stepper({
   className,
 }: StepperProps) {
   const current = Number(value);
+  const atMin = current <= min;
+  const atMax = current >= max;
   const step = (by: number) => {
-    const from = Number.isFinite(current) ? current : min;
-    onValueChange(String(Math.min(max, Math.max(min, from + by))));
+    const next = stepped(value, by, min, max);
+    if (next === null) return;
+    onValueChange(next);
+    announce(spoken ? spoken(Number(next)) : next);
   };
   return (
     <span
@@ -64,8 +95,11 @@ export function Stepper({
       <IconButton
         label={decreaseLabel}
         icon={<Minus />}
-        disabled={disabled || current <= min}
-        onClick={() => step(-1)}
+        disabled={disabled}
+        aria-disabled={atMin || undefined}
+        onClick={() => {
+          if (!atMin) step(-1);
+        }}
       />
       <input
         id={id}
@@ -90,8 +124,11 @@ export function Stepper({
       <IconButton
         label={increaseLabel}
         icon={<Plus />}
-        disabled={disabled || current >= max}
-        onClick={() => step(1)}
+        disabled={disabled}
+        aria-disabled={atMax || undefined}
+        onClick={() => {
+          if (!atMax) step(1);
+        }}
       />
     </span>
   );

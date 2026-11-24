@@ -8,10 +8,10 @@ import {
 import { IconButton } from "@ui/icon-button";
 import { ListGroup } from "@ui/list-row";
 import { PageSection } from "@ui/page";
+import { UndoRow } from "@ui/undo-row";
 import { Plus, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type FormEvent, useState } from "react";
-import { UndoRow } from "./undo-row";
 
 const NAME_MAX = 40;
 const POSITIONS_MAX = 30;
@@ -179,6 +179,8 @@ export function PositionsEditor({
       ) : null}
       {removed ? (
         <UndoRow
+          // Each removal a row of its own, said afresh.
+          key={removed.position.key}
           message={t("removed", { name: removed.position.name })}
           onUndo={undo}
         />

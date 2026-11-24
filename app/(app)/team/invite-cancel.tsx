@@ -1,10 +1,10 @@
 "use client";
 
 import { Button } from "@ui/button";
+import { UndoRow } from "@ui/undo-row";
 import { Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { createContext, type ReactNode, use, useState } from "react";
-import { UndoRow } from "../manage/undo-row";
 import { useHeldWrite } from "../use-held-write";
 import type {
   CancelInvite,
@@ -162,7 +162,10 @@ export function InviteCancelUndo() {
   const { held, failure } = cancels;
   return (
     <>
-      {held ? <UndoRow message={held.message} onUndo={cancels.undo} /> : null}
+      {held ? (
+        // Each invite deleted a row of its own, said afresh.
+        <UndoRow key={held.id} message={held.message} onUndo={cancels.undo} />
+      ) : null}
       {failure ? (
         <p role="alert" className="px-1 text-base text-danger">
           {failure === "gone"

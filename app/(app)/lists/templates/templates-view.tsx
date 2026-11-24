@@ -9,12 +9,12 @@ import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
 import { StatusToast } from "@ui/status-toast";
+import { UndoRow } from "@ui/undo-row";
 import { ChevronDown, ClipboardList, Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState, useTransition } from "react";
-import { UndoRow } from "../../manage/undo-row";
 import type {
   ListActionResult,
   ListFailure,
@@ -202,6 +202,8 @@ export function TemplatesView({
 
       {just ? (
         <UndoRow
+          // Each removal a row of its own, said afresh.
+          key={just.id}
           message={t("removed", { name: just.name })}
           onUndo={() => bringBack(just, true)}
           pending={pending && restoring === just.id}

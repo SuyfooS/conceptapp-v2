@@ -1,10 +1,11 @@
 "use client";
 
 import { X } from "lucide-react";
-import { type ReactNode, useId, useRef } from "react";
+import { type ReactNode, useId, useLayoutEffect, useRef } from "react";
 import { AttachmentChip, type AttachmentProgress } from "./attachment-chip";
 import { Button } from "./button";
 import { cn } from "./cn";
+import { focusFirst, focusLost } from "./focus-after";
 import { IconButton } from "./icon-button";
 import { Spinner } from "./spinner";
 
@@ -41,6 +42,8 @@ export type FileFieldProps = {
   remove?: { label: string; onRemove: () => void } | null;
   /** While a photo is made ready: what it says beside a spinner. */
   preparing?: string | null;
+  /** Said once the file is picked ("הקובץ מוכן לשליחה"). */
+  readyLabel?: string;
   /** A PDF on its way up, with the way to stop it. */
   progress?: AttachmentProgress | null;
   cancel?: { label: string; onCancel: () => void } | null;
@@ -57,7 +60,10 @@ export type FileFieldProps = {
  * PDF as a chip with its name and size, how far it got on its way up, and
  * the way to take it out or stop it. The pickers stay outside what is shown,
  * so a file picked after the screen changed still arrives. Its buttons are
- * pills of at least 44px, each with its words.
+ * pills of at least 44px, each with its words. One line a screen reader
+ * hears is always there: the photo being made ready, then the file ready
+ * (`readyLabel`). The picker's button goes with the pick, so the focus
+ * goes to the way to take the file out, and back to the buttons once it is.
  */
 export function FileField({
   legend,
@@ -67,6 +73,7 @@ export function FileField({
   chosenLabel,
   remove,
   preparing,
+  readyLabel,
   progress,
   cancel,
   error,
@@ -74,10 +81,28 @@ export function FileField({
   className,
 }: FileFieldProps) {
   const pickers = useRef(new Map<string, HTMLInputElement>());
+  const fieldset = useRef<HTMLFieldSetElement>(null);
   const hintId = useId();
   const errorId = useId();
+  const picked = chosen?.kind ?? null;
+  const making = Boolean(preparing);
+  // What the field showed last: a pick, or a removal, moves the focus that
+  // went with the button pressed.
+  const was = useRef({ picked, making });
+  useLayoutEffect(() => {
+    const before = was.current;
+    was.current = { picked, making };
+    if (!focusLost()) return;
+    const root = fieldset.current;
+    if (picked && (!before.picked || before.making)) {
+      focusFirst(["[data-file-remove]", "[data-attachment-cancel]"], { root });
+    } else if (!picked && !making && (before.picked || before.making)) {
+      focusFirst(["[data-file-choice-button]"], { root });
+    }
+  }, [picked, making]);
   return (
     <fieldset
+      ref={fieldset}
       className={cn("m-0 flex min-w-0 flex-col gap-3 border-0 p-0", className)}
       aria-describedby={
         [hint ? hintId : null, error ? errorId : null]
@@ -112,9 +137,13 @@ export function FileField({
           }}
         />
       ))}
+      {/* There before it speaks: a line drawn with its words isn't heard. */}
+      <p aria-live="polite" className="sr-only">
+        {preparing ? preparing : chosen && readyLabel ? readyLabel : null}
+      </p>
       {preparing ? (
         <p
-          role="status"
+          aria-hidden="true"
           className="flex min-h-14 items-center gap-2 rounded-control bg-surface-2 px-4 text-ink-2"
         >
           <Spinner className="size-5" />
@@ -130,6 +159,7 @@ export function FileField({
           />
           {remove ? (
             <IconButton
+              data-file-remove=""
               label={remove.label}
               icon={<X />}
               onClick={remove.onRemove}
@@ -158,6 +188,7 @@ export function FileField({
           {choices.map((choice) => (
             <Button
               key={choice.key}
+              data-file-choice-button=""
               variant="secondary"
               disabled={disabled}
               onClick={() => pickers.current.get(choice.key)?.click()}

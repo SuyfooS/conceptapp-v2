@@ -2,6 +2,7 @@
 
 import { Button } from "@ui/button";
 import { Card, CardText, CardTitle } from "@ui/card";
+import { UndoRow } from "@ui/undo-row";
 import { ShieldAlert } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
@@ -13,7 +14,6 @@ import {
   useState,
   useTransition,
 } from "react";
-import { UndoRow } from "../manage/undo-row";
 import type { FileToday, FileTodayActions } from "../me/file/file-types";
 import { useHeldWrite } from "../use-held-write";
 import { sendHide } from "./hide-request";

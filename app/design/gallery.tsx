@@ -92,6 +92,7 @@ import { GalleryChat } from "./gallery-chat";
 import { GalleryFileField } from "./gallery-documents";
 import { GalleryFile } from "./gallery-file";
 import { GalleryOrderTaking } from "./gallery-order-taking";
+import { GalleryAnnouncer, GalleryUndoRows } from "./gallery-undo";
 import { listPhotos } from "./list-photos";
 import { portraits } from "./portraits";
 
@@ -171,6 +172,19 @@ function CaptchaDemo({ shown }: { shown: CaptchaShown }) {
   );
 }
 
+/**
+ * The gallery's toasts: a plain one, one with "ביטול" that takes the focus
+ * and brings the next one, and one said from inside the open sheet.
+ */
+type GalleryToast = { kind: "plain" | "undo" | "back" | "sheet"; at: string };
+
+const TOAST_WORDS = {
+  plain: "toastText",
+  undo: "toastUndoText",
+  back: "toastUndoBack",
+  sheet: "sheetToastText",
+} as const;
+
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-3">
@@ -214,6 +228,7 @@ function GalleryBody({
   const tRoles = useTranslations("app.roles");
   const tSteps = useTranslations("app.home.firstSteps");
   const tSetup = useTranslations("admin.setup.checklist");
+  const tManage = useTranslations("app.manage");
   const [ticked, setTicked] = useState(false);
   // Items with a story (L6a), each as its story left it (they don't tick
   // here, or their line would no longer match it), and the sheet that tells
@@ -312,7 +327,9 @@ function GalleryBody({
   const [shareOpen, setShareOpen] = useState(false);
   const [needed, setNeeded] = useState("3");
   const [position, setPosition] = useState("waiter");
-  const [toastAt, setToastAt] = useState<string | null>(null);
+  const [toast, setToast] = useState<GalleryToast | null>(null);
+  const sayToast = (kind: GalleryToast["kind"]) =>
+    setToast({ kind, at: new Date().toISOString() });
   const [dock, setDock] = useState(false);
   const [switchOn, setSwitchOn] = useState(true);
   const [picked, setPicked] = useState("#4f46e5");
@@ -652,6 +669,12 @@ function GalleryBody({
               disabled
               title={t("rowDisabled")}
               subtitle={t("rowDisabledText")}
+            />
+            <ListRow
+              onClick={() => {}}
+              disabled="focusable"
+              title={t("rowWaits")}
+              subtitle={t("rowWaitsText")}
             />
           </ListGroup>
         </Section>
@@ -1637,6 +1660,16 @@ function GalleryBody({
                 subtitle={t("sheetRole")}
               />
             </ListGroup>
+            {/* Said while the sheet stays open: the toast is heard over it. */}
+            <div className="px-2 pt-3">
+              <Button
+                variant="secondary"
+                onClick={() => sayToast("sheet")}
+                className="w-full"
+              >
+                {t("sheetToast")}
+              </Button>
+            </div>
           </Sheet>
         </Section>
 
@@ -1716,11 +1749,11 @@ function GalleryBody({
 
         <Section title={t("floating")}>
           <div className="flex flex-wrap gap-2">
-            <Button
-              variant="secondary"
-              onClick={() => setToastAt(new Date().toISOString())}
-            >
+            <Button variant="secondary" onClick={() => sayToast("plain")}>
               {t("toastShow")}
+            </Button>
+            <Button variant="secondary" onClick={() => sayToast("undo")}>
+              {t("toastUndoShow")}
             </Button>
             <Button
               variant="secondary"
@@ -1731,8 +1764,15 @@ function GalleryBody({
             </Button>
           </div>
           <StatusToast
-            message={toastAt ? t("toastText") : null}
-            stamp={toastAt ?? undefined}
+            message={toast ? t(TOAST_WORDS[toast.kind]) : null}
+            stamp={toast?.at}
+            duration={toast?.kind === "undo" ? 8000 : undefined}
+            action={
+              toast?.kind === "undo"
+                ? { label: tManage("undo"), onClick: () => sayToast("back") }
+                : null
+            }
+            focusAction={toast?.kind === "undo"}
           />
           {dock ? (
             <FloatingDock>
@@ -1746,6 +1786,14 @@ function GalleryBody({
               </DockButton>
             </FloatingDock>
           ) : null}
+        </Section>
+
+        <Section title={t("undoRow")}>
+          <GalleryUndoRows />
+        </Section>
+
+        <Section title={t("announcer")}>
+          <GalleryAnnouncer />
         </Section>
 
         <Section title={t("badges")}>

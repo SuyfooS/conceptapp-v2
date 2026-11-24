@@ -3,9 +3,16 @@
 import type { PhotoFailure, PhotoSaveResult } from "@domain/profile-photos";
 import { Camera, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { type ChangeEvent, useEffect, useRef, useState } from "react";
+import {
+  type ChangeEvent,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { Avatar } from "./avatar";
 import { Button } from "./button";
+import { focusLost } from "./focus-after";
 import { encodeProfilePhoto, PhotoReadError } from "./photo-encode";
 import { Sheet } from "./sheet";
 import { Spinner } from "./spinner";
@@ -38,11 +45,24 @@ type Stage =
   | { kind: "preview"; blob: Blob; url: string };
 
 /**
+ * The line under the photo, which a screen reader hears as it changes:
+ * the photo being made ready, then ready to save; none before a pick.
+ */
+export function photoPickerLine(
+  kind: Stage["kind"],
+): "preparing" | "ready" | null {
+  if (kind === "preparing") return "preparing";
+  return kind === "preview" ? "ready" : null;
+}
+
+/**
  * Choosing a profile photo, in a sheet: the phone's own picker (its photos or
  * the camera), then a preview of the round crop, then save. The photo is
  * re-encoded here first (`encodeProfilePhoto`), so what leaves the phone is a
  * small square with nothing from the camera inside. Removing reads the photo
- * first, so the screen can offer it back.
+ * first, so the screen can offer it back. The pressed button is busy while
+ * the photo is made ready, so once it is the line says so and "שמירת
+ * התמונה" takes the focus that fell to the sheet.
  */
 export function AvatarPhotoPicker({
   open,
@@ -54,6 +74,7 @@ export function AvatarPhotoPicker({
 }: AvatarPhotoPickerProps) {
   const t = useTranslations("ui.photoPicker");
   const input = useRef<HTMLInputElement>(null);
+  const saveButton = useRef<HTMLButtonElement>(null);
   const [stage, setStage] = useState<Stage>({ kind: "idle" });
   const [failure, setFailure] = useState<PickerFailure | null>(null);
   const [busy, setBusy] = useState<"save" | "remove" | null>(null);
@@ -61,6 +82,12 @@ export function AvatarPhotoPicker({
   // Counts picks: one that finishes after the sheet closed, or after a newer
   // pick, is no longer wanted and changes nothing.
   const pick = useRef(0);
+
+  // Ready: the focus the busy button lost goes to saving it.
+  const kind = stage.kind;
+  useLayoutEffect(() => {
+    if (kind === "preview" && focusLost()) saveButton.current?.focus();
+  }, [kind]);
 
   // A preview's address lives as long as the preview.
   useEffect(() => {
@@ -147,6 +174,7 @@ export function AvatarPhotoPicker({
   }
 
   const choose = () => input.current?.click();
+  const line = photoPickerLine(stage.kind);
 
   return (
     <Sheet
@@ -173,9 +201,7 @@ export function AvatarPhotoPicker({
         </div>
 
         <div aria-live="polite" className="min-h-6 text-center">
-          {stage.kind === "preparing" ? (
-            <p className="text-base text-ink-2">{t("preparing")}</p>
-          ) : null}
+          {line ? <p className="text-base text-ink-2">{t(line)}</p> : null}
         </div>
         {failure ? (
           <p role="alert" className="-mt-4 text-center text-base text-danger">
@@ -197,6 +223,7 @@ export function AvatarPhotoPicker({
           {stage.kind === "preview" ? (
             <>
               <Button
+                ref={saveButton}
                 size="lg"
                 loading={busy === "save"}
                 onClick={save}
