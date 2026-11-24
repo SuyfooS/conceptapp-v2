@@ -18,6 +18,7 @@ describe("afterPerson", () => {
         "assigned",
       ]),
     ).toEqual([
+      '[data-add-person="uri"]',
       '[data-add-person="omer"]',
       '[data-add-person="dana"]',
       '[data-sheet-heading="noAnswer"]',
@@ -28,6 +29,7 @@ describe("afterPerson", () => {
 
   it("goes to the list's heading after its last person", () => {
     expect(afterPerson("remove", ["noa", "itay"], "itay", "assigned")).toEqual([
+      '[data-remove-person="itay"]',
       '[data-sheet-heading="assigned"]',
     ]);
   });
@@ -36,6 +38,7 @@ describe("afterPerson", () => {
     expect(
       afterPerson("remove", ["noa", "itay", "shiran"], "itay", "assigned"),
     ).toEqual([
+      '[data-remove-person="itay"]',
       '[data-remove-person="shiran"]',
       '[data-sheet-heading="assigned"]',
     ]);
@@ -43,7 +46,22 @@ describe("afterPerson", () => {
 
   it("goes to the heading for someone the list no longer has", () => {
     expect(afterPerson("add", ["noa"], "maya", "available")).toEqual([
+      '[data-add-person="maya"]',
       '[data-sheet-heading="available"]',
+    ]);
+  });
+
+  // A press takes the person's own button away for good, so it is never
+  // found then; the sheet drawn again as the clock reaches the shift draws
+  // it again, and the focus stays on that person, not the next.
+  it("tries the person's own button first", () => {
+    expect(
+      afterPerson("add", ["omer", "michal"], "omer", "available", ["assigned"]),
+    ).toEqual([
+      '[data-add-person="omer"]',
+      '[data-add-person="michal"]',
+      '[data-sheet-heading="available"]',
+      '[data-sheet-heading="assigned"]',
     ]);
   });
 });

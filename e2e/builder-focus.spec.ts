@@ -1,6 +1,6 @@
 import he from "../messages/he.json" with { type: "json" };
 import { announcer, heardSoFar, saidSince } from "./announcer";
-import { buildScreen } from "./build-screen";
+import { before, buildScreen } from "./build-screen";
 import { heT } from "./t";
 import { expect, type Locator, type Page, test } from "./test";
 
@@ -102,24 +102,88 @@ test("the builder's sheet keeps the focus among the people, and says who went on
   );
 });
 
+// The running week's twin: the shop on Tuesday at 11:20, its evening from
+// 15:00 with Roni on it, and Omer and Michal free for it. The twin's clock
+// goes on once a minute from 11:20 by the time gone since the screen came
+// (`useBuilderClock`), so moving the page's clock on to 15:01 with the
+// evening's sheet open begins the evening there: its details go, and the
+// sheet draws its people again, as a shift under way. The focus on Omer's
+// "+" stays on him, as he can still join, not on the next one's "+". Where
+// the screen's own change went back as it began (Roni taken off it), the
+// line in the sheet that says so takes the focus, so the reason is heard.
+const runningWeek = "/design/shell/schedule/build/running";
+const tuesday = { day: ta.weekdays.tue, date: "17.11" };
+/** From 11:20 to 15:01 on the twin's clock. */
+const toEvening = "03:41:00";
+
+test("a shift that begins with its sheet open keeps the focus on the person it was on", async ({
+  page,
+}) => {
+  const screen = buildScreen(page);
+  const omer = screen.addButton("עומר הדגמה");
+
+  await page.clock.install();
+  await page.goto(runningWeek);
+  await screen.card("ערב", tuesday).click();
+  await expect(omer).toBeVisible();
+  await omer.focus();
+  await page.clock.fastForward(toEvening);
+  await expect(screen.sheet).toContainText(before(tb.running.begunLine));
+  await expect(omer).toBeFocused();
+});
+
+test("a shift that begins with changes on the screen puts the focus on why they went back", async ({
+  page,
+}) => {
+  const screen = buildScreen(page);
+  const omer = screen.addButton("עומר הדגמה");
+  const roni = "רוני שלום";
+  const notice = screen.sheet
+    .getByRole("status")
+    .filter({ hasText: before(tb.running.errors.shiftStarted) });
+
+  await page.clock.install();
+  await page.goto(runningWeek);
+  await screen.card("ערב", tuesday).click();
+  await screen.removeButton(roni).click();
+  await expect(screen.group(tb.groups.assigned)).not.toContainText(roni);
+  await omer.focus();
+  await page.clock.fastForward(toEvening);
+  await expect(notice).toBeFocused();
+  // Back on it as it was read, and kept there now that it has begun.
+  await expect(screen.group(tb.groups.assigned)).toContainText(roni);
+  await expect(screen.removeButton(roni)).toHaveCount(0);
+});
+
 // A draft saved and a week's first publish go at once, and the pressed
 // button goes with the focus: the dock's save button once nothing is
 // unsaved, and the dock itself, which sharing takes the place of. The focus
-// goes to the line that says where the week stands, and after a first
-// publish to sharing it.
+// goes to the line that says where the week stands, which says it is saved
+// (the twin stores nothing, and says so from what its save answered), and
+// after a first publish to sharing it. Pressed in the floating dock from
+// the foot of the page, the page stays where it was: that line is above
+// the board.
 test("after saving the draft the focus is on where the week stands, after a first publish on sharing it", async ({
   page,
 }) => {
   const screen = buildScreen(page);
+  const morning = screen.card("בוקר");
   const save = page.getByRole("button", { name: tb.submit });
   const publish = page.getByRole("button", { name: tb.publish });
   const status = page.locator("[data-builder-status]");
+  const scrolled = () => page.evaluate(() => window.scrollY);
 
   await page.goto("/design/shell/schedule/build");
-  await screen.card("בוקר").click();
+  await morning.click();
   await screen.addButton("שירן אלון").click();
   await screen.closeSheet();
   await expect(page.getByText(tb.unsaved)).toBeVisible();
+  // The sheet gave the focus back to the card: nothing moves the page now.
+  await expect(morning).toBeFocused();
+  await page.evaluate(() =>
+    window.scrollTo(0, document.documentElement.scrollHeight),
+  );
+  const atFoot = await scrolled();
 
   await save.focus();
   await page.keyboard.press("Enter");
@@ -128,6 +192,10 @@ test("after saving the draft the focus is on where the week stands, after a firs
   ).toBeVisible();
   await expect(save).toHaveCount(0);
   await expect(status).toBeFocused();
+  await expect(status).toContainText(before(tb.savedAt));
+  await expect(status).not.toContainText(tb.draft);
+  // Never up to that line; longer words above may push the page on a little.
+  expect(await scrolled()).toBeGreaterThanOrEqual(atFoot);
 
   await publish.focus();
   await page.keyboard.press("Enter");

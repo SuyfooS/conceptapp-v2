@@ -23,7 +23,7 @@ import { Avatar } from "@ui/avatar";
 import { ChoiceMenu } from "@ui/choice-menu";
 import { cn } from "@ui/cn";
 import { FieldRow, rowInputClass, rowPillInputClass } from "@ui/field-row";
-import type { FocusCandidate } from "@ui/focus-after";
+import { type FocusCandidate, focusLost } from "@ui/focus-after";
 import { IconButton, type IconButtonProps } from "@ui/icon-button";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { Sheet } from "@ui/sheet";
@@ -34,8 +34,8 @@ import { useLocale, useTranslations } from "next-intl";
 import {
   Fragment,
   type ReactNode,
-  useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -328,19 +328,16 @@ export function ShiftSheet({
  * Why the open shift locked as the clock reached it, its changes put back:
  * said in the sheet, which covers the dock's own line. The details, and the
  * field that had focus, go as it locks, so focus comes here rather than being
- * lost; when focus is still somewhere in the sheet, it stays there.
+ * lost; when focus is still somewhere in the sheet, it stays there. Taken in
+ * the drawing that brings it (a layout effect), before a person's "+" or "×"
+ * that went with the focus sends it on (`useFocusWhenGone`, a moment later):
+ * the people are drawn again as it locks, those buttons with them, and the
+ * reason would go unheard.
  */
 function LockedNotice({ children }: { children: ReactNode }) {
   const ref = useRef<HTMLParagraphElement>(null);
-  useEffect(() => {
-    const active = document.activeElement;
-    if (
-      active === null ||
-      active === document.body ||
-      active.getAttribute("role") === "dialog"
-    ) {
-      ref.current?.focus();
-    }
+  useLayoutEffect(() => {
+    if (focusLost()) ref.current?.focus();
   }, []);
   return (
     <p

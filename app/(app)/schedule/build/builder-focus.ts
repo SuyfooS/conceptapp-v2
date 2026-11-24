@@ -40,7 +40,11 @@ export const personButton = (press: PersonPress, userId: string) =>
  * button of the next person after them in the same list (`people`, in the
  * order shown), then that list's heading, then the headings of the lists
  * after it (`then`), the first of them still on screen. A list left empty
- * is no longer drawn, its heading with it.
+ * is no longer drawn, its heading with it. First their own button, should
+ * it be drawn again: a press takes it away for good, but the sheet draws
+ * its people again as the clock reaches the shift, and the focus then stays
+ * on the person it was on, not on the next one, whom Enter would then put
+ * on or take off.
  */
 export function afterPerson(
   press: PersonPress,
@@ -52,6 +56,7 @@ export function afterPerson(
   const at = people.indexOf(userId);
   const next = at < 0 ? [] : people.slice(at + 1);
   return [
+    personButton(press, userId),
     ...next.map((id) => personButton(press, id)),
     listHeading(list),
     ...then.map(listHeading),

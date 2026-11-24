@@ -45,7 +45,7 @@ import { Button } from "@ui/button";
 import { Card, CardText } from "@ui/card";
 import { cn } from "@ui/cn";
 import { DockButton, FloatingDock } from "@ui/floating-dock";
-import { arrived, focusFirst, focusLost } from "@ui/focus-after";
+import { focusFirst, focusLost } from "@ui/focus-after";
 import { Segmented } from "@ui/segmented";
 import { Sheet } from "@ui/sheet";
 import { StatusToast } from "@ui/status-toast";
@@ -595,16 +595,29 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
   // takes the place of, and the whole board as the builder starts again from
   // the new reading. Once the toast says it is done, the focus goes, where it
   // was lost, to sharing after a week's first publish, else to the line that
-  // says where the week stands (`afterWrite`); and again should the new
-  // reading come after the toast. A publish of changes whose "ביטול" went
-  // with the focus is `focusAfterToast`'s, which ran before this.
+  // says where the week stands (`afterWrite`); and once more should the
+  // write's own reading come after the toast, never for a reading after that
+  // (another manager's write) or a screen shown again from a hidden
+  // <Activity>. Without moving the page: the dock floats over a day scrolled
+  // down, that line is above the board, and a screen reader follows the
+  // focus anyway. A publish of changes whose "ביטול" went with the focus is
+  // `focusAfterToast`'s, which ran before this.
   const writtenAt = toast?.write ? toast.stamp : null;
   const firstPublish = state.published === true && shareKind === "other";
-  const placed = useRef<string | null>(null);
+  /** The reading the screen had while the last write was on its way. */
+  const writtenOn = useRef<string | null>(null);
+  useEffect(() => {
+    if (pending || holding) writtenOn.current = reading.key;
+  });
+  /** The write the focus was placed after, and if its reading was to come. */
+  const placed = useRef<{ at: string; waiting: boolean } | null>(null);
   useEffect(() => {
     if (writtenAt === null) return;
-    if (!arrived(placed, `${writtenAt} ${reading.key}`)) return;
-    focusFirst(afterWrite(firstPublish));
+    const waiting = reading.key === writtenOn.current;
+    const seen = placed.current;
+    if (seen?.at === writtenAt && (!seen.waiting || waiting)) return;
+    placed.current = { at: writtenAt, waiting };
+    focusFirst(afterWrite(firstPublish), { preventScroll: true });
   }, [writtenAt, reading.key, firstPublish]);
 
   return (
@@ -820,6 +833,13 @@ function WeekBuilder({
     (publishedAt === null || Date.parse(ownPublish) > Date.parse(publishedAt))
       ? ownPublish
       : publishedAt;
+  // So does its own save of a draft: the line that says where the week
+  // stands, where the focus goes after it, would call it unsaved otherwise.
+  const lastSave =
+    state.savedAt &&
+    (savedAt === null || Date.parse(state.savedAt) > Date.parse(savedAt))
+      ? state.savedAt
+      : savedAt;
   const published = lastPublish !== null;
   // Someone who builds without publishing only reads a published week: it
   // changes only by being published again (the roles plan's R3).
@@ -1067,7 +1087,7 @@ function WeekBuilder({
           time: timeIn(new Date(iso), timeZone),
         }
       : null;
-  const savedMoment = moment(savedAt);
+  const savedMoment = moment(lastSave);
   const publishedMoment = moment(lastPublish);
   const done = !dirty && !busy;
   // A failed save leaves the work where it was: on the screen only. After
