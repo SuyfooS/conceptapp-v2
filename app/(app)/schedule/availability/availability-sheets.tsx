@@ -10,12 +10,12 @@ import {
   suggestedRange,
   WEEKDAY_KEYS,
 } from "@domain/availability-form";
-import { Button } from "@ui/button";
 import { cn } from "@ui/cn";
 import { IconButton } from "@ui/icon-button";
 import { ListGroup } from "@ui/list-row";
 import { Sheet } from "@ui/sheet";
 import { fieldInputClass, ltrInputClass } from "@ui/text-field";
+import { UndoRow } from "@ui/undo-row";
 import { Plus, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
@@ -36,6 +36,18 @@ export const newRow = ({
 });
 
 export const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
+
+/**
+ * Hours inside words that are plain text (an UndoRow's message): held left to
+ * right in Unicode isolates, as `<ltr>` holds them on screen.
+ */
+const isolate = (chunks: string) => `⁦${chunks}⁩`;
+
+/** The first hour of a range, where the focus goes once it is back. */
+const rangeStart = (id: number) => `[data-range="${id}"] input`;
+
+/** "הוספת שעות", the sheet's own last place for the focus. */
+const ADD_RANGE = "[data-add-range]";
 
 const hairline =
   "relative not-first:before:absolute not-first:before:inset-x-0 not-first:before:top-0 not-first:before:h-px not-first:before:bg-line not-first:before:content-['']";
@@ -150,6 +162,7 @@ export function DaySheet({
         ))}
         <button
           type="button"
+          data-add-range
           onClick={() =>
             onChange({
               rows: [
@@ -169,30 +182,30 @@ export function DaySheet({
           {t("addRange")}
         </button>
       </ListGroup>
+      {/* The way back from a removal: the removed range's "×" went with it,
+          so "ביטול" takes the focus, read with what it brings back; each
+          removal is a row of its own (its key). Undone, the focus goes to
+          the range back in its place. It waits for nothing: closing the
+          sheet without "סיום" brings the day back too, and gives the focus
+          back to the day. */}
       {removed ? (
-        <div
-          role="status"
-          className="flex items-center justify-between gap-3 ps-4 pe-1 pt-2 text-base"
-        >
-          <span>
-            {t.rich("sheet.removed", {
-              from: removed.row.start,
-              to: removed.row.end,
-              ltr,
-            })}
-          </span>
-          <Button
-            variant="ghost"
-            onClick={() =>
-              onChange({
-                rows: rows.toSpliced(removed.index, 0, removed.row),
-                removed: null,
-              })
-            }
-          >
-            {t("sheet.undo")}
-          </Button>
-        </div>
+        <UndoRow
+          key={removed.row.id}
+          message={t.markup("sheet.removed", {
+            from: removed.row.start,
+            to: removed.row.end,
+            ltr: isolate,
+          })}
+          onUndo={() =>
+            onChange({
+              rows: rows.toSpliced(removed.index, 0, removed.row),
+              removed: null,
+            })
+          }
+          autoFocus
+          focusAfter={() => [rangeStart(removed.row.id), ADD_RANGE]}
+          className="mt-2"
+        />
       ) : null}
     </Sheet>
   );
@@ -214,7 +227,10 @@ function RangeEditor({
   const t = useTranslations("app.availability");
   const errorId = `range-${row.id}-error`;
   return (
-    <div className={cn(hairline, "flex flex-col gap-2 px-4 py-3")}>
+    <div
+      data-range={row.id}
+      className={cn(hairline, "flex flex-col gap-2 px-4 py-3")}
+    >
       <div className="flex items-end gap-2.5">
         <TimeInput
           label={t("start")}

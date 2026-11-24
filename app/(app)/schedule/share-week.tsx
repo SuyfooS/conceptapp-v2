@@ -48,9 +48,11 @@ export function ShareWeekButton({
   const icon = <MessageCircle aria-hidden="true" />;
   return (
     <>
+      {/* data-share-week: where the builder puts the focus after a week's
+          first publish, as this takes the dock's place. */}
       {shape === "dock" ? (
         <FloatingDock>
-          <DockButton icon={icon} onClick={() => setOpen(true)}>
+          <DockButton icon={icon} onClick={() => setOpen(true)} data-share-week>
             {label}
           </DockButton>
         </FloatingDock>
@@ -58,6 +60,7 @@ export function ShareWeekButton({
         <Button
           variant="secondary"
           onClick={() => setOpen(true)}
+          data-share-week
           className="self-start"
         >
           {icon}

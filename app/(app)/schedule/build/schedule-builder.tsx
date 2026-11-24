@@ -45,6 +45,7 @@ import { Button } from "@ui/button";
 import { Card, CardText } from "@ui/card";
 import { cn } from "@ui/cn";
 import { DockButton, FloatingDock } from "@ui/floating-dock";
+import { arrived, focusFirst, focusLost } from "@ui/focus-after";
 import { Segmented } from "@ui/segmented";
 import { Sheet } from "@ui/sheet";
 import { StatusToast } from "@ui/status-toast";
@@ -68,6 +69,7 @@ import { HOLD_MS, useHeldWrite } from "../../use-held-write";
 import { type ShareWeek, ShareWeekButton } from "../share-week";
 import type { AvailabilityWeek } from "../week";
 import type { MovedShifts, ScheduleState } from "./actions";
+import { afterWrite, BUILDER_STATUS } from "./builder-focus";
 import { CopyWeekSheet } from "./copy-sheet";
 import { type BuilderSend, publishWaits, sendOf } from "./publish-hold";
 import {
@@ -151,8 +153,12 @@ export type ScheduleBuilderProps = {
   manageHref: string | null;
   /** The business has regular shifts, which a week not saved is drawn from. */
   hasPattern: boolean;
-  /** The staff: who can be put on a shift. */
-  team: Pick<TeamMember, "userId" | "name" | "photo">[];
+  /**
+   * The staff: who can be put on a shift, and how the app writes about them
+   * (what the sheet says as someone goes on or off a shift).
+   */
+  team: (Pick<TeamMember, "userId" | "name" | "photo"> &
+    Partial<Pick<TeamMember, "addressForm">>)[];
   /**
    * Everyone on the team, for the names of those on a shift: only someone
    * missing here is no longer on the team (what has begun keeps whoever was
@@ -238,35 +244,6 @@ function DockLine({
       />
       {children}
     </p>
-  );
-}
-
-/**
- * Moves focus to the one element matching `selector` that is on the screen,
- * and says whether there was one.
- */
-function focusOnScreen(selector: string): boolean {
-  for (const el of document.querySelectorAll<HTMLElement>(selector)) {
-    if (el.offsetParent !== null) {
-      el.focus();
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
- * Whether the keyboard's focus is still where a closing sheet left it:
- * nowhere, or on what it went back to. Anything the person, or the toast of a
- * publish held for "ביטול", moved it to meanwhile keeps it.
- */
-function focusLeftBySheet(back?: Element | null): boolean {
-  const active = document.activeElement;
-  return (
-    active === null ||
-    active === document.body ||
-    active === back ||
-    !active.isConnected
   );
 }
 
@@ -527,24 +504,26 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
    * as the dock is busy and, once it worked, the builder starts again.
    */
   function focusAfterToast() {
-    if (focusOnScreen('button[value="publish"]:enabled')) return;
+    if (focusFirst(['button[value="publish"]:enabled'], { title: false })) {
+      return;
+    }
     if (pending || holding) {
       focusAfterAnswer.current = true;
       return;
     }
-    focusOnScreen("[data-builder-status]");
+    focusFirst([BUILDER_STATUS]);
   }
   /** After a copy's toast, the focus goes back to the copy's button. */
   function focusAfterCopy() {
-    if (!focusOnScreen("[data-copy-week]:enabled")) focusAfterToast();
+    if (!focusFirst(["[data-copy-week]:enabled"], { title: false })) {
+      focusAfterToast();
+    }
   }
   useEffect(() => {
     if (pending || holding || !focusAfterAnswer.current) return;
     focusAfterAnswer.current = false;
     // Unless the person has put it somewhere since.
-    const active = document.activeElement;
-    if (active && active !== document.body) return;
-    focusAfterToast();
+    if (focusLost()) focusAfterToast();
   });
 
   const done = !dirty && !pending && !holding;
@@ -572,6 +551,8 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
     text: string;
     stamp: string;
     undo: "publish" | "copy" | null;
+    /** It says what the last write did: a draft saved, a week published. */
+    write?: true;
   } | null =
     holding && heldNotice?.kind === "waiting"
       ? {
@@ -604,8 +585,27 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
                   : t("app.build.saved"),
                 stamp: state.savedAt,
                 undo: null,
+                write: true,
               }
             : null;
+
+  // A draft saved or a week published goes at once, with no way back to
+  // offer, and the pressed button goes with the focus: the dock's save
+  // button once nothing is unsaved, a first publish's dock, which sharing
+  // takes the place of, and the whole board as the builder starts again from
+  // the new reading. Once the toast says it is done, the focus goes, where it
+  // was lost, to sharing after a week's first publish, else to the line that
+  // says where the week stands (`afterWrite`); and again should the new
+  // reading come after the toast. A publish of changes whose "ביטול" went
+  // with the focus is `focusAfterToast`'s, which ran before this.
+  const writtenAt = toast?.write ? toast.stamp : null;
+  const firstPublish = state.published === true && shareKind === "other";
+  const placed = useRef<string | null>(null);
+  useEffect(() => {
+    if (writtenAt === null) return;
+    if (!arrived(placed, `${writtenAt} ${reading.key}`)) return;
+    focusFirst(afterWrite(firstPublish));
+  }, [writtenAt, reading.key, firstPublish]);
 
   return (
     <div className="flex flex-col gap-5 pb-20 xl:pb-16">
@@ -1008,11 +1008,10 @@ function WeekBuilder({
     setRemoved([...removed, row]);
     edited(rows.filter((r) => r.id !== id));
     setSheetOpen(false);
-    // The card is gone, so focus goes to the way back instead.
+    // The card is gone, so focus goes to the way back instead, unless the
+    // person (or the toast of a held publish) moved it on meanwhile.
     opener.current = null;
-    setTimeout(() => {
-      if (focusLeftBySheet()) focusOnScreen(`[data-undo="${id}"]`);
-    }, SHEET_CLOSES_MS);
+    setTimeout(() => focusFirst([`[data-undo="${id}"]`]), SHEET_CLOSES_MS);
   }
 
   function undoRemove(row: ShiftRow) {
@@ -1028,7 +1027,8 @@ function WeekBuilder({
     }
     const at = shiftSlot(shifts, row.shift);
     edited([...rows.slice(0, at), row, ...rows.slice(at)]);
-    setTimeout(() => focusOnScreen(`[data-shift-card="${row.id}"]`));
+    // The way back went with the focus: the card back in its place takes it.
+    setTimeout(() => focusFirst([`[data-shift-card="${row.id}"]`]));
   }
 
   function addShift(date: string, details: ShiftDetails) {
@@ -1057,11 +1057,7 @@ function WeekBuilder({
     const back = opener.current;
     // The sheet takes focus with it; give it back where the person was,
     // unless they (or the toast of a held publish) moved it on meanwhile.
-    if (back) {
-      setTimeout(() => {
-        if (focusLeftBySheet(back)) back.focus();
-      }, SHEET_CLOSES_MS);
-    }
+    if (back) setTimeout(() => focusFirst([back]), SHEET_CLOSES_MS);
   }
 
   const moment = (iso: string | null | undefined) =>
@@ -1133,11 +1129,7 @@ function WeekBuilder({
     setShownCopy(liveCopy);
     setCopyOpen(false);
     const back = opener.current;
-    if (back) {
-      setTimeout(() => {
-        if (focusLeftBySheet(back)) back.focus();
-      }, SHEET_CLOSES_MS);
-    }
+    if (back) setTimeout(() => focusFirst([back]), SHEET_CLOSES_MS);
   }
 
   /**
@@ -1625,7 +1617,8 @@ function WeekBuilder({
           </Badge>
         ) : null}
         {/* Where the focus goes when the toast's "ביטול" goes with it and
-            there is no publish to press again. */}
+            there is no publish to press again, and after a write took the
+            pressed button along (`afterWrite`). */}
         <p
           data-builder-status
           tabIndex={-1}

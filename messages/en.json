@@ -1934,14 +1934,13 @@
       },
       "sent": "Saved on {date} at <ltr>{time}</ltr>. You can change it and send again.",
       "noHours": "No hours",
-      "dayProblem": "Some hours need fixing",
+      "dayProblem": "Hours to fix here",
       "candleLightingShort": "Shabbat starts <ltr>{time}</ltr>",
       "havdalahShort": "Shabbat ends <ltr>{time}</ltr>",
       "sheet": {
         "close": "Close without saving",
         "done": "Done",
-        "removed": "Removed <ltr>{from}–{to}</ltr>.",
-        "undo": "Undo"
+        "removed": "Removed <ltr>{from}–{to}</ltr>."
       },
       "addRange": "Add hours",
       "removeRange": "Remove {from}–{to}",
@@ -1955,7 +1954,7 @@
       "submit": "Send availability",
       "submitDays": "{count, plural, =0 {no hours} one {one day} other {# days}}",
       "saved": "Availability saved.",
-      "fix": "Some hours need fixing. They are marked in red.",
+      "fix": "Some hours need fixing. Each such day says: Hours to fix here.",
       "errors": {
         "ranges": {
           "time": "Enter a start and an end time.",
@@ -2084,6 +2083,8 @@
       "clashOnShift": "{names}: also on another shift at the same time",
       "awayOnShift": "{names} away that day",
       "remove": "Remove {name} from the shift",
+      "added": "{form, select, other {{name} was added to the shift, {assigned} of {needed}}}",
+      "removed": "{form, select, other {{name} was removed from the shift, {assigned} of {needed}}}",
       "position": "{name}'s position on the shift: {position}",
       "noPosition": "No position",
       "inPosition": "{name} {count}",

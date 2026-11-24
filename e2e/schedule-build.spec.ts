@@ -168,6 +168,9 @@ test("a manager puts people on next week's shifts", async ({
 
   await page.getByRole("button", { name: tb.submit }).click();
   await expect(page.getByRole("status")).toHaveText(tb.saved);
+  // The builder started again from what was saved, the pressed button gone:
+  // the focus is on the line that says where the week stands.
+  await expect(page.locator("[data-builder-status]")).toBeFocused();
   expect(await scheduleAssignments()).toEqual([
     { weekday: 0, pattern: "morning", phone: NOA.e164, position: "waiter" },
   ]);
@@ -351,8 +354,10 @@ test("a manager publishes next week's schedule, then publishes changes", async (
   expect(await scheduleAssignments()).toEqual([
     { weekday: 0, pattern: "morning", phone: NOA.e164, position: null },
   ]);
-  // Out, with nothing new: the dock offers sharing it with the team instead.
+  // Out, with nothing new: the dock offers sharing it with the team instead,
+  // and the focus the publish button had is there.
   await expect(page.getByRole("button", { name: ts.action })).toBeInViewport();
+  await expect(page.getByRole("button", { name: ts.action })).toBeFocused();
 
   // Published: no more draft, and nothing to publish until something changes.
   // Changes are published, not saved aside.
@@ -377,6 +382,10 @@ test("a manager publishes next week's schedule, then publishes changes", async (
   await expect(page.getByRole("button", { name: tb.submit })).toHaveCount(0);
   await screen.publishChanges();
   await expect(page.getByRole("status")).toHaveText(tb.published);
+  // "ביטול" had the focus and went with the toast; with no publish left to
+  // press, the line that says the week is published has it, in the builder
+  // drawn again from the new reading.
+  await expect(page.locator("[data-builder-status]")).toBeFocused();
   expect(await scheduleAssignments()).toEqual([]);
   expect(await schedulePublished()).toBe(true);
 

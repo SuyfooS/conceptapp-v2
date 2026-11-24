@@ -58,6 +58,10 @@ control, and PageHeader's title shows none either).
 element goes while it holds the focus, after the drawing that removed it, so a
 screen's own refocus wins, and without moving the page (`focusWhenGone`): it
 lands where what went was, and someone who scrolled on meanwhile stays put.
+One that goes with a sheet that closes (`inClosingSheet`: Escape with the
+focus on a row's button, or on an UndoRow's "ביטול" in the sheet) leaves the
+focus to the sheet, which gives it back to what opened it; its candidates
+went with it, and the page's title would have taken that place.
 An effect that moves the focus to what arrived (a refusal, a card) asks
 `arrived(seenRef, value)` first: a screen shown again from a hidden
 `<Activity>` runs its effects again with the same value, and the focus stays
