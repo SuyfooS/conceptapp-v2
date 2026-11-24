@@ -197,8 +197,9 @@ const attribute = (tag: string, name: string) =>
   new RegExp(`\\s${name}="([^"]*)"`).exec(tag)?.[1];
 
 // Each answer is heard (accessibility, part 2): a number refused on its
-// field, a code that didn't go on a line of its own, and a refused code tied
-// to the code field.
+// field, a code that didn't go on a line of its own, and a refused code the
+// code field's own, said once (no alert as well); a new code is said by the
+// field, not by a live line of the screen.
 describe("sign-in's refusals", () => {
   it("say a number refused on its field, marked and read with it", () => {
     const html = draw({ step: "phone", error: "invalidPhone" });
@@ -235,14 +236,25 @@ describe("sign-in's refusals", () => {
     }
   });
 
-  it("tie a refused code to the code field", () => {
-    for (const error of ["wrongCode", "invalidCode", "tooMany"] as const) {
+  it("tie a refused code to the code field, with no alert as well", () => {
+    for (const error of [
+      "wrongCode",
+      "invalidCode",
+      "tooMany",
+      "rateLimit",
+      "captcha",
+      "failed",
+    ] as const) {
       const html = draw({ step: "code", phone: UNKNOWN, error });
-      const id = /<p id="([^"]+)" role="alert"/.exec(html)?.[1];
+      const id = new RegExp(
+        `<p id="([^"]+)"[^>]*>${he.auth.signIn.errors[error]}</p>`,
+      ).exec(html)?.[1];
       expect(id, error).toBeTruthy();
-      expect(text(html)).toContain(he.auth.signIn.errors[error]);
       const described = attribute(codeInput(html), "aria-describedby");
       expect(described?.split(" "), error).toContain(id);
+      // The field says it as the focus comes back, or the announcer where
+      // it had the focus: an alert would say it a second time.
+      expect(html, error).not.toContain('role="alert"');
     }
     // With nothing refused, the field is described by its own line only.
     const html = draw({ step: "code", phone: UNKNOWN });
@@ -250,6 +262,17 @@ describe("sign-in's refusals", () => {
     expect(
       attribute(codeInput(html), "aria-describedby")?.split(" "),
     ).toHaveLength(1);
+  });
+
+  it("leave a new code to the field to say: the step's words are no live line", () => {
+    for (const state of STATES) {
+      const html = draw({ ...state, phone: UNKNOWN });
+      // The digits' own line is the field's only live one (CodeSlots).
+      expect(html.match(/aria-live=/g), JSON.stringify(state)).toHaveLength(1);
+      expect(html).toMatch(
+        /<span id="[^"]+" class="sr-only" aria-live="polite"/,
+      );
+    }
   });
 });
 

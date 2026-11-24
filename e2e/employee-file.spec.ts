@@ -1053,7 +1053,9 @@ test("a new worker who joins lands on the file's welcome", async ({
         await captchaSettled(page);
         await page.getByRole("button", { name: j.resend }).click();
         await expect(
-          page.getByText((j.codeResent.split("<ltr>")[0] ?? "").trim()),
+          page
+            .getByRole("main")
+            .getByText((j.codeResent.split("<ltr>")[0] ?? "").trim()),
         ).toBeVisible();
       }
       await code.fill(await latestCode(person.e164, next));

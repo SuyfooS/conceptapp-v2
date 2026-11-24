@@ -1,10 +1,13 @@
 "use client";
 
 import { OTP_LENGTH } from "@domain/otp";
+import { announce } from "@ui/announcer";
 import { CodeSlots } from "@ui/code-slots";
+import { arrived } from "@ui/focus-after";
 import { useRouter } from "next/navigation";
-import { type Ref, useEffect, useId, useRef } from "react";
+import { useEffect, useId, useLayoutEffect, useRef } from "react";
 import { authFieldsClass } from "./auth-screen";
+import { codeAnswerHeard } from "./step-results";
 
 /** How long the check shows before the app opens. */
 const ACCEPTED_MS = 650;
@@ -12,32 +15,41 @@ const ACCEPTED_MS = 650;
 /**
  * The code step's field, for sign-in and for joining: the form sends itself once
  * the last digit is in, a wrong code drains away, and a right one shows a check
- * before moving on to `to`. Other errors leave the digits to try again. The
- * error is the field's own (read with it when the focus comes back), and its
- * line is drawn anew for each answer, so the same refusal twice is heard twice.
+ * before moving on to `to`. Other errors leave the digits to try again.
+ *
+ * Each answer of the step is heard once (`codeAnswerHeard`). The error is the
+ * field's own description, with no alert of its own: the field takes the focus
+ * back where it fell elsewhere and is read with why, or, where it kept the
+ * focus, the announcer says why. A new code asked for takes the focus back too,
+ * and its words are said after it, the same words again included.
  */
 export function CodeField({
   label,
   error,
+  resent,
   answer,
   wrongCode,
   pending,
   to,
-  ref,
 }: {
   label: string;
   error?: string;
-  /** Which answer of the step this is (`useAnswerCount`): the error's key. */
+  /** On an answer that asked for a new code: what it says, in plain words. */
+  resent?: string;
+  /** Which answer of the step this is (`useAnswerCount`): each is heard. */
   answer: number;
   wrongCode: boolean;
   pending: boolean;
   /** Where to go once the code was accepted. */
   to?: string;
-  /** The code's own input, for the screen to bring the focus back to it. */
-  ref?: Ref<HTMLInputElement>;
 }) {
   const router = useRouter();
   const anchor = useRef<HTMLDivElement>(null);
+  const input = useRef<HTMLInputElement>(null);
+  // The answer the step arrived with is its `autoFocus`'s, read whole with
+  // any error there (the design twin's `?step=code&error=captcha`): not
+  // said again.
+  const heard = useRef<number | null>(answer);
   const errorId = useId();
 
   useEffect(() => {
@@ -45,6 +57,23 @@ export function CodeField({
     const leave = setTimeout(() => router.replace(to), ACCEPTED_MS);
     return () => clearTimeout(leave);
   }, [to, router]);
+
+  // As each answer arrives, once (`arrived`: not when the screen is shown
+  // again). In the drawing's own pass, before CodeSlots' effect puts the
+  // focus back after a wrong code: where the focus is now decides how why
+  // is said.
+  useLayoutEffect(() => {
+    if (!arrived(heard, answer)) return;
+    const field = input.current;
+    if (!field) return;
+    const { focus, say } = codeAnswerHeard({
+      error,
+      resent,
+      focused: document.activeElement === field,
+    });
+    if (focus) field.focus();
+    if (say) announce(say.words, { politeness: say.politeness });
+  }, [answer, error, resent]);
 
   function submit() {
     const form = anchor.current?.closest("form");
@@ -57,7 +86,7 @@ export function CodeField({
   return (
     <div ref={anchor} className="flex flex-col gap-2">
       <CodeSlots
-        ref={ref}
+        ref={input}
         name="code"
         label={label}
         length={OTP_LENGTH}
@@ -70,12 +99,7 @@ export function CodeField({
         autoFocus
       />
       {error ? (
-        <p
-          key={answer}
-          id={errorId}
-          role="alert"
-          className="px-1 text-danger text-sm"
-        >
+        <p id={errorId} className="px-1 text-danger text-sm">
           {error}
         </p>
       ) : null}

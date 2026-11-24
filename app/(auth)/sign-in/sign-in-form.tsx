@@ -13,11 +13,7 @@ import { useActionState, useEffect, useId, useRef } from "react";
 import type { SignInState } from "../actions";
 import { authFieldsClass } from "../auth-screen";
 import { CodeField } from "../code-field";
-import {
-  aboutTheNumber,
-  codeTakesFocus,
-  useAnswerCount,
-} from "../step-results";
+import { aboutTheNumber, useAnswerCount } from "../step-results";
 
 const initial: SignInState = { step: "phone" };
 
@@ -35,8 +31,8 @@ const SENDS = ["send", "resend"] as const;
  * Each answer is heard. A number refused is said on its field, which takes
  * the focus; a code that didn't go for any other reason is a line of its
  * own above the press, drawn anew each time, and the number isn't marked.
- * On the code step the field takes the focus back after a new code or a
- * refusal (`codeTakesFocus`).
+ * The code step's answers, a refusal or a new code, are its field's to say
+ * (`CodeField`), once each.
  */
 export function SignInForm({
   signIn,
@@ -59,25 +55,22 @@ export function SignInForm({
   const noCode = useId();
   const answer = useAnswerCount(state);
   const phone = useRef<HTMLInputElement>(null);
-  const code = useRef<HTMLInputElement>(null);
   const seen = useRef<SignInState | null>(null);
   const error = state.error ? t(`errors.${state.error}`) : undefined;
   const onTheNumber = aboutTheNumber(state.error);
 
-  // Once per answer, not when the screen is shown again (`arrived`).
+  // A number refused, once per answer: not when the screen is shown again
+  // (`arrived`).
   useEffect(() => {
     if (!arrived(seen, state)) return;
-    if (codeTakesFocus(state)) {
-      code.current?.focus();
-    } else if (state.step === "phone" && aboutTheNumber(state.error)) {
-      const field = phone.current;
-      // Sent from the field itself (Enter, or the phone keyboard's "Go"),
-      // the focus is there already and wouldn't read it again.
-      if (field && document.activeElement === field) {
-        announce(t("errors.invalidPhone"));
-      } else {
-        field?.focus();
-      }
+    if (state.step !== "phone" || !aboutTheNumber(state.error)) return;
+    const field = phone.current;
+    // Sent from the field itself (Enter, or the phone keyboard's "Go"),
+    // the focus is there already and wouldn't read it again.
+    if (field && document.activeElement === field) {
+      announce(t("errors.invalidPhone"));
+    } else {
+      field?.focus();
     }
   }, [state, t]);
 
@@ -132,16 +125,24 @@ export function SignInForm({
       className="flex flex-col gap-5"
       noValidate
     >
-      <p className="px-1 text-ink-2" aria-live="polite">
+      {/* No live region: a new code is said by its field (`resent`). */}
+      <p className="px-1 text-ink-2">
         {t.rich(state.resent ? "codeResent" : "codeIntro", {
           phone: displayIsraeliMobile(state.phone),
           ltr: (chunks) => <span dir="ltr">{chunks}</span>,
         })}
       </p>
       <CodeField
-        ref={code}
         label={t("codeLabel")}
         error={error}
+        resent={
+          state.resent
+            ? t.markup("codeResent", {
+                phone: displayIsraeliMobile(state.phone),
+                ltr: (chunks) => chunks,
+              })
+            : undefined
+        }
         answer={answer}
         wrongCode={state.error === "wrongCode"}
         pending={pending}

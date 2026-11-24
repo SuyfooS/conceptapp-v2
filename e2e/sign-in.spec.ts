@@ -22,6 +22,7 @@ import {
   latestCode,
   noteSentCode,
 } from "./sms";
+import { heT } from "./t";
 import { expect, type Page, test } from "./test";
 
 const t = he.auth.signIn;
@@ -85,7 +86,9 @@ test("a worker signs in with a phone code and lands on the home screen", async (
 
   // A wrong code is refused and the person stays on the code step.
   await codeField.fill("000000");
-  await expect(page.getByText(t.errors.wrongCode)).toBeVisible();
+  await expect(
+    page.getByRole("main").getByText(t.errors.wrongCode),
+  ).toBeVisible();
 
   const code = await latestCode(WORKER.e164, since);
   await page.getByLabel(t.codeLabel).fill(code);
@@ -133,19 +136,37 @@ test("a code asked for again at once sends nothing new, reads as for any number,
   // same for every number, without asking the auth server, and the screen
   // says what it says for any number. A code counted as sent restarts the
   // wait right before each request, so the test does not depend on how fast
-  // the runner is.
-  await noteSentCode(WORKER.e164);
+  // the runner is. Twice in a row, as when no SMS came: the press was busy
+  // meanwhile, so the focus is back in the field, for the code to come, and
+  // each answer is said after it, its words the same both times
+  // (accessibility, part 2).
   const sent = await lastCodeId(WORKER.e164);
-  await captchaSettled(page);
-  await page.getByRole("button", { name: t.resend }).click();
+  const polite = page.locator('[data-announcer="polite"] p');
+  const resentSaid = page
+    .locator('[data-announcer="polite"] p:not([data-heard])')
+    .filter({
+      hasText: heT.markup("auth.signIn.codeResent", {
+        phone: displayIsraeliMobile(WORKER.e164),
+        ltr: (chunks) => chunks,
+      }),
+    });
+  for (const press of ["first", "again"]) {
+    await polite.evaluateAll((lines) => {
+      for (const line of lines) line.setAttribute("data-heard", "");
+    });
+    await noteSentCode(WORKER.e164);
+    await captchaSettled(page);
+    await page.getByRole("button", { name: t.resend }).click();
+    await expect(resentSaid, press).toHaveCount(1);
+    await expect(codeField, press).toBeFocused();
+    await expect(tooSoon, press).toHaveCount(0);
+  }
   await expect(
-    page.getByText((t.codeResent.split("<ltr>")[0] ?? "").trim()),
+    page
+      .getByRole("main")
+      .getByText((t.codeResent.split("<ltr>")[0] ?? "").trim()),
   ).toBeVisible();
-  await expect(tooSoon).toHaveCount(0);
   await expect(codeField).toBeVisible();
-  // The press was busy meanwhile: the focus is back in the field, for the
-  // code to come.
-  await expect(codeField).toBeFocused();
 
   // Back to the number and asking again at once: the code step, as always.
   await page.getByRole("button", { name: t.changePhone }).click();
@@ -181,7 +202,9 @@ test("an unknown number reaches the code step a registered one does, word for wo
 
   // A code typed for it is a wrong one, as any wrong code is.
   await page.getByLabel(t.codeLabel).fill("123456");
-  await expect(page.getByText(t.errors.wrongCode)).toBeVisible();
+  await expect(
+    page.getByRole("main").getByText(t.errors.wrongCode),
+  ).toBeVisible();
   await expect(page.getByLabel(t.codeLabel)).toBeVisible();
 });
 
@@ -194,7 +217,9 @@ test("a code checked when none was sent lately is a wrong code, and the auth ser
   await forgetSentCodes(WORKER.e164);
 
   await page.getByLabel(t.codeLabel).fill(code);
-  await expect(page.getByText(t.errors.wrongCode)).toBeVisible();
+  await expect(
+    page.getByRole("main").getByText(t.errors.wrongCode),
+  ).toBeVisible();
   await expect(page).toHaveURL(/\/sign-in$/);
 
   // The right code was refused without asking the auth server, which would
@@ -244,7 +269,9 @@ test.describe(() => {
     await page.getByRole("button", { name: t.resend }).click();
     expect((await again).postData()).toContain(TEST_TOKEN);
     await expect(
-      page.getByText((t.codeResent.split("<ltr>")[0] ?? "").trim()),
+      page
+        .getByRole("main")
+        .getByText((t.codeResent.split("<ltr>")[0] ?? "").trim()),
     ).toBeVisible();
   });
 
@@ -303,7 +330,9 @@ test.describe(() => {
       await page.waitForTimeout(SMS_COOLDOWN_MS + 500);
       await page.getByRole("button", { name: t.resend }).click();
       await expect(
-        page.getByText((t.codeResent.split("<ltr>")[0] ?? "").trim()),
+        page
+          .getByRole("main")
+          .getByText((t.codeResent.split("<ltr>")[0] ?? "").trim()),
       ).toBeVisible();
     }
     await expect.poll(() => codeAfter(WORKER.e164, before)).not.toBeNull();

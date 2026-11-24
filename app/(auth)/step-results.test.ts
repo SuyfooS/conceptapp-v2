@@ -3,13 +3,13 @@ import type { SignInError } from "./otp";
 import {
   aboutTheNumber,
   type Counted,
-  codeTakesFocus,
+  codeAnswerHeard,
   countAnswer,
 } from "./step-results";
 
 // What sign-in and joining do with each answer of their steps: where a
-// refusal is said, when its line is drawn anew, and when the code field
-// takes the focus back (accessibility, part 2).
+// refusal is said, when its line is drawn anew, and how the code field says
+// each answer of its step, once (accessibility, part 2).
 
 /** Every refusal, and whether it is about the number itself. */
 const ON_THE_NUMBER: Record<SignInError, boolean> = {
@@ -31,21 +31,44 @@ describe("a refusal on the phone step", () => {
   });
 });
 
-describe("the code field takes the focus back", () => {
-  it("after a new code or a refusal on the code step", () => {
-    expect(codeTakesFocus({ step: "code", resent: true })).toBe(true);
-    expect(codeTakesFocus({ step: "code", error: "wrongCode" })).toBe(true);
-    expect(codeTakesFocus({ step: "code", error: "tooMany" })).toBe(true);
-    expect(codeTakesFocus({ step: "code", error: "elsewhere" })).toBe(true);
+describe("an answer of the code step", () => {
+  const WHY = "The code is 6 digits.";
+  const RESENT = "We asked for a new code.";
+
+  it("refused where the focus fell elsewhere: the field takes it and is read with why, nothing else says it", () => {
+    expect(codeAnswerHeard({ error: WHY, focused: false })).toEqual({
+      focus: true,
+    });
   });
 
-  it("not as the step arrives, once the code is in, or on another step", () => {
-    expect(codeTakesFocus({ step: "code" })).toBe(false);
-    expect(codeTakesFocus({ step: "code", resent: false })).toBe(false);
-    expect(codeTakesFocus({ step: "phone", error: "invalidPhone" })).toBe(
-      false,
-    );
-    expect(codeTakesFocus({ step: "invite", error: "failed" })).toBe(false);
+  it("refused where the field kept the focus: why said at once, the focus left where it is", () => {
+    expect(codeAnswerHeard({ error: WHY, focused: true })).toEqual({
+      focus: false,
+      say: { words: WHY, politeness: "assertive" },
+    });
+  });
+
+  it("a new code asked for: the focus back in the field, and its words said after it", () => {
+    for (const focused of [false, true]) {
+      expect(
+        codeAnswerHeard({ resent: RESENT, focused }),
+        `${focused}`,
+      ).toEqual({ focus: true, say: { words: RESENT, politeness: "polite" } });
+    }
+  });
+
+  it("a refusal is said as one, even with words for a new code", () => {
+    expect(
+      codeAnswerHeard({ error: WHY, resent: RESENT, focused: false }),
+    ).toEqual({ focus: true });
+  });
+
+  it("nothing as the step arrives or once the code is in", () => {
+    for (const focused of [false, true]) {
+      expect(codeAnswerHeard({ focused }), `${focused}`).toEqual({
+        focus: false,
+      });
+    }
   });
 });
 

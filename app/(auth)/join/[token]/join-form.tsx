@@ -3,11 +3,10 @@
 import { CAPTCHA_FIELD, type CaptchaSetup } from "@domain/turnstile";
 import { Button } from "@ui/button";
 import { CaptchaBox, useCaptcha } from "@ui/captcha";
-import { arrived } from "@ui/focus-after";
 import { useTranslations } from "next-intl";
-import { type ReactNode, useActionState, useEffect, useRef } from "react";
+import { type ReactNode, useActionState } from "react";
 import { CodeField } from "../../code-field";
-import { codeTakesFocus, useAnswerCount } from "../../step-results";
+import { useAnswerCount } from "../../step-results";
 import type { JoinState } from "../actions";
 
 const initial: JoinState = { step: "invite" };
@@ -20,8 +19,8 @@ const SENDS = ["send", "resend"] as const;
  * "אני לא רובוט" check right above its sending press, one check for the
  * screen (`useCaptcha`). Each refusal is drawn anew, so the same one twice
  * is heard twice; the number is the invite's, so no field of it is marked.
- * On the code step the field takes the focus back after a new code or a
- * refusal (`codeTakesFocus`).
+ * The code step's answers, a refusal or a new code, are its field's to say
+ * (`CodeField`), once each.
  */
 export function JoinForm({
   join,
@@ -39,8 +38,6 @@ export function JoinForm({
   const [state, action, pending] = useActionState(join, initial);
   const box = useCaptcha(captcha, "join");
   const answer = useAnswerCount(state);
-  const code = useRef<HTMLInputElement>(null);
-  const seen = useRef<JoinState | null>(null);
   const error =
     state.error === "shiftsLeft" || state.error === "elsewhere"
       ? t(state.error)
@@ -48,11 +45,6 @@ export function JoinForm({
         ? errors(state.error)
         : undefined;
   const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
-
-  // Once per answer, not when the screen is shown again (`arrived`).
-  useEffect(() => {
-    if (arrived(seen, state) && codeTakesFocus(state)) code.current?.focus();
-  }, [state]);
 
   if (state.step === "invite") {
     // Each step is its own form (key), so the code step's button is a new
@@ -93,13 +85,18 @@ export function JoinForm({
       className="flex flex-col gap-4"
       noValidate
     >
-      <p className="text-ink-2" aria-live="polite">
+      {/* No live region: a new code is said by its field (`resent`). */}
+      <p className="text-ink-2">
         {t.rich(state.resent ? "codeResent" : "codeIntro", { ending, ltr })}
       </p>
       <CodeField
-        ref={code}
         label={t("codeLabel")}
         error={error}
+        resent={
+          state.resent
+            ? t.markup("codeResent", { ending, ltr: (chunks) => chunks })
+            : undefined
+        }
         answer={answer}
         wrongCode={state.error === "wrongCode"}
         pending={pending}

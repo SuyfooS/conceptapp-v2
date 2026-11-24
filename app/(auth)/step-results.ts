@@ -1,9 +1,10 @@
 /**
  * What sign-in and joining do with each answer of their steps' action, for a
  * screen reader as much as for the eye: where a refusal is said, when it is
- * drawn anew, and when the code field takes the focus back.
+ * drawn anew, and how the code field says each answer of its step.
  */
 
+import type { Politeness } from "@ui/announcer-store";
 import { useState } from "react";
 import type { SignInError } from "./otp";
 
@@ -18,22 +19,48 @@ export function aboutTheNumber(error: SignInError | undefined): boolean {
   return error === "invalidPhone";
 }
 
-/** What `codeTakesFocus` reads of a step: sign-in's or joining's. */
-export type StepAnswer = {
-  step: string;
-  resent?: boolean;
-  error?: string;
+/** What the code field does as an answer of its step arrives. */
+export type CodeAnswerHeard = {
+  /** It takes the focus, and so is read whole: its label, count and why. */
+  focus: boolean;
+  /** What the page's announcer says, and how, if anything. */
+  say?: { words: string; politeness: Politeness };
 };
 
 /**
- * Whether the code field takes the focus back after this answer: a new
- * code asked for (its button was busy meanwhile, so the focus fell to the
- * page), or a refusal on the code step, so the next code is typed straight
- * away. Not the step's arrival, which the field's own `autoFocus` has, and
- * not the code accepted.
+ * How the code field says an answer of the code step, once (`CodeField`,
+ * as each arrives). A refusal is the field's own description, never an
+ * alert as well: where the focus fell elsewhere (the busy press that checks
+ * the code, or "שליחת קוד חדש") the field takes it back and is read with
+ * why; where the field kept it (the code sent itself after its last
+ * digit), a move would read nothing, so the announcer says why at once. A
+ * new code asked for takes the focus back too, its press having been busy,
+ * and is said after it, politely, through the announcer: a line of the
+ * screen would say nothing when its words are the same as last time (a
+ * second press in a row). Nothing for the step's arrival, which the field's
+ * `autoFocus` has, or the code accepted.
  */
-export function codeTakesFocus(answer: StepAnswer): boolean {
-  return answer.step === "code" && Boolean(answer.resent || answer.error);
+export function codeAnswerHeard({
+  error,
+  resent,
+  focused,
+}: {
+  /** Why the code step refused, in words. */
+  error?: string;
+  /** What a new code asked for says, in plain words, when one was. */
+  resent?: string;
+  /** Whether the code field has the focus as the answer arrives. */
+  focused: boolean;
+}): CodeAnswerHeard {
+  if (error) {
+    return focused
+      ? { focus: false, say: { words: error, politeness: "assertive" } }
+      : { focus: true };
+  }
+  if (resent) {
+    return { focus: true, say: { words: resent, politeness: "polite" } };
+  }
+  return { focus: false };
 }
 
 /** An answer of the step's action, and how many came before it. */
@@ -50,7 +77,8 @@ export function countAnswer<T>(kept: Counted<T>, now: T): Counted<T> {
 
 /**
  * How many answers the step's action gave so far: the key of a refusal's
- * line, so each is drawn anew and heard, the same words again included.
+ * alert, so each is drawn anew and heard, the same words again included,
+ * and on the code step what tells its field an answer arrived (`CodeField`).
  * Counted as the screen draws (React's state from the drawing before, as
  * `useCaptcha` keeps its control), not in an effect: a refusal is never
  * first written into the old line and then drawn again, which a screen
