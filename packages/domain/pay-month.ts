@@ -154,6 +154,26 @@ export function payListOf<
 }
 
 /**
+ * Whether someone's pay page opens for a month: anyone on the staff (someone
+ * who left keeps their months), and anyone off it, such as someone who became
+ * the business's accountant after working there, with shifts in the month,
+ * cancelled ones too, or days away in it (`awayDays`, the hours engine's
+ * dates for them), for whom the engine worked the month out. So every row
+ * `payListOf` lists opens.
+ */
+export function opensPayPage(
+  role: Role,
+  month: { shifts: number; cancelled: number; awayDays: number },
+): boolean {
+  return (
+    isStaff(role) ||
+    month.shifts > 0 ||
+    month.cancelled > 0 ||
+    month.awayDays > 0
+  );
+}
+
+/**
  * How a shift was recorded, for the payroll's source column: a manager wrote
  * it down, or the weaker of its two times (someone's own, without a code, a
  * manager's correction, punched with no code asked, an owner's, typed digits,

@@ -241,6 +241,8 @@ describe("a refusal", () => {
     expect(absenceFailureOf("22023", "note")).toBe("note");
     expect(absenceFailureOf("22023", "toString")).toBe("failed");
     expect(absenceFailureOf("55000")).toBe("failed");
+    // A business a demo reset replaced while the record waited: sent again.
+    expect(absenceFailureOf("P0002")).toBe("failed");
     expect(absenceFailureOf(undefined)).toBe("failed");
   });
 });

@@ -1681,6 +1681,25 @@ describe("days away (known issue 19)", () => {
     ]);
   });
 
+  it("ask of the month's first week by its days away before the month too", () => {
+    // 1 October is a Thursday: the week from 27 September is October's, and
+    // its vacation days in September move October's remark. So whether
+    // October's file is out of date looks at its whole weeks
+    // (`changedSinceExport`).
+    const result = month({
+      month: "2026-10",
+      entries: [
+        ...daily(["2026-09-30", "2026-10-01"], "08:00", "16:00"),
+        entry("2026-10-02 08:00", "2026-10-02 15:00"),
+      ],
+      absences: [vacation("2026-09-27", "2026-09-29")],
+    });
+    expect(result.absences).toEqual([]);
+    expect(weekFlags(result)).toEqual([
+      { code: "absenceWeek", weekOf: "2026-09-27", days: 3, minutes: 300 },
+    ]);
+  });
+
   it("ask nothing of a week the count wouldn't take past the 42", () => {
     const result = month({
       month: "2026-10",

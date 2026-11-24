@@ -1226,6 +1226,21 @@ describe("changedSinceExport and days away", () => {
     ).toBe(false);
   });
 
+  it("is true for days away in the month's first or last week outside it, which the hours engine reads", () => {
+    // 1 October 2026 is a Thursday: its week starts on Sunday 27 September,
+    // and a vacation then moves that week's remark (absenceWeek).
+    expect(
+      changed([write(at(4), null, record("2026-09-27", "2026-09-29"))]),
+    ).toBe(true);
+    // Outside October's weeks: Saturday 26 September, Sunday 1 November.
+    expect(
+      changed([write(at(4), null, record("2026-09-20", "2026-09-26"))]),
+    ).toBe(false);
+    expect(
+      changed([write(at(4), null, record("2026-11-01", "2026-11-02"))]),
+    ).toBe(false);
+  });
+
   it("is false for what came and went since: recorded and removed, or removed and brought back", () => {
     expect(
       changed([write(at(4), null, lastDays), write(at(5), lastDays, null)]),

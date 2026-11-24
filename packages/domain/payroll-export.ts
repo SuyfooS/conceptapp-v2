@@ -31,6 +31,7 @@ import {
   type PayrollPerson,
   type PayrollSettings,
   type PersonPayroll,
+  payrollRange,
 } from "./payroll";
 import { decimalHours } from "./payroll-access";
 import type { HolidayKey } from "./payroll-calendar";
@@ -928,12 +929,13 @@ export function exportSheets(
  * edit stamps its shift), confirmed, ended or brought back after a cancel
  * since, one of its shifts cancelled since that was there when the file went
  * out (`cancelled`, the month's cancelled shifts: one written after it
- * never was), a wage set since that reaches into the month, or the month's
- * days away other than the file had them (`absences`, the business's writes
- * of days away since, oldest first: `absencesChangedSince`, so a record moved
- * out of the month counts, and a note changed alone doesn't). The pay screen
- * then says a new file is worth taking. `entries` are the month's own live
- * shifts.
+ * never was), a wage set since that reaches into the month, or the days away
+ * the hours engine reads for the month, its whole weeks (`payrollRange`),
+ * other than the file had them (`absences`, the business's writes of days
+ * away since, oldest first: `absencesChangedSince`, so a record moved out of
+ * the month counts, a day away in its first or last week outside it too, and
+ * a note changed alone doesn't). The pay screen then says a new file is worth
+ * taking. `entries` are the month's own live shifts.
  */
 export function changedSinceExport(
   entries: readonly Pick<
@@ -965,7 +967,7 @@ export function changedSinceExport(
       (one) => after(one.cancelledAt) && !after(one.entry.createdAt),
     ) ||
     wages.some((wage) => after(wage.setAt) && wage.from <= lastDayOf(month)) ||
-    absencesChangedSince(absences, month, exportedAt)
+    absencesChangedSince(absences, payrollRange(month), exportedAt)
   );
 }
 

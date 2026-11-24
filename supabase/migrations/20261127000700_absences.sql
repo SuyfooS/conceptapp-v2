@@ -69,7 +69,8 @@
 --               The clock's family, so private.log_perm reads them at
 --               clock.edit, and pay holders read them too; no trigger on the
 --               log takes these actions, so nobody gets a line. The pay
---               screen reads them to tell whether a month's days away changed
+--               screen reads them to tell whether the days away of a month's
+--               whole weeks (what the hours engine reads for it) changed
 --               since its file: each record before and after, so a record
 --               moved out of the month counts, and a note alone doesn't.
 --   kept        records, as hours are (20261110000100_hours_kept.sql):
@@ -77,16 +78,21 @@
 --               but the demo reset's purge, which now takes them before the
 --               memberships go.
 --   locks       after the access checks: the business (`for key share`,
---               which only a `for update` of it waits on, the demo reset's),
---               then the person's membership (`for share`), then the record
---               (`for update`); a new record locks no record. So a demo reset
---               under way finishes before a write takes anything, and a reset
---               that comes after waits for the write: the two never hold what
---               the other waits on. A record a reset took is then answered as
---               an unknown one (42501). No other function locks a record, and
---               closing a month locks none: a record written at the very
---               moment a month closes may miss its snapshot, the same window
---               an hours correction has.
+--               which waits on any `for update` of it: the demo reset's, a
+--               save of its details, a template applied; none of those locks
+--               a membership first), then the person's membership (`for
+--               share`), then the record (`for update`); a new record locks
+--               no record. So a demo reset under way finishes before a write
+--               takes anything, and a reset that comes after waits for the
+--               write: the two never hold what the other waits on. A
+--               business a reset replaced while the write waited is refused
+--               before the new one's membership is locked: a new record as an
+--               unknown business (P0002, the phone sends again, asked
+--               afresh), a change, removal or return as an unknown record
+--               (42501), the reset having taken it. No other function locks a
+--               record, and closing a month locks none: a record written at
+--               the very moment a month closes may miss its snapshot, the
+--               same window an hours correction has.
 --   demo        no day away is seeded; a visitor may record one, and the
 --               reset takes it.
 
@@ -316,6 +322,12 @@ begin
   -- The business first, then the person: a demo reset under way finishes
   -- before this takes anything.
   perform 1 from public.businesses b where b.id = business for key share;
+  if not found then
+    -- Gone since it was read (a demo's reset deletes it and writes it
+    -- again): refused before the new one's people are locked, and the
+    -- phone sends again, asked afresh.
+    raise exception 'Unknown business' using errcode = 'P0002';
+  end if;
 
   -- The person stays on the staff while this records (a removal waits).
   select * into member
@@ -391,6 +403,12 @@ begin
 
   -- The business, the person, then the record (the header's locks).
   perform 1 from public.businesses b where b.id = place for key share;
+  if not found then
+    -- A demo reset replaced the business while this waited, and took the
+    -- record with it: unknown, as above, before the new one's people are
+    -- locked.
+    raise exception 'Managers and owners only' using errcode = '42501';
+  end if;
   select * into member
   from public.memberships m
   where m.business_id = place and m.user_id = person
@@ -498,6 +516,12 @@ begin
 
   -- The business, the person, then the record (the header's locks).
   perform 1 from public.businesses b where b.id = place for key share;
+  if not found then
+    -- A demo reset replaced the business while this waited, and took the
+    -- record with it: unknown, as above, before the new one's people are
+    -- locked.
+    raise exception 'Managers and owners only' using errcode = '42501';
+  end if;
   perform 1
   from public.memberships m
   where m.business_id = place and m.user_id = person
@@ -567,6 +591,12 @@ begin
 
   -- The business, the person, then the record (the header's locks).
   perform 1 from public.businesses b where b.id = place for key share;
+  if not found then
+    -- A demo reset replaced the business while this waited, and took the
+    -- record with it: unknown, as above, before the new one's people are
+    -- locked.
+    raise exception 'Managers and owners only' using errcode = '42501';
+  end if;
   select * into member
   from public.memberships m
   where m.business_id = place and m.user_id = person

@@ -2180,10 +2180,14 @@ log: `clock.absence_add` `{absence, person, kind, from, to, noted}`,
 `clock.absence_change` `{absence, person, from, to, note_changed}`,
 `clock.absence_remove` and `clock.absence_restore` `{absence, person, kind,
 from, to}`, never the note; no trigger on the log takes them. Locks, after
-the access checks: the business (`for key share`, which waits only on the
-demo reset's `for update`), the person's membership (`for share`), then the
-record, so a write and a reset never wait on each other; a record a reset
-took while a write waited is answered as an unknown one (42501).
+the access checks: the business (`for key share`, which waits on any `for
+update` of it: the demo reset's, `set_business_details`, `apply_template`,
+none of which locks a membership first), the person's membership (`for
+share`), then the record, so a write and a reset never wait on each other.
+A business a reset replaced while a write waited is refused before the new
+one's membership is locked: a new record as an unknown business (P0002,
+`failed`, so the phone sends again), a change, removal or return as an
+unknown record (42501), the reset having taken it.
 
 `public.team_away(business, first_day, last_day)` answers whoever builds the
 schedule or edits the clock (`businesses_holding`, members and views alike)
@@ -2194,8 +2198,10 @@ paged, each answering none before the migration (`isMissingTable`,
 `isMissingFunction`); `getAbsenceWrites(business, since)`, the log's
 `clock.absence_*` rows after an instant, oldest first, paged, each record
 before and after (`absenceWriteOf`; a row it can't read left out), for
-whether a month's days away changed since its file (`absencesChangedSince`:
-a record moved out of the month counts, a note alone doesn't);
+whether a month's days away changed since its file (`absencesChangedSince`,
+over the month's whole weeks, which the hours engine reads: a record moved
+out of the month counts, a day away in its first or last week outside it
+too, a note alone doesn't);
 `recordAbsence`, `changeAbsence`, `removeAbsence` and
 `restoreAbsence` with the secret key, their refusals read by
 `@domain/absences`'s `absenceFailureOf` (a closed month with its month).

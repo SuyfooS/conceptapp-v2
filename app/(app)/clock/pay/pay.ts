@@ -15,6 +15,7 @@ import { isStaff } from "@domain/modules";
 import {
   addTotals,
   NO_PAY_TOTALS,
+  opensPayPage,
   originalTimes,
   type PayTotals,
   payDays,
@@ -397,7 +398,8 @@ export async function currentPayMonth(
             lastExport.at,
             // A shift cancelled since leaves the file out of date too.
             cancelled,
-            // And the month's days away other than the file had them.
+            // And the days away of the month's weeks other than the file
+            // had them.
             lastExport.absences,
           ),
         }
@@ -470,7 +472,8 @@ function namedRemarks(
 /**
  * One person's month, for payroll. Null when the person asking may not open
  * the pay screens, or the one asked about was never in the business, or is
- * off the staff (an accountant) with no hours that month.
+ * off the staff (an accountant) with no shifts or days away that month
+ * (`opensPayPage`: whoever the list shows opens).
  */
 export async function currentPayPerson(
   asked: string,
@@ -499,7 +502,12 @@ export async function currentPayPerson(
   const person = people.find((row) => row.userId === id.data);
   if (
     !person ||
-    (!isStaff(person.role) && entries.length === 0 && cancelled.length === 0)
+    !opensPayPage(person.role, {
+      shifts: entries.length,
+      cancelled: cancelled.length,
+      // The month's days away by the engine, as the list counts them.
+      awayDays: payroll?.person.absences.length ?? 0,
+    })
   ) {
     return null;
   }

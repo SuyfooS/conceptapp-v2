@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Role } from "./modules";
 import {
   addTotals,
+  opensPayPage,
   originalTimes,
   payDays,
   payListOf,
@@ -148,6 +149,40 @@ describe("payListOf", () => {
       "dana",
       "nameless",
     ]);
+  });
+
+  it("lists only rows whose page opens: someone now the accountant with only days away too", () => {
+    // Ruth was on vacation early in the month, worked no shift, and became
+    // the accountant after: the engine and the file list her.
+    const away = new Set(["avi", "ruth"]);
+    const engine = payrollPeopleOf(
+      people,
+      [{ userId: "gil" }],
+      [...away].map((userId) => ({ userId })),
+    ).map((userId) => ({ userId }));
+    const listed = payListOf(people, withHours, engine);
+    expect(listed.map((one) => one.userId)).toContain("ruth");
+    for (const one of listed) {
+      expect(
+        opensPayPage(one.role, {
+          shifts: withHours.has(one.userId) ? 1 : 0,
+          cancelled: 0,
+          awayDays: away.has(one.userId) ? 3 : 0,
+        }),
+      ).toBe(true);
+    }
+  });
+});
+
+describe("opensPayPage", () => {
+  it("opens for the staff, and off it only with shifts, cancelled ones or days away in the month", () => {
+    const none = { shifts: 0, cancelled: 0, awayDays: 0 };
+    expect(opensPayPage("worker", none)).toBe(true);
+    expect(opensPayPage("owner", none)).toBe(true);
+    expect(opensPayPage("accountant", none)).toBe(false);
+    expect(opensPayPage("accountant", { ...none, shifts: 1 })).toBe(true);
+    expect(opensPayPage("accountant", { ...none, cancelled: 1 })).toBe(true);
+    expect(opensPayPage("accountant", { ...none, awayDays: 2 })).toBe(true);
   });
 });
 
