@@ -13,6 +13,13 @@ export const BUILDER_STATUS = "[data-builder-status]";
 /** Sharing the week, in the dock's place once it is out with nothing new. */
 export const SHARE_WEEK = "[data-share-week]";
 
+/**
+ * A little longer than a sheet takes to slide away: then the builder gives
+ * the focus back, should it be lost by then (`focusAfterClose`). The e2e
+ * moves the page's clock past it, so it reads it from here.
+ */
+export const SHEET_CLOSES_MS = 240;
+
 /** The sheet's lists of people: who is on the shift, and who could be. */
 export type PeopleList =
   | "assigned"

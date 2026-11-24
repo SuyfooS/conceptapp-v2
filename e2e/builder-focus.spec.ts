@@ -1,5 +1,5 @@
 import he from "../messages/he.json" with { type: "json" };
-import { announcer, heardSoFar, saidSince } from "./announcer";
+import { announcer, heardSoFar, noteStatusWords, saidSince } from "./announcer";
 import { before, buildScreen, SHEET_CLOSES_MS } from "./build-screen";
 import { heT } from "./t";
 import { expect, type Locator, type Page, test } from "./test";
@@ -187,10 +187,14 @@ test("a shift that begins with changes on the screen puts the focus on why they 
 // after a first publish to sharing it. Pressed in the floating dock from
 // the foot of the page, the page stays where it was: that line is above
 // the board. That line says it was saved as the focus reaches it, so the
-// toast only shows; after a first publish, with the focus on sharing, the
-// toast says it. The save is held on its way until the sheet's own refocus,
-// a moment after it closed (`SHEET_CLOSES_MS`), is past: the dock's button,
-// busy meanwhile, keeps the focus, and the card doesn't take it back.
+// toast only shows: its words come in with its region off, never polite
+// first (`noteStatusWords`); after a first publish, with the focus on
+// sharing, they come in polite and the toast says it. The page's clock
+// stops as the sheet closes, so its own refocus, a moment after
+// (`SHEET_CLOSES_MS`), is still to come as the save is pressed, however long
+// the steps between take; moved on past it with the save held on its way,
+// the dock's button, busy meanwhile, keeps the focus, and the card doesn't
+// take it back.
 test("after saving the draft the focus is on where the week stands, after a first publish on sharing it", async ({
   page,
 }) => {
@@ -213,10 +217,15 @@ test("after saving the draft the focus is on where the week stands, after a firs
     },
   );
 
+  await page.clock.install();
   await page.goto("/design/shell/schedule/build");
+  const cameIn = await noteStatusWords(page);
   await morning.click();
   await screen.addButton("שירן אלון").click();
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1_000));
   await screen.closeSheet();
+  // Radix gives the focus back as the sheet goes, on a timeout of its own.
+  await page.clock.runFor(SHEET_CLOSES_MS / 4);
   await expect(page.getByText(tb.unsaved)).toBeVisible();
   // The sheet gave the focus back to the card: nothing moves the page now.
   await expect(morning).toBeFocused();
@@ -227,7 +236,10 @@ test("after saving the draft the focus is on where the week stands, after a firs
 
   await save.focus();
   await page.keyboard.press("Enter");
-  await page.waitForTimeout(SHEET_CLOSES_MS + 100);
+  await expect(save).toBeDisabled();
+  await page.clock.runFor(SHEET_CLOSES_MS);
+  await expect(save).toBeFocused();
+  await page.clock.resume();
   answer();
   const saved = page.getByRole("status").filter({ hasText: tb.saved });
   await expect(saved).toBeVisible();
@@ -235,7 +247,11 @@ test("after saving the draft the focus is on where the week stands, after a firs
   await expect(status).toBeFocused();
   await expect(status).toContainText(before(tb.savedAt));
   await expect(status).not.toContainText(tb.draft);
-  await expect(saved).toHaveAttribute("aria-live", "off");
+  expect(await cameIn()).toContainEqual({ live: "off", words: tb.saved });
+  expect(await cameIn()).not.toContainEqual({
+    live: "polite",
+    words: tb.saved,
+  });
   // Never up to that line; longer words above may push the page on a little.
   expect(await scrolled()).toBeGreaterThanOrEqual(atFoot);
 
@@ -247,7 +263,10 @@ test("after saving the draft the focus is on where the week stands, after a firs
   await expect(
     page.getByRole("button", { name: he.app.shifts.share.action }),
   ).toBeFocused();
-  await expect(published).toHaveAttribute("aria-live", "polite");
+  expect(await cameIn()).toContainEqual({
+    live: "polite",
+    words: tb.published,
+  });
 });
 
 // A day's sheet on the availability twin: Sunday has 09:00–17:00. Removing

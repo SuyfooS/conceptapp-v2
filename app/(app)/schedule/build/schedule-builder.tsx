@@ -74,6 +74,7 @@ import {
   BUILDER_STATUS,
   type PlacedAfterWrite,
   placeAfterWrite,
+  SHEET_CLOSES_MS,
 } from "./builder-focus";
 import { CopyWeekSheet } from "./copy-sheet";
 import { type BuilderSend, publishWaits, sendOf } from "./publish-hold";
@@ -101,9 +102,6 @@ import {
 } from "./week-shapes";
 
 const initialState: ScheduleState = {};
-
-/** A little longer than the sheet takes to slide away. */
-const SHEET_CLOSES_MS = 240;
 
 /** How long "ביטול" of a copy from last week stays in the toast. */
 const COPY_UNDO_MS = 10_000;

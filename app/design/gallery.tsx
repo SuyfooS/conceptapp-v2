@@ -175,7 +175,9 @@ function CaptchaDemo({ shown }: { shown: CaptchaShown }) {
 /**
  * The gallery's toasts: a plain one, one with "ביטול" that takes the focus
  * and brings the next one, one said from inside the open sheet, and a quiet
- * one, whose words the line that takes the focus says.
+ * one, whose words the line that takes the focus says. Each has words of its
+ * own: a toast is heard as its words change, so one shown right after
+ * another with the same words would say nothing.
  */
 type GalleryToast = {
   kind: "plain" | "undo" | "back" | "sheet" | "quiet";
@@ -187,7 +189,7 @@ const TOAST_WORDS = {
   undo: "toastUndoText",
   back: "toastUndoBack",
   sheet: "sheetToastText",
-  quiet: "toastText",
+  quiet: "toastQuietText",
 } as const;
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
