@@ -5,7 +5,12 @@ import { describe, expect, it } from "vitest";
 // The words a screen's provider gives it.
 import en from "../../messages/en.json";
 import he from "../../messages/he.json";
-import { CodeSlots, codeSlotsSaid } from "./code-slots";
+import {
+  CodeSlots,
+  type CodeSlotsStatus,
+  codeSlotsSaid,
+  refusalCleared,
+} from "./code-slots";
 
 /*
  * What the code's boxes say in their own line (accessibility, part 1): how
@@ -82,6 +87,32 @@ describe("codeSlotsSaid", () => {
         success: true,
       }),
     ).toEqual({ key: "accepted" });
+  });
+});
+
+// A refused code marks the boxes invalid, read with the screen's why. An
+// answer that isn't a refusal (a new code asked for: a check that came back
+// idle) clears the mark, so the field the focus comes back to isn't read as
+// invalid with no why (accessibility, part 2).
+describe("refusalCleared", () => {
+  it("clears the mark when the status is back to idle: a check came back, its busy moment drawn or not", () => {
+    expect(refusalCleared("pending", "idle")).toBe(true);
+    expect(refusalCleared("error", "idle")).toBe(true);
+  });
+
+  it("keeps it for a refusal, the code accepted, a check starting, or no change", () => {
+    const kept: [CodeSlotsStatus, CodeSlotsStatus][] = [
+      ["pending", "error"],
+      ["pending", "success"],
+      ["error", "pending"],
+      ["idle", "pending"],
+      ["idle", "error"],
+      ["error", "error"],
+      ["idle", "idle"],
+    ];
+    for (const [from, to] of kept) {
+      expect(refusalCleared(from, to), `${from} to ${to}`).toBe(false);
+    }
   });
 });
 

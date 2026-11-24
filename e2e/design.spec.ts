@@ -2044,6 +2044,26 @@ test("the gallery's undo row starts again for a second removal while the first i
   await expect(reset).toBeFocused();
 });
 
+// The gallery's code boxes: a wrong code marks them invalid, in the danger
+// colour, and an answer that isn't a refusal (a new code) takes the mark
+// away, as on the code step of sign-in (accessibility, part 2).
+test("the gallery's code boxes lose a wrong code's mark with a new code", async ({
+  page,
+}) => {
+  const d = he.design;
+  await page.goto("/design");
+  const field = page.getByRole("textbox", { name: d.codeSlots, exact: true });
+  const boxes = page.locator("[data-status]").filter({ has: field });
+  await page.getByRole("button", { name: d.codeWrong, exact: true }).click();
+  await expect(field).toHaveAttribute("aria-invalid", "true");
+  await expect(boxes).toHaveAttribute("data-status", "error");
+
+  await page.getByRole("button", { name: d.codeNew, exact: true }).click();
+  await expect(boxes).toHaveAttribute("data-status", "idle");
+  await expect(field).not.toHaveAttribute("aria-invalid");
+  await expect(field).not.toHaveAttribute("aria-busy");
+});
+
 // The gallery's stepper says its new number, and at its end keeps the focus
 // on its dimmed button, which changes nothing; the announcer's own entry
 // says its line.

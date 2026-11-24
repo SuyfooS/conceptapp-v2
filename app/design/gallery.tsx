@@ -1512,6 +1512,17 @@ function GalleryBody({
               >
                 {t("codeRight")}
               </Button>
+              {/* An answer that isn't a refusal: a wrong code's mark goes. */}
+              <Button
+                variant="secondary"
+                onClick={async () => {
+                  setCodeStatus("pending");
+                  await pause();
+                  setCodeStatus((now) => (now === "pending" ? "idle" : now));
+                }}
+              >
+                {t("codeNew")}
+              </Button>
               <Button
                 variant="ghost"
                 onClick={() => {

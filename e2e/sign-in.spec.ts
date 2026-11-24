@@ -5,6 +5,7 @@ import {
   TURNSTILE_ORIGIN,
   TURNSTILE_TEST_KEYS,
 } from "../packages/domain/turnstile";
+import { announcer, heardSoFar, pastSameWords, saidSince } from "./announcer";
 import {
   CAPTCHA_FRAME,
   captchaSettled,
@@ -139,25 +140,22 @@ test("a code asked for again at once sends nothing new, reads as for any number,
   // the runner is. Twice in a row, as when no SMS came: the press was busy
   // meanwhile, so the focus is back in the field, for the code to come, and
   // each answer is said after it, its words the same both times
-  // (accessibility, part 2).
+  // (accessibility, part 2). The second press first waits out the
+  // announcer's moment for the same words, as anyone does, before the code
+  // is counted as sent.
   const sent = await lastCodeId(WORKER.e164);
-  const polite = page.locator('[data-announcer="polite"] p');
-  const resentSaid = page
-    .locator('[data-announcer="polite"] p:not([data-heard])')
-    .filter({
-      hasText: heT.markup("auth.signIn.codeResent", {
-        phone: displayIsraeliMobile(WORKER.e164),
-        ltr: (chunks) => chunks,
-      }),
-    });
+  const polite = announcer(page, "polite");
+  const resentWords = heT.markup("auth.signIn.codeResent", {
+    phone: displayIsraeliMobile(WORKER.e164),
+    ltr: (chunks) => chunks,
+  });
   for (const press of ["first", "again"]) {
-    await polite.evaluateAll((lines) => {
-      for (const line of lines) line.setAttribute("data-heard", "");
-    });
+    await heardSoFar(polite);
+    if (press === "again") await pastSameWords(page);
     await noteSentCode(WORKER.e164);
     await captchaSettled(page);
     await page.getByRole("button", { name: t.resend }).click();
-    await expect(resentSaid, press).toHaveCount(1);
+    await expect(saidSince(polite, resentWords), press).toHaveCount(1);
     await expect(codeField, press).toBeFocused();
     await expect(tooSoon, press).toHaveCount(0);
   }

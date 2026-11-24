@@ -79,6 +79,21 @@ export function codeSlotsSaid({
   };
 }
 
+/**
+ * Whether the boxes stop showing the last code as refused as `status` goes
+ * `from` one to `to`: back to idle, an answer that isn't a refusal arrived
+ * (a check that came back idle, as a new code asked for does; also when its
+ * busy moment was never drawn). A refusal marks them (`error`) and the mark
+ * stays while nothing else is answered, until a digit is typed: the field is
+ * never read as invalid with no why.
+ */
+export function refusalCleared(
+  from: CodeSlotsStatus,
+  to: CodeSlotsStatus,
+): boolean {
+  return to === "idle" && from !== "idle";
+}
+
 export type CodeSlotsProps = {
   /** The field's name: the code is posted with its form under it. */
   name: string;
@@ -86,7 +101,9 @@ export type CodeSlotsProps = {
   length?: number;
   /**
    * pending: being checked, so typing waits. error: the digits drain away in the
-   * danger colour, ready to try again. success: a sweep of the accent and a check.
+   * danger colour, ready to try again, marked invalid until a digit is typed or
+   * the status is back to idle (`refusalCleared`). success: a sweep of the
+   * accent and a check.
    */
   status?: CodeSlotsStatus;
   /** Called once the last digit is in, also when they arrive together. */
@@ -138,6 +155,13 @@ export function CodeSlots({
   const [active, setActive] = useState(0);
   const [focused, setFocused] = useState(false);
   const [failed, setFailed] = useState(false);
+  // As the screen draws, not in an effect: the answer that clears the mark
+  // is drawn without it, before a screen puts the focus back in the field.
+  const [statusSeen, setStatusSeen] = useState(status);
+  if (status !== statusSeen) {
+    setStatusSeen(status);
+    if (failed && refusalCleared(statusSeen, status)) setFailed(false);
+  }
   /** The caret was moved by the keys, and nothing typed since. */
   const [moved, setMoved] = useState(false);
   /** Who moves first when several slots change: a fill's start, or the drain. */

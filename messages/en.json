@@ -362,6 +362,7 @@
     "codeSlots": "Code from a message",
     "codeWrong": "Wrong code",
     "codeRight": "Right code",
+    "codeNew": "New code",
     "codeAgain": "Start over",
     "captcha": "Not-a-robot check",
     "captchaHint": "Cloudflare draws its box only when a tick is needed. Here an empty space of its size stands in.",
