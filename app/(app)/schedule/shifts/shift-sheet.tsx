@@ -79,7 +79,9 @@ function Consequence({
  * will happen. `shifts` are the published shifts the id is looked up in,
  * `offers` the colleagues' requests for them. `onTaken` runs as soon as an
  * offer was taken, with its request (the board marks it taken, before the
- * focus lands on its words), and `onGiven` once a shift was given away.
+ * focus lands on its words), and `onGiven` once a shift was given away and
+ * the focus is back, after `onSwapped` (below), so the question it brings
+ * (notifications on the phone) is not cut off by the focus coming back.
  * Closed, the focus goes back to what opened it; after a step, to the
  * offer's words once one was taken (`offerTarget`), else to the shift's own
  * place on the screen (`shiftTarget`), which the screen read again keeps,
@@ -113,6 +115,7 @@ export function ShiftSheet({
   onSwapped?: (intent: SwapIntent) => void;
   /** An offer was taken, its request: at once, before the sheet closes. */
   onTaken?: (offer: string) => void;
+  /** A shift was given away and the focus is back, after `onSwapped`. */
   onGiven?: () => void;
 }) {
   const t = useTranslations("app");
@@ -139,12 +142,12 @@ export function ShiftSheet({
     taken.current = offer ?? null;
     onOpenChange(false);
     if (offer) onTaken?.(offer);
-    if (intent === "give") onGiven?.();
   }
 
   // Put there as focusFirst puts it (a line given a tabindex, the page's
   // title last), only while nothing else took it as the sheet closed. Then
-  // the step is said, after what the focus reads.
+  // the step is said, after what the focus reads, and after a give what
+  // follows it (`onGiven`).
   function returnFocus() {
     const target = id ? shiftTarget(id) : null;
     const offer = taken.current ? offerTarget(taken.current) : null;
@@ -155,6 +158,7 @@ export function ShiftSheet({
     taken.current = null;
     const landed = focusFirst(candidates, { preventScroll: true });
     if (stepped) onSwapped?.(stepped);
+    if (stepped === "give") onGiven?.();
     return landed;
   }
 

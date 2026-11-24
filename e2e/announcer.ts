@@ -69,3 +69,68 @@ export const noteFocusWhenSaid = (
 /** What `noteFocusWhenSaid` saw: the focus on its selector, or not yet said. */
 export const focusWhenSaid = (page: Page) =>
   page.evaluate(() => (window as unknown as FocusNote).focusWhenSaid ?? null);
+
+/** Where `noteIfSaid` keeps what it saw, on the page's window. */
+type SaidNote = { said?: Record<string, boolean> };
+
+/**
+ * Notes, from now on, whether `words` ever appear in a live region (a
+ * status, or what has `aria-live`), however briefly: `wasSaid` then tells.
+ * For words that must not be said, asked once something said later has
+ * been drawn (`pastDrawing`, or a later step's own words), so words that
+ * would come late are not missed by a look that came first. Before the
+ * step; refused when they are said already.
+ */
+export const noteIfSaid = (page: Page, words: string) =>
+  page.evaluate((words) => {
+    const note = window as unknown as SaidNote;
+    const said = note.said ?? {};
+    note.said = said;
+    said[words] = false;
+    const live =
+      '[role="status"]:not([aria-live="off"]), [aria-live]:not([aria-live="off"])';
+    const saying = () =>
+      [...document.querySelectorAll(live)].some((region) =>
+        region.textContent?.includes(words),
+      );
+    if (saying()) throw new Error(`already said: ${words}`);
+    const observer = new MutationObserver(() => {
+      if (!saying()) return;
+      said[words] = true;
+      observer.disconnect();
+    });
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+  }, words);
+
+/** Whether `words` reached a live region since `noteIfSaid`. */
+export const wasSaid = (page: Page, words: string) =>
+  page.evaluate(
+    (words) => (window as unknown as SaidNote).said?.[words] ?? false,
+    words,
+  );
+
+/**
+ * Waits until the page has drawn twice more, and a little after: words a
+ * step would say late (a toast's, set in an effect after the drawing that
+ * shows it) are in the page by then. At most a second for the drawings, for
+ * a page the browser draws no longer.
+ */
+export async function pastDrawing(page: Page) {
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        const late = setTimeout(resolve, 1000);
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            clearTimeout(late);
+            resolve();
+          }),
+        );
+      }),
+  );
+  await page.waitForTimeout(250);
+}

@@ -1,6 +1,12 @@
 import AxeBuilder from "@axe-core/playwright";
 import he from "../messages/he.json" with { type: "json" };
-import { focusWhenSaid, noteFocusWhenSaid } from "./announcer";
+import {
+  focusWhenSaid,
+  noteFocusWhenSaid,
+  noteIfSaid,
+  pastDrawing,
+  wasSaid,
+} from "./announcer";
 import { standInForTurnstile } from "./captcha";
 import {
   clearSchedule,
@@ -165,6 +171,7 @@ test("a worker gives a shift away, a colleague takes it, the worker cancels", as
     { status: "open", from: NOA.e164, to: null },
   ]);
   await expectCleanPage(yoav);
+  await noteIfSaid(yoav, sw.offers.takenByYou);
   await taking
     .getByRole("button", { name: new RegExp(`^${sw.buttons.take}, `) })
     .click();
@@ -172,9 +179,11 @@ test("a worker gives a shift away, a colleague takes it, the worker cancels", as
   await expect(shown(yoav, sw.offers.takenByYou)).toBeVisible();
   await expect(button(yoav, sw.buttons.take)).toHaveCount(0);
   // The focus is on the offer's words, where its button was, and they say
-  // it: no toast says them again.
+  // it: no toast says them again, not even a drawing or two later.
   await expect(offers.getByText(sw.offers.takenByYou)).toBeFocused();
+  await pastDrawing(yoav);
   await expect(toast(yoav, sw.offers.takenByYou)).toHaveCount(0);
+  expect(await wasSaid(yoav, sw.offers.takenByYou)).toBe(false);
   expect(await demoSwaps()).toEqual([
     { status: "taken", from: NOA.e164, to: YOAV.e164 },
   ]);
@@ -381,6 +390,64 @@ test("a request the schedule ended says why", async ({ page }) => {
   await expect(shown(page, sw.removed)).toHaveCount(0);
   await expect(button(page, sw.buttons.give)).toBeVisible();
   await expectCleanPage(page);
+});
+
+// "ביטול הבקשה" on a shift's own row or card, under the hero (accessibility,
+// part 3): Noa works both Sunday shifts and asked to give the evening away.
+// Withdrawn on the row of "המשמרות שלי", and on the schedule tab's card on a
+// phone and a tablet, the button goes with the focus: it is on the
+// evening's own place, and then it is said.
+test("withdrawing on a shift's row or card puts the focus on the shift, then says so", async ({
+  page,
+}, testInfo) => {
+  await scheduleDemoSunday(
+    {
+      morning: [
+        [YOAV.e164, "bartender"],
+        [NOA.e164, "waiter"],
+      ],
+      evening: [[NOA.e164, "waiter"]],
+    },
+    true,
+  );
+  await requestDemoSwap("evening", NOA.e164);
+  // The evening's own place, "פרטי משמרת ערב, יום ראשון ...".
+  const eveningShift =
+    heT("app.shifts.shift", { name: "ערב", day: "-", date: "-" }).split(
+      ",",
+    )[0] ?? "";
+  const evening = page
+    .getByRole("button", {
+      name: new RegExp(
+        `^${heT("app.shifts.board.open", { shift: eveningShift })}, `,
+      ),
+    })
+    .filter({ visible: true });
+  const withdraw = async () => {
+    await expect(button(page, sw.buttons.cancel)).toHaveCount(1);
+    await expect(evening).toHaveCount(1);
+    await noteFocusWhenSaid(page, sw.cancelled, "[data-shift-target]");
+    await button(page, sw.buttons.cancel).click();
+    await expect(button(page, sw.buttons.cancel)).toHaveCount(0);
+    await expect(evening).toBeFocused();
+    await expect(toast(page, sw.cancelled)).toBeVisible();
+    await expect.poll(() => focusWhenSaid(page)).toBe(true);
+  };
+
+  await signIn(page, NOA);
+  await page.goto("/schedule/shifts");
+  await withdraw();
+  expect((await demoSwaps()).map((s) => s.status)).toEqual(["cancelled"]);
+
+  // A desktop's week has no buttons on its shifts: its sheet withdraws.
+  if (testInfo.project.name === "desktop") return;
+  await requestDemoSwap("evening", NOA.e164);
+  await page.goto("/schedule");
+  await withdraw();
+  expect((await demoSwaps()).map((s) => s.status)).toEqual([
+    "cancelled",
+    "cancelled",
+  ]);
 });
 
 // A shift that has begun is no longer given away: the database refuses it

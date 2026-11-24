@@ -17,9 +17,11 @@ const initialState: SwapState = {};
  * On a card (`focusAfter`), the screen read again draws what came of it in
  * the button's place: the focus, gone with the button, goes there, and
  * `onDone` runs once it has, so what the screen says comes after the
- * focus's own read and is not cut off by it. In a sheet, `onWaiting` says
- * when it is sent and when its answer is back, so the sheet's close can
- * wait for that.
+ * focus's own read and is not cut off by it. A card gone before its answer
+ * came (another day picked meanwhile) has nothing left to draw: `onDone`
+ * runs as the answer comes, so the board still says it. In a sheet,
+ * `onWaiting` says when it is sent and when its answer is back, so the
+ * sheet's close can wait for that.
  */
 export function SwapButton({
   action,
@@ -60,6 +62,8 @@ export function SwapButton({
   // drawn (below), and the latest `onDone`, for a button gone by then.
   const settled = useRef<SwapIntent | null>(null);
   const latestDone = useRef(onDone);
+  // On screen, from its first drawing until it goes (below).
+  const mounted = useRef(false);
   useLayoutEffect(() => {
     latestDone.current = onDone;
   });
@@ -75,8 +79,10 @@ export function SwapButton({
         onWaiting?.(false);
       }
       if (!next.failure) {
-        if (focusAfter) settled.current = intent;
-        else onDone?.(intent);
+        if (!focusAfter) onDone?.(intent);
+        else if (mounted.current) settled.current = intent;
+        // Gone while it waited: no drawing of its answer is left to wait for.
+        else queueMicrotask(() => latestDone.current?.(intent));
       }
       return next;
     },
@@ -91,14 +97,15 @@ export function SwapButton({
   }, [pending]);
   // Drawn without it: `useFocusWhenGone`'s cleanup ran first and queued the
   // focus's move, so this microtask comes after the focus is on the card.
-  useLayoutEffect(
-    () => () => {
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
       const step = settled.current;
       settled.current = null;
       if (step) queueMicrotask(() => latestDone.current?.(step));
-    },
-    [],
-  );
+    };
+  }, []);
   const text = t(`buttons.${intent}`);
 
   return (
