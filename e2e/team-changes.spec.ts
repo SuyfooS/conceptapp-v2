@@ -250,11 +250,18 @@ test("the owner changes a role, takes a worker off the team with an undo, and de
       .filter({ hasText: deleted })
       .filter({ visible: true });
     // "ביטול" at once keeps it: past the hold, the invite is still open.
+    // It takes the focus the pressed button had, which comes back to the
+    // row's button once undone (accessibility, part 6).
     await deleteInvite.click();
     await expect(inviteUndo).toBeVisible();
     await expect(deleteInvite).toHaveCount(0);
-    await inviteUndo.getByRole("button", { name: he.app.manage.undo }).click();
+    const undoInvite = inviteUndo.getByRole("button", {
+      name: he.app.manage.undo,
+    });
+    await expect(undoInvite).toBeFocused();
+    await undoInvite.click();
     await expect(deleteInvite).toHaveCount(1);
+    await expect(deleteInvite).toBeFocused();
     await page.waitForTimeout(HOLD_MS + 1_000);
     expect(await teamChangesInviteCancelled()).toBe(false);
 
@@ -456,15 +463,20 @@ test("the owner fixes a name: everywhere in the business and only there, with th
   await expect(heading(FIXED)).toBeVisible();
   const changed = heT("app.team.changes.nameChanged", { name: FIXED });
   await expect(shown(page, changed)).toBeVisible();
+  // The sheet closed onto its "ביטול", which came while it was open, read
+  // with what it undoes (accessibility, part 6).
+  const undoName = page
+    .getByRole("status")
+    .filter({ hasText: changed })
+    .getByRole("button", { name: he.app.manage.undo });
+  await expect(undoName).toBeFocused();
+  await expect(undoName).toHaveAccessibleDescription(changed);
   await expect.poll(() => teamChangesName(LEAVING.id)).toBe(FIXED);
   expect(await teamChangesOwnName(LEAVING.id)).toBe(LEAVING.name);
 
-  // "ביטול" is the change back.
-  await page
-    .getByRole("status")
-    .filter({ hasText: changed })
-    .getByRole("button", { name: he.app.manage.undo })
-    .click();
+  // "ביטול" is the change back; the focus is back on the row "שם".
+  await undoName.click();
+  await expect(nameRow(page)).toBeFocused();
   await expect(heading(LEAVING.name)).toBeVisible();
   await expect(
     shown(page, heT("app.team.changes.nameBack", { name: LEAVING.name })),

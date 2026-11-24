@@ -8,19 +8,27 @@ import {
   roleChoiceKey,
   TEAM_NAME_MAX,
 } from "@domain/team";
+import { announce } from "@ui/announcer";
 import { Button } from "@ui/button";
 import { Card } from "@ui/card";
 import { ChoiceList, ChoiceRow } from "@ui/choice-row";
 import { cn } from "@ui/cn";
 import { FieldGroup, GroupedField, GroupedPhoneField } from "@ui/field-group";
 import { FloatingAction, floatingButtonClass } from "@ui/floating-action";
+import { arrived, focusFirst } from "@ui/focus-after";
 import { PersonAvatar } from "@ui/person-row";
 import { Send, Smartphone } from "lucide-react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
-import { useActionState, useState } from "react";
+import { useActionState, useLayoutEffect, useRef, useState } from "react";
 import { CopyLink } from "@/app/copy-link";
+import {
+  answerHeard,
+  useAnswerCount,
+  useQuietWhy,
+} from "../../../(auth)/step-results";
 import type { InviteState } from "../actions";
+import { firstRefused, refusedAt } from "./invite-answer";
 
 const initial: InviteState = {};
 
@@ -49,18 +57,36 @@ export function InviteForm(props: InviteFormProps) {
   // "Invite someone else" starts over with a fresh form and state.
   const [round, setRound] = useState(0);
   return (
-    <InviteRound key={round} {...props} onAnother={() => setRound(round + 1)} />
+    <InviteRound
+      key={round}
+      {...props}
+      again={round > 0}
+      onAnother={() => setRound(round + 1)}
+    />
   );
 }
 
+/**
+ * One invite, from the form to its link. Each answer is heard: the link
+ * ready takes the focus to its card's title, which says so, from the press
+ * that went with the form (with the focus put elsewhere, the announcer says
+ * it); a field refused (the name, the number) takes the
+ * focus that was in the form, the first of them, read as invalid, and why
+ * is said once, through the announcer, as sign-in's number is
+ * (`answerHeard`); any other refusal is a line of its own, drawn anew each
+ * time, and the press takes back the focus it lost. Never the focus from
+ * where the person put it outside the form. `again`: started over from
+ * "הזמנה של מישהו נוסף", which went, so the name takes the focus.
+ */
 function InviteRound({
   roles,
   namedRoles = [],
   back,
   defaultRole: startRole,
   invite,
+  again,
   onAnother,
-}: InviteFormProps & { onAnother: () => void }) {
+}: InviteFormProps & { again: boolean; onAnother: () => void }) {
   const t = useTranslations("app.team.invite");
   const tr = useTranslations("app.team.roles");
   const tl = useTranslations("app.team.link");
@@ -72,13 +98,69 @@ function InviteRound({
   const values = state.done ? undefined : state.values;
   // The avatar fills in as the name is typed, as it will look in the team.
   const [typed, setTyped] = useState(values?.name ?? "");
+  const errors = (state.done ? undefined : state.errors) ?? {};
+  const nameError = errors.name ? t(`errors.name.${errors.name}`) : undefined;
+  const phoneError = errors.phone
+    ? t(`errors.phone.${errors.phone}`)
+    : undefined;
+  const answer = useAnswerCount(state);
+  const nameField = useRef<HTMLInputElement>(null);
+  const phoneField = useRef<HTMLInputElement>(null);
+  const submit = useRef<HTMLButtonElement>(null);
+  const ready = useRef<HTMLHeadingElement>(null);
+  const { quiet: nameQuiet, hush: hushName } = useQuietWhy(nameField);
+  const { quiet: phoneQuiet, hush: hushPhone } = useQuietWhy(phoneField);
+  // The state it starts with is no answer.
+  const seen = useRef<InviteState | null>(state);
+
+  // Started over: the name, to write the next one at once. Once, as the
+  // round is drawn, not when the screen is shown again.
+  const started = useRef(false);
+  useLayoutEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    if (again) focusFirst([nameField.current], { title: false });
+  }, [again]);
+
+  // Each answer once, as it arrives (`arrived`: not when the screen is
+  // shown again). In the drawing's own pass, so a field that keeps the
+  // focus is drawn without why in its description.
+  useLayoutEffect(() => {
+    if (!arrived(seen, state)) return;
+    if (state.done) {
+      // Its title says so as it takes the focus; with the focus put
+      // elsewhere meanwhile, the announcer says it there.
+      if (!focusFirst([ready.current])) {
+        announce(t("ready", { name: state.done.name }));
+      }
+      return;
+    }
+    const refused = firstRefused(state.errors);
+    if (!refused) {
+      // The role's line or the refusal's says it, as an alert.
+      focusFirst([submit.current], { title: false });
+      return;
+    }
+    const onName = refused === "name";
+    const field = (onName ? nameField : phoneField).current;
+    const why = onName ? nameError : phoneError;
+    if (!field || !why) return;
+    const said = answerHeard({ error: why, at: refusedAt(field) });
+    if (said.focus) field.focus();
+    if (said.say) announce(said.say.words, { politeness: said.say.politeness });
+    if (said.quiet) (onName ? hushName : hushPhone)(answer);
+  }, [state, t, nameError, phoneError, answer, hushName, hushPhone]);
 
   if (state.done) {
     const { name, link } = state.done;
     return (
       <div className="flex w-full max-w-xl flex-col">
         <Card tone="hero" padding="none" className="px-5 pt-5 pb-24">
-          <h2 className="text-balance font-bold text-xl">
+          <h2
+            ref={ready}
+            tabIndex={-1}
+            className="text-balance font-bold text-xl outline-none"
+          >
             {t("ready", { name })}
           </h2>
           <p className="mt-1 text-base">{t("readyBody", { name })}</p>
@@ -109,7 +191,6 @@ function InviteRound({
     );
   }
 
-  const errors = state.errors ?? {};
   // Only a role offered starts chosen.
   const keys = roles.filter((choice) => !choice.blocked).map(roleChoiceKey);
   // A worker, never "the last role": an owner's list ends with an accountant.
@@ -126,6 +207,7 @@ function InviteRound({
     >
       <FieldGroup>
         <GroupedField
+          ref={nameField}
           name="name"
           label={t("name")}
           placeholder={t("namePlaceholder")}
@@ -133,16 +215,19 @@ function InviteRound({
           maxLength={TEAM_NAME_MAX}
           defaultValue={values?.name}
           onChange={(event) => setTyped(event.target.value)}
-          error={errors.name ? t(`errors.name.${errors.name}`) : undefined}
+          error={nameError}
+          quietMessage={nameQuiet === answer}
           leading={<PersonAvatar name={typed} />}
           required
         />
         <GroupedPhoneField
+          ref={phoneField}
           name="phone"
           label={t("phone")}
           autoComplete="off"
           defaultValue={values?.phone}
-          error={errors.phone ? t(`errors.phone.${errors.phone}`) : undefined}
+          error={phoneError}
+          quietMessage={phoneQuiet === answer}
           hint={t("phoneHint")}
           leading={
             <span className="grid size-10 place-items-center rounded-full bg-surface-2 text-ink-2 [&_svg]:size-5">
@@ -182,13 +267,19 @@ function InviteRound({
         })}
       </ChoiceList>
       {state.failure ? (
-        <p role="alert" className="px-1 text-danger md:col-start-1">
+        // Drawn anew for each answer, so the same refusal again is heard.
+        <p
+          key={answer}
+          role="alert"
+          className="px-1 text-danger md:col-start-1"
+        >
           {t(`errors.${state.failure}`)}
         </p>
       ) : null}
       <div className="md:col-start-1">
         <FloatingAction>
           <Button
+            ref={submit}
             type="submit"
             size="lg"
             loading={pending}

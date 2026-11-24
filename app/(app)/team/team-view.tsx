@@ -492,7 +492,7 @@ function Invites(view: ViewProps) {
                 ))}
               </PersonList>
             </WhileAnyInvite>
-            <InviteCancelUndo />
+            <InviteCancelUndo ids={team.invites.map((i) => i.id)} />
             {note ? <p className="px-1 text-ink-2 text-sm">{note}</p> : null}
           </>
         )}

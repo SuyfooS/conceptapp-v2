@@ -10,6 +10,7 @@ import { AvatarStack } from "@ui/avatar";
 import { Button } from "@ui/button";
 import { Card } from "@ui/card";
 import { cn } from "@ui/cn";
+import { arrived, focusFirst } from "@ui/focus-after";
 import { IconButton } from "@ui/icon-button";
 import { ListGroup } from "@ui/list-row";
 import { PageSection } from "@ui/page";
@@ -20,11 +21,34 @@ import { Switch } from "@ui/switch";
 import { UndoRow } from "@ui/undo-row";
 import { ArrowDown, ArrowUp, Plus, Trash2, Users } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { type FormEvent, useState } from "react";
+import {
+  type FormEvent,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import { movesOf, PEOPLE_BESIDE } from "./department-moves";
 import { hairlineClass, inputClass, rowClass } from "./list-rows";
 import type { SettingsFailure, SettingsResult } from "./settings-types";
 
 const NAME_MAX = 40;
+
+const besideNow = () => window.matchMedia(PEOPLE_BESIDE).matches;
+
+function hearBeside(changed: () => void) {
+  const query = window.matchMedia(PEOPLE_BESIDE);
+  query.addEventListener("change", changed);
+  return () => query.removeEventListener("change", changed);
+}
+
+/** A press on a department's people beside the list, by its key. */
+type PeopleChoice = { readonly key: string };
+
+/** Whether the people sit beside the list (`PEOPLE_BESIDE`); not on the server. */
+function usePeopleBeside(): boolean {
+  return useSyncExternalStore(hearBeside, besideNow, () => false);
+}
 
 /** A department as the editor shows it: saved ones have their id. */
 export type EditedDepartment = {
@@ -53,7 +77,8 @@ export type SaveDepartmentMembers = (
  * its people. Adding is the row at the end; removing has an undo, which
  * brings the department back with its people. Who is in a department saves at
  * once, from a sheet on a phone and beside the list from a tablet up, as a
- * grid on a computer. While taking orders is on, each says how many of the
+ * grid on a computer; there the one shown is marked current, and a choice
+ * puts the focus on its people's title. While taking orders is on, each says how many of the
  * menu's items it prepares, before it is removed and in its undo (waiter
  * mode P2). Used on /manage/departments and by the team in the console.
  */
@@ -96,6 +121,17 @@ export function DepartmentsEditor({
   } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const beside = usePeopleBeside();
+  // A choice of whose people beside the list: its panel's title takes the
+  // focus, once per choice (`arrived`: each a new one, the same department
+  // again too), so what was chosen is heard.
+  const [chosePeople, setChosePeople] = useState<PeopleChoice | null>(null);
+  const seenChoice = useRef<PeopleChoice | null>(null);
+  const panelTitle = useRef<HTMLHeadingElement>(null);
+  useLayoutEffect(() => {
+    if (!arrived(seenChoice, chosePeople)) return;
+    focusFirst([panelTitle.current], { onlyIfLost: false, title: false });
+  }, [chosePeople]);
   const [failure, setFailure] = useState<{
     reason: SettingsFailure;
     stamp: number;
@@ -211,6 +247,9 @@ export function DepartmentsEditor({
     const [moving] = next.splice(at, 1);
     if (!moving) return;
     next.splice(to, 0, moving);
+    // Its people stay shown while it moves: the first one's by default
+    // would be another's once it is not first.
+    setSelected(key);
     void change(next);
   }
 
@@ -238,12 +277,17 @@ export function DepartmentsEditor({
 
   function openPeople(key: string) {
     setSelected(key);
-    // The sheet is for a phone; from a tablet up the people sit beside the list.
-    if (window.matchMedia("(max-width: 767px)").matches) setSheetOpen(true);
+    // The sheet is for a phone; from a tablet up the people sit beside the
+    // list, after it in reading order, and their title takes the focus.
+    if (besideNow()) setChosePeople({ key });
+    else setSheetOpen(true);
   }
 
   const peoplePanel = (department: (typeof shown)[number]) => {
     const index = shown.findIndex((d) => d.key === department.key);
+    // At an end, a move is unavailable but still reached, so the focus stays
+    // on it as its department arrives there.
+    const can = movesOf(index, shown.length);
     return (
       <div className="flex flex-col gap-3">
         {department.id === null ? (
@@ -288,16 +332,20 @@ export function DepartmentsEditor({
           <div className="flex gap-2">
             <Button
               variant="secondary"
-              disabled={index <= 0}
-              onClick={() => move(department.key, -1)}
+              aria-disabled={!can.up || undefined}
+              onClick={() => {
+                if (can.up) move(department.key, -1);
+              }}
             >
               <ArrowUp aria-hidden="true" />
               {t("up")}
             </Button>
             <Button
               variant="secondary"
-              disabled={index < 0 || index >= shown.length - 1}
-              onClick={() => move(department.key, 1)}
+              aria-disabled={!can.down || undefined}
+              onClick={() => {
+                if (can.down) move(department.key, 1);
+              }}
             >
               <ArrowDown aria-hidden="true" />
               {t("down")}
@@ -388,6 +436,13 @@ export function DepartmentsEditor({
                      */}
                     <button
                       type="button"
+                      // Beside the list, whose people are shown is said, not
+                      // only tinted.
+                      aria-current={
+                        beside && current?.key === department.key
+                          ? "true"
+                          : undefined
+                      }
                       onClick={() => openPeople(department.key)}
                       className="pressable relative flex min-h-11 shrink-0 items-center gap-2 rounded-full px-2.5 text-ink-2 text-sm hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-accent"
                     >
@@ -479,7 +534,10 @@ export function DepartmentsEditor({
 
         {current ? (
           <div className="hidden md:block">
-            <PageSection title={t("peopleOf", { name: current.name })}>
+            <PageSection
+              title={t("peopleOf", { name: current.name })}
+              headingRef={panelTitle}
+            >
               {peoplePanel(current)}
             </PageSection>
           </div>
