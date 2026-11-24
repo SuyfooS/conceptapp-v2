@@ -1,41 +1,18 @@
 import { describe, expect, it } from "vitest";
-import en from "@/messages/en.json";
 import he from "@/messages/he.json";
-import { SWAP_DONE, shiftTarget } from "./swap-focus";
+import { offerTarget, SWAP_DONE, shiftTarget } from "./swap-focus";
 
 /*
  * What a swap step says once it went through, and where the focus comes back
  * to (accessibility, part 3).
  */
 
-const word = (tree: unknown, key: string) =>
-  key
-    .split(".")
-    .reduce<unknown>(
-      (at, part) =>
-        at && typeof at === "object"
-          ? (at as Record<string, unknown>)[part]
-          : undefined,
-      tree,
-    );
-
 describe("SWAP_DONE", () => {
-  it("says what came of each step in the words its card then shows", () => {
-    expect(SWAP_DONE).toEqual({
-      give: "shifts.swap.open",
-      take: "shifts.swap.offers.takenByYou",
-      cancel: "shifts.swap.cancelled",
-    });
-  });
-
-  it("has every line in Hebrew and in English", () => {
-    for (const key of Object.values(SWAP_DONE)) {
-      expect(typeof word(he.app, key)).toBe("string");
-      expect(typeof word(en.app, key)).toBe("string");
-    }
-    expect(word(he.app, SWAP_DONE.cancel)).toBe(
-      "הבקשה בוטלה, המשמרת נשארת שלך",
-    );
+  // The typecheck finds each step's key, and the message check its English:
+  // what is left to check is the new words a withdrawn request is said in.
+  it("says a withdrawn request keeps the shift", () => {
+    expect(SWAP_DONE.cancel).toBe("shifts.swap.cancelled");
+    expect(he.app.shifts.swap.cancelled).toBe("הבקשה בוטלה, המשמרת נשארת שלך");
   });
 });
 
@@ -48,5 +25,17 @@ describe("shiftTarget", () => {
 
   it("keeps a quote or a backslash inside the attribute's value", () => {
     expect(shiftTarget('a"b\\c')).toBe('[data-shift-target="a\\"b\\\\c"]');
+  });
+});
+
+describe("offerTarget", () => {
+  it("finds an offer's words by its request's id", () => {
+    expect(offerTarget("00000000-0000-4000-a000-000000000004")).toBe(
+      '[data-offer-target="00000000-0000-4000-a000-000000000004"]',
+    );
+  });
+
+  it("keeps a quote or a backslash inside the attribute's value", () => {
+    expect(offerTarget('a"b\\c')).toBe('[data-offer-target="a\\"b\\\\c"]');
   });
 });

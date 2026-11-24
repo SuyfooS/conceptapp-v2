@@ -12,11 +12,13 @@ import { cn } from "@ui/cn";
 import { PageSection } from "@ui/page";
 import { ChevronRight } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { useState } from "react";
 import {
   PushAsk,
   type PushAskOffer,
   usePushAskOnce,
 } from "../../notifications/push-ask";
+import type { SwapIntent } from "./actions";
 import { DayTile } from "./day-tile";
 import { PastRequests } from "./past-requests";
 import { CardTarget, MyShiftHero } from "./shift-card";
@@ -65,12 +67,24 @@ export function MyShiftsBoard({
   const sheet = useShiftSheet();
   const pushAsk = usePushAskOnce(ask);
   const swapped = useSwapNotice();
+  // The offer just taken in the sheet, taken from then on: its own words say
+  // so, and hold the focus (`offerTarget`), before the screen is read again.
+  // So no toast says them again.
+  const [took, setTook] = useState<string | null>(null);
+  const onSheetSwapped = (intent: SwapIntent, offer?: string) => {
+    if (intent === "take") setTook(offer ?? null);
+    else swapped.onSwapped(intent);
+  };
   const offers = offersFor(
     data.swaps,
     shifts,
     data.userId,
     new Date(data.now),
     data.timeZone,
+  ).map((o) =>
+    o.swap.id === took && o.state === "available"
+      ? { ...o, state: "takenByYou" as const }
+      : o,
   );
   const available = offers.filter((o) => o.state === "available").length;
   const [next, ...later] = mine;
@@ -239,9 +253,9 @@ export function MyShiftsBoard({
                     <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                       {/* The offer's place on the screen: once it is taken
                           its button goes, and the focus comes back here,
-                          to the words that say so. */}
+                          to the words that say so (`offerTarget`). */}
                       <span
-                        data-shift-target={shift.id}
+                        data-offer-target={request.id}
                         className="font-medium"
                       >
                         {state === "takenByYou"
@@ -292,7 +306,7 @@ export function MyShiftsBoard({
         offers={offers}
         data={data}
         swap={swap}
-        onSwapped={swapped.onSwapped}
+        onSwapped={onSheetSwapped}
         onGiven={pushAsk.offer}
       />
       <SwapToast notice={swapped.notice} />

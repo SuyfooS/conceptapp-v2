@@ -37,7 +37,10 @@ const shown = (page: Page, text: string) =>
     .getByText(text)
     .filter({ visible: true })
     .and(page.locator('xpath=//*[not(ancestor-or-self::*[@role="status"])]'));
-/** What a step that went through says, in its screen's toast. */
+/**
+ * What a step that went through says, in its screen's toast. A take on
+ * "המשמרות שלי" has none: the offer's own words say it, with the focus.
+ */
 const toast = (page: Page, text: string) =>
   page.getByRole("status").filter({ hasText: text });
 /** The button that opens a shift's sheet: its place on the screen. */
@@ -164,9 +167,10 @@ test("a worker gives a shift away, a colleague takes it, the worker cancels", as
   await expect(taking).toHaveCount(0);
   await expect(shown(yoav, sw.offers.takenByYou)).toBeVisible();
   await expect(button(yoav, sw.buttons.take)).toHaveCount(0);
-  // Said, and the focus is on the offer's words, where its button was.
-  await expect(toast(yoav, sw.offers.takenByYou)).toBeVisible();
+  // The focus is on the offer's words, where its button was, and they say
+  // it: no toast says them again.
   await expect(offers.getByText(sw.offers.takenByYou)).toBeFocused();
+  await expect(toast(yoav, sw.offers.takenByYou)).toHaveCount(0);
   expect(await demoSwaps()).toEqual([
     { status: "taken", from: NOA.e164, to: YOAV.e164 },
   ]);
@@ -305,9 +309,10 @@ test("a manager approves a taken request and the colleague takes the shift", asy
 
   await button(page, ap.buttons.approve).click();
   await expect(shown(page, ap.empty)).toBeVisible();
-  // The request went with the focus, and nothing else waits: it is on what
-  // was decided (accessibility, part 3).
-  await expect(page.locator("[data-settled]").first()).toBeFocused();
+  // The request went with the focus, and nothing else waits: it is on the
+  // card saying so, while the live region says what was decided
+  // (accessibility, part 3).
+  await expect(page.locator("[data-swaps-empty]")).toBeFocused();
   // It says what was decided, since the decision cannot be undone.
   await expect(
     page.getByRole("status").filter({

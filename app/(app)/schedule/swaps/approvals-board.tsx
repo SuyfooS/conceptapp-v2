@@ -56,9 +56,10 @@ const subject = (t: AppT, names: Names, row: Row) =>
  * count and the main action are for the ones still to approve. Under them,
  * what no longer waits (`ended`), so a decision stays in sight once the
  * screen is read again. What was decided is said by a live region that is
- * there from the start, so the first decision is heard too; the focus, gone
- * with the decided request, goes on to the next one's first decision
- * (`afterDecision`), or to what was decided once none is left.
+ * there from the start, so the first decision is heard too, and only the
+ * new line of each; the focus, gone with the decided request, goes on to the
+ * next one's first decision (`afterDecision`), or to the card saying
+ * nothing waits once none is left.
  */
 export function ApprovalsBoard({
   rows,
@@ -121,9 +122,13 @@ export function ApprovalsBoard({
   return (
     <div className="flex flex-col gap-4">
       {/* In the page from the start, out of the layout while empty: a live
-          region drawn with its first line already in it is often not heard. */}
+          region drawn with its first line already in it is often not heard.
+          Only the line added is read: a status is read whole by default, so
+          each decision would say the ones before it again. */}
       <div
         role="status"
+        aria-atomic="false"
+        aria-relevant="additions"
         data-decisions=""
         className="flex flex-col gap-2 empty:sr-only"
       >

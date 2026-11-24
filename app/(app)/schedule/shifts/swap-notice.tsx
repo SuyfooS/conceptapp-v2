@@ -24,7 +24,8 @@ export function useSwapNotice() {
  * Says what came of a swap step (`SWAP_DONE`): the shift offered, taken or
  * kept. The card says it too, once the screen is read again; the toast is
  * what a screen reader hears, from the sheet that closed or the card whose
- * button went.
+ * button went. "המשמרות שלי" says a take with the offer's own words, where
+ * the focus lands, and no toast.
  */
 export function SwapToast({ notice }: { notice: SwapNotice }) {
   const t = useTranslations("app");

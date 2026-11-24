@@ -11,7 +11,7 @@ import {
 /*
  * Where a manager goes on once the request they decided left the list with
  * the focus (accessibility, part 3): the next one down, else the one above,
- * else what was decided.
+ * else the card saying nothing waits.
  */
 
 describe("nextInLine", () => {
@@ -43,17 +43,19 @@ describe("decideTarget", () => {
 });
 
 describe("afterDecision", () => {
-  it("tries the next requests, then what was decided, the empty card and the title", () => {
+  it("tries the next requests, then the empty card, what was decided and the title", () => {
     expect(afterDecision(["a", "b", "c"], "b")).toEqual([
       decideTarget("c"),
       decideTarget("a"),
-      SETTLED_LINE,
       NOTHING_WAITING,
+      SETTLED_LINE,
       WAITING_TITLE,
     ]);
   });
 
-  it("goes to what was decided once nothing else waits", () => {
-    expect(afterDecision(["a"], "a")[0]).toBe(SETTLED_LINE);
+  // What was decided is said by its live region: the focus on its line
+  // would say it twice.
+  it("goes to the card saying nothing waits once nothing else does", () => {
+    expect(afterDecision(["a"], "a")[0]).toBe(NOTHING_WAITING);
   });
 });

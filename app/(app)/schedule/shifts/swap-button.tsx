@@ -15,7 +15,9 @@ const initialState: SwapState = {};
  * stand-in. A refusal is explained under the button; `onDone` runs once the
  * step went through, with the step, so the screen can say what came of it.
  * On a card (`focusAfter`), the screen read again draws what came of it in
- * the button's place: the focus, gone with the button, goes there.
+ * the button's place: the focus, gone with the button, goes there. In a
+ * sheet, `onWaiting` says when it is sent and when its answer is back, so
+ * the sheet's close can wait for that.
  */
 export function SwapButton({
   action,
@@ -27,6 +29,7 @@ export function SwapButton({
   block = false,
   onDone,
   focusAfter,
+  onWaiting,
 }: {
   action: (state: SwapState, form: FormData) => Promise<SwapState>;
   intent: SwapIntent;
@@ -44,6 +47,8 @@ export function SwapButton({
    * sheet: the sheet's close gives the focus back.
    */
   focusAfter?: () => readonly FocusCandidate[];
+  /** True as it is sent, false once its answer is back, a refusal too. */
+  onWaiting?: (waiting: boolean) => void;
 }) {
   const t = useTranslations("app.shifts.swap");
   // Watched only on a card: in a sheet, the button goes as the sheet closes.
@@ -53,7 +58,13 @@ export function SwapButton({
   // this button in the same update that ends the pending state.
   const [state, formAction, pending] = useActionState(
     async (prev: SwapState, data: FormData) => {
-      const next = await action(prev, data);
+      onWaiting?.(true);
+      let next: SwapState;
+      try {
+        next = await action(prev, data);
+      } finally {
+        onWaiting?.(false);
+      }
       if (!next.failure) onDone?.(intent);
       return next;
     },

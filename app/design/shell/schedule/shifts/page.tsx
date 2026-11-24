@@ -4,7 +4,7 @@ import { baseWording } from "../../../../(app)/wording";
 import { demoSwap } from "./actions";
 import { DEMO_ENDED, demoPublished, demoRequest } from "./published";
 
-type Props = { searchParams: Promise<{ at?: string }> };
+type Props = { searchParams: Promise<{ at?: string; offers?: string }> };
 
 /** Tuesday 3 November at 17:30 in Tel Aviv, an hour and a half into the evening. */
 const EVENING = "2026-11-03T15:30:00.000Z";
@@ -16,7 +16,8 @@ const EVENING = "2026-11-03T15:30:00.000Z";
 // tonight's wasn't approved, so her hero says so and offers it again, and
 // Thursday's was cancelled by the schedule; "מה קרה לבקשות שלך" lists five.
 // ?at=evening: the same at 17:30, with her evening shift begun, so it can no
-// longer be given away and the hero stands alone.
+// longer be given away and the hero stands alone. ?offers=two: Omer gives
+// away the same Wednesday morning too, so two offers stand for one shift.
 export default function ShellMyShifts(props: Props) {
   return (
     <Suspense>
@@ -26,13 +27,16 @@ export default function ShellMyShifts(props: Props) {
 }
 
 async function Demo({ searchParams }: Props) {
-  const { at } = await searchParams;
+  const { at, offers } = await searchParams;
   const data = demoPublished(
     "noa",
     [
       demoRequest("1", "2026-11-06/friday", "noa"),
       demoRequest("2", "2026-11-04/morning", "maya"),
       demoRequest("3", "2026-11-07/saturday-night", "yoav", "noa"),
+      ...(offers === "two"
+        ? [demoRequest("4", "2026-11-04/morning", "omer")]
+        : []),
     ],
     at === "evening" ? EVENING : undefined,
     DEMO_ENDED,

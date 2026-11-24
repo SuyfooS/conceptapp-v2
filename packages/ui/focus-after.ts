@@ -305,16 +305,25 @@ export type Watched = Pick<
   "addEventListener" | "removeEventListener"
 > & { contains(node: unknown): boolean };
 
+/** The page a watch reads the focus from, and hears it move on, if it can. */
+export type FocusPage = Pick<DocLike, "activeElement"> &
+  Partial<
+    Pick<DocLike, "body"> &
+      Pick<EventTarget, "addEventListener" | "removeEventListener">
+  >;
+
 /**
  * Whether the focus is, or was last, inside `element`, from where it is now
  * (an `autoFocus` inside took it while the element was drawn, before
  * anyone could listen). A move to another element outside it forgets it:
  * the person moved on. A fall to nowhere (what had it disabled or removed,
- * the window left) keeps it, so whoever asks still chooses where it goes.
+ * the window left) keeps it, so whoever asks still chooses where it goes,
+ * until the focus is put on an element outside it (heard on `doc`): a
+ * button disabled while it waits, then a press on another, is a move on.
  */
 export function watchFocusIn(
   element: Watched,
-  doc: Pick<DocLike, "activeElement"> | undefined = thePage(),
+  doc: FocusPage | undefined = thePage(),
 ): {
   had(): boolean;
   stop(): void;
@@ -328,13 +337,24 @@ export function watchFocusIn(
     const to = (event as FocusEvent).relatedTarget;
     if (to) had = element.contains(to);
   };
+  // Anywhere on the page, before the element hears its own: the focus has
+  // moved by then (`activeElement`), and the body taking it is no move.
+  const elsewhere = () => {
+    const to = doc?.activeElement;
+    if (to && to !== doc?.body && !element.contains(to)) had = false;
+  };
   element.addEventListener("focusin", focusIn);
   element.addEventListener("focusout", focusOut);
+  // The options as an object: Node's EventTarget, which the tests stand in
+  // with, removes a capturing listener only by one.
+  const capture = { capture: true };
+  doc?.addEventListener?.("focusin", elsewhere, capture);
   return {
     had: () => had,
     stop() {
       element.removeEventListener("focusin", focusIn);
       element.removeEventListener("focusout", focusOut);
+      doc?.removeEventListener?.("focusin", elsewhere, capture);
     },
   };
 }

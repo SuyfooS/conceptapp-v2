@@ -23,13 +23,14 @@ export const WAITING_TITLE = "[data-swaps-title]";
 
 /**
  * Where the focus goes once a decided request went with it, in order: the
- * next request's first decision button, the newest line saying what was
- * decided, the card saying nothing waits, the list's title; the page's
- * title after them (`useFocusWhenGone`).
+ * next request's first decision button, the card saying nothing waits, the
+ * newest line saying what was decided, the list's title; the page's title
+ * after them (`useFocusWhenGone`). The card before the line: the line is in
+ * the live region that is saying it, and the focus there would say it again.
  */
 export const afterDecision = (ids: readonly string[], id: string) => [
   ...nextInLine(ids, id).map(decideTarget),
-  SETTLED_LINE,
   NOTHING_WAITING,
+  SETTLED_LINE,
   WAITING_TITLE,
 ];

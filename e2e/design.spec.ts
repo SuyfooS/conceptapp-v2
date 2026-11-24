@@ -1120,14 +1120,14 @@ test("the swaps demo lists the requests no longer waiting", async ({
   );
 });
 
-// Each swap step on Noa's shifts twin says what came of it, in a toast a
-// screen reader hears wherever the focus is, and the focus comes back to the
-// shift (accessibility, part 3): closed with nothing done, the sheet gives it
-// back to the button that opened it; after giving tonight away from the
-// hero, to the hero's own place, which the screen read again keeps; after
-// taking Maya's Wednesday morning, to the offer's words, where its button
-// was. "ביטול הבקשה" on Friday's row says so too. The twin keeps nothing, so
-// each card stays as it was.
+// Each swap step on Noa's shifts twin says what came of it, and the focus
+// comes back to the shift (accessibility, part 3): closed with nothing done,
+// the sheet gives it back to the button that opened it; after giving tonight
+// away from the hero, a toast says so and the focus is on the hero's own
+// place, which the screen read again keeps; after taking Maya's Wednesday
+// morning, the offer's own words say so at once, where its button was, and
+// hold the focus, with no toast saying them again. "ביטול הבקשה" on Friday's
+// row is said too. The twin keeps nothing, so each card stays as it was.
 test("the shifts demo says what each swap step did, and brings the focus back to the shift", async ({
   page,
 }) => {
@@ -1171,11 +1171,17 @@ test("the shifts demo says what each swap step did, and brings the focus back to
     .getByRole("listitem")
     .filter({ has: page.getByRole("button", { name: take }) });
   await expect(offer).toHaveCount(1);
+  const request = await offer
+    .locator("[data-offer-target]")
+    .getAttribute("data-offer-target");
+  expect(request).toBeTruthy();
+  const words = page.locator(`[data-offer-target="${request}"]`);
   await offer.getByRole("button", { name: take }).click();
   await sheet.getByRole("button", { name: take }).click();
   await expect(sheet).toHaveCount(0);
-  await expect(toast(sw.offers.takenByYou)).toBeVisible();
-  await expect(offer.locator("[data-shift-target]")).toBeFocused();
+  await expect(words).toHaveText(sw.offers.takenByYou);
+  await expect(words).toBeFocused();
+  await expect(toast(sw.offers.takenByYou)).toHaveCount(0);
 
   const cancel = page
     .getByRole("button", { name: new RegExp(`^${sw.buttons.cancel}, `) })
@@ -1185,10 +1191,12 @@ test("the shifts demo says what each swap step did, and brings the focus back to
   await expect(toast(sw.cancelled)).toBeVisible();
 });
 
-// The schedule tab's twin as Noa: tonight's shift opened from its card (the
-// hero on a phone and a tablet, its column's line on a desktop) and given
-// away, the focus is back on that card, and the toast says so.
-test("the schedule demo brings the focus back to the shift its sheet gave away", async ({
+// A step on its way holds its sheet (accessibility, part 3): Escape and ✕
+// wait for the answer, so the focus is never handed back to the hero's
+// "מסירת המשמרת" that the answer then takes away. Once the answer is back
+// the sheet closes, the toast says so, and the focus is on the hero's own
+// place.
+test("the shifts demo's sheet waits for its step's answer before it closes", async ({
   page,
 }) => {
   const sw = he.app.shifts.swap;
@@ -1197,6 +1205,100 @@ test("the schedule demo brings the focus back to the shift its sheet gave away",
     day: he.app.availability.weekdays.tue,
     date: "3.11",
   });
+  let answer = () => {};
+  const held = new Promise<void>((resolve) => {
+    answer = () => resolve();
+  });
+  await page.route("**/design/shell/schedule/shifts", async (route) => {
+    if (route.request().method() === "POST") await held;
+    await route.continue();
+  });
+  await page.goto("/design/shell/schedule/shifts");
+  await page.waitForLoadState("networkidle");
+
+  const hero = page.getByRole("region", { name: evening, exact: true });
+  await hero
+    .getByRole("button", { name: `${sw.buttons.give}, ${evening}` })
+    .click();
+  const sheet = page.getByRole("dialog");
+  const send = sheet.getByRole("button", {
+    name: `${sw.buttons.give}, ${evening}`,
+  });
+  await send.click();
+  await expect(send).toHaveAttribute("aria-busy", "true");
+  await page.keyboard.press("Escape");
+  await sheet.getByRole("button", { name: he.app.shifts.sheet.close }).click();
+  // Longer than a sheet takes to slide away.
+  await page.waitForTimeout(500);
+  await expect(sheet).toBeVisible();
+
+  answer();
+  await expect(sheet).toHaveCount(0);
+  await expect(
+    page.getByRole("status").filter({ hasText: sw.open }),
+  ).toBeVisible();
+  await expect(
+    hero.getByRole("button", {
+      name: heT("app.shifts.board.open", { shift: evening }),
+    }),
+  ).toBeFocused();
+});
+
+// Maya and Omer both give away Wednesday morning (?offers=two). Taken from
+// the sheet, the second brings the focus back to its own words, not to the
+// first's, which is still there to take (accessibility, part 3).
+test("the shifts demo brings the focus back to the offer taken, of two for one shift", async ({
+  page,
+}) => {
+  const sw = he.app.shifts.swap;
+  const take = new RegExp(`^${sw.buttons.take}, `);
+  const sheet = page.getByRole("dialog");
+  await page.goto("/design/shell/schedule/shifts?offers=two");
+  await page.waitForLoadState("networkidle");
+
+  const open = page
+    .getByRole("list", { name: sw.offers.title })
+    .getByRole("listitem")
+    .filter({ has: page.getByRole("button", { name: take }) });
+  await expect(open).toHaveCount(2);
+  const request = (i: number) =>
+    open
+      .nth(i)
+      .locator("[data-offer-target]")
+      .getAttribute("data-offer-target");
+  const first = await request(0);
+  const second = await request(1);
+  expect(first).toBeTruthy();
+  expect(second).not.toBe(first);
+
+  await open.first().getByRole("button", { name: take }).click();
+  const takes = sheet.getByRole("button", { name: take });
+  await expect(takes).toHaveCount(2);
+  await takes.nth(1).click();
+  await expect(sheet).toHaveCount(0);
+  const taken = page.locator(`[data-offer-target="${second}"]`);
+  await expect(taken).toHaveText(sw.offers.takenByYou);
+  await expect(taken).toBeFocused();
+  await expect(page.locator(`[data-offer-target="${first}"]`)).not.toHaveText(
+    sw.offers.takenByYou,
+  );
+});
+
+// The schedule tab's twin as Noa. On a phone and a tablet, tonight's shift
+// given away from the hero's "מסירת המשמרת": the focus comes back to the
+// hero's own place, not to the button that opened the sheet, and the toast
+// says so. A desktop's week opens it from the shift's line alone, which is
+// that place too: there, the toast.
+test("the schedule demo brings the focus back to the shift its sheet gave away", async ({
+  page,
+}, testInfo) => {
+  const sw = he.app.shifts.swap;
+  const evening = heT("app.shifts.shift", {
+    name: "ערב",
+    day: he.app.availability.weekdays.tue,
+    date: "3.11",
+  });
+  const desktop = testInfo.project.name === "desktop";
   await page.goto("/design/shell/schedule/worker");
   await page.waitForLoadState("networkidle");
   const card = page
@@ -1205,7 +1307,13 @@ test("the schedule demo brings the focus back to the shift its sheet gave away",
     })
     .filter({ visible: true });
   await expect(card).toHaveCount(1);
-  await card.click();
+  const opener = desktop
+    ? card
+    : page
+        .getByRole("button", { name: `${sw.buttons.give}, ${evening}` })
+        .filter({ visible: true });
+  await expect(opener).toHaveCount(1);
+  await opener.click();
   const sheet = page.getByRole("dialog");
   await sheet
     .getByRole("button", { name: `${sw.buttons.give}, ${evening}` })
@@ -1214,14 +1322,15 @@ test("the schedule demo brings the focus back to the shift its sheet gave away",
   await expect(
     page.getByRole("status").filter({ hasText: sw.open }),
   ).toBeVisible();
-  await expect(card).toBeFocused();
+  if (!desktop) await expect(card).toBeFocused();
 });
 
 // Approving or declining removes the request with the focus on its button
 // (accessibility, part 3): the focus goes on to the next request down,
-// else the one above, else what was decided; and what was decided is said
-// by a live region there from the start, so the first decision is heard
-// too. On every shape: cards on phones and tablets, a table on desktops.
+// else the one above, else the card saying nothing waits; and what was
+// decided is said by a live region there from the start, so the first
+// decision is heard too, and only its new line. On every shape: cards on
+// phones and tablets, a table on desktops.
 test("the swaps demo goes on to the next request after each decision, and says each one", async ({
   page,
 }) => {
@@ -1235,8 +1344,11 @@ test("the swaps demo goes on to the next request after each decision, and says e
   await page.goto("/design/shell/schedule/swaps");
   await page.waitForLoadState("networkidle");
 
-  // In the accessibility tree before anything is decided, with nothing in it.
+  // In the accessibility tree before anything is decided, with nothing in it,
+  // and read a line at a time, never whole.
   await expect(region).toHaveAttribute("role", "status");
+  await expect(region).toHaveAttribute("aria-atomic", "false");
+  await expect(region).toHaveAttribute("aria-relevant", "additions");
   await expect(lines).toHaveCount(0);
   expect(await region.evaluate((el) => getComputedStyle(el).display)).not.toBe(
     "none",
@@ -1257,16 +1369,88 @@ test("the swaps demo goes on to the next request after each decision, and says e
   await expect(decision(ap.buttons.decline)).toHaveCount(1);
   await expect(decision(ap.buttons.decline)).toBeFocused();
 
-  // None left: what was decided last, the newest line, has it.
+  // None left: the card saying so has it, and the region says what was
+  // decided last, its newest line.
   await decision(ap.buttons.decline).click();
-  await expect(
-    page.getByText(ap.empty).filter({ visible: true }),
-  ).toBeVisible();
+  const empty = page.locator("[data-swaps-empty]");
+  await expect(empty).toContainText(ap.empty);
   await expect(lines).toHaveCount(3);
   await expect(lines.first()).toContainText(
     ap.settled.declined.split(".")[0] ?? "",
   );
-  await expect(lines.first()).toBeFocused();
+  await expect(empty).toBeFocused();
+});
+
+// A decision still on its way keeps its place (accessibility, part 3): the
+// manager approves Wednesday's, then presses Saturday's while the first
+// waits. When Wednesday's goes, the focus is not put on Saturday's "דחייה";
+// once Saturday's goes too, it is on Tuesday's.
+test("the swaps demo leaves the focus alone when a decision goes while another waits", async ({
+  page,
+}) => {
+  const ap = he.app.swaps;
+  const decision = (name: string) =>
+    page
+      .getByRole("button", { name: new RegExp(`^${name}, `) })
+      .filter({ visible: true });
+  const waits: (() => void)[] = [];
+  await page.route("**/design/shell/schedule/swaps", async (route) => {
+    if (route.request().method() === "POST") {
+      await new Promise<void>((resolve) => {
+        waits.push(resolve);
+      });
+    }
+    await route.continue();
+  });
+  await page.goto("/design/shell/schedule/swaps");
+  await page.waitForLoadState("networkidle");
+
+  const approve = decision(ap.buttons.approve);
+  await expect(approve).toHaveCount(2);
+  const saturday = await approve.nth(1).getAttribute("data-decide");
+  expect(saturday).toBeTruthy();
+  await approve.first().click();
+  await expect.poll(() => waits.length).toBe(1);
+  await approve.nth(1).click();
+  await expect(approve.nth(1)).toHaveAttribute("aria-busy", "true");
+
+  waits[0]?.();
+  await expect(page.locator("[data-settled]")).toHaveCount(1);
+  // Sent once the first is answered (the page sends one at a time), or
+  // already: it waits either way.
+  await expect.poll(() => waits.length).toBe(2);
+  await expect(
+    page
+      .locator(`[data-decide="${saturday}"]`)
+      .and(decision(ap.buttons.decline)),
+  ).not.toBeFocused();
+
+  waits[1]?.();
+  await expect(approve).toHaveCount(0);
+  await expect(decision(ap.buttons.decline)).toHaveCount(1);
+  await expect(decision(ap.buttons.decline)).toBeFocused();
+});
+
+// The schedule tab's week strip reads Friday's and Saturday's time with its
+// words, as the gallery's does (`noteLabel`, accessibility, part 3).
+test("the schedule demo's week strip reads Shabbat's times in words", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "desktop", "the strip of phones");
+  await page.goto("/design/shell/schedule/worker");
+  await page.waitForLoadState("networkidle");
+  const strip = page
+    .getByRole("group", { name: he.app.shifts.board.pickDay, exact: true })
+    .filter({ visible: true });
+  await expect(strip).toHaveCount(1);
+  for (const key of ["candleLighting", "havdalah"] as const) {
+    const words = heT
+      .markup(`app.shifts.board.${key}`, { time: "TIME", ltr: (c) => c })
+      .replace("TIME", "\\d{1,2}:\\d{2}");
+    await expect(
+      strip.getByRole("button", { name: new RegExp(words) }),
+    ).toHaveCount(1);
+  }
 });
 
 // Today on the desktop's week is more than a filled circle: the day's name
