@@ -11,6 +11,7 @@ import { DetailsCard } from "./details-card";
 import { MethodButton } from "./method-sheet";
 import { NoteView } from "./note-view";
 import {
+  absenceKindText,
   CancelledShifts,
   MissingWage,
   PayDayList,
@@ -278,10 +279,7 @@ export function PersonPayView({
           {data.absences.map((one) => (
             <ListRow
               key={one.kind}
-              title={t("absences.byKind", {
-                kind: t(`absences.kinds.${one.kind}`),
-                count: one.dates.length,
-              })}
+              title={absenceKindText(one.kind, one.dates.length, t)}
               subtitle={t.rich("absences.dates", {
                 ltr,
                 dates: one.dates.map(shortDate).join(", "),

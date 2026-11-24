@@ -1,4 +1,9 @@
-import { ABSENCE_KINDS, type AbsenceKind } from "./absences";
+import {
+  ABSENCE_KINDS,
+  type AbsenceKind,
+  type AbsenceWrite,
+  absencesChangedSince,
+} from "./absences";
 import { dateIn, weekdayOf } from "./availability";
 import type { HolidayPayLine } from "./holiday-pay";
 import {
@@ -923,9 +928,10 @@ export function exportSheets(
  * edit stamps its shift), confirmed, ended or brought back after a cancel
  * since, one of its shifts cancelled since that was there when the file went
  * out (`cancelled`, the month's cancelled shifts: one written after it
- * never was), a wage set since that reaches into the month, or a day away in
- * the month recorded, changed or brought back since, or removed since when the
- * file had it (`absences`, the month's, removed ones too). The pay screen
+ * never was), a wage set since that reaches into the month, or the month's
+ * days away other than the file had them (`absences`, the business's writes
+ * of days away since, oldest first: `absencesChangedSince`, so a record moved
+ * out of the month counts, and a note changed alone doesn't). The pay screen
  * then says a new file is worth taking. `entries` are the month's own live
  * shifts.
  */
@@ -941,11 +947,7 @@ export function changedSinceExport(
     cancelledAt: string;
     entry: Pick<TimeEntry, "createdAt">;
   }[] = [],
-  absences: readonly {
-    recordedAt: string;
-    changedAt: string | null;
-    removedAt: string | null;
-  }[] = [],
+  absences: readonly AbsenceWrite[] = [],
 ): boolean {
   const since = Date.parse(exportedAt);
   const after = (instant: string | null) =>
@@ -963,11 +965,7 @@ export function changedSinceExport(
       (one) => after(one.cancelledAt) && !after(one.entry.createdAt),
     ) ||
     wages.some((wage) => after(wage.setAt) && wage.from <= lastDayOf(month)) ||
-    absences.some((one) =>
-      one.removedAt === null
-        ? after(one.recordedAt) || after(one.changedAt)
-        : after(one.removedAt) && !after(one.recordedAt),
-    )
+    absencesChangedSince(absences, month, exportedAt)
   );
 }
 

@@ -24,6 +24,12 @@ export const HOLIDAY_PAY_CHECKS = [
    * day after (known issue 19). Whether it is owed is the accountant's.
    */
   "inAbsence",
+  /**
+   * A one-off rest day: a day away is recorded on it (known issue 19), as
+   * reserve duty over election day. Whether its pay is owed is the
+   * accountant's.
+   */
+  "oneOffInAbsence",
   /** The average is of the 3 months before; 12 is the other reading. */
   "averagePeriod",
   /** Their history doesn't show that weekday as one of theirs. */
@@ -202,6 +208,7 @@ export function holidayPayLines(
       oneOffRestDay: day.key,
       ...averageOf(person, history, day.date),
       check: inOrder([
+        ...(away.has(day.date) ? (["oneOffInAbsence"] as const) : []),
         "averagePeriod",
         ...scheduled(day.date),
         "fourteenDays",

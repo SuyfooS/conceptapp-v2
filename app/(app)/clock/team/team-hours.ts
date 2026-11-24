@@ -245,6 +245,8 @@ export async function currentPersonHours(
     scheduling.weekStartsOn,
     nameOf,
   );
+  const records = canRecordAbsence(access, access.userId, person.userId);
+  const onStaff = person.staff && person.active;
   return {
     person: { userId: person.userId, name: person.name },
     month,
@@ -264,10 +266,10 @@ export async function currentPersonHours(
     viewOnly,
     absences,
     // Someone off the staff gets no new days away: the database says so too.
-    canRecord:
-      person.staff &&
-      person.active &&
-      canRecordAbsence(access, access.userId, person.userId),
+    canRecord: records && onStaff,
+    // The viewer edits the clock (`teamAccess`), so only one's own stops it,
+    // or someone who left.
+    recordsNot: !records ? "own" : !onStaff ? "offStaff" : null,
     builds: access.scheduling && buildsSchedule(access),
   };
 }

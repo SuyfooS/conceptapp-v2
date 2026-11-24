@@ -2712,6 +2712,10 @@
         "toBuilder": "Open the schedule builder",
         "recorded": "Recorded by {name}, <ltr>{date}</ltr>",
         "someone": "someone on the team",
+        "rowLabel": "{kind}, {from}–{to}",
+        "rowLabelOne": "{kind}, {date}",
+        "ownHint": "Your own days away are recorded by the owner or someone else who corrects hours.",
+        "offStaffHint": "Someone not on the staff gets no new days away. What was recorded stays here.",
         "columns": {
           "kind": "Kind",
           "from": "From",
@@ -3281,6 +3285,7 @@
         "checks": {
           "adjacentDays": "{form, select, f {Check that she worked the day before and after, or was away with consent} m {Check that he worked the day before and after, or was away with consent} other {Check for work the day before and after, or an absence with consent}}",
           "inAbsence": "Days away are recorded on the holiday, the day before or the day after. The accountant checks whether holiday pay is owed",
+          "oneOffInAbsence": "A day away is recorded on this day. The accountant checks whether its pay is owed",
           "averagePeriod": "The average of the 3 months before. Some use 12",
           "wasScheduled": "{form, select, f {Check that she was due to work that day} m {Check that he was due to work that day} other {Check that it was due to be a workday}}",
           "noHistory": "No hours in the months before, so no average to pay by",
@@ -3297,7 +3302,7 @@
           "reserve": "Reserve duty",
           "other": "Other absence"
         },
-        "byKind": "{kind} {count}",
+        "byKind": "{kind}: {days}",
         "days": "{count, plural, one {1 day} other {# days}}",
         "dates": "<ltr>{dates}</ltr>",
         "hint": "They don't count as days worked or toward the week's 42 hours. The accountant decides what is paid for them."

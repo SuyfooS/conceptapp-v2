@@ -2145,7 +2145,7 @@ them. Covered by `@domain/time-clock`'s tests, `time-clock.test.ts` and
 ### Days away
 
 Vacation, sick leave, reserve duty and another absence (known issue 19,
-`20261127000600_absences.sql`). `public.absences` holds whole days, `from_day`
+`20261127000700_absences.sql`). `public.absences` holds whole days, `from_day`
 to `to_day` included, at most 366 days a record, one kind (`vacation`,
 `sick`, `reserve`, `other`) and a note of 1 to 200 characters, trimmed, or
 none. Two live records of one person never share a day
@@ -2179,16 +2179,24 @@ it stamps `changed_at`. A change with nothing different writes nothing. The
 log: `clock.absence_add` `{absence, person, kind, from, to, noted}`,
 `clock.absence_change` `{absence, person, from, to, note_changed}`,
 `clock.absence_remove` and `clock.absence_restore` `{absence, person, kind,
-from, to}`, never the note; no trigger on the log takes them. Locks: the
-person's membership (`for share`), then the record.
+from, to}`, never the note; no trigger on the log takes them. Locks, after
+the access checks: the business (`for key share`, which waits only on the
+demo reset's `for update`), the person's membership (`for share`), then the
+record, so a write and a reset never wait on each other; a record a reset
+took while a write waited is answered as an unknown one (42501).
 
 `public.team_away(business, first_day, last_day)` answers whoever builds the
 schedule or edits the clock (`businesses_holding`, members and views alike)
 with who on the staff is away and when, over at most 62 days, never the kind
 or the note. The wrappers (`absences.ts`): `getAbsences(business, from, to,
-{ userId?, withRemoved? })` under the session, paged, and `getTeamAway`, paged,
-each answering none before the migration (`isMissingTable`,
-`isMissingFunction`); `recordAbsence`, `changeAbsence`, `removeAbsence` and
+{ userId? })`, the live ones, under the session, paged, and `getTeamAway`,
+paged, each answering none before the migration (`isMissingTable`,
+`isMissingFunction`); `getAbsenceWrites(business, since)`, the log's
+`clock.absence_*` rows after an instant, oldest first, paged, each record
+before and after (`absenceWriteOf`; a row it can't read left out), for
+whether a month's days away changed since its file (`absencesChangedSince`:
+a record moved out of the month counts, a note alone doesn't);
+`recordAbsence`, `changeAbsence`, `removeAbsence` and
 `restoreAbsence` with the secret key, their refusals read by
 `@domain/absences`'s `absenceFailureOf` (a closed month with its month).
 Covered by `absences.test.sql`, `rls_enabled.test.sql`,

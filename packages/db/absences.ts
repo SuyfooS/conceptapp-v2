@@ -1,7 +1,9 @@
 import "server-only";
 import {
+  ABSENCE_KINDS,
   type Absence,
   type AbsenceFailure,
+  type AbsenceWrite,
   type AwaySpan,
   absence,
   absenceFailureOf,
@@ -10,12 +12,12 @@ import {
 import { z } from "zod";
 import { isMissingFunction } from "./missing";
 import { isMissingTable } from "./notifications";
-import { readAllPages } from "./pages";
+import { allPages, readAllPages } from "./pages";
 import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
 
 /*
- * Days away (20261127000600_absences.sql). Reads run under the signed-in
+ * Days away (20261127000700_absences.sql). Reads run under the signed-in
  * person (RLS: their own; whoever edits the clock or holds pay, the
  * business's), and the schedule's builders read only who and when
  * (public.team_away). Writes run with the secret key; the database checks
@@ -59,16 +61,15 @@ export function absenceOf(row: Row): Absence {
 }
 
 /**
- * A business's days away that touch [from, to] (`YYYY-MM-DD`, both
+ * A business's live days away that touch [from, to] (`YYYY-MM-DD`, both
  * included), as the signed-in person may read them, in date order. With
- * `userId`, that person's only; with `withRemoved`, the removed ones too (the
- * payroll file's changes since an export). None before the migration.
+ * `userId`, that person's only. None before the migration.
  */
 export async function getAbsences(
   businessId: string,
   from: string,
   to: string,
-  options: { userId?: string; withRemoved?: boolean } = {},
+  options: { userId?: string } = {},
 ): Promise<Absence[]> {
   const supabase = await createClient();
   const read = await readAllPages<Row, { code?: string }>((first, last) => {
@@ -77,9 +78,9 @@ export async function getAbsences(
       .select(COLUMNS)
       .eq("business_id", businessId)
       .lte("from_day", to)
-      .gte("to_day", from);
+      .gte("to_day", from)
+      .is("removed_at", null);
     if (options.userId) query = query.eq("user_id", options.userId);
-    if (!options.withRemoved) query = query.is("removed_at", null);
     // `id` breaks ties, so no row falls between two pages.
     return query.order("from_day").order("id").range(first, last);
   });
@@ -88,6 +89,90 @@ export async function getAbsences(
     throw read.error;
   }
   return read.data.map(absenceOf);
+}
+
+/** The log's actions of the four writes, as the migration names them. */
+const WRITE_ACTIONS = [
+  "clock.absence_add",
+  "clock.absence_change",
+  "clock.absence_remove",
+  "clock.absence_restore",
+];
+
+const logDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const logSpan = z.object({
+  kind: z.enum(ABSENCE_KINDS),
+  from: logDay,
+  to: logDay,
+});
+/** add, remove and restore: the record as it was or became. */
+const wholeWrite = logSpan.extend({ absence: z.string(), person: z.string() });
+/** change: the record before and after (the note's change is only a flag). */
+const changeWrite = z.object({
+  absence: z.string(),
+  person: z.string(),
+  from: logSpan,
+  to: logSpan,
+});
+
+/** A log row as a write, or null for one it can't read. */
+export function absenceWriteOf(row: {
+  action: string;
+  details: unknown;
+  created_at: string;
+}): AbsenceWrite | null {
+  if (row.action === "clock.absence_change") {
+    const change = changeWrite.safeParse(row.details);
+    if (!change.success) return null;
+    const { absence, person, from, to } = change.data;
+    return {
+      absence,
+      at: row.created_at,
+      before: { userId: person, ...from },
+      after: { userId: person, ...to },
+    };
+  }
+  const whole = wholeWrite.safeParse(row.details);
+  if (!whole.success || !WRITE_ACTIONS.includes(row.action)) return null;
+  const { absence, person, ...span } = whole.data;
+  const record = { userId: person, ...span };
+  const added = row.action !== "clock.absence_remove";
+  return {
+    absence,
+    at: row.created_at,
+    before: added ? null : record,
+    after: added ? record : null,
+  };
+}
+
+/**
+ * Every write of the business's days away after `since` (an instant), oldest
+ * first, from the log's `clock.absence_*` rows as the signed-in person may
+ * read them (pay holders and the clock's editors read the clock's rows): each
+ * record before and after, for whether a month changed since its file
+ * (`absencesChangedSince`). A row it can't read is left out.
+ */
+export async function getAbsenceWrites(
+  businessId: string,
+  since: string,
+): Promise<AbsenceWrite[]> {
+  const supabase = await createClient();
+  const rows = await allPages<{
+    action: string;
+    details: unknown;
+    created_at: string;
+  }>((first, last) =>
+    supabase
+      .from("audit_log")
+      .select("action, details, created_at")
+      .eq("business_id", businessId)
+      .in("action", WRITE_ACTIONS)
+      .gt("created_at", since)
+      .order("created_at")
+      .order("id")
+      .range(first, last),
+  );
+  return rows.flatMap((row) => absenceWriteOf(row) ?? []);
 }
 
 const awayRow = z.object({

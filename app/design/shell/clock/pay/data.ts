@@ -109,13 +109,21 @@ export const demoPayPaths: PayPaths = {
 };
 
 /**
- * The demo's paths for where October stands (`close`, `demoClosing`): with
- * September's differences in October's file ("before", "empty"), the file
- * link says so, so the workbook downloaded matches the screen.
+ * The demo's paths for where October stands (`close`, `demoClosing`) and
+ * whether Noa has her days away (`absences` "1"): with September's
+ * differences in October's file ("before", "empty"), or her days away, the
+ * file link says so, so the workbook downloaded matches the screen.
  */
-export function demoPayPathsFor(close: string | undefined): PayPaths {
-  return close === "before" || close === "empty"
-    ? { ...demoPayPaths, file: `${demoPayPaths.file}?close=${close}` }
+export function demoPayPathsFor(
+  close: string | undefined,
+  absences?: string,
+): PayPaths {
+  const asked = new URLSearchParams();
+  if (close === "before" || close === "empty") asked.set("close", close);
+  if (absences === "1") asked.set("absences", "1");
+  const query = asked.toString();
+  return query
+    ? { ...demoPayPaths, file: `${demoPayPaths.file}?${query}` }
     : demoPayPaths;
 }
 

@@ -55,8 +55,7 @@
 --               after that it is recorded again), for someone on the staff,
 --               outside a closed month, and only while no live record took
 --               its days (23P01). One not removed is refused (55000, hint
---               'not_removed'). It stamps changed_at, so a payroll file made
---               after the removal sees a change.
+--               'not_removed'). It stamps changed_at.
 --   not said    changing, removing and bringing back answer an unknown
 --               record exactly as one of a business the actor doesn't edit
 --               (42501, "Managers and owners only"): whether a record exists
@@ -68,17 +67,26 @@
 --               note itself is never logged (it may be about someone's
 --               health): only whether there is one, or whether it changed.
 --               The clock's family, so private.log_perm reads them at
---               clock.edit; no trigger on the log takes these actions, so
---               nobody gets a line.
+--               clock.edit, and pay holders read them too; no trigger on the
+--               log takes these actions, so nobody gets a line. The pay
+--               screen reads them to tell whether a month's days away changed
+--               since its file: each record before and after, so a record
+--               moved out of the month counts, and a note alone doesn't.
 --   kept        records, as hours are (20261110000100_hours_kept.sql):
 --               `restrict` keys to the membership, and nothing deletes a row
 --               but the demo reset's purge, which now takes them before the
 --               memberships go.
---   locks       the person's membership (`for share`), then the record
---               (`for update`); a new record locks only the membership. No
---               other function locks a record, and closing a month locks none:
---               a record written at the very moment a month closes may miss
---               its snapshot, the same window an hours correction has.
+--   locks       after the access checks: the business (`for key share`,
+--               which only a `for update` of it waits on, the demo reset's),
+--               then the person's membership (`for share`), then the record
+--               (`for update`); a new record locks no record. So a demo reset
+--               under way finishes before a write takes anything, and a reset
+--               that comes after waits for the write: the two never hold what
+--               the other waits on. A record a reset took is then answered as
+--               an unknown one (42501). No other function locks a record, and
+--               closing a month locks none: a record written at the very
+--               moment a month closes may miss its snapshot, the same window
+--               an hours correction has.
 --   demo        no day away is seeded; a visitor may record one, and the
 --               reset takes it.
 
@@ -164,7 +172,7 @@ comment on column public.absences.recorded_at is
 comment on column public.absences.changed_by is
   'Who changed it or brought it back last; null once their profile goes.';
 comment on column public.absences.changed_at is
-  'When it was last changed or brought back, for the payroll file''s changes since an export. Null when never.';
+  'When it was last changed (its note too) or brought back. Null when never. Whether a payroll file is out of date is read from the log (clock.absence_*), which keeps the days before and after.';
 comment on column public.absences.removed_by is
   'Who removed it; null once their profile goes, while removed_at stays.';
 comment on column public.absences.removed_at is
@@ -305,6 +313,10 @@ begin
       using errcode = '42501', hint = 'own';
   end if;
 
+  -- The business first, then the person: a demo reset under way finishes
+  -- before this takes anything.
+  perform 1 from public.businesses b where b.id = business for key share;
+
   -- The person stays on the staff while this records (a removal waits).
   select * into member
   from public.memberships m
@@ -377,11 +389,17 @@ begin
       using errcode = '42501', hint = 'own';
   end if;
 
+  -- The business, the person, then the record (the header's locks).
+  perform 1 from public.businesses b where b.id = place for key share;
   select * into member
   from public.memberships m
   where m.business_id = place and m.user_id = person
   for share;
   select * into a from public.absences ab where ab.id = absence for update;
+  if not found then
+    -- A demo reset took it while this waited: unknown, as above.
+    raise exception 'Managers and owners only' using errcode = '42501';
+  end if;
 
   if a.removed_at is not null then
     raise exception 'The absence is removed' using errcode = '55000', hint = 'removed';
@@ -478,11 +496,17 @@ begin
       using errcode = '42501', hint = 'own';
   end if;
 
+  -- The business, the person, then the record (the header's locks).
+  perform 1 from public.businesses b where b.id = place for key share;
   perform 1
   from public.memberships m
   where m.business_id = place and m.user_id = person
   for share;
   select * into a from public.absences ab where ab.id = absence for update;
+  if not found then
+    -- A demo reset took it while this waited: unknown, as above.
+    raise exception 'Managers and owners only' using errcode = '42501';
+  end if;
 
   if a.removed_at is not null then
     raise exception 'The absence is removed' using errcode = '55000', hint = 'removed';
@@ -541,11 +565,17 @@ begin
       using errcode = '42501', hint = 'own';
   end if;
 
+  -- The business, the person, then the record (the header's locks).
+  perform 1 from public.businesses b where b.id = place for key share;
   select * into member
   from public.memberships m
   where m.business_id = place and m.user_id = person
   for share;
   select * into a from public.absences ab where ab.id = absence for update;
+  if not found then
+    -- A demo reset took it while this waited: unknown, as above.
+    raise exception 'Managers and owners only' using errcode = '42501';
+  end if;
 
   if a.removed_at is null then
     raise exception 'The absence is not removed' using errcode = '55000', hint = 'not_removed';

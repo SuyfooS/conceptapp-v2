@@ -109,7 +109,7 @@ export type ActivityPerson =
  */
 export type ActivityActor = ActivityPerson | { kind: "app" };
 
-/** What was done to someone's days away (20261127000600_absences.sql). */
+/** What was done to someone's days away (20261127000700_absences.sql). */
 export const ABSENCE_ACTIONS = [
   "clock.absence_add",
   "clock.absence_change",
@@ -342,7 +342,7 @@ export type ActivityLine =
   | {
       /**
        * Someone who edits the clock recorded, changed, removed or brought
-       * back someone's days away (20261127000600_absences.sql), with the
+       * back someone's days away (20261127000700_absences.sql), with the
        * kind and the days as they are after it (a removal's: as they were).
        * Never the note: the log keeps only whether there is one.
        */
@@ -1084,7 +1084,7 @@ const schemas = {
     unpaid: z.boolean().nullable().optional().catch(null),
     note: z.unknown().optional(),
   }),
-  // 20261127000600_absences.sql: the kind and the days, never the note; a
+  // 20261127000700_absences.sql: the kind and the days, never the note; a
   // change has both sides, and its line names what it is now.
   "clock.absence_add": absenceDays,
   "clock.absence_change": z.object({ person: id, to: absenceSide }),

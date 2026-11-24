@@ -18,7 +18,7 @@ export const manifest = defineManifest({
   permissions: [
     // Editing the clock: the team's hours, corrections, confirmations, the
     // punch-code screen, the stations (Orel, 15 November 2026) and the team's
-    // days away (known issue 19, 20261127000600_absences.sql). Everyone
+    // days away (known issue 19, 20261127000700_absences.sql). Everyone
     // on the staff punches and reads their own hours without it (view is the
     // floor). The database asks it (private.can_edit_clock, the roles plan's
     // R4), and owners and the team switch it per role.

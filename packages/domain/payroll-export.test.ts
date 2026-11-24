@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { KindSpan } from "./absences";
+import type { AbsenceWrite, KindSpan } from "./absences";
 import { instantIn } from "./availability";
 import { payrollHistory } from "./holiday-pay";
 import {
@@ -1154,30 +1154,113 @@ describe("days away in the file (known issue 19)", () => {
 });
 
 describe("changedSinceExport and days away", () => {
+  // October's file went out on 3 November; the writes are the log's, in
+  // the order written (`@db/absences`' getAbsenceWrites).
   const sent = "2026-11-03T08:00:00Z";
-  const before = "2026-10-20T08:00:00Z";
-  const after = "2026-11-04T08:00:00Z";
-  const one = (more: {
-    recordedAt?: string;
-    changedAt?: string | null;
-    removedAt?: string | null;
-  }) => ({ recordedAt: before, changedAt: null, removedAt: null, ...more });
-  const changed = (absences: ReturnType<typeof one>[]) =>
-    changedSinceExport([], [], "2026-10", sent, [], absences);
+  const at = (day: number) =>
+    `2026-11-${String(day).padStart(2, "0")}T08:00:00Z`;
+  const record = (
+    from: string,
+    to: string,
+    kind: KindSpan["kind"] = "vacation",
+    userId = "noa",
+  ): KindSpan => ({ userId, kind, from, to });
+  const write = (
+    when: string,
+    before: KindSpan | null,
+    after: KindSpan | null,
+    absence = "a1",
+  ): AbsenceWrite => ({ absence, at: when, before, after });
+  const changed = (writes: AbsenceWrite[]) =>
+    changedSinceExport([], [], "2026-10", sent, [], writes);
+  const lastDays = record("2026-10-30", "2026-10-31");
 
-  it("is false for days away the file already had", () => {
-    expect(changed([one({})])).toBe(false);
-    // Removed before the file: it never had them.
-    expect(changed([one({ removedAt: "2026-10-30T08:00:00Z" })])).toBe(false);
+  it("is false with no write since the file, or only writes before it", () => {
+    expect(changed([])).toBe(false);
+    expect(changed([write("2026-10-20T08:00:00Z", null, lastDays)])).toBe(
+      false,
+    );
   });
 
-  it("is true for days away recorded, changed or brought back after it", () => {
-    expect(changed([one({ recordedAt: after })])).toBe(true);
-    expect(changed([one({ changedAt: after })])).toBe(true);
+  it("is true for days away recorded or brought back, or removed, in the month since", () => {
+    expect(changed([write(at(4), null, lastDays)])).toBe(true);
+    expect(changed([write(at(4), lastDays, null)])).toBe(true);
   });
 
-  it("is true for days away removed after it that the file had, and false for ones it never had", () => {
-    expect(changed([one({ removedAt: after })])).toBe(true);
-    expect(changed([one({ recordedAt: after, removedAt: after })])).toBe(false);
+  it("is true for a record moved out of the month since, by the days it had there", () => {
+    // 30-31 October in the file, then 3-4 January: no longer in October at all.
+    expect(
+      changed([write(at(4), lastDays, record("2027-01-03", "2027-01-04"))]),
+    ).toBe(true);
+    // Moved into it from November.
+    expect(
+      changed([write(at(4), record("2026-11-20", "2026-11-21"), lastDays)]),
+    ).toBe(true);
+    // Its kind changed, or one of its October days.
+    expect(
+      changed([
+        write(at(4), lastDays, record("2026-10-30", "2026-10-31", "sick")),
+      ]),
+    ).toBe(true);
+    expect(
+      changed([write(at(4), lastDays, record("2026-10-29", "2026-10-31"))]),
+    ).toBe(true);
+  });
+
+  it("is false for a note changed alone, or a change that keeps the month's days", () => {
+    // A note alone: the log keeps the record the same before and after.
+    expect(changed([write(at(4), lastDays, lastDays)])).toBe(false);
+    // Only its November days moved: October's are as the file had them.
+    expect(
+      changed([
+        write(
+          at(4),
+          record("2026-10-30", "2026-11-02"),
+          record("2026-10-30", "2026-11-05"),
+        ),
+      ]),
+    ).toBe(false);
+    // Another month's record, recorded since.
+    expect(
+      changed([write(at(4), null, record("2026-11-20", "2026-11-21"))]),
+    ).toBe(false);
+  });
+
+  it("is false for what came and went since: recorded and removed, or removed and brought back", () => {
+    expect(
+      changed([write(at(4), null, lastDays), write(at(5), lastDays, null)]),
+    ).toBe(false);
+    expect(
+      changed([write(at(4), lastDays, null), write(at(4), null, lastDays)]),
+    ).toBe(false);
+    // Moved out and back again.
+    expect(
+      changed([
+        write(at(4), lastDays, record("2027-01-03", "2027-01-04")),
+        write(at(5), record("2027-01-03", "2027-01-04"), lastDays),
+      ]),
+    ).toBe(false);
+  });
+
+  it("is true when a record's days go to someone else's record, person by person", () => {
+    // Noa's removed and the same days recorded for Yoav: October changed.
+    expect(
+      changed([
+        write(at(4), lastDays, null, "a1"),
+        write(
+          at(4),
+          null,
+          record("2026-10-30", "2026-10-31", "vacation", "yoav"),
+          "a2",
+        ),
+      ]),
+    ).toBe(true);
+    // Noa's removed and recorded again, the same days: as the file had them.
+    expect(
+      changed([
+        write(at(4), lastDays, null, "a1"),
+        write(at(5), null, lastDays, "a2"),
+      ]),
+    ).toBe(false);
   });
 });

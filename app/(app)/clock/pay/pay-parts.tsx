@@ -320,9 +320,21 @@ export function BeforePayrollCard({
   );
 }
 
+/** One kind's days away, counted as days: "חופשה: 2 ימים". */
+export function absenceKindText(
+  kind: AbsenceKind,
+  count: number,
+  t: PayT,
+): string {
+  return t("absences.byKind", {
+    kind: t(`absences.kinds.${kind}`),
+    days: t("absences.days", { count }),
+  });
+}
+
 /**
- * Someone's days away in the month by kind (known issue 19), "חופשה 2 ·
- * מחלה 1"; null with none, or when the engine couldn't run.
+ * Someone's days away in the month by kind (known issue 19), "חופשה: 2 ימים
+ * · מחלה: יום אחד"; null with none, or when the engine couldn't run.
  */
 export function absencesText(
   days: Record<AbsenceKind, number> | null,
@@ -330,10 +342,7 @@ export function absencesText(
 ): string | null {
   if (!days) return null;
   const parts = ABSENCE_KINDS.filter((kind) => days[kind] > 0).map((kind) =>
-    t("absences.byKind", {
-      kind: t(`absences.kinds.${kind}`),
-      count: days[kind],
-    }),
+    absenceKindText(kind, days[kind], t),
   );
   return parts.length > 0 ? parts.join(" · ") : null;
 }

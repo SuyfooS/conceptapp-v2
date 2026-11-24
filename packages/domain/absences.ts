@@ -6,7 +6,7 @@ import { lastDayOf } from "./wages";
 
 /*
  * Days away: vacation, sick leave, reserve duty or another absence
- * (known issue 19; 20261127000600_absences.sql). Whole days, from one to
+ * (known issue 19; 20261127000700_absences.sql). Whole days, from one to
  * another, recorded by whoever edits the clock for someone on the staff.
  * The app counts the days by kind and never what they come to in pay: that
  * stays with the accountant (known issue 18). The database holds the same
@@ -237,6 +237,64 @@ export function canRecordAbsence(
 ): boolean {
   return (
     editsClock(viewer) && (personId !== viewerId || viewer.role === "owner")
+  );
+}
+
+/**
+ * One write of a day away, as the log keeps it (`clock.absence_*`): which
+ * record, when, and the record just before and just after it, null where none
+ * was live (not yet recorded, or removed). A change of the note alone leaves
+ * the two the same: the file holds no note.
+ */
+export type AbsenceWrite = {
+  absence: string;
+  at: string;
+  before: KindSpan | null;
+  after: KindSpan | null;
+};
+
+/**
+ * Whether the days away of `month` (`YYYY-MM`) changed after `since`, an
+ * instant, from the writes of the log in the order written (`writes`; those
+ * before `since` are left out). Each record written since is taken as it was
+ * before the first of them and as the last left it, and the month's dates of
+ * all of them, each with its person and kind, are compared. So a record moved
+ * out of the month counts by the days it had there, one moved in by the days
+ * it has now, and a note changed alone, or a record recorded and removed
+ * since, or removed and brought back, doesn't.
+ */
+export function absencesChangedSince(
+  writes: readonly AbsenceWrite[],
+  month: string,
+  since: string,
+): boolean {
+  const from = Date.parse(since);
+  // Each record written since: before the first write, after the last.
+  const touched = new Map<string, Pick<AbsenceWrite, "before" | "after">>();
+  for (const write of writes) {
+    if (Date.parse(write.at) < from) continue;
+    const seen = touched.get(write.absence);
+    touched.set(write.absence, {
+      before: seen ? seen.before : write.before,
+      after: write.after,
+    });
+  }
+  const span = monthSpan(month);
+  const datesOf = (pick: "before" | "after") =>
+    [...touched.values()]
+      .flatMap((one) => {
+        const record = one[pick];
+        return record
+          ? absenceDates([record], span.from, span.to).map(
+              (day) => `${record.userId} ${day.date} ${day.kind}`,
+            )
+          : [];
+      })
+      .sort();
+  const had = datesOf("before");
+  const has = datesOf("after");
+  return (
+    had.length !== has.length || had.some((key, index) => key !== has[index])
   );
 }
 

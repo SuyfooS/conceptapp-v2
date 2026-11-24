@@ -304,7 +304,7 @@ values ('6d000000-0000-4000-e000-0000000000b2', '6d000000-0000-4000-e000-0000000
   '6d000000-0000-4000-b000-000000000001', '6d000000-0000-4000-a000-00000000000d',
   '2027-02-15 06:15+00', '2027-02-15 06:30+00', true,
   '2027-02-15 07:30+00', '6d000000-0000-4000-a000-00000000000b');
--- A day away (20261127000600_absences.sql), kept like hours: its key to the
+-- A day away (20261127000700_absences.sql), kept like hours: its key to the
 -- membership is `restrict`, so the purge takes it before the people go.
 insert into public.absences (id, business_id, user_id, kind, from_day, to_day, recorded_by)
 values ('6d000000-0000-4000-e000-0000000000a1', '6d000000-0000-4000-b000-000000000001',

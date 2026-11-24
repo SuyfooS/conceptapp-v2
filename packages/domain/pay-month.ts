@@ -1,4 +1,5 @@
 import { dateIn } from "./availability";
+import { isStaff, type Role } from "./modules";
 import { timeIn } from "./shabbat";
 import {
   correctionOf,
@@ -116,6 +117,40 @@ export function addTotals(all: Iterable<PayTotals>): PayTotals {
     };
   }
   return sum;
+}
+
+/**
+ * Whom the pay screen lists for a month, by name: the staff now, anyone with
+ * hours in it (`withHours`), and anyone else the hours engine worked the
+ * month out for (`engine`, whom the file lists too: someone who left with
+ * only days away in it, known issue 19). So every row of the file has its row
+ * on the screen. Unnamed people go last, as on the team screen.
+ */
+export function payListOf<
+  P extends {
+    userId: string;
+    name: string | null;
+    role: Role;
+    active: boolean;
+  },
+>(
+  people: readonly P[],
+  withHours: { has(userId: string): boolean },
+  engine: readonly { userId: string }[],
+): P[] {
+  const worked = new Set(engine.map((one) => one.userId));
+  return people
+    .filter(
+      (person) =>
+        (person.active && isStaff(person.role)) ||
+        withHours.has(person.userId) ||
+        worked.has(person.userId),
+    )
+    .sort(
+      (a, b) =>
+        (a.name === null ? 1 : 0) - (b.name === null ? 1 : 0) ||
+        (a.name ?? "").localeCompare(b.name ?? "", "he"),
+    );
 }
 
 /**

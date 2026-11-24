@@ -40,6 +40,14 @@ vi.mock("./supabase/server", () => ({
         db.filters.push(["is", ...args]);
         return query;
       },
+      in: (...args: unknown[]) => {
+        db.filters.push(["in", ...args]);
+        return query;
+      },
+      gt: (...args: unknown[]) => {
+        db.filters.push(["gt", ...args]);
+        return query;
+      },
       order: () => query,
       range: async (first: number, last: number) =>
         db.readError
@@ -71,8 +79,10 @@ vi.mock("./supabase/admin", () => ({
 }));
 
 const {
+  absenceWriteOf,
   changeAbsence,
   getAbsences,
+  getAbsenceWrites,
   getTeamAway,
   recordAbsence,
   removeAbsence,
@@ -122,14 +132,11 @@ describe("getAbsences", () => {
     expect(db.filters).toContainEqual(["is", "removed_at", null]);
   });
 
-  it("reads one person's, and the removed ones when asked", async () => {
-    db.rows = [row(1, { removed_at: "2026-11-25T08:00:00+00:00" })];
-    await getAbsences(BUSINESS, "2026-12-01", "2026-12-31", {
-      userId: NOA,
-      withRemoved: true,
-    });
+  it("reads one person's when asked, the live ones still", async () => {
+    db.rows = [row(1)];
+    await getAbsences(BUSINESS, "2026-12-01", "2026-12-31", { userId: NOA });
     expect(db.filters).toContainEqual(["eq", "user_id", NOA]);
-    expect(db.filters).not.toContainEqual(["is", "removed_at", null]);
+    expect(db.filters).toContainEqual(["is", "removed_at", null]);
   });
 
   it("reads none before the table reaches the project, and throws anything else", async () => {
@@ -146,6 +153,111 @@ describe("getAbsences", () => {
     await expect(
       getAbsences(BUSINESS, "2026-12-01", "2026-12-31"),
     ).rejects.toThrow();
+  });
+});
+
+describe("getAbsenceWrites", () => {
+  const SINCE = "2026-11-03T08:00:00+00:00";
+  const span = { kind: "vacation", from: "2026-12-30", to: "2026-12-31" };
+  const logRow = (action: string, details: unknown, n = 1) => ({
+    action,
+    details,
+    created_at: `2026-11-0${4 + n}T08:00:00+00:00`,
+  });
+
+  it("reads the business's writes of days away since, every page, each record before and after", async () => {
+    db.rows = [
+      logRow("clock.absence_add", {
+        absence: "a1",
+        person: NOA,
+        ...span,
+        noted: false,
+      }),
+      logRow(
+        "clock.absence_change",
+        {
+          absence: "a1",
+          person: NOA,
+          from: span,
+          to: { kind: "vacation", from: "2027-01-03", to: "2027-01-04" },
+          note_changed: false,
+        },
+        2,
+      ),
+      logRow(
+        "clock.absence_remove",
+        { absence: "a2", person: NOA, ...span },
+        3,
+      ),
+      logRow(
+        "clock.absence_restore",
+        { absence: "a2", person: NOA, ...span },
+        4,
+      ),
+    ];
+    const noa = (more: Partial<typeof span> = {}) => ({
+      userId: NOA,
+      ...span,
+      ...more,
+    });
+    expect(await getAbsenceWrites(BUSINESS, SINCE)).toEqual([
+      { absence: "a1", at: db.rows[0]?.created_at, before: null, after: noa() },
+      {
+        absence: "a1",
+        at: db.rows[1]?.created_at,
+        before: noa(),
+        after: noa({ from: "2027-01-03", to: "2027-01-04" }),
+      },
+      { absence: "a2", at: db.rows[2]?.created_at, before: noa(), after: null },
+      { absence: "a2", at: db.rows[3]?.created_at, before: null, after: noa() },
+    ]);
+    expect(db.filters).toContainEqual(["eq", "business_id", BUSINESS]);
+    expect(db.filters).toContainEqual(["gt", "created_at", SINCE]);
+    expect(db.filters).toContainEqual([
+      "in",
+      "action",
+      [
+        "clock.absence_add",
+        "clock.absence_change",
+        "clock.absence_remove",
+        "clock.absence_restore",
+      ],
+    ]);
+  });
+
+  it("reads past a page of them", async () => {
+    db.rows = Array.from({ length: 1001 }, () =>
+      logRow("clock.absence_add", { absence: "a1", person: NOA, ...span }),
+    );
+    expect(await getAbsenceWrites(BUSINESS, SINCE)).toHaveLength(1001);
+  });
+
+  it("leaves out a row it can't read, and another action", () => {
+    expect(
+      absenceWriteOf(logRow("clock.absence_add", { absence: "a1", ...span })),
+    ).toBeNull();
+    expect(
+      absenceWriteOf(
+        logRow("clock.absence_add", {
+          absence: "a1",
+          person: NOA,
+          ...span,
+          kind: "holiday",
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      absenceWriteOf(
+        logRow("clock.correct", { absence: "a1", person: NOA, ...span }),
+      ),
+    ).toBeNull();
+  });
+
+  it("throws when the log can't be read", async () => {
+    db.readError = { code: "42501", message: "denied" };
+    await expect(getAbsenceWrites(BUSINESS, SINCE)).rejects.toMatchObject({
+      code: "42501",
+    });
   });
 });
 

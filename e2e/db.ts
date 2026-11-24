@@ -6167,7 +6167,7 @@ export async function clearDemoTaxYears(userId: string): Promise<void> {
 
 /**
  * Days away start with none at the demo restaurant (known issue 19): they
- * are kept as hours are (20261127000600_absences.sql), so only a purge that
+ * are kept as hours are (20261127000700_absences.sql), so only a purge that
  * names the business deletes them, for this transaction, and only theirs.
  */
 export async function clearDemoAbsences(): Promise<void> {

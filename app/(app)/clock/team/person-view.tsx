@@ -598,6 +598,8 @@ export function PersonHoursView({
             ? builderWeekHref(paths.build, data.absences)
             : null
         }
+        // Who records them instead; a view says its own line below.
+        recordsNot={data.viewOnly ? null : data.recordsNot}
       />
 
       {data.viewOnly ? (

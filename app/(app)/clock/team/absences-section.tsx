@@ -22,7 +22,7 @@ import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { type ReactNode, useId, useRef, useState } from "react";
 import { useMonthName, useShortDate } from "../pay/pay-parts";
-import type { AbsenceRow } from "./team-types";
+import type { AbsenceRecordsNot, AbsenceRow } from "./team-types";
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 
@@ -109,6 +109,7 @@ export function useAbsenceFailure(): (
  * the shifts the schedule still has on them, and the way to record more; a
  * table on a desktop, with the same words. "הוספת משמרת" stays the page's
  * one main action, so recording is a row, or a quiet pill beside the table.
+ * Where the viewer records none here, a quiet line under it says why.
  */
 export function AbsencesSection({
   rows,
@@ -116,6 +117,7 @@ export function AbsencesSection({
   open,
   add,
   builderHref,
+  recordsNot = null,
 }: {
   rows: readonly AbsenceRow[];
   /** The viewer records days away here, writing as themselves. */
@@ -125,6 +127,11 @@ export function AbsencesSection({
   add: (opener: HTMLElement) => void;
   /** The schedule builder, for whoever builds it: the way to the shifts. */
   builderHref: string | null;
+  /**
+   * Why the viewer, who records others' days away, records none here: their
+   * own (someone else records them), or someone no longer on the staff.
+   */
+  recordsNot?: AbsenceRecordsNot;
 }) {
   const t = useTranslations("app.clock.absences");
   const daysOf = useAbsenceDays();
@@ -233,6 +240,19 @@ export function AbsencesSection({
             }
             rows={rows.map((row) => ({
               key: row.id,
+              // Two of one kind in a month: the kind, then the days, so
+              // each button has a name of its own.
+              label:
+                row.from === row.to
+                  ? t("rowLabelOne", {
+                      kind: t(`kinds.${row.kind}`),
+                      date: date(row.from),
+                    })
+                  : t("rowLabel", {
+                      kind: t(`kinds.${row.kind}`),
+                      from: date(row.from),
+                      to: date(row.to),
+                    }),
               cells: {
                 kind: t(`kinds.${row.kind}`),
                 from: date(row.from),
@@ -257,6 +277,11 @@ export function AbsencesSection({
         >
           {t("toBuilder")}
         </Link>
+      ) : null}
+      {recordsNot ? (
+        <p className="px-1 text-ink-2 text-sm">
+          {t(recordsNot === "own" ? "ownHint" : "offStaffHint")}
+        </p>
       ) : null}
     </PageSection>
   );

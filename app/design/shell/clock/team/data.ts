@@ -472,8 +472,10 @@ export function demoPersonHours(
     unpaidBreaks: true,
     viewOnly: false,
     absences: absences && userId === NOA ? demoNoaAbsences : [],
-    // Shiran, the demo's manager, records no days away for herself.
+    // Shiran, the demo's manager, records no days away for herself, and
+    // her page says who does.
     canRecord: userId !== SHIRAN,
+    recordsNot: userId === SHIRAN ? "own" : null,
     builds: true,
   };
 }

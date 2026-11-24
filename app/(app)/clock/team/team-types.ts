@@ -178,13 +178,23 @@ export type PersonHoursData = {
   absences: AbsenceRow[];
   /**
    * The viewer records days away for them (`canRecordAbsence`): someone
-   * else's, or their own when an owner. Whether they are on the staff is
-   * the database's to say.
+   * else's, or their own when an owner, while they are on the staff. The
+   * database says the same.
    */
   canRecord: boolean;
+  /** Why the viewer, who records others' days away, records none here; null otherwise. */
+  recordsNot: AbsenceRecordsNot;
   /** The viewer builds the schedule: the way from a shift on a day away. */
   builds: boolean;
 };
+
+/**
+ * Why someone who records days away records none on a person's page: their
+ * own, which the owner or someone else who corrects hours records ("own"),
+ * or someone no longer on the staff ("offStaff"); null when nothing stops it,
+ * or the viewer records none anywhere.
+ */
+export type AbsenceRecordsNot = "own" | "offStaff" | null;
 
 export type EntryFailure =
   | EntryProblem

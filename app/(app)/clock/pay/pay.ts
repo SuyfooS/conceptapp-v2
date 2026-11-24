@@ -1,4 +1,4 @@
-import { getAbsences } from "@db/absences";
+import { getAbsenceWrites } from "@db/absences";
 import {
   getCorrections,
   getLastPayrollExport,
@@ -9,7 +9,7 @@ import { getEmploymentPeriods, getPayrollDetails } from "@db/payroll-details";
 import { getClosedMonths, getPayrollMonthRecord } from "@db/payroll-months";
 import { getCancelledEntries, getTimeEntries } from "@db/time-clock";
 import { getWages, wagesByPerson } from "@db/wages";
-import { ABSENCE_KINDS, monthSpan } from "@domain/absences";
+import { ABSENCE_KINDS } from "@domain/absences";
 import { dateIn } from "@domain/availability";
 import { isStaff } from "@domain/modules";
 import {
@@ -18,6 +18,7 @@ import {
   originalTimes,
   type PayTotals,
   payDays,
+  payListOf,
   payTotals,
   toCheck,
 } from "@domain/pay-month";
@@ -111,22 +112,17 @@ function estimateRows(
   });
 }
 
-/** Who to list for a month: the staff now, and anyone with hours in it. */
-function listed(
-  people: readonly PayPersonRow[],
-  totals: ReadonlyMap<string, PayTotals>,
-): PayPersonRow[] {
-  return people
-    .filter(
-      (person) =>
-        (person.active && isStaff(person.role)) || totals.has(person.userId),
-    )
-    .sort(
-      (a, b) =>
-        // Unnamed people go last, as on the team screen.
-        (a.name === null ? 1 : 0) - (b.name === null ? 1 : 0) ||
-        (a.name ?? "").localeCompare(b.name ?? "", "he"),
-    );
+/**
+ * When a month's last file for payroll went out (P8), with every write of a
+ * day away since (known issue 19): whether the month's days away changed is
+ * worked out from them, by the days each record had then and has now. Null
+ * when no file went out.
+ */
+async function lastExportOf(businessId: string, month: string) {
+  const last = await getLastPayrollExport(businessId, month);
+  return last
+    ? { at: last.at, absences: await getAbsenceWrites(businessId, last.at) }
+    : null;
 }
 
 const nameIn =
@@ -266,21 +262,17 @@ export async function currentPayMonth(
     lastExport,
     closedState,
     before,
-    absences,
   ] = await Promise.all([
     monthOfHours(access, month),
     // The same month by the hours engine (payroll P7).
     currentPayrollMonth(month),
-    // When its last file for payroll went out (P8).
-    getLastPayrollExport(access.businessId, month),
+    // When its last file for payroll went out (P8), and the days away
+    // written since (known issue 19).
+    lastExportOf(access.businessId, month),
     // Whether it was closed, and what changed since (P9).
     currentClosedMonth(month),
     // The month before, whose differences this month's file holds.
     currentClosedMonth(addMonths(month, -1)),
-    // Its days away, removed ones too: a change since the file (known issue 19).
-    getAbsences(access.businessId, monthSpan(month).from, monthSpan(month).to, {
-      withRemoved: true,
-    }),
   ]);
   const totals = payTotals(entries, month, access.timeZone, now);
   const nameOf = nameIn(people);
@@ -288,7 +280,9 @@ export async function currentPayMonth(
   const engineOf = (userId: string) =>
     payroll?.people.find((one) => one.userId === userId) ?? null;
 
-  const listedPeople = listed(people, totals);
+  // Everyone the engine and the file list: someone who left with only days
+  // away in the month too (known issue 19).
+  const listedPeople = payListOf(people, totals, payroll?.people ?? []);
   const everyone: PayPerson[] = listedPeople.map((person) => {
     const days = payDays(
       entries.filter((entry) => entry.userId === person.userId),
@@ -403,8 +397,8 @@ export async function currentPayMonth(
             lastExport.at,
             // A shift cancelled since leaves the file out of date too.
             cancelled,
-            // And a day away recorded, changed or removed since.
-            absences,
+            // And the month's days away other than the file had them.
+            lastExport.absences,
           ),
         }
       : null,

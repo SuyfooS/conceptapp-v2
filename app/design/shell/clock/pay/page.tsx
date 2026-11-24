@@ -46,7 +46,7 @@ async function Demo({ searchParams }: Props) {
   return (
     <PayMonthView
       data={demoPayMonth(person, show, estimate, file, close, absences)}
-      paths={demoPayPathsFor(close)}
+      paths={demoPayPathsFor(close, absences)}
       note={demoNotePayView}
       close={demoCloseMonth}
       reopen={demoReopenMonth}

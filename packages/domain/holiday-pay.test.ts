@@ -367,4 +367,26 @@ describe("holiday pay beside days away (known issue 19)", () => {
       "averagePeriod",
     ]);
   });
+
+  it("asks to check election day inside a day away, as reserve duty over it", () => {
+    // Reserve duty recorded from 25 to 27 October: the line stays, with
+    // its check first.
+    const [line] = lines({
+      oneOffRestDays: [election],
+      awayDates: new Set(["2026-10-25", "2026-10-26", "2026-10-27"]),
+    });
+    expect(line?.check).toEqual([
+      "oneOffInAbsence",
+      "averagePeriod",
+      "fourteenDays",
+      "sectorExclusion",
+    ]);
+    // Only the day itself counts: away the day before or after asks nothing.
+    expect(
+      lines({
+        oneOffRestDays: [election],
+        awayDates: new Set(["2026-10-26", "2026-10-28"]),
+      })[0]?.check,
+    ).toEqual(["averagePeriod", "fourteenDays", "sectorExclusion"]);
+  });
 });

@@ -113,6 +113,8 @@ const PAGES = [
   // The same in English, left to right, its sheet too.
   "/design/shell/clock/team/noa?absences=1&lang=en",
   "/design/shell/clock/team/noa?absences=1&state=absenceAdd&lang=en",
+  // The manager's own page: who records her days away.
+  "/design/shell/clock/team/shiran",
   "/design/shell/clock/team/noa",
   "/design/shell/clock/team/yoav",
   // A shift being fixed with "ביטול המשמרת" under it, the step that cancels
@@ -7639,6 +7641,23 @@ test("the person's demo says days away in English too, left to right, its sheet 
   await sheet.getByRole("radio", { name: ta.kinds.sick }).check();
   await sheet.getByRole("button", { name: ta.sheet.submit }).click();
   await expect(page.getByText(ta.done.add).first()).toBeVisible();
+});
+
+test("the manager's own demo page says who records her days away", async ({
+  page,
+}) => {
+  const ta = he.app.clock.absences;
+  await page.goto("/design/shell/clock/team/shiran");
+  await expect(
+    page.getByRole("heading", { name: ta.title, exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: ta.add })).toHaveCount(0);
+  await expect(
+    page.getByRole("main").getByText(ta.ownHint).filter({ visible: true }),
+  ).toBeVisible();
+  // Noa's page, where she records them, says nothing of the kind.
+  await page.goto("/design/shell/clock/team/noa?absences=1");
+  await expect(page.getByText(ta.ownHint)).toHaveCount(0);
 });
 
 test("the person's demo says an overlap and a closed month as the app does", async ({

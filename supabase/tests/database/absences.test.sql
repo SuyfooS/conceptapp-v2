@@ -1,4 +1,4 @@
--- Days away (20261127000600_absences.sql): whoever edits the clock (an owner,
+-- Days away (20261127000700_absences.sql): whoever edits the clock (an owner,
 -- a manager, someone given clock.edit) records vacation, sick leave, reserve
 -- duty or another absence for someone on the staff, changes it, removes it
 -- and, within ten minutes, brings it back, with the secret key only; a
@@ -13,7 +13,7 @@
 -- and March 2027), so nothing here meets the seed or another test, or the
 -- real clock.
 begin;
-select plan(67);
+select plan(68);
 
 create function pg_temp.p(n integer) returns uuid language sql as $$
   select ('ab5e0000-0000-4000-a000-' || lpad(n::text, 12, '0'))::uuid
@@ -556,6 +556,24 @@ select throws_ok(
   '42501', 'permission denied for table absences', 'nobody signed in writes a record directly'
 );
 reset role;
+
+------------------------------------------------------------------------------
+-- Locks (1)
+
+-- The business before the person, as the demo reset takes it: a reset under
+-- way finishes before a write takes anything, so the two never deadlock.
+select is(
+  (select count(*)::integer
+   from pg_proc p
+   join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public'
+     and p.proname in ('record_absence', 'change_absence', 'remove_absence', 'restore_absence')
+     and strpos(p.prosrc, 'from public.businesses b where b.id = ') > 0
+     and strpos(p.prosrc, 'for key share') > 0
+     and strpos(p.prosrc, 'for key share') < strpos(p.prosrc, 'from public.memberships m')),
+  4,
+  'each of the four writers locks the business before the person'
+);
 
 ------------------------------------------------------------------------------
 -- Kept (2)

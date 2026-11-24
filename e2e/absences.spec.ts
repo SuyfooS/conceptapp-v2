@@ -19,7 +19,7 @@ import { heT } from "./t";
 import { expect, type Page, test } from "./test";
 import { readWorkbook, sheetCells, unzip } from "./unzip";
 
-// Days away (known issue 19; 20261127000600_absences.sql) at the demo
+// Days away (known issue 19; 20261127000700_absences.sql) at the demo
 // restaurant. Shiran, its manager, who edits the clock, records Noa's
 // vacation from her page, is refused days that overlap it, and has no way to
 // record her own; then changes it to reserve duty, removes it, brings it
@@ -211,7 +211,7 @@ test("whoever edits the clock records days away, is refused an overlap, and neve
   ).toBeVisible();
   await page.keyboard.press("Escape");
 
-  // Her own page offers no way to record her own.
+  // Her own page offers no way to record her own, and says who does.
   await page.goto(`/clock/team/${MANAGER.id}`);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(
     MANAGER.name,
@@ -219,6 +219,7 @@ test("whoever edits the clock records days away, is refused an overlap, and neve
   await expect(
     page.getByRole("button", { name: heT("app.clock.absences.add") }),
   ).toHaveCount(0);
+  await expect(shown(page, heT("app.clock.absences.ownHint"))).toBeVisible();
 
   // The log says it, without the note.
   await page.goto("/manage/activity");
@@ -470,10 +471,14 @@ test("the owner's hours for payroll count days away by kind, list each date, and
   const first = `${month}-10`;
   const second = `${month}-11`;
   await recordDemoAbsence(NOA.id, "vacation", first, second);
-  const twoDays = heT("app.pay.absences.byKind", { kind: vacation, count: 2 });
+  const twoDays = heT("app.pay.absences.byKind", {
+    kind: vacation,
+    days: heT("app.pay.absences.days", { count: 2 }),
+  });
   await signIn(page, OWNER);
 
-  // The month: "חופשה 2" on Noa's line, and in its own column on a desktop.
+  // The month: "חופשה: 2 ימים" on Noa's line, and in its own column on a
+  // desktop.
   await page.goto(`/clock/pay?month=${month}`);
   await expect(shown(page, twoDays)).toBeVisible();
   if (testInfo.project.name === "desktop") {
