@@ -84,7 +84,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { NextIntlClientProvider, useTranslations } from "next-intl";
-import { type ReactNode, useId, useState } from "react";
+import { type ReactNode, useId, useRef, useState } from "react";
 import { direction, type Locale } from "@/i18n/config";
 import enMessages from "@/messages/en.json";
 import heMessages from "@/messages/he.json";
@@ -174,15 +174,20 @@ function CaptchaDemo({ shown }: { shown: CaptchaShown }) {
 
 /**
  * The gallery's toasts: a plain one, one with "ביטול" that takes the focus
- * and brings the next one, and one said from inside the open sheet.
+ * and brings the next one, one said from inside the open sheet, and a quiet
+ * one, whose words the line that takes the focus says.
  */
-type GalleryToast = { kind: "plain" | "undo" | "back" | "sheet"; at: string };
+type GalleryToast = {
+  kind: "plain" | "undo" | "back" | "sheet" | "quiet";
+  at: string;
+};
 
 const TOAST_WORDS = {
   plain: "toastText",
   undo: "toastUndoText",
   back: "toastUndoBack",
   sheet: "sheetToastText",
+  quiet: "toastText",
 } as const;
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -334,6 +339,8 @@ function GalleryBody({
   const [toast, setToast] = useState<GalleryToast | null>(null);
   const sayToast = (kind: GalleryToast["kind"]) =>
     setToast({ kind, at: new Date().toISOString() });
+  // The line that says what the quiet toast says, where the focus goes.
+  const quietLine = useRef<HTMLParagraphElement>(null);
   const [dock, setDock] = useState(false);
   const [switchOn, setSwitchOn] = useState(true);
   const [picked, setPicked] = useState("#4f46e5");
@@ -1795,6 +1802,17 @@ function GalleryBody({
             <Button variant="secondary" onClick={() => sayToast("undo")}>
               {t("toastUndoShow")}
             </Button>
+            {/* The line below takes the focus and says it: the toast only
+                shows, as the builder's after a draft saved. */}
+            <Button
+              variant="secondary"
+              onClick={() => {
+                quietLine.current?.focus();
+                sayToast("quiet");
+              }}
+            >
+              {t("toastQuietShow")}
+            </Button>
             <Button
               variant="secondary"
               aria-pressed={dock}
@@ -1803,9 +1821,17 @@ function GalleryBody({
               {dock ? t("dockHide") : t("dockShow")}
             </Button>
           </div>
+          <p
+            ref={quietLine}
+            tabIndex={-1}
+            className="text-base text-ink-2 outline-none"
+          >
+            {t("toastQuietLine")}
+          </p>
           <StatusToast
             message={toast ? t(TOAST_WORDS[toast.kind]) : null}
             stamp={toast?.at}
+            quiet={toast?.kind === "quiet"}
             duration={toast?.kind === "undo" ? 8000 : undefined}
             action={
               toast?.kind === "undo"

@@ -1,6 +1,6 @@
 import he from "../messages/he.json" with { type: "json" };
 import { announcer, heardSoFar, saidSince } from "./announcer";
-import { before, buildScreen } from "./build-screen";
+import { before, buildScreen, SHEET_CLOSES_MS } from "./build-screen";
 import { heT } from "./t";
 import { expect, type Locator, type Page, test } from "./test";
 
@@ -11,6 +11,9 @@ import { expect, type Locator, type Page, test } from "./test";
 
 const tb = he.app.build;
 const ta = he.app.availability;
+
+/** Hours as plain words hold them in a sentence: in Unicode isolates. */
+const isolated = (hours: string) => `⁦${hours}⁩`;
 
 /** A list of people in the open shift's sheet, by its title: its heading. */
 const listHeading = (page: Page, title: string) =>
@@ -132,6 +135,27 @@ test("a shift that begins with its sheet open keeps the focus on the person it w
   await expect(omer).toBeFocused();
 });
 
+// With nothing changed and the focus on Roni's "×", the only one on the
+// evening: as it begins he is kept on it as read, his "×" goes and nobody's
+// is left, so the line that says it has begun has the focus, above the
+// list's heading, and says why.
+test("a shift that begins takes the focused × away and puts the focus on the line that says it began", async ({
+  page,
+}) => {
+  const screen = buildScreen(page);
+  const roni = screen.removeButton("רוני שלום");
+  const begun = screen.sheet.locator("[data-running-line]");
+
+  await page.clock.install();
+  await page.goto(runningWeek);
+  await screen.card("ערב", tuesday).click();
+  await roni.focus();
+  await page.clock.fastForward(toEvening);
+  await expect(begun).toBeFocused();
+  await expect(begun).toContainText(before(tb.running.begunLine));
+  await expect(roni).toHaveCount(0);
+});
+
 test("a shift that begins with changes on the screen puts the focus on why they went back", async ({
   page,
 }) => {
@@ -162,7 +186,11 @@ test("a shift that begins with changes on the screen puts the focus on why they 
 // (the twin stores nothing, and says so from what its save answered), and
 // after a first publish to sharing it. Pressed in the floating dock from
 // the foot of the page, the page stays where it was: that line is above
-// the board.
+// the board. That line says it was saved as the focus reaches it, so the
+// toast only shows; after a first publish, with the focus on sharing, the
+// toast says it. The save is held on its way until the sheet's own refocus,
+// a moment after it closed (`SHEET_CLOSES_MS`), is past: the dock's button,
+// busy meanwhile, keeps the focus, and the card doesn't take it back.
 test("after saving the draft the focus is on where the week stands, after a first publish on sharing it", async ({
   page,
 }) => {
@@ -172,6 +200,18 @@ test("after saving the draft the focus is on where the week stands, after a firs
   const publish = page.getByRole("button", { name: tb.publish });
   const status = page.locator("[data-builder-status]");
   const scrolled = () => page.evaluate(() => window.scrollY);
+  let answer = () => {};
+  const answered = new Promise<void>((go) => {
+    answer = go;
+  });
+  await page.route(
+    (url) => url.pathname === "/design/shell/schedule/build",
+    async (route) => {
+      // The stand-in save is a server action: a POST to the page itself.
+      if (route.request().method() === "POST") await answered;
+      await route.fallback();
+    },
+  );
 
   await page.goto("/design/shell/schedule/build");
   await morning.click();
@@ -187,25 +227,27 @@ test("after saving the draft the focus is on where the week stands, after a firs
 
   await save.focus();
   await page.keyboard.press("Enter");
-  await expect(
-    page.getByRole("status").filter({ hasText: tb.saved }),
-  ).toBeVisible();
+  await page.waitForTimeout(SHEET_CLOSES_MS + 100);
+  answer();
+  const saved = page.getByRole("status").filter({ hasText: tb.saved });
+  await expect(saved).toBeVisible();
   await expect(save).toHaveCount(0);
   await expect(status).toBeFocused();
   await expect(status).toContainText(before(tb.savedAt));
   await expect(status).not.toContainText(tb.draft);
+  await expect(saved).toHaveAttribute("aria-live", "off");
   // Never up to that line; longer words above may push the page on a little.
   expect(await scrolled()).toBeGreaterThanOrEqual(atFoot);
 
   await publish.focus();
   await page.keyboard.press("Enter");
-  await expect(
-    page.getByRole("status").filter({ hasText: tb.published }),
-  ).toBeVisible();
+  const published = page.getByRole("status").filter({ hasText: tb.published });
+  await expect(published).toBeVisible();
   await expect(publish).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: he.app.shifts.share.action }),
   ).toBeFocused();
+  await expect(published).toHaveAttribute("aria-live", "polite");
 });
 
 // A day's sheet on the availability twin: Sunday has 09:00–17:00. Removing
@@ -240,8 +282,13 @@ test("removing hours in a day's sheet puts the focus on its undo, and undone on 
   await removeMorning.click();
   await expect(starts).toHaveCount(1);
   await expect(undo).toBeFocused();
-  await expect(undo).toHaveAccessibleDescription(/09:00–17:00/);
-  await expect(sheet.getByRole("status")).toContainText("09:00–17:00");
+  // The hours held left to right inside the sentence, in Unicode isolates.
+  await expect(undo).toHaveAccessibleDescription(
+    new RegExp(isolated("09:00–17:00")),
+  );
+  await expect(sheet.getByRole("status")).toContainText(
+    isolated("09:00–17:00"),
+  );
 
   // Undone from the keyboard: the range is back first, with the focus.
   await page.keyboard.press("Enter");

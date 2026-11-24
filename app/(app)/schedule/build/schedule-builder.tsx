@@ -45,7 +45,7 @@ import { Button } from "@ui/button";
 import { Card, CardText } from "@ui/card";
 import { cn } from "@ui/cn";
 import { DockButton, FloatingDock } from "@ui/floating-dock";
-import { focusFirst, focusLost } from "@ui/focus-after";
+import { type FocusCandidate, focusFirst, focusLost } from "@ui/focus-after";
 import { Segmented } from "@ui/segmented";
 import { Sheet } from "@ui/sheet";
 import { StatusToast } from "@ui/status-toast";
@@ -69,7 +69,12 @@ import { HOLD_MS, useHeldWrite } from "../../use-held-write";
 import { type ShareWeek, ShareWeekButton } from "../share-week";
 import type { AvailabilityWeek } from "../week";
 import type { MovedShifts, ScheduleState } from "./actions";
-import { afterWrite, BUILDER_STATUS } from "./builder-focus";
+import {
+  afterWrite,
+  BUILDER_STATUS,
+  type PlacedAfterWrite,
+  placeAfterWrite,
+} from "./builder-focus";
 import { CopyWeekSheet } from "./copy-sheet";
 import { type BuilderSend, publishWaits, sendOf } from "./publish-hold";
 import {
@@ -498,10 +503,18 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
   /** The toast's button went with the focus before there was an answer. */
   const focusAfterAnswer = useRef(false);
   /**
+   * The write whose toast says nothing (`quiet`): the focus went to the line
+   * that says where the week stands, which says it was saved or published,
+   * and the toast's words come a drawing later, so they would be heard twice.
+   */
+  const [quietAt, setQuietAt] = useState<string | null>(null);
+  /**
    * Where the focus goes as the toast's button goes: to the publish button
    * when it can be pressed again, else to the line that says where the week
-   * stands. While the publish is still on its way that waits for its answer,
-   * as the dock is busy and, once it worked, the builder starts again.
+   * stands, without moving the page (the dock floats over a day scrolled
+   * down, that line is above the board). While the publish is still on its
+   * way that waits for its answer, as the dock is busy and, once it worked,
+   * the builder starts again.
    */
   function focusAfterToast() {
     if (focusFirst(['button[value="publish"]:enabled'], { title: false })) {
@@ -511,11 +524,20 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
       focusAfterAnswer.current = true;
       return;
     }
-    focusFirst([BUILDER_STATUS]);
+    const landed = focusFirst([BUILDER_STATUS], { preventScroll: true });
+    if (landed && toast?.write) setQuietAt(toast.stamp);
   }
-  /** After a copy's toast, the focus goes back to the copy's button. */
+  /**
+   * After a copy's toast, the focus goes back to the copy's button, which is
+   * by that line: without moving the page either.
+   */
   function focusAfterCopy() {
-    if (!focusFirst(["[data-copy-week]:enabled"], { title: false })) {
+    if (
+      !focusFirst(["[data-copy-week]:enabled"], {
+        title: false,
+        preventScroll: true,
+      })
+    ) {
       focusAfterToast();
     }
   }
@@ -601,7 +623,9 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
   // <Activity>. Without moving the page: the dock floats over a day scrolled
   // down, that line is above the board, and a screen reader follows the
   // focus anyway. A publish of changes whose "ביטול" went with the focus is
-  // `focusAfterToast`'s, which ran before this.
+  // `focusAfterToast`'s, which ran before this. Where the focus lands on that
+  // line, the toast says nothing (`quietAt`): the line says it was saved or
+  // published as the focus reaches it, and the toast's words would follow.
   const writtenAt = toast?.write ? toast.stamp : null;
   const firstPublish = state.published === true && shareKind === "other";
   /** The reading the screen had while the last write was on its way. */
@@ -610,14 +634,19 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
     if (pending || holding) writtenOn.current = reading.key;
   });
   /** The write the focus was placed after, and if its reading was to come. */
-  const placed = useRef<{ at: string; waiting: boolean } | null>(null);
+  const placed = useRef<PlacedAfterWrite | null>(null);
   useEffect(() => {
-    if (writtenAt === null) return;
-    const waiting = reading.key === writtenOn.current;
-    const seen = placed.current;
-    if (seen?.at === writtenAt && (!seen.waiting || waiting)) return;
-    placed.current = { at: writtenAt, waiting };
-    focusFirst(afterWrite(firstPublish), { preventScroll: true });
+    const next = placeAfterWrite(
+      placed.current,
+      writtenAt,
+      reading.key === writtenOn.current,
+    );
+    if (next === null) return;
+    placed.current = next;
+    const landed = focusFirst(afterWrite(firstPublish), {
+      preventScroll: true,
+    });
+    if (landed?.matches(BUILDER_STATUS)) setQuietAt(next.at);
   }, [writtenAt, reading.key, firstPublish]);
 
   return (
@@ -654,6 +683,7 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
       <StatusToast
         message={toast?.text ?? null}
         stamp={toast?.stamp}
+        quiet={writtenAt !== null && writtenAt === quietAt}
         // The way back lasts as long as the publish waits for it; a copy's,
         // as long as any other way back in the app.
         duration={
@@ -944,6 +974,24 @@ function WeekBuilder({
   /** What opened the sheet: where focus goes back to when it closes. */
   const opener = useRef<HTMLElement | null>(null);
   const form = useRef<HTMLFormElement>(null);
+  /** The focus given back once a sheet has slid away, while it waits. */
+  const afterClose = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+  /**
+   * A moment after a sheet closed (`SHEET_CLOSES_MS`), the focus goes to the
+   * first of `candidates` that can take it, where it is lost by then. A press
+   * of the dock meanwhile cancels it (`onSubmit`): its button keeps the
+   * focus, disabled while the write goes, which counts as lost, and what
+   * comes after the write says where the focus goes.
+   */
+  function focusAfterClose(candidates: readonly FocusCandidate[]) {
+    clearTimeout(afterClose.current);
+    afterClose.current = setTimeout(
+      () => focusFirst(candidates),
+      SHEET_CLOSES_MS,
+    );
+  }
 
   const shifts = rows.map((r) => r.shift);
   // Names come from the whole team: someone now the accountant is still
@@ -1031,7 +1079,7 @@ function WeekBuilder({
     // The card is gone, so focus goes to the way back instead, unless the
     // person (or the toast of a held publish) moved it on meanwhile.
     opener.current = null;
-    setTimeout(() => focusFirst([`[data-undo="${id}"]`]), SHEET_CLOSES_MS);
+    focusAfterClose([`[data-undo="${id}"]`]);
   }
 
   function undoRemove(row: ShiftRow) {
@@ -1077,7 +1125,7 @@ function WeekBuilder({
     const back = opener.current;
     // The sheet takes focus with it; give it back where the person was,
     // unless they (or the toast of a held publish) moved it on meanwhile.
-    if (back) setTimeout(() => focusFirst([back]), SHEET_CLOSES_MS);
+    if (back) focusAfterClose([back]);
   }
 
   const moment = (iso: string | null | undefined) =>
@@ -1149,7 +1197,7 @@ function WeekBuilder({
     setShownCopy(liveCopy);
     setCopyOpen(false);
     const back = opener.current;
-    if (back) setTimeout(() => focusFirst([back]), SHEET_CLOSES_MS);
+    if (back) focusAfterClose([back]);
   }
 
   /**
@@ -1685,6 +1733,9 @@ function WeekBuilder({
         ref={form}
         action={action}
         onSubmit={(event) => {
+          // The pressed button keeps the focus: a sheet closed a moment ago
+          // gives it back to nothing now.
+          clearTimeout(afterClose.current);
           // Saving would fail on someone working two shifts at once.
           if (clashes.size > 0) {
             event.preventDefault();

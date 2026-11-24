@@ -77,6 +77,12 @@ handlers to spread on the root, and takes up a focus already inside it as it
 starts listening (`waitForFocusInside`: an `autoFocus` comes first, and in
 dev React runs the effect's cleanup and body again right after the mount).
 
+StatusToast's `quiet` keeps a message out of its live region (`aria-live="off"`)
+while it still shows: for one whose words the focus already says, as the
+screen put it on a line that says the same (the builder's status line after a
+draft saved). Set by the time its words show, a drawing after the message.
+`/design` shows it with a line that takes the focus.
+
 `@ui/undo-row` is what was just removed with the way back, where the person is
 looking (it was `app/(app)/manage/undo-row.tsx`). Still `role="status"` for the
 screens' checks. As it appears it is quiet (`aria-live="off"`) and said once

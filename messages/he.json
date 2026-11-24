@@ -350,6 +350,8 @@
     "toastUndoShow": "הודעה עם ביטול",
     "toastUndoText": "השורה הוסרה",
     "toastUndoBack": "השורה חזרה",
+    "toastQuietShow": "הודעה שהשורה כבר אומרת",
+    "toastQuietLine": "הטיוטה נשמרה. העובדים יראו את הסידור רק אחרי הפרסום.",
     "dockShow": "הצגת הפעולה הראשית",
     "dockHide": "הסתרת הפעולה הראשית",
     "dockQuiet": "שמירה",

@@ -25,4 +25,17 @@ describe("StatusToast", () => {
     expect(html).not.toContain("The row was removed");
     expect(html).not.toContain("<button");
   });
+
+  // A message the focus already says (a line that says the same): still a
+  // status, shown, and said by nothing.
+  it("keeps a quiet message out of its live region", () => {
+    const root = (quiet?: boolean) =>
+      renderToString(
+        createElement(StatusToast, { message: "The draft is saved.", quiet }),
+      ).match(/^<div[^>]*>/)?.[0] ?? "";
+    expect(root(true)).toContain('role="status"');
+    expect(root(true)).toContain('aria-live="off"');
+    expect(root(false)).toContain('aria-live="polite"');
+    expect(root()).toContain('aria-live="polite"');
+  });
 });

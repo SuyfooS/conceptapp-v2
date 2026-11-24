@@ -39,7 +39,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { afterPerson, type PeopleList } from "./builder-focus";
+import { afterPerson, type PeopleList, type ShiftStage } from "./builder-focus";
 import { SheetSection } from "./sheet-section";
 
 export type ShiftRow = { id: number; shift: ScheduledShift };
@@ -260,6 +260,7 @@ export function ShiftSheet({
       fixed={fixed}
       readOnly={readOnly}
       over={over}
+      stage={locked?.stage ?? null}
       onChange={(next) => onChange(row.id, next)}
     />
   );
@@ -292,7 +293,13 @@ export function ShiftSheet({
         // do, and nothing else changes.
         <div className="flex flex-col">
           {note ? <LockedNotice>{note}</LockedNotice> : null}
-          <p className="px-3 pt-1 pb-2 text-base text-ink-2">
+          {/* Where the focus goes when the clock took the focused "+" or
+              "×" away with nothing put back (`afterPerson`): it says why. */}
+          <p
+            data-running-line={locked.stage}
+            tabIndex={-1}
+            className="px-3 pt-1 pb-2 text-base text-ink-2 outline-none"
+          >
             {locked.stage === "over"
               ? clock
                 ? `${tb("running.overLine")} ${tb("running.clockLine")}`
@@ -370,6 +377,7 @@ function ShiftPeople({
   fixed,
   readOnly,
   over = readOnly,
+  stage,
   onChange,
 }: {
   weekStart: string;
@@ -386,6 +394,11 @@ function ShiftPeople({
   readOnly: boolean;
   /** The shift is over: who was on it is said as of then. */
   over?: boolean;
+  /**
+   * Where the clock has put the shift as this is drawn (null: not begun),
+   * for where the focus goes once it moves the shift on.
+   */
+  stage: ShiftStage | null;
   onChange: (shift: ScheduledShift) => void;
 }) {
   const t = useTranslations();
@@ -581,9 +594,10 @@ function ShiftPeople({
                         });
                         say("removed", user, name, onIt.length - 1);
                       }}
-                      // The next one's "×", else the list's heading.
+                      // The next one's "×", else the list's heading; the
+                      // line that says why, should the clock take them all.
                       focusAfter={() =>
-                        afterPerson("remove", onIt, user, "assigned")
+                        afterPerson("remove", onIt, user, "assigned", [], stage)
                       }
                     />
                   )
@@ -636,7 +650,8 @@ function ShiftPeople({
                           say("added", member.userId, name, onIt.length + 1);
                         }}
                         // The next one's "+" in the list, else its heading,
-                        // else (the list left empty) the next list's.
+                        // else (the list left empty) the next list's; the
+                        // line that says why, should the clock take them all.
                         focusAfter={() =>
                           afterPerson(
                             "add",
@@ -644,6 +659,7 @@ function ShiftPeople({
                             member.userId,
                             group,
                             listsAfter(group),
+                            stage,
                           )
                         }
                       />

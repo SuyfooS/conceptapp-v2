@@ -350,6 +350,8 @@
     "toastUndoShow": "Toast with undo",
     "toastUndoText": "The row was removed",
     "toastUndoBack": "The row is back",
+    "toastQuietShow": "A toast its line already says",
+    "toastQuietLine": "The draft is saved. The staff see the schedule only once it is published.",
     "dockShow": "Show the main action",
     "dockHide": "Hide the main action",
     "dockQuiet": "Save",

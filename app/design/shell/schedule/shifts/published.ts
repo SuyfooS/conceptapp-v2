@@ -356,7 +356,8 @@ export function demoRunningBuild(
     shifts: thisWeek.shifts,
     basis: null,
     team,
-    people: team,
+    // As the app reads them: names and photos only.
+    people: team.map(({ userId, name, photo }) => ({ userId, name, photo })),
     hasPattern: true,
     answers: teamAnswers,
     positions: demoPositions,
