@@ -1,14 +1,17 @@
+import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { Button } from "./button";
+import { IconButton } from "./icon-button";
 import { Stepper, type StepperProps, stepped } from "./stepper";
 
 /*
  * The count's minus and plus (accessibility, part 1): a step is kept
  * between its ends, says nothing new at an end, and an end's button dims
- * with aria-disabled, so the focus on it stays, and takes no press; a view
- * session's stepper is disabled for real. Button dims the same way.
+ * with aria-disabled, so the focus on it stays, and shows no press while
+ * the mouse still finds its tooltip; a view session's stepper is disabled
+ * for real. Button dims the same way, and takes no pointer at all.
  */
 
 describe("stepped", () => {
@@ -62,13 +65,38 @@ describe("Stepper at its ends", () => {
   });
 
   // Dimmed, it must not spring or darken under a finger as if it had
-  // stepped: an aria-disabled button takes no press (its onClick already
-  // ignores the keyboard's).
-  it("gives the end's dimmed button no press to show", () => {
+  // stepped (its onClick ignores the press), and the mouse must still find
+  // it, for its tooltip: no pointer-events: none.
+  it("gives the end's dimmed button no press to show, and keeps its tooltip", () => {
     const [fewer = ""] = buttons({ value: "1" });
     const classes = fewer.match(/class="([^"]*)"/)?.[1]?.split(" ") ?? [];
-    expect(classes).toContain("aria-disabled:pointer-events-none");
+    expect(fewer).toContain('title="Fewer"');
+    expect(classes).not.toContain("aria-disabled:pointer-events-none");
+    expect(classes).toContain("aria-disabled:hover:bg-transparent");
+    expect(classes).toContain("aria-disabled:active:bg-transparent");
     expect(classes).toContain("aria-disabled:opacity-50");
+    expect(classes).toContain("pressable");
+    expect(
+      readFileSync("app/globals.css", "utf8").replace(/\s+/g, " "),
+    ).toContain(
+      '@utility pressable { transition: transform 0.3s var(--ease-spring); &:active:not([aria-disabled="true"]) {',
+    );
+  });
+
+  it("keeps a secondary icon button's own fill when it is dimmed", () => {
+    const html = renderToString(
+      createElement(IconButton, {
+        label: "More",
+        icon: null,
+        variant: "secondary",
+        "aria-disabled": true,
+      }),
+    );
+    const classes =
+      html.match(/<button[^>]*class="([^"]*)"/)?.[1]?.split(" ") ?? [];
+    expect(classes).toContain("aria-disabled:hover:bg-surface-2");
+    expect(classes).toContain("aria-disabled:active:bg-surface-2");
+    expect(classes).not.toContain("aria-disabled:pointer-events-none");
   });
 });
 

@@ -7,17 +7,19 @@ const iconButtonVariants = cva(
   [
     "pressable relative inline-flex size-11 shrink-0 items-center justify-center rounded-full",
     "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
-    // aria-disabled dims as disabled does and takes no press, no spring or
-    // darker fill under a finger, while it keeps the focus (a stepper at its
-    // end); the screen's onClick ignores the keyboard's press.
-    "disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&_svg]:size-5",
+    // aria-disabled dims as disabled does and shows no press, no spring
+    // (`pressable`) or darker fill under a finger, while it keeps the focus
+    // (a stepper at its end) and the mouse still finds its tooltip, so no
+    // pointer-events: none; the screen's onClick ignores the press.
+    "disabled:pointer-events-none disabled:opacity-50 aria-disabled:opacity-50 [&_svg]:size-5",
   ],
   {
     variants: {
       variant: {
-        ghost: "text-ink hover:bg-surface-2 active:bg-surface-3",
+        ghost:
+          "text-ink hover:bg-surface-2 active:bg-surface-3 aria-disabled:hover:bg-transparent aria-disabled:active:bg-transparent",
         secondary:
-          "bg-surface-2 text-ink hover:bg-surface-3 active:bg-surface-3",
+          "bg-surface-2 text-ink hover:bg-surface-3 active:bg-surface-3 aria-disabled:hover:bg-surface-2 aria-disabled:active:bg-surface-2",
         glass: "glass text-ink",
       },
       /** Mirror the icon in RTL — for arrows and chevrons that mean "back" or "forward". */

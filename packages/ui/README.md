@@ -88,9 +88,12 @@ acts once, as the row mounts: a screen that can offer a second undo while the
 first is up keys each row by what it undoes (`key={removed.key}`), so each
 removal is a row of its own, with the focus, its own wait and its own words.
 
-Button and IconButton with `aria-disabled` dim as `disabled` does and take no
-press (`pointer-events: none`: no spring, no darker fill), while the focus on
-them stays; the screen's `onClick` ignores the keyboard's press.
+Button and IconButton with `aria-disabled` dim as `disabled` does and show no
+press (no spring, no darker fill), while the focus on them stays; the screen's
+`onClick` ignores the press. Button takes `pointer-events: none`; IconButton
+doesn't, so the mouse still finds its tooltip (its `title`): `pressable` gives
+nothing aria-disabled its spring, and its variants keep their own fill under
+the pointer.
 
 ## Third party
 
