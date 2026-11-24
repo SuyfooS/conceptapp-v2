@@ -16,6 +16,7 @@ import {
 } from "react";
 import type { FileToday, FileTodayActions } from "../me/file/file-types";
 import { useHeldWrite } from "../use-held-write";
+import { headingsAfter } from "./heading-after";
 import { sendHide } from "./hide-request";
 
 /**
@@ -30,7 +31,10 @@ import { sendHide } from "./hide-request";
  * place with the focus, and the write is held for it (`useHeldWrite`),
  * sent through a route (`actions.seenUrl`, /home/bank-seen) since a held
  * action loses its cookie. "ביטול" brings the card back with the focus on
- * the button pressed. Hidden is kept on this device only, and only for the
+ * the button pressed; its wait stops while it is being reached
+ * (`@ui/undo-wait`), and once it is up with the focus still on it, the focus
+ * goes on to the next section's title (`headingsAfter`), else the page's.
+ * Hidden is kept on this device only, and only for the
  * change the card was drawn for (`bank.changedAt`, the database's moment):
  * when the account changed again meanwhile, nothing is kept and Today,
  * drawn again, tells the newer change (Today keys the card by it, so it
@@ -59,6 +63,8 @@ export function BankChangeCard({
   const title = useRef<HTMLHeadingElement>(null);
   const hideButton = useRef<HTMLButtonElement>(null);
   const backToButton = useRef(false);
+  // Where the card was, still there once its "ביטול" went.
+  const anchor = useRef<HTMLSpanElement>(null);
   const [pending, start] = useTransition();
   const [failed, setFailed] = useState(false);
   const [gone, setGone] = useState(false);
@@ -131,11 +137,24 @@ export function BankChangeCard({
 
   if (gone) {
     // Once written, Today is drawn again without the card.
-    return held.held ? (
-      <div className="md:max-w-2xl">
-        <UndoRow message={t("hidden")} onUndo={undo} autoFocus />
-      </div>
-    ) : null;
+    return (
+      <>
+        <span ref={anchor} hidden />
+        {held.held ? (
+          <div className="md:max-w-2xl">
+            <UndoRow
+              message={t("hidden")}
+              onUndo={undo}
+              autoFocus
+              onWaitingChange={(waiting) =>
+                waiting ? held.pause() : held.resume()
+              }
+              focusAfter={() => headingsAfter(anchor.current)}
+            />
+          </div>
+        ) : null}
+      </>
+    );
   }
 
   const date = format.dateTime(new Date(`${bank.on}T12:00:00Z`), {

@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import he from "../messages/he.json" with { type: "json" };
+import { focusWhenSaid, noteFocusWhenSaid } from "./announcer";
 import { standInForTurnstile } from "./captcha";
 import {
   addTestDevice,
@@ -394,9 +395,13 @@ test("after giving a shift away, notifications on the phone are offered once", a
   try {
     await signIn(page, WORKER);
     await page.goto("/schedule/shifts");
+    // Asked once the focus is back on the shift (accessibility, part 3):
+    // asked as the sheet closed, the focus coming back would cut it off.
+    await noteFocusWhenSaid(page, n.ask.swap, "[data-shift-target]");
     await giveShift(page);
     const card = page.getByRole("region", { name: n.ask.swap });
     await expect(card).toBeVisible();
+    await expect.poll(() => focusWhenSaid(page)).toBe(true);
     await expect(
       card.getByRole("button", {
         name: heT("app.notifications.ask.enable", { device: "other" }),

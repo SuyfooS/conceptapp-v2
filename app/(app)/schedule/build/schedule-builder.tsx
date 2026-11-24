@@ -1322,6 +1322,17 @@ function WeekBuilder({
               ltr,
             })
           : null,
+      shabbatLabel: candles
+        ? t.markup("app.build.shabbat.candles", {
+            time: shabbat?.candleLighting ?? "",
+            ltr: (chunks) => chunks,
+          })
+        : havdalah
+          ? t.markup("app.build.shabbat.havdalah", {
+              time: shabbat?.havdalah ?? "",
+              ltr: (chunks) => chunks,
+            })
+          : null,
       awayNote:
         awayNames.length > 0
           ? t("app.build.awayDay", { names: awayNames.join(", ") })
