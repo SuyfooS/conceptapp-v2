@@ -238,7 +238,12 @@ test("after saving the draft the focus is on where the week stands, after a firs
   await page.keyboard.press("Enter");
   await expect(save).toBeDisabled();
   await page.clock.runFor(SHEET_CLOSES_MS);
-  await expect(save).toBeFocused();
+  // The sheet's close timer, which the press cancelled, would have put the
+  // focus back on the card by now. (The busy button itself doesn't keep it:
+  // Chromium lets a focused button that turns disabled drop it to the page.)
+  expect(
+    await morning.evaluate((card) => card.contains(document.activeElement)),
+  ).toBe(false);
   await page.clock.resume();
   answer();
   const saved = page.getByRole("status").filter({ hasText: tb.saved });
