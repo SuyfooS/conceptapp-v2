@@ -15,11 +15,11 @@ import { ListGroup } from "@ui/list-row";
 import { PageSection } from "@ui/page";
 import { StatusToast } from "@ui/status-toast";
 import { Stepper } from "@ui/stepper";
+import { UndoRow } from "@ui/undo-row";
 import { ArrowDown, ArrowUp, LayoutGrid, Plus, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type FormEvent, useId, useState } from "react";
 import { inputClass, rowClass } from "../../../manage/list-rows";
-import { UndoRow } from "../../../manage/undo-row";
 import { FailureLine } from "../menu-parts";
 import type { MenuActionFailure, SavePlaces } from "../menu-types";
 
@@ -280,6 +280,9 @@ export function PlacesEditor({
           ) : null}
           {removed ? (
             <UndoRow
+              // Each removal a row of its own (keyed as its row was): another
+              // while this one is up takes the focus again.
+              key={removed.place.id ?? `new:${removed.place.name}`}
               message={t("removed", { name: removed.place.name })}
               onUndo={() => void undo()}
               autoFocus

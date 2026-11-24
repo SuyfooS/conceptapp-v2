@@ -37,10 +37,10 @@ import { Segmented } from "@ui/segmented";
 import { Sheet } from "@ui/sheet";
 import { Switch } from "@ui/switch";
 import { ltrInputClass } from "@ui/text-field";
+import { UndoRow } from "@ui/undo-row";
 import { CalendarClock, Plus } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
-import { UndoRow } from "../../manage/undo-row";
 import type { EditorTimes, ListRoleOption } from "../list-types";
 import { clockOf, ltr, useTimeWords } from "./schedule-words";
 
@@ -394,7 +394,15 @@ export function SchedulesEditor({
           {shabbat ? `${t("hint")} ${t("shabbat")}` : t("hint")}
         </p>
       ) : null}
-      {removed ? <UndoRow message={t("removed")} onUndo={undo} /> : null}
+      {removed ? (
+        // Each removal a row of its own: its words are the same each time,
+        // so only a new row says the next one.
+        <UndoRow
+          key={removed.schedule.key}
+          message={t("removed")}
+          onUndo={undo}
+        />
+      ) : null}
       <Sheet
         open={open}
         onOpenChange={setOpen}

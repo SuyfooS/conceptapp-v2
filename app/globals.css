@@ -353,6 +353,15 @@ body {
 }
 
 /*
+ * A heading or a line the focus was brought to once what held it went
+ * (`@ui/focus-after` marks it): no control, so no ring, as PageHeader's
+ * title shows none. Not the browser's own colour after a key, either.
+ */
+[data-focus-landing]:focus {
+  outline: none;
+}
+
+/*
  * Glass: only on what floats above the content (tab bar, floating title,
  * sheets). Opaque when the device asks for less transparency or more contrast.
  */
@@ -484,11 +493,12 @@ body {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
-/* Press feedback: a small spring, on anything people tap. */
+/* Press feedback: a small spring, on anything people tap, and none on what is
+   dimmed with aria-disabled (an IconButton keeps its pointer, for its tooltip). */
 @utility pressable {
   transition: transform 0.3s var(--ease-spring);
 
-  &:active {
+  &:active:not([aria-disabled="true"]) {
     transform: scale(0.97);
   }
 }

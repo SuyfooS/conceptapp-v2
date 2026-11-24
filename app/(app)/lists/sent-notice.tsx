@@ -1,10 +1,10 @@
 "use client";
 
 import { StatusToast } from "@ui/status-toast";
+import { UndoRow } from "@ui/undo-row";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useState, useTransition } from "react";
-import { UndoRow } from "../manage/undo-row";
 import type { ListActionResult, ListFailure } from "./list-types";
 
 /**
@@ -70,6 +70,8 @@ export function SentNotice({
       />
       {shown && !started ? (
         <UndoRow
+          // Each list sent a row of its own, said afresh.
+          key={shown.listId}
           message={shown.message}
           onUndo={() => undo(shown.listId)}
           pending={pending}

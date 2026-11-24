@@ -1,5 +1,8 @@
+import { createElement } from "react";
+import { renderToString } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import {
+  MaskedValue,
   type PageVisibility,
   type PageWindow,
   revealWhileShown,
@@ -199,5 +202,33 @@ describe("revealWhileShown, for a holder's reveal", () => {
     const page = new Page();
     page.visibilityState = "hidden";
     expect(await revealWhileShown(async () => null, asPage(page))).toBe("away");
+  });
+});
+
+// The value is a live region of its own (accessibility, part 1): the number
+// asked for is said where it shows, and so are the hidden words when it
+// hides itself after the minute or as the page is put away. Neither goes
+// through the page's announcer.
+describe("MaskedValue's value", () => {
+  it("is a live region, whole, holding the hidden words while hidden", () => {
+    const html = renderToString(
+      createElement(MaskedValue, {
+        label: "ID number",
+        masked: "•••0018",
+        onReveal: async () => "000000018",
+        showLabel: "Show",
+        hideLabel: "Hide",
+        hiddenLabel: "ID number, hidden. Only the last digits show",
+        failedLabel: "The number didn't come",
+      }),
+    );
+    const value = html.match(
+      /<span dir="ltr" aria-live="polite" aria-atomic="true"[^>]*>(.*?)<\/span><\/div>/,
+    );
+    expect(value).not.toBeNull();
+    expect(value?.[1]).toContain('<span aria-hidden="true">•••0018</span>');
+    expect(value?.[1]).toContain(
+      '<span class="sr-only">ID number, hidden. Only the last digits show</span>',
+    );
   });
 });

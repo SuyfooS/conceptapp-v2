@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@ui/button";
+import { UndoRow } from "@ui/undo-row";
 import { EyeOff } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
@@ -13,7 +14,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { UndoRow } from "../manage/undo-row";
 import { useHeldWrite } from "../use-held-write";
 import { sendHide } from "./hide-request";
 

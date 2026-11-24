@@ -10,6 +10,7 @@ import { FieldGroup, GroupedField } from "@ui/field-group";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { Sheet } from "@ui/sheet";
 import { StatusToast } from "@ui/status-toast";
+import { UndoRow } from "@ui/undo-row";
 import { useTranslations } from "next-intl";
 import {
   createContext,
@@ -20,7 +21,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { UndoRow } from "../../manage/undo-row";
 import { HOLD_MS } from "../../use-held-write";
 import type {
   MemberChangeActions,

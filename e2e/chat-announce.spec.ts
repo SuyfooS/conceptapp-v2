@@ -14,7 +14,7 @@ import {
   seeDemoChatNotice,
 } from "./db";
 import { secondPage, signIn } from "./session";
-import { heT } from "./t";
+import { heT, needsActionCount } from "./t";
 import { expect, type Locator, type Page, test } from "./test";
 
 // Announcements, removing and muting (C3 of the chat plan). The demo
@@ -82,10 +82,12 @@ const chatTab = (page: Page) =>
   nav(page).getByRole("link", {
     name: new RegExp(`^${literal(he.modules.chat.name)}`),
   });
-/** How many chats the Chat tab says wait (0 when it carries no count). */
+/**
+ * How many chats the Chat tab says wait (0 when it carries no count), from
+ * its words: one is said with no digit ("אחד דורש טיפול").
+ */
 async function tabCount(page: Page): Promise<number> {
-  const text = (await chatTab(page).textContent()) ?? "";
-  return Number(/,\s*(\d+)/.exec(text)?.[1] ?? 0);
+  return needsActionCount((await chatTab(page).textContent()) ?? "");
 }
 const main = (page: Page) => page.getByRole("main");
 const composer = (page: Page) =>

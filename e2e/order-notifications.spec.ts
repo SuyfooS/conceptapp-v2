@@ -32,6 +32,7 @@ import {
   YOAV,
 } from "./orders-parts";
 import { signIn } from "./session";
+import { NEEDS_ACTION } from "./t";
 import { expect, type Page, test } from "./test";
 
 // The lines about orders in the app (waiter mode P8b), in the demo
@@ -76,7 +77,6 @@ test.afterEach(async ({ page }, testInfo) => {
 const KITCHEN = "מטבח";
 const words = he.app.notifications;
 const table = (name: string) => rt("app.orders.place.numbered", { name });
-const NEEDS = (he.ui.appShell.needsAction.split("}")[1] ?? "").trim();
 const homeTab = (page: Page) =>
   page
     .getByRole("navigation", { name: he.ui.appShell.mainNav })
@@ -130,7 +130,7 @@ test("a ready ticket tells its sender, and opening it opens the order", async ({
   await expect(ready).toContainText(
     rt("app.notifications.kinds.order.ready.body", { count: 1 }),
   );
-  await expect(homeTab(page)).toHaveAccessibleName(new RegExp(NEEDS));
+  await expect(homeTab(page)).toHaveAccessibleName(NEEDS_ACTION);
   await expectCleanPage(page);
 
   // It opens the table's order.

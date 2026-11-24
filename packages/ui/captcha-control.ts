@@ -109,6 +109,19 @@ export function retryFocusOf({
   return null;
 }
 
+/**
+ * Where the keyboard's focus goes when the check asks for a tick while a
+ * press waits: the pressed button is busy, so the box's line takes it (only
+ * if it fell to the page), and says what to do; the next swipe or Tab is
+ * Cloudflare's box. None otherwise.
+ */
+export function askingFocusOf({
+  state,
+  waiting,
+}: Pick<CaptchaSnapshot, "state" | "waiting">): "line" | null {
+  return state === "tap" && waiting ? "line" : null;
+}
+
 export type CaptchaControl = {
   /** The design twin's stand-in: nothing to load, no token. */
   demo: boolean;

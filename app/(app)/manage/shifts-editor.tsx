@@ -16,10 +16,10 @@ import { PageSection } from "@ui/page";
 import { Sheet } from "@ui/sheet";
 import { Stepper } from "@ui/stepper";
 import { ltrInputClass } from "@ui/text-field";
+import { UndoRow } from "@ui/undo-row";
 import { Plus } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useId, useState } from "react";
-import { UndoRow } from "./undo-row";
 
 const SHIFTS_MAX = 30;
 const NAME_MAX = 40;
@@ -159,6 +159,8 @@ export function ShiftsEditor({
       </ListGroup>
       {removed ? (
         <UndoRow
+          // Each removal a row of its own, said afresh.
+          key={removed.shift.key}
           message={t("removed", { name: removed.shift.name })}
           onUndo={undo}
         />

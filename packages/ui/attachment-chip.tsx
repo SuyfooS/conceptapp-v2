@@ -135,6 +135,7 @@ export function AttachmentChip({
       )}
       {cancel ? (
         <IconButton
+          data-attachment-cancel=""
           label={cancel.label}
           icon={<X />}
           onClick={cancel.onCancel}

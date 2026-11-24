@@ -37,6 +37,7 @@ import { ProgressRing } from "@ui/progress-ring";
 import { Sheet } from "@ui/sheet";
 import { StatusToast } from "@ui/status-toast";
 import { TextArea } from "@ui/text-field";
+import { UndoRow } from "@ui/undo-row";
 import {
   AlarmClock,
   ArrowLeftRight,
@@ -59,7 +60,6 @@ import {
   useState,
   useTransition,
 } from "react";
-import { UndoRow } from "../../manage/undo-row";
 import { TYPING_MS } from "../../manage/use-draft";
 import type {
   ItemFailure,

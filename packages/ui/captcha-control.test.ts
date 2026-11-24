@@ -1,6 +1,7 @@
 import { CAPTCHA_LOAD_MS, type CaptchaState } from "@domain/turnstile";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  askingFocusOf,
   type CaptchaPage,
   captchaControlFor,
   captchaLineAlerts,
@@ -371,6 +372,24 @@ describe("the focus after its retry", () => {
     }
     expect(retryFocusOf({ state: "failed", retried: false })).toBe("retry");
     expect(retryFocusOf({ state: "unavailable", retried: false })).toBe("line");
+  });
+});
+
+// A press waits and the check asks for a tick: the pressed button is busy,
+// so the line takes the focus it lost and says what to do (F7).
+describe("the focus when a tick is asked for", () => {
+  it("is the line only while a press waits for the tick", () => {
+    expect(askingFocusOf({ state: "tap", waiting: true })).toBe("line");
+    expect(askingFocusOf({ state: "tap", waiting: false })).toBeNull();
+    for (const state of [
+      "loading",
+      "ready",
+      "failed",
+      "unavailable",
+    ] as const) {
+      expect(askingFocusOf({ state, waiting: true }), state).toBeNull();
+      expect(askingFocusOf({ state, waiting: false }), state).toBeNull();
+    }
   });
 });
 

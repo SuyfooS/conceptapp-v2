@@ -10,6 +10,10 @@ export const buttonVariants = cva(
     "rounded-full font-semibold transition-[background-color,opacity,transform]",
     "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
     "disabled:pointer-events-none disabled:opacity-50 aria-busy:cursor-progress",
+    // aria-disabled dims as disabled does and takes no press, no spring or
+    // darker fill under a finger, while it keeps the focus (a photo's remove
+    // while it saves); the screen's onClick ignores the keyboard's press.
+    "aria-disabled:pointer-events-none aria-disabled:opacity-50",
     "[&_svg]:size-5 [&_svg]:shrink-0",
   ],
   {
