@@ -143,6 +143,9 @@ test("a code asked for again at once sends nothing new, reads as for any number,
   ).toBeVisible();
   await expect(tooSoon).toHaveCount(0);
   await expect(codeField).toBeVisible();
+  // The press was busy meanwhile: the focus is back in the field, for the
+  // code to come.
+  await expect(codeField).toBeFocused();
 
   // Back to the number and asking again at once: the code step, as always.
   await page.getByRole("button", { name: t.changePhone }).click();
@@ -307,10 +310,66 @@ test.describe(() => {
   });
 });
 
-test("a malformed number is caught before anything is sent", async ({
+// Each answer of the phone step is heard (accessibility, part 2).
+test("a malformed number is caught before anything is sent, and said on its field", async ({
   page,
 }) => {
   await page.goto("/sign-in");
   await requestCode(page, "123");
   await expect(page.getByText(t.errors.invalidPhone)).toBeVisible();
+  // The field takes the focus the busy press lost, and is read as invalid,
+  // with why.
+  const field = page.getByLabel(t.phoneLabel);
+  await expect(field).toBeFocused();
+  await expect(field).toHaveAttribute("aria-invalid", "true");
+  await expect(field).toHaveAccessibleDescription(t.errors.invalidPhone);
+  // The field says it: no line of its own as well.
+  await expect(page.getByRole("main").getByRole("alert")).toHaveCount(0);
+
+  // Sent again from the field itself, where the focus already is: said all
+  // the same.
+  await field.press("Enter");
+  await expect(page.locator('[data-announcer="polite"]')).toContainText(
+    t.errors.invalidPhone,
+  );
+  await expect(field).toBeFocused();
+});
+
+test("a code that didn't go for another reason is said above the press each time, and the number isn't marked", async ({
+  page,
+}) => {
+  const field = page.getByLabel(t.phoneLabel);
+  const refused = page.getByRole("main").getByRole("alert");
+
+  // Refused for its check, as the twin draws it: Supabase's CAPTCHA is off
+  // here, so the auth server never refuses one.
+  await page.goto("/design/screens/sign-in?error=captcha");
+  await expect(refused).toHaveText(t.errors.captcha);
+  await expect(field).not.toHaveAttribute("aria-invalid");
+  await expect(field).not.toHaveAttribute("aria-describedby");
+  // Right above the press it is about.
+  expect(
+    await refused.evaluate((line) =>
+      line.nextElementSibling?.getAttribute("value"),
+    ),
+  ).toBe("send");
+
+  // A failure, on the real screen: a press its action doesn't know, which
+  // sends nothing and counts nothing.
+  await page.goto("/sign-in");
+  await field.fill(UNKNOWN.local);
+  await captchaSettled(page);
+  const send = page.getByRole("button", { name: t.send });
+  await send.evaluate((button) => button.setAttribute("value", "unknown"));
+  await send.click();
+  await expect(refused).toHaveText(t.errors.failed);
+  await expect(field).not.toHaveAttribute("aria-invalid");
+
+  // The same failure again is a new line, so it is heard again.
+  await refused.evaluate((line) => line.setAttribute("data-heard", ""));
+  await send.click();
+  await expect(page.locator("[data-heard]")).toHaveCount(0);
+  await expect(refused).toHaveText(t.errors.failed);
+  await expect(field).not.toHaveAttribute("aria-invalid");
+  await expectAccessible(page);
 });

@@ -7,6 +7,7 @@ import {
   setDemoBusinessDetails,
 } from "./db";
 import { secondPage } from "./session";
+import { heT } from "./t";
 import { expect, type Page, test } from "./test";
 
 // The passive door (Orel, 6 November 2026): one press on a person of a demo
@@ -69,6 +70,44 @@ test("signed-out visitors choose who they are and come in", async ({
   await expect(
     page.getByRole("heading", { level: 1, name: he.app.team.title }),
   ).toBeVisible();
+});
+
+// A press is heard at once, and its row is busy until the app opens
+// (accessibility, part 2): the way in is held here until both are seen.
+test("pressing a person says the way in has started, its row busy", async ({
+  page,
+}) => {
+  await page.goto("/enter");
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(
+    (url) => url.pathname === "/enter",
+    async (route) => {
+      const request = route.request();
+      if (
+        request.method() === "POST" &&
+        request.headers()["next-action"] !== undefined
+      ) {
+        await held;
+      }
+      await route.fallback();
+    },
+  );
+
+  const worker = person(page, "worker");
+  await worker.click();
+  await expect(worker).toHaveAttribute("aria-busy", "true");
+  await expect(page.locator('[data-announcer="polite"]')).toContainText(
+    heT("auth.enter.entering", { name: e.people.worker.name }),
+  );
+  // Only the row pressed, which keeps its focus.
+  await expect(worker).toBeFocused();
+  await expect(person(page, "manager")).not.toHaveAttribute("aria-busy");
+
+  release();
+  await expect(page).toHaveURL(/\/home$/);
 });
 
 // Signing out ends this device's session only (#80): a shared tablet left

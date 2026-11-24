@@ -2,15 +2,22 @@
 
 import { displayIsraeliMobile } from "@domain/phone";
 import { CAPTCHA_FIELD, type CaptchaSetup } from "@domain/turnstile";
+import { announce } from "@ui/announcer";
 import { Button } from "@ui/button";
 import { CaptchaBox, useCaptcha } from "@ui/captcha";
 import { FieldGroup, GroupedPhoneField } from "@ui/field-group";
+import { arrived } from "@ui/focus-after";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useActionState, useId } from "react";
+import { useActionState, useEffect, useId, useRef } from "react";
 import type { SignInState } from "../actions";
 import { authFieldsClass } from "../auth-screen";
 import { CodeField } from "../code-field";
+import {
+  aboutTheNumber,
+  codeTakesFocus,
+  useAnswerCount,
+} from "../step-results";
 
 const initial: SignInState = { step: "phone" };
 
@@ -24,6 +31,12 @@ const SENDS = ["send", "resend"] as const;
  * with the "אני לא רובוט" check right above its press (one check for the
  * screen, `useCaptcha`): a press made before the check is done waits and
  * goes by itself, and a new code always takes a new token.
+ *
+ * Each answer is heard. A number refused is said on its field, which takes
+ * the focus; a code that didn't go for any other reason is a line of its
+ * own above the press, drawn anew each time, and the number isn't marked.
+ * On the code step the field takes the focus back after a new code or a
+ * refusal (`codeTakesFocus`).
  */
 export function SignInForm({
   signIn,
@@ -44,7 +57,29 @@ export function SignInForm({
   const [state, action, pending] = useActionState(signIn, start);
   const box = useCaptcha(captcha, "sign-in");
   const noCode = useId();
+  const answer = useAnswerCount(state);
+  const phone = useRef<HTMLInputElement>(null);
+  const code = useRef<HTMLInputElement>(null);
+  const seen = useRef<SignInState | null>(null);
   const error = state.error ? t(`errors.${state.error}`) : undefined;
+  const onTheNumber = aboutTheNumber(state.error);
+
+  // Once per answer, not when the screen is shown again (`arrived`).
+  useEffect(() => {
+    if (!arrived(seen, state)) return;
+    if (codeTakesFocus(state)) {
+      code.current?.focus();
+    } else if (state.step === "phone" && aboutTheNumber(state.error)) {
+      const field = phone.current;
+      // Sent from the field itself (Enter, or the phone keyboard's "Go"),
+      // the focus is there already and wouldn't read it again.
+      if (field && document.activeElement === field) {
+        announce(t("errors.invalidPhone"));
+      } else {
+        field?.focus();
+      }
+    }
+  }, [state, t]);
 
   if (state.step === "phone") {
     return (
@@ -57,15 +92,21 @@ export function SignInForm({
         <p className="px-1 text-ink-2">{t("phoneIntro")}</p>
         <FieldGroup className={authFieldsClass}>
           <GroupedPhoneField
+            ref={phone}
             name="phone"
             label={t("phoneLabel")}
-            error={error}
+            error={onTheNumber ? error : undefined}
             className="font-medium text-xl"
             required
             autoFocus
           />
         </FieldGroup>
         <CaptchaBox captcha={box} name={CAPTCHA_FIELD} />
+        {error && !onTheNumber ? (
+          <p key={answer} role="alert" className="px-1 text-danger text-sm">
+            {error}
+          </p>
+        ) : null}
         <Button
           type="submit"
           name="intent"
@@ -98,8 +139,10 @@ export function SignInForm({
         })}
       </p>
       <CodeField
+        ref={code}
         label={t("codeLabel")}
         error={error}
+        answer={answer}
         wrongCode={state.error === "wrongCode"}
         pending={pending}
         to={state.to}

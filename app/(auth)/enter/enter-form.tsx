@@ -1,6 +1,7 @@
 "use client";
 
 import { DEMO_BUSINESSES } from "@domain/passive-sign-in";
+import { announce } from "@ui/announcer";
 import { Button } from "@ui/button";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PersonAvatar } from "@ui/person-row";
@@ -18,7 +19,8 @@ import type { EnterResult, ResetResult } from "./actions";
  * The door has two ways in (Orel, 8 November 2026): real sign-in with a phone
  * number and an SMS code, for anyone invited to a business, and the demo, one
  * press on a person. The demo's people are grouped by their business, and the
- * door can put both businesses back the way they start.
+ * door can put both businesses back the way they start. A press is heard at
+ * once ("נכנסים בתור …"), its row busy until the app opens.
  */
 export function EnterForm({
   enter,
@@ -39,10 +41,12 @@ export function EnterForm({
   const [failed, setFailed] = useState(false);
 
   // The accountant is offered in both businesses: each row is its own.
-  function choose(person: string, business: string) {
+  function choose(person: string, business: string, name: string) {
     if (pending) return;
     setChosen(`${business}:${person}`);
     setFailed(false);
+    // The spinner says nothing, and the way in can take a moment.
+    announce(t("entering", { name }));
     start(async () => {
       try {
         // Success leaves this screen: the action redirects.
@@ -82,20 +86,21 @@ export function EnterForm({
             </p>
           </div>
           <ListGroup className={authFieldsClass}>
-            {business.people.map((person) => (
-              <ListRow
-                key={person}
-                onClick={() => choose(person, business.key)}
-                leading={<PersonAvatar name={t(`people.${person}.name`)} />}
-                title={t(`people.${person}.name`)}
-                subtitle={t(`people.${person}.role`)}
-                trailing={
-                  pending && chosen === `${business.key}:${person}` ? (
-                    <Spinner />
-                  ) : null
-                }
-              />
-            ))}
+            {business.people.map((person) => {
+              const name = t(`people.${person}.name`);
+              const going = pending && chosen === `${business.key}:${person}`;
+              return (
+                <ListRow
+                  key={person}
+                  onClick={() => choose(person, business.key, name)}
+                  busy={going}
+                  leading={<PersonAvatar name={name} />}
+                  title={name}
+                  subtitle={t(`people.${person}.role`)}
+                  trailing={going ? <Spinner /> : null}
+                />
+              );
+            })}
           </ListGroup>
         </section>
       ))}

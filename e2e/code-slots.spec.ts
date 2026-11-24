@@ -35,19 +35,77 @@ test("digits go in one by one and come out again", async ({ page }) => {
   await expect.poll(() => posted(page)).toBe("");
 });
 
+/** A refusal's line: what a screen reader hears as it is drawn. */
+const refusal = (page: Page, words: string) =>
+  page.getByRole("alert").filter({ hasText: words });
+
+const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 test("a wrong code sends itself, drains away and can be tried again", async ({
   page,
 }) => {
   await toCodeStep(page);
+  const field = page.getByLabel(t.codeLabel);
+  const refused = refusal(page, t.errors.wrongCode);
   await page.keyboard.type("000000");
-  await expect(page.getByText(t.errors.wrongCode)).toBeVisible();
+  await expect(refused).toBeVisible();
   await expect.poll(() => posted(page)).toBe("");
-  await expect(page.getByLabel(t.codeLabel)).toBeFocused();
+  await expect(field).toBeFocused();
+  // Why is the field's own, read with it now that the focus is back.
+  const id = await refused.getAttribute("id");
+  expect(id).toBeTruthy();
+  expect((await field.getAttribute("aria-describedby"))?.split(" ")).toContain(
+    id,
+  );
+  await expect(field).toHaveAccessibleDescription(
+    new RegExp(literal(t.errors.wrongCode)),
+  );
 
-  // A second refusal drains again.
+  // A second refusal drains again, and its line is drawn anew, so the same
+  // words are heard again.
+  await refused.evaluate((line) => line.setAttribute("data-heard", ""));
   await page.keyboard.type("111111");
   await expect.poll(() => posted(page)).toBe("");
-  await expect(page.getByText(t.errors.wrongCode)).toBeVisible();
+  await expect(page.locator("[data-heard]")).toHaveCount(0);
+  await expect(refused).toBeVisible();
+  await expect(field).toBeFocused();
+});
+
+// "שליחת קוד חדש" is busy while it asks, so its focus falls to the page: the
+// field takes it back, for the code to come (accessibility, part 2).
+test("a new code puts the focus back in the field, on sign-in and on joining", async ({
+  page,
+}) => {
+  await toCodeStep(page);
+  const field = page.getByLabel(t.codeLabel);
+  await page.getByRole("button", { name: t.resend }).click();
+  await expect(
+    page.getByText((t.codeResent.split("<ltr>")[0] ?? "").trim()),
+  ).toBeVisible();
+  await expect(field).toBeFocused();
+
+  // Joining's code step, on its twin: the same after a new code, and after
+  // each wrong code, whose line is drawn anew.
+  const j = he.auth.join;
+  await page.goto("/design/screens/join");
+  await page.getByRole("button", { name: j.send }).click();
+  const joinField = page.getByLabel(j.codeLabel);
+  await expect(joinField).toBeFocused();
+  await page.getByRole("button", { name: j.resend }).click();
+  await expect(
+    page.getByText((j.codeResent.split("<ltr>")[0] ?? "").trim()),
+  ).toBeVisible();
+  await expect(joinField).toBeFocused();
+
+  const refused = refusal(page, t.errors.wrongCode);
+  await page.keyboard.type("000000");
+  await expect(refused).toBeVisible();
+  await expect(joinField).toBeFocused();
+  await refused.evaluate((line) => line.setAttribute("data-heard", ""));
+  await page.keyboard.type("111111");
+  await expect(page.locator("[data-heard]")).toHaveCount(0);
+  await expect(refused).toBeVisible();
+  await expect(joinField).toBeFocused();
 });
 
 test("a code from a message fills every box at once", async ({ page }) => {

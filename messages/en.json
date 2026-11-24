@@ -1150,6 +1150,7 @@
       "intro": "Or try the demo: choose a business and who comes in, with no phone and no code.",
       "warning": "This is a demo: anyone with the address can come in and change things. Don't enter real details here.",
       "failed": "That didn't work. Try again.",
+      "entering": "Coming in as {name}",
       "businesses": {
         "restaurant": {
           "name": "Demo restaurant",
