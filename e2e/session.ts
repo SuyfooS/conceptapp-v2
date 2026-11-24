@@ -62,7 +62,9 @@ export async function askForCode(page: Page, person: Person): Promise<Date> {
     await captchaSettled(page);
     await page.getByRole("button", { name: t.resend }).click();
     await expect(
-      page.getByText((t.codeResent.split("<ltr>")[0] ?? "").trim()),
+      page
+        .getByRole("main")
+        .getByText((t.codeResent.split("<ltr>")[0] ?? "").trim()),
     ).toBeVisible();
   }
   return since;

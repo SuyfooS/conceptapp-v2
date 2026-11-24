@@ -1,7 +1,10 @@
 import AxeBuilder from "@axe-core/playwright";
 import he from "../messages/he.json" with { type: "json" };
+import { phoneEnding } from "../packages/domain/invites";
+import { displayIsraeliMobile } from "../packages/domain/phone";
+import { announcer, heardSoFar, pastSameWords, saidSince } from "./announcer";
 import { heT } from "./t";
-import { expect, type Page, test } from "./test";
+import { expect, type Locator, type Page, test } from "./test";
 
 // The code boxes on the sign-in demo: no database and no SMS. Any code there is
 // wrong except 123456, which goes on to the demo app.
@@ -35,19 +38,336 @@ test("digits go in one by one and come out again", async ({ page }) => {
   await expect.poll(() => posted(page)).toBe("");
 });
 
+const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** The screen's alerts: a refusal of the code step is never one. */
+const alerts = (page: Page) => page.getByRole("main").getByRole("alert");
+
+/** The field's description with no why: the digits' own line, none typed. */
+const countOnly = heT("ui.codeSlots.count", { filled: 0, total: 6 });
+
+/** Why first in the field's description, as a return of the focus reads it. */
+const whyFirst = (why: string) => new RegExp(`^${literal(why)}`);
+
+/**
+ * The focus leaves the field and comes back, as Tab away and back does, or a
+ * tap elsewhere and back. Not a screen reader's swipe, which moves only its
+ * own cursor: the field keeps the focus, and why stays out of its
+ * description (`useQuietWhy`), said by the visible line right after it.
+ */
+async function leaveAndComeBack(field: Locator) {
+  await field.blur();
+  await field.focus();
+}
+
+// Each refusal of the code step is said once (accessibility, part 2): the
+// announcer says it, at once where the field kept the focus, as here, where
+// the code sent itself after its last digit, and the field's description
+// keeps it out meanwhile, so a read of the field doesn't say it again; the
+// focus's return to the field reads it, first. An alert would say it again.
 test("a wrong code sends itself, drains away and can be tried again", async ({
   page,
 }) => {
   await toCodeStep(page);
+  const field = page.getByLabel(t.codeLabel);
+  const assertive = announcer(page, "assertive");
   await page.keyboard.type("000000");
-  await expect(page.getByText(t.errors.wrongCode)).toBeVisible();
+  await expect(
+    page.getByRole("main").getByText(t.errors.wrongCode),
+  ).toBeVisible();
   await expect.poll(() => posted(page)).toBe("");
-  await expect(page.getByLabel(t.codeLabel)).toBeFocused();
+  await expect(field).toBeFocused();
+  await expect(field).toHaveAttribute("aria-invalid", "true");
+  await expect(saidSince(assertive, t.errors.wrongCode)).toHaveCount(1);
+  await expect(field).toHaveAccessibleDescription(countOnly);
+  await expect(alerts(page)).toHaveCount(0);
+  // Why is the field's own, read first whenever the focus comes back.
+  await leaveAndComeBack(field);
+  await expect(field).toHaveAccessibleDescription(whyFirst(t.errors.wrongCode));
 
-  // A second refusal drains again.
+  // A second refusal drains again, and the same words are said again (once
+  // the announcer's moment for the same words passed: no one types six
+  // digits that fast).
+  await heardSoFar(assertive);
+  await pastSameWords(page);
   await page.keyboard.type("111111");
   await expect.poll(() => posted(page)).toBe("");
-  await expect(page.getByText(t.errors.wrongCode)).toBeVisible();
+  await expect(saidSince(assertive, t.errors.wrongCode)).toHaveCount(1);
+  await expect(alerts(page)).toHaveCount(0);
+  await expect(field).toBeFocused();
+  await expect(field).toHaveAccessibleDescription(countOnly);
+});
+
+// The press that checks the code ("כניסה", joining's "הצטרפות לצוות") is busy
+// while it checks, so its focus falls to the page: the field takes it back,
+// marked invalid (the digits are kept), and why is said once, by the
+// announcer after the field's own read, politely: a description alone is a
+// hint for VoiceOver. Out of the description meanwhile, back for a return.
+test("a short code checked with the press is said once as the field takes the focus back, and marked, on sign-in and on joining", async ({
+  page,
+}) => {
+  const j = he.auth.join;
+  // Each twin reaches its own code step: the two fields have the same label,
+  // so it is the way there, and the press, that tell them apart.
+  for (const twin of [
+    { label: t.codeLabel, verify: t.verify, go: () => toCodeStep(page) },
+    {
+      label: j.codeLabel,
+      verify: j.verify,
+      go: async () => {
+        await page.goto("/design/screens/join");
+        await page.getByRole("button", { name: j.send }).click();
+      },
+    },
+  ]) {
+    await twin.go();
+    const press = page.getByRole("button", { name: twin.verify, exact: true });
+    await expect(press, twin.verify).toBeVisible();
+    const field = page.getByLabel(twin.label);
+    await expect(field, twin.verify).toBeFocused();
+    await page.keyboard.type("123");
+    const polite = announcer(page, "polite");
+    await heardSoFar(polite);
+    await press.click();
+    await expect(
+      page.getByRole("main").getByText(t.errors.invalidCode),
+      twin.verify,
+    ).toBeVisible();
+    await expect(field, twin.verify).toBeFocused();
+    await expect(field, twin.verify).toHaveAttribute("aria-invalid", "true");
+    expect(await posted(page), twin.verify).toBe("123");
+    await expect(
+      saidSince(polite, t.errors.invalidCode),
+      twin.verify,
+    ).toHaveCount(1);
+    await expect(announcer(page, "assertive"), twin.verify).not.toContainText(
+      t.errors.invalidCode,
+    );
+    await expect(alerts(page), twin.verify).toHaveCount(0);
+    await expect(field, twin.verify).not.toHaveAccessibleDescription(
+      new RegExp(literal(t.errors.invalidCode)),
+    );
+    await leaveAndComeBack(field);
+    await expect(field, twin.verify).toHaveAccessibleDescription(
+      whyFirst(t.errors.invalidCode),
+    );
+    await expect(field, twin.verify).toHaveAttribute("aria-invalid", "true");
+  }
+});
+
+// The code step's words (where the code went, the only place the number
+// typed is said back) are no live line: they are said once as the step
+// arrives, politely, after the field its autoFocus reads.
+test("the code step says where the code went as it arrives, once, on sign-in and on joining", async ({
+  page,
+}) => {
+  const polite = announcer(page, "polite");
+  await toCodeStep(page);
+  await expect(page.getByLabel(t.codeLabel)).toBeFocused();
+  const intro = heT.markup("auth.signIn.codeIntro", {
+    phone: displayIsraeliMobile("+972500000004"),
+    ltr: (chunks) => chunks,
+  });
+  await expect(saidSince(polite, intro)).toHaveCount(1);
+
+  const j = he.auth.join;
+  await page.goto("/design/screens/join");
+  await page.getByRole("button", { name: j.send }).click();
+  await expect(page.getByLabel(j.codeLabel)).toBeFocused();
+  const joinIntro = heT.markup("auth.join.codeIntro", {
+    ending: phoneEnding("+972531234567"),
+    ltr: (chunks) => chunks,
+  });
+  await expect(saidSince(polite, joinIntro)).toHaveCount(1);
+  // Only as it arrives: a new code says its own words, not these again.
+  await heardSoFar(polite);
+  await page.getByRole("button", { name: j.resend }).click();
+  await expect(page.getByLabel(j.codeLabel)).toBeFocused();
+  await expect(
+    saidSince(
+      polite,
+      heT.markup("auth.join.codeResent", {
+        ending: phoneEnding("+972531234567"),
+        ltr: (chunks) => chunks,
+      }),
+    ),
+  ).toHaveCount(1);
+  await expect(saidSince(polite, joinIntro)).toHaveCount(0);
+});
+
+// "שליחת קוד חדש" is busy while it asks, so its focus falls to the page: the
+// field takes it back, for the code to come, and the new code is said after
+// it. Twice in a row too, as when no SMS came: the words are the same, which
+// a line of the screen wouldn't say again (accessibility, part 2). The second
+// press waits out the announcer's moment for the same words, as anyone does.
+test("each new code is said and puts the focus back in the field, on sign-in and on joining", async ({
+  page,
+}) => {
+  const polite = announcer(page, "polite");
+  await toCodeStep(page);
+  const field = page.getByLabel(t.codeLabel);
+  const resent = heT.markup("auth.signIn.codeResent", {
+    phone: displayIsraeliMobile("+972500000004"),
+    ltr: (chunks) => chunks,
+  });
+  for (const press of ["first", "again"]) {
+    await heardSoFar(polite);
+    if (press === "again") await pastSameWords(page);
+    await page.getByRole("button", { name: t.resend }).click();
+    await expect(saidSince(polite, resent), press).toHaveCount(1);
+    await expect(field, press).toBeFocused();
+  }
+  await expect(
+    page
+      .getByRole("main")
+      .getByText((t.codeResent.split("<ltr>")[0] ?? "").trim()),
+  ).toBeVisible();
+
+  // Joining's code step, on its twin: the same after each new code, and
+  // after each wrong code, said again.
+  const j = he.auth.join;
+  await page.goto("/design/screens/join");
+  await page.getByRole("button", { name: j.send }).click();
+  const joinField = page.getByLabel(j.codeLabel);
+  await expect(joinField).toBeFocused();
+  const joinResent = heT.markup("auth.join.codeResent", {
+    ending: phoneEnding("+972531234567"),
+    ltr: (chunks) => chunks,
+  });
+  for (const press of ["first", "again"]) {
+    await heardSoFar(polite);
+    if (press === "again") await pastSameWords(page);
+    await page.getByRole("button", { name: j.resend }).click();
+    await expect(saidSince(polite, joinResent), press).toHaveCount(1);
+    await expect(joinField, press).toBeFocused();
+  }
+  await expect(
+    page
+      .getByRole("main")
+      .getByText((j.codeResent.split("<ltr>")[0] ?? "").trim()),
+  ).toBeVisible();
+
+  const assertive = announcer(page, "assertive");
+  for (const code of ["000000", "111111"]) {
+    await heardSoFar(assertive);
+    if (code !== "000000") await pastSameWords(page);
+    await page.keyboard.type(code);
+    await expect(saidSince(assertive, t.errors.wrongCode), code).toHaveCount(1);
+    await expect(alerts(page), code).toHaveCount(0);
+    await expect(joinField, code).toBeFocused();
+  }
+});
+
+/** What the field was marked as when it took the focus, noted on the page. */
+type MarkAtFocus = { markAtFocus?: string | null };
+
+// A new code after a wrong one is no refusal: the field the focus comes back
+// to is no longer marked invalid, nor red, and is read with no why. Already
+// so as it takes the focus, whose read finds it as it is then: the mark is
+// cleared as the answer is drawn, not in an effect after it.
+test("a new code after a wrong one leaves the field unmarked", async ({
+  page,
+}) => {
+  await toCodeStep(page);
+  const field = page.getByLabel(t.codeLabel);
+  await page.keyboard.type("000000");
+  await expect(field).toHaveAttribute("aria-invalid", "true");
+  await expect(
+    page.getByRole("main").locator('[data-status="error"]'),
+  ).toHaveCount(1);
+
+  const resend = page.getByRole("button", { name: t.resend });
+  await resend.focus();
+  await field.evaluate((input) => {
+    input.addEventListener(
+      "focusin",
+      () => {
+        (window as MarkAtFocus).markAtFocus =
+          input.getAttribute("aria-invalid");
+      },
+      { once: true },
+    );
+  });
+  await resend.click();
+  await expect(
+    page
+      .getByRole("main")
+      .getByText((t.codeResent.split("<ltr>")[0] ?? "").trim()),
+  ).toBeVisible();
+  await expect(field).toBeFocused();
+  expect(
+    await page.evaluate(() => (window as MarkAtFocus).markAtFocus),
+  ).toBeNull();
+  await expect(field).not.toHaveAttribute("aria-invalid");
+  await expect(field).toHaveAccessibleDescription(countOnly);
+  await expect(
+    page.getByRole("main").locator('[data-status="error"]'),
+  ).toHaveCount(0);
+});
+
+/** The field as it took the focus: its mark, the code posted, its description. */
+type FieldAtFocus = {
+  fieldAtFocus?: {
+    invalid: string | null;
+    code: string | null;
+    description: string;
+  };
+};
+
+// A wrong code is drained as the screen draws, not in an effect after it:
+// where its answer comes with the focus lost (moved off the field while the
+// check was held), the field takes the focus back, and its read finds it
+// drained and marked, the digits' line at none. Why is still first there:
+// it goes out of the description only after the field took the focus.
+test("a wrong code answered while the focus was lost is drained and marked as the field takes it back", async ({
+  page,
+}) => {
+  await toCodeStep(page);
+  const field = page.getByLabel(t.codeLabel);
+  let answer = () => {};
+  const held = new Promise<void>((resolve) => {
+    answer = () => resolve();
+  });
+  await page.route("**/design/screens/sign-in", async (route) => {
+    if (route.request().method() === "POST") await held;
+    await route.continue();
+  });
+  await page.keyboard.type("000000");
+  await expect(field).toHaveAttribute("aria-busy", "true");
+  await field.blur();
+  await field.evaluate((input) => {
+    input.addEventListener(
+      "focusin",
+      () => {
+        const ids = (input.getAttribute("aria-describedby") ?? "")
+          .split(/\s+/)
+          .filter(Boolean);
+        (window as FieldAtFocus).fieldAtFocus = {
+          invalid: input.getAttribute("aria-invalid"),
+          code:
+            document.querySelector<HTMLInputElement>(
+              'input[type="hidden"][name="code"]',
+            )?.value ?? null,
+          description: ids
+            .map((id) => document.getElementById(id)?.textContent ?? "")
+            .join(" "),
+        };
+      },
+      { once: true },
+    );
+  });
+  answer();
+
+  await expect(
+    page.getByRole("main").getByText(t.errors.wrongCode),
+  ).toBeVisible();
+  await expect(field).toBeFocused();
+  const atFocus = await page.evaluate(
+    () => (window as FieldAtFocus).fieldAtFocus,
+  );
+  expect(atFocus?.invalid).toBe("true");
+  expect(atFocus?.code).toBe("");
+  expect(atFocus?.description).toMatch(new RegExp(`${literal(countOnly)}$`));
 });
 
 test("a code from a message fills every box at once", async ({ page }) => {
@@ -66,7 +386,9 @@ test("short of six digits, the button says so and keeps them", async ({
   await toCodeStep(page);
   await page.keyboard.type("12");
   await page.getByRole("button", { name: t.verify, exact: true }).click();
-  await expect(page.getByText(t.errors.invalidCode)).toBeVisible();
+  await expect(
+    page.getByRole("main").getByText(t.errors.invalidCode),
+  ).toBeVisible();
   expect(await posted(page)).toBe("12");
 });
 

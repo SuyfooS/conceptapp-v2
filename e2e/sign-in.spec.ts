@@ -5,6 +5,7 @@ import {
   TURNSTILE_ORIGIN,
   TURNSTILE_TEST_KEYS,
 } from "../packages/domain/turnstile";
+import { announcer, heardSoFar, pastSameWords, saidSince } from "./announcer";
 import {
   CAPTCHA_FRAME,
   captchaSettled,
@@ -22,6 +23,7 @@ import {
   latestCode,
   noteSentCode,
 } from "./sms";
+import { heT } from "./t";
 import { expect, type Page, test } from "./test";
 
 const t = he.auth.signIn;
@@ -85,7 +87,9 @@ test("a worker signs in with a phone code and lands on the home screen", async (
 
   // A wrong code is refused and the person stays on the code step.
   await codeField.fill("000000");
-  await expect(page.getByText(t.errors.wrongCode)).toBeVisible();
+  await expect(
+    page.getByRole("main").getByText(t.errors.wrongCode),
+  ).toBeVisible();
 
   const code = await latestCode(WORKER.e164, since);
   await page.getByLabel(t.codeLabel).fill(code);
@@ -133,15 +137,33 @@ test("a code asked for again at once sends nothing new, reads as for any number,
   // same for every number, without asking the auth server, and the screen
   // says what it says for any number. A code counted as sent restarts the
   // wait right before each request, so the test does not depend on how fast
-  // the runner is.
-  await noteSentCode(WORKER.e164);
+  // the runner is. Twice in a row, as when no SMS came: the press was busy
+  // meanwhile, so the focus is back in the field, for the code to come, and
+  // each answer is said after it, its words the same both times
+  // (accessibility, part 2). The second press first waits out the
+  // announcer's moment for the same words, as anyone does, before the code
+  // is counted as sent.
   const sent = await lastCodeId(WORKER.e164);
-  await captchaSettled(page);
-  await page.getByRole("button", { name: t.resend }).click();
+  const polite = announcer(page, "polite");
+  const resentWords = heT.markup("auth.signIn.codeResent", {
+    phone: displayIsraeliMobile(WORKER.e164),
+    ltr: (chunks) => chunks,
+  });
+  for (const press of ["first", "again"]) {
+    await heardSoFar(polite);
+    if (press === "again") await pastSameWords(page);
+    await noteSentCode(WORKER.e164);
+    await captchaSettled(page);
+    await page.getByRole("button", { name: t.resend }).click();
+    await expect(saidSince(polite, resentWords), press).toHaveCount(1);
+    await expect(codeField, press).toBeFocused();
+    await expect(tooSoon, press).toHaveCount(0);
+  }
   await expect(
-    page.getByText((t.codeResent.split("<ltr>")[0] ?? "").trim()),
+    page
+      .getByRole("main")
+      .getByText((t.codeResent.split("<ltr>")[0] ?? "").trim()),
   ).toBeVisible();
-  await expect(tooSoon).toHaveCount(0);
   await expect(codeField).toBeVisible();
 
   // Back to the number and asking again at once: the code step, as always.
@@ -178,7 +200,9 @@ test("an unknown number reaches the code step a registered one does, word for wo
 
   // A code typed for it is a wrong one, as any wrong code is.
   await page.getByLabel(t.codeLabel).fill("123456");
-  await expect(page.getByText(t.errors.wrongCode)).toBeVisible();
+  await expect(
+    page.getByRole("main").getByText(t.errors.wrongCode),
+  ).toBeVisible();
   await expect(page.getByLabel(t.codeLabel)).toBeVisible();
 });
 
@@ -191,7 +215,9 @@ test("a code checked when none was sent lately is a wrong code, and the auth ser
   await forgetSentCodes(WORKER.e164);
 
   await page.getByLabel(t.codeLabel).fill(code);
-  await expect(page.getByText(t.errors.wrongCode)).toBeVisible();
+  await expect(
+    page.getByRole("main").getByText(t.errors.wrongCode),
+  ).toBeVisible();
   await expect(page).toHaveURL(/\/sign-in$/);
 
   // The right code was refused without asking the auth server, which would
@@ -241,7 +267,9 @@ test.describe(() => {
     await page.getByRole("button", { name: t.resend }).click();
     expect((await again).postData()).toContain(TEST_TOKEN);
     await expect(
-      page.getByText((t.codeResent.split("<ltr>")[0] ?? "").trim()),
+      page
+        .getByRole("main")
+        .getByText((t.codeResent.split("<ltr>")[0] ?? "").trim()),
     ).toBeVisible();
   });
 
@@ -300,17 +328,150 @@ test.describe(() => {
       await page.waitForTimeout(SMS_COOLDOWN_MS + 500);
       await page.getByRole("button", { name: t.resend }).click();
       await expect(
-        page.getByText((t.codeResent.split("<ltr>")[0] ?? "").trim()),
+        page
+          .getByRole("main")
+          .getByText((t.codeResent.split("<ltr>")[0] ?? "").trim()),
       ).toBeVisible();
     }
     await expect.poll(() => codeAfter(WORKER.e164, before)).not.toBeNull();
   });
 });
 
-test("a malformed number is caught before anything is sent", async ({
+// Each answer of the phone step is heard (accessibility, part 2).
+test("a malformed number is caught before anything is sent, and said on its field", async ({
   page,
 }) => {
   await page.goto("/sign-in");
+  const polite = announcer(page, "polite");
+  const assertive = announcer(page, "assertive");
   await requestCode(page, "123");
-  await expect(page.getByText(t.errors.invalidPhone)).toBeVisible();
+  await expect(
+    page.getByRole("main").getByText(t.errors.invalidPhone),
+  ).toBeVisible();
+  // The field takes the focus the busy press lost, and is read as invalid;
+  // why is said after that read, by the announcer (a description alone is
+  // a hint for VoiceOver), and is out of the description meanwhile.
+  const field = page.getByLabel(t.phoneLabel);
+  await expect(field).toBeFocused();
+  await expect(field).toHaveAttribute("aria-invalid", "true");
+  await expect(saidSince(polite, t.errors.invalidPhone)).toHaveCount(1);
+  await expect(field).not.toHaveAttribute("aria-describedby");
+  // The field says it: no line of its own as well.
+  await expect(page.getByRole("main").getByRole("alert")).toHaveCount(0);
+  // The focus leaving and coming back (Tab, a tap) reads why with it; a
+  // screen reader's swipe moves only its own cursor, and isn't this.
+  await field.blur();
+  await field.focus();
+  await expect(field).toHaveAccessibleDescription(t.errors.invalidPhone);
+
+  // Sent again from the field itself, where the focus already is: said all
+  // the same, at once, and out of the description again.
+  await captchaSettled(page);
+  await field.press("Enter");
+  await expect(saidSince(assertive, t.errors.invalidPhone)).toHaveCount(1);
+  await expect(field).toBeFocused();
+  await expect(field).not.toHaveAttribute("aria-describedby");
+});
+
+// The person moved the focus on while the press was busy (to the demo
+// door's link, enabled all along): the answer leaves it there, and is said
+// at once all the same. The twin's action is held until the focus moved.
+test("a number refused after the focus moved on leaves it where it was put, and is said", async ({
+  page,
+}) => {
+  let answer = () => {};
+  const held = new Promise<void>((resolve) => {
+    answer = () => resolve();
+  });
+  await page.route("**/design/screens/sign-in", async (route) => {
+    if (route.request().method() === "POST") await held;
+    await route.continue();
+  });
+  await page.goto("/design/screens/sign-in");
+  const field = page.getByLabel(t.phoneLabel);
+  const send = page.getByRole("button", { name: t.send });
+  const demo = page.getByRole("link", { name: t.demo });
+  const assertive = announcer(page, "assertive");
+  await field.fill("050");
+  await send.click();
+  await expect(send).toHaveAttribute("aria-busy", "true");
+  await demo.focus();
+  answer();
+
+  await expect(
+    page.getByRole("main").getByText(t.errors.invalidPhone),
+  ).toBeVisible();
+  await expect(saidSince(assertive, t.errors.invalidPhone)).toHaveCount(1);
+  await expect(demo).toBeFocused();
+  await expect(field).not.toBeFocused();
+  // Marked, and read with why when the person comes back to it.
+  await expect(field).toHaveAttribute("aria-invalid", "true");
+  await expect(field).toHaveAccessibleDescription(t.errors.invalidPhone);
+});
+
+test("a code that didn't go for another reason is said above the press each time, and the number isn't marked", async ({
+  page,
+}) => {
+  const field = page.getByLabel(t.phoneLabel);
+  const refused = page.getByRole("main").getByRole("alert");
+
+  // Refused for its check, as the twin draws it: Supabase's CAPTCHA is off
+  // here, so the auth server never refuses one.
+  await page.goto("/design/screens/sign-in?error=captcha");
+  await expect(refused).toHaveText(t.errors.captcha);
+  await expect(field).not.toHaveAttribute("aria-invalid");
+  await expect(field).not.toHaveAttribute("aria-describedby");
+  // Right above the press it is about.
+  expect(
+    await refused.evaluate((line) =>
+      line.nextElementSibling?.getAttribute("value"),
+    ),
+  ).toBe("send");
+
+  // A failure, on the real screen: a press its action doesn't know, which
+  // sends nothing and counts nothing.
+  await page.goto("/sign-in");
+  await field.fill(UNKNOWN.local);
+  await captchaSettled(page);
+  const send = page.getByRole("button", { name: t.send });
+  await send.evaluate((button) => button.setAttribute("value", "unknown"));
+  await send.click();
+  await expect(refused).toHaveText(t.errors.failed);
+  await expect(field).not.toHaveAttribute("aria-invalid");
+  // The press, busy meanwhile, takes back the focus it lost, to be tried
+  // again.
+  await expect(send).toBeFocused();
+
+  // The same failure again is a new line, so it is heard again.
+  await refused.evaluate((line) => line.setAttribute("data-heard", ""));
+  await send.click();
+  await expect(page.locator("[data-heard]")).toHaveCount(0);
+  await expect(refused).toHaveText(t.errors.failed);
+  await expect(field).not.toHaveAttribute("aria-invalid");
+  await expect(send).toBeFocused();
+  await expectAccessible(page);
+});
+
+// Joining's invite step has no field: each code that didn't go is a line of
+// its own above the press, drawn anew each time (the answer's count is its
+// key), and the press takes back the focus it lost. A press the twin's
+// action doesn't know answers as a failure.
+test("joining's invite step says a code that didn't go above the press each time, and gives the press its focus back", async ({
+  page,
+}) => {
+  const j = he.auth.join;
+  const refused = page.getByRole("main").getByRole("alert");
+  await page.goto("/design/screens/join");
+  const send = page.getByRole("button", { name: j.send });
+  await send.evaluate((button) => button.setAttribute("value", "unknown"));
+  await send.click();
+  await expect(refused).toHaveText(t.errors.failed);
+  await expect(send).toBeFocused();
+
+  // The same failure again is a new line, so it is heard again.
+  await refused.evaluate((line) => line.setAttribute("data-heard", ""));
+  await send.click();
+  await expect(page.locator("[data-heard]")).toHaveCount(0);
+  await expect(refused).toHaveText(t.errors.failed);
+  await expect(send).toBeFocused();
 });

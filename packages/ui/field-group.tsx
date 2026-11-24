@@ -85,7 +85,15 @@ const inputClass = cn(
   "placeholder:text-ink-3 disabled:cursor-not-allowed disabled:text-ink-2",
 );
 
-export type GroupedFieldProps = ComponentProps<"input"> & Frame;
+export type GroupedFieldProps = ComponentProps<"input"> &
+  Frame & {
+    /**
+     * The message stays on screen but out of the field's description, for
+     * the moment the screen says it another way (the page's announcer, while
+     * the field has the focus), so a read of the field doesn't say it twice.
+     */
+    quietMessage?: boolean;
+  };
 
 /** One line of text, as a row in a FieldGroup. */
 export function GroupedField({
@@ -95,16 +103,18 @@ export function GroupedField({
   leading,
   id,
   className,
+  quietMessage = false,
   ...props
 }: GroupedFieldProps) {
   const autoId = useId();
   const inputId = id ?? autoId;
+  const described = (error || hint) && !quietMessage;
   return (
     <Row id={inputId} label={label} hint={hint} error={error} leading={leading}>
       <input
         id={inputId}
         aria-invalid={error ? true : undefined}
-        aria-describedby={error || hint ? `${inputId}-message` : undefined}
+        aria-describedby={described ? `${inputId}-message` : undefined}
         className={cn(inputClass, className)}
         {...props}
       />

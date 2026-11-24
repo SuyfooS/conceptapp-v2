@@ -102,6 +102,26 @@ for (const colorScheme of ["light", "dark"] as const) {
   });
 }
 
+// A link that stopped working says why with the focus on its title: a press
+// that found it gone on the way comes back to the same page, whose tab
+// title doesn't change, so nothing else says it (team-changes.spec presses
+// one); opened afresh, the page starts there too (accessibility, part 2).
+test("a join link that no longer leads anywhere starts with the focus on its title", async ({
+  page,
+}) => {
+  const gone = he.auth.join.gone;
+  for (const [path, reason] of [
+    ["/design/screens/join-expired", "expired"],
+    ["/design/screens/join-claimed", "claimed"],
+  ] as const) {
+    await page.goto(path);
+    await expect(
+      page.getByRole("heading", { level: 1, name: gone[reason].title }),
+      path,
+    ).toBeFocused();
+  }
+});
+
 /** In through the door, as one of the demo restaurant's people. */
 async function enterDemoAs(
   page: Page,

@@ -232,7 +232,9 @@ test("a worker on another business's staff gets a link like anyone, and only he 
       await theirs
         .getByLabel(j.codeLabel)
         .fill(await latestCode(RONI.e164, since));
-      await expect(theirs.getByText(j.elsewhere)).toBeVisible();
+      await expect(
+        theirs.getByRole("main").getByText(j.elsewhere),
+      ).toBeVisible();
     } finally {
       await theirs.context().close();
     }

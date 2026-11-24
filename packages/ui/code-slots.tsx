@@ -17,6 +17,7 @@ import {
   useState,
 } from "react";
 import { cn } from "./cn";
+import { focusFirst } from "./focus-after";
 
 /** Between the slots, and in the caret's sums: the row's `gap-2`. */
 const GAP_PX = 8;
@@ -79,6 +80,21 @@ export function codeSlotsSaid({
   };
 }
 
+/**
+ * Whether the boxes stop showing the last code as refused as `status` goes
+ * `from` one to `to`: back to idle, an answer that isn't a refusal arrived
+ * (a check that came back idle, as a new code asked for does; also when its
+ * busy moment was never drawn). A refusal marks them (`error`) and the mark
+ * stays while nothing else is answered, until a digit is typed: the field is
+ * never read as invalid with no why.
+ */
+export function refusalCleared(
+  from: CodeSlotsStatus,
+  to: CodeSlotsStatus,
+): boolean {
+  return to === "idle" && from !== "idle";
+}
+
 export type CodeSlotsProps = {
   /** The field's name: the code is posted with its form under it. */
   name: string;
@@ -86,9 +102,18 @@ export type CodeSlotsProps = {
   length?: number;
   /**
    * pending: being checked, so typing waits. error: the digits drain away in the
-   * danger colour, ready to try again. success: a sweep of the accent and a check.
+   * danger colour, ready to try again, marked invalid until a digit is typed or
+   * the status is back to idle (`refusalCleared`); drained as the screen draws,
+   * so a screen that puts the focus back in the field finds it empty. success:
+   * a sweep of the accent and a check.
    */
   status?: CodeSlotsStatus;
+  /**
+   * Marked invalid by the screen as well, apart from the drain, while its
+   * refusal stands, with its why (`describedBy`): one that keeps the digits
+   * (a code too short), or a wrong one while the next is typed.
+   */
+  invalid?: boolean;
   /** Called once the last digit is in, also when they arrive together. */
   onComplete?: (code: string) => void;
   autoFocus?: boolean;
@@ -97,7 +122,10 @@ export type CodeSlotsProps = {
    * in wants. off for digits read off another screen, such as the clock's.
    */
   autoComplete?: "one-time-code" | "off";
-  /** Said after the field's own line: why the last code was refused, say. */
+  /**
+   * Said before the field's own line: why the last code was refused, say,
+   * so a read that stops early still has it.
+   */
   describedBy?: string;
   /** The field itself, for a screen that brings the focus back to it. */
   ref?: Ref<HTMLInputElement>;
@@ -121,6 +149,7 @@ export function CodeSlots({
   label,
   length = 6,
   status = "idle",
+  invalid = false,
   onComplete,
   autoFocus = false,
   autoComplete = "one-time-code",
@@ -137,11 +166,29 @@ export function CodeSlots({
   const [slots, setSlots] = useState(() => blank(length));
   const [active, setActive] = useState(0);
   const [focused, setFocused] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState(() => status === "error");
   /** The caret was moved by the keys, and nothing typed since. */
   const [moved, setMoved] = useState(false);
   /** Who moves first when several slots change: a fill's start, or the drain. */
   const [flow, setFlow] = useState<number | "drain" | null>(null);
+  // As the screen draws, not in an effect: a refusal is drawn drained and
+  // marked, and the answer that clears the mark is drawn without it, before
+  // a screen puts the focus back in the field, whose read finds it so.
+  const [statusSeen, setStatusSeen] = useState(status);
+  if (status !== statusSeen) {
+    setStatusSeen(status);
+    if (status === "error") {
+      // Each refusal drains what was typed, and the caret goes back to the
+      // start.
+      setFailed(true);
+      setMoved(false);
+      setFlow("drain");
+      setSlots(blank(length));
+      setActive(0);
+    } else if (failed && refusalCleared(statusSeen, status)) {
+      setFailed(false);
+    }
+  }
 
   const code = slots.join("");
   const success = status === "success";
@@ -234,16 +281,11 @@ export function CodeSlots({
     input.current?.focus();
   }
 
-  // Each refusal drains what was typed, and the caret goes back to the start.
+  // Each refusal puts the focus back in the drained field, for the next try,
+  // where it was lost: never from where the person put it meanwhile.
   useEffect(() => {
-    if (status !== "error") return;
-    setFailed(true);
-    setMoved(false);
-    setFlow("drain");
-    setSlots(blank(length));
-    setActive(0);
-    input.current?.focus();
-  }, [status, length]);
+    if (status === "error") focusFirst([input.current], { title: false });
+  }, [status]);
 
   const complete = useEffectEvent((value: string) => onComplete?.(value));
   const wasFull = useRef(false);
@@ -288,9 +330,9 @@ export function CodeSlots({
           pattern="[0-9]*"
           value=""
           aria-label={label}
-          aria-invalid={failed || undefined}
+          aria-invalid={failed || invalid || undefined}
           aria-busy={status === "pending" || undefined}
-          aria-describedby={describedBy ? `${countId} ${describedBy}` : countId}
+          aria-describedby={describedBy ? `${describedBy} ${countId}` : countId}
           readOnly={success}
           // biome-ignore lint/a11y/noAutofocus: the code is the only thing on this step
           autoFocus={autoFocus}

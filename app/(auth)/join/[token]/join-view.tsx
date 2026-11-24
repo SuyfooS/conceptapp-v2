@@ -16,6 +16,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 import type { ComponentProps } from "react";
 import { CenteredScreen } from "@/app/centered-screen";
 import { JoinForm } from "./join-form";
+import { TitleOnArrival } from "./title-on-arrival";
 
 type OpenInvite = {
   phone: string;
@@ -80,7 +81,10 @@ export async function JoinView({
   );
 }
 
-/** A link that no longer leads anywhere, and why. */
+/**
+ * A link that no longer leads anywhere, and why: its title takes the focus
+ * as it arrives (`TitleOnArrival`), also after a press that found it gone.
+ */
 export async function JoinGoneView({
   reason,
 }: {
@@ -89,6 +93,7 @@ export async function JoinGoneView({
   const t = await getTranslations("auth.join");
   return (
     <CenteredScreen>
+      <TitleOnArrival />
       <EmptyState
         icon={reason === "claimed" ? <CircleCheck /> : <Link2Off />}
         title={t(`gone.${reason}.title`)}
