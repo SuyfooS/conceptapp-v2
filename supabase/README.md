@@ -167,7 +167,9 @@ The number goes as E.164 without the `+`, as the auth server keeps it. For a wee
 person changes no bank account and, as a holder, opens no files (`private.phone_changes`,
 `public.bank_change_hold`), and nothing shortens it. The profile's number follows in the same
 transaction (`20261127000600_profile_phone.sql`), so the team's phones and the person's own
-show the new one.
+show the new one. Written with the `+`, a number someone else signs in with is refused (23505,
+"Another account signs in with this number"), and one the profile can't hold rolls the change
+back (23514).
 
 ### Notifications on the phone
 

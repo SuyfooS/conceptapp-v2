@@ -26,8 +26,8 @@ set search_path = ''
 as $$
 declare
   shown text := case
-    when coalesce(new.phone, '') = '' then null
-    else '+' || ltrim(new.phone, '+')
+    when coalesce(new.phone, ''::text) = ''::text then null
+    else '+'::text || ltrim(new.phone, '+'::text)
   end;
 begin
   if shown is not null then
@@ -40,11 +40,13 @@ begin
       join auth.users u on u.id = p.id
       where p.phone = shown
         and p.id <> new.id
-        and '+' || ltrim(coalesce(u.phone, ''), '+') = shown
+        and '+'::text || ltrim(coalesce(u.phone, ''::text), '+'::text) = shown
     ) then
       raise exception 'Another account signs in with this number'
         using errcode = '23505';
     end if;
+    -- A copy left stale by a change before this migration; after its
+    -- backfill none is left, so this is defence only.
     update public.profiles p
     set phone = null
     where p.phone = shown and p.id <> new.id;
@@ -76,12 +78,27 @@ from auth.users u
 where u.id = p.id
   and p.phone is not null
   and p.phone is distinct from (
-    case when coalesce(u.phone, '') = '' then null else '+' || ltrim(u.phone, '+') end
+    case
+      when coalesce(u.phone, ''::text) = ''::text then null
+      else '+'::text || ltrim(u.phone, '+'::text)
+    end
   );
 
+-- Then each takes its own, unless the profile's check would refuse it or
+-- another sign-in writes the same number another way (with the +): such a
+-- profile stays without one rather than stopping the migration, and the
+-- team fixes that number by hand.
 update public.profiles p
-set phone = '+' || ltrim(u.phone, '+')
+set phone = '+'::text || ltrim(u.phone, '+'::text)
 from auth.users u
 where u.id = p.id
-  and coalesce(u.phone, '') <> ''
-  and p.phone is null;
+  and coalesce(u.phone, ''::text) <> ''::text
+  and p.phone is null
+  and '+'::text || ltrim(u.phone, '+'::text) ~ '^\+[1-9][0-9]{7,14}$'
+  and not exists (
+    select 1
+    from auth.users o
+    where o.id <> u.id
+      and '+'::text || ltrim(coalesce(o.phone, ''::text), '+'::text)
+        = '+'::text || ltrim(u.phone, '+'::text)
+  );
