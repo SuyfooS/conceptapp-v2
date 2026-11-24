@@ -358,7 +358,8 @@ test("a malformed number is caught before anything is sent, and said on its fiel
   await expect(field).not.toHaveAttribute("aria-describedby");
   // The field says it: no line of its own as well.
   await expect(page.getByRole("main").getByRole("alert")).toHaveCount(0);
-  // A return to the field reads why with it.
+  // The focus leaving and coming back (Tab, a tap) reads why with it; a
+  // screen reader's swipe moves only its own cursor, and isn't this.
   await field.blur();
   await field.focus();
   await expect(field).toHaveAccessibleDescription(t.errors.invalidPhone);

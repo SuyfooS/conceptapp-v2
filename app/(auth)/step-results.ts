@@ -129,7 +129,12 @@ export function answerHeard({
  * Which answer's why is out of its field's description now (`hush` it with
  * the answer, as `AnswerHeard.quiet` says): the announcer said it while the
  * field had the focus. It is back once the focus leaves the field, for
- * whoever comes back to it; a new answer is described as it comes.
+ * whoever comes back to it (Tab, a tap elsewhere); a new answer is described
+ * as it comes. A screen reader's swipe moves only its own cursor, so a
+ * swipe away and back finds it still out, the visible line right after the
+ * field saying it. No timer brings it back while the field keeps the focus:
+ * NVDA says a change to the focused field's description, which is the
+ * second read this keeps away.
  */
 export function useQuietWhy(field: RefObject<HTMLElement | null>): {
   quiet: number | null;

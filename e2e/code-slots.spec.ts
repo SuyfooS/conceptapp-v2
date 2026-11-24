@@ -46,10 +46,15 @@ const alerts = (page: Page) => page.getByRole("main").getByRole("alert");
 /** The field's description with no why: the digits' own line, none typed. */
 const countOnly = heT("ui.codeSlots.count", { filled: 0, total: 6 });
 
-/** Why first in the field's description, as a return to it reads it. */
+/** Why first in the field's description, as a return of the focus reads it. */
 const whyFirst = (why: string) => new RegExp(`^${literal(why)}`);
 
-/** The focus leaves the field and comes back, as a swipe away and back does. */
+/**
+ * The focus leaves the field and comes back, as Tab away and back does, or a
+ * tap elsewhere and back. Not a screen reader's swipe, which moves only its
+ * own cursor: the field keeps the focus, and why stays out of its
+ * description (`useQuietWhy`), said by the visible line right after it.
+ */
 async function leaveAndComeBack(field: Locator) {
   await field.blur();
   await field.focus();
@@ -58,8 +63,8 @@ async function leaveAndComeBack(field: Locator) {
 // Each refusal of the code step is said once (accessibility, part 2): the
 // announcer says it, at once where the field kept the focus, as here, where
 // the code sent itself after its last digit, and the field's description
-// keeps it out meanwhile, so a read of the field doesn't say it again; a
-// return to the field reads it, first. An alert would say it again.
+// keeps it out meanwhile, so a read of the field doesn't say it again; the
+// focus's return to the field reads it, first. An alert would say it again.
 test("a wrong code sends itself, drains away and can be tried again", async ({
   page,
 }) => {
@@ -298,6 +303,71 @@ test("a new code after a wrong one leaves the field unmarked", async ({
   await expect(
     page.getByRole("main").locator('[data-status="error"]'),
   ).toHaveCount(0);
+});
+
+/** The field as it took the focus: its mark, the code posted, its description. */
+type FieldAtFocus = {
+  fieldAtFocus?: {
+    invalid: string | null;
+    code: string | null;
+    description: string;
+  };
+};
+
+// A wrong code is drained as the screen draws, not in an effect after it:
+// where its answer comes with the focus lost (moved off the field while the
+// check was held), the field takes the focus back, and its read finds it
+// drained and marked, the digits' line at none. Why is still first there:
+// it goes out of the description only after the field took the focus.
+test("a wrong code answered while the focus was lost is drained and marked as the field takes it back", async ({
+  page,
+}) => {
+  await toCodeStep(page);
+  const field = page.getByLabel(t.codeLabel);
+  let answer = () => {};
+  const held = new Promise<void>((resolve) => {
+    answer = () => resolve();
+  });
+  await page.route("**/design/screens/sign-in", async (route) => {
+    if (route.request().method() === "POST") await held;
+    await route.continue();
+  });
+  await page.keyboard.type("000000");
+  await expect(field).toHaveAttribute("aria-busy", "true");
+  await field.blur();
+  await field.evaluate((input) => {
+    input.addEventListener(
+      "focusin",
+      () => {
+        const ids = (input.getAttribute("aria-describedby") ?? "")
+          .split(/\s+/)
+          .filter(Boolean);
+        (window as FieldAtFocus).fieldAtFocus = {
+          invalid: input.getAttribute("aria-invalid"),
+          code:
+            document.querySelector<HTMLInputElement>(
+              'input[type="hidden"][name="code"]',
+            )?.value ?? null,
+          description: ids
+            .map((id) => document.getElementById(id)?.textContent ?? "")
+            .join(" "),
+        };
+      },
+      { once: true },
+    );
+  });
+  answer();
+
+  await expect(
+    page.getByRole("main").getByText(t.errors.wrongCode),
+  ).toBeVisible();
+  await expect(field).toBeFocused();
+  const atFocus = await page.evaluate(
+    () => (window as FieldAtFocus).fieldAtFocus,
+  );
+  expect(atFocus?.invalid).toBe("true");
+  expect(atFocus?.code).toBe("");
+  expect(atFocus?.description).toMatch(new RegExp(`${literal(countOnly)}$`));
 });
 
 test("a code from a message fills every box at once", async ({ page }) => {

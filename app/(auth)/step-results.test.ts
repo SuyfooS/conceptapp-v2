@@ -106,7 +106,9 @@ describe("where the focus is as an answer arrives", () => {
       ["the page", "body"],
       ["nowhere", null],
       ["gone", element({ kind: "link", form, connected: false })],
-      ["disabled", element({ kind: "submit", form, disabled: true })],
+      // A plain button, which only its being disabled makes lost: enabled,
+      // it is elsewhere (the check's retry, below).
+      ["disabled", element({ kind: "button", form, disabled: true })],
     ];
     for (const [name, active] of cases) {
       expect(focusAt(field, pageWith(active)), name).toBe("lost");

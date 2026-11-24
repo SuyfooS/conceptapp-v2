@@ -16,7 +16,7 @@ import {
  * What the code's boxes say in their own line (accessibility, part 1): how
  * many digits are in and which, each on its own; after the arrows, the
  * digit the caret is on; the code accepted. The digits never leave the
- * field's line. A screen's own description follows it.
+ * field's line. A screen's own description comes first.
  */
 
 const empty = ["", "", "", "", "", ""];
