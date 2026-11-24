@@ -13,7 +13,7 @@ import { hearFileCheck } from "./file-watch";
 import { minimalPdf } from "./pdf";
 import { cameraPhoto } from "./photo";
 import { stubAudio } from "./station-audio";
-import { heT } from "./t";
+import { enT, heT } from "./t";
 import { expect, type Locator, type Page, test } from "./test";
 import { readWorkbook, unzip } from "./unzip";
 
@@ -110,6 +110,9 @@ const PAGES = [
   "/design/shell/clock/team/noa?absences=1&state=absenceEdit",
   "/design/shell/clock/team/noa?absences=1&state=absenceOverlap",
   "/design/shell/clock/team/noa?absences=1&state=absenceClosed",
+  // The same in English, left to right, its sheet too.
+  "/design/shell/clock/team/noa?absences=1&lang=en",
+  "/design/shell/clock/team/noa?absences=1&state=absenceAdd&lang=en",
   "/design/shell/clock/team/noa",
   "/design/shell/clock/team/yoav",
   // A shift being fixed with "ביטול המשמרת" under it, the step that cancels
@@ -553,12 +556,13 @@ const PAGES = [
 
 // The chat demo's states that open with a sheet (who confirmed, a message's
 // actions, a picture shown whole, the attach sheet, a document's removal
-// with its reasons), a person's hours on the clock demo open on a shift,
-// and waiter mode's order opens on an item's choices, and its kitchen's
-// screen on "מה נגמר": the sheet hides the page behind it from the
+// with its reasons), a person's hours on the clock demo open on a shift or
+// on days away (`?absences=1&state=absence…`, the state after another
+// parameter), and waiter mode's order opens on an item's choices, and its
+// kitchen's screen on "מה נגמר": the sheet hides the page behind it from the
 // accessibility tree. Lists' `?state=photo` opens none.
 const OPENS_A_SHEET =
-  /^\/design\/(chat\/.*[?&]state=(readers|actions|photo|attach|remove)|shell\/clock\/team\/[^?]+[?&]state=(edit|cancel|cancelled|break|addBreak|openBreak)|order-taking\/floor\/order\?.*[?&]state=choices|order-taking\/station\/prep\?(?:.*&)?state=soldOut)\b/;
+  /^\/design\/(chat\/.*[?&]state=(readers|actions|photo|attach|remove)|shell\/clock\/team\/[^?]+\?(?:.*&)?state=(edit|cancel|cancelled|break|addBreak|openBreak|absenceAdd|absenceEdit|absenceOverlap|absenceClosed)|order-taking\/floor\/order\?.*[?&]state=choices|order-taking\/station\/prep\?(?:.*&)?state=soldOut)\b/;
 
 async function expectCleanPage(
   page: Page,
@@ -7551,6 +7555,23 @@ test("the person's demo records days away, removes them and brings them back", a
   await expect(
     shown(heT("app.clock.absences.shiftsOn", { count: 2 })),
   ).toBeVisible();
+  // The same words at every size: the days in the month, who recorded each,
+  // and the way to the builder's week of the first shift on them.
+  await expect(
+    shown(heT("app.clock.absences.inMonth", { count: 5 })),
+  ).toBeVisible();
+  await expect(
+    shown(
+      heT.markup("app.clock.absences.recorded", {
+        ltr: (chunks: string) => chunks,
+        name: "שירן הדגמה",
+        date: "5.11",
+      }),
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: ta.toBuilder }).filter({ visible: true }),
+  ).toHaveAttribute("href", "/design/shell/schedule/build?week=2026-11-22");
 
   // Recording: the four kinds, and the stand-in's answer in the toast.
   await page
@@ -7579,6 +7600,47 @@ test("the person's demo records days away, removes them and brings them back", a
   await expect(page.getByText(ta.done.restore).first()).toBeVisible();
 });
 
+test("the person's demo says days away in English too, left to right, its sheet inside", async ({
+  page,
+}) => {
+  const ta = en.app.clock.absences;
+  const shown = (text: string) =>
+    page.getByRole("main").getByText(text).filter({ visible: true }).first();
+  await page.goto("/design/shell/clock/team/noa?absences=1&lang=en");
+  await expect(
+    page.getByRole("heading", { name: ta.title, exact: true }),
+  ).toBeVisible();
+  await expect(shown(ta.kinds.vacation)).toBeVisible();
+  await expect(shown(ta.kinds.reserve)).toBeVisible();
+  await expect(
+    shown(enT("app.clock.absences.shiftsOn", { count: 2 })),
+  ).toBeVisible();
+  await expect(
+    shown(enT("app.clock.absences.inMonth", { count: 5 })),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: ta.toBuilder }).filter({ visible: true }),
+  ).toHaveAttribute("href", "/design/shell/schedule/build?week=2026-11-22");
+
+  await page
+    .getByRole("button", { name: ta.add })
+    .filter({ visible: true })
+    .first()
+    .click();
+  const sheet = page.getByRole("dialog", { name: ta.sheet.addTitle });
+  for (const kind of Object.values(ta.kinds)) {
+    await expect(sheet.getByRole("radio", { name: kind })).toBeVisible();
+  }
+  await expect
+    .poll(() =>
+      sheet.evaluate((element) => getComputedStyle(element).direction),
+    )
+    .toBe("ltr");
+  await sheet.getByRole("radio", { name: ta.kinds.sick }).check();
+  await sheet.getByRole("button", { name: ta.sheet.submit }).click();
+  await expect(page.getByText(ta.done.add).first()).toBeVisible();
+});
+
 test("the person's demo says an overlap and a closed month as the app does", async ({
   page,
 }) => {
@@ -7602,7 +7664,7 @@ test("the person's demo says an overlap and a closed month as the app does", asy
 
 test("next week's demo says who is away on each day, on a shift and in the copy", async ({
   page,
-}) => {
+}, testInfo) => {
   const tb = he.app.build;
   await page.goto(
     "/design/shell/schedule/build/running?week=next&state=draft&away=1",
@@ -7619,6 +7681,26 @@ test("next week's demo says who is away on each day, on a shift and in the copy"
       .filter({ visible: true })
       .first(),
   ).toBeVisible();
+  if (testInfo.project.name === "desktop") {
+    // The week's columns start their shifts in line, whatever a day's
+    // header holds: who is away, Shabbat's times, today's mark.
+    const tops = await page.evaluate(() =>
+      [...document.querySelectorAll("main section")]
+        .filter((day) => {
+          const week = day.parentElement;
+          return (
+            week !== null &&
+            day.getClientRects().length > 0 &&
+            getComputedStyle(week).gridTemplateColumns.split(" ").length === 7
+          );
+        })
+        .map((day) =>
+          Math.round(day.children[1]?.getBoundingClientRect().top ?? -1),
+        ),
+    );
+    expect(tops).toHaveLength(7);
+    expect(new Set(tops).size).toBe(1);
+  }
   await page.getByRole("button", { name: tb.copy.action }).click();
   const sheet = page.getByRole("dialog", { name: tb.copy.title });
   await expect(

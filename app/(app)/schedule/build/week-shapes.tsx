@@ -208,9 +208,15 @@ export function DesktopWeek({
   return (
     <div className="hidden xl:grid xl:grid-cols-7 xl:items-start xl:gap-3">
       {days.map((day) => (
-        <section key={day.date} className="flex min-w-0 flex-col gap-3">
-          {/* The same height on every day, so a note on Friday does not push
-              its shifts out of line with the rest of the week. */}
+        // Each day's header and shifts sit on the week's two rows (a
+        // subgrid), so the headers share the tallest one's height: a note on
+        // Friday, or who is away on a day, wrapping to more lines, never
+        // pushes that day's shifts out of line with the rest of the week.
+        <section
+          key={day.date}
+          className="row-span-2 grid min-w-0 grid-rows-subgrid gap-3"
+        >
+          {/* Every day keeps room for today's mark (above). */}
           <div
             className={cn(
               "px-1",
@@ -239,8 +245,10 @@ export function DesktopWeek({
               <p className="text-ink-2 text-sm">{day.awayNote}</p>
             ) : null}
           </div>
-          {renderCards(day.date, "column")}
-          {renderAdd(day.date, "column")}
+          <div className="flex min-w-0 flex-col gap-3">
+            {renderCards(day.date, "column")}
+            {renderAdd(day.date, "column")}
+          </div>
         </section>
       ))}
     </div>

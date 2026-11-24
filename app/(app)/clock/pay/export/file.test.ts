@@ -47,13 +47,18 @@ const SEPTEMBER = {
   ],
 };
 
-/** The file, read back, with what next-intl said while it was built. */
+/**
+ * The file, read back, with what next-intl said while it was built; with
+ * `away`, Noa's days away in October too (a vacation on the 19th, a sick
+ * day on the 26th, both her day off).
+ */
 function built(
   more: Partial<ReturnType<typeof demoPayExport>["meta"]> = {},
   differences: typeof SEPTEMBER | null = null,
+  away = false,
 ) {
   const errors = vi.spyOn(console, "error").mockImplementation(() => {});
-  const demo = demoPayExport();
+  const demo = demoPayExport(away);
   const file = payrollFileOf({
     ...demo,
     meta: { ...demo.meta, ...more },
@@ -137,6 +142,70 @@ describe("the month's file, in the app's words", () => {
     expect(same.sheets.map((sheet) => sheet.name)).not.toContain(
       names.differences,
     );
+  });
+
+  it("counts days away by kind in the summary, gives each date a daily row, and says how (known issue 19)", () => {
+    const { said, sheets, strings } = built({}, null, true);
+    expect(said).toEqual([]);
+    expect(strings.filter((text) => NOT_WORDS.test(text))).toEqual([]);
+    const columns = he.app.pay.file.columns;
+    const kinds = he.app.clock.absences.kinds;
+    const [summary, daily] = [sheets[0], sheets[1]].map((sheet) =>
+      sheetCells(sheet?.xml ?? "", strings),
+    );
+    if (!summary || !daily) throw new Error("no summary or daily sheet");
+    /** A column by its header in the first row: "Q". */
+    const columnOf = (cells: typeof summary, header: string) =>
+      (
+        [...cells].find(
+          ([ref, cell]) => /^[A-Z]+1$/.test(ref) && cell.value === header,
+        )?.[0] ?? ""
+      ).replace(/\d+$/, "");
+    /** The rows whose first column holds `name`, by number. */
+    const rowsOf = (cells: typeof summary, name: string) =>
+      [...cells]
+        .filter(([ref, cell]) => /^A\d+$/.test(ref) && cell.value === name)
+        .map(([ref]) => ref.slice(1));
+    const noa = "נועה כהן";
+
+    // The summary's four columns in their words, and Noa's days in them.
+    const daysIn = (header: string) => {
+      const column = columnOf(summary, header);
+      expect(column, header).not.toBe("");
+      return rowsOf(summary, noa).reduce(
+        (total, row) =>
+          total + Number(summary.get(`${column}${row}`)?.value || 0),
+        0,
+      );
+    };
+    expect(daysIn(columns.summary.vacationDays)).toBe(1);
+    expect(daysIn(columns.summary.sickDays)).toBe(1);
+    expect(daysIn(columns.summary.reserveDays)).toBe(0);
+    expect(daysIn(columns.summary.otherAbsenceDays)).toBe(0);
+
+    // A daily row for each date away, though she worked no shift on it,
+    // with its kind in its words.
+    const date = columnOf(daily, columns.daily.date);
+    const absence = columnOf(daily, columns.daily.absence);
+    expect(absence).not.toBe("");
+    const away = rowsOf(daily, noa)
+      .filter((row) => daily.get(`${absence}${row}`)?.value)
+      .map((row) => [
+        new Date(
+          Date.UTC(1899, 11, 30) +
+            Number(daily.get(`${date}${row}`)?.value) * 86_400_000,
+        )
+          .toISOString()
+          .slice(0, 10),
+        daily.get(`${absence}${row}`)?.value,
+      ]);
+    expect(away).toEqual([
+      ["2026-10-19", kinds.vacation],
+      ["2026-10-26", kinds.sick],
+    ]);
+
+    // The sheet about the file says how they are counted.
+    expect(strings).toContain(he.app.pay.file.about.lines.absences);
   });
 
   it("holds no estimate, not even inside a sentence, with the estimate on", () => {

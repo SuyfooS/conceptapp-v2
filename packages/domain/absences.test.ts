@@ -12,6 +12,7 @@ import {
   daysApart,
   liveAbsences,
   parseAbsence,
+  shiftsOnAbsence,
 } from "./absences";
 
 const TODAY = "2026-11-24";
@@ -202,6 +203,19 @@ describe("who records days away", () => {
     expect(canRecordAbsence(manager, "shiran", "shiran")).toBe(false);
     expect(canRecordAbsence(owner, "orel", "orel")).toBe(true);
     expect(canRecordAbsence(worker, "noa", "yoav")).toBe(false);
+  });
+});
+
+describe("the shifts still on a record's days", () => {
+  it("are counted from today on, with the first one's day for the builder's week", () => {
+    const days = ["2026-11-29", "2026-11-23", "2026-11-24", "2026-12-02"];
+    // Today's shift tonight leads: the builder opens this week, not the next.
+    expect(
+      shiftsOnAbsence(days, { from: "2026-11-23", to: "2026-11-30" }, TODAY),
+    ).toEqual({ count: 2, first: "2026-11-24" });
+    expect(
+      shiftsOnAbsence(days, { from: "2026-11-25", to: "2026-11-28" }, TODAY),
+    ).toEqual({ count: 0, first: null });
   });
 });
 

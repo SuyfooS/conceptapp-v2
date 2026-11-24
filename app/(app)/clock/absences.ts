@@ -7,8 +7,9 @@ import {
   absenceDays,
   awayToday,
   monthSpan,
+  shiftsOnAbsence,
 } from "@domain/absences";
-import { addDays, dateIn } from "@domain/availability";
+import { addDays, dateIn, weekStartOf } from "@domain/availability";
 import { canOpenModule, type Viewer } from "@domain/modules";
 import { buildsSchedule } from "@domain/schedule";
 import { editsClock } from "@domain/time-clock";
@@ -35,7 +36,8 @@ const SHIFTS_AHEAD_DAYS = 13;
  * today's month those still to come too (a vacation recorded for next month
  * shows where it was recorded): each with its days in all and in the month,
  * who recorded it, and how many of their published shifts fall on its days
- * from today on (one read for all).
+ * from today on (one read for all), with the week of the first, by the
+ * schedule's `weekStartsOn`, which the builder opens.
  */
 export async function personAbsenceRows(
   businessId: string,
@@ -43,6 +45,7 @@ export async function personAbsenceRows(
   month: string,
   today: string,
   timeZone: string,
+  weekStartsOn: 0 | 1,
   nameOf: (userId: string) => string | null,
 ): Promise<AbsenceRow[]> {
   const span = monthSpan(month);
@@ -52,24 +55,27 @@ export async function personAbsenceRows(
   });
   const last = addDays(today, SHIFTS_AHEAD_DAYS);
   const ahead = rows.some((one) => one.to >= today && one.from <= last);
-  const shifts = ahead
-    ? await getOwnPublishedShifts(businessId, personId, today, last)
+  const shiftDays = ahead
+    ? (await getOwnPublishedShifts(businessId, personId, today, last)).map(
+        (shift) => shift.day,
+      )
     : [];
-  return rows.map((one) => ({
-    id: one.id,
-    kind: one.kind,
-    from: one.from,
-    to: one.to,
-    note: one.note,
-    days: absenceDays(one),
-    inMonth: absenceDays(one, span),
-    recordedBy: one.recordedBy ? nameOf(one.recordedBy) : null,
-    recordedOn: dateIn(new Date(one.recordedAt), timeZone),
-    shifts: shifts.filter(
-      (shift) =>
-        shift.day >= today && shift.day >= one.from && shift.day <= one.to,
-    ).length,
-  }));
+  return rows.map((one) => {
+    const on = shiftsOnAbsence(shiftDays, one, today);
+    return {
+      id: one.id,
+      kind: one.kind,
+      from: one.from,
+      to: one.to,
+      note: one.note,
+      days: absenceDays(one),
+      inMonth: absenceDays(one, span),
+      recordedBy: one.recordedBy ? nameOf(one.recordedBy) : null,
+      recordedOn: dateIn(new Date(one.recordedAt), timeZone),
+      shifts: on.count,
+      shiftsWeek: on.first ? weekStartOf(on.first, weekStartsOn) : null,
+    };
+  });
 }
 
 /**

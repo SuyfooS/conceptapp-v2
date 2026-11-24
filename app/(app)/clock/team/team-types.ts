@@ -30,6 +30,8 @@ export type AbsenceRow = {
   recordedOn: string;
   /** Their published shifts on its days, from today on. */
   shifts: number;
+  /** The first day of the week of the first of those shifts, which the builder opens; null with none. */
+  shiftsWeek: string | null;
 };
 
 /** Someone away today, for those who edit the clock: with the kind. */

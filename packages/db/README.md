@@ -2169,7 +2169,10 @@ the staff now (55000, hint `not_on_staff`; a removal doesn't ask), the values
 (`private.absence_note_of`, 22023 with a hint: `kind`, `dates`, `order`,
 `too_long`, `too_far` from a year back to a year ahead of the business's day,
 `note`), and no month closed for payroll (`private.absence_closed_month`,
-55000, hint `month_closed`, the month in the detail). A change or removal of
+55000, hint `month_closed`, the month in the detail) among the days whose
+state changes: all of a new or removed one's, and all of a change's when its
+kind changes, else only the days it adds or drops, none for a note alone (a
+run that began in a closed month still ends sooner). A change or removal of
 a removed one is `removed`; bringing back one that isn't is `not_removed`,
 and only whoever removed it, within ten minutes, brings it back (`too_late`);
 it stamps `changed_at`. A change with nothing different writes nothing. The

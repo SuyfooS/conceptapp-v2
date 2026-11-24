@@ -36,14 +36,19 @@
 --               (55000, hint 'month_closed', the first such month in the
 --               detail, `YYYY-MM`) until it is reopened. Returns its id.
 --   changing    public.change_absence(actor, absence, kind, first, last,
---               note, at_time): the same rules, over the old days and the new;
---               a removed one is refused (55000, hint 'removed'); nothing
---               different writes nothing. changed_at and changed_by keep the
---               last change.
+--               note, at_time): the same rules; a closed month only for the
+--               days whose state changes: every day of the old and the new
+--               when the kind changes, else only the days added or dropped,
+--               and none for a note alone (it never reaches payroll). So
+--               reserve duty that began in a closed month still ends sooner,
+--               runs on, or takes a note. A removed one is refused (55000,
+--               hint 'removed'); nothing different writes nothing.
+--               changed_at and changed_by keep the last change.
 --   removing    public.remove_absence(actor, absence, at_time): the same
---               access, own rule and closed month; one removed already is
---               refused (55000, hint 'removed'). Someone who left can still
---               have a wrong record taken off.
+--               access and own rule; every one of its days changes, so none
+--               may be in a closed month. One removed already is refused
+--               (55000, hint 'removed'). Someone who left can still have a
+--               wrong record taken off.
 --   undoing     public.restore_absence(actor, absence, at_time): only by
 --               whoever removed it, within ten minutes (55000, hint
 --               'too_late', as a removed break, 20261117000300_break_edits.sql;
@@ -395,9 +400,28 @@ begin
     return;
   end if;
 
-  closed_text := coalesce(
-    private.absence_closed_month(place, a.from_day, a.to_day),
-    private.absence_closed_month(place, first_day, last_day));
+  -- Only the days whose state changes meet a closed month: every day of
+  -- both when the kind changes or the days don't meet, else the days added
+  -- or dropped at each end. A note alone changes none. The first such
+  -- month is named (`YYYY-MM` sorts as the calendar does).
+  if a.kind is distinct from absence_kind
+    or first_day > a.to_day
+    or last_day < a.from_day
+  then
+    closed_text := least(
+      private.absence_closed_month(place, a.from_day, a.to_day),
+      private.absence_closed_month(place, first_day, last_day));
+  else
+    closed_text := least(
+      case when first_day <> a.from_day then
+        private.absence_closed_month(place,
+          least(first_day, a.from_day), greatest(first_day, a.from_day) - 1)
+      end,
+      case when last_day <> a.to_day then
+        private.absence_closed_month(place,
+          least(last_day, a.to_day) + 1, greatest(last_day, a.to_day))
+      end);
+  end if;
   if closed_text is not null then
     raise exception 'The month is closed for payroll'
       using errcode = '55000', hint = 'month_closed', detail = closed_text;
@@ -580,7 +604,7 @@ as $$
     and ab.to_day >= team_away.first_day
     and team_away.last_day - team_away.first_day between 0 and 62
     and private.is_staff_role(m.role)
-    and private.module_enabled(team_away.business, 'time_clock'::text)
+    and private.module_enabled(team_away.business, 'time_clock'::public.module_key)
     and (
       team_away.business in (select private.businesses_holding('schedule.edit'::text))
       or team_away.business in (select private.businesses_holding('clock.edit'::text))

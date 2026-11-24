@@ -775,9 +775,10 @@ export function demoPayDifferences(): ExportDifferences {
  * October's file for payroll on the demo (payroll P8): the same month by the
  * hours engine, its people with their October shifts as the clock recorded
  * them, and what the file says about itself. Built by the app's own code
- * (`payrollFileOf`) and logged nowhere.
+ * (`payrollFileOf`) and logged nowhere. With `away`, the month holds Noa's
+ * days away too (known issue 19), as `?absences=1` shows them.
  */
-export function demoPayExport(): {
+export function demoPayExport(away = false): {
   month: PayrollMonth;
   people: ExportPerson[];
   meta: ExportMeta;
@@ -819,7 +820,7 @@ export function demoPayExport(): {
     originals,
   );
   return {
-    month: ENGINE,
+    month: away ? ENGINE_AWAY : ENGINE,
     people: people.map((row) => {
       const own = detailsOfDemo(row.userId);
       return {

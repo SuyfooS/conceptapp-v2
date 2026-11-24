@@ -1,23 +1,37 @@
 import AxeBuilder from "@axe-core/playwright";
+import he from "../messages/he.json" with { type: "json" };
+import { buildScreen } from "./build-screen";
 import {
+  buildDemoThisWeek,
+  clearAvailability,
   clearDemoAbsences,
+  clearSchedule,
   databaseNow,
   demoAbsences,
   demoActivityActions,
+  demoRunningWeekClock,
   recordDemoAbsence,
+  seededPayMonth,
+  sendDemoAvailability,
 } from "./db";
 import { secondPage, signIn } from "./session";
 import { heT } from "./t";
 import { expect, type Page, test } from "./test";
+import { readWorkbook, sheetCells, unzip } from "./unzip";
 
 // Days away (known issue 19; 20261127000600_absences.sql) at the demo
 // restaurant. Shiran, its manager, who edits the clock, records Noa's
 // vacation from her page, is refused days that overlap it, and has no way to
-// record her own; then changes it to reserve duty, removes it, and brings it
-// back with the toast's "ביטול". Today shows whoever builds the schedule who
-// is away, never why, and Noa reads her own day away on her hours. Every
-// test starts and ends with no days away at the restaurant.
+// record her own; then changes it to reserve duty, removes it, brings it
+// back with the toast's "ביטול", and removes it again. Today shows whoever
+// builds the schedule who is away, never why, and Noa reads her own day away
+// on her hours. The builder says it on the day, in a shift's people and in
+// the copy from last week, and her page leads to the week of a shift still
+// on a day away. The owner's hours for payroll count the days by kind, list
+// each date, and the file has them. Every test starts and ends with no days
+// away at the restaurant, and one that builds a week clears it after.
 const TZ = "Asia/Jerusalem";
+const OWNER = { local: "050-000-0001", e164: "+972500000001" };
 const MANAGER = {
   id: "00000000-0000-4000-a000-000000000002",
   name: "שירן הדגמה",
@@ -69,6 +83,57 @@ const recordButton = (page: Page) =>
 /** The open sheet, by its title. */
 const sheet = (page: Page) => page.getByRole("dialog");
 
+/** Text to find as it is, inside a pattern. */
+const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** A log line's start, up to its kind, about Noa: "הסרת היעדרות של נועה כהן: ". */
+const logLine = (message: string) =>
+  new RegExp(
+    literal((message.split("{kind}")[0] ?? "").replace("{person}", NOA.name)),
+  );
+
+/**
+ * This week and next are read from the real clock, by the server and by the
+ * database helpers alike: a test that builds this week skips within two
+ * hours of the restaurant's week turning, either side.
+ */
+async function skipNearTheWeekTurn() {
+  const clock = await demoRunningWeekClock();
+  test.skip(
+    clock.sinceStart < 120 || clock.untilEnd < 120,
+    "too close to the restaurant's week turning",
+  );
+  return clock;
+}
+
+/** A day as the screens write it short: `2026-11-10` as "10.11". */
+const shortDay = (date: string) => {
+  const [, month, day] = date.split("-").map(Number);
+  return `${day}.${month}`;
+};
+
+/** Excel's serial day number back to `YYYY-MM-DD`. */
+const fromSerial = (serial: number) =>
+  new Date(Date.UTC(1899, 11, 30) + serial * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+
+type Cells = ReturnType<typeof sheetCells>;
+
+/** A sheet's column by its header in the first row: "Q". */
+const columnOf = (cells: Cells, header: string) =>
+  (
+    [...cells].find(
+      ([ref, cell]) => /^[A-Z]+1$/.test(ref) && cell.value === header,
+    )?.[0] ?? ""
+  ).replace(/\d+$/, "");
+
+/** The rows of a sheet whose first column holds `name`, by number. */
+const rowsOf = (cells: Cells, name: string) =>
+  [...cells]
+    .filter(([ref, cell]) => /^A\d+$/.test(ref) && cell.value === name)
+    .map(([ref]) => ref.slice(1));
+
 test.beforeEach(async () => {
   await clearDemoAbsences();
 });
@@ -108,7 +173,10 @@ test("whoever edits the clock records days away, is refused an overlap, and neve
   await dialog
     .getByLabel(heT("app.clock.absences.sheet.to"), { exact: true })
     .fill(monday);
-  await dialog.getByLabel(heT("app.clock.absences.sheet.note")).fill(note);
+  // Exactly the note: the hint of "היעדרות" says "בהערה" too.
+  await dialog
+    .getByLabel(heT("app.clock.absences.sheet.note"), { exact: true })
+    .fill(note);
   await expectCleanPage(page);
   await dialog
     .getByRole("button", { name: heT("app.clock.absences.sheet.submit") })
@@ -163,7 +231,7 @@ test("whoever edits the clock records days away, is refused an overlap, and neve
   await expect(page.getByText(note)).toHaveCount(0);
 });
 
-test("a record is changed, removed, and brought back with the toast's undo", async ({
+test("a record is changed, removed, brought back with the toast's undo, and removed again", async ({
   page,
 }) => {
   test.setTimeout(90_000);
@@ -212,6 +280,33 @@ test("a record is changed, removed, and brought back with the toast's undo", asy
   expect((await demoAbsences(NOA.id))[0]?.removed).toBe(false);
   expect(await demoActivityActions("clock.absence_remove", since)).toBe(1);
   expect(await demoActivityActions("clock.absence_restore", since)).toBe(1);
+
+  // Removed again: the row is gone, and the log has both removals and the
+  // return between them.
+  await page
+    .getByRole("button", { name: heT("app.clock.absences.kinds.reserve") })
+    .filter({ visible: true })
+    .first()
+    .click();
+  await dialog
+    .getByRole("button", { name: heT("app.clock.absences.sheet.remove") })
+    .click();
+  await expect(
+    page.getByText(heT("app.clock.absences.done.remove")).first(),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("button", { name: heT("app.clock.absences.kinds.reserve") })
+      .filter({ visible: true }),
+  ).toHaveCount(0);
+  await expect(shown(page, heT("app.clock.absences.none"))).toBeVisible();
+  expect((await demoAbsences(NOA.id))[0]?.removed).toBe(true);
+  expect(await demoActivityActions("clock.absence_remove", since)).toBe(2);
+  expect(await demoActivityActions("clock.absence_restore", since)).toBe(1);
+  const actions = he.app.manage.activity.actions.clock;
+  await page.goto("/manage/activity");
+  await expect(shown(page, logLine(actions.absenceRemove))).toBeVisible();
+  await expect(shown(page, logLine(actions.absenceRestore))).toBeVisible();
 });
 
 test("Today says who is away to whoever builds the schedule, never why, and the person reads their own", async ({
@@ -257,14 +352,176 @@ test("Today says who is away to whoever builds the schedule, never why, and the 
   }
 });
 
-test("the builder says who is away on next week's days", async ({ page }) => {
-  test.setTimeout(60_000);
+test("the builder says who is away on next week's days, in a shift's people and in the copy", async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  await skipNearTheWeekTurn();
+  const tb = he.app.build;
   const { sunday } = days();
-  await recordDemoAbsence(NOA.id, "vacation", sunday, sunday);
-  await signIn(page, MANAGER);
-  await page.goto(`/schedule/build?week=${sunday}`);
+  await clearSchedule();
+  try {
+    // Noa can work next Sunday's morning, and works this week's.
+    await sendDemoAvailability(NOA.e164, "e2e: away on Sunday");
+    await buildDemoThisWeek(
+      [
+        {
+          offset: 0,
+          name: "בוקר",
+          start: "09:00",
+          end: "16:00",
+          needed: 3,
+          pattern: "morning",
+          people: [[NOA.e164, null]],
+        },
+      ],
+      true,
+    );
+    await recordDemoAbsence(NOA.id, "vacation", sunday, sunday);
+    await signIn(page, MANAGER);
+    await page.goto(`/schedule/build?week=${sunday}`);
+    await expect(
+      shown(page, heT("app.build.awayDay", { names: NOA.name })),
+    ).toBeVisible();
+    await expectCleanPage(page);
+
+    // Sunday morning's people: away, though she said she can work it.
+    const screen = buildScreen(page);
+    await screen.card("בוקר").click();
+    await expect(screen.group(tb.groups.away)).toContainText(NOA.name);
+    await expect(
+      screen.group(tb.groups.available).getByText(NOA.name),
+    ).toHaveCount(0);
+    await expectCleanPage(page);
+    await screen.closeSheet();
+
+    // The copy from this week leaves her out of Sunday and says why; closed
+    // without copying.
+    await page.getByRole("button", { name: tb.copy.action }).click();
+    const copy = page.getByRole("dialog", { name: tb.copy.title });
+    await expect(copy).toBeVisible();
+    await expect(screen.group(tb.groups.away)).toContainText(NOA.name);
+    await page.keyboard.press("Escape");
+    await expect(copy).toHaveCount(0);
+  } finally {
+    await clearSchedule();
+    await clearAvailability(NOA.e164);
+  }
+});
+
+test("a person's page leads to the builder's week of a shift still on a day away", async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  const clock = await skipNearTheWeekTurn();
+  const offset = Math.round(
+    (Date.parse(`${clock.today}T00:00:00Z`) -
+      Date.parse(`${clock.startsOn}T00:00:00Z`)) /
+      86_400_000,
+  );
+  await clearSchedule();
+  try {
+    // Sick today, with this evening's shift still on this week's schedule.
+    await buildDemoThisWeek(
+      [
+        {
+          offset,
+          // Added by hand, so it is the same on any day of the week.
+          name: "ערב",
+          start: "16:00",
+          end: "23:30",
+          needed: 4,
+          pattern: null,
+          people: [[NOA.e164, null]],
+        },
+      ],
+      true,
+    );
+    await recordDemoAbsence(NOA.id, "sick", clock.today, clock.today);
+    await signIn(page, MANAGER);
+    await page.goto(`/clock/team/${NOA.id}`);
+    await expect(
+      shown(page, heT("app.clock.absences.shiftsOn", { count: 1 })),
+    ).toBeVisible();
+    const toBuilder = page
+      .getByRole("link", { name: heT("app.clock.absences.toBuilder") })
+      .filter({ visible: true });
+    // This week's builder, where the shift is: the builder alone opens next week.
+    await expect(toBuilder).toHaveAttribute(
+      "href",
+      `/schedule/build?week=${clock.startsOn}`,
+    );
+    await toBuilder.click();
+    await expect(
+      page.getByRole("heading", { level: 1, name: he.app.build.titleRunning }),
+    ).toBeVisible();
+  } finally {
+    await clearSchedule();
+  }
+});
+
+test("the owner's hours for payroll count days away by kind, list each date, and the file has them", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(90_000);
+  const tp = he.app.pay;
+  const vacation = he.app.clock.absences.kinds.vacation;
+  const month = await seededPayMonth("restaurant");
+  const first = `${month}-10`;
+  const second = `${month}-11`;
+  await recordDemoAbsence(NOA.id, "vacation", first, second);
+  const twoDays = heT("app.pay.absences.byKind", { kind: vacation, count: 2 });
+  await signIn(page, OWNER);
+
+  // The month: "חופשה 2" on Noa's line, and in its own column on a desktop.
+  await page.goto(`/clock/pay?month=${month}`);
+  await expect(shown(page, twoDays)).toBeVisible();
+  if (testInfo.project.name === "desktop") {
+    await expect(
+      page
+        .getByRole("columnheader", { name: tp.columns.absences, exact: true })
+        .filter({ visible: true }),
+    ).toBeVisible();
+  }
+  await expectCleanPage(page);
+
+  // Her month: the days by kind, with each date.
+  await page.goto(`/clock/pay/${NOA.id}?month=${month}`);
   await expect(
-    shown(page, heT("app.build.awayDay", { names: NOA.name })),
+    page
+      .getByRole("heading", { name: tp.absences.title, exact: true })
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
+  await expect(shown(page, twoDays)).toBeVisible();
+  await expect(
+    shown(page, `${shortDay(first)}, ${shortDay(second)}`),
   ).toBeVisible();
   await expectCleanPage(page);
+
+  // The file (one download is enough): 2 under "ימי חופשה" in the summary,
+  // and a daily row for each date that says "חופשה".
+  if (testInfo.project.name !== "desktop") return;
+  const response = await page.request.get(`/clock/pay/export?month=${month}`);
+  expect(response.status()).toBe(200);
+  const { sheets, strings } = readWorkbook(unzip(await response.body()));
+  const f = tp.file.columns;
+  const summary = sheetCells(sheets[0]?.xml ?? "", strings);
+  const vacationColumn = columnOf(summary, f.summary.vacationDays);
+  expect(vacationColumn).not.toBe("");
+  expect(
+    rowsOf(summary, NOA.name).reduce(
+      (total, row) =>
+        total + Number(summary.get(`${vacationColumn}${row}`)?.value || 0),
+      0,
+    ),
+  ).toBe(2);
+  const daily = sheetCells(sheets[1]?.xml ?? "", strings);
+  const dateColumn = columnOf(daily, f.daily.date);
+  const awayColumn = columnOf(daily, f.daily.absence);
+  expect(awayColumn).not.toBe("");
+  const away = rowsOf(daily, NOA.name)
+    .filter((row) => daily.get(`${awayColumn}${row}`)?.value === vacation)
+    .map((row) => fromSerial(Number(daily.get(`${dateColumn}${row}`)?.value)));
+  expect([...new Set(away)].sort()).toEqual([first, second]);
 });

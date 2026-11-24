@@ -248,6 +248,22 @@ export function liveAbsences<T extends { removedAt: string | null }>(
 }
 
 /**
+ * The shifts still on a record's days, from `today` on, of the person's
+ * shift days (`YYYY-MM-DD`): how many, and the first one's day (null with
+ * none), so the way to the builder opens that shift's week.
+ */
+export function shiftsOnAbsence(
+  shiftDays: readonly string[],
+  span: { from: string; to: string },
+  today: string,
+): { count: number; first: string | null } {
+  const on = shiftDays
+    .filter((day) => day >= today && day >= span.from && day <= span.to)
+    .sort();
+  return { count: on.length, first: on[0] ?? null };
+}
+
+/**
  * Where the form's first day starts: today when the month shown is today's,
  * else that month's first day.
  */

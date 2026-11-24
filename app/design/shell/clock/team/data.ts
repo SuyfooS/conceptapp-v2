@@ -357,6 +357,7 @@ export const demoNoaAbsences: AbsenceRow[] = [
     recordedBy: "שירן הדגמה",
     recordedOn: "2026-11-02",
     shifts: 0,
+    shiftsWeek: null,
   },
   {
     id: "ab5e0000-0000-4000-d000-000000000002",
@@ -369,6 +370,8 @@ export const demoNoaAbsences: AbsenceRow[] = [
     recordedBy: "שירן הדגמה",
     recordedOn: "2026-11-05",
     shifts: 2,
+    // "לבניית הסידור" opens the week of the first of them.
+    shiftsWeek: "2026-11-22",
   },
 ];
 

@@ -36,6 +36,18 @@ function useWeekday(): (date: string) => string {
     });
 }
 
+/**
+ * A record's count of days in words: "5 ימים בחודש הזה" for one that runs
+ * past the month shown, else "3 ימים".
+ */
+function useDayCount(): (row: Pick<AbsenceRow, "days" | "inMonth">) => string {
+  const t = useTranslations("app.clock.absences");
+  return (row) =>
+    row.inMonth > 0 && row.inMonth < row.days
+      ? t("inMonth", { count: row.inMonth })
+      : t("days", { count: row.days });
+}
+
 /** A record's days in words: "3.12–5.12 · 3 ימים", or "יום שני, 3.12". */
 export function useAbsenceDays(): (
   row: Pick<AbsenceRow, "from" | "to" | "days" | "inMonth">,
@@ -43,6 +55,7 @@ export function useAbsenceDays(): (
   const t = useTranslations("app.clock.absences");
   const date = useShortDate();
   const weekday = useWeekday();
+  const count = useDayCount();
   return (row) => {
     if (row.from === row.to) {
       return t.rich("oneDay", {
@@ -55,12 +68,24 @@ export function useAbsenceDays(): (
       <>
         {t.rich("range", { ltr, from: date(row.from), to: date(row.to) })}
         {" · "}
-        {row.inMonth > 0 && row.inMonth < row.days
-          ? t("inMonth", { count: row.inMonth })
-          : t("days", { count: row.days })}
+        {count(row)}
       </>
     );
   };
+}
+
+/**
+ * The builder at the week of the first shift still on a day away, this
+ * week's or the next (it opens next week unless asked), else as it opens.
+ */
+export function builderWeekHref(
+  build: string,
+  rows: readonly Pick<AbsenceRow, "shiftsWeek">[],
+): string {
+  const [week] = rows
+    .flatMap((row) => (row.shiftsWeek ? [row.shiftsWeek] : []))
+    .sort();
+  return week ? `${build}?week=${week}` : build;
 }
 
 /** What a failure says, the month a closed one names in words. */
@@ -80,10 +105,10 @@ export function useAbsenceFailure(): (
 
 /**
  * One person's days away in the month shown, under their shifts: a row for
- * each on phones and tablets, with its kind, days, note and the shifts the
- * schedule still has on them, and the way to record more; a table on a
- * desktop, with the same words. "הוספת משמרת" stays the page's one main
- * action, so recording is a row, or a quiet pill beside the table.
+ * each on phones and tablets, with its kind, days, note, who recorded it and
+ * the shifts the schedule still has on them, and the way to record more; a
+ * table on a desktop, with the same words. "הוספת משמרת" stays the page's
+ * one main action, so recording is a row, or a quiet pill beside the table.
  */
 export function AbsencesSection({
   rows,
@@ -103,6 +128,7 @@ export function AbsencesSection({
 }) {
   const t = useTranslations("app.clock.absences");
   const daysOf = useAbsenceDays();
+  const dayCount = useDayCount();
   const date = useShortDate();
   const shiftsLine = (row: AbsenceRow) =>
     row.shifts > 0 ? (
@@ -114,7 +140,8 @@ export function AbsencesSection({
     { key: "kind", label: t("columns.kind") },
     { key: "from", label: t("columns.from"), numeric: true },
     { key: "to", label: t("columns.to"), numeric: true },
-    { key: "days", label: t("columns.days"), align: "end", numeric: true },
+    // Words, as the phone says them: "5 ימים בחודש הזה".
+    { key: "days", label: t("columns.days") },
     { key: "note", label: t("columns.note") },
     { key: "recorded", label: t("columns.recorded") },
   ];
@@ -124,11 +151,15 @@ export function AbsencesSection({
       name: row.recordedBy ?? t("someone"),
       date: date(row.recordedOn),
     });
-  /** A row's lines: its days, its note, and the shifts still on them. */
+  /**
+   * A row's lines: its days, its note, who recorded it, and the shifts still
+   * on them, as the desktop's columns say them.
+   */
   const subtitleOf = (row: AbsenceRow) => (
     <span className="flex flex-col">
       <span>{daysOf(row)}</span>
       {row.note ? <span>{row.note}</span> : null}
+      <span>{recorded(row)}</span>
       {shiftsLine(row)}
     </span>
   );
@@ -206,10 +237,7 @@ export function AbsencesSection({
                 kind: t(`kinds.${row.kind}`),
                 from: date(row.from),
                 to: date(row.to),
-                days:
-                  row.inMonth > 0 && row.inMonth < row.days
-                    ? `${row.inMonth}/${row.days}`
-                    : String(row.days),
+                days: dayCount(row),
                 note: (
                   <span className="flex flex-col">
                     {row.note ? <span>{row.note}</span> : null}

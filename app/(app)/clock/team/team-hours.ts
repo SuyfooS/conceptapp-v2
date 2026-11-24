@@ -216,8 +216,10 @@ export async function currentPersonHours(
   const currentMonth = monthOf(today);
   const month = monthFrom(askedForMonth, currentMonth);
   const { from, to } = monthRange(month, timeZone);
-  const [settings, people, entries, cancelled] = await Promise.all([
+  const [settings, scheduling, people, entries, cancelled] = await Promise.all([
     currentModuleSettings("time_clock"),
+    // The weeks the builder opens, for the way to a shift on a day away.
+    currentModuleSettings("scheduling"),
     getClockPeople(businessId),
     getTimeEntries(businessId, from, to, id.data),
     getCancelledEntries(businessId, from, to, id.data),
@@ -240,6 +242,7 @@ export async function currentPersonHours(
     month,
     today,
     timeZone,
+    scheduling.weekStartsOn,
     nameOf,
   );
   return {

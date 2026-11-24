@@ -4,14 +4,16 @@
 -- and, within ten minutes, brings it back, with the secret key only; a
 -- worker, an accountant, someone who only builds the schedule, another
 -- business and a manager's own days are refused, and so are someone off the
--- staff, overlapping days, bad values and a closed month. An unknown record
--- reads as one the actor can't reach. The rows stay, the log keeps each
--- write without the note, the person and the clock's editors and pay holders
--- read them, and the schedule's builders read only who is away and when.
--- Fixed ids (ab5e…), numbers (050-058-xxxx) and times (March 2027), so
--- nothing here meets the seed or another test, or the real clock.
+-- staff, overlapping days, bad values and a closed month's days. A run that
+-- began in a closed month still ends sooner, runs on or takes a note. An
+-- unknown record reads as one the actor can't reach. The rows stay, the log
+-- keeps each write without the note, the person and the clock's editors and
+-- pay holders read them, and the schedule's builders read only who is away
+-- and when. Fixed ids (ab5e…), numbers (050-058-xxxx) and times (February
+-- and March 2027), so nothing here meets the seed or another test, or the
+-- real clock.
 begin;
-select plan(60);
+select plan(67);
 
 create function pg_temp.p(n integer) returns uuid language sql as $$
   select ('ab5e0000-0000-4000-a000-' || lpad(n::text, 12, '0'))::uuid
@@ -69,8 +71,11 @@ create function pg_temp.sign_in(uid uuid) returns void language sql as $$
   select set_config('request.jwt.claims', json_build_object('sub', uid, 'role', 'authenticated')::text, true);
   select set_config('role', 'authenticated', true);
 $$;
--- What a statement gives: 'ok', or its error's code with its hint and
--- detail, when it has them. A refused statement leaves nothing behind.
+-- What a statement gives: 'ok', or its error's code with its hint, and the
+-- detail of a refusal of these functions' own (55000: the closed month).
+-- Postgres gives an exclusion violation (23P01) a detail of its own, with
+-- the keys, so that one is its code alone. A refused statement leaves
+-- nothing behind.
 create function pg_temp.refusal(statement text) returns text language plpgsql as $$
 declare
   said_state text;
@@ -82,7 +87,8 @@ begin
 exception when others then
   get stacked diagnostics said_state = returned_sqlstate,
     said_hint = pg_exception_hint, said_detail = pg_exception_detail;
-  return concat_ws(' ', said_state, nullif(said_hint, ''), nullif(said_detail, ''));
+  return concat_ws(' ', said_state, nullif(said_hint, ''),
+    case when said_state = '55000' then nullif(said_detail, '') end);
 end;
 $$;
 -- A saved record: its kind, days and note, who recorded it and when, and
@@ -107,8 +113,11 @@ create function pg_temp.logged(what text, saved text) returns jsonb language sql
   limit 1
 $$;
 
--- The owner closes A's February 2027.
+-- Before it closes, the manager records p4's reserve duty from 20 February
+-- to 5 March; then the owner closes A's February 2027.
 set local role service_role;
+insert into ids values ('run', public.record_absence(pg_temp.p(2), pg_temp.a(), pg_temp.p(4),
+  'reserve', '2027-02-20', '2027-03-05', null, '2027-02-25 08:00+00'));
 select public.close_payroll_month(pg_temp.p(1), pg_temp.a(), '2027-02-01',
   '{"version": 1}'::jsonb, 'absences', '2027-03-01 10:00+02');
 reset role;
@@ -356,6 +365,51 @@ select is(
 reset role;
 
 ------------------------------------------------------------------------------
+-- A run through a closed month (7): only the days that change meet it
+
+set local role service_role;
+select lives_ok(
+  $$select public.change_absence(pg_temp.p(2), pg_temp.id('run'), 'reserve',
+    '2027-02-20', '2027-03-05', 'order', '2027-03-10 11:00+00')$$,
+  'a note alone changes no day, so reserve duty from a closed month takes one'
+);
+select lives_ok(
+  $$select public.change_absence(pg_temp.p(2), pg_temp.id('run'), 'reserve',
+    '2027-02-20', '2027-03-03', 'order', '2027-03-10 11:05+00')$$,
+  'released early, it ends sooner: the days dropped are after the closed month'
+);
+select lives_ok(
+  $$select public.change_absence(pg_temp.p(2), pg_temp.id('run'), 'reserve',
+    '2027-02-20', '2027-03-08', 'order', '2027-03-10 11:06+00')$$,
+  'or runs on'
+);
+reset role;
+select is(
+  pg_temp.state('run'),
+  'reserve 2027-02-20 2027-03-08 order p2 25 08:00 changed p2 10 11:06',
+  'the record keeps its closed days, with its new last day and its note'
+);
+set local role service_role;
+select is(
+  pg_temp.refusal($$select public.change_absence(pg_temp.p(2), pg_temp.id('run'), 'reserve',
+    '2027-02-22', '2027-03-08', 'order', '2027-03-10 11:10+00')$$),
+  '55000 month_closed 2027-02',
+  'its days in the closed month stay as they are'
+);
+select is(
+  pg_temp.refusal($$select public.change_absence(pg_temp.p(2), pg_temp.id('run'), 'other',
+    '2027-02-20', '2027-03-08', 'order', '2027-03-10 11:10+00')$$),
+  '55000 month_closed 2027-02',
+  'and so does their kind'
+);
+select is(
+  pg_temp.refusal($$select public.remove_absence(pg_temp.p(2), pg_temp.id('run'), '2027-03-10 11:10+00')$$),
+  '55000 month_closed 2027-02',
+  'removing it would change every one of its days, the closed ones too'
+);
+reset role;
+
+------------------------------------------------------------------------------
 -- Removing and bringing back (12)
 
 set local role service_role;
@@ -450,14 +504,14 @@ reset role;
 select pg_temp.sign_in(pg_temp.p(2));
 select is(
   (select count(*)::integer from public.absences ab where ab.business_id = pg_temp.a()),
-  6,
+  7,
   'a manager reads all of the business''s, removed ones too'
 );
 reset role;
 select pg_temp.sign_in(pg_temp.p(6));
 select is(
   (select count(*)::integer from public.absences ab where ab.business_id = pg_temp.a()),
-  6,
+  7,
   'and so does the accountant, who sees pay'
 );
 reset role;

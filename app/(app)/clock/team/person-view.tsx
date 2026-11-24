@@ -40,6 +40,7 @@ import { ShiftList, ShiftSummary } from "../shift-list";
 import {
   AbsenceForm,
   AbsencesSection,
+  builderWeekHref,
   useAbsenceFailure,
 } from "./absences-section";
 import type {
@@ -592,7 +593,11 @@ export function PersonHoursView({
             : undefined
         }
         add={(from) => showAbsence({ kind: "absenceAdd" }, from)}
-        builderHref={data.builds && paths.build ? paths.build : null}
+        builderHref={
+          data.builds && paths.build
+            ? builderWeekHref(paths.build, data.absences)
+            : null
+        }
       />
 
       {data.viewOnly ? (
