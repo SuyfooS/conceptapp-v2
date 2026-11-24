@@ -1,3 +1,4 @@
+import type { AbsenceKind } from "@domain/absences";
 import type { PayDay, PayTotals } from "@domain/pay-month";
 import type { PersonRates, RemarkLine, RestName } from "@domain/pay-rates";
 import type { CloseFailure } from "@domain/payroll-close";
@@ -57,6 +58,8 @@ export type PayPerson = {
    * estimate while the business shows amounts; null when it couldn't run.
    */
   rates: PersonRates | null;
+  /** Their days away in the month by kind (known issue 19); null when the engine couldn't run. */
+  absenceDays: Record<AbsenceKind, number> | null;
 };
 
 /** The month's estimate before tax, across everyone: the known ones added, and how many are left out for want of a wage. */
@@ -242,6 +245,7 @@ export type PayPersonData = {
     | "noNumber"
     | "minor"
     | "rates"
+    | "absenceDays"
   >;
   month: string;
   currentMonth: string;
@@ -270,6 +274,11 @@ export type PayPersonData = {
   stale: boolean;
   /** The reader sets the business's work week (an owner): the note leads there. */
   setsWeek: boolean;
+  /**
+   * Their days away in the month (known issue 19), by kind, each with its
+   * dates in order: read only, for the accountant.
+   */
+  absences: { kind: AbsenceKind; dates: string[] }[];
 };
 
 /** Where the pay screens' links go; the demo keeps them inside the demo. */

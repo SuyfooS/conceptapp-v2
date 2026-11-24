@@ -280,7 +280,14 @@ export function flagValues(flag: PayrollFlag, f: FlagFormat): FlagValues {
     case "minorEveOver7":
     case "minorOvertime":
     case "minorRestDay":
+    case "absenceWorked":
       return { date: f.date(flag.date), hours: f.hours(flag.minutes) };
+    case "absenceWeek":
+      return {
+        weekOf: f.date(flag.weekOf),
+        days: flag.days,
+        hours: f.hours(flag.minutes),
+      };
     case "shortUnpaidBreak":
     case "eveBreakUnder30":
     case "minorBreak":

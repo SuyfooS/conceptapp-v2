@@ -1,3 +1,4 @@
+import { awayOn } from "@domain/absences";
 import { weekdayOf } from "@domain/availability";
 import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
 import { firstNameOf } from "@domain/people";
@@ -28,7 +29,8 @@ export type ShiftData = Pick<
   | "positions"
   | "swaps"
   | "endedSwaps"
->;
+> &
+  Partial<Pick<PublishedSchedule, "away">>;
 
 export type AppT = ReturnType<typeof useTranslations<"app">>;
 
@@ -93,6 +95,22 @@ export const positionName = (
 ) => data.positions.find((p) => p.key === key)?.name ?? null;
 
 /** Everyone on a shift as their avatars show them, in the shift's order. */
+/**
+ * Who on a shift is recorded as away that day (known issue 19), by name,
+ * for whoever builds the schedule: never why. Empty for everyone else, who
+ * gets no days away to read.
+ */
+export const awayOnShift = (
+  t: AppT,
+  data: Pick<ShiftData, "people" | "away">,
+  shift: Pick<ScheduledShift, "assignees" | "day">,
+): string[] =>
+  data.away
+    ? shift.assignees
+        .filter((a) => awayOn(data.away ?? [], a.user, shift.day))
+        .map((a) => nameOf(t, data, a.user))
+    : [];
+
 export const assigneePeople = (
   t: AppT,
   data: Pick<ShiftData, "people">,

@@ -1,11 +1,15 @@
+import type { AbsenceKind } from "@domain/absences";
 import { hasEstimate } from "@domain/pay-rates";
 import type { ShiftRecord } from "@domain/time-clock";
 import { Button } from "@ui/button";
 import { EmptyState } from "@ui/empty-state";
-import { PageBody, PageHeader } from "@ui/page";
+import { ListGroup, ListRow } from "@ui/list-row";
+import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
 import { History } from "lucide-react";
 import Link from "next/link";
+import { useFormatter } from "next-intl";
+import type { ReactNode } from "react";
 import { type AppWording, translator } from "../../wording";
 import type { ClockPaths, OwnPay } from "../clock-types";
 import { MonthHero } from "../month-hero";
@@ -19,7 +23,20 @@ export type HistoryData = {
   currentMonth: string;
   minutes: number;
   records: ShiftRecord[];
+  /** Their days away that touch the month (known issue 19), in date order. */
+  absences: {
+    id: string;
+    kind: AbsenceKind;
+    from: string;
+    to: string;
+    note: string | null;
+    /** Its days in all, by the calendar, and those in the month. */
+    days: number;
+    inMonth: number;
+  }[];
 };
+
+const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 
 /**
  * The person's shifts of one month: its total, and each shift with its hours,
@@ -42,6 +59,19 @@ export function HistoryView({
   wording: AppWording;
 }) {
   const t = translator(wording, "app.clock.history");
+  const tAbsences = translator(wording, "app.clock.absences");
+  const format = useFormatter();
+  const date = (day: string) =>
+    format.dateTime(new Date(`${day}T12:00:00Z`), {
+      day: "numeric",
+      month: "numeric",
+      timeZone: "UTC",
+    });
+  const weekday = (day: string) =>
+    format.dateTime(new Date(`${day}T12:00:00Z`), {
+      weekday: "long",
+      timeZone: "UTC",
+    });
 
   return (
     <PageBody className={pageGlowClass}>
@@ -85,6 +115,44 @@ export function HistoryView({
             </Button>
           </EmptyState>
         )}
+
+        {data.absences.length > 0 ? (
+          <PageSection title={tAbsences("title")} className="mt-6">
+            <ListGroup>
+              {data.absences.map((one) => (
+                <ListRow
+                  key={one.id}
+                  title={tAbsences(`kinds.${one.kind}`)}
+                  subtitle={
+                    <span className="flex flex-col">
+                      <span>
+                        {one.from === one.to
+                          ? tAbsences.rich("oneDay", {
+                              ltr,
+                              weekday: weekday(one.from),
+                              date: date(one.from),
+                            })
+                          : tAbsences.rich("range", {
+                              ltr,
+                              from: date(one.from),
+                              to: date(one.to),
+                            })}
+                        {one.from === one.to
+                          ? null
+                          : ` · ${
+                              one.inMonth < one.days
+                                ? tAbsences("inMonth", { count: one.inMonth })
+                                : tAbsences("days", { count: one.days })
+                            }`}
+                      </span>
+                      {one.note ? <span>{one.note}</span> : null}
+                    </span>
+                  }
+                />
+              ))}
+            </ListGroup>
+          </PageSection>
+        ) : null}
 
         {ownPay && (hasEstimate(ownPay) || ownPay.open > 0) ? (
           <div className="mt-6">

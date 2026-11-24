@@ -139,6 +139,7 @@ async function Demo({ searchParams }: Props) {
     hasPattern: true,
     answers: teamAnswers,
     positions: demoPositions,
+    away: [],
   };
   if (state === "meanwhile") {
     return (

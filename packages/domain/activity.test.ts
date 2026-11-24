@@ -451,6 +451,83 @@ describe("buildActivity: each action", () => {
     }
   });
 
+  it("reads days away recorded, changed, removed and brought back, never their note", () => {
+    const days = { kind: "vacation", from: "2026-12-03", to: "2026-12-05" };
+    for (const action of [
+      "clock.absence_add",
+      "clock.absence_remove",
+      "clock.absence_restore",
+    ] as const) {
+      expect(
+        lineOf(
+          row(action, {
+            absence: GONE,
+            person: NOA,
+            ...days,
+            noted: true,
+            note: "never in the log, never read",
+          }),
+        ),
+      ).toEqual({
+        action,
+        person: { kind: "member", name: "Noa" },
+        personId: NOA,
+        kind: "vacation",
+        from: "2026-12-03",
+        to: "2026-12-05",
+      });
+    }
+    // A change reads as what it is now.
+    expect(
+      lineOf(
+        row("clock.absence_change", {
+          absence: GONE,
+          person: LEFT,
+          from: days,
+          to: { kind: "reserve", from: "2026-12-03", to: "2026-12-04" },
+          note_changed: false,
+        }),
+      ),
+    ).toEqual({
+      action: "clock.absence_change",
+      person: { kind: "former" },
+      personId: LEFT,
+      kind: "reserve",
+      from: "2026-12-03",
+      to: "2026-12-04",
+    });
+    for (const [action, details] of [
+      [
+        "clock.absence_add",
+        {
+          absence: GONE,
+          person: NOA,
+          kind: "holiday",
+          from: "2026-12-03",
+          to: "2026-12-05",
+        },
+      ],
+      [
+        "clock.absence_add",
+        {
+          absence: GONE,
+          person: NOA,
+          kind: "sick",
+          from: "2026-12-05",
+          to: "2026-12-03",
+        },
+      ],
+      [
+        "clock.absence_remove",
+        { absence: GONE, kind: "sick", from: "2026-12-03", to: "2026-12-03" },
+      ],
+      ["clock.absence_change", { absence: GONE, person: NOA, from: days }],
+      ["clock.absence_restore", "x"],
+    ] as const) {
+      expect(lineOf(row(action, details)), action).toEqual({ action: "other" });
+    }
+  });
+
   it("reads a cancelled shift brought back, open again when it was", () => {
     expect(
       lineOf(

@@ -982,7 +982,8 @@ not the names. The invites (one policy now, "the team's viewers read its
 invites", for members and views alike; the view twin is dropped),
 `public.team_phones` and `public.team_youth` (which also answers whoever
 builds the schedule, critique 14) ask `business_id in (select
-private.businesses_holding('team.view'))`, once per query. Inviting and
+private.businesses_holding('team.view'))`, once per query. `public.team_away`
+(days away, below) asks `schedule.edit` or `clock.edit` the same way. Inviting and
 inviting again (`public.team_invite`, `public.team_invite_link`), cancelling
 (`public.team_invite_cancel`), removing (`public.remove_member`), changing a
 role (`public.set_member_role`) and clearing a line
@@ -2140,6 +2141,72 @@ removed", which the page counts as brought back), and, as a cancel's,
 `punchFailureOf` reads the six new kinds as `failed`: a punch never meets
 them. Covered by `@domain/time-clock`'s tests, `time-clock.test.ts` and
 `e2e/clock-team.spec.ts`.
+
+### Days away
+
+Vacation, sick leave, reserve duty and another absence (known issue 19,
+`20261127000700_absences.sql`). `public.absences` holds whole days, `from_day`
+to `to_day` included, at most 366 days a record, one kind (`vacation`,
+`sick`, `reserve`, `other`) and a note of 1 to 200 characters, trimmed, or
+none. Two live records of one person never share a day
+(`absences_no_overlap`, 23P01); a removed one (`removed_at`, `removed_by`)
+stays and makes way. Read as hours are ("people read their own absences, the
+clock's editors and pay holders all": the person while a member,
+`businesses_holding('clock.edit')`, `clock.payroll` and a view as an
+accountant), with the time clock on. Kept as hours are: `restrict` keys to
+the membership, and `absences_kept` refuses a delete
+(`private.refuse_absence_delete`) but the demo reset's purge, which takes
+them after the hours and before the memberships.
+
+The writes, with the secret key, for `actor`: `public.record_absence(actor,
+business, person, absence_kind, first_day, last_day, absence_note,
+at_time)`, which returns the id, `change_absence(actor, absence, …)`,
+`remove_absence(actor, absence, at_time)` and `restore_absence(actor, absence,
+at_time)`. Each asks `private.can_edit_clock` first (42501 "Managers and
+owners only", the same words for an unknown record), then the time clock on
+(42501), never one's own but an owner's (42501, hint `own`), the person on
+the staff now (55000, hint `not_on_staff`; a removal doesn't ask), the values
+(`private.absence_note_of`, 22023 with a hint: `kind`, `dates`, `order`,
+`too_long`, `too_far` from a year back to a year ahead of the business's day,
+`note`), and no month closed for payroll (`private.absence_closed_month`,
+55000, hint `month_closed`, the month in the detail) among the days whose
+state changes: all of a new or removed one's, and all of a change's when its
+kind changes, else only the days it adds or drops, none for a note alone (a
+run that began in a closed month still ends sooner). A change or removal of
+a removed one is `removed`; bringing back one that isn't is `not_removed`,
+and only whoever removed it, within ten minutes, brings it back (`too_late`);
+it stamps `changed_at`. A change with nothing different writes nothing. The
+log: `clock.absence_add` `{absence, person, kind, from, to, noted}`,
+`clock.absence_change` `{absence, person, from, to, note_changed}`,
+`clock.absence_remove` and `clock.absence_restore` `{absence, person, kind,
+from, to}`, never the note; no trigger on the log takes them. Locks, after
+the access checks: the business (`for key share`, which waits on any `for
+update` of it: the demo reset's, `set_business_details`, `apply_template`,
+none of which locks a membership first), the person's membership (`for
+share`), then the record, so a write and a reset never wait on each other.
+A business a reset replaced while a write waited is refused before the new
+one's membership is locked: a new record as an unknown business (P0002,
+`failed`, so the phone sends again), a change, removal or return as an
+unknown record (42501), the reset having taken it.
+
+`public.team_away(business, first_day, last_day)` answers whoever builds the
+schedule or edits the clock (`businesses_holding`, members and views alike)
+with who on the staff is away and when, over at most 62 days, never the kind
+or the note. The wrappers (`absences.ts`): `getAbsences(business, from, to,
+{ userId? })`, the live ones, under the session, paged, and `getTeamAway`,
+paged, each answering none before the migration (`isMissingTable`,
+`isMissingFunction`); `getAbsenceWrites(business, since)`, the log's
+`clock.absence_*` rows after an instant, oldest first, paged, each record
+before and after (`absenceWriteOf`; a row it can't read left out), for
+whether a month's days away changed since its file (`absencesChangedSince`,
+over the month's whole weeks, which the hours engine reads: a record moved
+out of the month counts, a day away in its first or last week outside it
+too, a note alone doesn't);
+`recordAbsence`, `changeAbsence`, `removeAbsence` and
+`restoreAbsence` with the secret key, their refusals read by
+`@domain/absences`'s `absenceFailureOf` (a closed month with its month).
+Covered by `absences.test.sql`, `rls_enabled.test.sql`,
+`demo_reset.test.sql`, `absences.test.ts` and `e2e/absences.spec.ts`.
 
 Clock stations from a signed-in tablet (`clock-stations.ts`, #78 phase 5;
 Orel's lock of 17 November 2026), on the functions of

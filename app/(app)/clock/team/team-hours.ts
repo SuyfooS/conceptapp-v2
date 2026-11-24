@@ -4,9 +4,11 @@ import {
   getClockPeople,
   getTimeEntries,
 } from "@db/time-clock";
+import { canRecordAbsence } from "@domain/absences";
 import { dateIn } from "@domain/availability";
 import { stationSeen } from "@domain/clock-station";
 import { canSeePay } from "@domain/payroll-access";
+import { buildsSchedule } from "@domain/schedule";
 import { timeIn } from "@domain/shabbat";
 import {
   attendanceOf,
@@ -25,6 +27,7 @@ import { clockAt } from "@domain/today";
 import { cache } from "react";
 import { z } from "zod";
 import { currentModuleSettings } from "../../modules";
+import { awayTodayRows, personAbsenceRows } from "../absences";
 import { clockAccess, currentEntriesToConfirm } from "../clock";
 import type { PersonHoursData, StationRow, TeamHoursData } from "./team-types";
 
@@ -71,6 +74,12 @@ export async function currentTeamHours(
 
   const nameOf = (userId: string) =>
     people.find((person) => person.userId === userId)?.name ?? null;
+  const today = clockAt(now, timeZone).date;
+  const awayToday = await awayTodayRows(businessId, today, nameOf, (userId) =>
+    people.some(
+      (person) => person.userId === userId && person.staff && person.active,
+    ),
+  );
   const hours = teamMonth(
     entries,
     month,
@@ -177,8 +186,9 @@ export async function currentTeamHours(
       rows: stationRows,
       howTo,
       shownEmpty: howTo && settings.requirePunchCode,
-      today: clockAt(now, timeZone).date,
+      today,
     },
+    awayToday,
   };
 }
 
@@ -206,8 +216,10 @@ export async function currentPersonHours(
   const currentMonth = monthOf(today);
   const month = monthFrom(askedForMonth, currentMonth);
   const { from, to } = monthRange(month, timeZone);
-  const [settings, people, entries, cancelled] = await Promise.all([
+  const [settings, scheduling, people, entries, cancelled] = await Promise.all([
     currentModuleSettings("time_clock"),
+    // The weeks the builder opens, for the way to a shift on a day away.
+    currentModuleSettings("scheduling"),
     getClockPeople(businessId),
     getTimeEntries(businessId, from, to, id.data),
     getCancelledEntries(businessId, from, to, id.data),
@@ -221,9 +233,20 @@ export async function currentPersonHours(
   }
 
   const step = settings.roundToMinutes;
-  // Who corrected or cancelled each shift, for its line.
+  // Who corrected or cancelled each shift, or recorded days away, for its line.
   const nameOf = (userId: string) =>
     people.find((row) => row.userId === userId)?.name ?? null;
+  const absences = await personAbsenceRows(
+    businessId,
+    person.userId,
+    month,
+    today,
+    timeZone,
+    scheduling.weekStartsOn,
+    nameOf,
+  );
+  const records = canRecordAbsence(access, access.userId, person.userId);
+  const onStaff = person.staff && person.active;
   return {
     person: { userId: person.userId, name: person.name },
     month,
@@ -241,5 +264,12 @@ export async function currentPersonHours(
     today,
     unpaidBreaks: settings.unpaidBreaks,
     viewOnly,
+    absences,
+    // Someone off the staff gets no new days away: the database says so too.
+    canRecord: records && onStaff,
+    // The viewer edits the clock (`teamAccess`), so only one's own stops it,
+    // or someone who left.
+    recordsNot: !records ? "own" : !onStaff ? "offStaff" : null,
+    builds: access.scheduling && buildsSchedule(access),
   };
 }

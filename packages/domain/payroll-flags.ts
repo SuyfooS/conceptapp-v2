@@ -1,3 +1,4 @@
+import type { AbsenceKind } from "./absences";
 import type { AgeBand } from "./minimum-wage";
 import type { HolidayKey } from "./payroll-calendar";
 
@@ -106,6 +107,20 @@ export type PayrollFlag =
    * check until an accountant confirms the reading (Orel, 9 November 2026).
    */
   | { code: "restWeekOvertime"; date: string; minutes: number }
+  /**
+   * A week with days away (known issue 19) that, counted toward the 42 hours
+   * as a paid holiday is, would move `minutes` into overtime: to check until
+   * an accountant decides (`PAYROLL_READINGS.absencesCountTowardWeek`).
+   * `days`: its days away the count would take.
+   */
+  | { code: "absenceWeek"; weekOf: string; days: number; minutes: number }
+  /** A day recorded as away with hours on the clock. */
+  | {
+      code: "absenceWorked";
+      date: string;
+      kind: AbsenceKind;
+      minutes: number;
+    }
   // Minors, by their age on the day.
   | { code: "minorUnderAge"; date: string }
   | { code: "minorDayOver"; date: string; minutes: number; limit: number }
@@ -156,6 +171,8 @@ export const PAYROLL_FLAGS = {
   hoursLawUnsupervised: "pay",
   hoursLawRestDay: "pay",
   restWeekOvertime: "pay",
+  absenceWeek: "pay",
+  absenceWorked: "record",
   minorUnderAge: "minors",
   minorDayOver: "minors",
   minorEveOver7: "minors",
@@ -175,8 +192,11 @@ export const PAYROLL_FLAG_CODES = Object.keys(
 export type PayrollNote =
   /** The month is past the April after the minimum wage table's last row. */
   | { code: "minimumWageTableStale" }
-  /** Always: vacation, sick days and reserve duty aren't in the app, and they count toward the 42. */
-  | { code: "paidAbsencesMissing" }
+  /**
+   * Always: days away are recorded in the app, never counted as days worked
+   * or toward the 42 (`absenceWeek` says where that could matter).
+   */
+  | { code: "absencesNotCounted" }
   /** The business rounds the clock's hours; payroll counts exact minutes. */
   | { code: "roundingIgnored"; step: 5 | 15 }
   /** The business's week isn't set: which way this person's week was worked out. */
@@ -192,7 +212,7 @@ export type PayrollNoteCode = PayrollNote["code"];
 /** Every note code: a code missing here fails to compile. */
 export const PAYROLL_NOTES = {
   minimumWageTableStale: true,
-  paidAbsencesMissing: true,
+  absencesNotCounted: true,
   roundingIgnored: true,
   workWeekUnset: true,
 } as const satisfies Record<PayrollNoteCode, true>;

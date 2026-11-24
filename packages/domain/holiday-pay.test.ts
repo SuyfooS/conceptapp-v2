@@ -345,3 +345,48 @@ describe("days and months", () => {
     expect(lineInWeek(line, "2026-09-13")).toBe(false);
   });
 });
+
+describe("holiday pay beside days away (known issue 19)", () => {
+  const yomKippur = [holiday("yom_kippur", "2026-09-21")];
+  const checks = (away: string[]) =>
+    lines({ holidays: yomKippur, awayDates: new Set(away) })[0]?.check;
+
+  it("asks to check a day away on the holiday, the day before or the day after", () => {
+    for (const date of ["2026-09-20", "2026-09-21", "2026-09-22"]) {
+      expect(checks([date]), date).toEqual([
+        "adjacentDays",
+        "inAbsence",
+        "averagePeriod",
+      ]);
+    }
+  });
+
+  it("asks nothing more for days away further off", () => {
+    expect(checks(["2026-09-19", "2026-09-23"])).toEqual([
+      "adjacentDays",
+      "averagePeriod",
+    ]);
+  });
+
+  it("asks to check election day inside a day away, as reserve duty over it", () => {
+    // Reserve duty recorded from 25 to 27 October: the line stays, with
+    // its check first.
+    const [line] = lines({
+      oneOffRestDays: [election],
+      awayDates: new Set(["2026-10-25", "2026-10-26", "2026-10-27"]),
+    });
+    expect(line?.check).toEqual([
+      "oneOffInAbsence",
+      "averagePeriod",
+      "fourteenDays",
+      "sectorExclusion",
+    ]);
+    // Only the day itself counts: away the day before or after asks nothing.
+    expect(
+      lines({
+        oneOffRestDays: [election],
+        awayDates: new Set(["2026-10-26", "2026-10-28"]),
+      })[0]?.check,
+    ).toEqual(["averagePeriod", "fourteenDays", "sectorExclusion"]);
+  });
+});

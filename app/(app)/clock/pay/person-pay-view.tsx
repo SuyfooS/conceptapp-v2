@@ -5,17 +5,20 @@ import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
 import { History } from "lucide-react";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { type AppWording, translator } from "../../wording";
 import { DetailsCard } from "./details-card";
 import { MethodButton } from "./method-sheet";
 import { NoteView } from "./note-view";
 import {
+  absenceKindText,
   CancelledShifts,
   MissingWage,
   PayDayList,
   PayDayTable,
   PayHero,
   useMonthName,
+  useShortDate,
   WageSpans,
 } from "./pay-parts";
 import type {
@@ -35,6 +38,8 @@ import {
   RemarksList,
 } from "./rates-parts";
 import { WageCard } from "./wage-card";
+
+const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 
 /**
  * One person's month for payroll: their hours, days and shifts, each shift
@@ -75,6 +80,7 @@ export function PersonPayView({
   const tc: ClockT = translator(wording, "modules.time_clock");
   const tNotes = translator(wording, "modules.time_clock.payroll.notes");
   const monthName = useMonthName();
+  const shortDate = useShortDate();
   const name = data.person.name ?? t("noName");
   const { totals } = data;
   // A month with nothing by rate, nothing to pay for a day not worked, nothing
@@ -176,7 +182,7 @@ export function PersonPayView({
             {tNotes("minimumWageTableStale")}
           </p>
         ) : null}
-        <p className="text-ink-2 text-sm">{tNotes("paidAbsencesMissing")}</p>
+        <p className="text-ink-2 text-sm">{tNotes("absencesNotCounted")}</p>
       </RemarksList>
     </PageSection>
   ) : null;
@@ -262,6 +268,27 @@ export function PersonPayView({
     ) : (
       empty
     );
+  // Their days away by kind (known issue 19), with each date: read only,
+  // never days worked. Phone: after what to check; tablet: in the side
+  // column with the summary; desktop: beside what to check.
+  const absences =
+    data.absences.length > 0 ? (
+      <PageSection title={t("absences.title")}>
+        <p className="px-1 text-ink-2 text-sm">{t("absences.hint")}</p>
+        <ListGroup>
+          {data.absences.map((one) => (
+            <ListRow
+              key={one.kind}
+              title={absenceKindText(one.kind, one.dates.length, t)}
+              subtitle={t.rich("absences.dates", {
+                ltr,
+                dates: one.dates.map(shortDate).join(", "),
+              })}
+            />
+          ))}
+        </ListGroup>
+      </PageSection>
+    ) : null;
   // The month's cancelled shifts, under the days in every shape: who, when
   // and why, though they count in no total and no file.
   const cancelled =
@@ -294,6 +321,7 @@ export function PersonPayView({
         {hero}
         {byRate}
         {toCheck}
+        {absences}
         {wage}
         {details}
         {monthWage ? <ListGroup>{monthWage}</ListGroup> : null}
@@ -311,6 +339,7 @@ export function PersonPayView({
           {wage}
           {details}
           <PageSection title={t("person.summary")}>{summary}</PageSection>
+          {absences}
         </div>
         <div className="flex min-w-0 flex-col gap-6">
           <PageSection title={t("person.daysTitle")}>{dayList}</PageSection>
@@ -333,10 +362,17 @@ export function PersonPayView({
           )}
           <PageSection title={t("person.summary")}>{summary}</PageSection>
         </div>
-        {byRate || toCheck ? (
+        {byRate || toCheck || absences ? (
           <div className="grid grid-cols-2 items-start gap-8">
             {byRate ?? <div />}
-            {toCheck ?? <div />}
+            {toCheck || absences ? (
+              <div className="flex min-w-0 flex-col gap-6">
+                {toCheck}
+                {absences}
+              </div>
+            ) : (
+              <div />
+            )}
           </div>
         ) : null}
         <PageSection title={t("person.daysTitle")}>

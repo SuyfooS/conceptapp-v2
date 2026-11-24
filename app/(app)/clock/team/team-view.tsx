@@ -60,7 +60,20 @@ export function TeamHoursView({
   const tPay = translator(wording, "app.pay");
   const tClock = translator(wording, "app.clock");
   const tHistory = translator(wording, "app.clock.history");
+  const tAbsences = translator(wording, "app.clock.absences");
   const format = useFormatter();
+  const away = new Set(data.awayToday.map((row) => row.userId));
+  const shortDay = (date: string) =>
+    format.dateTime(new Date(`${date}T12:00:00Z`), {
+      day: "numeric",
+      month: "numeric",
+      timeZone: "UTC",
+    });
+  const weekday = (date: string) =>
+    format.dateTime(new Date(`${date}T12:00:00Z`), {
+      weekday: "long",
+      timeZone: "UTC",
+    });
   const personHref = (userId: string, month = data.month) =>
     `${paths.team}/${userId}?month=${month}`;
   const name = (value: string | null) => value ?? t("noName");
@@ -119,39 +132,74 @@ export function TeamHoursView({
       ) : null}
 
       <div className="flex flex-col gap-6 md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] md:items-start md:gap-8">
-        <PageSection title={t("atWork.title")}>
-          {data.atWork.length > 0 ? (
-            <ListGroup>
-              {data.atWork.map((person) => (
-                <ListRow
-                  key={person.userId}
-                  href={personHref(person.userId, person.month)}
-                  leading={<PersonAvatar name={person.name} />}
-                  title={name(person.name)}
-                  subtitle={
-                    <>
-                      {t.rich("atWork.since", { time: person.since, ltr })}
-                      {attendanceLine(
-                        person.attendance,
-                        data.required,
-                        tHistory,
-                      )}
-                    </>
-                  }
-                  trailing={
-                    person.onBreak ? (
-                      <Badge tone="warning">{t("atWork.onBreak")}</Badge>
-                    ) : null
-                  }
-                />
-              ))}
-            </ListGroup>
-          ) : (
-            <Card>
-              <p className="text-ink-2">{t("atWork.empty")}</p>
-            </Card>
-          )}
-        </PageSection>
+        <div className="flex min-w-0 flex-col gap-6">
+          <PageSection title={t("atWork.title")}>
+            {data.atWork.length > 0 ? (
+              <ListGroup>
+                {data.atWork.map((person) => (
+                  <ListRow
+                    key={person.userId}
+                    href={personHref(person.userId, person.month)}
+                    leading={<PersonAvatar name={person.name} />}
+                    title={name(person.name)}
+                    subtitle={
+                      <>
+                        {t.rich("atWork.since", { time: person.since, ltr })}
+                        {attendanceLine(
+                          person.attendance,
+                          data.required,
+                          tHistory,
+                        )}
+                        {away.has(person.userId) ? (
+                          <span className="block text-warning">
+                            {tAbsences("recordedToday")}
+                          </span>
+                        ) : null}
+                      </>
+                    }
+                    trailing={
+                      person.onBreak ? (
+                        <Badge tone="warning">{t("atWork.onBreak")}</Badge>
+                      ) : null
+                    }
+                  />
+                ))}
+              </ListGroup>
+            ) : (
+              <Card>
+                <p className="text-ink-2">{t("atWork.empty")}</p>
+              </Card>
+            )}
+          </PageSection>
+
+          {/* Days away (known issue 19): who isn't at work today, and why. */}
+          {data.awayToday.length > 0 ? (
+            <PageSection title={tAbsences("awayToday")}>
+              <ListGroup>
+                {data.awayToday.map((row) => (
+                  <ListRow
+                    key={row.userId}
+                    href={personHref(row.userId, data.currentMonth)}
+                    leading={<PersonAvatar name={row.name} />}
+                    title={name(row.name)}
+                    subtitle={
+                      row.until === data.stations.today
+                        ? tAbsences("kindToday", {
+                            kind: tAbsences(`kinds.${row.kind}`),
+                          })
+                        : tAbsences.rich("kindUntil", {
+                            ltr,
+                            kind: tAbsences(`kinds.${row.kind}`),
+                            weekday: weekday(row.until),
+                            date: shortDay(row.until),
+                          })
+                    }
+                  />
+                ))}
+              </ListGroup>
+            </PageSection>
+          ) : null}
+        </div>
 
         <div className="flex min-w-0 flex-col">
           <MonthHero

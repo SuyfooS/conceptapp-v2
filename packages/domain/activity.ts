@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ABSENCE_KINDS, type AbsenceKind } from "./absences";
 import { addDays, dateIn } from "./availability";
 import {
   DOCUMENT_DIRECTIONS,
@@ -107,6 +108,15 @@ export type ActivityPerson =
  * on its own (`APP_ACTIONS`), as the inbox names it (`NotificationActor`).
  */
 export type ActivityActor = ActivityPerson | { kind: "app" };
+
+/** What was done to someone's days away (20261127000700_absences.sql). */
+export const ABSENCE_ACTIONS = [
+  "clock.absence_add",
+  "clock.absence_change",
+  "clock.absence_remove",
+  "clock.absence_restore",
+] as const;
+export type AbsenceAction = (typeof ABSENCE_ACTIONS)[number];
 
 /** An audit log row, as the database gives it. */
 export type ActivityRow = {
@@ -328,6 +338,22 @@ export type ActivityLine =
       /** An unpaid break: its change changed the paid hours. Null when unknown. */
       unpaid: boolean | null;
       note: string | null;
+    }
+  | {
+      /**
+       * Someone who edits the clock recorded, changed, removed or brought
+       * back someone's days away (20261127000700_absences.sql), with the
+       * kind and the days as they are after it (a removal's: as they were).
+       * Never the note: the log keeps only whether there is one.
+       */
+      action: AbsenceAction;
+      person: ActivityPerson;
+      /** Whose days, for the way to their hours; null when the row can't say. */
+      personId: string | null;
+      kind: AbsenceKind;
+      /** YYYY-MM-DD, both included. */
+      from: string;
+      to: string;
     }
   /** A manager approved hours made without a code, or set by someone for themselves. */
   | { action: "clock.confirm"; person: ActivityPerson }
@@ -960,6 +986,13 @@ const instant = z
 const fields = z.record(z.string(), z.unknown());
 const times = z.object({ clock_in: instant, clock_out: instant.nullable() });
 const span = z.object({ start: instant, end: instant.nullable() });
+const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const absenceSide = z.object({
+  kind: z.enum(ABSENCE_KINDS),
+  from: isoDay,
+  to: isoDay,
+});
+const absenceDays = absenceSide.extend({ person: id });
 const fixValues = z.object({
   checked: z.boolean().nullable().catch(null),
   given: z.number().nullable().catch(null),
@@ -1051,6 +1084,12 @@ const schemas = {
     unpaid: z.boolean().nullable().optional().catch(null),
     note: z.unknown().optional(),
   }),
+  // 20261127000700_absences.sql: the kind and the days, never the note; a
+  // change has both sides, and its line names what it is now.
+  "clock.absence_add": absenceDays,
+  "clock.absence_change": z.object({ person: id, to: absenceSide }),
+  "clock.absence_remove": absenceDays,
+  "clock.absence_restore": absenceDays,
   "clock.confirm": z.object({ person: id }),
   "clock.code.locked": z.object({ person: id.optional() }),
   // 20261108000200_qr_clock.sql: the add keeps the name, a stop or restart
@@ -1590,6 +1629,32 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
         unpaid: details.unpaid ?? null,
         // A restore asks for no reason.
         note: details.change === "restore" ? null : noteOf(details.note),
+      };
+    }
+    case "clock.absence_add":
+    case "clock.absence_remove":
+    case "clock.absence_restore": {
+      const details = read(schemas[row.action]);
+      if (!details || details.to < details.from) return other;
+      return {
+        action: row.action,
+        person: personOf(details.person, lookups),
+        personId: pathIdOf(details.person),
+        kind: details.kind,
+        from: details.from,
+        to: details.to,
+      };
+    }
+    case "clock.absence_change": {
+      const details = read(schemas["clock.absence_change"]);
+      if (!details || details.to.to < details.to.from) return other;
+      return {
+        action: row.action,
+        person: personOf(details.person, lookups),
+        personId: pathIdOf(details.person),
+        kind: details.to.kind,
+        from: details.to.from,
+        to: details.to.to,
       };
     }
     case "clock.confirm": {

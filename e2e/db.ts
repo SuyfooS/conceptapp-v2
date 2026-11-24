@@ -6164,3 +6164,52 @@ export async function clearDemoTaxYears(userId: string): Promise<void> {
       where business_id = ${DEMO_RESTAURANT} and user_id = ${userId}`;
   });
 }
+
+/**
+ * Days away start with none at the demo restaurant (known issue 19): they
+ * are kept as hours are (20261127000700_absences.sql), so only a purge that
+ * names the business deletes them, for this transaction, and only theirs.
+ */
+export async function clearDemoAbsences(): Promise<void> {
+  await sql.begin(async (tx) => {
+    await tx`select set_config('ca.records_purge', ${DEMO_RESTAURANT}, true)`;
+    await tx`delete from public.absences a
+      where a.business_id = ${DEMO_RESTAURANT}`;
+  });
+}
+
+/**
+ * Records days away for someone at the demo restaurant as its manager,
+ * Shiran, through public.record_absence, so the log has its row. Returns the
+ * record's id.
+ */
+export async function recordDemoAbsence(
+  personId: string,
+  kind: "vacation" | "sick" | "reserve" | "other",
+  from: string,
+  to: string,
+): Promise<string> {
+  const [row] = await sql<{ id: string }[]>`
+    select public.record_absence(${DEMO_MANAGER}::uuid, ${DEMO_RESTAURANT}::uuid,
+      ${personId}::uuid, ${kind}, ${from}::date, ${to}::date) as id`;
+  if (!row) throw new Error("no day away was recorded");
+  return row.id;
+}
+
+/** Someone's days away at the demo restaurant, live and removed, oldest first. */
+export async function demoAbsences(personId: string): Promise<
+  {
+    kind: string;
+    from: string;
+    to: string;
+    note: string | null;
+    removed: boolean;
+  }[]
+> {
+  return sql`
+    select a.kind, a.from_day::text as from, a.to_day::text as to, a.note,
+      a.removed_at is not null as removed
+    from public.absences a
+    where a.business_id = ${DEMO_RESTAURANT} and a.user_id = ${personId}::uuid
+    order by a.recorded_at, a.id`;
+}

@@ -538,6 +538,38 @@ const demoRow = (
 const DEMO_FIXED_LIST = "00000000-0000-4000-8000-00000000f1a1";
 
 export const demoActivityRows: ActivityRow[] = [
+  // Noa's days away (known issue 19), as record_absence, change_absence,
+  // remove_absence and restore_absence log them: the kind and the days,
+  // never the note. Each leads to her hours of the month.
+  demoRow(152, "2026-11-04T16:45:00+02:00", "shiran", "clock.absence_restore", {
+    absence: "absence-noa-sick",
+    person: "noa",
+    kind: "sick",
+    from: "2026-11-05",
+    to: "2026-11-05",
+  }),
+  demoRow(151, "2026-11-04T16:40:00+02:00", "shiran", "clock.absence_remove", {
+    absence: "absence-noa-sick",
+    person: "noa",
+    kind: "sick",
+    from: "2026-11-05",
+    to: "2026-11-05",
+  }),
+  demoRow(150, "2026-11-04T16:35:00+02:00", "shiran", "clock.absence_change", {
+    absence: "absence-noa-reserve",
+    person: "noa",
+    from: { kind: "other", from: "2026-11-26", to: "2026-11-30" },
+    to: { kind: "reserve", from: "2026-11-26", to: "2026-12-03" },
+    note_changed: false,
+  }),
+  demoRow(149, "2026-11-04T16:30:00+02:00", "shiran", "clock.absence_add", {
+    absence: "absence-noa-vacation",
+    person: "noa",
+    kind: "vacation",
+    from: "2026-11-09",
+    to: "2026-11-11",
+    noted: true,
+  }),
   // The file's settings (H5b), set up by the team as set_module_settings
   // logs them: the business's own values, the phone as people write it and
   // left to right, nothing before as "לא נקבע".

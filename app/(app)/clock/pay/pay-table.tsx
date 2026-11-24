@@ -11,6 +11,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 import {
+  absencesText,
   CountCell,
   MissingWage,
   PayDayList,
@@ -167,6 +168,9 @@ export function PayMonthTable({
                   ? t("minutes", { minutes: row.totals.unpaidBreakMinutes })
                   : t("none"),
               wage: <WageCell row={row} t={t} />,
+              absences: absencesText(row.absenceDays, t) ?? (
+                <span className="text-ink-2">{t("none")}</span>
+              ),
               estimate: <EstimateCell row={row} t={t} />,
               // The phone's row says each of these on its own, in these words.
               corrected: <CountCell value={row.totals.corrected} />,

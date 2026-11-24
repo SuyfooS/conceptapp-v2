@@ -1,3 +1,9 @@
+import {
+  type AbsenceKind,
+  absenceDates,
+  absenceDaysByKind,
+  type KindSpan,
+} from "./absences";
 import { addDays, instantIn, weekdayOf, weekStartOf } from "./availability";
 import {
   type HolidayPayLine,
@@ -71,7 +77,11 @@ export type { PayrollFlag, PayrollNote } from "./payroll-flags";
  * `PAYROLL_READINGS` (plan §14).
  */
 
-/** Bumped whenever a rule changes what a month comes to (P9 keeps it with a closed month). */
+/**
+ * Bumped whenever a rule changes what a month comes to (P9 keeps it with a
+ * closed month). Days away (known issue 19) left it as it was: they move no
+ * minute, they only flag a week and list the days.
+ */
 export const PAYROLL_ENGINE_VERSION = "2026-11";
 
 export const BUCKETS = [
@@ -170,6 +180,11 @@ export type PayrollInput = {
   history?: ReadonlyMap<string, PayrollHistory>;
   /** The readings of plan §14; screens never pass them, the tests of the other reading do. */
   readings?: PayrollReadings;
+  /**
+   * Everyone's live days away over `payrollRange(month)` (known issue 19):
+   * never days worked, flagged where they could matter to the 42 hours.
+   */
+  absences?: readonly KindSpan[];
 };
 
 export type PayrollDay = {
@@ -220,6 +235,10 @@ export type PersonPayroll = {
   days: PayrollDay[];
   /** Every flag of the month: the days' and the person's. */
   flags: PayrollFlag[];
+  /** Each date of the month they were away, with its kind (known issue 19). */
+  absences: { date: string; kind: AbsenceKind }[];
+  /** The month's days away by kind, by the calendar. */
+  absenceDays: Record<AbsenceKind, number>;
 };
 
 export type PayrollMonth = {
@@ -798,6 +817,12 @@ function personMonth(
     ...holidays.map((holiday) => holiday.window),
   ]);
 
+  // Days away (known issue 19), over the whole range: never days worked.
+  const ownAway = (input.absences ?? []).filter(
+    (one) => one.userId === person.userId,
+  );
+  const awayDates = absenceDates(ownAway, range.from, range.to);
+
   // Workdays: an entry belongs to the local date of its clock-in (step 1).
   const byDate = new Map<string, TimeEntry[]>();
   for (const entry of own) {
@@ -843,9 +868,26 @@ function personMonth(
       person,
       workedDates,
       history: input.history?.get(person.userId),
+      awayDates: new Set(awayDates.map((one) => one.date)),
     },
     readings,
   );
+
+  // A day away counts toward the week only where it would have been a
+  // workday: not worked, not their rest day, not a holiday or a one-off rest
+  // day.
+  const workedOnDate = new Set(workDays.map((day) => day.date));
+  const notWorkdays = new Set([
+    ...holidays.map((holiday) => holiday.date),
+    ...calendar.oneOffRestDays.map((day) => day.date),
+  ]);
+  const history = input.history?.get(person.userId);
+  const average =
+    history && history.days > 0
+      ? Math.round(history.minutes / history.days)
+      : null;
+  const countedKinds = new Set<AbsenceKind>(readings.absencesCountTowardWeek);
+  const weekFlags: PayrollFlag[] = [];
 
   // Week by week, in the way the business's week says (step 3, 5).
   const ways: readonly Way[] = flat
@@ -863,6 +905,7 @@ function personMonth(
       (day) => day.date >= weekOf && day.date <= addDays(weekOf, 6),
     );
     if (weekDays.length === 0) continue;
+    const weekEnd = addDays(weekOf, 6);
     // Paid days not worked, at their average or their norm (§14, accountant 1).
     const atNorm = readings.paidAbsenceCountsAt === "norm";
     const paidAbsent = flat
@@ -871,28 +914,52 @@ function personMonth(
           (line) =>
             (atNorm || line.averageMinutes !== null) &&
             line.date >= weekOf &&
-            line.date <= addDays(weekOf, 6),
+            line.date <= weekEnd,
         );
-    const results: WeekWay[] = ways.map((way) => {
-      const absences = paidAbsent.map((line) => ({
-        at: clock.at(line.date, "00:00"),
-        ms:
-          (atNorm
-            ? normOf(
-                {
-                  date: line.date,
-                  entries: [],
-                  pieces: [],
-                  total: 0,
-                  night: false,
-                  eve: eveFor(line.date, person, calendar, holidayWorked),
-                },
-                way,
-                settings,
-                readings,
-              )
-            : (line.averageMinutes ?? 0)) * MINUTE,
-      }));
+    // Days away that would have been workdays: the kinds the reading counts
+    // join the paid days not worked, the same way; the others only ask
+    // whether counting them would have moved minutes (`absenceWeek`).
+    const weekAway = flat
+      ? []
+      : awayDates.filter(
+          (one) =>
+            one.date >= weekOf &&
+            one.date <= weekEnd &&
+            !workedOnDate.has(one.date) &&
+            !notWorkdays.has(one.date) &&
+            weekdayOf(one.date) !== person.restDay,
+        );
+    const awayCounted = weekAway.filter(
+      (one) => countedKinds.has(one.kind) && (atNorm || average !== null),
+    );
+    const awayAsked = weekAway.filter((one) => !countedKinds.has(one.kind));
+    const dayOff = (date: string): WorkDay => ({
+      date,
+      entries: [],
+      pieces: [],
+      total: 0,
+      night: false,
+      eve: eveFor(date, person, calendar, holidayWorked),
+    });
+    // A day away at the average, as a holiday; with none (only asked), its norm.
+    const awayMinutes = (date: string, way: Way) =>
+      atNorm || average === null
+        ? normOf(dayOff(date), way, settings, readings)
+        : average;
+    const runWay = (way: Way, away: readonly { date: string }[]): WeekWay => {
+      const absences = [
+        ...paidAbsent.map((line) => ({
+          at: clock.at(line.date, "00:00"),
+          ms:
+            (atNorm
+              ? normOf(dayOff(line.date), way, settings, readings)
+              : (line.averageMinutes ?? 0)) * MINUTE,
+        })),
+        ...away.map((one) => ({
+          at: clock.at(one.date, "00:00"),
+          ms: awayMinutes(one.date, way) * MINUTE,
+        })),
+      ];
       const daily = weekDays.map((day) => {
         const norm = normOf(day, way, settings, readings);
         return { day, norm, parts: dayParts(day, norm, rest, hoursLaw) };
@@ -917,12 +984,28 @@ function personMonth(
         days: out,
         weight: out.reduce((sum, d) => sum + weight(d.buckets), 0),
       };
-    });
+    };
+    const results: WeekWay[] = ways.map((way) => runWay(way, awayCounted));
     // The highest-paying way; a tie goes to the first (six) (plan §14, accountant 2).
     const best = results.reduce((top, result) =>
       result.weight > top.weight ? result : top,
     );
     for (const d of best.days) chosen.set(d.day.date, d);
+    if (awayAsked.length > 0 && weekDays.some((day) => inMonth(day.date))) {
+      const overtime = (result: WeekWay) =>
+        result.days.reduce((sum, d) => sum + overtimeOf(d.buckets), 0);
+      const moved =
+        overtime(runWay(best.way, [...awayCounted, ...awayAsked])) -
+        overtime(best);
+      if (moved > 0) {
+        weekFlags.push({
+          code: "absenceWeek",
+          weekOf,
+          days: awayAsked.length,
+          minutes: moved,
+        });
+      }
+    }
     if (
       !flat &&
       settings.workWeek === "unset" &&
@@ -1208,13 +1291,28 @@ function personMonth(
     }
   }
 
+  // A date away with hours on the clock: the record or the hours are wrong.
+  for (const one of awayDates) {
+    if (!inMonth(one.date)) continue;
+    const work = workDays.find((day) => day.date === one.date);
+    if (work && work.total > 0) {
+      flags.push({
+        code: "absenceWorked",
+        date: one.date,
+        kind: one.kind,
+        minutes: work.total,
+      });
+    }
+  }
+  flags.push(...weekFlags);
+
   // Wages (step 6) and the estimate (step 8).
-  const worked = days.filter((day) => day.minutes > 0);
+  const workedDays = days.filter((day) => day.minutes > 0);
   const monthDays = daysBetween(`${month}-01`, lastDayOf(month));
   const wageFor = (date: string) => wageOn(person.wages, date)?.agorot ?? null;
   const wageSpans = monthWageSpans(person.wages, month);
   const byWage: WageSegment[] = wageSpans.flatMap((span) => {
-    const inSpan = worked.filter(
+    const inSpan = workedDays.filter(
       (day) => day.date >= span.from && day.date <= span.to,
     );
     if (inSpan.length === 0) return [];
@@ -1237,10 +1335,10 @@ function personMonth(
       },
     ];
   });
-  const unpaidDay = worked.find((day) => wageFor(day.date) === null);
+  const unpaidDay = workedDays.find((day) => wageFor(day.date) === null);
   if (unpaidDay) flags.push({ code: "noWage", from: unpaidDay.date });
 
-  if (worked.length > 0) {
+  if (workedDays.length > 0) {
     if (person.payrollNumber === null) flags.push({ code: "noPayrollNumber" });
     if (person.hoursLaw === "trust") flags.push({ code: "hoursLawTrust" });
     if (person.hoursLaw === "unsupervised") {
@@ -1263,7 +1361,7 @@ function personMonth(
   const ownMonth = own.filter((entry) => inMonth(dateOfEntry(entry)));
   return {
     userId: person.userId,
-    daysWorked: worked.length,
+    daysWorked: workedDays.length,
     minutes: days.reduce((sum, day) => sum + day.minutes, 0),
     buckets: addBuckets(...days.map((day) => day.buckets)),
     nightShifts: days.filter((day) => day.night).length,
@@ -1281,6 +1379,8 @@ function personMonth(
     estimateAgorot,
     days,
     flags,
+    absences: awayDates.filter((one) => inMonth(one.date)),
+    absenceDays: absenceDaysByKind(ownAway, month),
   };
 }
 
@@ -1362,7 +1462,7 @@ export function payrollMonth(input: PayrollInput): PayrollMonth {
   if (minimumWageTableStale(input.month, input.minimumWage ?? MINIMUM_WAGES)) {
     notes.push({ code: "minimumWageTableStale" });
   }
-  notes.push({ code: "paidAbsencesMissing" });
+  notes.push({ code: "absencesNotCounted" });
   if (input.settings.roundToMinutes !== 0) {
     notes.push({
       code: "roundingIgnored",
@@ -1392,6 +1492,7 @@ export function personPayroll(
       ...input,
       people: [person],
       entries: input.entries.filter((entry) => entry.userId === userId),
+      absences: input.absences?.filter((one) => one.userId === userId),
     }).people[0] ?? null
   );
 }
@@ -1456,14 +1557,17 @@ export function payrollPersonOf(
 
 /**
  * Who a month is worked out for: the staff (an owner, a manager, a worker),
- * and anyone with hours in the entries, such as someone who became the
- * business's accountant after working there.
+ * and anyone with hours or days away in the month, such as someone who
+ * became the business's accountant after working there.
  */
 export function payrollPeopleOf(
   members: readonly { userId: string; role: Role; active: boolean }[],
   entries: readonly Pick<TimeEntry, "userId">[],
+  absences: readonly { userId: string }[] = [],
 ): string[] {
-  const withHours = new Set(entries.map((entry) => entry.userId));
+  const withHours = new Set(
+    [...entries, ...absences].map((entry) => entry.userId),
+  );
   return members
     .filter(
       (member) =>

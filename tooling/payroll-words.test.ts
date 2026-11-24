@@ -122,6 +122,13 @@ const SAMPLES: { [C in PayrollFlagCode]: Extract<PayrollFlag, { code: C }> } = {
   hoursLawUnsupervised: { code: "hoursLawUnsupervised" },
   hoursLawRestDay: { code: "hoursLawRestDay", date: DAY, minutes: 60 },
   restWeekOvertime: { code: "restWeekOvertime", date: DAY, minutes: 60 },
+  absenceWeek: { code: "absenceWeek", weekOf: DAY, days: 2, minutes: 120 },
+  absenceWorked: {
+    code: "absenceWorked",
+    date: DAY,
+    kind: "vacation",
+    minutes: 480,
+  },
   minorUnderAge: { code: "minorUnderAge", date: DAY },
   minorDayOver: { code: "minorDayOver", date: DAY, minutes: 600, limit: 480 },
   minorEveOver7: { code: "minorEveOver7", date: DAY, minutes: 500 },

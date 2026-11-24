@@ -1,3 +1,4 @@
+import type { AwaySpan } from "@domain/absences";
 import {
   type AvailabilityAnswer,
   addDays,
@@ -313,6 +314,15 @@ export const shopNextDraft: (ScheduledShift & { id: string })[] =
           ]
         : [],
   }));
+
+/**
+ * Next week, Itai is away from Sunday to Wednesday (`&away=1`, known issue
+ * 19): the days and the draft's Sunday morning say so, the sheet groups him,
+ * and the copy leaves him off Tuesday morning and Wednesday evening.
+ */
+export const shopNextAway: AwaySpan[] = [
+  { userId: "itai", from: NEXT_WEEK, to: addDays(NEXT_WEEK, 3) },
+];
 
 export const shopNextDraftBasis = Object.fromEntries(
   shopNextDraft.map((shift, i) => [shift.id, digest(i + 101)]),

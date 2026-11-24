@@ -1,3 +1,4 @@
+import { ABSENCE_KINDS, type KindSpan } from "@domain/absences";
 // Mock rows for the pay screens' demo: October 2026 at the demo restaurant,
 // to the minute, with each person's hourly wage and details for payroll, run
 // through the real hours engine (payroll P7) with the three months before for
@@ -108,13 +109,21 @@ export const demoPayPaths: PayPaths = {
 };
 
 /**
- * The demo's paths for where October stands (`close`, `demoClosing`): with
- * September's differences in October's file ("before", "empty"), the file
- * link says so, so the workbook downloaded matches the screen.
+ * The demo's paths for where October stands (`close`, `demoClosing`) and
+ * whether Noa has her days away (`absences` "1"): with September's
+ * differences in October's file ("before", "empty"), or her days away, the
+ * file link says so, so the workbook downloaded matches the screen.
  */
-export function demoPayPathsFor(close: string | undefined): PayPaths {
-  return close === "before" || close === "empty"
-    ? { ...demoPayPaths, file: `${demoPayPaths.file}?close=${close}` }
+export function demoPayPathsFor(
+  close: string | undefined,
+  absences?: string,
+): PayPaths {
+  const asked = new URLSearchParams();
+  if (close === "before" || close === "empty") asked.set("close", close);
+  if (absences === "1") asked.set("absences", "1");
+  const query = asked.toString();
+  return query
+    ? { ...demoPayPaths, file: `${demoPayPaths.file}?${query}` }
     : demoPayPaths;
 }
 
@@ -280,6 +289,8 @@ const person = (
     days.map((day) => day.date),
   ),
   payrollNumber: detailsOfDemo(userId).payrollNumber,
+  // Filled in from the hours engine below, with the rates.
+  absenceDays: null,
   // Shifts and no number: everyone here is on the staff, and nobody an owner.
   noNumber:
     totalsOf(days).shifts > 0 && detailsOfDemo(userId).payrollNumber === null,
@@ -503,16 +514,39 @@ const ENGINE: PayrollMonth = payrollMonth(
   ),
 );
 
-/** The engine's month, or as while a business's estimate is off, without its amounts. */
-const engineOf = (amounts: boolean) =>
-  amounts ? ENGINE : withoutAmounts(ENGINE);
+/**
+ * Noa's days away in October (`?absences=1`, known issue 19): a vacation
+ * and a sick day, both on Mondays, her day off, so no hour moves.
+ */
+const DEMO_ABSENCES: KindSpan[] = [
+  { userId: "noa", kind: "vacation", from: "2026-10-19", to: "2026-10-19" },
+  { userId: "noa", kind: "sick", from: "2026-10-26", to: "2026-10-26" },
+];
+
+/** October by the hours engine, with Noa's days away. */
+const ENGINE_AWAY: PayrollMonth = payrollMonth({
+  ...demoInput(
+    MONTH,
+    people.map((row) => row.userId),
+  ),
+  absences: DEMO_ABSENCES,
+});
+
+/**
+ * The engine's month, or as while a business's estimate is off, without its
+ * amounts; with `away`, the one with Noa's days away.
+ */
+const engineOf = (amounts: boolean, away = false) => {
+  const engine = away ? ENGINE_AWAY : ENGINE;
+  return amounts ? engine : withoutAmounts(engine);
+};
 
 /** `?estimate=off` shows the screens as a business sees them before the team turns amounts on. */
 const amountsFrom = (estimate: string | undefined) => estimate !== "off";
 
-/** Everyone's rows with their month by rate. */
-function peopleWithRates(amounts: boolean): PayPerson[] {
-  const engine = engineOf(amounts);
+/** Everyone's rows with their month by rate, and their days away by kind. */
+function peopleWithRates(amounts: boolean, away = false): PayPerson[] {
+  const engine = engineOf(amounts, away);
   return people.map((row) => {
     const month = engine.people.find((one) => one.userId === row.userId);
     return {
@@ -520,6 +554,7 @@ function peopleWithRates(amounts: boolean): PayPerson[] {
       rates: month
         ? personRates(month, detailsOfDemo(row.userId).restDay)
         : null,
+      absenceDays: month?.absenceDays ?? null,
     };
   });
 }
@@ -588,7 +623,7 @@ function demoClosing(close: string | undefined): MonthClosing {
  * those with no payroll number; `estimate` "off" leaves out every amount;
  * `file` "sent" is a month whose file went out on 3 November, "changed" one
  * whose hours changed since; `close` where the month stands for payroll
- * (`demoClosing`).
+ * (`demoClosing`); `absences` "1" gives Noa her days away.
  */
 export function demoPayMonth(
   person?: string,
@@ -596,6 +631,7 @@ export function demoPayMonth(
   estimate?: string,
   file?: string,
   close?: string,
+  absences?: string,
 ): PayMonthData {
   const amounts = amountsFrom(estimate);
   // September closed and changed since: October's file holds its days.
@@ -634,8 +670,9 @@ export function demoPayMonth(
       differences,
     };
   }
-  const engine = engineOf(amounts);
-  const everyone = peopleWithRates(amounts);
+  const away = absences === "1";
+  const engine = engineOf(amounts, away);
+  const everyone = peopleWithRates(amounts, away);
   const filter =
     show === "noWage" && noWage > 0
       ? "noWage"
@@ -746,9 +783,10 @@ export function demoPayDifferences(): ExportDifferences {
  * October's file for payroll on the demo (payroll P8): the same month by the
  * hours engine, its people with their October shifts as the clock recorded
  * them, and what the file says about itself. Built by the app's own code
- * (`payrollFileOf`) and logged nowhere.
+ * (`payrollFileOf`) and logged nowhere. With `away`, the month holds Noa's
+ * days away too (known issue 19), as `?absences=1` shows them.
  */
-export function demoPayExport(): {
+export function demoPayExport(away = false): {
   month: PayrollMonth;
   people: ExportPerson[];
   meta: ExportMeta;
@@ -790,7 +828,7 @@ export function demoPayExport(): {
     originals,
   );
   return {
-    month: ENGINE,
+    month: away ? ENGINE_AWAY : ENGINE,
     people: people.map((row) => {
       const own = detailsOfDemo(row.userId);
       return {
@@ -853,15 +891,20 @@ const cancelledShifts: Record<string, ShiftRecord[]> = {
 /**
  * One person's October, from the same days as their row; `estimate` "off"
  * leaves out every amount, `close` "closed" is October closed for payroll,
- * which a new wage can't start in (payroll P9).
+ * which a new wage can't start in (payroll P9); `absences` "1" gives Noa
+ * her days away.
  */
 export function demoPayPerson(
   userId: string,
   estimate?: string,
   close?: string,
+  absences?: string,
 ): PayPersonData | null {
   const amounts = amountsFrom(estimate);
-  const row = peopleWithRates(amounts).find((one) => one.userId === userId);
+  const away = absences === "1";
+  const row = peopleWithRates(amounts, away).find(
+    (one) => one.userId === userId,
+  );
   if (!row) return null;
   const {
     days,
@@ -871,8 +914,12 @@ export function demoPayPerson(
     noNumber: _noNumber,
     minor: _minor,
     rates,
+    absenceDays: _absenceDays,
     ...who
   } = row;
+  const awayDates =
+    engineOf(amounts, away).people.find((one) => one.userId === userId)
+      ?.absences ?? [];
   return {
     person: who,
     month: MONTH,
@@ -890,6 +937,12 @@ export function demoPayPerson(
     stale: false,
     // The demo's reader is the owner: the note leads to the clock's settings.
     setsWeek: true,
+    absences: ABSENCE_KINDS.flatMap((kind) => {
+      const dates = awayDates
+        .filter((one) => one.kind === kind)
+        .map((one) => one.date);
+      return dates.length > 0 ? [{ kind, dates }] : [];
+    }),
   };
 }
 

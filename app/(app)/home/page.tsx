@@ -8,6 +8,7 @@ import { signOut } from "../../(auth)/actions";
 import { currentBusinesses } from "../businesses";
 import { currentChatHome } from "../chat/chat";
 import { currentDocumentsHome } from "../chat/documents/documents";
+import { currentAwayToday } from "../clock/absences";
 import { currentClockLine } from "../clock/clock";
 import { currentPayHome } from "../clock/pay/pay";
 import { lockDeviceAction } from "../clock/station/actions";
@@ -70,6 +71,7 @@ export default async function HomePage() {
     modes,
     file,
     reviews,
+    away,
   ] = await Promise.all([
     currentMember(),
     currentModules(),
@@ -94,6 +96,8 @@ export default async function HomePage() {
     // The staff's accounts to look at, for an owner who holds the files
     // (H6b-1); none in a view, which reads no detail.
     currentFileReviews(),
+    // Who is away today, for whoever builds the schedule or edits the clock.
+    currentAwayToday(),
   ]);
   const membership = member?.membership;
   // The layout has already sent these people elsewhere.
@@ -147,6 +151,7 @@ export default async function HomePage() {
         // What is missing of the person's own file, and an account changed.
         file,
         reviews,
+        away,
       }}
     />
   );

@@ -1,5 +1,6 @@
 "use client";
 
+import { type AwaySpan, awayByDay, awayOn } from "@domain/absences";
 import {
   type AvailabilityRange,
   addDays,
@@ -159,6 +160,12 @@ export type ScheduleBuilderProps = {
    */
   people: Pick<TeamMember, "userId" | "name" | "photo">[];
   answers: { userId: string; ranges: AvailabilityRange[] }[];
+  /**
+   * Who on the staff is away this week, and when (known issue 19): never
+   * why. The days and cards say so, the sheet groups them, and the copy
+   * leaves them off those days. None by default.
+   */
+  away?: AwaySpan[];
   /** The business's positions (waiter, cook…); none hides the choice. */
   positions: Position[];
   /**
@@ -681,6 +688,7 @@ function WeekBuilder({
   team,
   people,
   answers,
+  away = [],
   positions,
   running,
   publishes = true,
@@ -1106,6 +1114,7 @@ function WeekBuilder({
           staff: team.map((m) => m.userId),
           people: people.map((m) => m.userId),
           answers,
+          away,
           replace,
           now,
           timeZone,
@@ -1206,7 +1215,12 @@ function WeekBuilder({
       .filter(({ row }) => row.shift.day === date)
       .sort((a, b) => a.row.shift.start.localeCompare(b.row.shift.start));
 
+  // Who is away each day, by name: the day says it, and each card its own.
+  const awayDays = awayByDay(away, week.dates);
   const days: DayInfo[] = week.dates.map((date) => {
+    const awayNames = (awayDays.get(date) ?? []).map(
+      (user) => nameOf.get(user) ?? t("app.shifts.former"),
+    );
     const onDay = shifts.filter((s) => s.day === date);
     // What has begun in a published week lacks nothing any more: a day counts
     // its shifts still to start, as every count of the week does.
@@ -1249,6 +1263,10 @@ function WeekBuilder({
               time: shabbat?.havdalah ?? "",
               ltr,
             })
+          : null,
+      awayNote:
+        awayNames.length > 0
+          ? t("app.build.awayDay", { names: awayNames.join(", ") })
           : null,
     };
   });
@@ -1307,6 +1325,9 @@ function WeekBuilder({
           }))}
           clashing={row.shift.assignees
             .filter((a) => clashes.has(`${rows.indexOf(row)}:${a.user}`))
+            .map((a) => nameOf.get(a.user) ?? t("app.shifts.former"))}
+          away={row.shift.assignees
+            .filter((a) => awayOn(away, a.user, row.shift.day))
             .map((a) => nameOf.get(a.user) ?? t("app.shifts.former"))}
           meanwhile={row.shift.id !== undefined && marked.has(row.shift.id)}
           positions={positions}
@@ -1799,6 +1820,7 @@ function WeekBuilder({
         team={team}
         people={people}
         answers={answers}
+        away={away}
         positions={positions}
         lockOf={(row) => lockOf(row.shift)}
         lockedNote={lockedNote}

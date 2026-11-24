@@ -11,6 +11,7 @@ import {
   SHOP_PUBLISHED_AT,
   shopLastWeek,
   shopNextAnswers,
+  shopNextAway,
   shopNextDraft,
   shopNextDraftBasis,
   shopNextShifts,
@@ -25,7 +26,9 @@ import {
   shopThisWeek,
 } from "./shop";
 
-type Props = { searchParams: Promise<{ week?: string; state?: string }> };
+type Props = {
+  searchParams: Promise<{ week?: string; state?: string; away?: string }>;
+};
 
 const HREF = "/design/shell/schedule/build/running";
 
@@ -53,7 +56,9 @@ const HREF = "/design/shell/schedule/build/running";
 // screen takes that way back away. &state=draft: next week saved as a draft
 // with Tamar and Itai on Sunday morning, so Sunday stays as it is, unless the
 // sheet's switch replaces it. The week under way is published, and offers no
-// copy.
+// copy. &away=1: Itai is away next week from Sunday to Wednesday (known
+// issue 19), which each of those days, the draft's Sunday morning, the
+// sheet's people and the copy's "מי לא הועתק" say, never why.
 export default function ShellScheduleBuildRunning(props: Props) {
   return (
     <Suspense>
@@ -63,7 +68,7 @@ export default function ShellScheduleBuildRunning(props: Props) {
 }
 
 async function Demo({ searchParams }: Props) {
-  const { week, state } = await searchParams;
+  const { week, state, away } = await searchParams;
   const next = week === "next";
   const draft = next && state === "draft";
   const now = new Date(SHOP_NOW);
@@ -112,6 +117,7 @@ async function Demo({ searchParams }: Props) {
           hasPattern: true,
           answers: shopNextAnswers,
           positions: shopPositions,
+          away: away === "1" ? shopNextAway : [],
         }}
         swaps={[]}
         lastWeek={shopLastWeek}
@@ -134,6 +140,7 @@ async function Demo({ searchParams }: Props) {
         hasPattern: true,
         answers: shopRunningAnswers,
         positions: shopPositions,
+        away: [],
       }}
       swaps={shopSwaps}
       save={demoPublishRunning}
