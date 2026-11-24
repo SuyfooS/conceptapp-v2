@@ -564,6 +564,38 @@ describe("watchFocusIn", () => {
     expect(watch.had()).toBe(false);
   });
 
+  // Its button disabled while it waits, the focus fell to nowhere; then a
+  // press on another request's button (accessibility, part 3).
+  it("forgets it once the focus is put elsewhere after a fall to nowhere", () => {
+    const { at, spot } = page();
+    const box = new Box();
+    const own = spot("button");
+    box.inside.add(own);
+    const other = spot("button");
+    const watch = watchFocusIn(box, at);
+    box.dispatchEvent(focusEvent("focusin"));
+    box.dispatchEvent(focusEvent("focusout"));
+    at.activeElement = at.body;
+    // Back inside, or on the body: no move on.
+    own.focus();
+    expect(watch.had()).toBe(true);
+    at.activeElement = at.body;
+    at.dispatchEvent(new Event("focusin"));
+    expect(watch.had()).toBe(true);
+    other.focus();
+    expect(watch.had()).toBe(false);
+  });
+
+  it("hears the page no more once stopped", () => {
+    const { at, spot } = page();
+    const box = new Box();
+    const watch = watchFocusIn(box, at);
+    box.dispatchEvent(focusEvent("focusin"));
+    watch.stop();
+    spot("button").focus();
+    expect(watch.had()).toBe(true);
+  });
+
   // React focuses an `autoFocus` button while it draws it, before the
   // effect that watches its row runs.
   it("starts from a focus already inside it", () => {

@@ -7,6 +7,12 @@ import en from "../messages/en.json" with { type: "json" };
 import he from "../messages/he.json" with { type: "json" };
 import { daysLeftToRight } from "../packages/domain/share";
 import { type MessageTree, mergeWording } from "../packages/domain/wording";
+import {
+  focusWhenSaid,
+  noteFocusWhenSaid,
+  noteIfSaid,
+  wasSaid,
+} from "./announcer";
 import { before, buildScreen, HOLD_MS } from "./build-screen";
 import { CAPTCHA_FRAME, STAND_IN_WIDGET } from "./captcha";
 import { hearFileCheck } from "./file-watch";
@@ -1118,6 +1124,647 @@ test("the swaps demo lists the requests no longer waiting", async ({
   await expect(page.getByRole("main")).toContainText(
     heT("app.swaps.count", { count: 2 }),
   );
+});
+
+// Each swap step on Noa's shifts twin says what came of it, and the focus
+// comes back to the shift (accessibility, part 3): closed with nothing done,
+// the sheet gives it back to the button that opened it; after giving tonight
+// away from the hero, the focus is on the hero's own place, which the screen
+// read again keeps, and only then a toast says so; after taking Maya's
+// Wednesday morning, the offer's own words say so at once, where its button
+// was, and hold the focus, with no toast saying them again. "ביטול הבקשה" on
+// Friday's row is said too. The twin keeps nothing, so each card stays as it
+// was.
+test("the shifts demo says what each swap step did, and brings the focus back to the shift", async ({
+  page,
+}) => {
+  const sw = he.app.shifts.swap;
+  const evening = heT("app.shifts.shift", {
+    name: "ערב",
+    day: he.app.availability.weekdays.tue,
+    date: "3.11",
+  });
+  const toast = (words: string) =>
+    page.getByRole("status").filter({ hasText: words });
+  const sheet = page.getByRole("dialog");
+  await page.goto("/design/shell/schedule/shifts");
+  await page.waitForLoadState("networkidle");
+
+  const hero = page.getByRole("region", { name: evening, exact: true });
+  const give = hero.getByRole("button", {
+    name: `${sw.buttons.give}, ${evening}`,
+  });
+  await give.click();
+  await expect(sheet).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(sheet).toHaveCount(0);
+  await expect(give).toBeFocused();
+
+  await give.click();
+  await noteFocusWhenSaid(page, sw.open, "[data-shift-target]");
+  await sheet
+    .getByRole("button", { name: `${sw.buttons.give}, ${evening}` })
+    .click();
+  await expect(sheet).toHaveCount(0);
+  await expect(toast(sw.open)).toBeVisible();
+  await expect(
+    hero.getByRole("button", {
+      name: heT("app.shifts.board.open", { shift: evening }),
+    }),
+  ).toBeFocused();
+  await expect.poll(() => focusWhenSaid(page)).toBe(true);
+
+  const take = new RegExp(`^${sw.buttons.take}, `);
+  const offer = page
+    .getByRole("list", { name: sw.offers.title })
+    .getByRole("listitem")
+    .filter({ has: page.getByRole("button", { name: take }) });
+  await expect(offer).toHaveCount(1);
+  const request = await offer
+    .locator("[data-offer-target]")
+    .getAttribute("data-offer-target");
+  expect(request).toBeTruthy();
+  const words = page.locator(`[data-offer-target="${request}"]`);
+  await offer.getByRole("button", { name: take }).click();
+  // Watched from before the take: a toast saying it would come a drawing
+  // or two after the focus lands, later than a single look.
+  await noteIfSaid(page, sw.offers.takenByYou);
+  await sheet.getByRole("button", { name: take }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(words).toHaveText(sw.offers.takenByYou);
+  await expect(words).toBeFocused();
+  await expect(toast(sw.offers.takenByYou)).toHaveCount(0);
+
+  const cancel = page
+    .getByRole("button", { name: new RegExp(`^${sw.buttons.cancel}, `) })
+    .filter({ visible: true });
+  await expect(cancel).toHaveCount(1);
+  await cancel.click();
+  await expect(toast(sw.cancelled)).toBeVisible();
+  // Said since, so drawn after anything the take would have said.
+  expect(await wasSaid(page, sw.offers.takenByYou)).toBe(false);
+});
+
+// A step on its way holds its sheet (accessibility, part 3): Escape and ✕
+// wait for the answer, so the focus is never handed back to the hero's
+// "מסירת המשמרת" that the answer then takes away. Once the answer is back
+// the sheet closes, the toast says so, and the focus is on the hero's own
+// place.
+test("the shifts demo's sheet waits for its step's answer before it closes", async ({
+  page,
+}) => {
+  const sw = he.app.shifts.swap;
+  const evening = heT("app.shifts.shift", {
+    name: "ערב",
+    day: he.app.availability.weekdays.tue,
+    date: "3.11",
+  });
+  let answer = () => {};
+  const held = new Promise<void>((resolve) => {
+    answer = () => resolve();
+  });
+  await page.route("**/design/shell/schedule/shifts", async (route) => {
+    if (route.request().method() === "POST") await held;
+    await route.continue();
+  });
+  await page.goto("/design/shell/schedule/shifts");
+  await page.waitForLoadState("networkidle");
+
+  const hero = page.getByRole("region", { name: evening, exact: true });
+  await hero
+    .getByRole("button", { name: `${sw.buttons.give}, ${evening}` })
+    .click();
+  const sheet = page.getByRole("dialog");
+  const send = sheet.getByRole("button", {
+    name: `${sw.buttons.give}, ${evening}`,
+  });
+  await send.click();
+  await expect(send).toHaveAttribute("aria-busy", "true");
+  await page.keyboard.press("Escape");
+  await sheet.getByRole("button", { name: he.app.shifts.sheet.close }).click();
+  // Longer than a sheet takes to slide away.
+  await page.waitForTimeout(500);
+  await expect(sheet).toBeVisible();
+
+  answer();
+  await expect(sheet).toHaveCount(0);
+  await expect(
+    page.getByRole("status").filter({ hasText: sw.open }),
+  ).toBeVisible();
+  await expect(
+    hero.getByRole("button", {
+      name: heT("app.shifts.board.open", { shift: evening }),
+    }),
+  ).toBeFocused();
+});
+
+// Maya and Omer both give away Wednesday morning (?offers=two). Taken from
+// the sheet, the second brings the focus back to its own words, not to the
+// first's, which is still there to take (accessibility, part 3).
+test("the shifts demo brings the focus back to the offer taken, of two for one shift", async ({
+  page,
+}) => {
+  const sw = he.app.shifts.swap;
+  const take = new RegExp(`^${sw.buttons.take}, `);
+  const sheet = page.getByRole("dialog");
+  await page.goto("/design/shell/schedule/shifts?offers=two");
+  await page.waitForLoadState("networkidle");
+
+  const open = page
+    .getByRole("list", { name: sw.offers.title })
+    .getByRole("listitem")
+    .filter({ has: page.getByRole("button", { name: take }) });
+  await expect(open).toHaveCount(2);
+  const request = (i: number) =>
+    open
+      .nth(i)
+      .locator("[data-offer-target]")
+      .getAttribute("data-offer-target");
+  const first = await request(0);
+  const second = await request(1);
+  expect(first).toBeTruthy();
+  expect(second).not.toBe(first);
+
+  await open.first().getByRole("button", { name: take }).click();
+  const takes = sheet.getByRole("button", { name: take });
+  await expect(takes).toHaveCount(2);
+  await takes.nth(1).click();
+  await expect(sheet).toHaveCount(0);
+  const taken = page.locator(`[data-offer-target="${second}"]`);
+  await expect(taken).toHaveText(sw.offers.takenByYou);
+  await expect(taken).toBeFocused();
+  await expect(page.locator(`[data-offer-target="${first}"]`)).not.toHaveText(
+    sw.offers.takenByYou,
+  );
+});
+
+// The schedule tab's twin as Noa. On a phone and a tablet, tonight's shift
+// given away from the hero's "מסירת המשמרת": the focus comes back to the
+// hero's own place, not to the button that opened the sheet, and then the
+// toast says so. A desktop's week opens it from the shift's line alone,
+// which is that place too: the focus comes back to it there.
+test("the schedule demo brings the focus back to the shift its sheet gave away", async ({
+  page,
+}, testInfo) => {
+  const sw = he.app.shifts.swap;
+  const evening = heT("app.shifts.shift", {
+    name: "ערב",
+    day: he.app.availability.weekdays.tue,
+    date: "3.11",
+  });
+  const desktop = testInfo.project.name === "desktop";
+  await page.goto("/design/shell/schedule/worker");
+  await page.waitForLoadState("networkidle");
+  const card = page
+    .getByRole("button", {
+      name: heT("app.shifts.board.open", { shift: evening }),
+    })
+    .filter({ visible: true });
+  await expect(card).toHaveCount(1);
+  const opener = desktop
+    ? card
+    : page
+        .getByRole("button", { name: `${sw.buttons.give}, ${evening}` })
+        .filter({ visible: true });
+  await expect(opener).toHaveCount(1);
+  await opener.click();
+  const sheet = page.getByRole("dialog");
+  await noteFocusWhenSaid(page, sw.open, "[data-shift-target]");
+  await sheet
+    .getByRole("button", { name: `${sw.buttons.give}, ${evening}` })
+    .click();
+  await expect(sheet).toHaveCount(0);
+  await expect(
+    page.getByRole("status").filter({ hasText: sw.open }),
+  ).toBeVisible();
+  await expect(card).toBeFocused();
+  await expect.poll(() => focusWhenSaid(page)).toBe(true);
+});
+
+// Maya's Wednesday morning taken on the schedule tab's twin (accessibility,
+// part 3): this board has no offer's words to land on, so the focus comes
+// back to the shift's own place, and then the toast says it was taken. From
+// the card's "לקיחת המשמרת" on a phone and a tablet, once Wednesday is
+// picked, and from the shift's line in a desktop's week.
+test("the schedule demo brings the focus back to the shift taken, and then says so", async ({
+  page,
+}, testInfo) => {
+  const sw = he.app.shifts.swap;
+  const morning = heT("app.shifts.shift", {
+    name: "בוקר",
+    day: he.app.availability.weekdays.wed,
+    date: "4.11",
+  });
+  const desktop = testInfo.project.name === "desktop";
+  await page.goto("/design/shell/schedule/worker");
+  await page.waitForLoadState("networkidle");
+  if (!desktop) {
+    // Sunday first: Wednesday is the fourth.
+    const wednesday = page
+      .getByRole("group", { name: he.app.shifts.board.pickDay, exact: true })
+      .filter({ visible: true })
+      .getByRole("button")
+      .nth(3);
+    await wednesday.click();
+    await expect(wednesday).toHaveAttribute("aria-pressed", "true");
+  }
+  const card = page
+    .getByRole("button", {
+      name: heT("app.shifts.board.open", { shift: morning }),
+    })
+    .filter({ visible: true });
+  await expect(card).toHaveCount(1);
+  const opener = desktop
+    ? card
+    : page
+        .getByRole("button", { name: `${sw.buttons.take}, ${morning}` })
+        .filter({ visible: true });
+  await expect(opener).toHaveCount(1);
+  await opener.click();
+  const sheet = page.getByRole("dialog");
+  await noteFocusWhenSaid(page, sw.offers.takenByYou, "[data-shift-target]");
+  await sheet
+    .getByRole("button", { name: `${sw.buttons.take}, ${morning}` })
+    .click();
+  await expect(sheet).toHaveCount(0);
+  await expect(
+    page.getByRole("status").filter({ hasText: sw.offers.takenByYou }),
+  ).toBeVisible();
+  await expect(card).toBeFocused();
+  await expect.poll(() => focusWhenSaid(page)).toBe(true);
+});
+
+// "ביטול הבקשה" on a card that goes before its answer comes (accessibility,
+// part 3): Noa withdraws Friday's request from its hero, then picks
+// Wednesday, where she has no shift, while the answer waits. Nothing is left
+// to draw the answer in, and the toast still says the request was withdrawn
+// once it comes. A desktop's week has no buttons on its shifts: its sheet
+// withdraws.
+test("the schedule demo says a withdrawal whose card went before its answer", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "desktop", "the day of phones");
+  const sw = he.app.shifts.swap;
+  let answer = () => {};
+  const held = new Promise<void>((resolve) => {
+    answer = () => resolve();
+  });
+  await page.route("**/design/shell/schedule/worker", async (route) => {
+    if (route.request().method() === "POST") await held;
+    await route.continue();
+  });
+  await page.goto("/design/shell/schedule/worker");
+  await page.waitForLoadState("networkidle");
+  // Sunday first: Wednesday is the fourth, Friday the sixth.
+  const days = page
+    .getByRole("group", { name: he.app.shifts.board.pickDay, exact: true })
+    .filter({ visible: true })
+    .getByRole("button");
+  await days.nth(5).click();
+  await expect(days.nth(5)).toHaveAttribute("aria-pressed", "true");
+  const cancel = page
+    .getByRole("button", { name: new RegExp(`^${sw.buttons.cancel}, `) })
+    .filter({ visible: true });
+  await expect(cancel).toHaveCount(1);
+  await cancel.click();
+  await expect(cancel).toHaveAttribute("aria-busy", "true");
+  await days.nth(3).click();
+  await expect(days.nth(3)).toHaveAttribute("aria-pressed", "true");
+  await expect(cancel).toHaveCount(0);
+
+  answer();
+  await expect(
+    page.getByRole("status").filter({ hasText: sw.cancelled }),
+  ).toBeVisible();
+});
+
+// Approving or declining removes the request with the focus on its button
+// (accessibility, part 3): the focus goes on to the next request's heading
+// down, else the one above, else the card saying nothing waits, never to
+// another "אישור" that Enter held down would press too; and what was
+// decided is said by a live region there from the start, so the first
+// decision is heard too, and only its new line, once the focus has landed.
+// On every shape: cards on phones and tablets, a table on desktops.
+test("the swaps demo goes on to the next request after each decision, and says each one", async ({
+  page,
+}) => {
+  const ap = he.app.swaps;
+  const decision = (name: string) =>
+    page
+      .getByRole("button", { name: new RegExp(`^${name}, `) })
+      .filter({ visible: true });
+  const heading = (id: string | null) =>
+    page.locator(`[data-request-target="${id}"]`).filter({ visible: true });
+  const region = page.locator("[data-decisions]");
+  const lines = region.locator("[data-settled]");
+  await page.goto("/design/shell/schedule/swaps");
+  await page.waitForLoadState("networkidle");
+
+  // In the accessibility tree before anything is decided, with nothing in it,
+  // and read a line at a time, never whole.
+  await expect(region).toHaveAttribute("role", "status");
+  await expect(region).toHaveAttribute("aria-atomic", "false");
+  await expect(region).toHaveAttribute("aria-relevant", "additions");
+  await expect(lines).toHaveCount(0);
+  expect(await region.evaluate((el) => getComputedStyle(el).display)).not.toBe(
+    "none",
+  );
+
+  // Tuesday's has begun, so Wednesday's is the first to approve: on to
+  // Saturday's heading, the next one down, and then its line is said.
+  await expect(decision(ap.buttons.approve)).toHaveCount(2);
+  const saturday = await decision(ap.buttons.approve)
+    .nth(1)
+    .getAttribute("data-decide");
+  const tuesday = await decision(ap.buttons.decline)
+    .first()
+    .getAttribute("data-decide");
+  expect(saturday).toBeTruthy();
+  expect(tuesday).toBeTruthy();
+  const approved = ap.settled.approved.split(":")[0] ?? "";
+  await noteFocusWhenSaid(page, approved, "[data-request-target]");
+  await decision(ap.buttons.approve).first().click();
+  await expect(decision(ap.buttons.approve)).toHaveCount(1);
+  await expect(heading(saturday)).toBeFocused();
+  await expect(lines).toHaveCount(1);
+  await expect(region).toContainText(approved);
+  await expect.poll(() => focusWhenSaid(page)).toBe(true);
+
+  // Saturday's, the last one: back up to Tuesday's, which only declines.
+  await decision(ap.buttons.approve).click();
+  await expect(decision(ap.buttons.approve)).toHaveCount(0);
+  await expect(decision(ap.buttons.decline)).toHaveCount(1);
+  await expect(heading(tuesday)).toBeFocused();
+
+  // None left: the card saying so has it, and then the region says what
+  // was decided last, its newest line.
+  const declined = ap.settled.declined.split(".")[0] ?? "";
+  await noteFocusWhenSaid(page, declined, "[data-swaps-empty]");
+  await decision(ap.buttons.decline).click();
+  const empty = page.locator("[data-swaps-empty]");
+  await expect(empty).toContainText(ap.empty);
+  await expect(lines).toHaveCount(3);
+  await expect(lines.first()).toContainText(declined);
+  await expect(empty).toBeFocused();
+  await expect.poll(() => focusWhenSaid(page)).toBe(true);
+});
+
+// A decision still on its way keeps its place (accessibility, part 3): the
+// manager approves Wednesday's, then presses Saturday's while the first
+// waits. When Wednesday's goes, the focus is not put on Saturday's heading;
+// once Saturday's goes too, it is on Tuesday's.
+test("the swaps demo leaves the focus alone when a decision goes while another waits", async ({
+  page,
+}) => {
+  const ap = he.app.swaps;
+  const decision = (name: string) =>
+    page
+      .getByRole("button", { name: new RegExp(`^${name}, `) })
+      .filter({ visible: true });
+  const heading = (id: string | null) =>
+    page.locator(`[data-request-target="${id}"]`).filter({ visible: true });
+  const waits: (() => void)[] = [];
+  await page.route("**/design/shell/schedule/swaps", async (route) => {
+    if (route.request().method() === "POST") {
+      await new Promise<void>((resolve) => {
+        waits.push(resolve);
+      });
+    }
+    await route.continue();
+  });
+  await page.goto("/design/shell/schedule/swaps");
+  await page.waitForLoadState("networkidle");
+
+  const approve = decision(ap.buttons.approve);
+  await expect(approve).toHaveCount(2);
+  const saturday = await approve.nth(1).getAttribute("data-decide");
+  const tuesday = await decision(ap.buttons.decline)
+    .first()
+    .getAttribute("data-decide");
+  expect(saturday).toBeTruthy();
+  expect(tuesday).toBeTruthy();
+  await approve.first().click();
+  await expect.poll(() => waits.length).toBe(1);
+  await approve.nth(1).click();
+  await expect(approve.nth(1)).toHaveAttribute("aria-busy", "true");
+
+  waits[0]?.();
+  await expect(page.locator("[data-settled]")).toHaveCount(1);
+  // Sent once the first is answered (the page sends one at a time), or
+  // already: it waits either way.
+  await expect.poll(() => waits.length).toBe(2);
+  await expect(heading(saturday)).not.toBeFocused();
+
+  waits[1]?.();
+  await expect(approve).toHaveCount(0);
+  await expect(decision(ap.buttons.decline)).toHaveCount(1);
+  await expect(heading(tuesday)).toBeFocused();
+});
+
+// The schedule tab's week strip reads Friday's and Saturday's time with its
+// words, as the gallery's does (`noteLabel`, accessibility, part 3).
+test("the schedule demo's week strip reads Shabbat's times in words", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "desktop", "the strip of phones");
+  await page.goto("/design/shell/schedule/worker");
+  await page.waitForLoadState("networkidle");
+  const strip = page
+    .getByRole("group", { name: he.app.shifts.board.pickDay, exact: true })
+    .filter({ visible: true });
+  await expect(strip).toHaveCount(1);
+  for (const key of ["candleLighting", "havdalah"] as const) {
+    const words = heT
+      .markup(`app.shifts.board.${key}`, { time: "TIME", ltr: (c) => c })
+      .replace("TIME", "\\d{1,2}:\\d{2}");
+    await expect(
+      strip.getByRole("button", { name: new RegExp(words) }),
+    ).toHaveCount(1);
+  }
+});
+
+// The builder's phone strip reads them in words too, each on its own day
+// (`DayInfo.shabbatLabel`, accessibility, part 3): candle lighting on
+// Friday, havdalah on Saturday.
+test("the builder demo's week strip reads Shabbat's times in words", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "phone", "the builder's strip of phones");
+  await page.goto("/design/shell/schedule/build");
+  await page.waitForLoadState("networkidle");
+  const days = page
+    .getByRole("group", { name: he.app.build.days, exact: true })
+    .filter({ visible: true })
+    .getByRole("button");
+  await expect(days).toHaveCount(7);
+  // Sunday first: Friday is the sixth, Saturday the seventh.
+  for (const [key, day] of [
+    ["candles", 5],
+    ["havdalah", 6],
+  ] as const) {
+    const words = heT
+      .markup(`app.build.shabbat.${key}`, { time: "TIME", ltr: (c) => c })
+      .replace("TIME", "\\d{1,2}:\\d{2}");
+    await expect(days.nth(day)).toHaveAccessibleName(new RegExp(words));
+  }
+});
+
+// Today on the desktop's week is more than a filled circle: the day's name
+// and its column say it in words (accessibility, part 3).
+test("the schedule demo says today in words on the desktop's week", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "the week of columns");
+  const today = he.app.build.today;
+  await page.goto("/design/shell/schedule/worker");
+  await page.waitForLoadState("networkidle");
+  const tuesday = page.getByRole("region", {
+    name: `${heT("app.shifts.day", { day: he.app.availability.weekdays.tue, date: "3.11" })}, ${today}`,
+    exact: true,
+  });
+  await expect(tuesday).toBeVisible();
+  await expect(tuesday.locator(".sr-only").first()).toHaveText(today);
+  await expect(
+    page.getByRole("region", { name: new RegExp(`, ${today}$`) }),
+  ).toHaveCount(1);
+});
+
+// The week strip's note under Friday and Saturday is a time alone on screen,
+// read in words (`noteLabel`, accessibility, part 3).
+test("the gallery's week strip reads Shabbat's times in words", async ({
+  page,
+}) => {
+  await page.goto("/design");
+  const strip = page
+    .getByRole("group", { name: he.design.week, exact: true })
+    // Its days, not the week's two switches of the same name.
+    .filter({ hasText: he.days.sun.short });
+  await expect(strip).toHaveCount(1);
+  for (const [key, time] of [
+    ["candleLighting", "16:23"],
+    ["havdalah", "17:22"],
+  ] as const) {
+    const words = heT.markup(`app.shifts.board.${key}`, {
+      time,
+      ltr: (chunks) => chunks,
+    });
+    const day = strip.getByRole("button", { name: new RegExp(words) });
+    await expect(day).toHaveCount(1);
+    await expect(day.locator('[aria-hidden="true"]')).toHaveText(time);
+  }
+});
+
+// "המשמרות שלי" ends with how many, in words, not a bare number
+// (accessibility, part 3).
+test("the schedule demo's own shifts row says what its number counts", async ({
+  page,
+}) => {
+  await page.goto("/design/shell/schedule/worker");
+  await page.waitForLoadState("networkidle");
+  const row = page
+    .getByRole("link", { name: new RegExp(`^${he.app.shifts.title}`) })
+    .filter({ visible: true });
+  await expect(row).toHaveCount(1);
+  const number = row.locator('[aria-hidden="true"]').filter({
+    hasText: /^\d+$/,
+  });
+  const count = Number(await number.textContent());
+  expect(count).toBeGreaterThan(0);
+  await expect(row).toHaveAccessibleName(
+    new RegExp(`${heT("app.shifts.mine.count", { count })}$`),
+  );
+});
+
+/**
+ * Marks the first heading of the page's content after `where` that is
+ * drawn (the next section's title), and finds it.
+ */
+async function nextHeading(page: Page, where: Locator) {
+  await where.evaluate((element) => {
+    for (const old of document.querySelectorAll("[data-next-heading]")) {
+      old.removeAttribute("data-next-heading");
+    }
+    const next = [...document.querySelectorAll("main h2, main h3")].find(
+      (heading) =>
+        !element.contains(heading) &&
+        (element.compareDocumentPosition(heading) &
+          Node.DOCUMENT_POSITION_FOLLOWING) !==
+          0 &&
+        heading.getClientRects().length > 0,
+    );
+    next?.setAttribute("data-next-heading", "");
+  });
+  const heading = page.locator("[data-next-heading]");
+  await expect(heading).toHaveCount(1);
+  return heading;
+}
+
+// Today's "ביטול" rows (accessibility, part 3): the first steps' hold waits
+// while the keyboard is on its "ביטול", and goes on once it leaves, the
+// focus staying where the keyboard went; after a mouse's press nothing
+// waits, and once the row goes with the focus on it, the next section's
+// title has it. The bank change's row the same, both ways.
+test("the Today demo's 'ביטול' rows wait while the keyboard is on them, and give the focus on once they go", async ({
+  page,
+}) => {
+  test.setTimeout(150_000);
+  const f = he.app.home.firstSteps;
+  const undoIn = (words: string) =>
+    page
+      .getByRole("status")
+      .filter({ hasText: words })
+      .getByRole("button", { name: he.ui.undoRow.undo });
+  const card = page.getByRole("region", { name: f.title });
+  const undo = undoIn(f.hidden);
+
+  await page.goto("/design/shell/today/first-steps");
+  await page.waitForLoadState("networkidle");
+  let next = await nextHeading(page, card);
+  await card.getByRole("button", { name: f.hide }).focus();
+  await page.keyboard.press("Enter");
+  await expect(undo).toBeFocused();
+  await page.waitForTimeout(HOLD_MS + 1_000);
+  await expect(undo).toBeVisible();
+  await page.keyboard.press("Shift+Tab");
+  await expect(undo).not.toBeFocused();
+  await expect(undo).toHaveCount(0, { timeout: HOLD_MS + 5_000 });
+  await expect(next).not.toBeFocused();
+
+  // The twin keeps nothing: the card is back.
+  await page.reload();
+  await page.waitForLoadState("networkidle");
+  next = await nextHeading(page, card);
+  await card.getByRole("button", { name: f.hide }).click();
+  await expect(undo).toBeFocused();
+  await expect(undo).toHaveCount(0, { timeout: HOLD_MS + 5_000 });
+  await expect(next).toBeFocused();
+
+  // The bank change's row: the same wait with the keyboard on its "ביטול".
+  const b = he.app.home.file.bank;
+  const bank = page.getByRole("main").getByRole("region", { name: b.title });
+  const undoBank = undoIn(b.hidden);
+  await page.goto("/design/shell/today/worker?file=bank");
+  await page.waitForLoadState("networkidle");
+  next = await nextHeading(page, bank);
+  await bank.getByRole("button", { name: b.mine }).focus();
+  await page.keyboard.press("Enter");
+  await expect(undoBank).toBeFocused();
+  await page.waitForTimeout(HOLD_MS + 1_000);
+  await expect(undoBank).toBeVisible();
+  await page.keyboard.press("Shift+Tab");
+  await expect(undoBank).not.toBeFocused();
+  await expect(undoBank).toHaveCount(0, { timeout: HOLD_MS + 5_000 });
+  await expect(next).not.toBeFocused();
+
+  // Nothing is kept here either: the card is back, and after a mouse's
+  // press the focus goes on.
+  await page.reload();
+  await page.waitForLoadState("networkidle");
+  next = await nextHeading(page, bank);
+  await bank.getByRole("button", { name: b.mine }).click();
+  await expect(undoBank).toBeFocused();
+  await expect(undoBank).toHaveCount(0, { timeout: HOLD_MS + 5_000 });
+  await expect(next).toBeFocused();
 });
 
 // The ways into the week under way on the Today twin (R4) open the

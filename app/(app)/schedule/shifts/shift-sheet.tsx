@@ -5,10 +5,17 @@ import { dayMonth } from "@domain/availability-form";
 import { firstNameOf } from "@domain/people";
 import { myRequestFor, type Offer } from "@domain/swaps";
 import { Avatar } from "@ui/avatar";
+import { focusFirst } from "@ui/focus-after";
 import { Sheet } from "@ui/sheet";
 import { useTranslations } from "next-intl";
-import { type ReactNode, useCallback, useState } from "react";
-import type { SwapState } from "./actions";
+import {
+  type ReactNode,
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import type { SwapIntent, SwapState } from "./actions";
 import {
   formOf,
   hasStarted,
@@ -23,6 +30,7 @@ import {
   weekdayName,
 } from "./shift-text";
 import { SwapButton } from "./swap-button";
+import { offerTarget, shiftTarget } from "./swap-focus";
 
 export type SwapAction = (
   state: SwapState,
@@ -69,8 +77,20 @@ function Consequence({
  * One shift in a sheet: who is on it, and what the person can do about it.
  * Giving a shift away and taking one are confirmed here, each saying what
  * will happen. `shifts` are the published shifts the id is looked up in,
- * `offers` the colleagues' requests for them. `onGiven` runs once a shift
- * was given away.
+ * `offers` the colleagues' requests for them. `onTaken` runs as soon as an
+ * offer was taken, with its request (the board marks it taken, before the
+ * focus lands on its words), and `onGiven` once a shift was given away and
+ * the focus is back, after `onSwapped` (below), so the question it brings
+ * (notifications on the phone) is not cut off by the focus coming back.
+ * Closed, the focus goes back to what opened it; after a step, to the
+ * offer's words once one was taken (`offerTarget`), else to the shift's own
+ * place on the screen (`shiftTarget`), which the screen read again keeps,
+ * while the button that opened it may have given way to what came of the
+ * step. `onSwapped` runs once that focus is back, with the step, so what
+ * the board says of it comes after the focus's own read: said as the sheet
+ * slides away, it would be cut off by the focus moving. While a step is on
+ * its way the sheet stays, as Sheet asks: closed before its answer, the
+ * focus would go back to a button the answer then takes away.
  */
 export function ShiftSheet({
   id,
@@ -80,6 +100,8 @@ export function ShiftSheet({
   offers,
   data,
   swap,
+  onSwapped,
+  onTaken,
   onGiven,
 }: {
   id: string | null;
@@ -89,14 +111,64 @@ export function ShiftSheet({
   offers: readonly Offer<WeekScheduleShift>[];
   data: ShiftData;
   swap: SwapAction;
+  /** A step went through and the focus is back: the board says it now. */
+  onSwapped?: (intent: SwapIntent) => void;
+  /** An offer was taken, its request: at once, before the sheet closes. */
+  onTaken?: (offer: string) => void;
+  /** A shift was given away and the focus is back, after `onSwapped`. */
   onGiven?: () => void;
 }) {
   const t = useTranslations("app");
   const shift = shifts.find((s) => s.id === id);
+  // What held the focus as it opened, the step that went through since, and
+  // the request it took, if it took one.
+  const opener = useRef<Element | null>(null);
+  const step = useRef<SwapIntent | null>(null);
+  const taken = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    if (!open) return;
+    opener.current = document.activeElement;
+    step.current = null;
+    taken.current = null;
+  }, [open]);
+  // Steps sent and not answered yet: ✕, Escape, the scrim and a swipe wait.
+  const waiting = useRef(0);
+  const onWaiting = useCallback((now: boolean) => {
+    waiting.current += now ? 1 : -1;
+  }, []);
+
+  function done(intent: SwapIntent, offer?: string) {
+    step.current = intent;
+    taken.current = offer ?? null;
+    onOpenChange(false);
+    if (offer) onTaken?.(offer);
+  }
+
+  // Put there as focusFirst puts it (a line given a tabindex, the page's
+  // title last), only while nothing else took it as the sheet closed. Then
+  // the step is said, after what the focus reads, and after a give what
+  // follows it (`onGiven`).
+  function returnFocus() {
+    const target = id ? shiftTarget(id) : null;
+    const offer = taken.current ? offerTarget(taken.current) : null;
+    const stepped = step.current;
+    const candidates = stepped ? [offer, target] : [opener.current, target];
+    opener.current = null;
+    step.current = null;
+    taken.current = null;
+    const landed = focusFirst(candidates, { preventScroll: true });
+    if (stepped) onSwapped?.(stepped);
+    if (stepped === "give") onGiven?.();
+    return landed;
+  }
+
   return (
     <Sheet
       open={open && shift !== undefined}
-      onOpenChange={onOpenChange}
+      onOpenChange={(next) => {
+        if (next || waiting.current === 0) onOpenChange(next);
+      }}
+      returnFocus={returnFocus}
       closeLabel={t("shifts.sheet.close")}
       title={
         shift
@@ -115,8 +187,8 @@ export function ShiftSheet({
           offers={offers.filter((o) => o.shift.id === shift.id)}
           data={data}
           swap={swap}
-          onDone={() => onOpenChange(false)}
-          onGiven={onGiven}
+          onDone={done}
+          onWaiting={onWaiting}
         />
       ) : null}
     </Sheet>
@@ -129,14 +201,15 @@ function SheetBody({
   data,
   swap,
   onDone,
-  onGiven,
+  onWaiting,
 }: {
   shift: WeekScheduleShift;
   offers: readonly Offer<WeekScheduleShift>[];
   data: ShiftData;
   swap: SwapAction;
-  onDone: () => void;
-  onGiven?: () => void;
+  /** A step went through: the step, and for a take the request taken. */
+  onDone: (intent: SwapIntent, offer?: string) => void;
+  onWaiting: (waiting: boolean) => void;
 }) {
   const t = useTranslations("app");
   const subject = shiftLabel(t, shift);
@@ -203,10 +276,8 @@ function SheetBody({
               variant="primary"
               size="lg"
               block
-              onDone={() => {
-                onDone();
-                onGiven?.();
-              }}
+              onDone={onDone}
+              onWaiting={onWaiting}
             />
           }
         >
@@ -224,6 +295,7 @@ function SheetBody({
               subject={subject}
               block
               onDone={onDone}
+              onWaiting={onWaiting}
             />
           }
         >
@@ -271,7 +343,8 @@ function SheetBody({
                 variant="primary"
                 size="lg"
                 block
-                onDone={onDone}
+                onDone={() => onDone("take", offer.swap.id)}
+                onWaiting={onWaiting}
               />
             }
           >
