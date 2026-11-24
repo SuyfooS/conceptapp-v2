@@ -2,13 +2,15 @@
 -- (20261127000600_profile_phone.sql, known issue 69): the team's change of
 -- auth.users.phone writes profiles.phone in E.164 with the +, so
 -- public.own_phone() says the new one; another profile still holding the
--- new number lets it go; a number taken away leaves none; an update that
--- leaves the number, a refused change and a number the profile's check
--- refuses leave the profile as it was. The week after a change is noted as
+-- new number while its sign-in has another lets it go, and one whose
+-- sign-in still has it (the number written with the +) refuses the change;
+-- a number taken away leaves none; an update that leaves the number, a
+-- refused change and a number the profile's check refuses leave the
+-- profile as it was. The week after a change is noted as
 -- before. Fixed ids (fa…) and numbers (050-095-xxxx), so nothing here meets
 -- the seed or another test.
 begin;
-select plan(12);
+select plan(14);
 
 -- 1 changes number, 2 holds a stale copy of the number 1 moves to, 3 is
 -- anyone.
@@ -47,6 +49,14 @@ select set_config('request.jwt.claims', json_build_object('sub', pg_temp.p(1), '
 select set_config('role', 'authenticated', true);
 select is(public.own_phone(), '+972500959999', 'the person''s own number is the new one');
 reset role;
+
+-- The team writing 3's number with the +: auth.users takes it as another,
+-- but 3 still signs in with it, so the change is refused.
+select throws_ok(
+  $$update auth.users set phone = '+972500950003' where id = pg_temp.p(1)$$,
+  '23505', null, 'a number someone else still signs in with is refused'
+);
+select is(pg_temp.shown(3), '+972500950003', 'and they keep it');
 
 update auth.users set last_sign_in_at = now() where id = pg_temp.p(1);
 select is(pg_temp.shown(1), '+972500959999', 'a sign-in leaves the number');

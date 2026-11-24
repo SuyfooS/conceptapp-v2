@@ -7,9 +7,11 @@
 --
 -- Now any change of auth.users.phone writes the profile in the same
 -- transaction, as handle_new_user does: E.164 with the +, or none when the
--- number is taken away. auth.users.phone is unique, so another profile that
--- still holds the new number holds it stale (from a change before this
--- migration) and lets it go first, since profiles.phone is unique too. A
+-- number is taken away. Another profile that holds the new number while its
+-- own sign-in has another holds it stale (from a change before this
+-- migration) and lets it go first, since profiles.phone is unique too; one
+-- whose sign-in still has it (the number written with the +, which
+-- auth.users' unique index counts as another) refuses the change (23505). A
 -- number the profile's check refuses rolls the whole change back.
 --
 -- Nothing else changes: the refusal of any change but the team's
@@ -29,6 +31,20 @@ declare
   end;
 begin
   if shown is not null then
+    -- Someone else who still signs in with this number (the team writing it
+    -- with the +, which auth.users' unique index tells apart) keeps it: the
+    -- change is refused rather than taking their number away.
+    if exists (
+      select 1
+      from public.profiles p
+      join auth.users u on u.id = p.id
+      where p.phone = shown
+        and p.id <> new.id
+        and '+' || ltrim(coalesce(u.phone, ''), '+') = shown
+    ) then
+      raise exception 'Another account signs in with this number'
+        using errcode = '23505';
+    end if;
     update public.profiles p
     set phone = null
     where p.phone = shown and p.id <> new.id;
