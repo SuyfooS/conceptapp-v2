@@ -272,12 +272,25 @@ test("a record is changed, removed, brought back with the toast's undo, and remo
     page.getByText(heT("app.clock.absences.done.remove")).first(),
   ).toBeVisible();
   expect((await demoAbsences(NOA.id))[0]?.removed).toBe(true);
-  await page
-    .getByRole("button", { name: heT("app.clock.absences.done.undo") })
-    .click();
+  // The toast's "ביטול" has the focus, the row having gone, and says what
+  // it brings back; pressed, the record's row back in the list has it.
+  const undo = page.getByRole("button", {
+    name: heT("app.clock.absences.done.undo"),
+  });
+  await expect(undo).toBeFocused();
+  await expect(undo).toHaveAccessibleName(
+    heT("app.clock.absences.done.undoRemove"),
+  );
+  await undo.click();
   await expect(
     page.getByText(heT("app.clock.absences.done.restore")).first(),
   ).toBeVisible();
+  await expect(
+    page
+      .getByRole("button", { name: heT("app.clock.absences.kinds.reserve") })
+      .filter({ visible: true })
+      .first(),
+  ).toBeFocused();
   expect((await demoAbsences(NOA.id))[0]?.removed).toBe(false);
   expect(await demoActivityActions("clock.absence_remove", since)).toBe(1);
   expect(await demoActivityActions("clock.absence_restore", since)).toBe(1);

@@ -1,0 +1,62 @@
+"use client";
+
+import { useState } from "react";
+import type { CodeScreenData } from "../../../../(app)/clock/code/code";
+import {
+  type CodePaths,
+  CodeScreen,
+} from "../../../../(app)/clock/code/code-screen";
+import type { LockAction } from "../../../../(app)/clock/station/station-types";
+
+/**
+ * The code screen's twin on a device that is already the business's
+ * kitchen's screen (`?other=prep`): the lock offers to stop it first, and
+ * once stopped the lock opens, with "ביטול" in the toast to start it again.
+ * What the screen reads again after each (the real one's `refresh()`) is
+ * kept here, in the page, so nothing is stored: a new visit starts over.
+ */
+export function OtherStationCode({
+  data,
+  issueUrl,
+  paths,
+  running,
+  station,
+  lock,
+}: {
+  data: CodeScreenData;
+  issueUrl: string;
+  paths: CodePaths;
+  /** The clock stations running, for the name a new one is offered. */
+  running: string[];
+  /** The kitchen's screen the device is. */
+  station: { id: string; name: string };
+  lock: LockAction;
+}) {
+  const [stopped, setStopped] = useState(false);
+  return (
+    <CodeScreen
+      data={data}
+      issueUrl={issueUrl}
+      paths={paths}
+      lock={{
+        offer: {
+          current: null,
+          running,
+          other: stopped ? null : { name: station.name, shows: "prep" },
+        },
+        action: lock,
+        clearsDevice: false,
+        stopOther: {
+          stop: async () => {
+            setStopped(true);
+            return { ok: true, undo: station.id };
+          },
+          restart: async () => {
+            setStopped(false);
+            return { ok: true };
+          },
+        },
+      }}
+    />
+  );
+}

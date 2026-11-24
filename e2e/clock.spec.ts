@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import he from "../messages/he.json" with { type: "json" };
+import { announcer, heardSoFar, saidSince } from "./announcer";
 import {
   addDemoShift,
   clearPunchState,
@@ -11,6 +12,7 @@ import {
   waitOutDemoMidnight,
 } from "./db";
 import { signIn } from "./session";
+import { heT } from "./t";
 import { expect, type Page, test } from "./test";
 
 // Seeded in supabase/seed.sql: the demo restaurant, its manager and a worker.
@@ -28,6 +30,30 @@ const title = (page: Page, name: string) =>
 /** The circle, by the last words of its name: the time may come before them. */
 const circle = (page: Page, label: string) =>
   page.getByRole("button", { name: new RegExp(`(^|\\s)${label}$`) });
+
+/**
+ * A month before this one as the business counts months, `YYYY-MM`: where
+ * `addDemoShift` puts a shift `monthsAgo` back (0: this month).
+ */
+function monthAgo(months: number): string {
+  const [year = 0, month = 1] = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jerusalem",
+  })
+    .format(new Date())
+    .split("-")
+    .map(Number);
+  return new Date(Date.UTC(year, month - 1 - months, 1))
+    .toISOString()
+    .slice(0, 7);
+}
+
+/** A month's name as the hours card writes it: "אוקטובר 2026". */
+const monthName = (month: string) =>
+  new Intl.DateTimeFormat("he", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${month}-15T12:00:00Z`));
 
 async function expectCleanPage(page: Page) {
   // Metadata streams in after the body (see new-business.spec.ts).
@@ -110,6 +136,111 @@ test("a worker clocks in, goes on a break, comes back and leaves", async ({
   // It stays after a fresh load.
   await page.reload();
   await expect(title(page, c.title.off)).toBeVisible();
+});
+
+// The focus after each press of the clock's own buttons, from the keyboard
+// (accessibility, part 5): "יציאה להפסקה", "יציאה מהמשמרת" and "ביטול
+// היציאה" each give way to what their press drew, and the focus goes on to
+// the screen's main control now, "יציאה מהמשמרת" during a break and the
+// circle otherwise. Enter held down on "יציאה להפסקה" ends nothing when the
+// focus has gone on to "יציאה מהמשמרת".
+test("the focus goes on to the clock's main control after each press, and a held Enter presses nothing more", async ({
+  page,
+}) => {
+  const endShift = page.getByRole("button", { name: c.endShift });
+  const undo = page.getByRole("button", { name: c.undo });
+  await signIn(page, NOA);
+  await page.goto("/clock");
+  await page.waitForLoadState("networkidle");
+  await circle(page, c.circle.in).focus();
+  await page.keyboard.press("Enter");
+  await expect(title(page, c.title.working)).toBeVisible();
+  await expect(circle(page, c.circle.out)).toBeFocused();
+
+  // Held down: the break starts, "יציאה מהמשמרת" in its place has the
+  // focus, and the key repeating on it (`repeat`, a second keydown with no
+  // keyup) presses nothing.
+  await page.getByRole("button", { name: c.startBreak }).focus();
+  await page.keyboard.down("Enter");
+  await expect(title(page, c.title.break)).toBeVisible();
+  await expect(endShift).toBeFocused();
+  await page.keyboard.down("Enter");
+  await page.keyboard.up("Enter");
+  await expect(endShift).not.toHaveAttribute("aria-busy", "true");
+  await page.waitForTimeout(1_500);
+  await expect(title(page, c.title.break)).toBeVisible();
+  await expect(endShift).toBeFocused();
+
+  // Off the clock: the circle has the focus, the way back under it.
+  await page.keyboard.press("Enter");
+  await expect(title(page, c.title.off)).toBeVisible();
+  await expect(circle(page, c.circle.in)).toBeFocused();
+
+  // Taken back: the card goes, and the break it was left from is back, with
+  // "יציאה מהמשמרת".
+  await undo.focus();
+  await page.keyboard.press("Enter");
+  await expect(title(page, c.title.break)).toBeVisible();
+  await expect(endShift).toBeFocused();
+
+  // Back to work, left from the circle, and taken back: the circle each time.
+  await circle(page, c.circle.back).focus();
+  await page.keyboard.press("Enter");
+  await expect(title(page, c.title.working)).toBeVisible();
+  await expect(circle(page, c.circle.out)).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(title(page, c.title.off)).toBeVisible();
+  await expect(circle(page, c.circle.in)).toBeFocused();
+  await undo.focus();
+  await page.keyboard.press("Enter");
+  await expect(title(page, c.title.working)).toBeVisible();
+  await expect(circle(page, c.circle.out)).toBeFocused();
+});
+
+// Changing month in the hours card (accessibility, part 5): each month is a
+// page of its own, so the arrow pressed goes with the page it was on. The
+// same arrow in the month it led to has the focus, else that month's title
+// (this month has no "חודש הבא"), and the month and its hours are said.
+test("changing month keeps the focus on its arrow, and says the month and its hours", async ({
+  page,
+}) => {
+  await addDemoShift(NOA.e164, { monthsAgo: 1, minutes: 120, unpaidBreak: 30 });
+  await signIn(page, NOA);
+  await page.goto("/clock/history");
+  await page.waitForLoadState("networkidle");
+  const main = page.getByRole("main");
+  const earlier = main.getByRole("link", {
+    name: c.history.earlier.split("{")[0] ?? "",
+  });
+  const later = main.getByRole("link", {
+    name: c.history.later.split("{")[0] ?? "",
+  });
+  const polite = announcer(page, "polite");
+  const said = (month: string, hours: string, count: number) =>
+    heT("app.clock.history.monthShown", {
+      month: monthName(month),
+      hours,
+      caption: heT("app.clock.history.total", { count }),
+    });
+
+  // Back a month, from the keyboard: two hours, half an hour off them.
+  await heardSoFar(polite);
+  await earlier.focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(new RegExp(`month=${monthAgo(1)}$`));
+  await expect(earlier).toBeFocused();
+  await expect(saidSince(polite, said(monthAgo(1), "1:30", 1))).toHaveCount(1);
+
+  // On to this month, by a mouse: its arrow on is gone, so its title has
+  // the focus.
+  await heardSoFar(polite);
+  await later.click();
+  await expect(page).toHaveURL(new RegExp(`month=${monthAgo(0)}$`));
+  await expect(later).toHaveCount(0);
+  await expect(
+    main.getByRole("heading", { level: 2, name: monthName(monthAgo(0)) }),
+  ).toBeFocused();
+  await expect(saidSince(polite, said(monthAgo(0), "0:00", 0))).toHaveCount(1);
 });
 
 test("the month's hours and the history count what was worked", async ({

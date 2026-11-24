@@ -93,6 +93,8 @@ const PAGES = [
   "/design/shell/clock?code=on",
   "/design/shell/clock?state=working&code=on",
   "/design/shell/clock/code",
+  // The device already the business's kitchen's screen: the lock stops it first.
+  "/design/shell/clock/code?other=prep",
   // The clock station (#78 phase 5): running, refused a code while running,
   // a device that isn't one, one stopped, and someone signed in on it who
   // locks it again, can't with ten running, or doesn't.
@@ -3460,6 +3462,163 @@ test("the station demo locks the device on the code, and the team's hours stop a
   await expect(stop).toBeVisible();
 });
 
+// The clock's lock on a device that is the business's kitchen's screen
+// (accessibility, part 5), on the code screen's twin: the stop opens the
+// lock, and the toast's "ביטול" takes the focus. Its time up (a mouse's
+// press waits for nothing), the lock has the focus; pressed, the lock has
+// it until the kitchen's screen runs again, and then the stop back in its
+// place.
+test("the code demo on a kitchen's screen gives the focus to the lock after its stop, or back to the stop", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  const lock = he.app.clock.station.lock;
+  const name = "מסך המטבח";
+  const stop = page.getByRole("button", {
+    name: heT("app.clock.station.lock.stopOther", { name }),
+  });
+  const open = page.getByRole("button", { name: lock.open });
+  const undo = page
+    .getByRole("status")
+    .filter({ hasText: heT("app.clock.station.lock.stoppedOther", { name }) })
+    .getByRole("button", { name: lock.undo });
+  await page.goto("/design/shell/clock/code?other=prep");
+  await page.waitForLoadState("networkidle");
+  await expect(
+    page.getByText(heT("app.clock.station.lock.other", { name })),
+  ).toBeVisible();
+  await expect(open).toHaveCount(0);
+
+  await stop.click();
+  await expect(undo).toBeFocused();
+  await expect(open).toBeVisible();
+  await expect(stop).toHaveCount(0);
+  await expect(undo).toHaveCount(0, { timeout: 15_000 });
+  await expect(open).toBeFocused();
+
+  // Nothing is kept: stopped again, from the keyboard, and taken back.
+  await page.reload();
+  await page.waitForLoadState("networkidle");
+  await stop.focus();
+  await page.keyboard.press("Enter");
+  await expect(undo).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByText(heT("app.clock.station.lock.restartedOther", { name })),
+  ).toBeVisible();
+  await expect(open).toHaveCount(0);
+  await expect(stop).toBeFocused();
+});
+
+// Approving the hours that wait (accessibility, part 5), on the team's
+// twin, whose stand-in keeps nothing: an approved entry leaves the card, the
+// focus goes on to the next entry's words (never its "אישור", which Enter
+// held down would press too), and the toast names whose hours were approved
+// once the focus has landed. The last one takes the card along, and the
+// page's title has the focus.
+test("the team's hours demo goes on to the next entry after each approval, and names whose hours", async ({
+  page,
+}) => {
+  const approve = (name: string) =>
+    page.getByRole("button", {
+      name: heT("app.clock.team.confirm.approveLabel", { name }),
+    });
+  const words = (id: string) =>
+    page.locator(`[data-confirm-target="${id}"]`).filter({ visible: true });
+  const yoav = {
+    name: "יואב לוי",
+    entry: "68000000-0000-4000-a000-000000000031",
+  };
+  const noa = {
+    name: "נועה כהן",
+    entry: "68000000-0000-4000-a000-000000000032",
+  };
+  await page.goto("/design/shell/clock/team");
+  await page.waitForLoadState("networkidle");
+  await expect(
+    page.getByRole("heading", {
+      name: heT("app.clock.team.confirm.title", { count: 2 }),
+    }),
+  ).toBeVisible();
+
+  // Yoav's, the first: on to Noa's words, the next one down.
+  const yoavDone = heT("app.clock.team.confirm.done", { name: yoav.name });
+  await noteFocusWhenSaid(
+    page,
+    yoavDone,
+    `[data-confirm-target="${noa.entry}"]`,
+  );
+  await approve(yoav.name).click();
+  await expect(approve(yoav.name)).toHaveCount(0);
+  await expect(words(noa.entry)).toBeFocused();
+  await expect(words(noa.entry)).toContainText(noa.name);
+  await expect(
+    page.getByRole("status").filter({ hasText: yoavDone }),
+  ).toBeVisible();
+  await expect.poll(() => focusWhenSaid(page)).toBe(true);
+  await expect(
+    page.getByRole("heading", {
+      name: heT("app.clock.team.confirm.title", { count: 1 }),
+    }),
+  ).toBeVisible();
+  await expect(words(yoav.entry)).toHaveCount(0);
+
+  // Noa's, the last: the card goes with it, and the page's title has it.
+  const noaDone = heT("app.clock.team.confirm.done", { name: noa.name });
+  await noteFocusWhenSaid(page, noaDone, "main h1");
+  await approve(noa.name).click();
+  await expect(page.locator("[data-confirm-title]")).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { level: 1, name: he.app.clock.team.title }),
+  ).toBeFocused();
+  await expect(
+    page.getByRole("status").filter({ hasText: noaDone }),
+  ).toBeVisible();
+  await expect.poll(() => focusWhenSaid(page)).toBe(true);
+});
+
+// A record of days away removed on the person's twin (accessibility, part
+// 5): the toast's "ביטול" has the focus and says what it brings back; once
+// pressed, the record's row has the focus. Removed again and left to its
+// time (a mouse's press waits for nothing), the days away's title has it,
+// as the row went with the removal.
+test("the person's demo says what a removal's way back brings back, and gives the focus to the row or the days away's title", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  const ta = he.app.clock.absences;
+  const vacation = page
+    .getByRole("button", { name: ta.kinds.vacation })
+    .filter({ visible: true })
+    .first();
+  const remove = page
+    .getByRole("dialog", { name: ta.sheet.editTitle })
+    .getByRole("button", { name: ta.sheet.remove });
+  const undo = page
+    .getByRole("status")
+    .filter({ hasText: ta.done.remove })
+    .getByRole("button", { name: ta.done.undo });
+  await page.goto("/design/shell/clock/team/noa?absences=1");
+  await page.waitForLoadState("networkidle");
+
+  await vacation.click();
+  await remove.click();
+  await expect(undo).toBeFocused();
+  await expect(undo).toHaveAccessibleName(ta.done.undoRemove);
+  await expect(undo).toHaveText(ta.done.undo);
+  await page.keyboard.press("Enter");
+  await expect(page.getByText(ta.done.restore).first()).toBeVisible();
+  await expect(vacation).toBeFocused();
+
+  await vacation.click();
+  await remove.click();
+  await expect(undo).toBeFocused();
+  await expect(undo).toHaveCount(0, { timeout: 15_000 });
+  await expect(
+    page.getByRole("heading", { level: 2, name: ta.title, exact: true }),
+  ).toBeFocused();
+});
+
 // Cancelling and bringing back (the clock plan's PR4), on the demo's
 // stand-ins: "ביטול המשמרת" sits under fixing a shift; its step asks why,
 // cancels at once and offers "ביטול" in the toast rather than asking first. A
@@ -3497,6 +3656,11 @@ test("the clock demo cancels a shift with a way back, and brings one back", asyn
   const toast = page.getByRole("status").filter({ hasText: team.done.cancel });
   const undo = toast.getByRole("button", { name: team.done.undo });
   await expect(undo).toBeVisible();
+  // It has the focus, and its name says what it brings back, starting with
+  // the word it shows: no second "ביטול" right after "ביטול המשמרת".
+  await expect(undo).toBeFocused();
+  await expect(undo).toHaveAccessibleName(team.done.undoCancel);
+  await expect(undo).toHaveText(team.done.undo);
   await undo.click();
   await expect(
     page.getByRole("status").filter({ hasText: team.done.restore }),
@@ -3590,6 +3754,8 @@ test("the clock demo fixes a shift's breaks, with a way back from a removal", as
     .getByRole("status")
     .filter({ hasText: team.done.removeBreak })
     .getByRole("button", { name: team.done.undo });
+  await expect(undo).toBeFocused();
+  await expect(undo).toHaveAccessibleName(team.done.undoRemoveBreak);
   await undo.click();
   await expect(
     page.getByRole("status").filter({ hasText: team.done.restoreBreak }),

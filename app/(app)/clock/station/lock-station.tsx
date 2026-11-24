@@ -9,14 +9,23 @@ import {
   type StationStopFailure,
 } from "@domain/clock-station";
 import { orderStationName } from "@domain/order-stations";
-import { Button } from "@ui/button";
+import { Button, type ButtonProps } from "@ui/button";
 import { ChoiceList, ChoiceRow } from "@ui/choice-row";
+import { type FocusCandidate, focusFirst } from "@ui/focus-after";
 import { Sheet } from "@ui/sheet";
 import { StatusToast } from "@ui/status-toast";
 import { TextField } from "@ui/text-field";
+import { useFocusWhenGone } from "@ui/use-focus-after";
 import { Lock } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { type FormEvent, useId, useState, useTransition } from "react";
+import {
+  type FormEvent,
+  type RefObject,
+  useId,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { usePlaceWords } from "../../orders/orders-parts";
 import {
   clearAllOrders,
@@ -121,6 +130,17 @@ export function LockStation({
   const [toast, setToast] = useState<Toast | null>(null);
   const clock = kind === "clock";
   const stopper = clock ? stopOther : undefined;
+  // Where the focus goes once the stop's toast goes holding it: "נעילת
+  // המכשיר על הקוד", which the stop opened; once "ביטול" started the other
+  // one again, the stop back in its place, else the line saying what the
+  // device is. Each is drawn only in its own state.
+  const lockButton = useRef<HTMLButtonElement>(null);
+  const stopButton = useRef<HTMLButtonElement>(null);
+  const otherLine = useRef<HTMLParagraphElement>(null);
+  const afterLock = (): readonly FocusCandidate[] => [
+    stopButton.current,
+    otherLine.current,
+  ];
 
   const offered = (() => {
     if (clock) {
@@ -197,6 +217,14 @@ export function LockStation({
       }
       // The stop's button went with the stop: on to "ביטול".
       focusAction={toast?.undo !== undefined}
+      // Gone with the toast, the focus goes to the lock the stop opened,
+      // still there after "ביטול" until the other one runs again.
+      onFocusLeave={() =>
+        focusFirst(
+          [lockButton.current, stopButton.current, otherLine.current],
+          { preventScroll: true },
+        )
+      }
     />
   ) : null;
 
@@ -204,7 +232,7 @@ export function LockStation({
     const other = offer.other;
     return (
       <>
-        <p className="text-ink-2 text-sm">
+        <p ref={otherLine} className="text-ink-2 text-sm">
           {other
             ? clock
               ? tc("other", { name: other.name })
@@ -215,6 +243,7 @@ export function LockStation({
         </p>
         {other && stopper ? (
           <Button
+            ref={stopButton}
             variant="secondary"
             loading={stopping}
             onClick={() => stopIt(stopper, other.name)}
@@ -282,7 +311,9 @@ export function LockStation({
 
   return (
     <>
-      <Button
+      <OpenLock
+        buttonRef={lockButton}
+        after={afterLock}
         variant={primary ? "primary" : "secondary"}
         size={primary ? "lg" : "md"}
         onClick={() => {
@@ -293,7 +324,7 @@ export function LockStation({
       >
         <Lock aria-hidden="true" />
         {label ?? tc("open")}
-      </Button>
+      </OpenLock>
       <Sheet
         open={open}
         onOpenChange={setOpen}
@@ -375,4 +406,21 @@ export function LockStation({
       {stopToast}
     </>
   );
+}
+
+/**
+ * The button that opens locking. When it goes holding the focus (the stop
+ * taken back with "ביטול", so the lock closed again), the focus goes where
+ * `after` says, else to the page's title.
+ */
+function OpenLock({
+  buttonRef,
+  after,
+  ...props
+}: Omit<ButtonProps, "ref"> & {
+  buttonRef: RefObject<HTMLButtonElement | null>;
+  after: () => readonly FocusCandidate[];
+}) {
+  useFocusWhenGone(buttonRef, after);
+  return <Button ref={buttonRef} {...props} />;
 }

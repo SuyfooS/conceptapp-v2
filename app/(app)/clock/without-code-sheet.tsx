@@ -15,6 +15,7 @@ type Failure = Exclude<ClockActionResult, { ok: true }>["failure"];
 export function WithoutCodeSheet({
   open,
   onOpenChange,
+  returnFocus,
   direction,
   now,
   timeZone,
@@ -25,6 +26,11 @@ export function WithoutCodeSheet({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * Where the focus goes once it has closed (Sheet's `returnFocus`): it
+   * opens from the camera or the digits' sheet, gone as it opens.
+   */
+  returnFocus?: () => HTMLElement | null | undefined;
   direction: "in" | "out";
   /** The time now, ticking. */
   now: number;
@@ -43,6 +49,7 @@ export function WithoutCodeSheet({
     <Sheet
       open={open}
       onOpenChange={onOpenChange}
+      returnFocus={returnFocus}
       title={t(direction === "in" ? "none.titleIn" : "none.titleOut")}
       closeLabel={t("team.sheet.close")}
     >

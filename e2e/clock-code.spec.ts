@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import he from "../messages/he.json" with { type: "json" };
 import { qrMatrix, qrPath } from "../packages/domain/qr";
+import { focusWhenSaid, noteFocusWhenSaid } from "./announcer";
 import {
   allowCamera,
   expectCameraOff,
@@ -23,6 +24,7 @@ import {
   setDemoRequirePunchCode,
 } from "./db";
 import { secondPage, signIn } from "./session";
+import { heT } from "./t";
 import { expect, type Page, type Request, test } from "./test";
 
 // The clock's code (issue #78): an owner asks for it, a manager shows it on
@@ -208,11 +210,15 @@ test("a manager shows the code, and a worker clocks in and out by typing its dig
     await expect(noa.getByText(c.done.in, { exact: true })).toBeVisible();
     await expect(title(noa, c.title.working)).toBeVisible();
     await expect(typeIn).toBeHidden();
+    // The sheet opened from the camera, which went as it opened: closed, it
+    // gives the focus to the circle, never the top of the page.
+    await expect(circle(noa, c.circle.scanOut)).toBeFocused();
 
     // A break needs no code.
     await expect(noa.getByText(c.breakNote)).toBeVisible();
     await noa.getByRole("button", { name: c.startBreak }).click();
     await expect(title(noa, c.title.break)).toBeVisible();
+    await expect(noa.getByRole("button", { name: c.endShift })).toBeFocused();
     await circle(noa, c.circle.back).click();
     await expect(title(noa, c.title.working)).toBeVisible();
 
@@ -221,6 +227,7 @@ test("a manager shows the code, and a worker clocks in and out by typing its dig
     await typeOut.getByLabel(c.type.label).fill(await digitsOn(page));
     await expect(noa.getByText(c.done.out, { exact: true })).toBeVisible();
     await expect(title(noa, c.title.off)).toBeVisible();
+    await expect(circle(noa, c.circle.scanIn)).toBeFocused();
 
     expect(await demoEntryProofs(NOA.e164)).toEqual([
       { inProof: "typed", outProof: "typed", confirmed: false },
@@ -278,6 +285,8 @@ test("a manager's own code doesn't count for them", async ({ page }) => {
   await sheet
     .getByRole("button", { name: he.app.clock.team.sheet.close })
     .click();
+  await expect(sheet).toBeHidden();
+  await expect(circle(own, c.circle.scanIn)).toBeFocused();
   await circle(own, c.circle.scanIn).click();
   await film(own, await qrDrawing(page, c.code.qrLabel));
   await expect(own.getByRole("main").getByRole("alert")).toHaveText(
@@ -337,6 +346,10 @@ test("wrong digits block typing, and the worker goes ahead without a code", asyn
   await without.getByRole("button", { name: c.none.confirmIn }).click();
   await expect(page.getByText(c.done.inNone)).toBeVisible();
   await expect(title(page, c.title.working)).toBeVisible();
+  // Closed with its answer, the sheet gives the focus to the circle, which
+  // says the time now running, never to the top of the page.
+  await expect(without).toBeHidden();
+  await expect(circle(page, c.circle.scanOut)).toBeFocused();
   expect(await demoEntryProofs(NOA.e164)).toEqual([
     { inProof: "none", outProof: null, confirmed: false },
   ]);
@@ -380,9 +393,15 @@ test("a manager approves an entry made without a code, and their own waits for t
     fullPage: true,
   });
 
+  // The toast names whose hours were approved, once the focus has landed:
+  // the card went with its last "אישור", so on the page's title.
+  const noaApproved = heT("app.clock.team.confirm.done", { name: NOA.name });
+  await noteFocusWhenSaid(page, noaApproved, "main h1");
   await page.getByRole("button", { name: approve(NOA.name) }).click();
-  await expect(page.getByText(c.team.confirm.done)).toBeVisible();
+  await expect(page.getByText(noaApproved)).toBeVisible();
   await expect(page.getByRole("heading", { name: confirmOne })).toHaveCount(0);
+  await expect(page.getByRole("heading", { level: 1 })).toBeFocused();
+  await expect.poll(() => focusWhenSaid(page)).toBe(true);
   expect(await demoEntryProofs(NOA.e164)).toEqual([
     { inProof: "none", outProof: null, confirmed: true },
   ]);
@@ -423,7 +442,9 @@ test("a manager approves an entry made without a code, and their own waits for t
   await page.goto("/clock/team");
   await expect(page.getByRole("heading", { name: confirmOne })).toBeVisible();
   await page.getByRole("button", { name: approve(MANAGER.name) }).click();
-  await expect(page.getByText(c.team.confirm.done)).toBeVisible();
+  await expect(
+    page.getByText(heT("app.clock.team.confirm.done", { name: MANAGER.name })),
+  ).toBeVisible();
   await expect
     .poll(async () => (await demoEntryProofs(MANAGER.e164))[0]?.confirmed)
     .toBe(true);

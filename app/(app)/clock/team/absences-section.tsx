@@ -14,13 +14,21 @@ import { Card } from "@ui/card";
 import { ChoiceList, ChoiceRow } from "@ui/choice-row";
 import { type DataColumn, DataTable } from "@ui/data-table";
 import { FieldRow, rowPillInputClass } from "@ui/field-row";
+import { focusFirst, focusLost } from "@ui/focus-after";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageSection } from "@ui/page";
 import { TextField } from "@ui/text-field";
 import { Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
-import { type ReactNode, useId, useRef, useState } from "react";
+import {
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from "react";
 import { useMonthName, useShortDate } from "../pay/pay-parts";
 import type { AbsenceRecordsNot, AbsenceRow } from "./team-types";
 
@@ -109,10 +117,14 @@ export function useAbsenceFailure(): (
  * the shifts the schedule still has on them, and the way to record more; a
  * table on a desktop, with the same words. "הוספת משמרת" stays the page's
  * one main action, so recording is a row, or a quiet pill beside the table.
- * Where the viewer records none here, a quiet line under it says why.
+ * Where the viewer records none here, a quiet line under it says why. A
+ * record brought back (`restored`) takes the focus on its row, on the shape
+ * drawn, once the list read again has it.
  */
 export function AbsencesSection({
   rows,
+  headingRef,
+  restored = null,
   addable,
   open,
   add,
@@ -120,6 +132,17 @@ export function AbsencesSection({
   recordsNot = null,
 }: {
   rows: readonly AbsenceRow[];
+  /**
+   * The section's title, for a screen that puts the focus there when what
+   * held it went (a removed record's toast).
+   */
+  headingRef?: RefObject<HTMLHeadingElement | null>;
+  /**
+   * The record just brought back, a new object each time: its row takes the
+   * focus once it is drawn, where the focus was lost or on the section's
+   * title (where the toast's "ביטול" left it), never from elsewhere.
+   */
+  restored?: { id: string } | null;
   /** The viewer records days away here, writing as themselves. */
   addable: boolean;
   /** Opens a record; leave out where nothing opens (viewing only). */
@@ -137,6 +160,30 @@ export function AbsencesSection({
   const daysOf = useAbsenceDays();
   const dayCount = useDayCount();
   const date = useShortDate();
+  // Each shape's rows, in the order of `rows`: the list's on phones and
+  // tablets, the table's buttons on a desktop.
+  const list = useRef<HTMLDivElement>(null);
+  const table = useRef<HTMLDivElement>(null);
+  const seen = useRef<{ id: string } | null>(null);
+  useEffect(() => {
+    if (!restored || seen.current === restored) return;
+    const at = rows.findIndex((row) => row.id === restored.id);
+    // Not drawn yet: the list read again brings it.
+    if (at < 0) return;
+    seen.current = restored;
+    const title = headingRef?.current ?? null;
+    if (!focusLost() && document.activeElement !== title) return;
+    focusFirst(
+      [
+        list.current?.children.item(at),
+        table.current
+          ?.querySelector("tbody")
+          ?.children.item(at)
+          ?.querySelector("button"),
+      ],
+      { onlyIfLost: false, title: false },
+    );
+  }, [restored, rows, headingRef]);
   const shiftsLine = (row: AbsenceRow) =>
     row.shifts > 0 ? (
       <span className="text-warning">
@@ -174,6 +221,7 @@ export function AbsencesSection({
   return (
     <PageSection
       title={t("title")}
+      headingRef={headingRef}
       className="md:mx-auto md:w-full md:max-w-2xl xl:max-w-none"
       action={
         addable ? (
@@ -188,7 +236,7 @@ export function AbsencesSection({
         ) : null
       }
     >
-      <ListGroup className="xl:hidden">
+      <ListGroup ref={list} className="xl:hidden">
         {rows.length === 0 ? <ListRow title={t("none")} /> : null}
         {rows.map((row) =>
           open ? (
@@ -222,7 +270,11 @@ export function AbsencesSection({
           {t("toBuilder")}
         </Link>
       ) : null}
-      <Card padding="none" className="hidden overflow-hidden xl:block">
+      <Card
+        ref={table}
+        padding="none"
+        className="hidden overflow-hidden xl:block"
+      >
         {rows.length === 0 ? (
           <p className="px-4 py-4 text-ink-2">{t("none")}</p>
         ) : (

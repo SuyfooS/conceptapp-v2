@@ -13,6 +13,7 @@ import {
 } from "@domain/time-clock-format";
 import { Button } from "@ui/button";
 import { Card } from "@ui/card";
+import { focusFirst } from "@ui/focus-after";
 import { PunchCircle } from "@ui/punch-circle";
 import { StatusToast } from "@ui/status-toast";
 import { preloadQrReader } from "@ui/use-qr-camera";
@@ -28,6 +29,12 @@ import {
   useState,
   useTransition,
 } from "react";
+import {
+  type ClockPress,
+  clockState,
+  ignoreHeldEnter,
+  pressOver,
+} from "./clock-focus";
 import type { ClockActionResult, ClockActions, ClockData } from "./clock-types";
 import { PunchCodeSheet } from "./punch-code-sheet";
 import { ScanPunch } from "./scan-punch";
@@ -57,7 +64,11 @@ function useNow(initial: string, running: boolean): number {
  * for a short while. When the business asks for a code, pressing to come or
  * go turns the circle into a camera for the code a manager is showing, with
  * typing its digits and going ahead without one under it. Breaks never need a
- * code.
+ * code. Each press's button gives way to what it drew ("יציאה להפסקה" to
+ * "יציאה מהמשמרת", the undo card to the shift again), and so does a sheet
+ * that closes: the keyboard's focus goes on to the screen's main control
+ * now, "יציאה מהמשמרת" during a break and the circle otherwise, whose name
+ * says the time running and what pressing it does.
  */
 export function ClockPanel({
   data,
@@ -70,6 +81,7 @@ export function ClockPanel({
   const { open, undo } = data;
   const { needsCode } = data.punch;
   const pause = open?.breaks.find((b) => b.endedAt === null) ?? null;
+  const state = clockState(open, pause);
 
   const [pending, start] = useTransition();
   const [running, setRunning] = useState<Kind | null>(null);
@@ -97,6 +109,13 @@ export function ClockPanel({
   // the screen still shows what was there before (an open shift, say, that
   // another device closed), so nothing here may send a write against it.
   const busy = pending || noneBusy;
+  /** The press of the screen's own buttons on its way, until it is over. */
+  const pressed = useRef<ClockPress | null>(null);
+  /**
+   * What held the focus as it was pressed: after a refusal, still there, it
+   * takes the focus back; after a step, gone, the main control does.
+   */
+  const pressedOn = useRef<Element | null>(null);
   const now = useNow(data.now, open !== null || sheet === "none");
 
   // Leaving the screen ends a scan. Next keeps a page it leaves (hidden, in
@@ -132,6 +151,8 @@ export function ClockPanel({
   function run(kind: Kind, action: () => Promise<ClockActionResult>) {
     setRunning(kind);
     setFailure(null);
+    pressed.current = { from: state, refused: false };
+    pressedOn.current = document.activeElement;
     start(async () => {
       try {
         const result = await action();
@@ -139,16 +160,24 @@ export function ClockPanel({
         if (result.ok) {
           say(t(`done.${kind}`));
         } else {
+          refused();
           setFailure(result.failure);
         }
       } catch (error) {
         // A press with no signal stays on this screen. A redirect is not a
         // failure: the demo moves between its states that way.
         unstable_rethrow(error);
+        refused();
         setRunning(null);
         setFailure("failed");
       }
     });
+  }
+
+  /** The press was refused: the screen stays as it was, nothing to wait for. */
+  function refused() {
+    if (pressed.current)
+      pressed.current = { ...pressed.current, refused: true };
   }
 
   /** A punch with a code, from the camera or a sheet, which says what went wrong itself. */
@@ -234,12 +263,43 @@ export function ClockPanel({
     setRefocus(false);
   }, [refocus, scanning, scanFrom, paused]);
 
+  /**
+   * The screen's main control now, where the focus goes once what held it
+   * went: "יציאה מהמשמרת" during a break, the circle otherwise (both are
+   * there during a break, "יציאה מהמשמרת" first). Neither while the camera
+   * is on: its own "ביטול" has the focus then.
+   */
+  const mainControl = () => endShiftRef.current ?? circleRef.current;
+
+  // A press is over: the button pressed gave way to what it drew (the break's
+  // start to "יציאה מהמשמרת", leaving to the undo card, the undo card to the
+  // shift again), or was busy while its answer came, and the focus went with
+  // it. Only where it was lost, once the screen the press led to is drawn,
+  // it goes back to what was pressed when that is still there (a refusal,
+  // the circle), else on to the main control. A sheet open or the camera on
+  // keep it.
+  useEffect(() => {
+    if (!pressOver(pressed.current, { busy, state })) return;
+    pressed.current = null;
+    const was = pressedOn.current;
+    pressedOn.current = null;
+    if (scanning || sheet) return;
+    focusFirst([was, endShiftRef.current, circleRef.current], { title: false });
+  }, [busy, state, scanning, sheet]);
+
   function goWithoutCode() {
     setNoneFailure(null);
+    pressed.current = { from: state, refused: false };
+    pressedOn.current = null;
     startNone(async () => {
       const result = await punchWith(direction, { kind: "none" });
-      if (result.ok) setSheet(null);
-      else setNoneFailure(result.failure);
+      if (result.ok) {
+        setSheet(null);
+      } else {
+        // The sheet stays, saying why, with the focus in it.
+        pressed.current = null;
+        setNoneFailure(result.failure);
+      }
     });
   }
 
@@ -303,6 +363,7 @@ export function ClockPanel({
           loading={running === "break"}
           disabled={busy || data.viewOnly}
           onClick={() => run("break", actions.startBreak)}
+          onKeyDown={ignoreHeldEnter}
         >
           <Coffee aria-hidden="true" />
           {t("startBreak")}
@@ -316,6 +377,7 @@ export function ClockPanel({
           loading={running === "out"}
           disabled={busy || data.viewOnly}
           onClick={() => punch("out", "endShift")}
+          onKeyDown={ignoreHeldEnter}
         >
           <LogOut aria-hidden="true" className="rtl:-scale-x-100" />
           {t("endShift")}
@@ -358,6 +420,7 @@ export function ClockPanel({
             onClick={() =>
               run("undo", () => actions.undoClockOut(undoLeft.entryId))
             }
+            onKeyDown={ignoreHeldEnter}
           >
             {t("undo")}
           </Button>
@@ -369,6 +432,9 @@ export function ClockPanel({
           <PunchCodeSheet
             open={sheet === "code"}
             onOpenChange={(next) => setSheet(next ? "code" : null)}
+            // Opened from the camera, which went as it opened: closed, back
+            // to the main control, never the top of the page.
+            returnFocus={mainControl}
             direction={direction}
             locked={locked}
             punchWith={punchWith}
@@ -386,6 +452,7 @@ export function ClockPanel({
               // only the answer: a refusal shows before the page comes back.
               if (!noneHeld()) setSheet(next ? "none" : null);
             }}
+            returnFocus={mainControl}
             direction={direction}
             now={now}
             timeZone={data.timeZone}
@@ -443,6 +510,7 @@ function Circle({
         loading={running === "in"}
         disabled={disabled}
         onClick={() => onPunch("in")}
+        onKeyDown={ignoreHeldEnter}
       />
     );
   }
@@ -462,6 +530,7 @@ function Circle({
         loading={running === "back"}
         disabled={disabled}
         onClick={onBack}
+        onKeyDown={ignoreHeldEnter}
       />
     );
   }
@@ -478,6 +547,7 @@ function Circle({
       loading={running === "out"}
       disabled={disabled}
       onClick={() => onPunch("out")}
+      onKeyDown={ignoreHeldEnter}
     />
   );
 }
