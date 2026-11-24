@@ -10,12 +10,13 @@ export function nextInLine(ids: readonly string[], id: string): string[] {
   return [...ids.slice(at + 1), ...ids.slice(0, at).reverse()];
 }
 
-/** A request's decision buttons (`data-decide`), its first one first. */
-export const decideTarget = (id: string) =>
-  `[data-decide="${id.replace(/["\\]/g, "\\$&")}"]`;
+/**
+ * A request's own heading (`data-request-target`): its day, on its card or
+ * at the start of its row.
+ */
+export const requestTarget = (id: string) =>
+  `[data-request-target="${id.replace(/["\\]/g, "\\$&")}"]`;
 
-/** The newest line saying what was decided (`data-settled`), drawn first. */
-export const SETTLED_LINE = "[data-settled]";
 /** The card saying nothing waits any more. */
 export const NOTHING_WAITING = "[data-swaps-empty]";
 /** The list's own title, while requests wait. */
@@ -23,14 +24,15 @@ export const WAITING_TITLE = "[data-swaps-title]";
 
 /**
  * Where the focus goes once a decided request went with it, in order: the
- * next request's first decision button, the card saying nothing waits, the
- * newest line saying what was decided, the list's title; the page's title
- * after them (`useFocusWhenGone`). The card before the line: the line is in
- * the live region that is saying it, and the focus there would say it again.
+ * next request's own heading, the card saying nothing waits, the list's
+ * title; the page's title after them (`useFocusWhenGone`). The heading and
+ * not its "אישור": Enter held down on the decided one's would go on to
+ * approve the next, and a decision can't be undone. Never the line saying
+ * what was decided: the live region says it once the focus has landed,
+ * and the focus on it would say it again.
  */
 export const afterDecision = (ids: readonly string[], id: string) => [
-  ...nextInLine(ids, id).map(decideTarget),
+  ...nextInLine(ids, id).map(requestTarget),
   NOTHING_WAITING,
-  SETTLED_LINE,
   WAITING_TITLE,
 ];

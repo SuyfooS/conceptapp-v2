@@ -1,17 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
   afterDecision,
-  decideTarget,
   NOTHING_WAITING,
   nextInLine,
-  SETTLED_LINE,
+  requestTarget,
   WAITING_TITLE,
 } from "./next-request";
 
 /*
  * Where a manager goes on once the request they decided left the list with
- * the focus (accessibility, part 3): the next one down, else the one above,
- * else the card saying nothing waits.
+ * the focus (accessibility, part 3): the next one's heading down, else the
+ * one above, else the card saying nothing waits.
  */
 
 describe("nextInLine", () => {
@@ -30,31 +29,31 @@ describe("nextInLine", () => {
   });
 });
 
-describe("decideTarget", () => {
-  it("finds a request's decision buttons by its id", () => {
-    expect(decideTarget("00000000-0000-4000-a000-000000000002")).toBe(
-      '[data-decide="00000000-0000-4000-a000-000000000002"]',
+describe("requestTarget", () => {
+  it("finds a request's heading by its id", () => {
+    expect(requestTarget("00000000-0000-4000-a000-000000000002")).toBe(
+      '[data-request-target="00000000-0000-4000-a000-000000000002"]',
     );
   });
 
   it("keeps a quote or a backslash inside the attribute's value", () => {
-    expect(decideTarget('a"b\\c')).toBe('[data-decide="a\\"b\\\\c"]');
+    expect(requestTarget('a"b\\c')).toBe('[data-request-target="a\\"b\\\\c"]');
   });
 });
 
 describe("afterDecision", () => {
-  it("tries the next requests, then the empty card, what was decided and the title", () => {
+  // The headings, not the decision buttons: Enter held on a decided
+  // "אישור" would go on to approve the next. And not the line of what was
+  // decided: its live region says it, so the focus there would say it twice.
+  it("tries the next requests' headings, then the empty card and the title", () => {
     expect(afterDecision(["a", "b", "c"], "b")).toEqual([
-      decideTarget("c"),
-      decideTarget("a"),
+      requestTarget("c"),
+      requestTarget("a"),
       NOTHING_WAITING,
-      SETTLED_LINE,
       WAITING_TITLE,
     ]);
   });
 
-  // What was decided is said by its live region: the focus on its line
-  // would say it twice.
   it("goes to the card saying nothing waits once nothing else does", () => {
     expect(afterDecision(["a"], "a")[0]).toBe(NOTHING_WAITING);
   });

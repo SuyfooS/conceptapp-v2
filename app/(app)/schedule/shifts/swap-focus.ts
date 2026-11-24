@@ -3,7 +3,9 @@ import type { SwapIntent } from "./actions";
 /**
  * What a swap step that went through says, in its screen's toast: the same
  * words the card then shows, so a screen reader hears what came of it
- * wherever the focus is. Keys of the `app` messages. Taking an offer on
+ * wherever the focus is, said once the focus has come back (ShiftSheet's
+ * `onSwapped`, SwapButton's `onDone` on a card), after what the focus
+ * reads. Keys of the `app` messages. Taking an offer on
  * "המשמרות שלי" is said by the offer's own words, which hold the focus then
  * (`offerTarget`): a toast there would say them again.
  */

@@ -71,9 +71,8 @@ export function MyShiftsBoard({
   // so, and hold the focus (`offerTarget`), before the screen is read again.
   // So no toast says them again.
   const [took, setTook] = useState<string | null>(null);
-  const onSheetSwapped = (intent: SwapIntent, offer?: string) => {
-    if (intent === "take") setTook(offer ?? null);
-    else swapped.onSwapped(intent);
+  const onSheetSwapped = (intent: SwapIntent) => {
+    if (intent !== "take") swapped.onSwapped(intent);
   };
   const offers = offersFor(
     data.swaps,
@@ -307,6 +306,7 @@ export function MyShiftsBoard({
         data={data}
         swap={swap}
         onSwapped={onSheetSwapped}
+        onTaken={setTook}
         onGiven={pushAsk.offer}
       />
       <SwapToast notice={swapped.notice} />

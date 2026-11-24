@@ -1,20 +1,11 @@
 import { describe, expect, it } from "vitest";
-import he from "@/messages/he.json";
-import { offerTarget, SWAP_DONE, shiftTarget } from "./swap-focus";
+import { offerTarget, shiftTarget } from "./swap-focus";
 
 /*
- * What a swap step says once it went through, and where the focus comes back
- * to (accessibility, part 3).
+ * Where the focus comes back to once a swap step went through
+ * (accessibility, part 3). What each step says is checked where it is said,
+ * on the screens (e2e).
  */
-
-describe("SWAP_DONE", () => {
-  // The typecheck finds each step's key, and the message check its English:
-  // what is left to check is the new words a withdrawn request is said in.
-  it("says a withdrawn request keeps the shift", () => {
-    expect(SWAP_DONE.cancel).toBe("shifts.swap.cancelled");
-    expect(he.app.shifts.swap.cancelled).toBe("הבקשה בוטלה, המשמרת נשארת שלך");
-  });
-});
 
 describe("shiftTarget", () => {
   it("finds a shift's place on the screen by its id", () => {

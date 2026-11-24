@@ -10,7 +10,7 @@ import type { FocusCandidate } from "@ui/focus-after";
 import { useFocusWhenGone } from "@ui/use-focus-after";
 import { ArrowLeft } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import {
   type AppT,
   dayLabel,
@@ -58,8 +58,9 @@ const subject = (t: AppT, names: Names, row: Row) =>
  * screen is read again. What was decided is said by a live region that is
  * there from the start, so the first decision is heard too, and only the
  * new line of each; the focus, gone with the decided request, goes on to the
- * next one's first decision (`afterDecision`), or to the card saying
- * nothing waits once none is left.
+ * next one's heading (`afterDecision`), or to the card saying nothing waits
+ * once none is left, and the line joins the region after that: a focus
+ * moved as it is said would cut it off.
  */
 export function ApprovalsBoard({
   rows,
@@ -80,6 +81,17 @@ export function ApprovalsBoard({
 }) {
   const t = useTranslations("app");
   const [settled, setSettled] = useState<Settled[]>([]);
+  // How many of them, the oldest, the live region holds. The newest joins it
+  // a microtask after the drawing that took its request away: the removed
+  // card's own cleanup (`useFocusWhenGone`) ran before this effect and
+  // queued the focus's move first, so the line is said after the focus's
+  // own read.
+  const [said, setSaid] = useState(0);
+  useLayoutEffect(() => {
+    if (said === settled.length) return;
+    const count = settled.length;
+    queueMicrotask(() => setSaid(count));
+  }, [said, settled.length]);
   const names = { people, positions };
   const waiting = rows.filter(
     (row) => !settled.some((s) => s.id === row.swap.id),
@@ -132,7 +144,7 @@ export function ApprovalsBoard({
         data-decisions=""
         className="flex flex-col gap-2 empty:sr-only"
       >
-        {settled.map((s) => (
+        {settled.slice(settled.length - said).map((s) => (
           <p
             key={s.id}
             data-settled=""
@@ -305,7 +317,11 @@ function RequestCard({ names, row, after, ...view }: RowView & { row: Row }) {
       className="flex min-w-0 flex-col gap-3.5 rounded-[28px] bg-surface p-4 shadow-card"
     >
       <div>
-        <h3 className="font-bold text-lg">{dayLabel(t, row.shift.day)}</h3>
+        {/* Where the focus goes on to once another request it held was
+            decided (`requestTarget`). */}
+        <h3 data-request-target={row.swap.id} className="font-bold text-lg">
+          {dayLabel(t, row.shift.day)}
+        </h3>
         <p className="text-base text-ink-2">
           {row.shift.name} · {timeRange(t, row.shift)}
           {` · ${position(t, names, row)}`}
@@ -368,7 +384,11 @@ function RequestRow({ names, row, after, ...view }: RowView & { row: Row }) {
   );
   return (
     <tr ref={line} className="border-line border-t">
-      <th scope="row" className={cn(td, "text-start font-medium")}>
+      <th
+        scope="row"
+        data-request-target={row.swap.id}
+        className={cn(td, "text-start font-medium")}
+      >
         {dayLabel(t, row.shift.day)}
       </th>
       <td className={td}>

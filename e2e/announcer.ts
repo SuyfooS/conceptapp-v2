@@ -24,3 +24,48 @@ export const saidSince = (region: Locator, words: string) =>
  */
 export const pastSameWords = (page: Page) =>
   page.waitForTimeout(ANNOUNCE_SAME_MS + 50);
+
+/** Where `noteFocusWhenSaid` keeps its note, on the page's window. */
+type FocusNote = { focusWhenSaid?: boolean | null };
+
+/**
+ * Notes, from now on, where the focus is when `words` first appear in a
+ * live region (a status, or what has `aria-live`): a screen reader says them
+ * after what the focus reads then, while a focus that moves after them cuts
+ * them off. `focusWhenSaid` then tells whether the focus was on `selector`,
+ * null until they appear. Before the step that says them; refused when they
+ * are said already.
+ */
+export const noteFocusWhenSaid = (
+  page: Page,
+  words: string,
+  selector: string,
+) =>
+  page.evaluate(
+    ({ words, selector }) => {
+      const note = window as unknown as FocusNote;
+      note.focusWhenSaid = null;
+      const live =
+        '[role="status"]:not([aria-live="off"]), [aria-live]:not([aria-live="off"])';
+      const saying = () =>
+        [...document.querySelectorAll(live)].some((region) =>
+          region.textContent?.includes(words),
+        );
+      if (saying()) throw new Error(`already said: ${words}`);
+      const observer = new MutationObserver(() => {
+        if (!saying()) return;
+        note.focusWhenSaid = document.activeElement?.matches(selector) ?? false;
+        observer.disconnect();
+      });
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+    },
+    { words, selector },
+  );
+
+/** What `noteFocusWhenSaid` saw: the focus on its selector, or not yet said. */
+export const focusWhenSaid = (page: Page) =>
+  page.evaluate(() => (window as unknown as FocusNote).focusWhenSaid ?? null);

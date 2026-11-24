@@ -77,16 +77,18 @@ function Consequence({
  * One shift in a sheet: who is on it, and what the person can do about it.
  * Giving a shift away and taking one are confirmed here, each saying what
  * will happen. `shifts` are the published shifts the id is looked up in,
- * `offers` the colleagues' requests for them. `onSwapped` runs once a step
- * went through, with the step and, for a take, the request taken (the
- * board says what came of it), and `onGiven` once a shift was given away.
+ * `offers` the colleagues' requests for them. `onTaken` runs as soon as an
+ * offer was taken, with its request (the board marks it taken, before the
+ * focus lands on its words), and `onGiven` once a shift was given away.
  * Closed, the focus goes back to what opened it; after a step, to the
  * offer's words once one was taken (`offerTarget`), else to the shift's own
  * place on the screen (`shiftTarget`), which the screen read again keeps,
  * while the button that opened it may have given way to what came of the
- * step. While a step is on its way the sheet stays, as Sheet asks: closed
- * before its answer, the focus would go back to a button the answer then
- * takes away.
+ * step. `onSwapped` runs once that focus is back, with the step, so what
+ * the board says of it comes after the focus's own read: said as the sheet
+ * slides away, it would be cut off by the focus moving. While a step is on
+ * its way the sheet stays, as Sheet asks: closed before its answer, the
+ * focus would go back to a button the answer then takes away.
  */
 export function ShiftSheet({
   id,
@@ -97,6 +99,7 @@ export function ShiftSheet({
   data,
   swap,
   onSwapped,
+  onTaken,
   onGiven,
 }: {
   id: string | null;
@@ -106,20 +109,23 @@ export function ShiftSheet({
   offers: readonly Offer<WeekScheduleShift>[];
   data: ShiftData;
   swap: SwapAction;
-  onSwapped?: (intent: SwapIntent, offer?: string) => void;
+  /** A step went through and the focus is back: the board says it now. */
+  onSwapped?: (intent: SwapIntent) => void;
+  /** An offer was taken, its request: at once, before the sheet closes. */
+  onTaken?: (offer: string) => void;
   onGiven?: () => void;
 }) {
   const t = useTranslations("app");
   const shift = shifts.find((s) => s.id === id);
-  // What held the focus as it opened, whether a step went through since, and
+  // What held the focus as it opened, the step that went through since, and
   // the request it took, if it took one.
   const opener = useRef<Element | null>(null);
-  const stepped = useRef(false);
+  const step = useRef<SwapIntent | null>(null);
   const taken = useRef<string | null>(null);
   useLayoutEffect(() => {
     if (!open) return;
     opener.current = document.activeElement;
-    stepped.current = false;
+    step.current = null;
     taken.current = null;
   }, [open]);
   // Steps sent and not answered yet: ✕, Escape, the scrim and a swipe wait.
@@ -129,25 +135,27 @@ export function ShiftSheet({
   }, []);
 
   function done(intent: SwapIntent, offer?: string) {
-    stepped.current = true;
+    step.current = intent;
     taken.current = offer ?? null;
     onOpenChange(false);
-    onSwapped?.(intent, offer);
+    if (offer) onTaken?.(offer);
     if (intent === "give") onGiven?.();
   }
 
   // Put there as focusFirst puts it (a line given a tabindex, the page's
-  // title last), only while nothing else took it as the sheet closed.
+  // title last), only while nothing else took it as the sheet closed. Then
+  // the step is said, after what the focus reads.
   function returnFocus() {
     const target = id ? shiftTarget(id) : null;
     const offer = taken.current ? offerTarget(taken.current) : null;
-    const candidates = stepped.current
-      ? [offer, target]
-      : [opener.current, target];
+    const stepped = step.current;
+    const candidates = stepped ? [offer, target] : [opener.current, target];
     opener.current = null;
-    stepped.current = false;
+    step.current = null;
     taken.current = null;
-    return focusFirst(candidates, { preventScroll: true });
+    const landed = focusFirst(candidates, { preventScroll: true });
+    if (stepped) onSwapped?.(stepped);
+    return landed;
   }
 
   return (

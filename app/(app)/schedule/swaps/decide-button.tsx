@@ -11,7 +11,8 @@ const initialState: DecideState = {};
  * Approve or decline one taken request, as a button. `action` is
  * `decideSwapAction`, or the design demo's stand-in. A refusal is
  * explained under the button; `onDone` runs once the decision went through.
- * Each carries its request (`data-decide`, as `decideTarget` finds it).
+ * Each carries its request (`data-decide`), so the checks tell whose it is.
+ * The focus never lands on one by itself (`afterDecision`).
  */
 export function DecideButton({
   action,
@@ -61,7 +62,7 @@ export function DecideButton({
         variant={variant}
         loading={pending}
         aria-label={`${text}, ${subject}`}
-        // Found by the focus once the request decided before it went.
+        // Which request it decides, for the checks.
         data-decide={id}
         className={block ? "w-full px-3" : undefined}
       >

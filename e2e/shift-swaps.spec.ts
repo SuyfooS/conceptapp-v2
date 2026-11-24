@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import he from "../messages/he.json" with { type: "json" };
+import { focusWhenSaid, noteFocusWhenSaid } from "./announcer";
 import { standInForTurnstile } from "./captcha";
 import {
   clearSchedule,
@@ -124,17 +125,20 @@ test("a worker gives a shift away, a colleague takes it, the worker cancels", as
   await expect(giving).toContainText(sheet.giveNote);
   expect(await demoSwaps()).toEqual([]);
   await expectCleanPage(page);
+  await noteFocusWhenSaid(page, sw.open, "[data-shift-target]");
   await giving
     .getByRole("button", { name: new RegExp(`^${sw.buttons.give}, `) })
     .click();
   await expect(giving).toHaveCount(0);
   await expect(shown(page, sw.open)).toBeVisible();
   await expect(button(page, sw.buttons.cancel)).toBeVisible();
-  // Said wherever the focus is, and the focus is back on her shift, whose
-  // "מסירת המשמרת" gave way to the request (accessibility, part 3).
+  // The focus is back on her shift, whose "מסירת המשמרת" gave way to the
+  // request, and then it is said, wherever the focus is (accessibility,
+  // part 3).
   await expect(toast(page, sw.open)).toBeVisible();
   await expect(shiftTarget(page)).toHaveCount(1);
   await expect(shiftTarget(page)).toBeFocused();
+  await expect.poll(() => focusWhenSaid(page)).toBe(true);
   expect(await demoSwaps()).toEqual([
     { status: "open", from: NOA.e164, to: null },
   ]);
@@ -186,12 +190,15 @@ test("a worker gives a shift away, a colleague takes it, the worker cancels", as
   await expect(
     shown(page, heT("app.shifts.swap.taken", { name: YOAV.name, form: "x" })),
   ).toBeVisible();
+  await noteFocusWhenSaid(page, sw.cancelled, "[data-shift-target]");
   await button(page, sw.buttons.cancel).click();
   await expect(button(page, sw.buttons.give)).toBeVisible();
   expect((await demoSwaps()).map((s) => s.status)).toEqual(["cancelled"]);
-  // "ביטול הבקשה" went with the focus: it is on her shift, and it is said.
+  // "ביטול הבקשה" went with the focus: it is on her shift, and then it is
+  // said.
   await expect(toast(page, sw.cancelled)).toBeVisible();
   await expect(shiftTarget(page)).toBeFocused();
+  await expect.poll(() => focusWhenSaid(page)).toBe(true);
   // What became of it stays in sight, and her shift says nothing more.
   await expect(pastList(page)).toContainText(past.withdrawnFrom);
   await expect(shown(page, sw.declined)).toHaveCount(0);
@@ -307,23 +314,24 @@ test("a manager approves a taken request and the colleague takes the shift", asy
     fullPage: true,
   });
 
+  const approved = (
+    ap.settled.approved
+      .replace("{to}", YOAV.name)
+      .replace("{from}", NOA.name)
+      .split("{")[0] ?? ""
+  ).trim();
+  await noteFocusWhenSaid(page, approved, "[data-swaps-empty]");
   await button(page, ap.buttons.approve).click();
   await expect(shown(page, ap.empty)).toBeVisible();
   // The request went with the focus, and nothing else waits: it is on the
-  // card saying so, while the live region says what was decided
+  // card saying so, and then the live region says what was decided
   // (accessibility, part 3).
   await expect(page.locator("[data-swaps-empty]")).toBeFocused();
   // It says what was decided, since the decision cannot be undone.
   await expect(
-    page.getByRole("status").filter({
-      hasText: (
-        ap.settled.approved
-          .replace("{to}", YOAV.name)
-          .replace("{from}", NOA.name)
-          .split("{")[0] ?? ""
-      ).trim(),
-    }),
+    page.getByRole("status").filter({ hasText: approved }),
   ).toBeVisible();
+  await expect.poll(() => focusWhenSaid(page)).toBe(true);
   expect(await demoSwaps()).toEqual([
     { status: "approved", from: NOA.e164, to: YOAV.e164 },
   ]);
