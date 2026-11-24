@@ -176,6 +176,99 @@ export function focusWhenGone(
   return focusFirst(candidates, { doc, preventScroll: true });
 }
 
+/** A page a landing listens to: its focus, and its keys and presses. */
+export type LandingPage = DocLike &
+  Pick<EventTarget, "addEventListener" | "removeEventListener">;
+
+/**
+ * Calls `drawn` after each change to what `page` draws (an element added,
+ * removed, shown or hidden); returns what stops it.
+ */
+export type WatchDrawing = (page: LandingPage, drawn: () => void) => () => void;
+
+/** The browser's: a MutationObserver on the body, nothing without one. */
+export const watchDrawing: WatchDrawing = (page, drawn) => {
+  const Observer = globalThis.MutationObserver;
+  if (typeof Observer !== "function" || !page.body) return () => {};
+  const observer = new Observer(() => drawn());
+  observer.observe(page.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    // Shown and hidden; never the tabindex a landing gives.
+    attributeFilter: ["class", "style", "hidden", "inert"],
+  });
+  return () => observer.disconnect();
+};
+
+/**
+ * The focus put on the page's title (`PAGE_TITLE`) once the screen that was
+ * waited for arrives (a switch of business), and kept landing there while
+ * that screen is still being drawn: a title not drawn yet takes it when it
+ * comes, and one drawn in place of the title that had it takes it back.
+ * Next draws a page again under its redirect boundary once a form's action
+ * redirected, from its prefetched shell first (the skeleton's own title)
+ * and then whole, so the title that took the focus can be gone a moment
+ * later. Only while the focus is lost (`focusFirst`), without moving the
+ * page; it ends for good once the focus is put anywhere else, a key is
+ * pressed or the screen touched, after `ms`, or on the stop it returns.
+ */
+export function landOnTitle({
+  ms,
+  doc = thePage() as LandingPage | undefined,
+  watch = watchDrawing,
+}: {
+  /** The longest it keeps landing there. */
+  ms: number;
+  doc?: LandingPage;
+  watch?: WatchDrawing;
+}): () => void {
+  if (!doc) return () => {};
+  const page = doc;
+  // The title it put the focus on: while that one is drawn, nothing moves.
+  let on: HTMLElement | null = null;
+  // While it moves the focus itself, so its own move ends nothing.
+  let moving = false;
+  let over = false;
+
+  const land = () => {
+    if (over) return;
+    if (onScreen(on)) {
+      // Still drawn: the focus is there, or something put it elsewhere.
+      if (page.activeElement !== on) stop();
+      return;
+    }
+    moving = true;
+    try {
+      const landed = focusFirst([], { doc: page });
+      if (landed) on = landed;
+    } finally {
+      moving = false;
+    }
+  };
+  const moved = () => {
+    if (!moving && page.activeElement !== on) stop();
+  };
+  const stopWatching = watch(page, land);
+  const timer = setTimeout(stop, ms);
+  page.addEventListener("focusin", moved, true);
+  page.addEventListener("keydown", stop, true);
+  page.addEventListener("pointerdown", stop, true);
+
+  function stop() {
+    if (over) return;
+    over = true;
+    clearTimeout(timer);
+    stopWatching();
+    page.removeEventListener("focusin", moved, true);
+    page.removeEventListener("keydown", stop, true);
+    page.removeEventListener("pointerdown", stop, true);
+  }
+
+  land();
+  return stop;
+}
+
 /**
  * Whether `now` has just arrived, noting it in `seen` when it has: for an
  * effect that moves the focus to what arrived (a refusal, the card that

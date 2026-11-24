@@ -10,7 +10,7 @@ import { announce } from "./announcer";
 import { Badge } from "./badge";
 import { ChoiceMenu } from "./choice-menu";
 import { cn } from "./cn";
-import { focusFirst } from "./focus-after";
+import { landOnTitle } from "./focus-after";
 import { leaveBusiness } from "./leaving-business";
 import { ListGroup, ListRow } from "./list-row";
 import { Sheet } from "./sheet";
@@ -56,8 +56,17 @@ export type AwaitedSwitch = { id: string; name: string; at: number };
  */
 let awaited: AwaitedSwitch | null = null;
 
+/**
+ * Stops the focus landing on the title for the last switch that arrived
+ * (`landOnTitle`). One per page, as `awaited` is: the screen that saw it
+ * arrive may be drawn again before the title is.
+ */
+let stopLanding: () => void = () => {};
+
 function awaitSwitch(next: AwaitedSwitch) {
   awaited = next;
+  // A new switch: the last one's title no longer waits for the focus.
+  stopLanding();
 }
 
 /**
@@ -101,9 +110,14 @@ function useSwitchAsked(businesses: readonly BusinessChoice[]) {
 
 /**
  * Once the screens are drawn for the business a switch asked for: "עברת
- * לעסק X", and the focus on the page's title if it was lost (the pressed
- * row went; the desktop's menu gives its own button the focus back, so
- * nothing moves there). A switch refused, or long gone, says nothing.
+ * לעסק X", said once, and the focus on the page's title while it is lost
+ * (the pressed row went; the desktop's menu gives its own button the focus
+ * back, which keeps it while it is there). The first to see it arrive is
+ * often the sidebar's menu, there on every screen size, while Home is
+ * still the old one or its skeleton, and Next draws Home again once the
+ * switch's redirect is back; so the focus keeps landing on the title Home
+ * draws, for as long as a switch is waited for, unless the person moves it
+ * (`landOnTitle`). A switch refused, or long gone, says nothing.
  */
 function useSwitchArrival(businesses: readonly BusinessChoice[]) {
   const t = useTranslations("ui.businesses");
@@ -113,7 +127,8 @@ function useSwitchArrival(businesses: readonly BusinessChoice[]) {
     const arrived = takeArrival(businesses, Date.now());
     if (!arrived) return;
     announce(t("switched", { name: arrived.name }));
-    focusFirst([]);
+    stopLanding();
+    stopLanding = landOnTitle({ ms: ARRIVAL_MS });
   }, [current]);
 }
 

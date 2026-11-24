@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   arrived,
   canTakeFocus,
@@ -9,8 +9,11 @@ import {
   focusFirst,
   focusLost,
   focusWhenGone,
+  landOnTitle,
   onScreen,
   PAGE_TITLE,
+  type WatchDrawing,
+  watchDrawing,
   watchFocusIn,
 } from "./focus-after";
 
@@ -20,12 +23,16 @@ import {
  * here is all the helpers read.
  */
 
-/** A page: what has the focus, its body, and what a selector finds. */
-class Page implements DocLike {
+/**
+ * A page: what has the focus, its body, what a selector finds, and the
+ * events a landing listens to (a focus moving, a key, a press).
+ */
+class Page extends EventTarget implements DocLike {
   activeElement: Element | null = null;
   body: Element;
   found = new Map<string, Element[]>();
   constructor() {
+    super();
     this.body = new Spot(this, "body") as unknown as Element;
     this.activeElement = this.body;
   }
@@ -73,6 +80,8 @@ class Spot {
   focus(options?: FocusOptions) {
     this.focused = options;
     this.page.activeElement = this as unknown as Element;
+    // As a browser does: the page has its new focus by then.
+    this.page.dispatchEvent(new Event("focusin"));
   }
 }
 
@@ -276,6 +285,231 @@ describe("focusWhenGone", () => {
     there.focus();
     expect(focusWhenGone([el(spot("button"))], { doc: at })).toBeNull();
     expect(at.activeElement).toBe(there);
+  });
+});
+
+/**
+ * The page's drawing, run by the test: `redraw` is the browser saying the
+ * page changed. What it calls is kept once stopped, to show a landing that
+ * ended moves nothing even then.
+ */
+function drawing() {
+  const watched = { drawn: (() => {}) as () => void, stopped: false };
+  const watch: WatchDrawing = (_, drawn) => {
+    watched.drawn = drawn;
+    return () => {
+      watched.stopped = true;
+    };
+  };
+  return { watch, watched, redraw: () => watched.drawn() };
+}
+
+/** Home drawn again: the title that had the focus gone, another in its place. */
+function drawnAgain(at: Page, gone: Spot, next: Spot) {
+  gone.isConnected = false;
+  at.found.set(PAGE_TITLE, [el(next)]);
+}
+
+// A switch of business that arrived: the first screen to see it may be the
+// sidebar's, while Home is still its skeleton, and Next draws Home again
+// once the redirect is back. The focus lands on the title Home draws, and
+// never takes the person's.
+describe("landOnTitle", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("puts the focus on the title, and on the one drawn in its place", () => {
+    const { at, spot } = page();
+    // The pressed row went: the focus is nowhere.
+    const row = spot("button");
+    row.focus();
+    row.isConnected = false;
+    const skeleton = spot("h1");
+    at.found.set(PAGE_TITLE, [el(skeleton)]);
+    const { watch, watched, redraw } = drawing();
+    landOnTitle({ ms: 15_000, doc: at, watch });
+    expect(at.activeElement).toBe(skeleton);
+    expect(skeleton.focused).toEqual({ preventScroll: true });
+    // Home drawn whole, in place of its skeleton.
+    const title = spot("h1");
+    drawnAgain(at, skeleton, title);
+    redraw();
+    expect(at.activeElement).toBe(title);
+    expect(title.attributes.get("tabindex")).toBe("-1");
+    expect(title.focused).toEqual({ preventScroll: true });
+    // Drawn again with the title still there: nothing moves, nothing ends.
+    redraw();
+    expect(at.activeElement).toBe(title);
+    expect(watched.stopped).toBe(false);
+  });
+
+  it("waits for a title not drawn yet", () => {
+    const { at, spot } = page();
+    const { watch, redraw } = drawing();
+    landOnTitle({ ms: 15_000, doc: at, watch });
+    expect(at.activeElement).toBe(at.body);
+    redraw();
+    expect(at.activeElement).toBe(at.body);
+    const title = spot("h1");
+    at.found.set(PAGE_TITLE, [el(title)]);
+    redraw();
+    expect(at.activeElement).toBe(title);
+  });
+
+  it("leaves a focus that is not lost, and lands once it is", () => {
+    // A menu gave its own button the focus back; then the frame is drawn
+    // again, and the button with it.
+    const { at, spot } = page();
+    const menu = spot("button");
+    menu.focus();
+    const title = spot("h1");
+    at.found.set(PAGE_TITLE, [el(title)]);
+    const { watch, redraw } = drawing();
+    landOnTitle({ ms: 15_000, doc: at, watch });
+    expect(at.activeElement).toBe(menu);
+    expect(title.focused).toBeNull();
+    menu.isConnected = false;
+    redraw();
+    expect(at.activeElement).toBe(title);
+  });
+
+  it("ends once the focus is put anywhere else", () => {
+    const { at, spot } = page();
+    const first = spot("h1");
+    at.found.set(PAGE_TITLE, [el(first)]);
+    const { watch, watched, redraw } = drawing();
+    landOnTitle({ ms: 15_000, doc: at, watch });
+    expect(at.activeElement).toBe(first);
+    const card = spot("a");
+    card.focus();
+    expect(watched.stopped).toBe(true);
+    // Even with what it went to gone and the title drawn again.
+    card.isConnected = false;
+    const next = spot("h1");
+    drawnAgain(at, first, next);
+    redraw();
+    expect(next.focused).toBeNull();
+  });
+
+  it("ends on a key or a press", () => {
+    for (const type of ["keydown", "pointerdown"]) {
+      const { at, spot } = page();
+      const first = spot("h1");
+      at.found.set(PAGE_TITLE, [el(first)]);
+      const { watch, watched, redraw } = drawing();
+      landOnTitle({ ms: 15_000, doc: at, watch });
+      at.dispatchEvent(new Event(type));
+      expect(watched.stopped).toBe(true);
+      const next = spot("h1");
+      drawnAgain(at, first, next);
+      redraw();
+      expect(next.focused).toBeNull();
+    }
+  });
+
+  it("ends when the focus left its title while that is still drawn", () => {
+    const { at, spot } = page();
+    const first = spot("h1");
+    at.found.set(PAGE_TITLE, [el(first)]);
+    const { watch, watched, redraw } = drawing();
+    landOnTitle({ ms: 15_000, doc: at, watch });
+    // Blurred, with no element taking it.
+    at.activeElement = at.body;
+    redraw();
+    expect(watched.stopped).toBe(true);
+    expect(at.activeElement).toBe(at.body);
+  });
+
+  it("ends after its time", () => {
+    const { at, spot } = page();
+    const { watch, watched, redraw } = drawing();
+    landOnTitle({ ms: 1_000, doc: at, watch });
+    vi.advanceTimersByTime(999);
+    expect(watched.stopped).toBe(false);
+    vi.advanceTimersByTime(1);
+    expect(watched.stopped).toBe(true);
+    const title = spot("h1");
+    at.found.set(PAGE_TITLE, [el(title)]);
+    redraw();
+    expect(title.focused).toBeNull();
+  });
+
+  it("ends on the stop it returns, and listens no more", () => {
+    const { at, spot } = page();
+    const first = spot("h1");
+    at.found.set(PAGE_TITLE, [el(first)]);
+    const { watch, watched, redraw } = drawing();
+    const stop = landOnTitle({ ms: 15_000, doc: at, watch });
+    stop();
+    expect(watched.stopped).toBe(true);
+    const next = spot("h1");
+    drawnAgain(at, first, next);
+    redraw();
+    expect(next.focused).toBeNull();
+    // A second stop does nothing.
+    expect(() => stop()).not.toThrow();
+  });
+
+  it("does nothing where there is no page", () => {
+    expect(() => landOnTitle({ ms: 1_000 })()).not.toThrow();
+  });
+});
+
+describe("watchDrawing", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("watches the body for elements added, removed, shown or hidden, not a tabindex", () => {
+    const seen = {
+      callback: null as (() => void) | null,
+      observed: [] as { target: unknown; options: unknown }[],
+      disconnected: false,
+    };
+    vi.stubGlobal(
+      "MutationObserver",
+      class {
+        constructor(callback: () => void) {
+          seen.callback = callback;
+        }
+        observe(target: unknown, options: unknown) {
+          seen.observed.push({ target, options });
+        }
+        disconnect() {
+          seen.disconnected = true;
+        }
+      },
+    );
+    const { at } = page();
+    let drawn = 0;
+    const stop = watchDrawing(at, () => {
+      drawn += 1;
+    });
+    expect(seen.observed).toEqual([
+      {
+        target: at.body,
+        options: {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ["class", "style", "hidden", "inert"],
+        },
+      },
+    ]);
+    seen.callback?.();
+    expect(drawn).toBe(1);
+    stop();
+    expect(seen.disconnected).toBe(true);
+  });
+
+  it("watches nothing without a MutationObserver", () => {
+    const { at } = page();
+    expect(() => watchDrawing(at, () => {})()).not.toThrow();
   });
 });
 
