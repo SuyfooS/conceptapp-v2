@@ -1,3 +1,4 @@
+import { getAbsences } from "@db/absences";
 import { getPayPeople } from "@db/payroll";
 import { getEmploymentPeriods, getPayrollDetails } from "@db/payroll-details";
 import {
@@ -6,6 +7,7 @@ import {
 } from "@db/payroll-months";
 import { getTimeEntries } from "@db/time-clock";
 import { getWages, wagesByPerson } from "@db/wages";
+import type { Absence, KindSpan } from "@domain/absences";
 import { historyMonths, payrollHistory } from "@domain/holiday-pay";
 import {
   PAYROLL_ENGINE_VERSION,
@@ -40,8 +42,9 @@ import { payAccess } from "./pay-access";
  * What the hours engine reads for a month, from what payroll keeps: the
  * business's settings and city (its calendar of rest windows and holidays),
  * the people, their entries over the month's weeks and the history months
- * before (`payrollReadRange`), and the history itself (holiday pay's average).
- * Shared by the pay holders' screens and the worker's own clock.
+ * before (`payrollReadRange`), the history itself (holiday pay's average), and
+ * the live days away over the month's weeks (known issue 19). Shared by the
+ * pay holders' screens and the worker's own clock.
  */
 export function payrollInputOf(args: {
   month: string;
@@ -49,9 +52,10 @@ export function payrollInputOf(args: {
   settings: PayrollSettings;
   entries: readonly TimeEntry[];
   people: readonly PayrollPerson[];
+  absences: readonly KindSpan[];
   now: Date;
 }): PayrollInput {
-  const { month, place, settings, entries, people, now } = args;
+  const { month, place, settings, entries, people, absences, now } = args;
   const range = payrollRange(month);
   return {
     month,
@@ -67,7 +71,18 @@ export function payrollInputOf(args: {
       settings,
     ),
     history: payrollHistory(entries, month, place.timeZone, now),
+    absences,
   };
+}
+
+/** The live days away over a month's weeks, as the engine reads them. */
+export async function payrollAbsences(
+  businessId: string,
+  month: string,
+  userId?: string,
+): Promise<Absence[]> {
+  const range = payrollRange(month);
+  return getAbsences(businessId, range.from, range.to, { userId });
 }
 
 /** The instants the engine reads a month's entries over, with its history. */
@@ -114,7 +129,7 @@ export const currentPayrollReads = cache(async (month: string) => {
   const place = (await currentMember())?.membership?.business.place;
   if (!access || !place) return null;
   const read = payrollReadOf(month, access.timeZone);
-  const [settings, people, entries, wages, details, periods] =
+  const [settings, people, entries, wages, details, periods, absences] =
     await Promise.all([
       currentModuleSettings("time_clock"),
       getPayPeople(access.businessId),
@@ -122,18 +137,24 @@ export const currentPayrollReads = cache(async (month: string) => {
       getWages(access.businessId).then(wagesByPerson),
       getPayrollDetails(access.businessId),
       getEmploymentPeriods(access.businessId),
+      payrollAbsences(access.businessId, month),
     ]);
   const inMonth = entries.filter(
     (entry) => monthOf(entryDate(entry, access.timeZone)) === month,
   );
   const now = new Date();
-  const payrollPeople = payrollPeopleOf(people, inMonth).map((userId) =>
-    payrollPersonOf(
-      userId,
-      details.get(userId),
-      periods.get(userId) ?? [],
-      wages.get(userId) ?? [],
-    ),
+  // Someone with days away in the month is listed too, hours or not.
+  const awayInMonth = absences.filter(
+    (one) => one.from.slice(0, 7) <= month && one.to.slice(0, 7) >= month,
+  );
+  const payrollPeople = payrollPeopleOf(people, inMonth, awayInMonth).map(
+    (userId) =>
+      payrollPersonOf(
+        userId,
+        details.get(userId),
+        periods.get(userId) ?? [],
+        wages.get(userId) ?? [],
+      ),
   );
   const result = payrollMonth(
     payrollInputOf({
@@ -142,6 +163,7 @@ export const currentPayrollReads = cache(async (month: string) => {
       settings,
       entries,
       people: payrollPeople,
+      absences,
       now,
     }),
   );
@@ -159,6 +181,8 @@ export const currentPayrollReads = cache(async (month: string) => {
     wages,
     /** The people as the engine read them: what a closed month keeps (payroll P9). */
     payrollPeople,
+    /** The live days away over the month's weeks. */
+    absences,
     now,
     result,
   };
@@ -212,6 +236,7 @@ export const currentClosedMonth = cache(
           people: reads.payrollPeople,
         }),
         entries: reads.entries,
+        absences: reads.absences,
         now: reads.now,
       }),
     );
@@ -243,13 +268,15 @@ export const currentPayrollPerson = cache(
     const place = (await currentMember())?.membership?.business.place;
     if (!access || !place) return null;
     const read = payrollReadOf(month, access.timeZone);
-    const [settings, entries, wages, details, periods] = await Promise.all([
-      currentModuleSettings("time_clock"),
-      getTimeEntries(access.businessId, read.from, read.to, userId),
-      getWages(access.businessId, userId),
-      getPayrollDetails(access.businessId, userId),
-      getEmploymentPeriods(access.businessId, userId),
-    ]);
+    const [settings, entries, wages, details, periods, absences] =
+      await Promise.all([
+        currentModuleSettings("time_clock"),
+        getTimeEntries(access.businessId, read.from, read.to, userId),
+        getWages(access.businessId, userId),
+        getPayrollDetails(access.businessId, userId),
+        getEmploymentPeriods(access.businessId, userId),
+        payrollAbsences(access.businessId, month, userId),
+      ]);
     const input = payrollInputOf({
       month,
       place,
@@ -263,6 +290,7 @@ export const currentPayrollPerson = cache(
           wages,
         ),
       ],
+      absences,
       now: new Date(),
     });
     const result = payrollMonth(input);

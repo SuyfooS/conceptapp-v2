@@ -12,6 +12,7 @@ type Props = {
     estimate?: string;
     file?: string;
     close?: string;
+    absences?: string;
   }>;
 };
 
@@ -29,6 +30,8 @@ type Props = {
 // day corrected since; "manager" closed, as a manager reads it; "before"
 // September closed and changed, which October's file holds (the demo's file
 // too); "empty" the same with no hours in October, its file still there.
+// ?absences=1 gives Noa a vacation and a sick day (known issue 19), by kind
+// on her row and in the table's column.
 export default function ShellClockPay({ searchParams }: Props) {
   return (
     <Suspense>
@@ -39,11 +42,11 @@ export default function ShellClockPay({ searchParams }: Props) {
 
 async function Demo({ searchParams }: Props) {
   await connection();
-  const { person, show, estimate, file, close } = await searchParams;
+  const { person, show, estimate, file, close, absences } = await searchParams;
   return (
     <PayMonthView
-      data={demoPayMonth(person, show, estimate, file, close)}
-      paths={demoPayPathsFor(close)}
+      data={demoPayMonth(person, show, estimate, file, close, absences)}
+      paths={demoPayPathsFor(close, absences)}
       note={demoNotePayView}
       close={demoCloseMonth}
       reopen={demoReopenMonth}

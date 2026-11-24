@@ -1,3 +1,9 @@
+import {
+  ABSENCE_KINDS,
+  type AbsenceKind,
+  type AbsenceWrite,
+  absencesChangedSince,
+} from "./absences";
 import { dateIn, weekdayOf } from "./availability";
 import type { HolidayPayLine } from "./holiday-pay";
 import {
@@ -25,6 +31,7 @@ import {
   type PayrollPerson,
   type PayrollSettings,
   type PersonPayroll,
+  payrollRange,
 } from "./payroll";
 import { decimalHours } from "./payroll-access";
 import type { HolidayKey } from "./payroll-calendar";
@@ -119,6 +126,11 @@ export const SUMMARY_COLUMNS = [
   "waiting",
   "hoursLaw",
   "daysNotWorked",
+  // Days away by kind, by the calendar (known issue 19).
+  "vacationDays",
+  "sickDays",
+  "reserveDays",
+  "otherAbsenceDays",
   "toCheck",
 ] as const;
 export type SummaryColumn = Exclude<(typeof SUMMARY_COLUMNS)[number], "rates">;
@@ -140,6 +152,7 @@ export const DAILY_COLUMNS = [
   "eve",
   "holidayOrRest",
   "oneOff",
+  "absence",
   "source",
   "status",
   "correctedBy",
@@ -183,6 +196,7 @@ export const ABOUT_LINES = [
   "firstShift",
   "open",
   "daysNotWorked",
+  "absences",
   "nothingElse",
 ] as const;
 export type AboutLine = (typeof ABOUT_LINES)[number];
@@ -233,6 +247,8 @@ export type ExportWords = {
   rest: (rest: RestName) => string;
   holiday: (key: HolidayKey) => string;
   oneOff: (key: string) => string;
+  /** A kind of day away (known issue 19). */
+  absence: (kind: AbsenceKind) => string;
   yes: string;
   /** Someone with no name written down. */
   noName: string;
@@ -498,7 +514,8 @@ function stretchesOf(
     return (
       info.shifts.some((shift) => holds(shift.date)) ||
       (person?.days ?? []).some((one) => one.minutes > 0 && holds(one.date)) ||
-      (person?.holidayPay ?? []).some((line) => holds(line.date))
+      (person?.holidayPay ?? []).some((line) => holds(line.date)) ||
+      (person?.absences ?? []).some((one) => holds(one.date))
     );
   });
   return kept.length > 0 ? kept : spans.slice(-1);
@@ -576,9 +593,11 @@ const byName = (a: ExportPerson, b: ExportPerson) =>
   (a.name === null ? 1 : 0) - (b.name === null ? 1 : 0) ||
   (a.name ?? "").localeCompare(b.name ?? "", "he");
 
-/** Whether someone has anything in the month's file: a shift, or a day not worked and paid. */
+/** Whether someone has anything in the month's file: a shift, a day not worked and paid, or a day away. */
 const inFile = (person: PersonPayroll | undefined, info: ExportPerson) =>
-  info.shifts.length > 0 || (person?.holidayPay.length ?? 0) > 0;
+  info.shifts.length > 0 ||
+  (person?.holidayPay.length ?? 0) > 0 ||
+  (person?.absences.length ?? 0) > 0;
 
 /** The engine's day a shift belongs to. */
 function dayOf(
@@ -632,6 +651,7 @@ export function exportSheets(
   const summary: Cell[][] = [];
   const daily: Cell[][] = [];
   const check: Cell[][] = [];
+  let shiftRows = 0;
 
   for (const info of listed) {
     const person = engineOf(info.userId);
@@ -655,6 +675,9 @@ export function exportSheets(
       const buckets = addBuckets(...worked.map((one) => one.buckets));
       const shifts = mine(info.shifts, (shift) => shift.date);
       const notWorked = mine(lines, (line) => line.date);
+      const away = mine(person?.absences ?? [], (one) => one.date);
+      const awayDays = (kind: AbsenceKind) =>
+        whole(away.filter((one) => one.kind === kind).length);
       summary.push([
         name,
         number,
@@ -672,6 +695,7 @@ export function exportSheets(
         whole(shifts.filter((shift) => shift.waiting).length),
         text(words.hoursLaw(info.hoursLaw)),
         textOrNull(notWorked.map(words.dayNotWorked).join("; ")),
+        ...ABSENCE_KINDS.map(awayDays),
         whole(mine(items, (item) => item.date).length),
       ]);
     }
@@ -681,8 +705,41 @@ export function exportSheets(
     // the whole day's: once, on its first counted shift, so each column adds
     // up to the summary and a morning shift isn't marked as the night or
     // Shabbat of a later one.
+    // A date away (known issue 19) says its kind on its shifts' rows, and
+    // without a shift has a row of its own, in date order among them.
     const ratesShownOn = new Set<string>();
+    const awayDates = person?.absences ?? [];
+    const awayKind = new Map(awayDates.map((one) => [one.date, one.kind]));
+    const shiftDates = new Set(info.shifts.map((shift) => shift.date));
+    const awayOnly = awayDates.filter((one) => !shiftDates.has(one.date));
+    let awayNext = 0;
+    const awayRowsBefore = (date: string | null) => {
+      for (; awayNext < awayOnly.length; awayNext++) {
+        const one = awayOnly[awayNext];
+        if (!one || (date !== null && one.date >= date)) return;
+        const cellOf = (key: DailyColumn): Cell =>
+          key === "name"
+            ? name
+            : key === "number"
+              ? number
+              : key === "date"
+                ? day(one.date)
+                : key === "weekday"
+                  ? text(words.weekday(weekdayOf(one.date)))
+                  : key === "absence"
+                    ? text(words.absence(one.kind))
+                    : null;
+        daily.push(
+          DAILY_COLUMNS.flatMap((key) =>
+            key === "rates" ? BUCKETS.map(() => null) : [cellOf(key)],
+          ),
+        );
+      }
+    };
     for (const shift of info.shifts) {
+      awayRowsBefore(shift.date);
+      shiftRows += 1;
+      const absence = awayKind.get(shift.date);
       const engineDay = dayOf(person, shift);
       const carries =
         !shift.open && engineDay !== undefined && !ratesShownOn.has(shift.date);
@@ -712,6 +769,7 @@ export function exportSheets(
         shown?.eve ? text(words.yes) : null,
         textOrNull(kind),
         shown?.oneOffRestDay ? text(words.oneOff(shown.oneOffRestDay)) : null,
+        absence ? text(words.absence(absence)) : null,
         text(words.source(shift.source)),
         shift.open
           ? text(words.status("open"))
@@ -723,6 +781,7 @@ export function exportSheets(
         textOrNull(shift.correction?.note ?? null),
       ]);
     }
+    awayRowsBefore(null);
 
     for (const item of items) {
       check.push([
@@ -860,7 +919,7 @@ export function exportSheets(
       ),
     ],
     people: listed.length,
-    shifts: daily.length,
+    shifts: shiftRows,
   };
 }
 
@@ -870,9 +929,13 @@ export function exportSheets(
  * edit stamps its shift), confirmed, ended or brought back after a cancel
  * since, one of its shifts cancelled since that was there when the file went
  * out (`cancelled`, the month's cancelled shifts: one written after it
- * never was), or a wage set since that reaches into the month. The
- * pay screen then says a new file is worth taking. `entries` are the month's
- * own live shifts.
+ * never was), a wage set since that reaches into the month, or the days away
+ * the hours engine reads for the month, its whole weeks (`payrollRange`),
+ * other than the file had them (`absences`, the business's writes of days
+ * away since, oldest first: `absencesChangedSince`, so a record moved out of
+ * the month counts, a day away in its first or last week outside it too, and
+ * a note changed alone doesn't). The pay screen then says a new file is worth
+ * taking. `entries` are the month's own live shifts.
  */
 export function changedSinceExport(
   entries: readonly Pick<
@@ -886,6 +949,7 @@ export function changedSinceExport(
     cancelledAt: string;
     entry: Pick<TimeEntry, "createdAt">;
   }[] = [],
+  absences: readonly AbsenceWrite[] = [],
 ): boolean {
   const since = Date.parse(exportedAt);
   const after = (instant: string | null) =>
@@ -902,7 +966,8 @@ export function changedSinceExport(
     cancelled.some(
       (one) => after(one.cancelledAt) && !after(one.entry.createdAt),
     ) ||
-    wages.some((wage) => after(wage.setAt) && wage.from <= lastDayOf(month))
+    wages.some((wage) => after(wage.setAt) && wage.from <= lastDayOf(month)) ||
+    absencesChangedSince(absences, payrollRange(month), exportedAt)
   );
 }
 

@@ -6,9 +6,13 @@ import {
   addBreakAction,
   addEntryAction,
   cancelEntryAction,
+  changeAbsenceAction,
   changeBreakAction,
   correctEntryAction,
+  recordAbsenceAction,
+  removeAbsenceAction,
   removeBreakAction,
+  restoreAbsenceAction,
   restoreBreakAction,
   restoreEntryAction,
 } from "../actions";
@@ -44,7 +48,13 @@ export default async function ClockPersonPage({
         removeBreak: removeBreakAction,
         restoreBreak: restoreBreakAction,
       }}
-      paths={clockPaths}
+      absenceActions={{
+        record: recordAbsenceAction,
+        change: changeAbsenceAction,
+        remove: removeAbsenceAction,
+        restore: restoreAbsenceAction,
+      }}
+      paths={{ ...clockPaths, build: "/schedule/build" }}
     />
   );
 }

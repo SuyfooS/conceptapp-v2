@@ -146,6 +146,7 @@ function nextWeekBuild(
     hasPattern: true,
     answers: teamAnswers,
     positions: [],
+    away: [],
   };
 }
 

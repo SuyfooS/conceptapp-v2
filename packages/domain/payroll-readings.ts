@@ -1,3 +1,5 @@
+import type { AbsenceKind } from "./absences";
+
 /**
  * The readings of the law the payroll engine takes that an accountant or a
  * lawyer must confirm before a business pays from it (payroll plan §14). The
@@ -28,6 +30,19 @@ export type PayrollReadings = {
    * norm instead, by the way its week is worked out, average or not.
    */
   readonly paidAbsenceCountsAt: "average" | "norm";
+  /**
+   * Known issue 19, the accountant's: days away recorded in the app
+   * (vacation, sick leave, reserve duty, another absence) are never days
+   * worked, and the kinds listed here count toward the weekly 42 hours as a
+   * paid holiday the person didn't work does (`paidAbsenceCountsAt`). None do
+   * yet: a holiday is a day the law makes the employer pay, and the app can't
+   * tell whether a vacation day is paid, the first sick day isn't and the
+   * next two are half, and reserve duty is paid by Bituach Leumi. So a week
+   * where counting them that way would move minutes into overtime is flagged
+   * `absenceWeek`, with those minutes, until an accountant decides; the
+   * other reading is one change here.
+   */
+  readonly absencesCountTowardWeek: readonly AbsenceKind[];
   /**
    * §14, accountant 3 (C19s): the week of the 42 hours runs Sunday to Saturday
    * for everyone (ע"ע 188/06), also for someone who rests on Friday or Sunday,
@@ -143,6 +158,7 @@ export type PayrollReadings = {
 export const PAYROLL_READINGS: PayrollReadings = {
   restCountsTowardWeek: true,
   paidAbsenceCountsAt: "average",
+  absencesCountTowardWeek: [],
   weekStartsOn: 0,
   fiveDayEve: true,
   eveShiftFromHolidayDate: true,

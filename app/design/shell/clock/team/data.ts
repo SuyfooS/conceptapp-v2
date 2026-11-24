@@ -1,5 +1,8 @@
+import type { AbsenceFailure } from "@domain/absences";
 import type { BreakRecord, ShiftRecord } from "@domain/time-clock";
 import type {
+  AbsenceRow,
+  AwayTodayRow,
   EntryTarget,
   PersonHoursData,
   TeamHoursData,
@@ -324,7 +327,67 @@ export const demoTeamHours: TeamHoursData = {
   ],
   people,
   stations: demoStations,
+  awayToday: [],
 };
+
+/**
+ * Who is away today on the team's hours (`?away=1`, known issue 19): Noa
+ * sick until tomorrow, and Yoav recorded away today though he clocked in,
+ * which his row at work says.
+ */
+export const demoAwayToday: AwayTodayRow[] = [
+  { userId: NOA, name: "נועה כהן", kind: "sick", until: "2026-11-07" },
+  { userId: YOAV, name: "יואב לוי", kind: "other", until: TODAY },
+];
+
+/**
+ * Noa's days away in the month (`?absences=1`): a vacation of three days
+ * with a note, and reserve duty that runs into next month, with two of her
+ * shifts still on the schedule on its days.
+ */
+export const demoNoaAbsences: AbsenceRow[] = [
+  {
+    id: "ab5e0000-0000-4000-d000-000000000001",
+    kind: "vacation",
+    from: "2026-11-09",
+    to: "2026-11-11",
+    note: "אושר מראש",
+    days: 3,
+    inMonth: 3,
+    recordedBy: "שירן הדגמה",
+    recordedOn: "2026-11-02",
+    shifts: 0,
+    shiftsWeek: null,
+  },
+  {
+    id: "ab5e0000-0000-4000-d000-000000000002",
+    kind: "reserve",
+    from: "2026-11-26",
+    to: "2026-12-03",
+    note: null,
+    days: 8,
+    inMonth: 5,
+    recordedBy: "שירן הדגמה",
+    recordedOn: "2026-11-05",
+    shifts: 2,
+    // "לבניית הסידור" opens the week of the first of them.
+    shiftsWeek: "2026-11-22",
+  },
+];
+
+/** The refusal a demo state opens the days away sheet with, if any. */
+export function demoAbsenceRefusal(
+  state: string | undefined,
+): { failure: AbsenceFailure; month?: string } | undefined {
+  switch (state) {
+    case "absenceOverlap":
+      return { failure: "overlap" };
+    case "absenceClosed":
+      return { failure: "monthClosed", month: "2026-10" };
+    default:
+      return undefined;
+  }
+}
 
 /**
  * The sheet a demo person's page opens on (`?state=`): `edit` and `cancel` on
@@ -349,6 +412,16 @@ export function demoPersonSheet(
     record.breaks.some((one) => one.end === null),
   );
   switch (state) {
+    // Days away (known issue 19): recording, a record of Noa's, and the
+    // record sheet with the overlap's or a closed month's refusal.
+    case "absenceAdd":
+    case "absenceOverlap":
+    case "absenceClosed":
+      return { kind: "absenceAdd" };
+    case "absenceEdit": {
+      const [first] = demoNoaAbsences;
+      return first ? { kind: "absenceEdit", absence: first } : undefined;
+    }
     case "edit":
     case "cancel":
       return ended ? { kind: state, record: ended } : undefined;
@@ -378,8 +451,14 @@ export function demoShiftOf(entryId: string): ShiftRecord | undefined {
   return undefined;
 }
 
-/** One person's month, from the same shifts as their row in the team list. */
-export function demoPersonHours(userId: string): PersonHoursData | null {
+/**
+ * One person's month, from the same shifts as their row in the team list.
+ * With `absences`, Noa's days away of the month (`?absences=1`).
+ */
+export function demoPersonHours(
+  userId: string,
+  absences = false,
+): PersonHoursData | null {
   const person = demoPeople.find((row) => row.userId === userId);
   if (!person) return null;
   return {
@@ -392,5 +471,11 @@ export function demoPersonHours(userId: string): PersonHoursData | null {
     // The demo restaurant's breaks come off the hours.
     unpaidBreaks: true,
     viewOnly: false,
+    absences: absences && userId === NOA ? demoNoaAbsences : [],
+    // Shiran, the demo's manager, records no days away for herself, and
+    // her page says who does.
+    canRecord: userId !== SHIRAN,
+    recordsNot: userId === SHIRAN ? "own" : null,
+    builds: true,
   };
 }

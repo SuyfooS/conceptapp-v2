@@ -1,5 +1,6 @@
 "use client";
 
+import { type AwaySpan, awayOn } from "@domain/absences";
 import { type AvailabilityRange, weekdayOf } from "@domain/availability";
 import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
 import {
@@ -68,7 +69,13 @@ type Answer = { userId: string; ranges: AvailabilityRange[] };
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 
 /** The people who can be added, in the order they are shown. */
-const GROUPS = ["available", "noAnswer", "unavailable", "busy"] as const;
+const GROUPS = [
+  "available",
+  "noAnswer",
+  "unavailable",
+  "away",
+  "busy",
+] as const;
 
 type Draft = { name: string; start: string; end: string; needed: string };
 
@@ -98,6 +105,7 @@ export function ShiftSheet({
   team,
   people = team,
   answers,
+  away = [],
   positions,
   lockOf = () => null,
   lockedNote = () => null,
@@ -123,6 +131,8 @@ export function ShiftSheet({
    */
   people?: TeamPerson[];
   answers: Answer[];
+  /** Who is away this week, and when (known issue 19): never why. */
+  away?: AwaySpan[];
   positions: Position[];
   /** Whether a shift has begun in a published week, and how it was read. */
   lockOf?: (row: ShiftRow) => LockedShift | null;
@@ -232,6 +242,7 @@ export function ShiftSheet({
       team={team}
       people={people}
       answers={answers}
+      away={away}
       positions={positions}
       fixed={fixed}
       readOnly={readOnly}
@@ -344,6 +355,7 @@ function ShiftPeople({
   team,
   people,
   answers,
+  away,
   positions,
   fixed,
   readOnly,
@@ -358,6 +370,7 @@ function ShiftPeople({
   /** Everyone on the team: the names of who is on it. */
   people: TeamPerson[];
   answers: Answer[];
+  away: AwaySpan[];
   positions: Position[];
   fixed: ReadonlySet<string>;
   readOnly: boolean;
@@ -375,7 +388,14 @@ function ShiftPeople({
   const photoOf = new Map(people.map((m) => [m.userId, m.photo]));
   const rangesOf = new Map(answers.map((a) => [a.userId, a.ranges]));
   const clashes = doubleBooked(weekStart, shifts);
-  const candidates = shiftCandidates(weekStart, shifts, index, team, answers);
+  const candidates = shiftCandidates(
+    weekStart,
+    shifts,
+    index,
+    team,
+    answers,
+    away,
+  );
   const byState = (state: CandidateState) =>
     candidates.filter((c) => c.state === state);
   const weekday = (date: string) =>
@@ -385,6 +405,7 @@ function ShiftPeople({
 
   const noteOf = (userId: string) => {
     if (clashes.has(`${index}:${userId}`)) return "busy" as const;
+    if (awayOn(away, userId, shift.day)) return "away" as const;
     const ranges = rangesOf.get(userId);
     if (!ranges) return "noAnswer" as const;
     return availableFor(shift, ranges) ? null : ("unavailable" as const);

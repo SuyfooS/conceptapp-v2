@@ -1,3 +1,8 @@
+import type {
+  AbsenceFailure,
+  AbsenceKind,
+  AbsenceValues,
+} from "@domain/absences";
 import type { StationStopResult } from "@domain/clock-station";
 import type {
   Attendance,
@@ -7,6 +12,60 @@ import type {
   EntryProblem,
   ShiftRecord,
 } from "@domain/time-clock";
+
+/** A record of days away, as the person's page lists it (known issue 19). */
+export type AbsenceRow = {
+  id: string;
+  kind: AbsenceKind;
+  /** `YYYY-MM-DD`, both included. */
+  from: string;
+  to: string;
+  note: string | null;
+  /** Its days in all, by the calendar, and those in the month shown. */
+  days: number;
+  inMonth: number;
+  /** Who recorded it, as the business names them; null when unknown. */
+  recordedBy: string | null;
+  /** The business's day it was recorded on. */
+  recordedOn: string;
+  /** Their published shifts on its days, from today on. */
+  shifts: number;
+  /** The first day of the week of the first of those shifts, which the builder opens; null with none. */
+  shiftsWeek: string | null;
+};
+
+/** Someone away today, for those who edit the clock: with the kind. */
+export type AwayTodayRow = {
+  userId: string;
+  name: string | null;
+  kind: AbsenceKind;
+  /** Their last day away, `YYYY-MM-DD`: today for one day. */
+  until: string;
+};
+
+export type AbsenceActionResult =
+  | { ok: true }
+  | {
+      ok: false;
+      failure: AbsenceFailure;
+      /** The month closed for payroll, `YYYY-MM`, when that is why. */
+      month?: string;
+    };
+
+/** What the person's page does with days away. The demo passes a stand-in. */
+export type AbsenceActions = {
+  record: (
+    personId: string,
+    values: AbsenceValues,
+  ) => Promise<AbsenceActionResult>;
+  change: (
+    absenceId: string,
+    values: AbsenceValues,
+  ) => Promise<AbsenceActionResult>;
+  /** Remove one at once; the toast's "ביטול" brings it back. */
+  remove: (absenceId: string) => Promise<AbsenceActionResult>;
+  restore: (absenceId: string) => Promise<AbsenceActionResult>;
+};
 
 /** A running clock station, as the team's hours list it. */
 export type StationRow = {
@@ -100,6 +159,8 @@ export type TeamHoursData = {
    * and its "ביטול" when the page is read again.
    */
   stations: TeamStations;
+  /** Who on the staff is away today, with the kind and their last day. */
+  awayToday: AwayTodayRow[];
 };
 
 export type PersonHoursData = {
@@ -113,7 +174,27 @@ export type PersonHoursData = {
   /** A break added now comes off the hours (the clock's `unpaidBreaks`). */
   unpaidBreaks: boolean;
   viewOnly: boolean;
+  /** Their days away that touch the month (in today's month, those still to come too), in date order. */
+  absences: AbsenceRow[];
+  /**
+   * The viewer records days away for them (`canRecordAbsence`): someone
+   * else's, or their own when an owner, while they are on the staff. The
+   * database says the same.
+   */
+  canRecord: boolean;
+  /** Why the viewer, who records others' days away, records none here; null otherwise. */
+  recordsNot: AbsenceRecordsNot;
+  /** The viewer builds the schedule: the way from a shift on a day away. */
+  builds: boolean;
 };
+
+/**
+ * Why someone who records days away records none on a person's page: their
+ * own, which the owner or someone else who corrects hours records ("own"),
+ * or someone no longer on the staff ("offStaff"); null when nothing stops it,
+ * or the viewer records none anywhere.
+ */
+export type AbsenceRecordsNot = "own" | "offStaff" | null;
 
 export type EntryFailure =
   | EntryProblem
@@ -204,7 +285,10 @@ export type EntryTarget =
   | { kind: "edit"; record: ShiftRecord }
   | { kind: "cancel"; record: ShiftRecord }
   | { kind: "cancelled"; record: ShiftRecord }
-  | { kind: "break"; record: ShiftRecord; pause: BreakRecord | null };
+  | { kind: "break"; record: ShiftRecord; pause: BreakRecord | null }
+  /** Days away to record, or a record of them to change or remove. */
+  | { kind: "absenceAdd" }
+  | { kind: "absenceEdit"; absence: AbsenceRow };
 
 /** What the team's screen can do. The demo passes a stand-in. */
 export type TeamActions = {

@@ -17,7 +17,11 @@ import { currentMember } from "../member";
 import { currentModuleSettings } from "../modules";
 import { clockAccess } from "./clock";
 import type { OwnPay } from "./clock-types";
-import { payrollInputOf, payrollReadOf } from "./pay/pay-month";
+import {
+  payrollAbsences,
+  payrollInputOf,
+  payrollReadOf,
+} from "./pay/pay-month";
 
 /**
  * The signed-in person's own month by the hours engine (payroll P6, plan
@@ -48,10 +52,11 @@ export const currentOwnPay = cache(
     const currentMonth = monthOf(clockAt(new Date(), timeZone).date);
     const month = payMonthFrom(asked, currentMonth, currentMonth);
     const read = payrollReadOf(month, timeZone);
-    const [entries, details, periods] = await Promise.all([
+    const [entries, details, periods, absences] = await Promise.all([
       getTimeEntries(businessId, read.from, read.to, userId),
       getPayrollDetails(businessId, userId),
       getEmploymentPeriods(businessId, userId),
+      payrollAbsences(businessId, month, userId),
     ]);
     const own = details.get(userId);
     const person = personPayroll(
@@ -63,6 +68,7 @@ export const currentOwnPay = cache(
         people: [
           payrollPersonOf(userId, own, periods.get(userId) ?? [], wages),
         ],
+        absences,
         now: new Date(),
       }),
       userId,

@@ -70,6 +70,8 @@ function month(more: Partial<PersonPayroll> = {}): PersonPayroll {
     estimateAgorot: null,
     days: [],
     flags: [],
+    absences: [],
+    absenceDays: { vacation: 0, sick: 0, reserve: 0, other: 0 },
     ...more,
   };
 }
@@ -492,7 +494,7 @@ describe("a person's month on the pay screens", () => {
     expect(
       weeksWorkedOut(
         [
-          { code: "paidAbsencesMissing" },
+          { code: "absencesNotCounted" },
           {
             code: "workWeekUnset",
             userId: "noa",

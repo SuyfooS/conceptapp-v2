@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
+import type { Role } from "./modules";
 import {
   addTotals,
+  opensPayPage,
   originalTimes,
   payDays,
+  payListOf,
   paySourceOf,
   payTotals,
   toCheck,
 } from "./pay-month";
+import { payrollPeopleOf } from "./payroll";
 import { type TimeEntry, timeEntry } from "./time-clock";
 
 const TZ = "Asia/Jerusalem";
@@ -104,6 +108,81 @@ describe("payTotals", () => {
     expect(all.shifts).toBe(6);
     expect(all.waiting).toBe(2);
     expect(addTotals([]).minutes).toBe(0);
+  });
+});
+
+describe("payListOf", () => {
+  const member = (
+    userId: string,
+    name: string | null,
+    role: Role,
+    active = true,
+  ) => ({ userId, name, role, active });
+  const people = [
+    member("dana", "דנה", "worker"),
+    // Left in December: her vacation's last days, and no shift.
+    member("avi", "אבי", "worker", false),
+    // Left, with a shift in the month.
+    member("gil", "גיל", "worker", false),
+    // Left, with nothing in the month.
+    member("beni", "בני", "worker", false),
+    member("ruth", "רות", "accountant"),
+    member("nameless", null, "worker"),
+  ];
+  const withHours = new Set(["gil"]);
+
+  it("lists everyone the hours engine and the file do: someone who left with only days away too (known issue 19)", () => {
+    // The engine's people, as the pay month reads them.
+    const engine = payrollPeopleOf(
+      people,
+      [{ userId: "gil" }],
+      [{ userId: "avi" }],
+    ).map((userId) => ({ userId }));
+    expect(
+      payListOf(people, withHours, engine).map((one) => one.userId),
+    ).toEqual(["avi", "gil", "dana", "nameless"]);
+  });
+
+  it("lists the staff now and anyone with hours, by name, when the engine couldn't run", () => {
+    expect(payListOf(people, withHours, []).map((one) => one.userId)).toEqual([
+      "gil",
+      "dana",
+      "nameless",
+    ]);
+  });
+
+  it("lists only rows whose page opens: someone now the accountant with only days away too", () => {
+    // Ruth was on vacation early in the month, worked no shift, and became
+    // the accountant after: the engine and the file list her.
+    const away = new Set(["avi", "ruth"]);
+    const engine = payrollPeopleOf(
+      people,
+      [{ userId: "gil" }],
+      [...away].map((userId) => ({ userId })),
+    ).map((userId) => ({ userId }));
+    const listed = payListOf(people, withHours, engine);
+    expect(listed.map((one) => one.userId)).toContain("ruth");
+    for (const one of listed) {
+      expect(
+        opensPayPage(one.role, {
+          shifts: withHours.has(one.userId) ? 1 : 0,
+          cancelled: 0,
+          awayDays: away.has(one.userId) ? 3 : 0,
+        }),
+      ).toBe(true);
+    }
+  });
+});
+
+describe("opensPayPage", () => {
+  it("opens for the staff, and off it only with shifts, cancelled ones or days away in the month", () => {
+    const none = { shifts: 0, cancelled: 0, awayDays: 0 };
+    expect(opensPayPage("worker", none)).toBe(true);
+    expect(opensPayPage("owner", none)).toBe(true);
+    expect(opensPayPage("accountant", none)).toBe(false);
+    expect(opensPayPage("accountant", { ...none, shifts: 1 })).toBe(true);
+    expect(opensPayPage("accountant", { ...none, cancelled: 1 })).toBe(true);
+    expect(opensPayPage("accountant", { ...none, awayDays: 2 })).toBe(true);
   });
 });
 

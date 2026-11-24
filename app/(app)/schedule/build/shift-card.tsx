@@ -62,6 +62,7 @@ export function ShiftCard({
   stage = null,
   people,
   clashing,
+  away = [],
   meanwhile = false,
   positions,
   density,
@@ -83,6 +84,8 @@ export function ShiftCard({
   people: (AvatarPerson & { former?: boolean })[];
   /** Those of them who are on another shift at the same time. */
   clashing: string[];
+  /** Those of them recorded as away that day (known issue 19): never why. */
+  away?: string[];
   /**
    * Put back as it is now, after a write refused because it changed
    * meanwhile: it says so until the week is written.
@@ -219,6 +222,11 @@ export function ShiftCard({
       {clashing.length > 0 ? (
         <span className="mt-2 block font-medium text-danger text-sm">
           {t("clashOnShift", { names: shortNames(clashing).join(", ") })}
+        </span>
+      ) : null}
+      {away.length > 0 ? (
+        <span className="mt-2 block font-medium text-sm text-warning">
+          {t("awayOnShift", { names: shortNames(away).join(", ") })}
         </span>
       ) : null}
     </button>

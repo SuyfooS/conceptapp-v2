@@ -16,7 +16,11 @@ export const generateStaticParams = () =>
 
 type Props = {
   params: Promise<{ person: string }>;
-  searchParams: Promise<{ estimate?: string; close?: string }>;
+  searchParams: Promise<{
+    estimate?: string;
+    close?: string;
+    absences?: string;
+  }>;
 };
 
 // One person's month for payroll with mock data, the same as their row, with
@@ -27,7 +31,9 @@ type Props = {
 // (payroll P7): each one's month by rate, Yoav's election day paid and his
 // night in his Friday rest, Maya's short breaks; ?estimate=off is a business
 // whose amounts the team hasn't turned on; ?close=closed is October closed
-// for payroll, which a new wage can't start in (payroll P9).
+// for payroll, which a new wage can't start in (payroll P9); ?absences=1
+// lists Noa's days away of the month by kind, with their dates (known issue
+// 19).
 export default function ShellClockPayPerson({ params, searchParams }: Props) {
   return (
     <Suspense>
@@ -37,11 +43,11 @@ export default function ShellClockPayPerson({ params, searchParams }: Props) {
 }
 
 async function Demo({ params, searchParams }: Props) {
-  const [{ person }, { estimate, close }] = await Promise.all([
+  const [{ person }, { estimate, close, absences }] = await Promise.all([
     params,
     searchParams,
   ]);
-  const data = demoPayPerson(person, estimate, close);
+  const data = demoPayPerson(person, estimate, close, absences);
   if (!data) notFound();
   return (
     <PersonPayView

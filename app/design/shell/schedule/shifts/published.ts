@@ -1,3 +1,4 @@
+import type { AwaySpan } from "@domain/absences";
 import { addDays, teamAvailability, weekDates } from "@domain/availability";
 import { fridayOf, shabbatLimits } from "@domain/availability-form";
 import { draftWeek } from "@domain/schedule";
@@ -301,8 +302,19 @@ export function demoPublished(
     positions: demoPositions,
     swaps,
     endedSwaps,
+    // Nobody away, unless a twin says so (`demoAway`).
+    away: null,
   };
 }
+
+/**
+ * Noa away on Tuesday and Wednesday of the demo's week (`?away=1`, known
+ * issue 19): her Tuesday evening says so to whoever builds the schedule, and
+ * Today lists her among those away. Never why.
+ */
+export const demoAway: AwaySpan[] = [
+  { userId: "noa", from: "2026-11-03", to: "2026-11-04" },
+];
 
 /** Next week, for the demo's availability rows: due Wednesday at 18:00. */
 const demoNextWeek = (mine: AvailabilityWeek["mine"]): AvailabilityWeek => ({
@@ -348,6 +360,7 @@ export function demoRunningBuild(
     hasPattern: true,
     answers: teamAnswers,
     positions: demoPositions,
+    away: [],
   };
 }
 
@@ -377,6 +390,7 @@ export function demoManagerSchedule(
     hasPattern: true,
     answers: teamAnswers,
     positions: demoPositions,
+    away: [],
   };
   const data = demoPublished("shiran", swaps, DEMO_NOON, ended);
   return {

@@ -1,6 +1,11 @@
 "use client";
 
 import {
+  type AbsenceFailure,
+  type AbsenceValues,
+  absenceStartFor,
+} from "@domain/absences";
+import {
   type BreakRecord,
   parseReason,
   REASON_MAX,
@@ -30,8 +35,18 @@ import {
 } from "react";
 import { RefreshOnReturn } from "../../home/refresh-on-return";
 import { MonthHero } from "../month-hero";
+import { useShortDate } from "../pay/pay-parts";
 import { ShiftList, ShiftSummary } from "../shift-list";
+import {
+  AbsenceForm,
+  AbsencesSection,
+  builderWeekHref,
+  useAbsenceFailure,
+} from "./absences-section";
 import type {
+  AbsenceActionResult,
+  AbsenceActions,
+  AbsenceRow,
   BreakValues,
   EntryActionResult,
   EntryActions,
@@ -75,16 +90,29 @@ function shownNow(element: HTMLElement | null): element is HTMLElement {
 export function PersonHoursView({
   data,
   actions,
+  absenceActions,
   paths,
   opens,
+  opensFailed,
 }: {
   data: PersonHoursData;
   actions: EntryActions;
-  paths: TeamPaths;
+  absenceActions: AbsenceActions;
+  paths: TeamPaths & { build?: string };
   /** Opens with the sheet on this (the design demo's `?state=`). */
   opens?: EntryTarget;
+  /** And says this refusal on it, as a write would. */
+  opensFailed?: { failure: AbsenceFailure; month?: string };
 }) {
   const t = useTranslations("app.clock.team");
+  const tAbsences = useTranslations("app.clock.absences");
+  const sayAbsence = useAbsenceFailure();
+  const shortDate = useShortDate();
+  // Why a record's "ביטול" didn't go, or the demo's refusal, said as it opens.
+  const [absenceFailed, setAbsenceFailed] = useState<{
+    failure: AbsenceFailure;
+    month?: string;
+  } | null>(opensFailed ?? null);
   // The month and the shifts speak the history's words.
   const tHistory = useTranslations("app.clock.history");
   // The sheet stays mounted, closed, so it opens already inside the business's
@@ -121,10 +149,16 @@ export function PersonHoursView({
   const personHref = `${paths.team}/${data.person.userId}`;
   // The shift as the page has it now: after a write it is read again.
   const record =
-    target.kind === "add"
-      ? null
-      : (data.records.find((shift) => shift.id === target.record.id) ??
-        target.record);
+    "record" in target
+      ? (data.records.find((shift) => shift.id === target.record.id) ??
+        target.record)
+      : null;
+  // The record of days away, the same way.
+  const absence =
+    target.kind === "absenceEdit"
+      ? (data.absences.find((one) => one.id === target.absence.id) ??
+        target.absence)
+      : null;
   // The break as the page has it now, the same way.
   const pause =
     target.kind === "break" && target.pause
@@ -138,17 +172,105 @@ export function PersonHoursView({
     setStepBack(null);
     setDraft(null);
     setBaseline(
-      next.kind === "add"
-        ? null
-        : {
+      "record" in next
+        ? {
             date: next.record.date,
             in: next.record.in ?? "",
             out: next.record.out ?? "",
             reason: "",
-          },
+          }
+        : null,
     );
     setOpened((count) => count + 1);
     setOpen(true);
+  }
+
+  /** A record of days away, or one to record: the sheet opens on it. */
+  function showAbsence(
+    next: { kind: "absenceAdd" } | { kind: "absenceEdit"; absence: AbsenceRow },
+    from: HTMLElement | null,
+  ) {
+    opener.current = from;
+    setAbsenceFailed(null);
+    show(next);
+  }
+
+  /** Record it, or save its change: the sheet closes and the toast says so. */
+  function saveAbsence(
+    values: AbsenceValues,
+    onFailure: (failure: AbsenceFailure, month?: string) => void,
+  ) {
+    start(async () => {
+      try {
+        const result = absence
+          ? await absenceActions.change(absence.id, values)
+          : await absenceActions.record(data.person.userId, values);
+        if (!result.ok) {
+          onFailure(result.failure, result.month);
+          return;
+        }
+        setToast({
+          text: tAbsences(absence ? "done.edit" : "done.add"),
+          stamp: new Date().toISOString(),
+        });
+        setOpen(false);
+      } catch {
+        onFailure("failed");
+      }
+    });
+  }
+
+  /**
+   * Remove it at once, with "ביטול" in the toast for 10 seconds (the
+   * database takes it back for ten minutes), as a cancelled shift.
+   */
+  function removeAbsence(
+    removed: AbsenceRow,
+    onFailure: (failure: AbsenceFailure, month?: string) => void,
+  ) {
+    start(async () => {
+      try {
+        const result = await absenceActions.remove(removed.id);
+        if (!result.ok) {
+          onFailure(result.failure, result.month);
+          return;
+        }
+        setOpen(false);
+        setToast({
+          text: tAbsences("done.remove"),
+          stamp: `remove-absence-${Date.now()}`,
+          undo: () => restoreAbsence(removed),
+        });
+      } catch {
+        onFailure("failed");
+      }
+    });
+  }
+
+  /**
+   * The toast's "ביטול" after a removal, on its own: when it can't, the
+   * toast says why (the record is gone from the list, so nothing opens).
+   */
+  function restoreAbsence(removed: AbsenceRow) {
+    startUndo(async () => {
+      let result: AbsenceActionResult;
+      try {
+        result = await absenceActions.restore(removed.id);
+      } catch {
+        result = { ok: false, failure: "failed" };
+      }
+      setToast(
+        result.ok
+          ? {
+              text: tAbsences("done.restore"),
+              stamp: `restore-absence-${Date.now()}`,
+            }
+          : {
+              text: sayAbsence(result.failure, result.month),
+              stamp: `undo-${Date.now()}`,
+            },
+      );
+    });
   }
 
   /** Opened from the page: what was pressed is kept, to come back to. */
@@ -358,6 +480,8 @@ export function PersonHoursView({
     cancel: t("cancel.title"),
     cancelled: t("cancelled.title"),
     break: t(pause ? "breakStep.editTitle" : "breakStep.addTitle"),
+    absenceAdd: tAbsences("sheet.addTitle"),
+    absenceEdit: tAbsences("sheet.editTitle"),
   }[target.kind];
   const sheetSubtitle =
     target.kind === "add"
@@ -366,7 +490,15 @@ export function PersonHoursView({
         ? t("sheet.editSubtitle")
         : target.kind === "break"
           ? t(pause ? "breakStep.editSubtitle" : "breakStep.addSubtitle")
-          : undefined;
+          : target.kind === "absenceAdd"
+            ? tAbsences("sheet.addSubtitle", { name })
+            : absence
+              ? tAbsences.rich("recorded", {
+                  ltr,
+                  name: absence.recordedBy ?? tAbsences("someone"),
+                  date: shortDate(absence.recordedOn),
+                })
+              : undefined;
 
   return (
     <PageBody className={pageGlowClass}>
@@ -450,6 +582,26 @@ export function PersonHoursView({
         )}
       </div>
 
+      <AbsencesSection
+        rows={data.absences}
+        addable={data.canRecord && !data.viewOnly}
+        // Viewing only, nothing opens; their own a manager reads only.
+        open={
+          data.canRecord && !data.viewOnly
+            ? (row, from) =>
+                showAbsence({ kind: "absenceEdit", absence: row }, from)
+            : undefined
+        }
+        add={(from) => showAbsence({ kind: "absenceAdd" }, from)}
+        builderHref={
+          data.builds && paths.build
+            ? builderWeekHref(paths.build, data.absences)
+            : null
+        }
+        // Who records them instead; a view says its own line below.
+        recordsNot={data.viewOnly ? null : data.recordsNot}
+      />
+
       {data.viewOnly ? (
         <p className="text-center text-ink-2 text-sm">
           {t("failure.viewOnly")}
@@ -468,7 +620,22 @@ export function PersonHoursView({
         subtitle={sheetSubtitle}
         closeLabel={t("sheet.close")}
       >
-        {target.kind === "cancel" && record ? (
+        {target.kind === "absenceAdd" || target.kind === "absenceEdit" ? (
+          <AbsenceForm
+            key={opened}
+            row={absence}
+            firstDay={absenceStartFor(data.month, data.today)}
+            today={data.today}
+            saving={saving}
+            failed={absenceFailed}
+            save={saveAbsence}
+            remove={
+              absence
+                ? (onFailure) => removeAbsence(absence, onFailure)
+                : undefined
+            }
+          />
+        ) : target.kind === "cancel" && record ? (
           <CancelForm
             key={opened}
             record={record}

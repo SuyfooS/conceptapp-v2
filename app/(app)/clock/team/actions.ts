@@ -1,5 +1,12 @@
 "use server";
 
+import {
+  type AbsenceResult,
+  changeAbsence,
+  recordAbsence,
+  removeAbsence,
+  restoreAbsence,
+} from "@db/absences";
 import { setStationStopped } from "@db/clock-stations";
 import {
   addTimeBreak,
@@ -14,6 +21,11 @@ import {
   restoreTimeBreak,
   restoreTimeEntry,
 } from "@db/time-clock";
+import {
+  type AbsenceValues,
+  type ParsedAbsence,
+  parseAbsence,
+} from "@domain/absences";
 import type { StationStopResult } from "@domain/clock-station";
 import {
   editsClock,
@@ -21,12 +33,14 @@ import {
   parseEntryTimes,
   parseReason,
 } from "@domain/time-clock";
+import { clockAt } from "@domain/today";
 import { canWrite } from "@domain/view-as";
 import { refresh } from "next/cache";
 import { z } from "zod";
 import { pushSoon } from "../../../push/server";
 import { currentMember } from "../../member";
 import type {
+  AbsenceActionResult,
   BreakValues,
   EntryActionResult,
   EntryFailure,
@@ -419,4 +433,115 @@ export async function restartStationAction(
   stationId: string,
 ): Promise<StationStopResult> {
   return stationStopped(stationId, false);
+}
+
+/** Days away as the form sends them, before they are read. */
+const absenceValues = z.object({
+  kind: z.string().max(20),
+  from: z.string().max(10),
+  to: z.string().max(10),
+  note: z.string().max(1000),
+});
+
+type AbsenceEditor = { actorId: string; businessId: string; today: string };
+
+/** Whoever edits the clock, as themselves, with the business's today. */
+async function absenceEditor(): Promise<
+  | { ok: true; editor: AbsenceEditor }
+  | { ok: false; result: AbsenceActionResult }
+> {
+  const editor = await clockEditor();
+  if (!editor.ok) {
+    return {
+      ok: false,
+      result: {
+        ok: false,
+        failure: editor.failure === "viewOnly" ? "viewOnly" : "noAccess",
+      },
+    };
+  }
+  return {
+    ok: true,
+    editor: {
+      actorId: editor.actorId,
+      businessId: editor.businessId,
+      today: clockAt(new Date(), editor.timeZone).date,
+    },
+  };
+}
+
+/** The database's answer as the screen takes it, the page read again after it. */
+function answered(result: AbsenceResult<unknown>): AbsenceActionResult {
+  refresh();
+  if (result.ok) return { ok: true };
+  return result.month
+    ? { ok: false, failure: result.failure, month: result.month }
+    : { ok: false, failure: result.failure };
+}
+
+/**
+ * A record or its change, by whoever edits the clock: the values read at
+ * the business's today first (the database reads them again), then the
+ * write. No line goes out to the person (known issue 19's first step).
+ */
+async function writeAbsence(
+  values: AbsenceValues,
+  write: (
+    editor: AbsenceEditor,
+    value: ParsedAbsence,
+  ) => Promise<AbsenceResult<unknown>>,
+): Promise<AbsenceActionResult> {
+  const typed = absenceValues.safeParse(values);
+  if (!typed.success) return { ok: false, failure: "failed" };
+  const reached = await absenceEditor();
+  if (!reached.ok) return reached.result;
+  const parsed = parseAbsence(typed.data, reached.editor.today);
+  if (!parsed.ok) return { ok: false, failure: parsed.problem };
+  return answered(await write(reached.editor, parsed.value));
+}
+
+/** Record that someone on the staff is away, from one day to another. */
+export async function recordAbsenceAction(
+  personId: string,
+  values: AbsenceValues,
+): Promise<AbsenceActionResult> {
+  const person = z.uuid().safeParse(personId);
+  if (!person.success) return { ok: false, failure: "failed" };
+  return writeAbsence(values, (editor, value) =>
+    recordAbsence(editor.actorId, editor.businessId, person.data, value),
+  );
+}
+
+/** Change a record's kind, days or note. */
+export async function changeAbsenceAction(
+  absenceId: string,
+  values: AbsenceValues,
+): Promise<AbsenceActionResult> {
+  const absence = z.uuid().safeParse(absenceId);
+  if (!absence.success) return { ok: false, failure: "failed" };
+  return writeAbsence(values, (editor, value) =>
+    changeAbsence(editor.actorId, absence.data, value),
+  );
+}
+
+/** Remove a record at once: it stays, and counts nowhere; the toast's "ביטול" brings it back. */
+export async function removeAbsenceAction(
+  absenceId: string,
+): Promise<AbsenceActionResult> {
+  const absence = z.uuid().safeParse(absenceId);
+  if (!absence.success) return { ok: false, failure: "failed" };
+  const reached = await absenceEditor();
+  if (!reached.ok) return reached.result;
+  return answered(await removeAbsence(reached.editor.actorId, absence.data));
+}
+
+/** The toast's "ביטול": whoever removed it brings it back, within ten minutes. */
+export async function restoreAbsenceAction(
+  absenceId: string,
+): Promise<AbsenceActionResult> {
+  const absence = z.uuid().safeParse(absenceId);
+  if (!absence.success) return { ok: false, failure: "failed" };
+  const reached = await absenceEditor();
+  if (!reached.ok) return reached.result;
+  return answered(await restoreAbsence(reached.editor.actorId, absence.data));
 }

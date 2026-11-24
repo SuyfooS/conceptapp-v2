@@ -1364,11 +1364,15 @@
       "who": {
         "title": "Working today",
         "week": "The whole week",
+        "away": "Away today",
         "now": "Now",
         "short": "{count, plural, one {One person short} other {# people short}}",
         "fill": "{short}, to fill in this week's schedule",
         "noShifts": "No shifts today in the published schedule. The rest of the week is under “The whole week”.",
         "notPublished": "This week's schedule is not published yet. When it is, you will see here who works today."
+      },
+      "away": {
+        "title": "Away today"
       },
       "firstSteps": {
         "title": "First steps",
@@ -2037,6 +2041,7 @@
       "dayMissing": "A shift on this day is short of people",
       "day": "{day}, {date}",
       "dayCount": "{assigned} of {needed}",
+      "awayDay": "Away: {names}",
       "shabbat": {
         "candles": "Shabbat starts <ltr>{time}</ltr>",
         "havdalah": "Shabbat ends <ltr>{time}</ltr>"
@@ -2060,18 +2065,21 @@
         "available": "Available",
         "noAnswer": "Have not sent availability",
         "unavailable": "Not available at these hours",
+        "away": "Away that day",
         "busy": "On another shift at the same time"
       },
       "notes": {
         "unavailable": "Outside their availability",
         "noAnswer": "Has not sent availability",
         "busy": "Also on another shift at the same time",
+        "away": "Away that day",
         "noDay": "Not available on this day"
       },
       "busyOn": "On the {name} shift, <ltr>{start}–{end}</ltr>",
       "busyOnDay": "On the {name} shift on {day}, <ltr>{start}–{end}</ltr>",
       "alsoOn": "Also on the {name} shift",
       "clashOnShift": "{names}: also on another shift at the same time",
+      "awayOnShift": "{names} away that day",
       "remove": "Remove {name} from the shift",
       "position": "{name}'s position on the shift: {position}",
       "noPosition": "No position",
@@ -2710,6 +2718,89 @@
           }
         }
       },
+      "absences": {
+        "title": "Days away",
+        "kinds": {
+          "vacation": "Vacation",
+          "sick": "Sick leave",
+          "reserve": "Reserve duty",
+          "other": "Other absence"
+        },
+        "hints": {
+          "vacation": "A day off work",
+          "sick": "Days not worked because of illness",
+          "reserve": "Reserve service under a call-up order",
+          "other": "Any other reason. The note can say what"
+        },
+        "add": "Record days away",
+        "none": "No days away this month",
+        "days": "{count, plural, one {1 day} other {# days}}",
+        "inMonth": "{count, plural, one {1 day this month} other {# days this month}}",
+        "range": "<ltr>{from}–{to}</ltr>",
+        "oneDay": "{weekday}, <ltr>{date}</ltr>",
+        "shiftsOn": "{count, plural, one {There is 1 shift} other {There are # shifts}} on the schedule on these days",
+        "toBuilder": "Open the schedule builder",
+        "recorded": "Recorded by {name}, <ltr>{date}</ltr>",
+        "someone": "someone on the team",
+        "rowLabel": "{kind}, {from}–{to}",
+        "rowLabelOne": "{kind}, {date}",
+        "ownHint": "Your own days away are recorded by the owner or someone else who corrects hours.",
+        "offStaffHint": "Someone not on the staff gets no new days away. What was recorded stays here.",
+        "columns": {
+          "kind": "Kind",
+          "from": "From",
+          "to": "To",
+          "days": "Days",
+          "note": "Note",
+          "recorded": "Recorded"
+        },
+        "sheet": {
+          "addTitle": "Record days away",
+          "addSubtitle": "{name} is away on these days, and they don't count as days worked.",
+          "editTitle": "Days away",
+          "kind": "Kind",
+          "from": "From",
+          "to": "To (included)",
+          "note": "Note",
+          "noteHint": "Optional. No medical details: noting that a certificate came in is enough.",
+          "submit": "Record the days away",
+          "save": "Save the change",
+          "remove": "Remove the days away",
+          "close": "Close"
+        },
+        "done": {
+          "add": "Days away recorded",
+          "edit": "Change saved",
+          "remove": "Days away removed",
+          "restore": "Days away back",
+          "undo": "Undo"
+        },
+        "failure": {
+          "kind": "Choose a kind.",
+          "dates": "A first and a last day are needed.",
+          "order": "The last day is before the first.",
+          "tooLong": "Up to 366 days at a time. Record the rest separately.",
+          "tooFar": "Days can be recorded up to a year back and a year ahead.",
+          "note": "The note is too long: up to 200 characters.",
+          "overlap": "Days away are already recorded on some of these days. Change those instead of adding more.",
+          "monthClosed": "{month} is closed for payroll, so days away in it can't be recorded, changed or removed. Only an owner or the accountant can reopen it, in “Hours for payroll”.",
+          "monthClosedPlain": "The month is closed for payroll, so days away in it can't be recorded, changed or removed. Only an owner or the accountant can reopen it, in “Hours for payroll”.",
+          "ownAbsence": "An owner, or someone else who corrects hours, records your own days away.",
+          "notOnStaff": "Someone no longer on the staff gets no new days away.",
+          "removed": "Someone already removed these days away.",
+          "notRemoved": "These days away are already back.",
+          "tooLate": "More than ten minutes passed, so it can't come back. Record it again.",
+          "noAccess": "You can't record days away in this business.",
+          "viewOnly": "Viewing only: days away can't be recorded.",
+          "failed": "The days away weren't saved. Check the connection and try again."
+        },
+        "awayToday": "Away today",
+        "until": "Until {weekday}, <ltr>{date}</ltr>",
+        "todayOnly": "Today only",
+        "kindUntil": "{kind} · until {weekday}, <ltr>{date}</ltr>",
+        "kindToday": "{kind} · today only",
+        "recordedToday": "Recorded as away today"
+      },
       "breakNote": "A break needs no code. Leaving the shift needs a code again.",
       "showCode": {
         "title": "Show the clock code",
@@ -2896,6 +2987,7 @@
         "wage": "Hourly wage",
         "number": "Payroll no.",
         "nights": "Night shifts",
+        "absences": "Days away",
         "estimate": "Estimate before tax"
       },
       "minutes": "{minutes} min",
@@ -3222,6 +3314,8 @@
         "average": "An average of <ltr>{hours}</ltr> hours a day",
         "checks": {
           "adjacentDays": "{form, select, f {Check that she worked the day before and after, or was away with consent} m {Check that he worked the day before and after, or was away with consent} other {Check for work the day before and after, or an absence with consent}}",
+          "inAbsence": "Days away are recorded on the holiday, the day before or the day after. The accountant checks whether holiday pay is owed",
+          "oneOffInAbsence": "A day away is recorded on this day. The accountant checks whether its pay is owed",
           "averagePeriod": "The average of the 3 months before. Some use 12",
           "wasScheduled": "{form, select, f {Check that she was due to work that day} m {Check that he was due to work that day} other {Check that it was due to be a workday}}",
           "noHistory": "No hours in the months before, so no average to pay by",
@@ -3229,6 +3323,19 @@
           "fourteenDays": "Owed after 14 days with the employer",
           "sectorExclusion": "Foreign workers in some sectors are not entitled to it"
         }
+      },
+      "absences": {
+        "title": "Days away",
+        "kinds": {
+          "vacation": "Vacation",
+          "sick": "Sick leave",
+          "reserve": "Reserve duty",
+          "other": "Other absence"
+        },
+        "byKind": "{kind}: {days}",
+        "days": "{count, plural, one {1 day} other {# days}}",
+        "dates": "<ltr>{dates}</ltr>",
+        "hint": "They don't count as days worked or toward the week's 42 hours. The accountant decides what is paid for them."
       },
       "remarks": {
         "title": "To check",
@@ -3328,6 +3435,10 @@
             "waiting": "Shifts waiting for a confirmation",
             "hoursLaw": "Hours of Work and Rest Law",
             "daysNotWorked": "Holiday or election day not worked",
+            "vacationDays": "Vacation days",
+            "sickDays": "Sick days",
+            "reserveDays": "Reserve duty days",
+            "otherAbsenceDays": "Other days away",
             "toCheck": "To check"
           },
           "daily": {
@@ -3346,6 +3457,7 @@
             "eve": "Eve of a rest day or holiday",
             "holidayOrRest": "Holiday or rest",
             "oneOff": "Election day",
+            "absence": "Away",
             "source": "How it was recorded",
             "status": "Status",
             "correctedBy": "Corrected by",
@@ -3440,6 +3552,8 @@
           "hoursLawUnsupervised": "Hours of Work and Rest Law, s.30(a)(6)",
           "hoursLawRestDay": "Hours of Work and Rest Law, s.30(a): the whole law doesn't apply, s.17 included",
           "restWeekOvertime": "Hours of Work and Rest Law, s.16 and s.17, as the Labour Court reads them. An accountant needs to confirm it",
+          "absenceWeek": "Hours of Work and Rest Law: 42 hours a week. Whether days away count toward them, an accountant decides",
+          "absenceWorked": "The attendance record: days away and hours on one day",
           "minorUnderAge": "Youth Labour Law, s.2: the age from which one may be employed",
           "minorDayOver": "Youth Labour Law, s.20: working hours a day",
           "minorEveOver7": "Youth Labour Law, s.20: 7 hours on the eve of a rest day",
@@ -3467,6 +3581,7 @@
             "firstShift": "On a day with more than one shift, the hours by rate are the whole day's, and so are its night shift, eve of a rest day or holiday, holiday or rest, and election day. All of them are on the row of its first shift.",
             "open": "A shift still open isn't counted in the hours or the rates. It will be in a file downloaded after it closes.",
             "daysNotWorked": "A holiday or election day not worked shows with its date and the daily average, with no amount. The accountant checks whether it is owed.",
+            "absences": "Days away are counted by the calendar, from the first to the last, rest days and holidays inside included, and each date is in the daily sheet. They don't count as days worked or toward the week's 42 hours, and a week where that could matter is marked to check. The file has no vacation balance, vacation pay or sick pay.",
             "nothingElse": "The file holds no pay estimate, no amount worked out and no ID numbers. The hourly wage is there as it was set."
           },
           "closed": "{month} was closed for payroll on {date}. What changed in it since is on the sheet of differences, a day a row, in hours and without an amount.",
@@ -3686,7 +3801,11 @@
             "restore": "Brought back {person}'s cancelled shift: {day}, <ltr>{in}–{out}</ltr>",
             "restoreOpen": "Brought back {person}'s cancelled shift: {day}, from <ltr>{in}</ltr>, open again",
             "breakEdit": "{change, select, add {Added a break} remove {Removed a break} restore {Brought back a removed break} other {Fixed a break}} in {person}'s shift on {day}",
-            "breakUnpaid": "The break is unpaid, so the hours changed"
+            "breakUnpaid": "The break is unpaid, so the hours changed",
+            "absenceAdd": "Recorded days away for {person}: {kind}, <ltr>{days}</ltr>",
+            "absenceChange": "Changed {person}'s days away: now {kind}, <ltr>{days}</ltr>",
+            "absenceRemove": "Removed {person}'s days away: {kind}, <ltr>{days}</ltr>",
+            "absenceRestore": "Brought back {person}'s days away: {kind}, <ltr>{days}</ltr>"
           },
           "invite": {
             "create": "Invited to the team: {name}, {role}",
@@ -4084,8 +4203,8 @@
           "none": "None"
         },
         "editHint": {
-          "scheduling": "Without edit they see the published schedule, send their availability and ask for swaps. With edit they also build the schedule, see everyone's availability and approve swaps.",
-          "time_clock": "Without edit they clock in and out and see their own hours. With edit they also see and correct everyone's hours, confirm them and show the punch code.",
+          "scheduling": "Without edit they see the published schedule, send their availability and ask for swaps. With edit they also build the schedule, see everyone's availability and who is away, and approve swaps.",
+          "time_clock": "Without edit they clock in and out and see their own hours. With edit they also see and correct everyone's hours, record vacation, sick leave and reserve duty, confirm hours and show the punch code.",
           "lists": "Without edit they fill the lists sent to them or their department. With edit they also build templates, set when they open, see every list and fix lists after they closed.",
           "chat": "Without edit they write in their own chats and groups. With edit they are also in every department's group and read everything written in the groups, from before they joined too, remove others' messages in groups, pin messages from management and see who confirmed reading them.",
           "order_taking": "Without edit they see the menu, take orders if they're in a department that takes them, cancel an item that isn't ready, and mark \"ready\" and \"sold out\" what their own department prepares. With edit they also take orders from any department, cancel an item that's ready, give one on the house, and edit the menu, its prices and the places."
@@ -7307,6 +7426,8 @@
           "hoursLawUnsupervised": "The Hours of Work and Rest Law doesn't apply (hours that can't be supervised), so all hours are regular. The payslip has to say so",
           "hoursLawRestDay": "<ltr>{hours}</ltr> hours of rest-day work on <ltr>{date}</ltr> were counted as regular. Pay for rest-day work depends on the contract",
           "restWeekOvertime": "To check: <ltr>{hours}</ltr> rest-day hours on <ltr>{date}</ltr>, past 42 hours in the week, were paid at 175% or 200%. An accountant needs to confirm this",
+          "absenceWeek": "To check: the week of <ltr>{weekOf}</ltr> has {days, plural, one {1 day away} other {# days away}}. Counted toward the 42 hours as a holiday is, <ltr>{hours}</ltr> hours become overtime. An accountant decides",
+          "absenceWorked": "<ltr>{date}</ltr> is recorded as a day away, and has <ltr>{hours}</ltr> hours on the clock",
           "minorUnderAge": "On <ltr>{date}</ltr> they weren't 15 yet. Nobody under 15 may be employed, and from 14 only light work in the holidays",
           "minorDayOver": "<ltr>{hours}</ltr> hours on <ltr>{date}</ltr>. Minors may work up to <ltr>{limit}</ltr>",
           "minorEveOver7": "<ltr>{hours}</ltr> hours on the eve of a rest day, <ltr>{date}</ltr>. Minors may work up to 7",
@@ -7319,7 +7440,7 @@
         },
         "notes": {
           "minimumWageTableStale": "April's minimum wage isn't in the app yet",
-          "paidAbsencesMissing": "Vacation, sick days and reserve duty aren't recorded in the app, and they count toward the week's 42 hours",
+          "absencesNotCounted": "Vacation, sick leave, reserve duty and other days away are recorded in the app, and don't count as days worked or toward the week's 42 hours. A week where that could matter is marked to check",
           "roundingIgnored": "The clock rounds each shift to <ltr>{step}</ltr> minutes, and pay is worked out from the exact minutes",
           "workWeekUnset": "The business's week isn't set, so the week of <ltr>{weekOf}</ltr> was worked out {used, select, five {as a 5-day week} six {as a 6-day week} other {by the shorter hours of each day}}, since that pays more. The week can be set in the clock's settings"
         }

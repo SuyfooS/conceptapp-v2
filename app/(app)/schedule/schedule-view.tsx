@@ -213,6 +213,8 @@ export async function ScheduleView({
           positions: data.positions,
           swaps: data.swaps,
           endedSwaps: ownEndedSwaps(data),
+          // Who is away, for whoever builds the schedule (known issue 19).
+          away: data.away,
         }}
         manager={manager}
         swap={swap}
