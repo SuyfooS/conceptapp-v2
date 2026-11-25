@@ -1,4 +1,5 @@
 import he from "../messages/he.json" with { type: "json" };
+import { announcer, heardSoFar, saidSince } from "./announcer";
 import {
   addOpenDemoEntry,
   clearTimeEntries,
@@ -249,7 +250,18 @@ test("Yoav sends a drink and a starter, the kitchen marks the starter ready, and
     page,
     new RegExp(`^${literal(rt("app.orders.draft.allergy"))}.*חומוס`),
   ).click();
-  await page.getByLabel(rt("app.orders.note.allergyLabel")).fill("בוטנים");
+  // Saved without its words: the field takes the focus, marked, and why is
+  // said after its own read.
+  const allergy = page.getByLabel(rt("app.orders.note.allergyLabel"));
+  const polite = announcer(page, "polite");
+  await heardSoFar(polite);
+  await page.getByRole("button", { name: rt("app.orders.note.save") }).click();
+  await expect(allergy).toBeFocused();
+  await expect(allergy).toHaveAttribute("aria-invalid", "true");
+  await expect(
+    saidSince(polite, rt("app.orders.note.allergyMissing")),
+  ).toHaveCount(1);
+  await allergy.fill("בוטנים");
   await page.getByRole("button", { name: rt("app.orders.note.save") }).click();
   await expect(
     shown(page, rt("app.orders.line.allergy", { note: "בוטנים" })),

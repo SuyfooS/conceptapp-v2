@@ -8,22 +8,31 @@ import {
 } from "@domain/order-screens";
 import type { Menu } from "@domain/order-taking";
 import { ORDER_CAPS } from "@domain/orders";
+import { announce } from "@ui/announcer";
 import { Button } from "@ui/button";
 import { Card } from "@ui/card";
 import { FieldRow } from "@ui/field-row";
+import { arrived, ignoreHeldEnter } from "@ui/focus-after";
 import { DraftLineRow } from "@ui/order-draft";
 import { PageSection } from "@ui/page";
 import { Sheet } from "@ui/sheet";
 import { Switch } from "@ui/switch";
 import { TextArea } from "@ui/text-field";
+import { useLocale } from "next-intl";
 import {
   type ReactNode,
   type Ref,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
+import {
+  answerHeard,
+  type FocusAt,
+  useQuietWhy,
+} from "../../(auth)/step-results";
 import { useOrdersMode } from "./orders-mode";
 import { Price, useOrderWords } from "./orders-parts";
 
@@ -205,10 +214,22 @@ export function DraftPanel({
   );
 }
 
+/** An allergy saved without its words, and where the focus was then. */
+type Missing = { count: number; at: FocusAt };
+
 /**
  * A line's one note, in a sheet: how to make it, never a customer's name;
  * with "אלרגיה" on, what to avoid, which whoever prepares it sees in danger
- * with the word. An allergy needs its words.
+ * with the word. An allergy needs its words: saved without them, the field
+ * is marked and says why, which is said once, as sign-in's fields say a
+ * refusal (`answerHeard`). From "שמירת ההערה" the field takes the focus
+ * once why is drawn, and the announcer says it after the field's own read;
+ * from the field itself (a press that left the focus there), it is said at
+ * once. Either way why is out of the field's description while it keeps
+ * the focus (`useQuietWhy`), so it isn't heard twice, and back in it once
+ * the focus leaves. Each such save is said, the same one again too. Enter
+ * held down on "שמירת ההערה" types no lines into the field that took the
+ * focus, which would have cleared why with the field still empty.
  */
 function NoteForm({
   line,
@@ -224,18 +245,46 @@ function NoteForm({
   const switchId = useId();
   const [text, setText] = useState(line.note ?? "");
   const [allergy, setAllergy] = useState(startsAllergy);
-  const [missing, setMissing] = useState(false);
+  const [missing, setMissing] = useState<Missing | null>(null);
+  const saves = useRef(0);
+  const heard = useRef<Missing | null>(null);
+  const { quiet, hush } = useQuietWhy(field);
+  const locale = useLocale();
+  const why = t("note.allergyMissing");
 
   // The words are the one thing to write here: the field has the focus.
   useEffect(() => {
     field.current?.focus({ preventScroll: true });
   }, []);
 
+  // Each save without words once, as it is drawn (`arrived`: not when the
+  // sheet is shown again), so the field is marked by the time it takes the
+  // focus, and drawn without why in its description while it keeps it.
+  useLayoutEffect(() => {
+    if (!arrived(heard, missing)) return;
+    const at = field.current;
+    if (!missing || !at) return;
+    const said = answerHeard({ error: why, at: missing.at });
+    if (said.focus) at.focus();
+    if (said.say) {
+      announce(said.say.words, {
+        politeness: said.say.politeness,
+        lang: locale,
+      });
+    }
+    if (said.quiet) hush(missing.count);
+  }, [missing, why, hush, locale]);
+
   function save() {
     const words = text.trim();
     if (allergy && !words) {
-      setMissing(true);
-      field.current?.focus();
+      saves.current += 1;
+      // The press, wherever it left the focus, is what the field takes it
+      // from; only a field that has it keeps it.
+      setMissing({
+        count: saves.current,
+        at: document.activeElement === field.current ? "field" : "lost",
+      });
       return;
     }
     onSave(words || null, allergy);
@@ -249,7 +298,7 @@ function NoteForm({
           checked={allergy}
           onChange={(on) => {
             setAllergy(on);
-            if (!on) setMissing(false);
+            if (!on) setMissing(null);
           }}
         />
       </FieldRow>
@@ -260,14 +309,16 @@ function NoteForm({
           allergy ? t("note.allergyPlaceholder") : t("note.placeholder")
         }
         hint={allergy ? t("note.allergyHint") : t("note.hint")}
-        error={missing ? t("note.allergyMissing") : undefined}
+        error={missing ? why : undefined}
+        quietMessage={missing !== null && quiet === missing.count}
         rows={3}
         maxLength={ORDER_CAPS.note}
         value={text}
         onChange={(event) => {
           setText(event.target.value);
-          if (missing) setMissing(false);
+          if (missing) setMissing(null);
         }}
+        onKeyDown={ignoreHeldEnter}
       />
       <Button size="lg" onClick={save}>
         {t("note.save")}
