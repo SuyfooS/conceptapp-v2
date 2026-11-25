@@ -3062,7 +3062,7 @@ test("the team demo deletes an invite, changes a role and takes someone off the 
 
 // Fixing a name on the demo (ROADMAP "תיקון שם"): the owner fixes Noa's,
 // shown at once in the title, with the fix back as its undo; an empty name is
-// said as an alert and the field takes the focus; one the business keeps
+// said and the field takes the focus; one the business keeps
 // with a mark nobody sees is saved clean, and her own name with one is not
 // offered, as it would keep no row; someone nobody named reads "בלי שם";
 // whoever may not change the person gets no row, nor does someone made an
@@ -3090,14 +3090,13 @@ test("the person demo fixes a name, with the change back as its undo", async ({
   const field = sheet.getByLabel(tt.invite.name, { exact: true });
   await field.fill(" ");
   await sheet.getByRole("button", { name: tc.nameSubmit }).click();
-  // Said as it shows, and the field takes the focus, read with it.
-  await expect(sheet.getByRole("alert")).toHaveText(
-    tt.invite.errors.name.required,
-  );
+  // The field takes the focus, read as invalid, and the announcer says why
+  // after its read (team-a11y.spec.ts), so no alert says it as well; on
+  // screen, it shows under the field.
   await expect(field).toBeFocused();
-  await expect(field).toHaveAccessibleDescription(
-    tt.invite.errors.name.required,
-  );
+  await expect(field).toHaveAttribute("aria-invalid", "true");
+  await expect(sheet.getByText(tt.invite.errors.name.required)).toBeVisible();
+  await expect(sheet.getByRole("alert")).toHaveCount(0);
   await field.fill("נועה  כהן-לוי");
   await sheet.getByRole("button", { name: tc.nameSubmit }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);

@@ -1,11 +1,13 @@
 "use client";
 
 import { Button } from "@ui/button";
+import { firstOnScreen, inViewWhenFocused } from "@ui/focus-after";
 import { UndoRow } from "@ui/undo-row";
 import { Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { createContext, type ReactNode, use, useState } from "react";
+import { createContext, type ReactNode, use, useRef, useState } from "react";
 import { useHeldWrite } from "../use-held-write";
+import { inviteCancelTarget, invitesLeft, sectionTitle } from "./invite-focus";
 import type {
   CancelInvite,
   InviteCancelResult,
@@ -20,6 +22,11 @@ type Cancels = {
   failure: TeamChangeActionFailure | null;
   start: (id: string, message: string) => void;
   undo: () => void;
+  /**
+   * The "ביטול" of invite `id` is being reached (`@ui/undo-wait`): its held
+   * write waits as long, and no other's.
+   */
+  waits: (id: string, waiting: boolean) => void;
 };
 
 const CancelsContext = createContext<Cancels | null>(null);
@@ -33,7 +40,9 @@ const settle = (run: Promise<InviteCancelResult>) =>
  * computer above the table, whose first rows they are), and the write is
  * held for it as
  * the access screen holds a removal (`useHeldWrite`), so a link deleted by
- * mistake keeps working. Once written the screen reads its list and counts
+ * mistake keeps working. "ביטול" takes the focus the pressed button had,
+ * and the hold waits while it is being reached (`InviteCancelUndo`). Once
+ * written the screen reads its list and counts
  * again; an invite that couldn't be deleted comes back, with why. With no
  * `cancel` (viewing as someone), nothing is offered.
  */
@@ -89,6 +98,13 @@ function CancelsState({
     if (id !== null) without(id);
   }
 
+  // An earlier invite's row, going as the next is deleted, lets go of
+  // nothing newer: the next one's own focus may be holding it.
+  function waits(id: string, waiting: boolean) {
+    if (waiting) held.pause(id);
+    else held.resume(id);
+  }
+
   return (
     <CancelsContext
       value={{
@@ -97,6 +113,7 @@ function CancelsState({
         failure,
         start,
         undo,
+        waits,
       }}
     >
       {children}
@@ -146,6 +163,9 @@ export function CancelInviteButton({
       className="text-danger"
       // The word it shows, then whose invite it deletes.
       aria-label={t("label", { name })}
+      // Found again by its invite once "ביטול" brings the row back
+      // (`inviteCancelTarget`).
+      data-invite-cancel={inviteId}
       onClick={() => cancels.start(inviteId, t("done", { name }))}
     >
       <Trash2 aria-hidden="true" />
@@ -154,17 +174,49 @@ export function CancelInviteButton({
   );
 }
 
-/** "ההזמנה של … נמחקה" with "ביטול" by the invites, and why one came back. */
-export function InviteCancelUndo() {
+/**
+ * "ההזמנה של … נמחקה" with "ביטול" by the invites, and why one came back.
+ * "מחיקת ההזמנה" went with its row, so "ביטול" takes the focus as it
+ * appears: each shape draws it, and only the one on screen can take it.
+ * While it is being reached the write waits. Undone, the focus goes back to
+ * the row's "מחיקת ההזמנה", brought into view; its time up, to the title of
+ * this section, which stays where it is (`invitesLeft`), else the page's.
+ */
+export function InviteCancelUndo({
+  ids,
+}: {
+  /**
+   * The invites its section lists, which is drawn anew once none is left (a
+   * phone's and a tablet's lists, which then put the team first). None: the
+   * section stays (the desktop's table, which lists the team too).
+   */
+  ids?: readonly string[];
+}) {
   const cancels = use(CancelsContext);
   const t = useTranslations("app.team");
+  // Where this shape's section is, for its title.
+  const anchor = useRef<HTMLSpanElement>(null);
   if (!cancels) return null;
-  const { held, failure } = cancels;
+  const { held, failure, gone } = cancels;
+  const stays = ids === undefined || invitesLeft(ids, gone);
   return (
     <>
+      <span ref={anchor} hidden />
       {held ? (
         // Each invite deleted a row of its own, said afresh.
-        <UndoRow key={held.id} message={held.message} onUndo={cancels.undo} />
+        <UndoRow
+          key={held.id}
+          message={held.message}
+          onUndo={cancels.undo}
+          autoFocus
+          onWaitingChange={(waiting) => cancels.waits(held.id, waiting)}
+          focusAfter={() => [
+            // Back where it was, maybe far above this row: brought into
+            // view as it takes the focus.
+            inViewWhenFocused(firstOnScreen([inviteCancelTarget(held.id)])),
+            stays ? sectionTitle(anchor.current) : null,
+          ]}
+        />
       ) : null}
       {failure ? (
         <p role="alert" className="px-1 text-base text-danger">

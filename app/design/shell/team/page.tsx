@@ -13,10 +13,19 @@ import {
   teamMembers,
   teamToday,
 } from "../data";
-import { demoCancelInviteAction, demoResendAction } from "./actions";
+import {
+  demoCancelInviteAction,
+  demoRefusedResendAction,
+  demoResendAction,
+} from "./actions";
 
 type Props = {
-  searchParams: Promise<{ state?: string; file?: string; complete?: string }>;
+  searchParams: Promise<{
+    state?: string;
+    file?: string;
+    complete?: string;
+    resend?: string;
+  }>;
 };
 
 // The real Team screen with mock people: three members' worth of the demo
@@ -36,6 +45,7 @@ type Props = {
 // leading to the file's twin as the accountant reads it (`?as=accountant`).
 // &complete=1 with any of them has every file complete and its 101 accepted
 // (H6b-2): each choice of the filter but everyone says it shows nobody.
+// ?resend=refused: each new link is refused, as one that couldn't be made.
 export default function ShellTeam({ searchParams }: Props) {
   return (
     <Suspense>
@@ -66,7 +76,7 @@ function filesFor(
 }
 
 async function Demo({ searchParams }: Props) {
-  const { state, file, complete } = await searchParams;
+  const { state, file, complete, resend } = await searchParams;
   const demo = state === "demo";
   const files = filesFor(file, complete === "1");
   if (files?.filesOnly) {
@@ -102,7 +112,7 @@ async function Demo({ searchParams }: Props) {
       viewer={viewer}
       inviteHref={demo ? undefined : "/design/shell/team/invite"}
       peopleHref="/design/shell/team"
-      resend={demoResendAction}
+      resend={resend === "refused" ? demoRefusedResendAction : demoResendAction}
       cancel={demoCancelInviteAction}
       named={[demoNamedRole]}
       files={files}

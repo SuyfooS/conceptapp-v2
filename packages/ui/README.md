@@ -58,6 +58,9 @@ control, and PageHeader's title shows none either).
 element goes while it holds the focus, after the drawing that removed it, so a
 screen's own refocus wins, and without moving the page (`focusWhenGone`): it
 lands where what went was, and someone who scrolled on meanwhile stays put.
+A candidate that can be far from what went (the row "ביטול" brought back, on a
+long list far above it) is wrapped in `inViewWhenFocused(element)`, which
+centres it as it takes the focus, only when it is out of view then.
 One that goes with a sheet that closes (`inClosingSheet`: Escape with the
 focus on a row's button, or on an UndoRow's "ביטול" in the sheet) leaves the
 focus to the sheet, which gives it back to what opened it; its candidates

@@ -204,6 +204,40 @@ export function focusWhenGone(
   return focusFirst(candidates, { doc, preventScroll: true });
 }
 
+/** What is read and asked of an element brought into view as it is focused. */
+export type Viewed = Pick<EventTarget, "addEventListener"> & {
+  getBoundingClientRect(): { top: number; bottom: number };
+  scrollIntoView(options?: ScrollIntoViewOptions): void;
+};
+
+/**
+ * `element`, brought into view the next time it takes the focus, when any
+ * of it is out of view then: a candidate for `focusWhenGone`, which doesn't
+ * move the page, where what it lands on can be far from what went. An
+ * UndoRow's "ביטול" brings a row back where it was, on a long list far
+ * above the row under it (a deleted invite, a removed department), so the
+ * focus's ring would be out of sight. Centred, clear of what floats over
+ * the page's edges (the title, the tab bar). Once.
+ */
+export function inViewWhenFocused<T extends Viewed>(
+  element: T | null,
+  view: { innerHeight: number } = globalThis as unknown as {
+    innerHeight: number;
+  },
+): T | null {
+  element?.addEventListener(
+    "focus",
+    () => {
+      const { top, bottom } = element.getBoundingClientRect();
+      if (top < 0 || bottom > view.innerHeight) {
+        element.scrollIntoView({ block: "center" });
+      }
+    },
+    { once: true },
+  );
+  return element;
+}
+
 /** A page a landing listens to: its focus, and its keys and presses. */
 export type LandingPage = DocLike &
   Pick<EventTarget, "addEventListener" | "removeEventListener">;
