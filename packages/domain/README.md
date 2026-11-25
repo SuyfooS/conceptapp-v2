@@ -173,11 +173,15 @@ suggestion has none.
 kind for payroll, and who is away when, never why. Someone is away during a
 shift (`awayDuring`) when they are away on its day, or, for a shift that ends
 after midnight, on the day after; one that ends at 00:00 exactly is its own
-day's only. The schedule reads every warning through it: the shift sheet's
-lists, the copy, the fill, and a shift's card in the builder and on the
-schedule tab (`assigneesAway`, who on the shift is away during it, since 25
-November 2026, known issue 107), all in the sheet's words "לא בעבודה בשעות
-המשמרת". So days away are read to the day after the last week shown
+day's only. The schedule reads every warning about one shift through it:
+the shift sheet's lists, the copy, the fill's rule, and a shift's card in the
+builder and on the schedule tab (`assigneesAway`, who on the shift is away
+during it, since 25 November 2026, known issue 107). The sheet, the copy and
+the cards say it in the sheet's words, "לא בעבודה בשעות המשמרת"; the fill
+says its rule in its own ("לא בעבודה" beside a name). A day's own line in the
+builder ("לא בעבודה: {names}", `awayByDay`) and Today still read the day
+alone, so a night into a day away is said on its card and not on its day.
+For the nights, days away are read to the day after the last week shown
 (`awayWindow`): the builder's week and the day after it, the tab's two
 weeks and the day after them.
 
