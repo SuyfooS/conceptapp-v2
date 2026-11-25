@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useLayoutEffect, useState, useTransition } from "react";
 
 /** React's `startTransition`, as `useTransition` gives it, for an async write. */
 export type StartTransition = (action: () => Promise<void>) => void;
@@ -61,10 +61,12 @@ export function sheetWrites(startTransition: StartTransition) {
  * `onOpenChange`, never while drawing.
  *
  * An answer the sheet says only later (a refusal said once the page read
- * again is drawn, 25 November 2026) is kept as it comes (`keep`, the
- * write's argument), and the sheet holds until it has drawn it and calls
- * `said`. Kept any later, by the state React draws on its next turn, a close
- * coming in between (a tap, Escape) would find nothing holding the sheet.
+ * again is drawn, 25 November 2026, or one drawn from the state set as it
+ * comes, which React draws only on its next turn) is kept as it comes
+ * (`keep`, the write's argument), and the sheet holds until it has drawn it
+ * and calls `said` (`useSaid`). Kept any later, by the state React draws on
+ * its next turn, a close coming in between (a tap, Escape) would find
+ * nothing holding the sheet.
  */
 export function useSheetWrite() {
   const [pending, startTransition] = useTransition();
@@ -76,4 +78,18 @@ export function useSheetWrite() {
     held: writes.held,
     said: writes.said,
   };
+}
+
+/**
+ * For a sheet that says a kept answer as it draws it (the person's hours
+ * sheets, 25 November 2026): `said` in a layout effect of each drawing that
+ * shows it (`shown`), so as the drawing that puts it up is committed, before
+ * anything else can come in. Each one, not only that first: an answer kept
+ * again in the same words draws nothing new, and the sheet's next drawing
+ * lets go of it instead.
+ */
+export function useSaid(shown: boolean, said: () => void) {
+  useLayoutEffect(() => {
+    if (shown) said();
+  });
 }

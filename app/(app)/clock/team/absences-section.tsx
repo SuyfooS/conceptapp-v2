@@ -18,6 +18,7 @@ import { focusFirst, focusLost } from "@ui/focus-after";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageSection } from "@ui/page";
 import { TextField } from "@ui/text-field";
+import { useSaid } from "@ui/use-sheet-write";
 import { Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
@@ -376,6 +377,7 @@ export function AbsenceForm({
   today,
   saving,
   failed,
+  onSaid,
   save,
   remove,
 }: {
@@ -386,6 +388,11 @@ export function AbsenceForm({
   saving: boolean;
   /** Why the toast's "ביטול" didn't go, said as it opens. */
   failed: { failure: AbsenceFailure; month?: string } | null;
+  /**
+   * A refusal is drawn, said: the sheet may close (`@ui/use-sheet-write`'s
+   * `useSaid`).
+   */
+  onSaid: () => void;
   save: (
     values: AbsenceValues,
     onFailure: (failure: AbsenceFailure, month?: string) => void,
@@ -404,6 +411,7 @@ export function AbsenceForm({
   // A new record's last day follows its first, until it is set.
   const [toSet, setToSet] = useState(row !== null);
   const [failure, setFailure] = useState(failed);
+  useSaid(failure !== null, onSaid);
   const changed =
     row === null ||
     values.kind !== start.kind ||
