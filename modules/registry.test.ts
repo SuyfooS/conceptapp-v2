@@ -10,6 +10,7 @@ import {
   DOCUMENT_SPACE_MB,
 } from "@domain/documents";
 import type { EmployeeFileSettings } from "@domain/employee-file-settings";
+import { FILL_WEEK_HOURS, FILL_WEEK_HOURS_MAX } from "@domain/fill-week";
 import { DEFAULT_LIST_PHOTO_DAYS, LIST_PHOTO_DAYS } from "@domain/list-photos";
 import {
   ACCOUNTANT_PERMISSIONS,
@@ -373,6 +374,69 @@ describe("module registry", () => {
       readModuleSettings(manifest, { tellOwnersAfterMinutes: 0 })
         .tellOwnersAfterMinutes,
     ).toBe(0);
+  });
+
+  it("lets the business set the week's hours the fill from availability gives anyone, 42 at first, 4 to 58", () => {
+    // Filling from availability, part 5. Only the builder reads it (the
+    // fill's rule and its sheet's words); nothing in the database does, so
+    // public.set_module_settings (20261126000400_employee_files_settings.sql)
+    // needs no branch for it, as it would for an owner's or the team's.
+    const manifest = manifestFor("scheduling");
+    const field = describeSettings(manifest.settings).find(
+      (f) => f.key === "fillWeekHours",
+    );
+    expect(field).toEqual({
+      key: "fillWeekHours",
+      level: "business",
+      kind: "number",
+      min: 4,
+      max: FILL_WEEK_HOURS_MAX,
+    });
+    expect(FILL_WEEK_HOURS_MAX).toBe(58);
+    expect(manifest.settings.parse({}).fillWeekHours).toBe(FILL_WEEK_HOURS);
+    expect(FILL_WEEK_HOURS).toBe(42);
+    // Owners and managers on /manage/scheduling, the team in the console.
+    for (const level of ["business", "owner", "team"] as const) {
+      expect(
+        fieldsFor(manifest.settings, level).map((f) => f.key),
+        level,
+      ).toContain("fillWeekHours");
+    }
+    // A manager sets it within its ends, and nothing else.
+    expect(
+      checkSettingsChange(manifest, {}, { fillWeekHours: 7 }, "business"),
+    ).toEqual({ ok: true, patch: { fillWeekHours: 7 } });
+    for (const wrong of [3, 59, 7.5, "7"]) {
+      expect(
+        checkSettingsChange(manifest, {}, { fillWeekHours: wrong }, "business"),
+        String(wrong),
+      ).toEqual({ ok: false, problem: "invalid" });
+    }
+    // Stored out of its ends, it reads as 42, and the rest stay.
+    for (const wrong of [3, 59, 7.5, "7", null]) {
+      expect(
+        readModuleSettings(manifest, {
+          fillWeekHours: wrong,
+          closedOnShabbat: false,
+        }),
+        String(wrong),
+      ).toMatchObject({ fillWeekHours: 42, closedOnShabbat: false });
+    }
+    expect(
+      readModuleSettings(manifest, { fillWeekHours: 4 }).fillWeekHours,
+    ).toBe(4);
+    expect(
+      readModuleSettings(manifest, { fillWeekHours: 58 }).fillWeekHours,
+    ).toBe(58);
+    // Its words name both ends of the week, and nothing of minors: the fill
+    // places them like everyone (Orel, 25 November 2026).
+    for (const messages of [he, en]) {
+      const words = messages.modules.scheduling.settings.fillWeekHours;
+      expect(words.label).toBeTruthy();
+      expect(words.hint).toContain(String(FILL_WEEK_HOURS));
+      expect(words.hint).toContain(String(FILL_WEEK_HOURS_MAX));
+      expect(words.hint).not.toMatch(/18|40/);
+    }
   });
 
   it("gives taking orders one key of its own area, managers' by default, switched per role, no tab and a mode", () => {

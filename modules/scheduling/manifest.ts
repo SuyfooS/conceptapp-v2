@@ -1,3 +1,4 @@
+import { FILL_WEEK_HOURS, FILL_WEEK_HOURS_MAX } from "@domain/fill-week";
 import { defineManifest } from "@domain/modules";
 import { positions, shiftPatterns } from "@domain/staffing";
 import { z } from "zod";
@@ -58,5 +59,20 @@ export const manifest = defineManifest({
     positions: positions.default([]).meta({ editor: "positions" }),
     /** Which shifts run on which days and how many people each needs. */
     shifts: shiftPatterns.default([]).meta({ editor: "shifts" }),
+    /**
+     * Most hours a week the fill from availability ("מילוי מהזמינות") gives
+     * anyone, what is already on the screen counted: 42 is the regular week
+     * (`WEEK_MINUTES`), up to 58 with the general permit's overtime
+     * (`LIMITS.weekOvertime`). Placing people by hand has no cap. Owners
+     * and managers set it on /manage/scheduling, the team in the console;
+     * nothing in the database reads it, so `set_module_settings` needs no
+     * branch for it.
+     */
+    fillWeekHours: z
+      .int()
+      .min(4)
+      .max(FILL_WEEK_HOURS_MAX)
+      .default(FILL_WEEK_HOURS)
+      .meta({ level: "business" }),
   }),
 });

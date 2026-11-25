@@ -274,6 +274,12 @@ export type ScheduleBuildWeek = {
   answers: Pick<Availability, "userId" | "ranges">[];
   positions: Position[];
   /**
+   * The most hours a week the fill from availability gives anyone, what is
+   * on the screen counted: the business's scheduling setting
+   * `fillWeekHours` (42 unless it chose otherwise, 4 to 58).
+   */
+  fillWeekHours: number;
+  /**
    * Who on the staff is away on the week's days and the day after it
    * (`awayWindow`: a night on its last day runs into that day; known issue
    * 19), and when: never why. Empty while the time clock is off.
@@ -336,7 +342,7 @@ export const currentScheduleBuild = cache(
     ]);
     const membership = member?.membership;
     if (!membership || !buildsSchedule(membership) || !scheduling) return null;
-    const { weeks, now } = scheduling;
+    const { weeks, now, settings } = scheduling;
     const at = start ?? weeks.nextWeek;
     if (at !== weeks.thisWeek && at !== weeks.nextWeek) return null;
     // To the day after the week: a night on its last day runs into it.
@@ -375,6 +381,9 @@ export const currentScheduleBuild = cache(
         ranges,
       })),
       positions: context.positions,
+      // As `readModuleSettings` read it: a stored value out of range is the
+      // default.
+      fillWeekHours: settings.fillWeekHours,
       away,
     };
   },

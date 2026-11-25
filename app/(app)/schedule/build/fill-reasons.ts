@@ -1,12 +1,13 @@
 /**
- * What the fill's sheet says: the line above its button (`fillLine`), and of
- * the shifts that had an open place, the days in the fill's order and for a
- * place left open its one reason. Without React, so the tests stand in for
+ * What the fill's sheet says: the line above its button (`fillLine`), of the
+ * shifts that had an open place, the days in the fill's order and for a
+ * place left open its one reason, and its people, each with their week
+ * after the fill (`fillPeople`). Without React, so the tests stand in for
  * the sheet, which puts these into words (`app.build.fill.*`).
  */
 
 import type { ShabbatConflict } from "@domain/availability-form";
-import type { FillShift, WeekFill } from "@domain/fill-week";
+import type { FillPerson, FillShift, WeekFill } from "@domain/fill-week";
 
 /** Candle lighting or havdalah, on the side of Shabbat the shift reaches. */
 type ShabbatSide = { side: ShabbatConflict; time: string };
@@ -111,4 +112,47 @@ export function fillDays(fill: Pick<WeekFill, "week" | "shifts">): FillDay[] {
     else days.push({ date, shifts: [shift] });
   }
   return days;
+}
+
+/** A row of "לפי אנשים": someone who answered, and their week after the fill. */
+export type FillPersonRow = {
+  user: string;
+  /** Their name on the team, as the sheet's other lines write it. */
+  name: string;
+  /** Shifts in the week after the fill, the fill's own included. */
+  shifts: number;
+  /** Their hours in the week after the fill, to a tenth: 21.5, never 21.53. */
+  hours: number;
+  /** How many of those shifts the fill gave them. */
+  added: number;
+};
+
+/**
+ * "לפי אנשים": everyone who answered for the week (`WeekFill.byPerson`, an
+ * answer with no hours in it included: they answered, and the manager may
+ * still have put them on by hand), each with the shifts and hours they have
+ * after the fill and how many of them the fill gave, the three in one line
+ * (`app.build.fill.person`). Fewest shifts first, so who gets least is seen
+ * first; then by name, as the screens sort names (`locale`); then by id, so
+ * two of the same name keep one order.
+ */
+export function fillPeople(
+  people: readonly FillPerson[],
+  nameOf: (userId: string) => string,
+  locale: string,
+): FillPersonRow[] {
+  return people
+    .map(({ user, shifts, minutes, added }) => ({
+      user,
+      name: nameOf(user),
+      shifts,
+      hours: Math.round(minutes / 6) / 10,
+      added,
+    }))
+    .sort(
+      (a, b) =>
+        a.shifts - b.shifts ||
+        a.name.localeCompare(b.name, locale) ||
+        (a.user < b.user ? -1 : a.user > b.user ? 1 : 0),
+    );
 }

@@ -86,13 +86,15 @@ export function BusinessDetailsForm({
 
   /**
    * A pick shows at once and goes back if it fails. What's typed shows once
-   * it's saved, so a failure keeps it on screen.
+   * it's saved, so a failure keeps it on screen. Says whether it saved: a
+   * typed detail refused is sent again as its field is left, even when it
+   * went as the page hid or the screen was left (`useDraft`).
    */
   async function change<Key extends BusinessDetailKey>(
     key: Key,
     value: BusinessDetails[Key],
     picked: boolean,
-  ) {
+  ): Promise<boolean> {
     const mine = (latest.current[key] ?? 0) + 1;
     latest.current[key] = mine;
     if (picked) setChanged((before) => ({ ...before, [key]: value }));
@@ -107,7 +109,7 @@ export function BusinessDetailsForm({
       if (!picked) setChanged((before) => ({ ...before, [key]: value }));
       clearAfterSave(key);
       setSaved((count) => count + 1);
-      return;
+      return true;
     }
     const reason = result.failure;
     setFailures((before) => ({ ...before, [key]: reason }));
@@ -119,19 +121,20 @@ export function BusinessDetailsForm({
           : rest,
       );
     }
+    return false;
   }
 
   const name = useDraft(
     current.name,
     (text) => !businessDetailProblem("name", text),
-    (text) => void change("name", tidyText(text), false),
+    (text) => change("name", tidyText(text), false),
     null,
     tidyText,
   );
   const address = useDraft(
     current.address ?? "",
     (text) => !businessDetailProblem("address", text),
-    (text) => void change("address", tidyText(text) || null, false),
+    (text) => change("address", tidyText(text) || null, false),
     null,
     tidyText,
   );

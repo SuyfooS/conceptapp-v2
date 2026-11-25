@@ -55,6 +55,45 @@ describe("describeSettings", () => {
     );
   });
 
+  // As scheduling's `fillWeekHours` is (filling from availability, part 5):
+  // a bounded whole number, said to be the business's, drawn as a number
+  // field for owners, managers and the team, its ends as the schema's.
+  it("draws a bounded whole number of the business's level as a number for everyone who edits", () => {
+    const hours = z.object({
+      fillWeekHours: z
+        .int()
+        .min(4)
+        .max(58)
+        .default(42)
+        .meta({ level: "business" }),
+    });
+    const drawn = {
+      key: "fillWeekHours",
+      level: "business",
+      kind: "number",
+      min: 4,
+      max: 58,
+    };
+    expect(describeSettings(hours)).toEqual([drawn]);
+    for (const level of ["business", "owner", "team"] as const) {
+      expect(fieldsFor(hours, level), level).toEqual([drawn]);
+    }
+    const scheduling = defineManifest({
+      key: "scheduling",
+      requires: [],
+      nav: null,
+      homeWidget: null,
+      permissions: [],
+      settings: hours,
+    });
+    expect(
+      checkSettingsChange(scheduling, {}, { fillWeekHours: 58 }, "business"),
+    ).toEqual({ ok: true, patch: { fillWeekHours: 58 } });
+    expect(
+      checkSettingsChange(scheduling, {}, { fillWeekHours: 3 }, "business"),
+    ).toEqual({ ok: false, problem: "invalid" });
+  });
+
   it("refuses a field no form can draw", () => {
     expect(() =>
       describeSettings(z.object({ list: z.array(z.string()).default([]) })),
