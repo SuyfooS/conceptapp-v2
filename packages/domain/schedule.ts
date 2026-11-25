@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { type AwaySpan, awayOn, daysApart } from "./absences";
+import { type AwaySpan, awayDuring, daysApart } from "./absences";
 import {
   type AvailabilityRange,
   instantIn,
@@ -492,9 +492,10 @@ export function availableFor(
  * Where a person stands for one shift of the week being built:
  * - `assigned`: already on it;
  * - `busy`: on another shift that overlaps it;
- * - `away`: recorded as away that day (vacation, sick leave, reserve duty,
- *   another absence; never which), whatever their availability says. They
- *   can still be put on it: the builder only warns;
+ * - `away`: recorded as away during it (vacation, sick leave, reserve duty,
+ *   another absence; never which): on its day, and for a night past
+ *   midnight on the day after too (`awayDuring`), whatever their
+ *   availability says. They can still be put on it: the builder only warns;
  * - `available`: their availability covers the whole shift;
  * - `unavailable`: they answered, and it does not;
  * - `noAnswer`: they have not sent availability for the week.
@@ -548,9 +549,9 @@ export function overlappingShift<
  * Everyone on the team for shift `index` of the week starting on
  * `weekStart`, with where they stand, for the manager's "add a person"
  * list: available first, then those who have not answered, then those who
- * are not available, then those away that day (`away`, who is away when),
- * then those already working at the time. The team's order is kept within
- * each group.
+ * are not available, then those away during it (`away`, who is away when,
+ * read to the day after the week for a night on its last day), then those
+ * already working at the time. The team's order is kept within each group.
  */
 export function shiftCandidates<M extends { userId: string }>(
   weekStart: string,
@@ -569,7 +570,7 @@ export function shiftCandidates<M extends { userId: string }>(
   const stateOf = (userId: string): CandidateState => {
     if (shift.assignees.some((a) => a.user === userId)) return "assigned";
     if (overlappingShift(weekStart, shifts, index, userId)) return "busy";
-    if (awayOn(away, userId, shift.day)) return "away";
+    if (awayDuring(away, userId, shift)) return "away";
     const ranges = rangesOf.get(userId);
     if (!ranges) return "noAnswer";
     return availableFor(shift, ranges) ? "available" : "unavailable";

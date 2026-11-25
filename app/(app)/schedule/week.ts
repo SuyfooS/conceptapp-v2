@@ -8,7 +8,7 @@ import { basisOf, getWeekSchedule, type WeekScheduleShift } from "@db/schedule";
 import type { MemberBusiness } from "@db/session";
 import { getEndedSwaps, getLiveSwaps } from "@db/swaps";
 import { type Colleague, getColleagues } from "@db/team";
-import type { AwaySpan } from "@domain/absences";
+import { type AwaySpan, awayWindow } from "@domain/absences";
 import {
   type AvailabilityAnswer,
   addDays,
@@ -274,8 +274,9 @@ export type ScheduleBuildWeek = {
   answers: Pick<Availability, "userId" | "ranges">[];
   positions: Position[];
   /**
-   * Who on the staff is away on the week's days (known issue 19), and when:
-   * never why. Empty while the time clock is off.
+   * Who on the staff is away on the week's days and the day after it
+   * (`awayWindow`: a night on its last day runs into that day; known issue
+   * 19), and when: never why. Empty while the time clock is off.
    */
   away: AwaySpan[];
 };
@@ -338,10 +339,12 @@ export const currentScheduleBuild = cache(
     const { weeks, now } = scheduling;
     const at = start ?? weeks.nextWeek;
     if (at !== weeks.thisWeek && at !== weeks.nextWeek) return null;
+    // To the day after the week: a night on its last day runs into it.
+    const days = awayWindow(at);
     const [context, team, away] = await Promise.all([
       weekContext(at),
       currentScheduleTeam(),
-      teamAwayFor(membership, scheduling.business.id, at, addDays(at, 6)),
+      teamAwayFor(membership, scheduling.business.id, days.from, days.to),
     ]);
     if (!context || !team) return null;
     const { week, open } = context;

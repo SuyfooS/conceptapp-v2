@@ -172,27 +172,35 @@ suggestion has none.
 `copy-week.ts` is "העתקה מהשבוע שעבר" on the schedule builder: last week as it
 stands once built (`copySourceOf`), what copying it onto the week on the
 screen does day by day and who it leaves out and why (`copyLastWeek`, its
-rules numbered), and whether the week was saved since the screen copied
-into it (`copiedOver`). It changes the screen only; the week's own write
-checks everything again when it is saved.
+rules numbered; someone away during a shift, a night past midnight into a
+day away included, by `awayDuring`), and whether the week was saved since
+the screen copied into it (`copiedOver`). It changes the screen only; the
+week's own write checks everything again when it is saved.
 
 `fill-week.ts` is "מילוי מהזמינות", the builder's fill of the week's open
 places from the staff's availability (`fillFromAvailability`, its rules
 numbered). It only appends people to shifts still to start that need more:
 never moving, removing or re-positioning anyone, never changing a shift. It
-places only staff who sent an answer whose ranges cover the whole shift, and
-only while every `FillRule` holds, checked in this order: not away during it
-(`awayDuring` in `absences.ts`: its day, and the next day for a night past
-midnight), a minor only within 08:00–20:00 (`FILL_MINOR_HOURS`, payroll's
-stricter reading) and for at most 8 hours (7 on a Friday), never two shifts
-at once, one shift a day, 8 hours between shifts (`LIMITS.restBetween`, in
-real time as payroll measures it, so a night the clocks change in counts the
-hour they skip or repeat), at most `FILL_MAX_DAYS` (6) days, and at most the
-week's hours (`weekHours`, 42 by default, `FILL_WEEK_HOURS`, up to
-`FILL_WEEK_HOURS_MAX`, 58), or a minor's 40 when that is less (`fillWeekCap`,
-the number the sheet names). The week's hours are counted on the wall clock,
-as the builder's totals count them. Last week, when it is the week just
-before, and next week's first days count as spans only, placed in time by
+places only staff who sent an answer whose ranges cover the whole shift
+(someone who sent none never, though the manager can still put them on a
+shift by hand: Orel, 25 November 2026), and only while every `FillRule`
+holds, checked in this order: not away during it (`awayDuring` in
+`absences.ts`: its day, and the next day for a night past midnight, as the
+shift sheet's lists (`shiftCandidates`) and the copy read it too; the builder
+reads days away over `awayWindow`, the week and the day after it), never two
+shifts at once, one shift a day, 8 hours between shifts
+(`LIMITS.restBetween`, in real time as payroll measures it, so a night the
+clocks change in counts the hour they skip or repeat), at most
+`FILL_MAX_DAYS` (6) days, and at most the week's hours (`weekHours`, 42 by
+default, `FILL_WEEK_HOURS`, up to `FILL_WEEK_HOURS_MAX`, 58, the number the
+sheet names). The week's hours are counted on the wall clock, as the
+builder's totals count them. A minor is placed like everyone else (Orel, 25
+November 2026): the fill has no rule of its own for minors, the manager is
+responsible as when placing by hand, and payroll's flags for minors still
+read the hours worked. Last week, when it is the week just
+before, and next week's first days (`nextWeekEdge` in `running-week.ts`:
+its first two days with people on them, only while the builder shows the
+week running now) count as spans only, placed in time by
 `shiftSpan` in `schedule.ts` (minutes from the week's first midnight on
 `daysApart`, so last Saturday is day -1 and next Sunday day 7; the copy reads
 it too) and, for the rest between shifts, by `instantIn`, as the database's
@@ -208,9 +216,7 @@ else covers it; or each one who does with the first rule that stopped them;
 a shift into Shabbat names it beside the other two as well). `nobody` means
 nobody else: when anyone is on the shift after the fill, whoever put them
 there, the sheet says nobody else covers it, and a Shabbat time beside
-`nobody` or `blocked` comes without saying no answer covers the shift.
-`weekMinors` is who counts as a minor all week, from `getTeamYouth`'s map of
-id to `youth_until`, ids only. The
+`nobody` or `blocked` comes without saying no answer covers the shift. The
 database checks only that nobody works two shifts at once, never these
 rules: they are the fill's own.
 

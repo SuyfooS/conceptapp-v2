@@ -2082,14 +2082,14 @@
         "available": "Available",
         "noAnswer": "Have not sent availability",
         "unavailable": "Not available at these hours",
-        "away": "Away that day",
+        "away": "Away during the shift",
         "busy": "On another shift at the same time"
       },
       "notes": {
         "unavailable": "Outside their availability",
         "noAnswer": "Has not sent availability",
         "busy": "Also on another shift at the same time",
-        "away": "Away that day",
+        "away": "Away during the shift",
         "noDay": "Not available on this day"
       },
       "busyOn": "On the {name} shift, <ltr>{start}–{end}</ltr>",

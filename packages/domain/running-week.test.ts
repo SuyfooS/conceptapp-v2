@@ -9,6 +9,7 @@ import {
   gapsAhead,
   joinedOn,
   lockBegun,
+  nextWeekEdge,
   runningFirst,
   runningGaps,
   shiftEnded,
@@ -667,5 +668,41 @@ describe("edgeWeek", () => {
   it("is this week, or the week after next, from next week", () => {
     expect(edgeWeek("next", "previous")).toBe("this");
     expect(edgeWeek("next", "next")).toBe("afterNext");
+  });
+});
+
+// The fill's edge after the week on the screen (the fill plan's PR 3).
+describe("nextWeekEdge", () => {
+  const sunMorning = shift(11, "2026-11-22", "07:00", "15:00", [tamar]);
+  const sunEvening = shift(12, "2026-11-22", "15:00", "23:00");
+  const monMorning = shift(13, "2026-11-23", "07:00", "15:00", [itai]);
+  const tueMorning = shift(14, "2026-11-24", "07:00", "15:00", [roni]);
+  const next = [sunMorning, sunEvening, monMorning, tueMorning];
+
+  it("is next week's first two days with people on them, building the week running now", () => {
+    expect(nextWeekEdge("this", WEEKS.nextWeek, next)).toEqual([
+      sunMorning,
+      monMorning,
+    ]);
+    // Drawn from the pattern, with nobody on it yet: no edge.
+    expect(nextWeekEdge("this", WEEKS.nextWeek, [sunEvening])).toEqual([]);
+    // A shift dated outside next week is never its edge.
+    const before = shift(15, "2026-11-21", "20:00", "02:00", [tamar]);
+    expect(nextWeekEdge("this", WEEKS.nextWeek, [before, ...next])).toEqual([
+      sunMorning,
+      monMorning,
+    ]);
+  });
+
+  it("is none building next week, whose week after can't be built yet", () => {
+    expect(nextWeekEdge("next", WEEKS.nextWeek, next)).toEqual([]);
+  });
+
+  it("follows a week that starts on Monday", () => {
+    // Next week from Monday 23 November: Monday and Tuesday.
+    expect(nextWeekEdge("this", "2026-11-23", next)).toEqual([
+      monMorning,
+      tueMorning,
+    ]);
   });
 });

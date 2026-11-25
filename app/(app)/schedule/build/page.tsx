@@ -1,5 +1,10 @@
 import { manageReach } from "@domain/manage-access";
-import { builderHref, builderWeekOf, gapsAhead } from "@domain/running-week";
+import {
+  builderHref,
+  builderWeekOf,
+  gapsAhead,
+  nextWeekEdge,
+} from "@domain/running-week";
 import { SCHEDULE_PATH } from "@domain/share";
 import { canWrite } from "@domain/view-as";
 import type { Metadata } from "next";
@@ -94,6 +99,8 @@ export default async function ScheduleBuildPage(props: Props) {
       data={data}
       swaps={swaps}
       lastWeek={lastWeek}
+      // Building the week running now, next week's first days are its edge.
+      nextDays={nextWeekEdge(which, weeks.nextWeek, nextWeek?.shifts ?? [])}
       save={saveScheduleAction}
       manageHref={manageHref}
       publishes={weeks.publishes}
