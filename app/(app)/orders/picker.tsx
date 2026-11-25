@@ -3,6 +3,7 @@
 import { nameMatches } from "@domain/hebrew-search";
 import { type DraftLine, pickState } from "@domain/order-screens";
 import type { Menu, MenuItem } from "@domain/order-taking";
+import { announce } from "@ui/announcer";
 import { Button } from "@ui/button";
 import { cn } from "@ui/cn";
 import { EmptyState } from "@ui/empty-state";
@@ -11,9 +12,11 @@ import { PageSection } from "@ui/page";
 import { fieldInputClass } from "@ui/text-field";
 import { BookOpen, Search } from "lucide-react";
 import Link from "next/link";
-import { useId, useState } from "react";
+import { useLocale } from "next-intl";
+import { useEffect, useId, useRef, useState } from "react";
 import { useOrdersMode } from "./orders-mode";
 import { Price, useOrderWords } from "./orders-parts";
+import { SEARCH_SAID_AFTER_MS } from "./search-said";
 
 type Section = { id: string; name: string; items: MenuItem[] };
 
@@ -27,6 +30,9 @@ type Section = { id: string; name: string; items: MenuItem[] };
  * make opens its choices, saying so under its price; one with only optional
  * choices is added at once, and says its line in the draft changes them.
  * "הכי מוזמנים" are items, so a favourite burger opens its choices too.
+ * What the search found is said to a screen reader once what is typed
+ * settles (`SEARCH_SAID_AFTER_MS`): how many, or that nothing starts so;
+ * once for each, and nothing as the screen opens or the search is emptied.
  */
 export function Picker({
   menu,
@@ -42,9 +48,36 @@ export function Picker({
 }) {
   const { t } = useOrderWords();
   const { frame, paths } = useOrdersMode();
+  const locale = useLocale();
   const searchId = useId();
   const [query, setQuery] = useState("");
   const [shown, setShown] = useState("most");
+  const typed = query.trim();
+  const found = typed
+    ? (menu?.items ?? []).filter((item) => nameMatches(item.name, typed))
+    : null;
+  const foundWords = !found
+    ? ""
+    : found.length
+      ? t("picker.foundCount", { count: found.length })
+      : t("picker.nothingFound", { query: typed });
+  // What was typed when the search last said what it found.
+  const said = useRef("");
+
+  // Once what is typed settles, what it found is said, once for each; an
+  // empty search says nothing, and the same search typed again is said.
+  useEffect(() => {
+    if (!typed) {
+      said.current = "";
+      return;
+    }
+    if (said.current === typed) return;
+    const settled = setTimeout(() => {
+      said.current = typed;
+      announce(foundWords, { lang: locale });
+    }, SEARCH_SAID_AFTER_MS);
+    return () => clearTimeout(settled);
+  }, [typed, foundWords, locale]);
   const inDraft = (item: string) =>
     draft
       .filter((line) => line.item === item)
@@ -109,10 +142,6 @@ export function Picker({
   ].filter((section) => section.items.length > 0);
   const chosen =
     sections.find((section) => section.id === shown) ?? sections[0];
-  const typed = query.trim();
-  const found = typed
-    ? menu.items.filter((item) => nameMatches(item.name, typed))
-    : null;
 
   return (
     <section
@@ -146,9 +175,8 @@ export function Picker({
             {found.map(row)}
           </MenuItemList>
         ) : (
-          <p role="status" className="px-1 text-ink-2">
-            {t("picker.nothingFound", { query: typed })}
-          </p>
+          // No live region: the announcer says it once the search settles.
+          <p className="px-1 text-ink-2">{foundWords}</p>
         )
       ) : (
         <>

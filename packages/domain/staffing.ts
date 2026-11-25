@@ -75,11 +75,14 @@ export function newStaffingKey(kind: "position" | "shift"): string {
   return `${kind[0]}-${random.toString(16).padStart(8, "0")}`;
 }
 
-/** The shifts that run on `day`, earliest first. */
-export function shiftsOn(
-  patterns: readonly ShiftPattern[],
+/**
+ * The shifts that run on `day`, earliest first: the builder's week and the
+ * availability form's suggested hours both read a day's shifts so.
+ */
+export function shiftsOn<P extends Pick<ShiftPattern, "days" | "start">>(
+  patterns: readonly P[],
   day: number,
-): ShiftPattern[] {
+): P[] {
   return patterns
     .filter((shift) => shift.days.includes(day))
     .sort((a, b) => a.start.localeCompare(b.start));

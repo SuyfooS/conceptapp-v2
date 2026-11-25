@@ -23,7 +23,9 @@ import {
 import {
   fridayOf,
   type ShabbatLimits,
+  type ShiftHours,
   shabbatLimits,
+  shiftHoursOf,
 } from "@domain/availability-form";
 import { type CopySource, copySourceOf } from "@domain/copy-week";
 import { canOpenModule, isStaff } from "@domain/modules";
@@ -59,6 +61,13 @@ export type AvailabilityWeek = {
   timeZone: string;
   /** Set when the business is closed on Shabbat. */
   shabbat: ShabbatLimits | null;
+  /**
+   * The hours of the business's regular shifts and the days they run, from
+   * the shift pattern the builder draws a week from (the scheduling settings'
+   * `shifts`): an empty day in the form opens with that day's
+   * (`suggestedDay`). Hours only, never a shift's name or how many it needs.
+   */
+  shiftHours: ShiftHours[];
   /** What the signed-in person sent for the week, if anything. */
   mine: Availability | null;
 };
@@ -161,6 +170,7 @@ const weekContext = cache(
       ).toISOString(),
       timeZone,
       shabbat,
+      shiftHours: shiftHoursOf(settings.shifts),
       mine: answers.find((a) => a.userId === member.userId) ?? null,
     };
     return {

@@ -4,7 +4,7 @@ import {
   addDays,
   weekDates,
 } from "@domain/availability";
-import { shabbatLimits } from "@domain/availability-form";
+import { shabbatLimits, shiftHoursOf } from "@domain/availability-form";
 import { type CopySource, copySourceOf } from "@domain/copy-week";
 import { draftWeek, type ScheduledShift } from "@domain/schedule";
 import { ISRAEL_TIME_ZONE, ISRAELI_CITIES } from "@domain/shabbat";
@@ -111,6 +111,7 @@ const weekOf = (start: string, dueAt: string): AvailabilityWeek => ({
   dueAt,
   timeZone: ISRAEL_TIME_ZONE,
   shabbat: shabbatOf(start),
+  shiftHours: shiftHoursOf(shopPatterns),
   mine: null,
 });
 

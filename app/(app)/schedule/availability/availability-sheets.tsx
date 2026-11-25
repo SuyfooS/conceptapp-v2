@@ -7,6 +7,9 @@ import {
   dayProblems,
   type RangeProblem,
   type ShabbatLimits,
+  type ShiftHours,
+  shiftHoursOn,
+  suggestedDay,
   suggestedRange,
   WEEKDAY_KEYS,
 } from "@domain/availability-form";
@@ -17,7 +20,7 @@ import { Sheet } from "@ui/sheet";
 import { fieldInputClass, ltrInputClass } from "@ui/text-field";
 import { UndoRow } from "@ui/undo-row";
 import { Plus, X } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 
 export type Row = { id: number; start: string; end: string };
@@ -38,8 +41,9 @@ export const newRow = ({
 export const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 
 /**
- * Hours inside words that are plain text (an UndoRow's message): held left to
- * right in Unicode isolates, as `<ltr>` holds them on screen.
+ * Hours inside words that are plain text (an UndoRow's message, a list of the
+ * day's shifts): held left to right in Unicode isolates, as `<ltr>` holds them
+ * on screen.
  */
 const isolate = (chunks: string) => `⁦${chunks}⁩`;
 
@@ -63,6 +67,16 @@ export type DayDraft = {
   open: boolean;
 };
 
+/**
+ * What the sheets need of the week: its first day, where Shabbat cuts it, and
+ * the hours of the business's shifts, which an empty day opens with.
+ */
+export type FormWeek = {
+  start: string;
+  shabbat: ShabbatLimits | null;
+  shiftHours: readonly ShiftHours[];
+};
+
 export const closedDraft = (day: string): DayDraft => ({
   day,
   rows: [],
@@ -72,19 +86,23 @@ export const closedDraft = (day: string): DayDraft => ({
 });
 
 /**
- * A day opening in the sheet. An empty day starts with the usual hours filled
- * in, so most days take one tap on "done".
+ * A day opening in the sheet. An empty day starts with the hours of the
+ * business's shifts that day filled in (the usual day where it has none), so
+ * most days take one tap on "done", and hours kept so cover every shift that
+ * day that Shabbat leaves whole (`suggestedDay`).
  */
 export function openDraft(
   day: string,
   saved: Row[],
-  shabbat: ShabbatLimits | null,
+  week: Pick<FormWeek, "shabbat" | "shiftHours">,
   checked: boolean,
 ): DayDraft {
   return {
     day,
     rows:
-      saved.length > 0 ? saved : [newRow(suggestedRange(day, false, shabbat))],
+      saved.length > 0
+        ? saved
+        : suggestedDay(day, week.shabbat, week.shiftHours).map(newRow),
     checked,
     removed: null,
     open: true,
@@ -93,7 +111,7 @@ export function openDraft(
 
 export type DaySheetProps = {
   draft: DayDraft;
-  week: { start: string; shabbat: ShabbatLimits | null };
+  week: FormWeek;
   onChange: (patch: Partial<DayDraft>) => void;
   onClose: () => void;
   onDone: (rows: Row[]) => void;
@@ -112,6 +130,7 @@ export function DaySheet({
   onDone,
 }: DaySheetProps) {
   const t = useTranslations("app.availability");
+  const format = useFormatter();
   const { day, rows, checked, removed } = draft;
   const problems = dayProblems(rows, day, week.start, week.shabbat);
 
@@ -133,7 +152,7 @@ export function DaySheet({
         day: t(`weekdays.${WEEKDAY_KEYS[weekdayOf(day)] ?? "sun"}`),
         date: dayMonth(day),
       })}
-      subtitle={dayHint(t, day, week.shabbat)}
+      subtitle={dayHint(t, format, day, week)}
       closeLabel={t("sheet.close")}
       action={{ label: t("sheet.done"), onClick: finish }}
     >
@@ -167,7 +186,9 @@ export function DaySheet({
             onChange({
               rows: [
                 ...rows,
-                newRow(suggestedRange(day, rows.length > 0, week.shabbat)),
+                newRow(
+                  suggestedRange(day, rows, week.shabbat, week.shiftHours),
+                ),
               ],
             })
           }
@@ -301,19 +322,45 @@ function TimeInput({
   );
 }
 
-/** What Shabbat means for a day, in full, for a business closed on Shabbat. */
+/**
+ * What the day's sheet says under its title: what Shabbat means for the day,
+ * in full, for a business closed on Shabbat, and the hours of the day's
+ * shifts (`shiftHoursOn`), so someone who can't work all of the hours the day
+ * opens with knows where each shift starts and ends. Those are each shift's
+ * own hours, even where Shabbat cuts what can be marked: the line above says
+ * that.
+ */
 function dayHint(
   t: ReturnType<typeof useTranslations<"app.availability">>,
+  format: ReturnType<typeof useFormatter>,
   day: string,
-  shabbat: ShabbatLimits | null,
+  { shabbat, shiftHours }: FormWeek,
 ) {
-  const hint =
+  const limit =
     shabbat && day === shabbat.friday
       ? t.rich("candleLighting", { time: shabbat.candleLighting, ltr })
       : shabbat && day === shabbat.saturday
         ? t.rich("havdalah", { time: shabbat.havdalah, ltr })
         : null;
-  return hint ? <span className="block text-balance">{hint}</span> : undefined;
+  const shifts = shiftHoursOn(day, shabbat, shiftHours);
+  if (!limit && shifts.length === 0) return undefined;
+  return (
+    <>
+      {limit ? <span className="block text-balance">{limit}</span> : null}
+      {shifts.length > 0 ? (
+        <span className="block text-balance">
+          {t("shiftHours", {
+            count: shifts.length,
+            // Each held left to right inside the words, as `<ltr>` holds one.
+            hours: format.list(
+              shifts.map(({ start, end }) => isolate(`${start}–${end}`)),
+              { type: "conjunction" },
+            ),
+          })}
+        </span>
+      ) : null}
+    </>
+  );
 }
 
 /** The note for the manager. Like a day, it reaches the form only on "done". */
