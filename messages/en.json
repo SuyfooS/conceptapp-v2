@@ -2247,6 +2247,8 @@
           "days": "already <ltr>{days}</ltr> working days this week",
           "hours": "over <ltr>{hours}</ltr> hours a week"
         },
+        "peopleTitle": "By person",
+        "person": "{shifts, plural, =0 {No shifts this week} one {One shift, {hours, plural, =1 {one hour} other {<ltr>{hours}</ltr> hours}}} other {# shifts, {hours, plural, =1 {one hour} other {<ltr>{hours}</ltr> hours}}}}{added, plural, =0 {} one { · one from the fill} other { · # from the fill}}",
         "note": "Nothing is saved or sent to the team until you save or publish.",
         "submit": "{count, plural, one {Fill one place} other {Fill # places}}",
         "nothing": {
@@ -3792,6 +3794,7 @@
         "notSaved": "The shift wasn't saved. Check your connection and try again."
       },
       "between": "A number from {min} to {max}",
+      "numberNotSaved": "{name}: not saved, as it needs a number from {min} to {max}. It stays {value}.",
       "activity": {
         "title": "Activity log",
         "subtitle": "Who changed what in the business, and when.",
@@ -7419,6 +7422,10 @@
         "shifts": {
           "label": "Shifts",
           "hint": "Every new week starts from these shifts. A week already saved doesn't change. Each day of the staff's availability form opens with their hours, and answers already sent stay until the worker sends again."
+        },
+        "fillWeekHours": {
+          "label": "Hours a week per person, when filling from availability",
+          "hint": "Filling from availability places nobody past these hours in a week, counting what is already on the schedule. 42 is a week without overtime, and up to 58 with overtime. Placing people by hand has no limit."
         }
       }
     },

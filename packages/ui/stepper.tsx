@@ -1,7 +1,7 @@
 "use client";
 
 import { Minus, Plus } from "lucide-react";
-import type { KeyboardEventHandler } from "react";
+import type { KeyboardEventHandler, MouseEvent } from "react";
 import { announce } from "./announcer";
 import { cn } from "./cn";
 import { IconButton } from "./icon-button";
@@ -11,6 +11,12 @@ export type StepperProps = {
   /** As typed: the field may be empty for a moment while someone types. */
   value: string;
   onValueChange: (value: string) => void;
+  /**
+   * A press of minus or plus, when it is told apart from typing: a setting
+   * saves a press soon after it, and what is typed only once it is left, so
+   * nothing half typed is saved. Without it a press goes to `onValueChange`.
+   */
+  onStep?: (value: string) => void;
   min: number;
   max: number;
   decreaseLabel: string;
@@ -32,6 +38,14 @@ export type StepperProps = {
   onKeyDown?: KeyboardEventHandler<HTMLInputElement>;
   /** When the typed number loses focus; the buttons never take it there. */
   onBlur?: () => void;
+  /**
+   * A press of minus or plus while the number has the focus leaves the
+   * focus there, so it steps from what's typed, kept between `min` and
+   * `max` (60 between 4 and 58, minus: 58), with no blur first: for a number
+   * whose blur puts back what's stored while it's outside its ends (a
+   * setting's), which the press would then step from.
+   */
+  keepsTyping?: boolean;
   /** Nothing changes it (a view session): both buttons and the number. */
   disabled?: boolean;
   className?: string;
@@ -55,6 +69,17 @@ export function stepped(
 }
 
 /**
+ * On a press of minus or plus (`keepsTyping`): the number keeps the focus
+ * when it has it, as the mouse or the finger goes down on the button.
+ */
+export function keepTypedFocus(event: MouseEvent<HTMLElement>) {
+  const field = event.currentTarget.parentElement?.querySelector("input");
+  if (field && field === event.currentTarget.ownerDocument.activeElement) {
+    event.preventDefault();
+  }
+}
+
+/**
  * A count: minus, the number, plus. Most changes are one tap either way, and
  * the number is still a field for whoever wants to type it. A press says
  * the new number to a screen reader (`spoken`), as the field it doesn't
@@ -65,6 +90,7 @@ export function Stepper({
   id,
   value,
   onValueChange,
+  onStep = onValueChange,
   min,
   max,
   decreaseLabel,
@@ -76,16 +102,18 @@ export function Stepper({
   describedBy,
   onKeyDown,
   onBlur,
+  keepsTyping = false,
   disabled = false,
   className,
 }: StepperProps) {
   const current = Number(value);
   const atMin = current <= min;
   const atMax = current >= max;
+  const onMouseDown = keepsTyping ? keepTypedFocus : undefined;
   const step = (by: number) => {
     const next = stepped(value, by, min, max);
     if (next === null) return;
-    onValueChange(next);
+    onStep(next);
     announce(spoken ? spoken(Number(next)) : next);
   };
   return (
@@ -97,6 +125,7 @@ export function Stepper({
         icon={<Minus />}
         disabled={disabled}
         aria-disabled={atMin || undefined}
+        onMouseDown={onMouseDown}
         onClick={() => {
           if (!atMin) step(-1);
         }}
@@ -126,6 +155,7 @@ export function Stepper({
         icon={<Plus />}
         disabled={disabled}
         aria-disabled={atMax || undefined}
+        onMouseDown={onMouseDown}
         onClick={() => {
           if (!atMax) step(1);
         }}

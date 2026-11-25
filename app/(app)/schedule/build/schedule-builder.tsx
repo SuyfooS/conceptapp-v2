@@ -218,6 +218,12 @@ export type ScheduleBuilderProps = {
   /** The business's positions (waiter, cook…); none hides the choice. */
   positions: Position[];
   /**
+   * The most hours a week the fill gives anyone, what is on the screen
+   * counted: the business's `fillWeekHours` setting, which the fill's rule
+   * and its sheet's words both read. `FILL_WEEK_HOURS` (42) by default.
+   */
+  fillWeekHours?: number;
+  /**
    * Where the team's availability is, with its reminder (next week's only):
    * the fill's sheet leads there from who sent none, while the builder shows
    * next week.
@@ -769,6 +775,7 @@ function WeekBuilder({
   away = [],
   nextDays = [],
   positions,
+  fillWeekHours = FILL_WEEK_HOURS,
   teamAvailabilityHref = "/schedule/availability/team",
   running,
   publishes = true,
@@ -1310,7 +1317,7 @@ function WeekBuilder({
           away,
           lastWeek,
           nextDays,
-          weekHours: FILL_WEEK_HOURS,
+          weekHours: fillWeekHours,
           shabbat: week.shabbat,
           positionKeys: positions.map((p) => p.key),
           now,
@@ -2115,7 +2122,7 @@ function WeekBuilder({
         }
         // Days away are read only while the time clock is on.
         clock={(running?.clock ?? false) || away.length > 0}
-        weekHours={FILL_WEEK_HOURS}
+        weekHours={fillWeekHours}
         onFill={applyFill}
         onClose={closeFill}
         nameOf={(user) => nameOf.get(user) ?? t("app.shifts.former")}

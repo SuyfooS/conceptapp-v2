@@ -1,8 +1,12 @@
 import AxeBuilder from "@axe-core/playwright";
+import { TYPING_MS } from "../app/(app)/manage/use-draft";
 import he from "../messages/he.json" with { type: "json" };
 import { announcer, heardSoFar, pastDrawing, saidSince } from "./announcer";
+import { setPageHidden } from "./camera";
 import {
   type DemoDetails,
+  databaseNow,
+  demoActivityActions,
   demoBusinessDetails,
   demoDetailsLogged,
   demoModuleEnabled,
@@ -12,7 +16,7 @@ import {
 } from "./db";
 import { signIn } from "./session";
 import { setDemoModule } from "./sms";
-import { undoNamed } from "./t";
+import { heT, undoNamed } from "./t";
 import { expect, type Page, test } from "./test";
 
 // Seeded in supabase/seed.sql: the demo restaurant's manager and a worker, and
@@ -125,6 +129,11 @@ test("a manager fits the schedule to the business, and it stays", async ({
 
   // What only the team changes isn't here.
   await expect(page.getByText(s.weekStartsOn.label)).toHaveCount(0);
+  // The week's hours the fill from availability gives anyone, the
+  // business's, drawn by itself from the manifest at its default.
+  await expect(
+    page.getByRole("spinbutton", { name: s.fillWeekHours.label }),
+  ).toHaveValue("42");
 
   // A setting saves itself, and a fresh load still has it.
   const shabbat = page.getByRole("switch", { name: s.closedOnShabbat.label });
@@ -214,6 +223,225 @@ test("a manager fits the schedule to the business, and it stays", async ({
   await page.getByRole("button", { name: m.undo }).click();
   await expect(row).toContainText("22:00–01:00");
   await expect.poll(async () => (await stored()).shifts).toContain("פתיחה");
+});
+
+// The fill's week's hours, typed (filling from availability, part 5, after
+// review). Its hint is read with it. Nothing saves while digits are typed,
+// however long the pause between them: 60 starts as 6, inside its ends, so
+// "6" waits too, and once it reads 60 the field says its ends, read with it.
+// Enter keeps 60 and the focus, and says the ends (after the second
+// review); leaving the field goes back to 42, says that it didn't save, and
+// saves nothing. 42 to 50 by way of 4, an empty field and 5 saves once, as
+// 50, on Enter, and only then. A press of "+" still saves by itself soon
+// after (the cap's test in schedule-build.spec.ts).
+test("a typed number saves once it is left, never half typed", async ({
+  page,
+}) => {
+  const words = s.fillWeekHours;
+  const between = heT("app.manage.between", { min: 4, max: 58 });
+  const settled = () => page.waitForTimeout(TYPING_MS + 500);
+  const before = (await demoModuleSettings("scheduling")).fillWeekHours;
+  await signIn(page, MANAGER);
+  await page.goto("/manage/scheduling");
+  const hours = page.getByRole("spinbutton", { name: words.label });
+  await expect(hours).toHaveValue("42");
+  await expect(hours).toHaveAccessibleDescription(words.hint);
+  const since = await databaseNow();
+
+  await hours.fill("6");
+  await settled();
+  await hours.fill("60");
+  await expect(hours).toHaveAttribute("aria-invalid", "true");
+  await expect(hours).toHaveAccessibleDescription(between);
+  await settled();
+  const polite = announcer(page, "polite");
+  await heardSoFar(polite);
+  await hours.press("Enter");
+  await expect(saidSince(polite, between)).toHaveCount(1);
+  await expect(hours).toBeFocused();
+  await expect(hours).toHaveValue("60");
+  await expect(hours).toHaveAttribute("aria-invalid", "true");
+  await heardSoFar(polite);
+  await hours.press("Tab");
+  await expect(
+    saidSince(
+      polite,
+      heT("app.manage.numberNotSaved", {
+        name: words.label,
+        min: 4,
+        max: 58,
+        value: 42,
+      }),
+    ),
+  ).toHaveCount(1);
+  await expect(hours).not.toBeFocused();
+  await expect(hours).toHaveValue("42");
+  await expect(hours).not.toHaveAttribute("aria-invalid", "true");
+  await expect(hours).toHaveAccessibleDescription(words.hint);
+  await settled();
+  expect((await demoModuleSettings("scheduling")).fillWeekHours).toBe(before);
+  expect(await demoActivityActions("module.settings", since)).toBe(0);
+
+  for (const typed of ["4", "", "5", "50"]) {
+    await hours.fill(typed);
+    await settled();
+  }
+  expect((await demoModuleSettings("scheduling")).fillWeekHours).toBe(before);
+  expect(await demoActivityActions("module.settings", since)).toBe(0);
+  await hours.press("Enter");
+  await expect(page.getByText(m.saved, { exact: true })).toBeVisible();
+  await expect
+    .poll(async () => (await demoModuleSettings("scheduling")).fillWeekHours)
+    .toBe(50);
+  await settled();
+  expect(await demoActivityActions("module.settings", since)).toBe(1);
+  await page.reload();
+  await expect(hours).toHaveValue("50");
+});
+
+// What's typed and not left yet saves all the same as the page is hidden
+// (another app in front, the phone locked) and as the screen is left inside
+// the app by the way back, the focus still in the field (after the second
+// review): a screen reader's cursor moves on without it, and no blur may
+// come. Once each, and the screen kept for the way forward shows what's
+// stored.
+test("a typed number saves as the page hides or the screen is left", async ({
+  page,
+}) => {
+  const words = s.fillWeekHours;
+  const hoursStored = async () =>
+    (await demoModuleSettings("scheduling")).fillWeekHours;
+  await signIn(page, MANAGER);
+  const main = page.getByRole("main");
+  await main.getByRole("link", { name: new RegExp(m.row) }).click();
+  await expect(
+    page.getByRole("heading", { level: 1, name: m.title }),
+  ).toBeVisible();
+  await main
+    .getByRole("link", { name: new RegExp(he.modules.scheduling.name) })
+    .click();
+  await expect(page).toHaveURL(/\/manage\/scheduling$/);
+  const hours = page.getByRole("spinbutton", { name: words.label });
+  await expect(hours).toHaveValue("42");
+  const since = await databaseNow();
+
+  await hours.fill("50");
+  await expect(hours).toBeFocused();
+  await setPageHidden(page, true);
+  await expect.poll(hoursStored).toBe(50);
+  await setPageHidden(page, false);
+  await expect(hours).toBeFocused();
+  await expect(hours).toHaveValue("50");
+
+  await hours.fill("52");
+  await expect(hours).toBeFocused();
+  await page.goBack();
+  await expect(
+    page.getByRole("heading", { level: 1, name: m.title }),
+  ).toBeVisible();
+  await expect.poll(hoursStored).toBe(52);
+  await page.waitForTimeout(TYPING_MS + 500);
+  expect(await demoActivityActions("module.settings", since)).toBe(2);
+  await page.goForward();
+  await expect(page).toHaveURL(/\/manage\/scheduling$/);
+  await expect(hours).toHaveValue("52");
+});
+
+// Enter on 60 keeps it, outside its ends, and the focus, beside its minus
+// (after the second review). A press of minus then steps from 60, into its
+// ends, 58, with the focus still in the field, and saves it soon after;
+// never "it stays 42" and then 41, from a blur that put 42 back before the
+// press (after the third check).
+test("minus on a number outside its ends steps from it", async ({ page }) => {
+  const words = s.fillWeekHours;
+  const between = heT("app.manage.between", { min: 4, max: 58 });
+  await signIn(page, MANAGER);
+  await page.goto("/manage/scheduling");
+  const hours = page.getByRole("spinbutton", { name: words.label });
+  await expect(hours).toHaveValue("42");
+  const since = await databaseNow();
+  const polite = announcer(page, "polite");
+
+  await hours.fill("60");
+  await heardSoFar(polite);
+  await hours.press("Enter");
+  await expect(saidSince(polite, between)).toHaveCount(1);
+  await expect(hours).toBeFocused();
+  await expect(hours).toHaveValue("60");
+  await heardSoFar(polite);
+  await page
+    .getByRole("button", {
+      name: heT("app.manage.decrease", { name: words.label }),
+    })
+    .click();
+  await expect(hours).toHaveValue("58");
+  await expect(hours).toBeFocused();
+  await expect(hours).not.toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByText(m.saved, { exact: true })).toBeVisible();
+  await expect
+    .poll(async () => (await demoModuleSettings("scheduling")).fillWeekHours)
+    .toBe(58);
+  await expect(
+    saidSince(
+      polite,
+      heT("app.manage.numberNotSaved", {
+        name: words.label,
+        min: 4,
+        max: 58,
+        value: 42,
+      }),
+    ),
+  ).toHaveCount(0);
+  await page.waitForTimeout(TYPING_MS + 500);
+  expect(await demoActivityActions("module.settings", since)).toBe(1);
+});
+
+// An address typed and not left saves as the page is hidden; that save
+// failing (no signal) keeps the address typed, with its failure. Leaving the
+// field once the page is back sends it again (after the third check), where
+// it sent nothing until a letter changed: the save that went as the page
+// hid held back every later one.
+test("an address refused as the page hid saves as its field is left", async ({
+  page,
+}) => {
+  const ADDRESS = "רחוב הבדיקה 5, חיפה";
+  const business = "/manage/business";
+  const saves = (url: URL) => url.pathname === business;
+  await signIn(page, MANAGER);
+  await page.goto(business);
+  const address = page.getByLabel(b.address.label, { exact: true });
+  await expect(address).toBeVisible();
+
+  let refused = 0;
+  await page.route(saves, async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    refused += 1;
+    await route.abort();
+  });
+  await address.fill(ADDRESS);
+  await expect(address).toBeFocused();
+  await setPageHidden(page, true);
+  const failed = page
+    .getByRole("alert")
+    .filter({ hasText: `${b.address.label}: ${m.failed.failed}` });
+  await expect(failed).toBeVisible();
+  await page.unroute(saves);
+  await setPageHidden(page, false);
+  await expect(address).toBeFocused();
+  await expect(address).toHaveValue(ADDRESS);
+  expect(refused).toBe(1);
+
+  await address.press("Enter");
+  await expect(address).not.toBeFocused();
+  await expect(page.getByText(m.saved, { exact: true })).toBeVisible();
+  await expect
+    .poll(async () => (await demoBusinessDetails()).address)
+    .toBe(ADDRESS);
+  await expect(failed).toHaveCount(0);
+  expect(refused).toBe(1);
 });
 
 // A shift's undo refused, its save dropped while the shift it brought back
@@ -492,6 +720,10 @@ test("the team sees every setting and switches modules", async ({
   // The advanced settings, which managers don't see.
   await expect(page.getByText(s.weekStartsOn.label)).toBeVisible();
   await expect(page.getByText(clock.roundToMinutes.label)).toBeVisible();
+  // And the business's own, as on /manage: the fill's week's hours.
+  await expect(
+    page.getByRole("spinbutton", { name: s.fillWeekHours.label }),
+  ).toHaveValue("42");
   // Whether a code is asked for, which managers don't see either.
   await expect(page.getByText(clock.requirePunchCode.label)).toBeVisible();
 

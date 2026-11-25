@@ -12,6 +12,7 @@ import {
   databaseNow,
   decideDemoSwap,
   demoActivityActions,
+  demoModuleSettings,
   demoRunningWeekClock,
   demoSwaps,
   demoWeekPublished,
@@ -26,6 +27,7 @@ import {
   scheduleShiftIds,
   scheduleShifts,
   sendDemoAvailability,
+  setDemoModuleSettings,
   takenDemoSwap,
   waitOutDemoMidnight,
 } from "./db";
@@ -1359,6 +1361,139 @@ test("the fill's sheet says which rule stopped whom, and Shabbat's time", async 
   );
   await page.keyboard.press("Escape");
   await expect(fill.sheet).toHaveCount(0);
+});
+
+// The week's hours the fill gives anyone are the business's (filling from
+// availability, part 5): set to 4 (`fillWeekHours`), the morning Noa sent
+// for is 7 hours, past them, so the fill places nobody, names her with the
+// 4 hours the rules say too, and "לפי אנשים" says she has no shift.
+// /manage/scheduling draws the field with what is stored, a change there is
+// saved and logged as a settings change, as every setting's is, and the
+// setting is put back however the test ends.
+test("the fill stops at the business's week's hours, which /manage/scheduling sets", async ({
+  page,
+}, testInfo) => {
+  const { startsOn } = await skipNearTheWeekTurn();
+  const nextSunday = daysAfter(startsOn, 7);
+  const tf = tb.fill;
+  const words = he.modules.scheduling.settings.fillWeekHours;
+  const fill = fillScreen(page);
+  const stored = await demoModuleSettings("scheduling");
+  await clearAvailability(MANAGER.e164);
+  await setDemoModuleSettings("scheduling", { ...stored, fillWeekHours: 4 });
+  try {
+    await signIn(page, MANAGER);
+    await page.goto("/schedule/build");
+    await expect(
+      page.getByRole("heading", { level: 1, name: tb.title }),
+    ).toBeVisible();
+
+    await fill.action.click();
+    await expect(fill.sheet).toContainText(
+      heT.markup("app.build.fill.rules", {
+        days: 6,
+        hours: 4,
+        rest: 8,
+        ltr: (chunks) => chunks,
+      }),
+    );
+    await expect(fill.sheet).toContainText(tf.nothing.none);
+    await expect(fill.row(nextSunday, "בוקר", "09:00–16:00")).toContainText(
+      heT("app.build.fill.why.blocked", {
+        people: heT("app.build.fill.why.blockedOne", {
+          name: NOA.name,
+          // The hours held left to right inside the sentence, as the sheet
+          // holds them.
+          rule: heT.markup("app.build.fill.rule.hours", {
+            hours: 4,
+            ltr: (chunks) => `⁦${chunks}⁩`,
+          }),
+        }),
+      }),
+    );
+    // Her row says her name and "בלי משמרות השבוע", and nothing more: no
+    // "· # מהמילוי" after it.
+    const people = fill.sheet.getByRole("region", { name: tf.peopleTitle });
+    await expect(
+      people
+        .locator("div", { has: page.getByText(NOA.name, { exact: true }) })
+        .last(),
+    ).toHaveText(
+      `${NOA.name}${heT.markup("app.build.fill.person", {
+        shifts: 0,
+        hours: 0,
+        added: 0,
+        ltr: (chunks) => chunks,
+      })}`,
+    );
+    await expectCleanPage(page);
+    await page.keyboard.press("Escape");
+    await expect(fill.sheet).toHaveCount(0);
+
+    // The management page draws the field with what is stored, and a change
+    // there is saved and logged.
+    const since = await databaseNow();
+    await page.goto("/manage/scheduling");
+    const hours = page.getByRole("spinbutton", { name: words.label });
+    await expect(hours).toHaveValue("4");
+    await expect(page.getByText(words.hint)).toBeVisible();
+    await page
+      .getByRole("button", {
+        name: heT("app.manage.increase", { name: words.label }),
+      })
+      .click();
+    await expect(hours).toHaveValue("5");
+    await expect(
+      page.getByText(he.app.manage.saved, { exact: true }),
+    ).toBeVisible();
+    await expect
+      .poll(async () => (await demoModuleSettings("scheduling")).fillWeekHours)
+      .toBe(5);
+    expect(await demoActivityActions("module.settings", since)).toBeGreaterThan(
+      0,
+    );
+    await page.goto("/manage/activity");
+    // The newest settings change on the page (newest first, and nothing logs
+    // another after it), never an older one: manage.spec's 42 to 50, or this
+    // test's own 4 to 5 from a narrower width earlier in the run.
+    const newest = page
+      .getByRole("main")
+      .getByText(
+        heT("app.manage.activity.actions.module.settings", {
+          module: he.modules.scheduling.name,
+        }),
+        { exact: true },
+      )
+      .filter({ visible: true })
+      .first();
+    await expect(newest).toBeVisible();
+    if (testInfo.project.name === "desktop") {
+      // A desktop's table: "…: 4" in the column before, "…: 5" in the one
+      // after, each whole, so 42 and 50 don't pass for them.
+      const row = newest.locator("xpath=ancestor::tr[1]");
+      await expect(
+        row.getByText(`${words.label}: 4`, { exact: true }),
+      ).toBeVisible();
+      await expect(
+        row.getByText(`${words.label}: 5`, { exact: true }),
+      ).toBeVisible();
+    } else {
+      // A phone's and a tablet's list: the line under what changed, whole:
+      // "שעות בשבוע לכל אחד, במילוי מהזמינות: 5, במקום 4".
+      await expect(
+        newest.locator("xpath=..").getByText(
+          heT.markup("app.manage.activity.change", {
+            label: words.label,
+            to: () => "5",
+            from: () => "4",
+          }),
+          { exact: true },
+        ),
+      ).toBeVisible();
+    }
+  } finally {
+    await setDemoModuleSettings("scheduling", stored);
+  }
 });
 
 // Saved on the way out from the fill's reminder link, and refused (another

@@ -6,8 +6,17 @@ import {
 } from "@domain/fill-week";
 import type { ScheduledShift } from "@domain/schedule";
 import { ISRAEL_TIME_ZONE } from "@domain/shabbat";
+import { createTranslator } from "next-intl";
 import { describe, expect, it } from "vitest";
-import { fillDays, fillLine, fillReason } from "./fill-reasons";
+import en from "@/messages/en.json";
+import he from "@/messages/he.json";
+import {
+  type FillPersonRow,
+  fillDays,
+  fillLine,
+  fillPeople,
+  fillReason,
+} from "./fill-reasons";
 
 // What the fill's sheet says of each shift that had an open place, from the
 // fill itself: the reason a place stays open, and the days in order.
@@ -48,6 +57,7 @@ const fillOf = (
   answers: ReturnType<typeof answer>[],
   away: { userId: string; from: string; to: string }[] = [],
   now: Date | null = null,
+  weekHours = FILL_WEEK_HOURS,
 ) =>
   fillFromAvailability({
     weekStart: WEEK,
@@ -57,7 +67,7 @@ const fillOf = (
     away,
     lastWeek: null,
     nextDays: [],
-    weekHours: FILL_WEEK_HOURS,
+    weekHours,
     shabbat: SHABBAT,
     positionKeys: [],
     now,
@@ -249,5 +259,155 @@ describe("fillDays", () => {
 
   it("has no days when nothing was open", () => {
     expect(fillDays({ week: [], shifts: [] })).toEqual([]);
+  });
+});
+
+// "לפי אנשים": each one who answered, with their week after the fill, in
+// one line of the real messages.
+describe("fillPeople", () => {
+  const names: Record<string, string> = {
+    noa: "נועה כהן",
+    yoav: "יואב לוי",
+    maya: "מאיה פרץ",
+    shiran: "שירן אלון",
+  };
+  const nameOf = (user: string) => names[user] ?? user;
+
+  // Noa fills Sunday's 09:20–16:00 (6 hours 40); the manager put Maya on two
+  // evenings; Yoav answered with no hours; Shiran sent nothing.
+  it("lists everyone who answered, fewest shifts first, the manager's placements and the fill's counted", () => {
+    const fill = fillOf(
+      [
+        shift(day(0), "09:20", "16:00"),
+        shift(day(0), "16:00", "23:30", ["maya"]),
+        shift(day(1), "16:00", "23:30", ["maya"]),
+      ],
+      [
+        answer("noa", [day(0), "09:00", "16:00"]),
+        answer("maya", [day(2), "09:00", "12:00"]),
+        answer("yoav"),
+      ],
+    );
+    // By name it would be Yoav, Maya, Noa: fewest shifts come first.
+    expect(fillPeople(fill.byPerson, nameOf, "he")).toEqual([
+      { user: "yoav", name: "יואב לוי", shifts: 0, hours: 0, added: 0 },
+      { user: "noa", name: "נועה כהן", shifts: 1, hours: 6.7, added: 1 },
+      { user: "maya", name: "מאיה פרץ", shifts: 2, hours: 15, added: 0 },
+    ]);
+  });
+
+  // The week's hours are the business's: at 7, Noa's Sunday fits and her
+  // Monday doesn't, and her row says so.
+  it("counts only what the week's hours let the fill give", () => {
+    const screen = [
+      shift(day(0), "09:00", "16:00"),
+      shift(day(1), "09:00", "16:00"),
+    ];
+    const both = answer(
+      "noa",
+      [day(0), "09:00", "16:00"],
+      [day(1), "09:00", "16:00"],
+    );
+    const at = (hours: number) =>
+      fillPeople(
+        fillOf(screen, [both], [], null, hours).byPerson,
+        nameOf,
+        "he",
+      );
+    expect(at(42)).toEqual([
+      { user: "noa", name: "נועה כהן", shifts: 2, hours: 14, added: 2 },
+    ]);
+    expect(at(7)).toEqual([
+      { user: "noa", name: "נועה כהן", shifts: 1, hours: 7, added: 1 },
+    ]);
+    const seven = fillOf(screen, [both], [], null, 7);
+    expect(seven.shifts.find((s) => s.index === 1)?.blocked).toEqual([
+      { user: "noa", rule: "hours" },
+    ]);
+  });
+
+  it("orders the same count by name, two of one name by id, and rounds hours to a tenth", () => {
+    const people = [
+      { user: "b", shifts: 1, minutes: 1283, added: 0 },
+      { user: "a", shifts: 1, minutes: 1290, added: 1 },
+      { user: "d", shifts: 1, minutes: 25, added: 0 },
+      { user: "c", shifts: 0, minutes: 0, added: 0 },
+    ];
+    const named: Record<string, string> = {
+      a: "נועה כהן",
+      b: "נועה כהן",
+      c: "שירן אלון",
+      d: "אבי לוי",
+    };
+    expect(
+      fillPeople(people, (user) => named[user] ?? user, "he").map((p) => [
+        p.user,
+        p.hours,
+      ]),
+    ).toEqual([
+      ["c", 0],
+      ["d", 0.4],
+      ["a", 21.5],
+      ["b", 21.4],
+    ]);
+  });
+
+  it("has nobody when nobody answered", () => {
+    expect(
+      fillPeople(
+        fillOf([shift(day(0), "09:00", "16:00")], []).byPerson,
+        nameOf,
+        "he",
+      ),
+    ).toEqual([]);
+  });
+
+  describe("in words", () => {
+    const heT = createTranslator({ locale: "he", messages: he });
+    const enT = createTranslator({ locale: "en", messages: en });
+    const row = (
+      shifts: number,
+      hours: number,
+      added: number,
+    ): FillPersonRow => ({
+      user: "noa",
+      name: "נועה כהן",
+      shifts,
+      hours,
+      added,
+    });
+    const line = (t: typeof heT | typeof enT, person: FillPersonRow) =>
+      t.markup("app.build.fill.person", {
+        shifts: person.shifts,
+        hours: person.hours,
+        added: person.added,
+        // The hours held left to right, as the sheet holds them.
+        ltr: (chunks) => `[${chunks}]`,
+      });
+
+    it("says the shifts and hours, then how many the fill gave", () => {
+      expect(line(heT, row(3, 21, 2))).toBe("3 משמרות, [21] שעות · 2 מהמילוי");
+      expect(line(heT, row(3, 21.5, 0))).toBe("3 משמרות, [21.5] שעות");
+      expect(line(heT, row(1, 7, 1))).toBe("משמרת אחת, [7] שעות · אחת מהמילוי");
+      expect(line(heT, row(2, 2, 0))).toBe("2 משמרות, שעתיים");
+      expect(line(heT, row(1, 1, 0))).toBe("משמרת אחת, שעה אחת");
+      expect(line(enT, row(3, 21, 2))).toBe(
+        "3 shifts, [21] hours · 2 from the fill",
+      );
+      expect(line(enT, row(1, 7, 1))).toBe(
+        "One shift, [7] hours · one from the fill",
+      );
+    });
+
+    it("says someone with no shift has none this week", () => {
+      expect(line(heT, row(0, 0, 0))).toBe("בלי משמרות השבוע");
+      expect(line(enT, row(0, 0, 0))).toBe("No shifts this week");
+    });
+
+    // The section's heading beside "לפי ימים".
+    it("names the section", () => {
+      expect(he.app.build.fill.peopleTitle).toBe("לפי אנשים");
+      expect(en.app.build.fill.peopleTitle).toBe("By person");
+    });
   });
 });

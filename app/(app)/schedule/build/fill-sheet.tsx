@@ -10,7 +10,7 @@ import {
 } from "@domain/fill-week";
 import type { TeamMember } from "@domain/team";
 import { Button, type ButtonProps } from "@ui/button";
-import { ListRow } from "@ui/list-row";
+import { ListGroup, ListRow } from "@ui/list-row";
 import { Sheet } from "@ui/sheet";
 import { useFocusWhenGone } from "@ui/use-focus-after";
 import Link from "next/link";
@@ -20,11 +20,29 @@ import {
   type FillReason,
   fillDays,
   fillLine,
+  fillPeople,
   fillReason,
 } from "./fill-reasons";
 import { SheetSection } from "./sheet-section";
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
+
+/**
+ * A part of the sheet's body under its own heading ("לפי ימים", "לפי
+ * אנשים"): an h3, the dialog's title being the sheet's name, with its rows
+ * or groups under it.
+ */
+function FillPart({ title, children }: { title: string; children: ReactNode }) {
+  const id = useId();
+  return (
+    <section aria-labelledby={id} className="mt-2 flex flex-col">
+      <h3 id={id} className="px-3 pt-3 font-semibold text-ink text-md">
+        {title}
+      </h3>
+      {children}
+    </section>
+  );
+}
 
 /**
  * Hours and numbers inside a sentence put together as text (a person and the
@@ -52,14 +70,17 @@ const NOTHING: WeekFill = {
  * people, the rules it keeps, that it checks nobody's age, who sent no
  * availability (and so is never placed) with the way to remind them while
  * the week is next week's, else to place them by hand, who sent some and
- * gets no shift, and each shift that has an open place, day by day: who goes
- * on it, and why a place stays open. Its main action puts the fill on the
- * screen; nothing is saved or sent until the dock's buttons are pressed, and
- * the sheet says so. With nobody to place it says why instead (`fillLine`),
- * and each shift still says what keeps it open; once the clock has begun the
- * last shift with an open place, it says nothing is left to fill. It is
- * drawn closed before anything is worked out (`fill` null), as the builder's
- * other sheets are, so it opens inside the business's colour.
+ * gets no shift, each shift that has an open place, day by day: who goes
+ * on it, and why a place stays open, and each one who answered, fewest
+ * shifts first: their shifts and hours after the fill, and how many of them
+ * the fill gave. The week's hours are the business's (`weekHours`, its
+ * `fillWeekHours` setting), as the rule read them. Its main action puts the
+ * fill on the screen; nothing is saved or sent until the dock's buttons are
+ * pressed, and the sheet says so. With nobody to place it says why instead
+ * (`fillLine`), and each shift still says what keeps it open; once the clock
+ * has begun the last shift with an open place, it says nothing is left to
+ * fill. It is drawn closed before anything is worked out (`fill` null), as
+ * the builder's other sheets are, so it opens inside the business's colour.
  */
 export function FillWeekSheet({
   open,
@@ -104,7 +125,6 @@ export function FillWeekSheet({
 }) {
   const t = useTranslations("app.build");
   const locale = useLocale();
-  const daysId = useId();
   /** The line above the sheet's button, or in its place. */
   const lineRef = useRef<HTMLParagraphElement>(null);
   const fill = worked ?? NOTHING;
@@ -203,6 +223,7 @@ export function FillWeekSheet({
   };
 
   const days = fillDays(fill);
+  const people = fillPeople(fill.byPerson, nameOf, locale);
 
   return (
     <Sheet
@@ -290,13 +311,7 @@ export function FillWeekSheet({
         ) : null}
 
         {days.length > 0 ? (
-          <section aria-labelledby={daysId} className="mt-2 flex flex-col">
-            <h3
-              id={daysId}
-              className="px-3 pt-3 font-semibold text-ink text-md"
-            >
-              {t("fill.daysTitle")}
-            </h3>
+          <FillPart title={t("fill.daysTitle")}>
             {days.map((day) => (
               <SheetSection
                 key={day.date}
@@ -341,7 +356,28 @@ export function FillWeekSheet({
                 })}
               </SheetSection>
             ))}
-          </section>
+          </FillPart>
+        ) : null}
+
+        {/* Each one who answered, with their week after the fill: read
+            only, fewest shifts first. */}
+        {people.length > 0 ? (
+          <FillPart title={t("fill.peopleTitle")}>
+            <ListGroup className="mt-2 bg-elevated shadow-none">
+              {people.map((person) => (
+                <ListRow
+                  key={person.user}
+                  title={person.name}
+                  subtitle={t.rich("fill.person", {
+                    shifts: person.shifts,
+                    hours: person.hours,
+                    added: person.added,
+                    ltr,
+                  })}
+                />
+              ))}
+            </ListGroup>
+          </FillPart>
         ) : null}
       </div>
     </Sheet>

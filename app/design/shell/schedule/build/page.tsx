@@ -22,6 +22,7 @@ import { demoPublishMeanwhile, demoSaveSchedule } from "./actions";
 import {
   demoAway,
   demoBuildShifts,
+  demoFillWeekHours,
   demoShare,
   MEANWHILE_PUBLISHED_AT,
   meanwhileBasis,
@@ -35,6 +36,7 @@ type Props = {
     week?: string;
     publishes?: string;
     away?: string;
+    hours?: string;
   }>;
 };
 
@@ -83,7 +85,13 @@ const HREF = "/design/shell/schedule/build";
 // sent nothing, never Uri, the owner. Nothing is stored: the fill is on the
 // screen until the stand-in saves or publishes it, and its toast's "ביטול"
 // takes it back. &away=1: Shiran is away on Sunday, which the day says, and
-// the fill leaves Sunday morning open, naming her as away.
+// the fill leaves Sunday morning open, naming her as away. The sheet ends
+// with each one who answered, fewest shifts first: their shifts and hours
+// after the fill, and how many of them the fill gave. &hours=7: the
+// restaurant's week's hours for the fill are 7 (its `fillWeekHours`, 42
+// unless set, as /manage/scheduling sets it): everyone who covers an open
+// place already has more, so the fill places nobody, and names each of them
+// as over 7 hours a week, the number the rules say too.
 export default function ShellScheduleBuild(props: Props) {
   return (
     <Suspense>
@@ -93,8 +101,15 @@ export default function ShellScheduleBuild(props: Props) {
 }
 
 async function Demo({ searchParams }: Props) {
-  const { state, week, publishes: publishing, away } = await searchParams;
+  const {
+    state,
+    week,
+    publishes: publishing,
+    away,
+    hours,
+  } = await searchParams;
   const publishes = publishing !== "no";
+  const fillWeekHours = demoFillWeekHours(hours);
   const { members } = buildTeam(teamMembers, teamInvites, teamToday);
   const running =
     week === demoWeek.start
@@ -109,6 +124,7 @@ async function Demo({ searchParams }: Props) {
         teamAvailabilityHref="/design/shell/schedule/availability/team"
         data={{
           ...running,
+          fillWeekHours,
           // A stand-in for what the database digests of each shift read.
           basis: Object.fromEntries(
             running.shifts.map((shift, i) => [
@@ -157,6 +173,7 @@ async function Demo({ searchParams }: Props) {
     answers: teamAnswers,
     positions: demoPositions,
     away: away === "1" ? demoAway : [],
+    fillWeekHours,
   };
   if (state === "meanwhile") {
     return (

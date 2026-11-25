@@ -1,4 +1,5 @@
 import { addDays, teamAvailability, weekDates } from "@domain/availability";
+import { FILL_WEEK_HOURS } from "@domain/fill-week";
 import {
   type FirstStepsFacts,
   firstSteps as firstStepsOf,
@@ -147,6 +148,7 @@ function nextWeekBuild(
     answers: teamAnswers,
     positions: [],
     away: [],
+    fillWeekHours: FILL_WEEK_HOURS,
   };
 }
 

@@ -1516,7 +1516,7 @@ describe("fillFromAvailability", () => {
 });
 
 describe("the twins, as the PR shows them", () => {
-  it("fills the restaurant twin's week of 1–7 November", () => {
+  it("fills the restaurant twin's week of 1–7 November, and nothing at 7 hours a week", () => {
     const start = "2026-11-01";
     const placed: Record<string, [string, string | null][]> = {
       "2026-11-01/morning": [
@@ -1700,6 +1700,58 @@ describe("the twins, as the PR shows them", () => {
       blocked: [{ user: "shiran", rule: "away" }],
     });
     expect(away.shifts.slice(1)).toEqual(fill.shifts.slice(1));
+
+    // "לפי אנשים": everyone who answered, Maya's empty answer included,
+    // with the week after the fill, fewest shifts first (the sheet then
+    // orders those by name): Shiran's Monday by hand and the fill's two,
+    // 21½ hours; Noa's five by hand and Saturday night.
+    expect(fill.byPerson).toEqual([
+      { user: "shiran", shifts: 3, minutes: 1290, added: 2 },
+      { user: "yoav", shifts: 4, minutes: 1740, added: 0 },
+      { user: "maya", shifts: 5, minutes: 2160, added: 0 },
+      { user: "itay", shifts: 6, minutes: 2520, added: 0 },
+      { user: "noa", shifts: 6, minutes: 2400, added: 1 },
+    ]);
+
+    // `&hours=7`: the business's week's hours for the fill
+    // (`fillWeekHours`) are 7. Shiran has Monday's morning by hand, 7 hours
+    // already, and Noa five shifts: each one who covers an open place is
+    // over it, so the fill places nobody and names each of them with the
+    // week's hours; the rest stay open as before, nobody covering them.
+    const seven = fillFromAvailability({ ...input, weekHours: 7 });
+    expect(seven).toMatchObject({
+      places: 0,
+      people: 0,
+      openBefore: 15,
+      openAfter: 15,
+      unplaced: [],
+    });
+    expect(
+      seven.shifts.map((s) => [
+        screen[s.index]?.day,
+        screen[s.index]?.start,
+        s.why,
+        s.blocked,
+      ]),
+    ).toEqual([
+      ["2026-11-01", "09:00", "blocked", [{ user: "shiran", rule: "hours" }]],
+      ["2026-11-01", "12:00", "nobody", []],
+      ["2026-11-01", "16:00", "nobody", []],
+      ["2026-11-03", "09:00", "nobody", []],
+      ["2026-11-04", "16:00", "nobody", []],
+      ["2026-11-05", "09:00", "nobody", []],
+      ["2026-11-05", "16:00", "blocked", [{ user: "shiran", rule: "hours" }]],
+      ["2026-11-06", "08:00", "nobody", []],
+      ["2026-11-07", "19:30", "blocked", [{ user: "noa", rule: "hours" }]],
+    ]);
+    // Each one's week as the manager left it.
+    expect(seven.byPerson).toEqual([
+      { user: "shiran", shifts: 1, minutes: 420, added: 0 },
+      { user: "yoav", shifts: 4, minutes: 1740, added: 0 },
+      { user: "maya", shifts: 5, minutes: 2160, added: 0 },
+      { user: "noa", shifts: 5, minutes: 2130, added: 0 },
+      { user: "itay", shifts: 6, minutes: 2520, added: 0 },
+    ]);
   });
 
   it("keeps the café's evening worker off the next morning", () => {

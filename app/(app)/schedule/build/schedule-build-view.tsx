@@ -111,6 +111,7 @@ export function ScheduleBuildView({
         answers={data.answers}
         away={data.away}
         positions={data.positions}
+        fillWeekHours={data.fillWeekHours}
         manageHref={manageHref}
         teamAvailabilityHref={teamAvailabilityHref}
         running={running}

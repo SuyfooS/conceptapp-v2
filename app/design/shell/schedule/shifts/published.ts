@@ -1,6 +1,7 @@
 import type { AwaySpan } from "@domain/absences";
 import { addDays, teamAvailability, weekDates } from "@domain/availability";
 import { fridayOf, shabbatLimits } from "@domain/availability-form";
+import { FILL_WEEK_HOURS } from "@domain/fill-week";
 import { draftWeek } from "@domain/schedule";
 import { ISRAEL_TIME_ZONE, ISRAELI_CITIES } from "@domain/shabbat";
 import { shabbatTimes } from "@domain/shabbat-times";
@@ -362,6 +363,7 @@ export function demoRunningBuild(
     answers: teamAnswers,
     positions: demoPositions,
     away: [],
+    fillWeekHours: FILL_WEEK_HOURS,
   };
 }
 
@@ -392,6 +394,7 @@ export function demoManagerSchedule(
     answers: teamAnswers,
     positions: demoPositions,
     away: [],
+    fillWeekHours: FILL_WEEK_HOURS,
   };
   const data = demoPublished("shiran", swaps, DEMO_NOON, ended);
   return {
