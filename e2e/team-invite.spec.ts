@@ -81,8 +81,10 @@ test("a manager invites a worker by phone and gets the link", async ({
   const polite = announcer(page, "polite");
   await heardSoFar(polite);
   await page.getByRole("button", { name: ti.submit }).click();
-  await expect(page.getByText(ti.errors.name.required)).toBeVisible();
-  await expect(page.getByText(ti.errors.phone.required)).toBeVisible();
+  // On the screen: the announcer, outside it, holds the name's line too.
+  const screen = page.getByRole("main");
+  await expect(screen.getByText(ti.errors.name.required)).toBeVisible();
+  await expect(screen.getByText(ti.errors.phone.required)).toBeVisible();
   const nameField = page.getByLabel(ti.name, { exact: true });
   await expect(nameField).toBeFocused();
   await expect(saidSince(polite, ti.errors.name.required)).toHaveCount(1);
