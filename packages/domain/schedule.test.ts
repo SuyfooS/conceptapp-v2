@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { weekDates } from "./availability";
+import { minutesOf, rangeMinutes } from "./hours";
 import {
   availableFor,
   builderKey,
@@ -23,6 +25,7 @@ import {
   shiftDetailsProblem,
   shiftMinutes,
   shiftSlot,
+  shiftSpan,
   shiftStarted,
   shiftsByDay,
   shiftsOf,
@@ -785,6 +788,42 @@ describe("overlappingShift", () => {
 
   it("gives nothing for a shift that is not there", () => {
     expect(overlappingShift(WEEK, [], 0, "noa")).toBeNull();
+  });
+});
+
+describe("shiftSpan", () => {
+  it("is minutes from the week's first midnight, as the week's own days always read", () => {
+    // The span before it was exported: the day's index in the week.
+    const old = (s: { day: string; start: string; end: string }) => {
+      const from = weekDates(WEEK).indexOf(s.day) * 1440 + minutesOf(s.start);
+      return [from, from + rangeMinutes(s.start, s.end)];
+    };
+    for (const day of weekDates(WEEK)) {
+      for (const [start, end] of [
+        ["09:00", "16:00"],
+        ["19:30", "00:00"],
+        ["22:00", "06:00"],
+      ] as const) {
+        expect(shiftSpan(WEEK, { day, start, end })).toEqual(
+          old({ day, start, end }),
+        );
+      }
+    }
+    expect(
+      shiftSpan(WEEK, { day: "2026-11-07", start: "19:00", end: "01:00" }),
+    ).toEqual([6 * 1440 + 1140, 7 * 1440 + 60]);
+  });
+
+  it("puts a day of another week in its own place: last Saturday is day -1, next Sunday day 7", () => {
+    expect(
+      shiftSpan(WEEK, { day: "2026-10-31", start: "19:00", end: "01:00" }),
+    ).toEqual([-300, 60]);
+    expect(
+      shiftSpan(WEEK, { day: "2026-11-08", start: "07:00", end: "15:00" }),
+    ).toEqual([7 * 1440 + 420, 7 * 1440 + 900]);
+    expect(
+      shiftSpan(WEEK, { day: "2026-11-09", start: "07:00", end: "15:00" })[0],
+    ).toBe(8 * 1440 + 420);
   });
 });
 
