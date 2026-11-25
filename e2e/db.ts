@@ -3410,6 +3410,38 @@ export async function demoChatMessagesSince(
 }
 
 /**
+ * What the newest message with these words in a conversation was sent as
+ * ("text" or "announcement"), or null when none has them.
+ */
+export async function demoChatKind(
+  conversation: string,
+  words: string,
+): Promise<string | null> {
+  const [row] = await sql<{ kind: string }[]>`
+    select m.kind from public.chat_messages m
+    where m.conversation_id = ${conversation} and m.body = ${words}
+    order by m.created_at desc
+    limit 1`;
+  return row?.kind ?? null;
+}
+
+/**
+ * "הודעה מההנהלה" (chat.announce) taken from the demo restaurant's managers
+ * by a rule for their role, or back on its default, which keeps no row:
+ * written as `setDemoWorkersFix` writes its rule, with no line to anyone and
+ * no row in the log. Back on is the cleanup.
+ */
+export async function setDemoManagersAnnounce(on: boolean): Promise<void> {
+  await sql`delete from public.role_permissions
+    where business_id = ${DEMO_RESTAURANT} and role = 'manager'
+      and perm = 'chat.announce' and named_role is null`;
+  if (!on) {
+    await sql`insert into public.role_permissions (business_id, role, perm, allowed)
+      values (${DEMO_RESTAURANT}, 'manager', 'chat.announce', false)`;
+  }
+}
+
+/**
  * Makes these documents' files due for the clean-up: removed (or still
  * removed) with their 10 minutes to undo over, so /cron/chat-files takes
  * their files out of Storage and the rows say their file is gone. Returns

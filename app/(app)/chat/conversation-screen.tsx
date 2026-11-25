@@ -112,7 +112,9 @@ import {
 import { type SyncOpen, useChat } from "./chat-provider";
 import type {
   ChatActionResult,
+  ChatImageFailure,
   ChatImageResult,
+  ChatPdfActionFailure,
   ChatPdfCancelResult,
   ChatPdfFinishResult,
   ChatPdfStartResult,
@@ -442,6 +444,16 @@ export function ConversationScreen(props: Props) {
   const [announce, setAnnounce] = useState(
     canAnnounce && props.announceFirst && !props.blocked,
   );
+  /**
+   * Announcements the server refused here as not the person's (`noAccess`)
+   * while they could write, by draft, until the screen is drawn again: what
+   * it then shows says why (the closed line, the not-found screen), but for
+   * a chat still open without "הודעה מההנהלה" (taken from their role
+   * meanwhile), which the effect after `say` speaks for.
+   */
+  const [refusedAnnouncements, setRefusedAnnouncements] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
   const [toast, setToast] = useState<Toast | null>(null);
   const [actionsFor, setActionsFor] = useState<ActionsFor | null>(null);
   const [readersFor, setReadersFor] = useState<string | null>(null);
@@ -598,6 +610,21 @@ export function ConversationScreen(props: Props) {
     if (!named) return;
     if (messages.find((m) => m.id === named)?.removed) setSaid(null);
   }, [said, messages]);
+  // An announcement refused as not theirs, the chat drawn again (or already)
+  // without "הודעה מההנהלה": still open to write in, nothing on screen says
+  // so (the switch just goes), so it is said here, and each stays as a
+  // message, which its retry sends. Closed to them meanwhile, the Composer
+  // says why writing stopped. Still drawn with the switch, it waits.
+  useEffect(() => {
+    if (canAnnounce || refusedAnnouncements.size === 0) return;
+    const drafts = refusedAnnouncements;
+    setRefusedAnnouncements(new Set());
+    if (!writable) return;
+    setOutgoing((list) =>
+      list.map((m) => (drafts.has(m.draft) ? { ...m, announce: false } : m)),
+    );
+    say(t("conversation.notSentAnnouncement"));
+  }, [canAnnounce, writable, refusedAnnouncements, say, t]);
   // What arrived from others, in words: set each drawing, with its names.
   const sayArrived = useRef<
     (arrived: ChatSyncMessage[], authors: readonly ChatSyncPerson[]) => void
@@ -944,6 +971,23 @@ export function ConversationScreen(props: Props) {
   }
 
   /**
+   * A message, a picture or a PDF refused as the chat closed, or as no
+   * longer the person's (`closed`, `noAccess`): the screen is drawn again,
+   * the line that says why where the field was (the Composer says it), or
+   * the not-found screen in the chat's place, its title with the focus.
+   * Closed already as it went (one that didn't go, tried again from its
+   * bubble), nothing on screen changes, and no notice over the field is
+   * drawn: said here, whatever it carried.
+   */
+  function refusedWhileBlocked(
+    failure: ChatImageFailure | ChatPdfActionFailure,
+  ) {
+    if (props.blocked && (failure === "closed" || failure === "noAccess")) {
+      say(t("conversation.notSentBlocked"));
+    }
+  }
+
+  /**
    * A picture goes with what was written with it (C4), as the phone made it
    * ready. One that can't go as it is (a demo business, no room, a file the
    * server takes for none of the app's own) leaves the conversation and its
@@ -973,6 +1017,7 @@ export function ConversationScreen(props: Props) {
       return;
     }
     const refusal = pictureRefusal(result.failure);
+    refusedWhileBlocked(result.failure);
     setNotice(refusal.notice);
     if (refusal.next === "drop") {
       setOutgoing((list) => list.filter((m) => m.draft !== item.draft));
@@ -1054,6 +1099,7 @@ export function ConversationScreen(props: Props) {
         undelivered(item);
         break;
     }
+    refusedWhileBlocked(end.failure);
     if (end.refresh) router.refresh();
   }
 
@@ -1118,12 +1164,15 @@ export function ConversationScreen(props: Props) {
       setNotice({ of: "conversation", key: "businessChanged" });
     }
     // The chat closed, or the other person left: the screen says so now,
-    // where the field was (the Composer says why writing stopped), or the
-    // not-found screen takes the chat's place and its title the focus.
-    // Closed already as this went (a message that didn't go, tried again
-    // from its bubble), nothing on screen changes: said here.
+    // where the field was, or the not-found screen takes the chat's place
+    // (`refusedWhileBlocked`). An announcement no longer theirs to make
+    // waits for that drawing, which may leave the chat open.
     else if (result.failure === "closed" || result.failure === "noAccess") {
-      if (props.blocked) say(t("conversation.notSentBlocked"));
+      refusedWhileBlocked(result.failure);
+      if (result.failure === "noAccess" && item.announce && !props.blocked) {
+        const draft = item.draft;
+        setRefusedAnnouncements((now) => new Set(now).add(draft));
+      }
       router.refresh();
     }
     // No line over the field says it, and the bubble's way to try again is
