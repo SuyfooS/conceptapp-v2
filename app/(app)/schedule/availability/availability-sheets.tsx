@@ -7,6 +7,8 @@ import {
   dayProblems,
   type RangeProblem,
   type ShabbatLimits,
+  type ShiftHours,
+  suggestedDay,
   suggestedRange,
   WEEKDAY_KEYS,
 } from "@domain/availability-form";
@@ -63,6 +65,16 @@ export type DayDraft = {
   open: boolean;
 };
 
+/**
+ * What the sheets need of the week: its first day, where Shabbat cuts it, and
+ * the hours of the business's shifts, which an empty day opens with.
+ */
+export type FormWeek = {
+  start: string;
+  shabbat: ShabbatLimits | null;
+  shiftHours: readonly ShiftHours[];
+};
+
 export const closedDraft = (day: string): DayDraft => ({
   day,
   rows: [],
@@ -72,19 +84,23 @@ export const closedDraft = (day: string): DayDraft => ({
 });
 
 /**
- * A day opening in the sheet. An empty day starts with the usual hours filled
- * in, so most days take one tap on "done".
+ * A day opening in the sheet. An empty day starts with the hours of the
+ * business's shifts that day filled in (the usual day where it has none), so
+ * most days take one tap on "done", and hours kept so cover every shift that
+ * day that Shabbat leaves whole (`suggestedDay`).
  */
 export function openDraft(
   day: string,
   saved: Row[],
-  shabbat: ShabbatLimits | null,
+  week: Pick<FormWeek, "shabbat" | "shiftHours">,
   checked: boolean,
 ): DayDraft {
   return {
     day,
     rows:
-      saved.length > 0 ? saved : [newRow(suggestedRange(day, false, shabbat))],
+      saved.length > 0
+        ? saved
+        : suggestedDay(day, week.shabbat, week.shiftHours).map(newRow),
     checked,
     removed: null,
     open: true,
@@ -93,7 +109,7 @@ export function openDraft(
 
 export type DaySheetProps = {
   draft: DayDraft;
-  week: { start: string; shabbat: ShabbatLimits | null };
+  week: FormWeek;
   onChange: (patch: Partial<DayDraft>) => void;
   onClose: () => void;
   onDone: (rows: Row[]) => void;
@@ -167,7 +183,14 @@ export function DaySheet({
             onChange({
               rows: [
                 ...rows,
-                newRow(suggestedRange(day, rows.length > 0, week.shabbat)),
+                newRow(
+                  suggestedRange(
+                    day,
+                    rows.length > 0,
+                    week.shabbat,
+                    week.shiftHours,
+                  ),
+                ),
               ],
             })
           }

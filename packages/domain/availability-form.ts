@@ -6,6 +6,7 @@ import {
 } from "./availability";
 import { minutesOf, rangeMinutes } from "./hours";
 import { type ShabbatTimes, timeIn } from "./shabbat";
+import { type ShiftPattern, shiftsOn } from "./staffing";
 
 /**
  * The worker's availability form, free of React and the database: the
@@ -175,15 +176,39 @@ export function dayProblems(
 }
 
 /**
- * The hours a new range starts with: the usual day on an empty day, the usual
- * evening after that. On Shabbat's days it stays inside the limits: Friday ends
- * by candle lighting (15:00 at the latest), Saturday starts at havdalah.
+ * A regular shift's hours and the days it runs: all the form needs of the
+ * business's shift pattern (`ShiftPattern`, the scheduling settings' `shifts`,
+ * which the builder draws a week from), never its name or how many it needs.
+ * An end at or before the start ends on the next day.
  */
-export function suggestedRange(
+export type ShiftHours = Pick<ShiftPattern, "days" | "start" | "end">;
+
+/** The hours of a shift pattern, for the form (`AvailabilityWeek.shiftHours`). */
+export function shiftHoursOf(patterns: readonly ShiftPattern[]): ShiftHours[] {
+  return patterns.map(({ days, start, end }) => ({ days, start, end }));
+}
+
+type Hours = { start: string; end: string };
+
+const DAY_MINUTES = 24 * 60;
+
+/** "HH:MM" for minutes after the day's midnight, past midnight included. */
+function clockOf(minutes: number): string {
+  const m = minutes % DAY_MINUTES;
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+}
+
+/**
+ * The usual hours, as the form suggested them before it read the business's
+ * shifts: the usual day on an empty day, the usual evening after that. On
+ * Shabbat's days it stays inside the limits: Friday ends by candle lighting
+ * (15:00 at the latest), Saturday starts at havdalah.
+ */
+function usualRange(
   day: string,
   hasHours: boolean,
   shabbat: ShabbatLimits | null,
-): { start: string; end: string } {
+): Hours {
   if (shabbat && day === shabbat.saturday) {
     return { start: shabbat.havdalah, end: "23:30" };
   }
@@ -195,6 +220,94 @@ export function suggestedRange(
   return hasHours
     ? { start: "18:00", end: "23:00" }
     : { start: "09:00", end: "17:00" };
+}
+
+/**
+ * The business's shifts on `day` (`shiftsOn`, as the builder draws them), each
+ * cut where Shabbat cuts the day's hours (`shabbatConflict`): on Friday ending
+ * by candle lighting, on Saturday starting from havdalah. A shift wholly inside
+ * Shabbat is left out. In minutes after the day's midnight; an end past 1440
+ * is on the next day.
+ */
+function shiftSpans(
+  day: string,
+  shabbat: ShabbatLimits | null,
+  shifts: readonly ShiftHours[],
+): { from: number; to: number }[] {
+  return shiftsOn(shifts, weekdayOf(day)).flatMap((shift) => {
+    let from = minutesOf(shift.start);
+    let to = from + rangeMinutes(shift.start, shift.end);
+    if (shabbat && day === shabbat.friday) {
+      to = Math.min(to, minutesOf(shabbat.candleLighting));
+    }
+    if (shabbat && day === shabbat.saturday) {
+      from = Math.max(from, minutesOf(shabbat.havdalah));
+    }
+    return from < to ? [{ from, to }] : [];
+  });
+}
+
+/**
+ * The hours an empty day opens with in the form. Where the business has shifts
+ * that day (its shift pattern), from the earliest start to the latest end of
+ * them, each cut by Shabbat as the form's own rules cut the day, so hours kept
+ * as suggested cover every shift that day that Shabbat leaves whole, and the
+ * fill from availability can put the person on any of them. Shifts around the
+ * clock (from the earliest start to the latest end a day or more) give two
+ * ranges meeting at the last shift's start, since a range is shorter than a
+ * day; joined, they cover it all. Where the business has no shift that day, or
+ * Shabbat leaves none of them, the usual day, as before the business had
+ * shifts: 09:00–17:00, Friday 08:00 until 15:00 or candle lighting, Saturday
+ * from havdalah until 23:30. The form has no rule for holidays, so neither
+ * does this.
+ */
+export function suggestedDay(
+  day: string,
+  shabbat: ShabbatLimits | null,
+  shifts: readonly ShiftHours[],
+): [Hours, ...Hours[]] {
+  const spans = shiftSpans(day, shabbat, shifts);
+  if (spans.length === 0) return [usualRange(day, false, shabbat)];
+  const from = Math.min(...spans.map((s) => s.from));
+  const to = Math.max(...spans.map((s) => s.to));
+  if (to - from < DAY_MINUTES) {
+    return [{ start: clockOf(from), end: clockOf(to) }];
+  }
+  // A day or more: the shift that ends last starts by the last start and is
+  // shorter than a day, so both halves are too.
+  const last = Math.max(...spans.map((s) => s.from));
+  return [
+    { start: clockOf(from), end: clockOf(last) },
+    { start: clockOf(last), end: clockOf(to) },
+  ];
+}
+
+/**
+ * The hours a new range starts with ("הוספת שעות"). On an empty day, the
+ * day's first suggested range (`suggestedDay`). With hours already, the day's
+ * last shift, from the latest start to the latest end, which someone who
+ * narrowed the day to its first shift adds next. On a day with one shift (or
+ * all starting together), whose last shift is the whole suggestion already,
+ * and on a day without shifts, the usual evening: 18:00–23:00, and on Friday
+ * and Saturday the usual hours there, when closed on Shabbat.
+ */
+export function suggestedRange(
+  day: string,
+  hasHours: boolean,
+  shabbat: ShabbatLimits | null,
+  shifts: readonly ShiftHours[],
+): Hours {
+  const [first] = suggestedDay(day, shabbat, shifts);
+  if (!hasHours) return first;
+  const spans = shiftSpans(day, shabbat, shifts);
+  if (spans.length === 0) return usualRange(day, true, shabbat);
+  const last = {
+    start: clockOf(Math.max(...spans.map((s) => s.from))),
+    end: clockOf(Math.max(...spans.map((s) => s.to))),
+  };
+  return last.start === first.start && last.end === first.end
+    ? usualRange(day, true, shabbat)
+    : last;
 }
 
 /** Message keys of the days of the week, 0 = Sunday. */

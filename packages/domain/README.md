@@ -141,6 +141,25 @@ whether someone reads every area's rows of the activity log
 (`LOG_AREA_PERMISSIONS`, the areas of the database's `private.log_perm`,
 kept equal by `tooling/log-families.test.ts`).
 
+`availability-form.ts` is the worker's availability form free of React:
+where Shabbat cuts the week (`shabbatLimits`, `shabbatConflict`), the checks
+behind each error (`parseAvailabilityForm`, `dayProblems`), and the hours a
+day opens with. An empty day opens with the business's own shifts that day
+(`suggestedDay`, from the hours of its shift pattern, `ShiftHours` by
+`shiftHoursOf`, read by weekday with `shiftsOn` as the builder draws a week):
+from the earliest start to the latest end, each shift first cut where the
+form's Shabbat rules cut the day (Friday ends by candle lighting, Saturday
+starts from havdalah) and one wholly inside Shabbat left out. Hours kept as
+suggested so cover every shift that day that Shabbat leaves whole, and the
+fill from availability can put the person on any of them; a shift Shabbat
+cuts stays open there with its time named. Shifts around the clock give two
+ranges that meet at the last shift's start, since a range is shorter than a
+day. A day with no shift, or none that Shabbat leaves, opens with the usual
+day as before: 09:00–17:00, Friday 08:00 until 15:00 or candle lighting,
+Saturday from havdalah until 23:30. "הוספת שעות" adds the day's last shift
+(`suggestedRange`), or the usual evening on a day of one shift. The form has
+no rule for holidays, so the suggestion has none.
+
 `copy-week.ts` is "העתקה מהשבוע שעבר" on the schedule builder: last week as it
 stands once built (`copySourceOf`), what copying it onto the week on the
 screen does day by day and who it leaves out and why (`copyLastWeek`, its

@@ -5,10 +5,14 @@ import {
   fridayOf,
   parseAvailabilityForm,
   type ShabbatLimits,
+  type ShiftHours,
   shabbatConflict,
   shabbatLimits,
+  shiftHoursOf,
+  suggestedDay,
   suggestedRange,
 } from "./availability-form";
+import { availableFor } from "./schedule";
 import { ISRAEL_TIME_ZONE, ISRAELI_CITIES } from "./shabbat";
 import { shabbatTimes } from "./shabbat-times";
 
@@ -270,57 +274,365 @@ describe("dayProblems", () => {
   });
 });
 
+// The templates' shifts (supabase/migrations/20261017000100_templates.sql,
+// 20261107000800_templates_for_every_business.sql), as the form reads them.
+const RESTAURANT: ShiftHours[] = [
+  { days: [0, 1, 2, 3, 4], start: "09:00", end: "16:00" },
+  { days: [0, 1, 2, 3, 4], start: "16:00", end: "23:30" },
+  { days: [5], start: "08:00", end: "14:30" },
+  { days: [6], start: "19:30", end: "00:00" },
+];
+const CAFE: ShiftHours[] = [
+  { days: [0, 1, 2, 3, 4], start: "07:00", end: "15:00" },
+  { days: [0, 1, 2, 3, 4], start: "15:00", end: "00:00" },
+  { days: [5], start: "07:00", end: "16:00" },
+  { days: [6], start: "19:00", end: "01:00" },
+];
+const RETAIL: ShiftHours[] = [
+  { days: [0, 1, 2, 3, 4], start: "08:00", end: "15:00" },
+  { days: [0, 1, 2, 3, 4], start: "15:00", end: "22:00" },
+  { days: [5], start: "08:00", end: "14:00" },
+];
+const EVERY_DAY = [0, 1, 2, 3, 4, 5, 6];
+// Summer's havdalah after the restaurant's 19:30, and Jerusalem's December
+// candle lighting before the café's Friday ends (the fill plan's risk 2).
+const SUMMER: ShabbatLimits = { ...LIMITS, havdalah: "20:21" };
+const JERUSALEM: ShabbatLimits = { ...LIMITS, candleLighting: "15:58" };
+const SUNDAY = WEEK;
+const MONDAY = "2026-11-02";
+const TUESDAY = "2026-11-03";
+
+describe("shiftHoursOf", () => {
+  it("keeps a shift's days and hours, never its name or how many it needs", () => {
+    expect(
+      shiftHoursOf([
+        {
+          key: "morning",
+          name: "בוקר",
+          days: [0, 1],
+          start: "09:00",
+          end: "16:00",
+          needed: 3,
+        },
+      ]),
+    ).toEqual([{ days: [0, 1], start: "09:00", end: "16:00" }]);
+  });
+});
+
+describe("suggestedDay", () => {
+  it("spans the business's shifts that day, from the earliest start to the latest end", () => {
+    expect(suggestedDay(SUNDAY, LIMITS, RESTAURANT)).toEqual([
+      { start: "09:00", end: "23:30" },
+    ]);
+    // An end at midnight, and one past it, as the ranges allow.
+    expect(suggestedDay(MONDAY, LIMITS, CAFE)).toEqual([
+      { start: "07:00", end: "00:00" },
+    ]);
+    expect(suggestedDay(LIMITS.saturday, null, CAFE)).toEqual([
+      { start: "19:00", end: "01:00" },
+    ]);
+    expect(suggestedDay(TUESDAY, LIMITS, RETAIL)).toEqual([
+      { start: "08:00", end: "22:00" },
+    ]);
+    // A break between two shifts is inside it: free for both.
+    expect(
+      suggestedDay(SUNDAY, null, [
+        { days: [0], start: "17:00", end: "22:00" },
+        { days: [0], start: "08:00", end: "12:00" },
+      ]),
+    ).toEqual([{ start: "08:00", end: "22:00" }]);
+    // Only the shifts of that weekday count.
+    expect(
+      suggestedDay(MONDAY, null, [
+        { days: [0], start: "06:00", end: "10:00" },
+        { days: [1], start: "12:00", end: "18:00" },
+      ]),
+    ).toEqual([{ start: "12:00", end: "18:00" }]);
+  });
+
+  it("cuts Friday's shifts at candle lighting and Saturday's at havdalah, each before spanning", () => {
+    expect(suggestedDay(LIMITS.friday, LIMITS, RESTAURANT)).toEqual([
+      { start: "08:00", end: "14:30" },
+    ]);
+    expect(suggestedDay(LIMITS.friday, LIMITS, CAFE)).toEqual([
+      { start: "07:00", end: "16:00" },
+    ]);
+    expect(suggestedDay(LIMITS.friday, JERUSALEM, CAFE)).toEqual([
+      { start: "07:00", end: "15:58" },
+    ]);
+    expect(suggestedDay(LIMITS.saturday, LIMITS, RESTAURANT)).toEqual([
+      { start: "19:30", end: "00:00" },
+    ]);
+    expect(suggestedDay(LIMITS.saturday, SUMMER, RESTAURANT)).toEqual([
+      { start: "20:21", end: "00:00" },
+    ]);
+    expect(suggestedDay(LIMITS.saturday, SUMMER, CAFE)).toEqual([
+      { start: "20:21", end: "01:00" },
+    ]);
+    // A shift wholly inside Shabbat is left out, so the day starts with the
+    // evening, not at havdalah.
+    expect(
+      suggestedDay(LIMITS.saturday, LIMITS, [
+        { days: [6], start: "09:00", end: "14:00" },
+        { days: [6], start: "19:30", end: "00:00" },
+      ]),
+    ).toEqual([{ start: "19:30", end: "00:00" }]);
+    // A Friday night ends at candle lighting.
+    expect(
+      suggestedDay(LIMITS.friday, LIMITS, [
+        { days: [5], start: "06:00", end: "02:00" },
+      ]),
+    ).toEqual([{ start: "06:00", end: "16:26" }]);
+  });
+
+  it("treats Friday and Saturday as any day when open on Shabbat", () => {
+    expect(suggestedDay(LIMITS.friday, null, CAFE)).toEqual([
+      { start: "07:00", end: "16:00" },
+    ]);
+    expect(suggestedDay(LIMITS.saturday, null, RESTAURANT)).toEqual([
+      { start: "19:30", end: "00:00" },
+    ]);
+  });
+
+  it("offers the usual day where the business has no shift that day, or Shabbat leaves none", () => {
+    // No shifts at all: the general template's, until it adds some.
+    expect(suggestedDay(SUNDAY, LIMITS, [])).toEqual([
+      { start: "09:00", end: "17:00" },
+    ]);
+    expect(suggestedDay(LIMITS.friday, LIMITS, [])).toEqual([
+      { start: "08:00", end: "15:00" },
+    ]);
+    expect(suggestedDay(LIMITS.saturday, LIMITS, [])).toEqual([
+      { start: "17:24", end: "23:30" },
+    ]);
+    // The shop has no Saturday shift.
+    expect(suggestedDay(LIMITS.saturday, LIMITS, RETAIL)).toEqual([
+      { start: "17:24", end: "23:30" },
+    ]);
+    expect(suggestedDay(LIMITS.saturday, null, RETAIL)).toEqual([
+      { start: "09:00", end: "17:00" },
+    ]);
+    // Every shift that day inside Shabbat.
+    expect(
+      suggestedDay(LIMITS.friday, LIMITS, [
+        { days: [5], start: "18:00", end: "23:00" },
+      ]),
+    ).toEqual([{ start: "08:00", end: "15:00" }]);
+    expect(
+      suggestedDay(LIMITS.saturday, LIMITS, [
+        { days: [6], start: "09:00", end: "14:00" },
+      ]),
+    ).toEqual([{ start: "17:24", end: "23:30" }]);
+  });
+
+  it("gives shifts around the clock two ranges that meet at the last shift's start", () => {
+    // A range is shorter than a day; joined, the two cover it all.
+    expect(
+      suggestedDay(SUNDAY, null, [
+        { days: EVERY_DAY, start: "07:00", end: "19:00" },
+        { days: EVERY_DAY, start: "19:00", end: "07:00" },
+      ]),
+    ).toEqual([
+      { start: "07:00", end: "19:00" },
+      { start: "19:00", end: "07:00" },
+    ]);
+    expect(
+      suggestedDay(SUNDAY, null, [
+        { days: EVERY_DAY, start: "06:00", end: "14:00" },
+        { days: EVERY_DAY, start: "14:00", end: "22:00" },
+        { days: EVERY_DAY, start: "22:00", end: "06:00" },
+      ]),
+    ).toEqual([
+      { start: "06:00", end: "22:00" },
+      { start: "22:00", end: "06:00" },
+    ]);
+    // More than a day.
+    expect(
+      suggestedDay(SUNDAY, null, [
+        { days: [0], start: "08:00", end: "20:00" },
+        { days: [0], start: "20:00", end: "09:00" },
+      ]),
+    ).toEqual([
+      { start: "08:00", end: "20:00" },
+      { start: "20:00", end: "09:00" },
+    ]);
+    // A minute short of a day is still one range.
+    expect(
+      suggestedDay(SUNDAY, null, [
+        { days: [0], start: "07:00", end: "19:00" },
+        { days: [0], start: "19:00", end: "06:59" },
+      ]),
+    ).toEqual([{ start: "07:00", end: "06:59" }]);
+  });
+
+  it("covers every shift Shabbat leaves whole, in hours the form takes, for the templates and any shifts", () => {
+    const random = mulberry32(2026);
+    const time = (minutes: number) =>
+      `${String(Math.floor(minutes / 60) % 24).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+    const generated = Array.from({ length: 60 }, (): ShiftHours[] =>
+      Array.from({ length: 1 + Math.floor(random() * 4) }, () => {
+        const start = Math.floor(random() * 96) * 15;
+        // From a quarter of an hour to a quarter short of a day.
+        const length = (1 + Math.floor(random() * 94)) * 15;
+        return {
+          days: EVERY_DAY.filter(() => random() < 0.6),
+          start: time(start),
+          end: time(start + length),
+        };
+      }).filter((shift) => shift.days.length > 0),
+    );
+    const weekDays = Array.from({ length: 7 }, (_, n) =>
+      new Date(Date.UTC(2026, 10, 1 + n)).toISOString().slice(0, 10),
+    );
+    let cut = 0;
+    let split = 0;
+    for (const shifts of [RESTAURANT, CAFE, RETAIL, ...generated]) {
+      for (const limits of [LIMITS, SUMMER, JERUSALEM, null]) {
+        for (const [n, day] of weekDays.entries()) {
+          const hours = suggestedDay(day, limits, shifts);
+          if (hours.length > 1) split++;
+          expect(hours.length).toBeLessThanOrEqual(2);
+          // Hours the form sends as they are: no problem, no overlap.
+          expect(dayProblems(hours, day, WEEK, limits)).toEqual({});
+          const ranges = hours.map((h) => ({ day, ...h }));
+          for (const shift of shifts.filter((s) => s.days.includes(n))) {
+            const on = { day, start: shift.start, end: shift.end };
+            const whole = !limits || shabbatConflict(on, limits) === null;
+            if (!whole) cut++;
+            // Covered whole exactly when Shabbat doesn't cut it.
+            expect(availableFor(on, ranges)).toBe(whole);
+          }
+          // The second range a day takes passes on its own too.
+          const next = suggestedRange(day, true, limits, shifts);
+          expect(dayProblems([next], day, WEEK, limits)).toEqual({});
+        }
+      }
+    }
+    // The generated shifts reach both edges.
+    expect(cut).toBeGreaterThan(100);
+    expect(split).toBeGreaterThan(10);
+  });
+});
+
 describe("suggestedRange", () => {
-  it("offers the usual day, then the usual evening", () => {
-    expect(suggestedRange("2026-11-01", false, LIMITS)).toEqual({
+  it("offers the usual day, then the usual evening, where the business has no shifts", () => {
+    expect(suggestedRange("2026-11-01", false, LIMITS, [])).toEqual({
       start: "09:00",
       end: "17:00",
     });
-    expect(suggestedRange("2026-11-01", true, LIMITS)).toEqual({
+    expect(suggestedRange("2026-11-01", true, LIMITS, [])).toEqual({
       start: "18:00",
       end: "23:00",
     });
   });
 
   it("ends Friday at 15:00, or at candle lighting when that is earlier", () => {
-    expect(suggestedRange(LIMITS.friday, false, LIMITS)).toEqual({
+    expect(suggestedRange(LIMITS.friday, false, LIMITS, [])).toEqual({
       start: "08:00",
       end: "15:00",
     });
     expect(
-      suggestedRange(LIMITS.friday, false, {
-        ...LIMITS,
-        candleLighting: "14:40",
-      }),
+      suggestedRange(
+        LIMITS.friday,
+        false,
+        { ...LIMITS, candleLighting: "14:40" },
+        [],
+      ),
     ).toEqual({ start: "08:00", end: "14:40" });
   });
 
   it("starts Saturday at havdalah", () => {
-    expect(suggestedRange(LIMITS.saturday, false, LIMITS)).toEqual({
+    expect(suggestedRange(LIMITS.saturday, false, LIMITS, [])).toEqual({
       start: "17:24",
       end: "23:30",
     });
   });
 
   it("treats Friday and Saturday as any day when open on Shabbat", () => {
-    expect(suggestedRange(LIMITS.friday, false, null)).toEqual({
+    expect(suggestedRange(LIMITS.friday, false, null, [])).toEqual({
       start: "09:00",
       end: "17:00",
     });
-    expect(suggestedRange(LIMITS.saturday, true, null)).toEqual({
+    expect(suggestedRange(LIMITS.saturday, true, null, [])).toEqual({
       start: "18:00",
       end: "23:00",
     });
   });
 
+  it("starts an empty day with its first suggested range", () => {
+    for (const day of [SUNDAY, LIMITS.friday, LIMITS.saturday]) {
+      expect(suggestedRange(day, false, LIMITS, RESTAURANT)).toEqual(
+        suggestedDay(day, LIMITS, RESTAURANT)[0],
+      );
+    }
+  });
+
+  it("adds the day's last shift once the day has hours", () => {
+    expect(suggestedRange(SUNDAY, true, LIMITS, RESTAURANT)).toEqual({
+      start: "16:00",
+      end: "23:30",
+    });
+    expect(suggestedRange(MONDAY, true, LIMITS, CAFE)).toEqual({
+      start: "15:00",
+      end: "00:00",
+    });
+    expect(suggestedRange(TUESDAY, true, LIMITS, RETAIL)).toEqual({
+      start: "15:00",
+      end: "22:00",
+    });
+    // Around the clock: the second of the day's two ranges.
+    expect(
+      suggestedRange(SUNDAY, true, null, [
+        { days: EVERY_DAY, start: "06:00", end: "14:00" },
+        { days: EVERY_DAY, start: "14:00", end: "22:00" },
+        { days: EVERY_DAY, start: "22:00", end: "06:00" },
+      ]),
+    ).toEqual({ start: "22:00", end: "06:00" });
+  });
+
+  it("adds the usual hours on a day with one shift, whose suggestion it is already", () => {
+    expect(suggestedRange(LIMITS.friday, true, null, RESTAURANT)).toEqual({
+      start: "18:00",
+      end: "23:00",
+    });
+    expect(suggestedRange(LIMITS.friday, true, LIMITS, RESTAURANT)).toEqual({
+      start: "08:00",
+      end: "15:00",
+    });
+    expect(suggestedRange(LIMITS.saturday, true, LIMITS, CAFE)).toEqual({
+      start: "17:24",
+      end: "23:30",
+    });
+  });
+
   it("suggests hours that pass the day's own checks", () => {
     for (const day of [LIMITS.friday, LIMITS.saturday, "2026-11-03"]) {
-      expect(
-        dayProblems([suggestedRange(day, false, LIMITS)], day, WEEK, LIMITS),
-      ).toEqual({});
+      for (const shifts of [[], RESTAURANT, CAFE, RETAIL]) {
+        for (const hasHours of [false, true]) {
+          expect(
+            dayProblems(
+              [suggestedRange(day, hasHours, LIMITS, shifts)],
+              day,
+              WEEK,
+              LIMITS,
+            ),
+          ).toEqual({});
+        }
+      }
     }
   });
 });
+
+/** A small seeded generator (mulberry32), so a failing case can be found again. */
+function mulberry32(seed: number): () => number {
+  let state = seed | 0;
+  return () => {
+    state = (state + 0x6d2b79f5) | 0;
+    let t = Math.imul(state ^ (state >>> 15), 1 | state);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
 describe("dayMonth", () => {
   it("prints day.month without leading zeros", () => {
