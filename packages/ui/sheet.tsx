@@ -58,7 +58,8 @@ export type SheetProps = {
 /**
  * A glass sheet that rises from the bottom, for one short task. Dragging the
  * grabber down closes it, and so do the button, the scrim and Escape. It renders
- * inside the nearest [data-accent] wrapper, so it keeps the business's colour.
+ * inside the nearest [data-accent] wrapper, so it keeps the business's colour,
+ * and stays there while its page is kept hidden (left by back or forward).
  * Its ✕, which takes the focus as it opens, takes no Enter still held down
  * from the press that opened it (`ignoreHeldEnter`). Closed, it gives the
  * keyboard's focus back (`returnFocus`), never to the top of the page. On a
@@ -118,8 +119,19 @@ export function Sheet({
     setOffset(0);
   }
 
-  const container =
-    anchor.current?.closest<HTMLElement>("[data-accent]") ?? undefined;
+  // Inside the nearest [data-accent], found from the anchor once it is
+  // drawn. A page left by back or forward is kept hidden (Next's Activity),
+  // which lets go of its refs (25 November 2026): drawn then, the sheet
+  // stays where it was, never moved to the page's foot, which would draw
+  // all it holds anew, losing what was typed and a refusal it was held for.
+  const home = useRef<HTMLElement | undefined>(undefined);
+  useLayoutEffect(() => {
+    home.current =
+      anchor.current?.closest<HTMLElement>("[data-accent]") ?? undefined;
+  });
+  const container = anchor.current
+    ? (anchor.current.closest<HTMLElement>("[data-accent]") ?? undefined)
+    : home.current;
 
   return (
     <>

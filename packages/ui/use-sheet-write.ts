@@ -86,7 +86,10 @@ export function useSheetWrite() {
  * shows it (`shown`), so as the drawing that puts it up is committed, before
  * anything else can come in. Each one, not only that first: an answer kept
  * again in the same words draws nothing new, and the sheet's next drawing
- * lets go of it instead.
+ * lets go of it instead. Only the form handed the answer can say it, so that
+ * form must stay drawn until it has: one drawn anew meanwhile starts with no
+ * refusal, and the sheet stays held until its next write (`@ui/sheet` keeps
+ * its place while its page is hidden, so it isn't drawn anew then).
  */
 export function useSaid(shown: boolean, said: () => void) {
   useLayoutEffect(() => {
