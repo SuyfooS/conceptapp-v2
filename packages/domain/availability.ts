@@ -71,10 +71,17 @@ export function nextWeekStart(
   return addDays(weekStartOf(dateIn(instant, timeZone), weekStartsOn), 7);
 }
 
+/**
+ * One wall-clock formatter per time zone, made once, as `dateFormats`: the
+ * fill from availability reads a few hundred instants a week.
+ */
+const wallFormats = new Map<string, Intl.DateTimeFormat>();
+
 /** How far the zone's clock is ahead of UTC at `instant`, in minutes. */
 function offsetMinutes(instant: Date, timeZone: string): number {
-  const parts = Object.fromEntries(
-    new Intl.DateTimeFormat("en-US", {
+  let format = wallFormats.get(timeZone);
+  if (!format) {
+    format = new Intl.DateTimeFormat("en-US", {
       year: "numeric",
       month: "numeric",
       day: "numeric",
@@ -82,7 +89,11 @@ function offsetMinutes(instant: Date, timeZone: string): number {
       minute: "numeric",
       hourCycle: "h23",
       timeZone,
-    })
+    });
+    wallFormats.set(timeZone, format);
+  }
+  const parts = Object.fromEntries(
+    format
       .formatToParts(instant)
       .map((part) => [part.type, Number(part.value)]),
   );

@@ -151,10 +151,16 @@ describe("copyLastWeek", () => {
     const sunday = shift("2026-11-15", "08:00", "15:00", [[tamar, "cashier"]], {
       needed: 3,
     });
+    // Tamar on a shift outside last week, at the copy's hours: neither copied
+    // nor read as last week's night into this week.
     const copy = copyOf({
-      source: sourceOf([sunday, shift("2026-11-22", "15:00", "22:00")]),
+      source: sourceOf([
+        sunday,
+        shift("2026-11-22", "07:00", "22:00", [tamar], { pattern: null }),
+      ]),
     });
     expect(copy.week).toEqual([{ copied: { ...sunday, day: "2026-11-22" } }]);
+    expect(copy.skipped).toEqual([]);
     expect(copy.days.map((d) => d.state)).toEqual([
       "copied",
       "none",
