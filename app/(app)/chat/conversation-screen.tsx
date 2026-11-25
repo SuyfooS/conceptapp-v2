@@ -89,7 +89,8 @@ import {
   useRef,
   useState,
 } from "react";
-import { focusLost } from "./chat-focus";
+import { actionsNameValues } from "./actions-name";
+import { focusLost, titleTakesFocus } from "./chat-focus";
 import { ChatNotice } from "./chat-notice";
 import { chatPaths } from "./chat-paths";
 import {
@@ -111,7 +112,9 @@ import {
 import { type SyncOpen, useChat } from "./chat-provider";
 import type {
   ChatActionResult,
+  ChatImageFailure,
   ChatImageResult,
+  ChatPdfActionFailure,
   ChatPdfCancelResult,
   ChatPdfFinishResult,
   ChatPdfStartResult,
@@ -441,6 +444,16 @@ export function ConversationScreen(props: Props) {
   const [announce, setAnnounce] = useState(
     canAnnounce && props.announceFirst && !props.blocked,
   );
+  /**
+   * Announcements the server refused here as not the person's (`noAccess`)
+   * while they could write, by draft, until the screen is drawn again: what
+   * it then shows says why (the closed line, the not-found screen), but for
+   * a chat still open without "הודעה מההנהלה" (taken from their role
+   * meanwhile), which the effect after `say` speaks for.
+   */
+  const [refusedAnnouncements, setRefusedAnnouncements] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
   const [toast, setToast] = useState<Toast | null>(null);
   const [actionsFor, setActionsFor] = useState<ActionsFor | null>(null);
   const [readersFor, setReadersFor] = useState<string | null>(null);
@@ -597,6 +610,21 @@ export function ConversationScreen(props: Props) {
     if (!named) return;
     if (messages.find((m) => m.id === named)?.removed) setSaid(null);
   }, [said, messages]);
+  // An announcement refused as not theirs, the chat drawn again (or already)
+  // without "הודעה מההנהלה": still open to write in, nothing on screen says
+  // so (the switch just goes), so it is said here, and each stays as a
+  // message, which its retry sends. Closed to them meanwhile, the Composer
+  // says why writing stopped. Still drawn with the switch, it waits.
+  useEffect(() => {
+    if (canAnnounce || refusedAnnouncements.size === 0) return;
+    const drafts = refusedAnnouncements;
+    setRefusedAnnouncements(new Set());
+    if (!writable) return;
+    setOutgoing((list) =>
+      list.map((m) => (drafts.has(m.draft) ? { ...m, announce: false } : m)),
+    );
+    say(t("conversation.notSentAnnouncement"));
+  }, [canAnnounce, writable, refusedAnnouncements, say, t]);
   // What arrived from others, in words: set each drawing, with its names.
   const sayArrived = useRef<
     (arrived: ChatSyncMessage[], authors: readonly ChatSyncPerson[]) => void
@@ -778,13 +806,16 @@ export function ConversationScreen(props: Props) {
   }, [conversation, reader, chat.watch, addPeople]);
 
   // A conversation opens at its newest, and so does one shown again. On a
-  // phone the list it was opened from has just gone, and the focus with it:
-  // the conversation's title takes it, so a screen reader starts there.
+  // phone the list it was opened from has just gone, and the focus with it;
+  // from tablet up it stays on the row pressed in the list beside it, or on
+  // "שליחת הודעה". The conversation's title takes it, so a screen reader
+  // starts there (every chat has the same page title, so nothing else says
+  // it opened); a focus moved on while it loaded stays (`titleTakesFocus`).
   useEffect(() => {
     toEnd(false);
     setReady(true);
     markReadNow.current();
-    if (focusLost()) heading.current?.focus({ preventScroll: true });
+    if (titleTakesFocus()) heading.current?.focus({ preventScroll: true });
   }, []);
 
   // New messages: to the newest when the reader was there or wrote one, and
@@ -940,6 +971,23 @@ export function ConversationScreen(props: Props) {
   }
 
   /**
+   * A message, a picture or a PDF refused as the chat closed, or as no
+   * longer the person's (`closed`, `noAccess`): the screen is drawn again,
+   * the line that says why where the field was (the Composer says it), or
+   * the not-found screen in the chat's place, its title with the focus.
+   * Closed already as it went (one that didn't go, tried again from its
+   * bubble), nothing on screen changes, and no notice over the field is
+   * drawn: said here, whatever it carried.
+   */
+  function refusedWhileBlocked(
+    failure: ChatImageFailure | ChatPdfActionFailure,
+  ) {
+    if (props.blocked && (failure === "closed" || failure === "noAccess")) {
+      say(t("conversation.notSentBlocked"));
+    }
+  }
+
+  /**
    * A picture goes with what was written with it (C4), as the phone made it
    * ready. One that can't go as it is (a demo business, no room, a file the
    * server takes for none of the app's own) leaves the conversation and its
@@ -969,6 +1017,7 @@ export function ConversationScreen(props: Props) {
       return;
     }
     const refusal = pictureRefusal(result.failure);
+    refusedWhileBlocked(result.failure);
     setNotice(refusal.notice);
     if (refusal.next === "drop") {
       setOutgoing((list) => list.filter((m) => m.draft !== item.draft));
@@ -1050,6 +1099,7 @@ export function ConversationScreen(props: Props) {
         undelivered(item);
         break;
     }
+    refusedWhileBlocked(end.failure);
     if (end.refresh) router.refresh();
   }
 
@@ -1113,9 +1163,23 @@ export function ConversationScreen(props: Props) {
     } else if (result.failure === "businessChanged") {
       setNotice({ of: "conversation", key: "businessChanged" });
     }
-    // The chat closed, or the other person left: the screen says so now.
+    // The chat closed, or the other person left: the screen says so now,
+    // where the field was, or the not-found screen takes the chat's place
+    // (`refusedWhileBlocked`). An announcement no longer theirs to make
+    // waits for that drawing, which may leave the chat open.
     else if (result.failure === "closed" || result.failure === "noAccess") {
+      refusedWhileBlocked(result.failure);
+      if (result.failure === "noAccess" && item.announce && !props.blocked) {
+        const draft = item.draft;
+        setRefusedAnnouncements((now) => new Set(now).add(draft));
+      }
       router.refresh();
+    }
+    // No line over the field says it, and the bubble's way to try again is
+    // in the messages, which aren't read out as they change: said here, or
+    // someone whose field emptied on sending believes it went.
+    else {
+      say(t("conversation.notSent"));
     }
   }
 
@@ -1586,6 +1650,20 @@ export function ConversationScreen(props: Props) {
       : t("list.pdf");
   }
 
+  /**
+   * A message in words, as its actions sheet quotes it and its actions
+   * button names it: a picture or a PDF in words, a text as written; none
+   * once removed.
+   */
+  function wordsOf(message: ChatSyncMessage): string | null {
+    if (message.removed) return null;
+    if (message.fileKind === "image") return photoWords(message.body);
+    if (message.fileKind === "pdf") {
+      return pdfWords(message.body, message.fileName);
+    }
+    return message.body;
+  }
+
   /** A PDF's size and kind, under its name: "2.4 MB · PDF". */
   function pdfMeta(size: number | null): ReactNode {
     if (size === null) return null;
@@ -1948,6 +2026,7 @@ export function ConversationScreen(props: Props) {
     if (actionsGone) setActionsFor(null);
   }, [actionsGone]);
   const sheetMessage = actionsGone ? null : actionsMessage;
+  const sheetWords = sheetMessage ? wordsOf(sheetMessage) : null;
 
   // The picture open in its sheet went (removed, or its file no longer
   // kept): the sheet closes, and nothing of it stays on screen.
@@ -2094,6 +2173,7 @@ export function ConversationScreen(props: Props) {
                       : draftKey(shown.outgoing.draft);
                   const offered =
                     shown.kind === "message" ? actionsOf(shown.message) : [];
+                  const time = messageTime(item.createdAt, chat.timeZone);
                   return (
                     <MessageBubble
                       key={key}
@@ -2115,15 +2195,29 @@ export function ConversationScreen(props: Props) {
                           ? contentOf(shown.message)
                           : outgoingContent(shown.outgoing)
                       }
-                      time={{
-                        label: messageTime(item.createdAt, chat.timeZone),
-                        at: item.createdAt,
-                      }}
+                      time={{ label: time, at: item.createdAt }}
                       status={statusOf(shown)}
                       actions={
                         shown.kind === "message" && offered.length > 0
                           ? {
                               label: t("messageActions.open"),
+                              // Whose message, when and how it starts, so
+                              // each reads apart in a list of the page's
+                              // buttons, a run in one minute's too.
+                              fullLabel: t.markup(
+                                own
+                                  ? "messageActions.openForOwn"
+                                  : "messageActions.openFor",
+                                {
+                                  name: nameOf(item.authorId),
+                                  ...actionsNameValues({
+                                    day: day.day,
+                                    today,
+                                    time,
+                                    words: wordsOf(shown.message) ?? "",
+                                  }),
+                                },
+                              ),
                               onOpen: (trigger) => {
                                 actionsOpener.current = trigger;
                                 setActionsFor({ id: shown.message.id });
@@ -2213,17 +2307,7 @@ export function ConversationScreen(props: Props) {
         onOpenChange={(open) => {
           if (!open) setActionsFor(null);
         }}
-        quote={
-          !sheetMessage || sheetMessage.removed
-            ? null
-            : sheetMessage.fileKind === "image"
-              ? photoWords(sheetMessage.body)
-              : sheetMessage.fileKind === "pdf"
-                ? pdfWords(sheetMessage.body, sheetMessage.fileName)
-                : sheetMessage.body
-                  ? chatPreview(sheetMessage.body, 160)
-                  : null
-        }
+        quote={sheetWords ? chatPreview(sheetWords, 160) : null}
         actions={sheetMessage ? actionsOf(sheetMessage) : []}
         onAction={act}
         // What opened it, while it is still there (a removed message's

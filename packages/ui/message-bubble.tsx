@@ -95,16 +95,26 @@ export type MessageBubbleProps = {
   run?: MessageRun;
   /**
    * What may be done with it (copy, delete, remove; C3): an IconButton beside
-   * it with its label and tooltip ("פעולות"), shown on a desktop with a mouse
-   * when the pointer or the keyboard is on the message, always on a touch
-   * screen that wide, and kept for screen readers and keyboards everywhere;
+   * it with its label and tooltip ("פעולות", then which message), shown on
+   * a desktop with a mouse when the pointer or the keyboard is on the
+   * message, always on a touch screen that wide, and kept for screen
+   * readers and keyboards everywhere;
    * below 1280px, and on any touch screen, a tap on the message itself opens
    * them too, but not on a link in it or while text is selected. A picture's
    * message (C4) shows the button below 1280px too: a tap on the picture
    * opens the picture, and the rest of the bubble is too small a place; so
-   * does a PDF's (C5), whose chip is its download.
+   * does a PDF's (C5), whose chip is its download. `fullLabel` is the
+   * button's whole name, starting with `label` so speech input still finds
+   * it, and saying which message it is for ("פעולות להודעה של מאיה מ-08:14:
+   * בוקר טוב"): every bubble has one, and a list of the page's buttons reads
+   * them apart. The tooltip shows the same words, so it is never a second
+   * description read after the name. By default `label`.
    */
-  actions?: { label: string; onOpen: (trigger: HTMLElement) => void } | null;
+  actions?: {
+    label: string;
+    fullLabel?: string;
+    onOpen: (trigger: HTMLElement) => void;
+  } | null;
   /**
    * The message's id, on the bubble (`data-message-id`): how the screen
    * finds its actions' button again, to give it the focus back.
@@ -222,8 +232,10 @@ export function MessageBubble({
           <button
             type="button"
             data-message-actions=""
-            aria-label={actions.label}
-            title={actions.label}
+            aria-label={actions.fullLabel ?? actions.label}
+            // The name itself: a tooltip with other words would be read
+            // after it, as the button's description.
+            title={actions.fullLabel ?? actions.label}
             aria-haspopup="dialog"
             onClick={(event) => actions.onOpen(event.currentTarget)}
             className={cn(

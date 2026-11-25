@@ -15,9 +15,11 @@ import {
   useRef,
   useState,
 } from "react";
+import { ANNOUNCE_CLEAR_MS } from "./announcer-store";
 import { AttachmentChip } from "./attachment-chip";
 import { Button } from "./button";
 import { cn } from "./cn";
+import { focusFirst, watchFocusIn } from "./focus-after";
 import { IconButton } from "./icon-button";
 import { Spinner } from "./spinner";
 import { Switch } from "./switch";
@@ -95,7 +97,12 @@ export type ComposerProps = {
   /**
    * Why nobody can write here now (a removed department, someone who left
    * the team, a group only management writes in): it takes the place of the
-   * field and the button.
+   * field and the button. Given while the composer is drawn (the chat
+   * closed while someone wrote), the line takes the keyboard's focus that
+   * was in the composer, which went with the field; with the focus
+   * elsewhere, a screen reader hears it where it is. Drawn so from the
+   * start, or shown again so after the screen was hidden for going back,
+   * nothing is said and the focus stays.
    */
   blocked?: ReactNode;
   /** A line over the field that doesn't stop writing ("יותר מדי הודעות בדקה…"). */
@@ -161,6 +168,8 @@ const FINE_POINTER = "(pointer: fine)";
  * whose words are then its caption and may be left out.
  * Screen readers hear it being made ready, and that it is ready, from a live
  * region that is always there (one that came with its words would be missed).
+ * Where nobody can write, the line that says why stands in the same place,
+ * in the same wrapper, so what floats over it stays put.
  */
 export function Composer({
   label,
@@ -196,6 +205,19 @@ export function Composer({
   const picker = useRef<HTMLInputElement>(null);
   // "In a demo business no files": said once the button is pressed.
   const [refusedSaid, setRefusedSaid] = useState(false);
+  const form = useRef<HTMLFormElement>(null);
+  const stoppedLine = useRef<HTMLParagraphElement>(null);
+  const writing = !blocked;
+  /** Whether the focus is, or was last, in the form: watched while it is drawn. */
+  const hadFocus = useRef<() => boolean>(() => false);
+  /**
+   * Whether it was writing at its last drawing: null before its first, and
+   * again once it was hidden (a screen kept in an <Activity> for going
+   * back), so a screen shown again is drawn so from the start.
+   */
+  const wasWriting = useRef<boolean | null>(null);
+  /** Why writing stopped, said where the focus is: it didn't land on the line. */
+  const [stopSaid, setStopSaid] = useState(false);
   const checked = checkMessage(value);
   const over = !checked.ok && checked.reason === "tooLong";
   // A picture goes with words or without them, once it is ready: until
@@ -225,6 +247,56 @@ export function Composer({
     node.style.height = "auto";
     node.style.height = `${node.scrollHeight}px`;
   }, [value]);
+
+  // Hidden (an <Activity> keeps the screen for going back) or gone: what it
+  // knew of its last drawing is forgotten. Shown again, perhaps closed
+  // meanwhile, nothing stopped while it was drawn, and the focus that was in
+  // the form then is no reason to move it now.
+  useLayoutEffect(
+    () => () => {
+      wasWriting.current = null;
+      hadFocus.current = () => false;
+    },
+    [],
+  );
+
+  // While writing, where the focus is in the form is watched: a move away
+  // from it forgets it, a fall to nowhere (the field gone) doesn't.
+  useLayoutEffect(() => {
+    if (!writing) return;
+    const element = form.current;
+    if (!element) return;
+    const watch = watchFocusIn(element);
+    hadFocus.current = watch.had;
+    return () => watch.stop();
+  }, [writing]);
+
+  // Writing stopped while the composer was drawn: the line that says why
+  // takes the focus that was in the form, gone with it, without moving the
+  // page; else its words are said where the focus is. Drawn so from the
+  // start (`was` null: its first drawing, or shown again after hidden), it
+  // is read in its place like any line.
+  useLayoutEffect(() => {
+    const was = wasWriting.current;
+    wasWriting.current = writing;
+    if (writing || was !== true) {
+      setStopSaid(false);
+      return;
+    }
+    const had = hadFocus.current();
+    hadFocus.current = () => false;
+    const landed = had
+      ? focusFirst([stoppedLine.current], { preventScroll: true, title: false })
+      : null;
+    if (!landed) setStopSaid(true);
+  }, [writing]);
+
+  // Read out by now: the line goes quiet, so the reason isn't found twice.
+  useEffect(() => {
+    if (!stopSaid) return;
+    const timer = setTimeout(() => setStopSaid(false), ANNOUNCE_CLEAR_MS);
+    return () => clearTimeout(timer);
+  }, [stopSaid]);
 
   function send(fromButton: boolean) {
     if (!sendable) return;
@@ -274,19 +346,6 @@ export function Composer({
     />
   ) : null;
 
-  if (blocked) {
-    return (
-      <div className={cn(position, className)}>
-        {fade}
-        {overIt}
-        <p className="glass flex items-start gap-2 rounded-card bg-[var(--glass-strong)] px-5 py-3.5 text-base text-ink-2">
-          <Lock aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-          <span className="min-w-0">{blocked}</span>
-        </p>
-      </div>
-    );
-  }
-
   const refused = attach && "refused" in attach ? attach.refused : null;
   const said = Boolean(notice) || over || (refusedSaid && refused !== null);
   const pictureSaid = attached
@@ -295,178 +354,201 @@ export function Composer({
       : attached.busyLabel
     : null;
   return (
-    <form onSubmit={onSubmit} className={cn(position, className)}>
+    // One wrapper for both shapes: a switch to the line that says why
+    // nobody can write keeps what floats over it, and this live line.
+    <div className={cn(position, className)}>
       {fade}
       {overIt}
-      <div
-        className={cn(
-          "glass flex flex-col rounded-card bg-[var(--glass-strong)] p-1.5",
-          "has-[textarea:focus-visible]:outline-2 has-[textarea:focus-visible]:outline-accent",
-        )}
-      >
-        {toggle ? (
-          <div className="flex flex-col gap-0.5 px-3.5 pt-0.5">
-            <div className="flex items-center justify-between gap-3">
-              <span id={toggleId} className="font-medium text-base text-ink">
-                {toggle.label}
-              </span>
-              <Switch
-                aria-labelledby={toggleId}
-                aria-describedby={toggle.hint ? hintId : undefined}
-                checked={toggle.checked}
-                onChange={toggle.onChange}
-              />
-            </div>
-            {toggle.hint ? (
-              <p
-                id={hintId}
-                className={
-                  toggle.checked ? "pb-1 text-ink-2 text-sm" : "sr-only"
-                }
-              >
-                {toggle.hint}
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-        <p className="sr-only" aria-live="polite">
-          {pictureSaid}
+      <p className="sr-only" aria-live="polite">
+        {stopSaid && blocked ? blocked : null}
+      </p>
+      {blocked ? (
+        <p
+          ref={stoppedLine}
+          className="glass flex items-start gap-2 rounded-card bg-[var(--glass-strong)] px-5 py-3.5 text-base text-ink-2"
+        >
+          <Lock aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+          <span className="min-w-0">{blocked}</span>
         </p>
-        <div id={linesId} aria-live="polite">
-          {said ? (
-            <div className="flex flex-col gap-0.5 px-3.5 pt-1.5 pb-1 text-sm">
-              {notice ? <p className="text-ink-2">{notice}</p> : null}
-              {refusedSaid && refused ? (
-                <p className="text-ink-2">{refused}</p>
-              ) : null}
-              {over ? <p className="text-danger">{tooLong}</p> : null}
-            </div>
-          ) : null}
-        </div>
-        {attached?.kind === "file" ? (
-          <div className="flex items-start gap-2 px-1.5 pt-1.5">
-            <AttachmentChip
-              name={attached.name}
-              meta={attached.meta}
-              href={null}
-              label={attached.label}
-              className="flex-1"
-            />
-            <IconButton
-              label={attached.remove.label}
-              icon={<X />}
-              variant="secondary"
-              onClick={attached.remove.onRemove}
-              className="self-center"
-            />
-          </div>
-        ) : attached ? (
-          <div className="flex items-start gap-2 px-1.5 pt-1.5">
-            <span className="relative grid size-24 shrink-0 place-items-center overflow-hidden rounded-control bg-surface-2">
-              {attached.src ? (
-                <Image
-                  src={attached.src}
-                  alt={attached.alt}
-                  fill
-                  unoptimized
-                  draggable={false}
-                  sizes="96px"
-                  className="object-cover"
-                />
-              ) : (
-                <Spinner className="size-5" />
-              )}
-            </span>
-            {/* Heard from the live region above. */}
-            <p
-              aria-hidden="true"
-              className="min-w-0 flex-1 self-center text-ink-2 text-sm"
-            >
-              {attached.src ? null : attached.busyLabel}
-            </p>
-            <IconButton
-              label={attached.remove.label}
-              icon={<X />}
-              variant="secondary"
-              onClick={attached.remove.onRemove}
-            />
-          </div>
-        ) : null}
-        <div className="flex items-end gap-1.5">
-          {attach ? (
-            <>
-              {"onPick" in attach ? (
-                <input
-                  ref={picker}
-                  type="file"
-                  accept={attach.accept}
-                  hidden
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    // The same file can be picked again after a problem.
-                    event.target.value = "";
-                    if (file) attach.onPick(file);
-                  }}
-                />
-              ) : null}
-              {/* Why nothing can be attached, told before it is pressed. */}
-              {refused !== null && !refusedSaid ? (
-                <span id={refusedId} hidden>
-                  {refused}
-                </span>
-              ) : null}
-              <IconButton
-                label={attach.label}
-                icon={"onPick" in attach ? <ImagePlus /> : <Paperclip />}
-                aria-haspopup={"onOpen" in attach ? "dialog" : undefined}
-                aria-describedby={
-                  said ? linesId : refused !== null ? refusedId : undefined
-                }
-                onClick={(event) => {
-                  if ("onPick" in attach) picker.current?.click();
-                  else if ("onOpen" in attach) {
-                    attach.onOpen(event.currentTarget);
-                  } else setRefusedSaid(true);
-                }}
-                className="text-ink-2"
-              />
-            </>
-          ) : null}
-          <textarea
-            ref={setField}
-            name={name}
-            value={value}
-            onChange={(event) => {
-              setRefusedSaid(false);
-              onValueChange(event.target.value);
-            }}
-            onKeyDown={onKeyDown}
-            aria-label={label}
-            aria-describedby={said ? linesId : undefined}
-            aria-invalid={over || undefined}
-            placeholder={label}
-            rows={1}
-            dir="auto"
-            autoComplete="off"
-            enterKeyHint={finePointer ? "send" : "enter"}
+      ) : (
+        <form ref={form} onSubmit={onSubmit}>
+          <div
             className={cn(
-              "max-h-40 min-h-11 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent py-2.5 pe-3.5 text-md text-ink text-start",
-              attach ? "ps-1" : "ps-3.5",
-              "placeholder:text-ink-3 focus-visible:outline-none",
+              "glass flex flex-col rounded-card bg-[var(--glass-strong)] p-1.5",
+              "has-[textarea:focus-visible]:outline-2 has-[textarea:focus-visible]:outline-accent",
             )}
-          />
-          <Button
-            type="submit"
-            disabled={!sendable}
-            // Keeps the focus, and a phone's keyboard, in the field.
-            onPointerDown={(event) => event.preventDefault()}
-            className="shrink-0 px-4"
           >
-            <SendHorizontal aria-hidden="true" className="rtl:-scale-x-100" />
-            {sendLabel}
-          </Button>
-        </div>
-      </div>
-    </form>
+            {toggle ? (
+              <div className="flex flex-col gap-0.5 px-3.5 pt-0.5">
+                <div className="flex items-center justify-between gap-3">
+                  <span
+                    id={toggleId}
+                    className="font-medium text-base text-ink"
+                  >
+                    {toggle.label}
+                  </span>
+                  <Switch
+                    aria-labelledby={toggleId}
+                    aria-describedby={toggle.hint ? hintId : undefined}
+                    checked={toggle.checked}
+                    onChange={toggle.onChange}
+                  />
+                </div>
+                {toggle.hint ? (
+                  <p
+                    id={hintId}
+                    className={
+                      toggle.checked ? "pb-1 text-ink-2 text-sm" : "sr-only"
+                    }
+                  >
+                    {toggle.hint}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+            <p className="sr-only" aria-live="polite">
+              {pictureSaid}
+            </p>
+            <div id={linesId} aria-live="polite">
+              {said ? (
+                <div className="flex flex-col gap-0.5 px-3.5 pt-1.5 pb-1 text-sm">
+                  {notice ? <p className="text-ink-2">{notice}</p> : null}
+                  {refusedSaid && refused ? (
+                    <p className="text-ink-2">{refused}</p>
+                  ) : null}
+                  {over ? <p className="text-danger">{tooLong}</p> : null}
+                </div>
+              ) : null}
+            </div>
+            {attached?.kind === "file" ? (
+              <div className="flex items-start gap-2 px-1.5 pt-1.5">
+                <AttachmentChip
+                  name={attached.name}
+                  meta={attached.meta}
+                  href={null}
+                  label={attached.label}
+                  className="flex-1"
+                />
+                <IconButton
+                  label={attached.remove.label}
+                  icon={<X />}
+                  variant="secondary"
+                  onClick={attached.remove.onRemove}
+                  className="self-center"
+                />
+              </div>
+            ) : attached ? (
+              <div className="flex items-start gap-2 px-1.5 pt-1.5">
+                <span className="relative grid size-24 shrink-0 place-items-center overflow-hidden rounded-control bg-surface-2">
+                  {attached.src ? (
+                    <Image
+                      src={attached.src}
+                      alt={attached.alt}
+                      fill
+                      unoptimized
+                      draggable={false}
+                      sizes="96px"
+                      className="object-cover"
+                    />
+                  ) : (
+                    <Spinner className="size-5" />
+                  )}
+                </span>
+                {/* Heard from the live region above. */}
+                <p
+                  aria-hidden="true"
+                  className="min-w-0 flex-1 self-center text-ink-2 text-sm"
+                >
+                  {attached.src ? null : attached.busyLabel}
+                </p>
+                <IconButton
+                  label={attached.remove.label}
+                  icon={<X />}
+                  variant="secondary"
+                  onClick={attached.remove.onRemove}
+                />
+              </div>
+            ) : null}
+            <div className="flex items-end gap-1.5">
+              {attach ? (
+                <>
+                  {"onPick" in attach ? (
+                    <input
+                      ref={picker}
+                      type="file"
+                      accept={attach.accept}
+                      hidden
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        // The same file can be picked again after a problem.
+                        event.target.value = "";
+                        if (file) attach.onPick(file);
+                      }}
+                    />
+                  ) : null}
+                  {/* Why nothing can be attached, told before it is pressed. */}
+                  {refused !== null && !refusedSaid ? (
+                    <span id={refusedId} hidden>
+                      {refused}
+                    </span>
+                  ) : null}
+                  <IconButton
+                    label={attach.label}
+                    icon={"onPick" in attach ? <ImagePlus /> : <Paperclip />}
+                    aria-haspopup={"onOpen" in attach ? "dialog" : undefined}
+                    aria-describedby={
+                      said ? linesId : refused !== null ? refusedId : undefined
+                    }
+                    onClick={(event) => {
+                      if ("onPick" in attach) picker.current?.click();
+                      else if ("onOpen" in attach) {
+                        attach.onOpen(event.currentTarget);
+                      } else setRefusedSaid(true);
+                    }}
+                    className="text-ink-2"
+                  />
+                </>
+              ) : null}
+              <textarea
+                ref={setField}
+                name={name}
+                value={value}
+                onChange={(event) => {
+                  setRefusedSaid(false);
+                  onValueChange(event.target.value);
+                }}
+                onKeyDown={onKeyDown}
+                aria-label={label}
+                aria-describedby={said ? linesId : undefined}
+                aria-invalid={over || undefined}
+                placeholder={label}
+                rows={1}
+                dir="auto"
+                autoComplete="off"
+                enterKeyHint={finePointer ? "send" : "enter"}
+                className={cn(
+                  "max-h-40 min-h-11 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent py-2.5 pe-3.5 text-md text-ink text-start",
+                  attach ? "ps-1" : "ps-3.5",
+                  "placeholder:text-ink-3 focus-visible:outline-none",
+                )}
+              />
+              <Button
+                type="submit"
+                disabled={!sendable}
+                // Keeps the focus, and a phone's keyboard, in the field.
+                onPointerDown={(event) => event.preventDefault()}
+                className="shrink-0 px-4"
+              >
+                <SendHorizontal
+                  aria-hidden="true"
+                  className="rtl:-scale-x-100"
+                />
+                {sendLabel}
+              </Button>
+            </div>
+          </div>
+        </form>
+      )}
+    </div>
   );
 }
