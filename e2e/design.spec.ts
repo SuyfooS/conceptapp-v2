@@ -196,6 +196,14 @@ const PAGES = [
   "/design/shell/team/invite?as=paid",
   // Every role an owner's, for pay and for what it holds (roles R11c).
   "/design/shell/team/invite?as=held",
+  // Inviting from a list (part 1): nothing pasted, a WhatsApp list, a sheet
+  // with its header, lines to fix, the sheet a second time, and too many.
+  "/design/shell/team/import",
+  "/design/shell/team/import?state=whatsapp",
+  "/design/shell/team/import?state=sheet",
+  "/design/shell/team/import?state=problems",
+  "/design/shell/team/import?state=again",
+  "/design/shell/team/import?state=tooMany",
   // The hiring file's lines and card for a holder, a manager and the
   // accountant (files only), and a holder's file in each state (H6a).
   "/design/shell/team?file=holder",
@@ -9564,4 +9572,271 @@ test("next week's demo says who is away on each day, on a shift and in the copy"
     sheet.getByRole("heading", { name: tb.groups.away }),
   ).toBeVisible();
   await expect(sheet).toContainText("איתי מזרחי");
+});
+
+// Inviting from a list, part 1: the twin of the people import, on the
+// device only. The paste is read as it is typed, lines to fix hold the
+// import, and the way back after an import keeps "ביטול" for its hold.
+const importTwin = "/design/shell/team/import";
+/** Any of the import's sentences, its `<ltr>` held as plain text. */
+const importWords = (
+  key: Parameters<typeof heT.markup>[0],
+  values: Record<string, string | number> = {},
+) => heT.markup(key, { ...values, ltr: (chunks) => chunks });
+
+for (const colorScheme of ["light", "dark"] as const) {
+  test.describe(colorScheme, () => {
+    test.use({ colorScheme });
+
+    test("the people import's twin after an import, and taken back, is clean", async ({
+      page,
+    }) => {
+      await page.goto(`${importTwin}?state=done`);
+      await expect(
+        page.getByRole("heading", {
+          level: 2,
+          name: heT("app.team.import.done.title", { count: 7 }),
+        }),
+      ).toBeVisible();
+      await expectCleanPage(page);
+
+      await page.goto(`${importTwin}?state=removed`);
+      await expect(
+        page.getByRole("status").filter({
+          hasText: heT("app.team.import.done.removed", { count: 7 }),
+        }),
+      ).toBeVisible();
+      await expectCleanPage(page);
+    });
+  });
+}
+
+test("the people import's twin holds the lines to fix, and fixes and removes them", async ({
+  page,
+}) => {
+  const i = he.app.team.import;
+  await page.goto(`${importTwin}?state=problems`);
+  const blocked = (count: number) =>
+    page.getByText(heT("app.team.import.status.blocked", { count }), {
+      exact: true,
+    });
+  await expect(blocked(8)).toBeVisible();
+  const submit = page.getByRole("button", {
+    name: heT("app.team.import.submit", { count: 2 }),
+    exact: true,
+  });
+  await expect(submit).toBeDisabled();
+  await expect(submit).toHaveAccessibleDescription(
+    heT("app.team.import.status.blocked", { count: 8 }),
+  );
+  // The owner's own line is already on the team: left out, never to fix.
+  await expect(
+    page.getByRole("button", {
+      name: heT("app.team.import.fixLineFor", { line: "2" }),
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await expect(page.locator('a[href*="wa.me"]')).toHaveCount(0);
+
+  const field = page.getByRole("textbox", { name: i.paste.label, exact: true });
+  await page
+    .getByRole("button", {
+      name: heT("app.team.import.fixLineFor", { line: "5" }),
+      exact: true,
+    })
+    .click();
+  await expect(field).toBeFocused();
+  expect(
+    await field.evaluate((area: HTMLTextAreaElement) =>
+      area.value.slice(area.selectionStart, area.selectionEnd),
+    ),
+  ).toBe("יוסף אלמו 03-6100000");
+
+  // Both headings at once, and back with the toast's "ביטול".
+  await page
+    .getByRole("button", {
+      name: heT("app.team.import.removeNoPhone", { count: 2 }),
+      exact: true,
+    })
+    .click();
+  await expect(field).not.toHaveValue(/משמרת ערב/);
+  await expect(blocked(6)).toBeVisible();
+  const gone = heT("app.team.import.removedNoPhone", { count: 2 });
+  const undo = page
+    .getByRole("status")
+    .filter({ hasText: gone })
+    .getByRole("button", { name: i.undoRemove, exact: true });
+  await expect(undo).toBeFocused();
+  await expect(undo).toHaveAccessibleDescription(gone);
+  await undo.click();
+  await expect(field).toHaveValue(/משמרת ערב/);
+  await expect(blocked(8)).toBeVisible();
+
+  await page
+    .getByRole("button", {
+      name: heT("app.team.import.removeLineFor", { line: "5" }),
+      exact: true,
+    })
+    .click();
+  await expect(field).not.toHaveValue(/יוסף אלמו/);
+  await expect(blocked(7)).toBeVisible();
+});
+
+test("the people import's twin invites a WhatsApp list, and takes it back with its way back", async ({
+  page,
+}) => {
+  const i = he.app.team.import;
+  await page.goto(`${importTwin}?state=whatsapp`);
+  const submit = page.getByRole("button", {
+    name: heT("app.team.import.submit", { count: 7 }),
+    exact: true,
+  });
+  await expect(submit).toBeEnabled();
+  // Each name as it will be saved, and what of a line wasn't read.
+  await expect(
+    page
+      .getByText("ד״ר מיכל רוזן", { exact: true })
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByText(
+        heT("app.team.import.outcome.dropped", { text: "000000018" }),
+        {
+          exact: true,
+        },
+      )
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
+  await expect(page.getByText(i.status.notSent, { exact: true })).toBeVisible();
+  await expect(page.locator('a[href*="wa.me"]')).toHaveCount(0);
+
+  await submit.click();
+  const title = page.getByRole("heading", {
+    level: 2,
+    name: heT("app.team.import.done.title", { count: 7 }),
+  });
+  await expect(title).toBeFocused();
+  await expect(page.getByText(i.done.team, { exact: true })).toBeVisible();
+
+  const remove = page.getByRole("button", { name: i.done.remove, exact: true });
+  await remove.click();
+  const removed = heT("app.team.import.done.removed", { count: 7 });
+  const undo = page.getByRole("button", { name: undoNamed(removed) });
+  await expect(undo).toBeFocused();
+  await expect(
+    page.getByText(i.done.removedBack, { exact: true }),
+  ).toBeVisible();
+  await undo.click();
+  await expect(title).toBeVisible();
+  await expect(remove).toBeFocused();
+
+  // Its time up, the list is back in the field, to fix and invite again.
+  await remove.click();
+  await expect(
+    page.getByRole("status").filter({ hasText: removed }),
+  ).toHaveCount(0, { timeout: HOLD_MS + 5_000 });
+  await expect(
+    page.getByText(i.done.removedBack, { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("textbox", { name: i.paste.label, exact: true }),
+  ).toHaveValue(/יעל ברק/);
+  await expect(submit).toBeEnabled();
+});
+
+test("the people import's twin reads a sheet by its header, and a second paste of it", async ({
+  page,
+}, testInfo) => {
+  const i = he.app.team.import;
+  await page.goto(`${importTwin}?state=sheet`);
+  await expect(page.getByText(i.summary.header, { exact: true })).toBeVisible();
+  await expect(
+    page
+      .getByText(/ת\.ז\./)
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      name: heT("app.team.import.submit", { count: 6 }),
+      exact: true,
+    }),
+  ).toBeEnabled();
+  // Excel's dropped zero, read in the phone's column.
+  await expect(
+    page.getByText("054-710-3301", { exact: true }).filter({ visible: true }),
+  ).toBeVisible();
+
+  await page.goto(`${importTwin}?state=again`);
+  const update = page.getByRole("button", {
+    name: heT("app.team.import.submitUpdate", { count: 2 }),
+    exact: true,
+  });
+  await expect(update).toBeEnabled();
+  const shown = (text: string) =>
+    page.getByText(text, { exact: true }).filter({ visible: true }).first();
+  await expect(
+    shown(heT("app.team.import.outcome.updateName", { role: "צוות" })),
+  ).toBeVisible();
+  await expect(
+    shown(heT("app.team.import.outcome.updateRole", { role: "צוות" })),
+  ).toBeVisible();
+  if (testInfo.project.name !== "desktop") {
+    // A phone and a tablet fold what is left out into one row.
+    const fold = page.getByRole("button", {
+      name: new RegExp(asIs(i.groups.show)),
+    });
+    await expect(fold).toHaveAttribute("aria-expanded", "false");
+    await fold.click();
+    await expect(fold).toHaveAttribute("aria-expanded", "true");
+  }
+  for (const outcome of [
+    i.outcome.same,
+    i.outcome.invited,
+    i.outcome.expired,
+    i.outcome.member,
+  ]) {
+    await expect(shown(outcome)).toBeVisible();
+  }
+});
+
+test("the people import's twin stops at too many people and at two phone columns", async ({
+  page,
+}) => {
+  const i = he.app.team.import;
+  await page.goto(`${importTwin}?state=tooMany`);
+  await expect(
+    page.getByText(
+      importWords("app.team.import.status.tooMany", { max: 300, count: 320 }),
+      { exact: true },
+    ),
+  ).toBeVisible();
+
+  await page.goto(importTwin);
+  await expect(
+    page.getByText(
+      heT("app.team.import.existing", { members: 8, invites: 1 }),
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(page.getByText(i.preview.empty, { exact: true })).toBeVisible();
+  const field = page.getByRole("textbox", { name: i.paste.label, exact: true });
+  await field.fill(
+    [
+      "דנה כהן\t054-710-5501\t054-710-5502",
+      "יוסי לוי\t054-710-5503\t054-710-5504",
+    ].join("\n"),
+  );
+  await expect(
+    page.getByText(i.status.phoneColumns, { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      name: heT("app.team.import.submit", { count: 0 }),
+      exact: true,
+    }),
+  ).toBeDisabled();
 });

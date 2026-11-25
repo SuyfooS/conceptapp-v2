@@ -9,6 +9,7 @@ import {
   optionGroups,
   typedName,
 } from "./order-taking";
+import { BULLET, clean, readsBackwards } from "./pasted-text";
 
 /**
  * A menu pasted from wherever it already is: the business's website, a PDF, a
@@ -115,12 +116,6 @@ export type ParsedMenu = {
   reversed: boolean;
 };
 
-/** Direction marks, embeddings and the byte order mark that pasted text carries. */
-const MARKS = /[\u200e\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g;
-/** Spaces of any kind, as one. */
-const SPACES = /[\s\u00a0\u2007\u202f]+/g;
-/** A bullet before the line, as lists are pasted. */
-const BULLET = /^[-*•·]\s*/u;
 /** What separates a name from its price in a printed menu: dots, dashes, colons. */
 const LEADERS = /[\s.\-–—:·…_|]+$/u;
 /** The currency after a price, and a "62.-". */
@@ -141,22 +136,11 @@ const PRICE_AT_END =
 const NUMBER_AT_END = /(?:^|\s)(\+)?(\S*\d)$/u;
 /** A spreadsheet's price cell with a number in it, read or not. */
 const HAS_NUMBER = /\d/u;
-/** A word that starts with a final letter: Hebrew copied backwards. */
-const FINAL_FIRST = /^[^\p{L}\d]*[םןץףך]/u;
-
-function clean(text: string): string {
-  return text.replace(MARKS, "").replace(SPACES, " ").trim();
-}
 
 /** Names compare as the database compares them: case aside. */
 const nameKey = (name: string) => name.toLowerCase();
 
 const chars = (text: string) => [...text].length;
-
-/** Whether the line reads backwards, as a PDF copies Hebrew. */
-function readsBackwards(text: string): boolean {
-  return text.split(" ").some((word) => FINAL_FIRST.test(word));
-}
 
 /**
  * A line turned around: its characters backwards, and each number back as it

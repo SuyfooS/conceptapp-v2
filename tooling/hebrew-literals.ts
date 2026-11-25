@@ -23,6 +23,8 @@ export const ALLOWED: Record<string, string> = {
     "mock rows for the pay screens' demo; stands in for database data, not UI copy",
   "app/design/shell/data.ts":
     "mock rows for the layout demo; stands in for database data, not UI copy",
+  "app/design/shell/team/import/data.ts":
+    "mock pastes for the people import's demo (a clinic's, a shop's and a cleaning crew's made-up names and numbers, as people paste them); stands in for what a person pastes, not UI copy",
   "app/design/shell/manage/access/data.ts":
     "mock rows for the demo of who sees pay; stands in for database data, not UI copy",
   "app/design/shell/manage/roles/data.ts":

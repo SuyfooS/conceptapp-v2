@@ -1599,6 +1599,137 @@
           "hasOwner": "The business already has an owner. Another owner is invited by the owner, from the Team screen."
         }
       },
+      "import": {
+        "title": "Invite from a list",
+        "subtitle": "Paste a name and a mobile number for each person, and see what each line becomes. The invites are saved, and the links are sent afterwards, one by one.",
+        "back": "Back to the team",
+        "existing": "{members, plural, =0 {Nobody is on the team yet} one {One person is on the team already} other {# people are on the team already}}, {invites, plural, =0 {and no invites are waiting} one {and one invite is waiting} other {and # invites are waiting}}. Nobody already there is invited again.",
+        "role": {
+          "label": "Role for the list",
+          "hint": "Everyone on the list gets this role, except a line that names another one.",
+          "oneByOne": "{owner} and {accountant} are invited one at a time, from “Invite to the team”."
+        },
+        "paste": {
+          "label": "The list",
+          "hint": "One line per person: a name and a mobile number, in any order, and a role if you like. You can copy columns from Excel or Google Sheets, header row included, or a list from WhatsApp.",
+          "placeholder": "Dana Cohen, 050-123-4567\nYossi Levi, 052-765-4321, manager",
+          "kept": "Only the name, the number and the role are kept. Other columns, such as an ID number or a wage, never leave this device.",
+          "ignored": "{count, plural, one {The column {names} is not read.} other {The columns {names} are not read.}}",
+          "column": "column <ltr>{n}</ltr>"
+        },
+        "preview": {
+          "title": "What the list becomes",
+          "empty": "What you paste shows here, line by line."
+        },
+        "summary": {
+          "ready": "{count, plural, =0 {Nobody will be invited yet} one {One person will be invited} other {# people will be invited}}",
+          "byRole": "{role}: <ltr>{count}</ltr>",
+          "fix": "{count, plural, one {One line to fix} other {# lines to fix}}",
+          "leftOut": "{count, plural, one {One line is left out, because it is already on the team or among the invites} other {# lines are left out, because they are already on the team or among the invites}}",
+          "leftOutAny": "{count, plural, one {One line is left out} other {# lines are left out}}",
+          "header": "The first line was read as the column headers."
+        },
+        "groups": {
+          "fix": "To fix",
+          "invite": "Will be invited",
+          "leftOut": "Left out",
+          "show": "Show the lines",
+          "hide": "Hide the lines"
+        },
+        "filter": {
+          "label": "Which lines to show",
+          "all": "All",
+          "fix": "To fix ({count})",
+          "invite": "Will be invited ({count})",
+          "leftOut": "Left out ({count})",
+          "none": "The list has no such lines."
+        },
+        "columns": {
+          "line": "Line",
+          "name": "Name",
+          "phone": "Mobile",
+          "role": "Role",
+          "outcome": "What happens"
+        },
+        "line": "Line <ltr>{line}</ltr>",
+        "lines": "Lines <ltr>{first}–{last}</ltr>",
+        "fixLine": "Fix line",
+        "fixLineFor": "Fix line {line}",
+        "removeLine": "Remove line",
+        "removeLineFor": "Remove line {line}",
+        "removed": "Line <ltr>{line}</ltr> was removed from the list.",
+        "removedLines": "Lines <ltr>{first}–{last}</ltr> were removed from the list.",
+        "undoRemove": "Undo",
+        "removeNoPhone": "{count, plural, one {Remove the line with no mobile number} other {Remove the # lines with no mobile number}}",
+        "removedNoPhone": "{count, plural, one {The line with no mobile number was removed from the list.} other {# lines with no mobile number were removed from the list.}}",
+        "outcome": {
+          "new": "New invite, {role}",
+          "update": "No link sent yet. The name and role will be updated",
+          "updateName": "No link sent yet. The name will be updated, and the role stays {role}",
+          "updateRole": "No link sent yet. The role will change to {role}",
+          "otherRole": "This number already has an invite as {role}, and it stays as it is",
+          "title": "A title, left out",
+          "same": "Already among the invites, unchanged",
+          "member": "Already on the team",
+          "memberAs": "Already on the team, as {name}",
+          "invited": "This number already has an invite with a link, and it stays as it is",
+          "expired": "The earlier invite to this number ran out. “New link” on the Team screen opens it again",
+          "header": "Header row, left out",
+          "sameLine": "The same as line <ltr>{line}</ltr>",
+          "dropped": "Not read: {text}"
+        },
+        "problem": {
+          "noPhone": "No mobile number",
+          "invalidPhone": "The number doesn't look like an Israeli mobile",
+          "twoPhones": "The line has two mobile numbers. Keep only the person's own",
+          "noName": "No name",
+          "nameTooLong": "The name is longer than 80 characters",
+          "reversed": "The line looks reversed, like text copied from a PDF. Copy it from Excel or type it again",
+          "excelNumber": "The number came from Excel shortened, like <ltr>5.01E+08</ltr>. Widen the column in Excel, or format it as text, and copy again",
+          "duplicate": "The number is already on line <ltr>{line}</ltr>, with another name or role",
+          "unknownRole": "The business has no role called “{word}”. Write a role it has, or leave it empty",
+          "oneByOne": "{role}: invited one at a time, from “Invite to the team”",
+          "notAllowed": "You can't invite to {role} from here",
+          "givesPay": "{role} sees pay, so only owners invite to it",
+          "held": "{role} holds permissions you don't, so only owners invite to it"
+        },
+        "note": {
+          "sameNameTeam": "The team already has {name} with another number. Worth checking the number",
+          "sameNameList": "The same name is also on line <ltr>{line}</ltr>, with another number",
+          "trailingWord": "The word “{word}” at the end of <ltr>{count}</ltr> lines goes into the name. If it's a role, add a header row with “role”"
+        },
+        "status": {
+          "blocked": "{count, plural, one {One line needs fixing. Fix or remove it, then invite.} other {# lines need fixing. Fix or remove them, then invite.}}",
+          "tooMany": "Up to <ltr>{max}</ltr> people at a time, and the list has <ltr>{count}</ltr>. Invite in a few parts.",
+          "tooLong": "The text is too long for one go. Invite in a few parts.",
+          "tooManyOpen": "The business already has <ltr>{open}</ltr> invites waiting, and the most is <ltr>{max}</ltr>. Delete old invites on the Team screen, or invite fewer.",
+          "phoneColumns": "The list has two columns of mobile numbers, and it isn't clear which is the person's own. Add a header row with “mobile” over the right column, or delete the other one.",
+          "nothingNew": "Everyone on the list is already on the team or among the invites.",
+          "notSent": "The invites are only saved. Nobody gets a message from the app."
+        },
+        "submit": "{count, plural, =0 {Invite people} one {Invite one person} other {Invite # people}}",
+        "submitUpdate": "{count, plural, one {Update one invite} other {Update # invites}}",
+        "done": {
+          "title": "{count, plural, =0 {No new invites} one {One person invited} other {# people invited}}",
+          "more": "{updated, plural, =0 {} one {One invite was updated. } other {# invites were updated. }}{skipped, plural, =0 {} one {One was already on the team or among the invites.} other {# were already on the team or among the invites.}}",
+          "team": "Nobody got a message. Now send each person their own link: “Make the link”, then WhatsApp or copy. Each link lasts 14 days, and only the invited number gets in with it.",
+          "later": "Anyone who doesn't get a link now stays on the Team screen, under “No link yet”.",
+          "toTeam": "Back to the team",
+          "another": "Invite from another list",
+          "remove": "Delete this list's invites",
+          "removed": "{count, plural, one {The invite was deleted} other {# invites were deleted}}",
+          "removedKept": "{count, plural, one {One invite already got a link, so it stays. You can delete it on the Team screen.} other {# invites already got a link, so they stay. You can delete them on the Team screen.}}",
+          "removedBack": "The list is still here, to fix and invite again."
+        },
+        "errors": {
+          "businessChanged": "You switched to another business meanwhile, so nobody was invited. Go back to the team of the business you meant.",
+          "changed": "Something on the team or in the roles changed meanwhile, so nobody was invited. Reload the screen.",
+          "tooMany": "Up to <ltr>{max}</ltr> people at a time, and the list has <ltr>{count}</ltr>. Invite in a few parts.",
+          "tooManyOpen": "The business already has <ltr>{open}</ltr> invites waiting, and the most is <ltr>{max}</ltr>. Delete old invites on the Team screen, or invite fewer.",
+          "failed": "We couldn't invite, and no invite was saved. Try again in a moment.",
+          "removeFailed": "We couldn't delete this list's invites. You can delete them one at a time on the Team screen."
+        }
+      },
       "person": {
         "call": "Call {name}",
         "clearBio": "Delete the line",

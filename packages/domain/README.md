@@ -116,6 +116,34 @@ viewer gives that hold what they don't, which the role sheet shows as an
 owner's to give, and `namedRoleShown` strips a named role to its names and
 base before it reaches a browser: what it holds is the owner's to read.
 
+`people-import.ts` reads a pasted list of people to invite at once ("הזמנה
+מרשימה", part 1 of the plan of 25 November 2026): from WhatsApp, Excel,
+Google Sheets or a note, on the device, so only each person's name, number
+and role ever leave it. `parsePeopleList` chooses the cells once from most
+lines (a tab, then `;` or `,` read quote-aware, then the staff list's `|` or
+a spaced dash), splits each raw line before cleaning its cells (cleaning
+collapses tabs), finds a header row after any title (`שם`, `נייד`, `ת"ז`,
+`תפקיד` and the like, an unknown header named in `ignored`), and without one
+the phone, role and name columns by most of their cells; two phone columns
+are never guessed between (`phoneColumns`). In free text a mobile must start
+with 0, 972, +972 or 00972 (Excel's dropped zero only in a sheet's column, so
+a 9-digit ID starting with 5 is never a phone), every other run of 5 digits
+or more and Excel's "5.01E+08" leave the name (`dropped`), a role is read at
+the line's end or start, its longest name first, and a name line followed by
+its number line is one person. Names go through `parseTeamName`, phones
+through `normalizeIsraeliMobile`; owners and accountants are one by one,
+roles above the viewer's rank, with pay or held are refused with the invite
+form's reasons, and past `PEOPLE_IMPORT_MAX` (300) no line is drawn.
+`importRolesOf` builds the roles from `inviteChoices` and the business's
+words, `againstTeam` checks the paste against the team the page loaded (a
+member, or an invite with a link, an owner's or an accountant's, or one the
+viewer may not change, is left out whatever its line says; an invite with no
+link yet is updated, its role kept when the line names none), and
+`peopleImportRows` is what the server takes again. `pasted-text.ts` holds
+what it shares with the menu's reader (`clean`, the marks, `readsBackwards`)
+and `westernDigits` for Arabic-Indic digits; `staff-list.ts` exports
+`wordKey` and `builtInRoleWord` ("מנהל/ת", "עובד/ת", "employee").
+
 `setup.ts` is the console's checklist of a business just opened (opened,
 owner, staff, address), each item from the business as stored, and the rule
 for "staff" it shares with the owner's first steps: managers and workers
