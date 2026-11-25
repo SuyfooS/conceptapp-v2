@@ -156,9 +156,16 @@ cuts stays open there with its time named. Shifts around the clock give two
 ranges that meet at the last shift's start, since a range is shorter than a
 day. A day with no shift, or none that Shabbat leaves, opens with the usual
 day as before: 09:00–17:00, Friday 08:00 until 15:00 or candle lighting,
-Saturday from havdalah until 23:30. "הוספת שעות" adds the day's last shift
-(`suggestedRange`), or the usual evening on a day of one shift. The form has
-no rule for holidays, so the suggestion has none.
+Saturday from havdalah until 23:30. The day's sheet lists each shift's hours,
+cut the same way (`shiftHoursOn`), so someone who can't work all of them
+knows where to cut. "הוספת שעות" (`suggestedRange`) reads the day's hours and
+adds hours that overlap none of them whenever any can: what the day's shifts
+still need (after the day's hours if any is free, so 09:00–17:00 at the
+restaurant gets 17:00–23:30), then the usual evening, then the day's latest
+free hours inside Shabbat's limits; only a day with no free minute (a summer
+Saturday from havdalah to midnight) gets the usual hours all the same, and
+the day's check names the overlap. The form has no rule for holidays, so the
+suggestion has none.
 
 `copy-week.ts` is "העתקה מהשבוע שעבר" on the schedule builder: last week as it
 stands once built (`copySourceOf`), what copying it onto the week on the

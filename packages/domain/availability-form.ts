@@ -190,12 +190,42 @@ export function shiftHoursOf(patterns: readonly ShiftPattern[]): ShiftHours[] {
 
 type Hours = { start: string; end: string };
 
+/** Minutes after the day's midnight; an end past 1440 is on the next day. */
+type Span = { from: number; to: number };
+
 const DAY_MINUTES = 24 * 60;
 
 /** "HH:MM" for minutes after the day's midnight, past midnight included. */
 function clockOf(minutes: number): string {
   const m = minutes % DAY_MINUTES;
   return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+}
+
+/** A range's minutes, as the form's overlap check reads them. */
+function spanOf({ start, end }: Hours): Span {
+  const from = minutesOf(start);
+  return { from, to: from + rangeMinutes(start, end) };
+}
+
+/** A span shorter than a day, starting before the day's midnight, as hours. */
+function hoursOf({ from, to }: Span): Hours {
+  return { start: clockOf(from), end: clockOf(to) };
+}
+
+/**
+ * What is left of `from`–`to` once the `taken` spans are out, earliest first.
+ * Touching a taken span is free, as the form's overlap check has it.
+ */
+function freeIn(from: number, to: number, taken: readonly Span[]): Span[] {
+  const free: Span[] = [];
+  let at = from;
+  for (const span of [...taken].sort((a, b) => a.from - b.from)) {
+    if (span.from >= to) break;
+    if (span.from > at) free.push({ from: at, to: span.from });
+    at = Math.max(at, span.to);
+  }
+  if (at < to) free.push({ from: at, to });
+  return free;
 }
 
 /**
@@ -233,7 +263,7 @@ function shiftSpans(
   day: string,
   shabbat: ShabbatLimits | null,
   shifts: readonly ShiftHours[],
-): { from: number; to: number }[] {
+): Span[] {
   return shiftsOn(shifts, weekdayOf(day)).flatMap((shift) => {
     let from = minutesOf(shift.start);
     let to = from + rangeMinutes(shift.start, shift.end);
@@ -283,31 +313,93 @@ export function suggestedDay(
 }
 
 /**
- * The hours a new range starts with ("הוספת שעות"). On an empty day, the
- * day's first suggested range (`suggestedDay`). With hours already, the day's
- * last shift, from the latest start to the latest end, which someone who
- * narrowed the day to its first shift adds next. On a day with one shift (or
- * all starting together), whose last shift is the whole suggestion already,
- * and on a day without shifts, the usual evening: 18:00–23:00, and on Friday
- * and Saturday the usual hours there, when closed on Shabbat.
+ * The hours of each of the business's shifts on `day`, earliest first, each
+ * once and cut by Shabbat as the suggestion cuts them (`suggestedDay`): what
+ * the day's sheet lists, so someone who can't work all of the day's shifts
+ * knows where each starts and ends. Empty where the business has no shift
+ * that day, or Shabbat leaves none.
+ */
+export function shiftHoursOn(
+  day: string,
+  shabbat: ShabbatLimits | null,
+  shifts: readonly ShiftHours[],
+): Hours[] {
+  const seen = new Set<string>();
+  return shiftSpans(day, shabbat, shifts)
+    .sort((a, b) => a.from - b.from || a.to - b.to)
+    .filter(({ from, to }) => {
+      const key = `${from}-${to}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map(hoursOf);
+}
+
+/**
+ * The hours a new range starts with ("הוספת שעות"), next to the day's `rows`,
+ * overlapping none of them whenever any hours can:
+ * 1. on an empty day, the day's first suggested range (`suggestedDay`);
+ * 2. what the day's shifts still need: the part of the suggested hours the
+ *    rows leave free, after them if any is (09:00–16:00 or 09:00–17:00 at
+ *    the restaurant gets the rest of the evening, until 23:30), otherwise the
+ *    earliest (16:00–23:30 gets 09:00–16:00);
+ * 3. the usual evening, 18:00–23:00 (on Friday and Saturday the usual hours
+ *    there, when closed on Shabbat), as on a day without shifts before;
+ * 4. the latest free hours of the day, until midnight and inside Shabbat's
+ *    limits, beside the day's hours and no longer than the usual hours of 3
+ *    (09:00–23:30 at the restaurant gets 23:30–00:00, a Friday of
+ *    08:00–14:30 the time until candle lighting, a Saturday open on Shabbat
+ *    with 19:30–00:00 the five hours before it);
+ * 5. when the rows leave no free minute the form takes (a summer Saturday
+ *    whose shift starts at havdalah and runs to midnight), the usual hours
+ *    all the same, and the day's check names the overlap.
+ * A row whose hours aren't whole yet (a time cleared) is checked on its own,
+ * so it isn't counted.
  */
 export function suggestedRange(
   day: string,
-  hasHours: boolean,
+  rows: readonly Hours[],
   shabbat: ShabbatLimits | null,
   shifts: readonly ShiftHours[],
 ): Hours {
-  const [first] = suggestedDay(day, shabbat, shifts);
-  if (!hasHours) return first;
-  const spans = shiftSpans(day, shabbat, shifts);
-  if (spans.length === 0) return usualRange(day, true, shabbat);
-  const last = {
-    start: clockOf(Math.max(...spans.map((s) => s.from))),
-    end: clockOf(Math.max(...spans.map((s) => s.to))),
-  };
-  return last.start === first.start && last.end === first.end
-    ? usualRange(day, true, shabbat)
-    : last;
+  const opening = suggestedDay(day, shabbat, shifts);
+  if (rows.length === 0) return opening[0];
+  const taken = rows
+    .filter(
+      ({ start, end }) => TIME.test(start) && TIME.test(end) && start !== end,
+    )
+    .map(spanOf);
+  const latest = Math.max(0, ...taken.map((span) => span.to));
+  if (shiftSpans(day, shabbat, shifts).length > 0) {
+    // Each suggested range is shorter than a day, so each free part is too;
+    // a part starting past midnight would read as the morning.
+    const needed = opening
+      .flatMap((range) => {
+        const { from, to } = spanOf(range);
+        return freeIn(from, to, taken);
+      })
+      .filter((span) => span.from < DAY_MINUTES);
+    const part = needed.find((span) => span.from >= latest) ?? needed[0];
+    if (part) return hoursOf(part);
+  }
+  const usual = usualRange(day, true, shabbat);
+  const { from, to } = spanOf(usual);
+  if (taken.every((span) => span.to <= from || to <= span.from)) return usual;
+  const free = freeIn(
+    shabbat && day === shabbat.saturday ? minutesOf(shabbat.havdalah) : 0,
+    shabbat && day === shabbat.friday
+      ? minutesOf(shabbat.candleLighting)
+      : DAY_MINUTES,
+    taken,
+  ).at(-1);
+  if (!free) return usual;
+  const most = to - from;
+  return hoursOf(
+    free.from >= latest
+      ? { from: free.from, to: Math.min(free.to, free.from + most) }
+      : { from: Math.max(free.from, free.to - most), to: free.to },
+  );
 }
 
 /** Message keys of the days of the week, 0 = Sunday. */
