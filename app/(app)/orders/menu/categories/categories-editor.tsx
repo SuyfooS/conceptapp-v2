@@ -9,6 +9,7 @@ import {
 import { Button } from "@ui/button";
 import { ChoiceMenu, choiceShown } from "@ui/choice-menu";
 import { cn } from "@ui/cn";
+import { ignoreHeldEnter } from "@ui/focus-after";
 import { IconButton } from "@ui/icon-button";
 import { ListGroup } from "@ui/list-row";
 import { PageSection } from "@ui/page";
@@ -17,7 +18,7 @@ import { UndoRow } from "@ui/undo-row";
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useRef, useState } from "react";
 import { inputClass } from "../../../manage/list-rows";
 import { FailureLine } from "../menu-parts";
 import type {
@@ -25,6 +26,12 @@ import type {
   MenuDepartment,
   SaveCategories,
 } from "../menu-types";
+import { arrowClass, type MoveBy, useRowMoves } from "../row-moves";
+import { useLastSaved } from "../saved-list";
+
+/** A category's row, as its list keys it: one not saved yet by its name. */
+const categoryKey = (category: CategoryInput) =>
+  category.id ?? `new:${category.name}`;
 
 /** A category's row: its name over the rest on a phone, all in a line from a computer. */
 const rowClass =
@@ -33,7 +40,11 @@ const rowClass =
 /**
  * The menu's categories (waiter mode P2): each a name to type over, the
  * department that prepares its items, how many it has, and its place in the
- * menu, saved whole with each change, as the departments are. Removing one
+ * menu, saved whole with each change, as the departments are. A move keeps
+ * the focus on the category's arrow (the other one once it reaches an end)
+ * and says where it went once it saved, or where it is back
+ * (`useRowMoves`); Enter held down moves it once, so the other arrow takes
+ * no key repeating. Removing one
  * has an undo, which brings it back with its items. One whose department was
  * removed says so until another is chosen, and still saves as it is.
  * Phone: one list. Tablet: the list beside the items of the category whose
@@ -65,11 +76,20 @@ export function CategoriesEditor({
   const tm = useTranslations("app.orders.menu");
   // What this screen saved last, in its order, until the server's comes back.
   const [order, setOrder] = useState<CategoryInput[] | null>(null);
+  // Saves on their way: while any is, a new version (the server's answer to
+  // an earlier one) leaves this screen's newer list, which its own save has.
+  const [sending, setSending] = useState(0);
   const [heldVersion, setHeldVersion] = useState(version);
   if (heldVersion !== version) {
     setHeldVersion(version);
-    setOrder(null);
+    if (sending === 0) setOrder(null);
   }
+  // Which change is the latest: only its answer says what the list is.
+  const latest = useRef(0);
+  // How many changes are on their way, and the latest one refused (its
+  // number) while it is still the latest.
+  const away = useRef(0);
+  const refusedLatest = useRef(0);
   const liveDepartments = departments.filter((d) => d.live);
   const [name, setName] = useState("");
   const [department, setDepartment] = useState(liveDepartments[0]?.id ?? "");
@@ -81,9 +101,13 @@ export function CategoriesEditor({
   } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [failure, setFailure] = useState<MenuActionFailure | null>(null);
+  // Each refusal a line of its own, so the same words again are heard.
+  const [refusals, setRefusals] = useState(0);
   const [saved, setSaved] = useState(0);
 
   const shown: CategoryInput[] = order ?? categories;
+  const moves = useRowMoves(shown, categoryKey);
+  const server = useLastSaved<CategoryInput>(categories);
   const countOf = (id: string | undefined) =>
     id ? items.filter((item) => item.category === id).length : 0;
   const current =
@@ -98,26 +122,61 @@ export function CategoriesEditor({
       (c, at) => at !== except && c.name.toLowerCase() === text.toLowerCase(),
     );
 
-  /** Saves the list (the server checks it again); says whether it saved. */
-  async function change(next: CategoryInput[]): Promise<boolean> {
-    const before = order;
+  /**
+   * Saves the list (the server checks it again): true when it saved, false
+   * when it was refused, null when a later change's answer decides. A
+   * change made before the answer came was made from this list, and saves
+   * it whole: only the latest change's answer says what the list is, so an
+   * earlier answer leaves the screen as it is, its caller too (an undo, a
+   * name typed), and no press made meanwhile is lost. Refused, the screen
+   * shows the server's list again: an earlier change's, saved, when Next
+   * hasn't drawn its answer yet (`useLastSaved`). Next can settle an
+   * earlier save after the latest one's refusal, so one that saved then
+   * shows its list, the server's now. Every answer is told to the moves,
+   * with whether any change is still on its way, so a move is said by the
+   * saves that have it once they all answered (`useRowMoves`).
+   */
+  async function change(next: CategoryInput[]): Promise<boolean | null> {
+    latest.current += 1;
+    const mine = latest.current;
+    away.current += 1;
     setOrder(next);
+    setSending((count) => count + 1);
     let result: Awaited<ReturnType<SaveCategories>>;
     try {
       result = await save(next);
     } catch {
       result = { ok: false, failure: "failed" };
     }
+    away.current -= 1;
+    setSending((count) => count - 1);
+    const decides = mine === latest.current;
+    moves.answered(mine, result.ok, away.current === 0);
     if (result.ok) {
-      // The new ones have their ids now, so a removal of one can be undone.
+      // Saved, overtaken or not: what the server has now, unless a newer
+      // change saved. The new ones have their ids, so a removal of one can
+      // be undone.
       const ids = result.value;
-      setOrder(next.map((c, at) => ({ ...c, id: ids[at] ?? c.id })));
+      const kept = next.map((c, at) => ({ ...c, id: ids[at] ?? c.id }));
+      server.saved(kept, mine);
+      if (!decides) {
+        // The latest change was refused before this answer came: the
+        // screen shows the server's list, which has this one now.
+        if (refusedLatest.current === latest.current) {
+          setOrder(server.refused());
+        }
+        return null;
+      }
+      setOrder(kept);
       setFailure(null);
       setSaved((count) => count + 1);
       return true;
     }
-    setOrder(before);
+    if (!decides) return null;
+    refusedLatest.current = mine;
+    setOrder(server.refused());
     setFailure(result.failure);
+    setRefusals((count) => count + 1);
     return false;
   }
 
@@ -131,13 +190,12 @@ export function CategoriesEditor({
     }
     setName("");
     setTaken(null);
-    if (
-      await change([...shown, { name: text, department: chosenDepartment }])
-    ) {
-      setRemoved(null);
-    } else {
-      setName((typing) => typing || text);
-    }
+    const saved = await change([
+      ...shown,
+      { name: text, department: chosenDepartment },
+    ]);
+    if (saved) setRemoved(null);
+    else if (saved === false) setName((typing) => typing || text);
   }
 
   /** False when the name stays as it was. */
@@ -162,7 +220,7 @@ export function CategoriesEditor({
     );
   }
 
-  function move(index: number, by: -1 | 1) {
+  function move(index: number, by: MoveBy) {
     const to = index + by;
     if (to < 0 || to >= shown.length) return;
     const next = [...shown];
@@ -170,6 +228,18 @@ export function CategoriesEditor({
     if (!moving) return;
     next.splice(to, 0, moving);
     void change(next);
+    // The move with the change that carries it, numbered as it was sent.
+    moves.moving(
+      categoryKey(moving),
+      by,
+      {
+        moved: (place, count) =>
+          t("movedTo", { name: moving.name, place, count }),
+        back: (place, count) =>
+          t("movedBack", { name: moving.name, place, count }),
+      },
+      latest.current,
+    );
   }
 
   async function remove(index: number) {
@@ -177,7 +247,7 @@ export function CategoriesEditor({
     if (!category) return;
     const before = removed;
     setRemoved({ category, index, count: countOf(category.id) });
-    if (!(await change(shown.filter((_, at) => at !== index)))) {
+    if ((await change(shown.filter((_, at) => at !== index))) === false) {
       setRemoved(before);
     }
   }
@@ -189,7 +259,7 @@ export function CategoriesEditor({
     if (shown.some((c) => c.id !== undefined && c.id === category.id)) return;
     const next = [...shown];
     next.splice(index, 0, category);
-    if (!(await change(next))) setRemoved(removed);
+    if ((await change(next)) === false) setRemoved(removed);
   }
 
   const atMost = shown.length >= MENU_CAPS.categories;
@@ -204,7 +274,7 @@ export function CategoriesEditor({
         stamp={String(saved)}
         duration={1800}
       />
-      <FailureLine failure={failure} />
+      <FailureLine key={refusals} failure={failure} />
       <div className="grid items-start gap-6 md:grid-cols-2 md:gap-8 xl:grid-cols-1">
         <PageSection title={t("listTitle")} className="xl:max-w-3xl">
           <ListGroup>
@@ -227,7 +297,7 @@ export function CategoriesEditor({
               }`;
               return (
                 <div
-                  key={category.id ?? `new:${category.name}`}
+                  key={categoryKey(category)}
                   className={cn(
                     rowClass,
                     current === category &&
@@ -304,18 +374,22 @@ export function CategoriesEditor({
                     {disabled ? null : (
                       <>
                         <IconButton
+                          ref={moves.arrowRef(categoryKey(category), -1)}
                           label={t("upFor", { name: category.name })}
                           icon={<ArrowUp />}
-                          className="text-ink-2"
+                          className={arrowClass}
                           disabled={index === 0}
                           onClick={() => move(index, -1)}
+                          onKeyDown={ignoreHeldEnter}
                         />
                         <IconButton
+                          ref={moves.arrowRef(categoryKey(category), 1)}
                           label={t("downFor", { name: category.name })}
                           icon={<ArrowDown />}
-                          className="text-ink-2"
+                          className={arrowClass}
                           disabled={index === shown.length - 1}
                           onClick={() => move(index, 1)}
+                          onKeyDown={ignoreHeldEnter}
                         />
                         <IconButton
                           label={t("remove", { name: category.name })}
@@ -373,7 +447,7 @@ export function CategoriesEditor({
             <UndoRow
               // Each removal a row of its own (keyed as its row was): another
               // while this one is up takes the focus again.
-              key={removed.category.id ?? `new:${removed.category.name}`}
+              key={categoryKey(removed.category)}
               message={t("removed", {
                 name: removed.category.name,
                 count: removed.count,

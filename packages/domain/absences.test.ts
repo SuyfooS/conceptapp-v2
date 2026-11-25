@@ -9,6 +9,7 @@ import {
   awayDuring,
   awayOn,
   awayToday,
+  awayWindow,
   canRecordAbsence,
   daysApart,
   liveAbsences,
@@ -214,6 +215,37 @@ describe("who is away", () => {
     expect(awayDuring(spans, "yoav", late("2026-11-25"))).toBe(false);
     expect(awayDuring(spans, "yoav", late("2026-11-23"))).toBe(true);
     expect(awayDuring(spans, "noa", late("2026-11-27"))).toBe(true);
+  });
+
+  it("is read for the builder over the week and the day after it", () => {
+    // Sunday 22 to Saturday 28 November, then Sunday 29.
+    expect(awayWindow("2026-11-22")).toEqual({
+      from: "2026-11-22",
+      to: "2026-11-29",
+    });
+    // A week from Monday 16 to Sunday 22: Noa's days away from Monday 23,
+    // the day after it, are read, and count for Sunday's night alone.
+    const window = awayWindow("2026-11-16");
+    expect(window).toEqual({ from: "2026-11-16", to: "2026-11-23" });
+    const touching = (to: string) =>
+      spans.filter((span) => span.from <= to && span.to >= window.from);
+    // Read to the week's last day only, they weren't.
+    expect(touching("2026-11-22")).toEqual([]);
+    const read = touching(window.to);
+    expect(read.map((span) => span.userId)).toEqual(["noa"]);
+    const sunday = (start: string, end: string) => ({
+      day: "2026-11-22",
+      start,
+      end,
+    });
+    expect(awayDuring(read, "noa", sunday("22:00", "06:00"))).toBe(true);
+    expect(awayDuring(read, "noa", sunday("16:00", "23:30"))).toBe(false);
+    expect(awayDuring(read, "noa", sunday("19:30", "00:00"))).toBe(false);
+    // A month's end in the middle.
+    expect(awayWindow("2026-11-30")).toEqual({
+      from: "2026-11-30",
+      to: "2026-12-07",
+    });
   });
 });
 

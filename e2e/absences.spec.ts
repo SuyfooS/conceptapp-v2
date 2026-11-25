@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import he from "../messages/he.json" with { type: "json" };
 import { focusWhenSaid, noteFocusWhenSaid } from "./announcer";
-import { buildScreen } from "./build-screen";
+import { buildScreen, onDate } from "./build-screen";
 import {
   buildDemoThisWeek,
   clearAvailability,
@@ -57,6 +57,12 @@ function days(): { today: string; sunday: string; monday: string } {
     new Date(at.getTime() + n * 86_400_000).toISOString().slice(0, 10);
   return { today, sunday: day(ahead), monday: day(ahead + 1) };
 }
+
+/** The day `count` days after `date` (YYYY-MM-DD). */
+const daysAfter = (date: string, count: number) =>
+  new Date(Date.parse(`${date}T00:00:00Z`) + count * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
 
 const shown = (page: Page, text: string | RegExp) =>
   page.getByRole("main").getByText(text).filter({ visible: true }).first();
@@ -567,6 +573,103 @@ test("the builder says who is away on next week's days, in a shift's people and 
   } finally {
     await clearSchedule();
     await clearAvailability(NOA.e164);
+  }
+});
+
+// A night past midnight into a day away (`awayDuring`, the fill plan's PR 3):
+// the builder reads days away to the day after the week, so next Saturday's
+// night, which runs into the Sunday after, counts as away for Noa in the copy,
+// in the shift's people and on her row once she is on it, though nothing on
+// next week's own days says she is away.
+test("a night into a day away the day after the week: the copy leaves her off, and its people say she is away", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(90_000);
+  await skipNearTheWeekTurn();
+  const tb = he.app.build;
+  const { sunday } = days();
+  const saturday = daysAfter(sunday, 6);
+  const after = daysAfter(sunday, 7);
+  await clearSchedule();
+  try {
+    // This week's Saturday night, added by hand, with Noa on it.
+    await buildDemoThisWeek(
+      [
+        {
+          offset: 6,
+          name: "לילה",
+          start: "20:00",
+          end: "02:00",
+          needed: 1,
+          pattern: null,
+          people: [[NOA.e164, null]],
+        },
+      ],
+      true,
+    );
+    // Away on the Sunday after next week.
+    await recordDemoAbsence(NOA.id, "vacation", after, after);
+    await signIn(page, MANAGER);
+    await page.goto(`/schedule/build?week=${sunday}`);
+    await expect(
+      page.getByRole("heading", { level: 1, name: tb.title }),
+    ).toBeVisible();
+    // No day of next week is hers away.
+    await expect(
+      shown(page, heT("app.build.awayDay", { names: NOA.name })),
+    ).toHaveCount(0);
+
+    // The copy leaves her off next Saturday's night, as away.
+    const screen = buildScreen(page);
+    await page.getByRole("button", { name: tb.copy.action }).click();
+    const copy = page.getByRole("dialog", { name: tb.copy.title });
+    await expect(copy).toContainText(
+      heT("app.build.copy.summary", { shifts: 1, people: 0 }),
+    );
+    const away = screen.group(tb.groups.away);
+    await expect(away).toContainText(NOA.name);
+    await expect(away).toContainText(
+      heT("app.build.copy.skippedOn", {
+        shift: "לילה",
+        day: he.app.availability.weekdays.sat,
+      }),
+    );
+    await copy
+      .getByRole("button", { name: heT("app.build.copy.submit", { count: 1 }) })
+      .click();
+    await expect(copy).toHaveCount(0);
+
+    // The night's people: away, not among those who sent nothing.
+    if (testInfo.project.name === "phone") {
+      await page
+        .getByRole("group", { name: tb.days, exact: true })
+        .filter({ visible: true })
+        .getByRole("button")
+        .nth(6)
+        .click();
+    }
+    const night = screen.card("לילה", onDate(saturday));
+    await expect(night).toContainText(tb.nobody);
+    await night.click();
+    await expect(screen.group(tb.groups.away)).toContainText(NOA.name);
+    await expect(
+      screen.group(tb.groups.noAnswer).getByText(NOA.name),
+    ).toHaveCount(0);
+    await expectCleanPage(page);
+    await page.screenshot({
+      path: testInfo.outputPath("night-into-a-day-away.png"),
+      fullPage: true,
+    });
+
+    // Put on it all the same, her own row says so (`noteOf`), as the list
+    // she came from did.
+    await screen.addButton(NOA.name).click();
+    const onIt = screen.group(tb.groups.assigned);
+    await expect(onIt).toContainText(NOA.name);
+    await expect(onIt).toContainText(tb.notes.away);
+    await screen.closeSheet();
+  } finally {
+    await clearSchedule();
   }
 });
 

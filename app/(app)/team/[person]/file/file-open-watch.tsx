@@ -1,20 +1,31 @@
 "use client";
 
+import { announce } from "@ui/announcer";
 import { Button } from "@ui/button";
+import { DockButton, FloatingDock } from "@ui/floating-dock";
+import {
+  focusWhenGone,
+  ignoreHeldEnter,
+  onScreen,
+  watchFocusIn,
+} from "@ui/focus-after";
 import { Spinner } from "@ui/spinner";
-import { Lock } from "lucide-react";
+import { Lock, LockOpen } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import {
   createContext,
   type ReactNode,
+  type RefObject,
   use,
+  useEffect,
   useEffectEvent,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
 } from "react";
-import { focusIfLost } from "./file-focus";
+import { focusIfLost, focusWhenDrawn, titleAbove } from "./file-focus";
 import {
   deviceFileTabs,
   FILE_TABS_CHANNEL,
@@ -61,7 +72,12 @@ const CHECKING_AFTER_MS = 300;
  * here (`focusOnOpen`), the focus, which was on the code's boxes, goes to
  * the file's first heading. The twin, which keeps nothing, goes to its
  * locked state instead (`lockedHref`), and its tabs talk among themselves
- * only.
+ * only. A minute before it locks for want of activity, a line says so, at
+ * once to a screen reader, with "להשאיר פתוח" (`IdleWarning`); kept open,
+ * by it or by any activity, "התיק נשאר פתוח" is said. The warning keeps
+ * nothing open by itself. On a phone it is what keeps a screen reader's
+ * file open: a swipe there moves only the reader's own cursor, no focus,
+ * so reading the file is no activity the page hears.
  */
 export function FileOpenWatch({
   actions,
@@ -88,10 +104,23 @@ export function FileOpenWatch({
   // What held the focus in the file as it was hidden: inert, it lost it.
   const heldFocus = useRef<HTMLElement | null>(null);
   const [held, setHeld] = useState(false);
+  // The hold as the watch last gave it, before it is drawn.
+  const holding = useRef(false);
+  // The warning's own part of the page, and where its focus came from.
+  const warningRoot = useRef<HTMLDivElement>(null);
+  const warningFrom = useRef<Element | null>(null);
   // Held for longer than a moment: the line saying the server is asked.
   const [checking, setChecking] = useState(false);
   const checkingSoon = useRef<number | undefined>(undefined);
   const channel = lockedHref ? FILE_TABS_TWIN_CHANNEL : FILE_TABS_CHANNEL;
+  const locale = useLocale();
+  // A minute before it locks: the warning, and whether it was on screen
+  // (given while the file was held, it was never seen, nor its end said).
+  const [warned, setWarned] = useState(false);
+  const warningSeen = useRef(false);
+  // How many times a warning seen ended with the file still open.
+  const [kept, setKept] = useState(0);
+  const stayOpen = useRef<(() => void) | null>(null);
 
   function close(why: FileClose) {
     if (closing.current) return;
@@ -110,13 +139,18 @@ export function FileOpenWatch({
   const closeFromWatch = useEffectEvent((why: FileClose) => close(why));
   const keepOpen = useEffectEvent((slide: boolean) => actions.keepOpen(slide));
   const hold = useEffectEvent((next: boolean) => {
+    holding.current = next;
     const active = document.activeElement;
-    if (
-      next &&
-      active instanceof HTMLElement &&
-      place.current?.contains(active)
-    ) {
-      heldFocus.current = active;
+    if (next && active instanceof HTMLElement) {
+      if (place.current?.contains(active)) {
+        heldFocus.current = active;
+      } else if (warningRoot.current?.contains(active)) {
+        // On "להשאיר פתוח", which goes with the hold: shown again, the
+        // file takes the focus at the title of the part it came from, else
+        // at its first heading (`landingIn`); closed, the locked card
+        // takes it.
+        heldFocus.current = landingIn(place.current, warningFrom.current);
+      }
     }
     setHeld(next);
     // Each hold waits its own moment before saying anything.
@@ -130,31 +164,84 @@ export function FileOpenWatch({
     }
   });
 
+  const warn = useEffectEvent((soon: boolean) => {
+    setWarned(soon);
+    if (soon) return;
+    if (warningSeen.current) setKept((count) => count + 1);
+    warningSeen.current = false;
+  });
+
   useLayoutEffect(() => {
     const device = deviceFileTabs(window, channel);
     tabs.current = device;
-    const stop = watchOpenFile({
+    const watching = watchOpenFile({
       memory: memory.current,
       keepOpen: (slide) => keepOpen(slide),
       close: (why) => closeFromWatch(why),
       hold: (next) => hold(next),
+      warn: (soon) => warn(soon),
       page: document,
       win: window,
       tabs: device,
     });
+    stayOpen.current = watching.stayOpen;
     return () => {
-      stop();
+      watching.stop();
+      stayOpen.current = null;
       window.clearTimeout(checkingSoon.current);
+      // A watch that starts again counts afresh, with nothing to warn of.
+      setWarned(false);
+      warningSeen.current = false;
     };
   }, [channel]);
 
+  // The warning on screen: its end is said.
+  const warningShown = warned && !held;
+  useLayoutEffect(() => {
+    if (warningShown) warningSeen.current = true;
+  }, [warningShown]);
+
+  // The focus on its way back into the file shown again, until it landed
+  // there (`focusWhenDrawn`): true once that is over, false when the file
+  // closed or was held again first.
+  const landing = useRef<Promise<boolean> | null>(null);
+
+  // Kept open after a warning that was on screen: said once, after the
+  // focus its "להשאיר פתוח" held has gone back into the file (not again
+  // when the screen is shown again), the file shown again included. Never
+  // when the file closed or was held again before that focus landed: a
+  // file that closes says nothing more, and its locked card has the focus.
+  const keptSaid = useRef(0);
+  useEffect(() => {
+    if (kept === keptSaid.current) return;
+    keptSaid.current = kept;
+    const say = () => announce(t("idle.kept"), { lang: locale });
+    const putting = landing.current;
+    if (!putting) {
+      say();
+      return;
+    }
+    void putting.then((landed) => {
+      if (landed) say();
+    });
+  }, [kept, t, locale]);
+
   // Shown again: the focus the hiding took goes back, unless the person
-  // put it somewhere else meanwhile.
+  // put it somewhere else meanwhile, and again on each drawing while it is
+  // still lost: the title was inert and invisible until this drawing, and
+  // with less motion asked for its `visibility` is a transition, hidden
+  // until a drawing moves it on (`focusWhenDrawn`).
   useLayoutEffect(() => {
     if (held) return;
     const back = heldFocus.current;
     heldFocus.current = null;
-    if (back?.isConnected) focusIfLost(back, document);
+    if (!back?.isConnected) return;
+    const putting = focusWhenDrawn(back, document, window);
+    landing.current = putting.done;
+    void putting.done.then(() => {
+      if (landing.current === putting.done) landing.current = null;
+    });
+    return putting.stop;
   }, [held]);
 
   useLayoutEffect(() => {
@@ -186,9 +273,124 @@ export function FileOpenWatch({
         >
           {children}
         </div>
+        {warningShown ? (
+          <IdleWarning
+            onStay={() => stayOpen.current?.()}
+            place={place}
+            closing={closing}
+            held={holding}
+            root={warningRoot}
+            cameFrom={warningFrom}
+          />
+        ) : null}
       </div>
     </FileClosing>
   );
+}
+
+/**
+ * The file is about to lock for want of activity: a line that says so, an
+ * alert, so a screen reader says it at once wherever its reader is, and
+ * "להשאיר פתוח", in the dock, within reach wherever the page is scrolled.
+ * The line names the button and where it is, as a phone's reader, whose
+ * swipes are no activity, comes to it after the whole file; the button is
+ * described by the line. It doesn't take the focus: a press anywhere keeps
+ * the file open too, asked of the server at once (`watchOpenFile`).
+ * Gone with the focus on its button (kept open, by it or by anything else),
+ * the focus goes to the title of the part of the file it came from, else
+ * to the file's first heading (`landingIn`), never back to a control the
+ * person was only passing, which an Enter meant for this button would
+ * press; never when the file closed, whose locked card takes it, nor when
+ * it went with the file held, inert (its 15 minutes' check, the page put
+ * away): the file takes it as it shows again (`heldFocus`), or the locked
+ * card. Enter held down on the button presses it once.
+ */
+function IdleWarning({
+  onStay,
+  place,
+  closing,
+  held,
+  root,
+  cameFrom,
+}: {
+  onStay: () => void;
+  /** The file, where the focus goes back to. */
+  place: RefObject<HTMLDivElement | null>;
+  /** The file is closing: the locked card takes the focus. */
+  closing: RefObject<boolean>;
+  /** The file is held: the focus waits for it to show again, or to close. */
+  held: RefObject<boolean>;
+  /** The warning's own part of the page. */
+  root: RefObject<HTMLDivElement | null>;
+  /** Where the focus came to its button from. */
+  cameFrom: RefObject<Element | null>;
+}) {
+  const t = useTranslations("app.team.file.idle");
+  const warningId = useId();
+
+  useLayoutEffect(() => {
+    const element = root.current;
+    if (!element) return;
+    // Each warning counts afresh.
+    cameFrom.current = null;
+    const watch = watchFocusIn(element);
+    const from = (event: FocusEvent) => {
+      const before = event.relatedTarget;
+      if (before instanceof Element && !element.contains(before)) {
+        cameFrom.current = before;
+      }
+    };
+    element.addEventListener("focusin", from);
+    return () => {
+      element.removeEventListener("focusin", from);
+      const had = watch.had();
+      watch.stop();
+      if (!had || closing.current || held.current) return;
+      const back = landingIn(place.current, cameFrom.current);
+      queueMicrotask(() => {
+        focusWhenGone([back]);
+      });
+    };
+  }, [place, closing, held, root, cameFrom]);
+
+  return (
+    <div ref={root}>
+      <FloatingDock
+        notice={
+          <p
+            id={warningId}
+            role="alert"
+            className="glass mx-auto w-fit rounded-[22px] px-4 py-2 text-center font-medium text-base"
+          >
+            {t("warning")}
+          </p>
+        }
+      >
+        <DockButton
+          icon={<LockOpen aria-hidden="true" />}
+          onClick={onStay}
+          onKeyDown={ignoreHeldEnter}
+          aria-describedby={warningId}
+        >
+          {t("keepOpen")}
+        </DockButton>
+      </FloatingDock>
+    </div>
+  );
+}
+
+/**
+ * Where the focus lands in the file as the warning goes with it: the title
+ * of the part it came from, else the file's first heading (`titleAbove`),
+ * among the titles on screen. Null without a file.
+ */
+function landingIn(
+  file: HTMLElement | null,
+  from: Element | null,
+): HTMLElement | null {
+  if (!file) return null;
+  const titles = [...file.querySelectorAll<HTMLElement>("h2")].filter(onScreen);
+  return titleAbove(from && file.contains(from) ? from : null, titles);
 }
 
 /** "נעילת התיק": the file closes here at once, and in every tab of the device. */

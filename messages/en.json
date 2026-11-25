@@ -1844,6 +1844,11 @@
           "action": "Lock the file",
           "hint": "The files also lock by themselves after a quarter of an hour without activity."
         },
+        "idle": {
+          "warning": "The file will lock in a minute, as there was no activity in it. To keep it open, press \"Keep it open\" at the bottom of the screen.",
+          "keepOpen": "Keep it open",
+          "kept": "The file stays open."
+        },
         "checking": "Checking that the file is still open",
         "viewing": "Viewing as the app's team, you don't see the file, only how many details are missing.",
         "unavailable": "Files can't be opened here yet.",
@@ -2077,14 +2082,14 @@
         "available": "Available",
         "noAnswer": "Have not sent availability",
         "unavailable": "Not available at these hours",
-        "away": "Away that day",
+        "away": "Away during the shift",
         "busy": "On another shift at the same time"
       },
       "notes": {
         "unavailable": "Outside their availability",
         "noAnswer": "Has not sent availability",
         "busy": "Also on another shift at the same time",
-        "away": "Away that day",
+        "away": "Away during the shift",
         "noDay": "Not available on this day"
       },
       "busyOn": "On the {name} shift, <ltr>{start}–{end}</ltr>",
@@ -6642,6 +6647,8 @@
         "down": "Move down",
         "upFor": "Move up: {name}",
         "downFor": "Move down: {name}",
+        "movedTo": "{name} is now {place} of {count}",
+        "movedBack": "{name} is back at {place} of {count}",
         "saved": "Saved"
       },
       "places": {
@@ -6666,6 +6673,8 @@
         "empty": "No places yet.",
         "upFor": "Move up: {name}",
         "downFor": "Move down: {name}",
+        "movedTo": "{name} is now row {place} of {count}",
+        "movedBack": "{name} is back in row {place} of {count}",
         "saved": "Saved"
       },
       "import": {
@@ -6825,6 +6834,7 @@
         "searchPlaceholder": "Search for an item",
         "found": "What was found",
         "nothingFound": "No item starts with {query}",
+        "foundCount": "{count, plural, one {1 result found} other {# results found}}",
         "most": "Ordered most",
         "categories": "Categories",
         "soldOut": "Sold out",

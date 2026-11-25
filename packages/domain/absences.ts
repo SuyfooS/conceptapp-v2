@@ -198,6 +198,16 @@ export function awayDuring(
   return ends > 1440 && awayOn(spans, userId, addDays(shift.day, 1));
 }
 
+/**
+ * The days the builder reads days away over for the week starting on
+ * `weekStart`: the week and the day after it, since a night on its last day
+ * runs past midnight into that day (`awayDuring`). Eight days, well within
+ * the 62 that `public.team_away` reads at most.
+ */
+export function awayWindow(weekStart: string): { from: string; to: string } {
+  return { from: weekStart, to: addDays(weekStart, 7) };
+}
+
 /** Who is away on each of `dates`, in the order the spans come. */
 export function awayByDay(
   spans: readonly AwaySpan[],

@@ -1,6 +1,6 @@
 "use client";
 
-import { type AwaySpan, awayOn } from "@domain/absences";
+import { type AwaySpan, awayDuring } from "@domain/absences";
 import { type AvailabilityRange, weekdayOf } from "@domain/availability";
 import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
 import { formArg } from "@domain/profile";
@@ -144,7 +144,11 @@ export function ShiftSheet({
    */
   people?: TeamPerson[];
   answers: Answer[];
-  /** Who is away this week, and when (known issue 19): never why. */
+  /**
+   * Who is away this week and the day after it, and when (known issue 19):
+   * never why. Someone away during the shift, a night into a day away
+   * included (`awayDuring`), is said so on it and listed apart.
+   */
   away?: AwaySpan[];
   positions: Position[];
   /** Whether a shift has begun in a published week, and how it was read. */
@@ -455,7 +459,8 @@ function ShiftPeople({
 
   const noteOf = (userId: string) => {
     if (clashes.has(`${index}:${userId}`)) return "busy" as const;
-    if (awayOn(away, userId, shift.day)) return "away" as const;
+    // Away during it, as the lists below read it (`shiftCandidates`).
+    if (awayDuring(away, userId, shift)) return "away" as const;
     const ranges = rangesOf.get(userId);
     if (!ranges) return "noAnswer" as const;
     return availableFor(shift, ranges) ? null : ("unavailable" as const);

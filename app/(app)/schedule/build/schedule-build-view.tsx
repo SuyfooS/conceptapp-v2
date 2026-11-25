@@ -1,6 +1,7 @@
 import { weekDates, weekdayOf } from "@domain/availability";
 import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
 import type { CopySource } from "@domain/copy-week";
+import type { ScheduledShift } from "@domain/schedule";
 import type { ShiftSwap } from "@domain/swaps";
 import { Button } from "@ui/button";
 import { EmptyState } from "@ui/empty-state";
@@ -23,6 +24,7 @@ export function ScheduleBuildView({
   data,
   swaps,
   lastWeek = null,
+  nextDays = [],
   save,
   backHref = "/schedule",
   manageHref = "/manage/scheduling",
@@ -39,6 +41,11 @@ export function ScheduleBuildView({
    * copy.
    */
   lastWeek?: CopySource | null;
+  /**
+   * Building the week running now, next week's first two days with people
+   * on them (`nextWeekEdge`); none building next week, and by default.
+   */
+  nextDays?: readonly ScheduledShift[];
   save: (prev: ScheduleState, form: FormData) => Promise<ScheduleState>;
   /** Where "back" goes: the schedule's entry, or the demo's. */
   backHref?: string;
@@ -91,6 +98,7 @@ export function ScheduleBuildView({
         basis={data.basis}
         swaps={swaps}
         lastWeek={lastWeek}
+        nextDays={nextDays}
         team={data.team}
         people={data.people}
         hasPattern={data.hasPattern}
