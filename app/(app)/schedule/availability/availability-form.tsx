@@ -174,9 +174,7 @@ export function AvailabilityForm({
     shabbat: week.shabbat,
     problem: hasProblem(date),
     onOpen: () =>
-      setDayDraft(
-        openDraft(date, days[date] ?? [], week.shabbat, hasProblem(date)),
-      ),
+      setDayDraft(openDraft(date, days[date] ?? [], week, hasProblem(date))),
   });
   const noteProps = {
     note,

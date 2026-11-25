@@ -81,13 +81,15 @@ test("a worker sends next week's availability around Shabbat", async ({
     page.getByRole("button").filter({ hasText: ta.noHours }),
   ).toHaveCount(7);
 
-  // Sunday opens with the usual day hours, and one tap keeps them.
+  // Sunday opens with the restaurant's shifts that day (the template's,
+  // 09:00–16:00 and 16:00–23:30), from the first's start to the last's end,
+  // and one tap keeps them.
   const sunday = await openDay(page, "sun");
   await expect(sunday.getByLabel(ta.start)).toHaveValue("09:00");
-  await expect(sunday.getByLabel(ta.end)).toHaveValue("17:00");
+  await expect(sunday.getByLabel(ta.end)).toHaveValue("23:30");
   await expectCleanPage(page);
   await finishSheet(sunday);
-  await expect(dayButton(page, "sun")).toContainText("09:00–17:00");
+  await expect(dayButton(page, "sun")).toContainText("09:00–23:30");
 
   // Closing a day without "done" leaves it as it was.
   const monday = await openDay(page, "mon");
@@ -101,6 +103,9 @@ test("a worker sends next week's availability around Shabbat", async ({
   );
   const friday = await openDay(page, "fri");
   await expect(friday).toContainText(before(ta.candleLighting));
+  // Its one shift, 08:00–14:30, ends before candle lighting all year.
+  await expect(friday.getByLabel(ta.start)).toHaveValue("08:00");
+  await expect(friday.getByLabel(ta.end)).toHaveValue("14:30");
   await friday.getByLabel(ta.end).fill("23:00");
   await friday.getByRole("button", { name: ta.sheet.done }).click();
   await expect(friday.getByText(before(ta.errors.ranges.friday))).toBeVisible();
@@ -115,17 +120,22 @@ test("a worker sends next week's availability around Shabbat", async ({
   await expect(dayButton(page, "sat")).toContainText(before(ta.havdalahShort));
   const saturday = await openDay(page, "sat");
   await expect(saturday).toContainText(before(ta.havdalah));
-  await saturday.getByLabel(ta.start).fill("12:00");
-  await saturday.getByRole("button", { name: ta.sheet.done }).click();
-  await expect(
-    saturday.getByText(before(ta.errors.ranges.saturday)),
-  ).toBeVisible();
   // Havdalah moves with the season (about 17:30 in winter, past 20:30 in
   // summer), so the hour comes from the sheet, never a fixed time.
   const havdalah = /\d{2}:\d{2}/.exec(
     (await saturday.getByText(before(ta.havdalah)).textContent()) ?? "",
   )?.[0];
   if (!havdalah) throw new Error("no havdalah time on Saturday's sheet");
+  // Its shift, 19:30–00:00, from havdalah when that comes later (summer).
+  await expect(saturday.getByLabel(ta.start)).toHaveValue(
+    havdalah > "19:30" ? havdalah : "19:30",
+  );
+  await expect(saturday.getByLabel(ta.end)).toHaveValue("00:00");
+  await saturday.getByLabel(ta.start).fill("12:00");
+  await saturday.getByRole("button", { name: ta.sheet.done }).click();
+  await expect(
+    saturday.getByText(before(ta.errors.ranges.saturday)),
+  ).toBeVisible();
   await saturday.getByLabel(ta.start).fill(havdalah);
   await finishSheet(saturday);
 
@@ -136,9 +146,9 @@ test("a worker sends next week's availability around Shabbat", async ({
   ).toBeVisible();
   await expect(page.getByText(before(ta.sent))).toBeVisible();
   expect(await availabilityOf(WORKER.e164)).toEqual([
-    { weekday: 0, start: "09:00", end: "17:00", note: "מבחן ביום שלישי" },
+    { weekday: 0, start: "09:00", end: "23:30", note: "מבחן ביום שלישי" },
     { weekday: 5, start: "08:00", end: "12:00", note: "מבחן ביום שלישי" },
-    { weekday: 6, start: havdalah, end: "23:30", note: "מבחן ביום שלישי" },
+    { weekday: 6, start: havdalah, end: "00:00", note: "מבחן ביום שלישי" },
   ]);
   await expectCleanPage(page);
   await page.screenshot({
@@ -148,7 +158,7 @@ test("a worker sends next week's availability around Shabbat", async ({
 
   // Coming back shows the answer to edit; sending no hours is allowed.
   await page.reload();
-  await expect(dayButton(page, "sun")).toContainText("09:00–17:00");
+  await expect(dayButton(page, "sun")).toContainText("09:00–23:30");
   await expect(page.getByRole("button", { name: ta.note })).toContainText(
     "מבחן ביום שלישי",
   );

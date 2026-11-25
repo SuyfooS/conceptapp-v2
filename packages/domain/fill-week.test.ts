@@ -7,7 +7,13 @@ import {
   weekDates,
   weekdayOf,
 } from "./availability";
-import { type ShabbatLimits, suggestedRange } from "./availability-form";
+import {
+  parseAvailabilityForm,
+  type ShabbatLimits,
+  shabbatLimits,
+  shiftHoursOf,
+  suggestedDay,
+} from "./availability-form";
 import type { CopySource } from "./copy-week";
 import {
   FILL_MAX_DAYS,
@@ -31,7 +37,8 @@ import {
   shiftSlot,
   weekSchedule,
 } from "./schedule";
-import { ISRAEL_TIME_ZONE } from "./shabbat";
+import { ISRAEL_TIME_ZONE, ISRAELI_CITIES } from "./shabbat";
+import { shabbatTimes } from "./shabbat-times";
 import type { ShiftPattern } from "./staffing";
 
 const zone = ISRAEL_TIME_ZONE;
@@ -1286,64 +1293,163 @@ describe("fillFromAvailability", () => {
       expect(who(cafe, night)).toEqual([noa]);
     });
 
-    it("fills, from answers kept as the form suggests them, only the shifts those hours cover whole", () => {
-      // The form starts an empty day at 09:00–17:00 (then 18:00–23:00),
-      // Friday at 08:00 until 15:00 or candle lighting, Saturday from havdalah
-      // to 23:30 (`suggestedRange`), whatever the business's shifts. Only whole
-      // cover is placed, so the café gets nothing from them and the shop only
-      // its Friday. Whether the form should suggest the business's own shifts,
-      // or the fill take near-fits, is Orel's call before the sheet (PR 4).
-      // Tel Aviv, 11–12 December 2026.
+    it("covers every templated shift from answers kept as the form suggests them", () => {
+      // The form opens an empty day with the business's shifts that day, from
+      // the earliest start to the latest end, each cut by Shabbat
+      // (`suggestedDay`). Whoever keeps it is free for every shift that day,
+      // so the fill can put them on any of them: with enough people every
+      // place is filled, and with fewer each place left open is a rule's,
+      // never for want of an answer. Tel Aviv, 11–12 December 2026, when every
+      // templated shift is clear of Shabbat.
       const december: ShabbatLimits = {
         friday: day(5),
         candleLighting: "16:17",
         saturday: day(6),
         havdalah: "17:14",
       };
-      const team = [noa, yoav, maya, itay, omer];
-      const kept = (closed: ShabbatLimits | null, second: boolean) =>
-        team.map((userId) => ({
-          userId,
-          ranges: D.flatMap((on) => [
-            { day: on, ...suggestedRange(on, false, closed) },
-            ...(second
-              ? [{ day: on, ...suggestedRange(on, true, closed) }]
-              : []),
-          ]),
-        }));
-      const cases: [string, ShiftPattern[], string[], string[]][] = [
-        // Closed on Shabbat, then open.
-        ["restaurant", RESTAURANT, ["friday", "morning"], ["morning"]],
-        ["café", CAFE, [], []],
-        ["shop", RETAIL, ["friday"], []],
+      const both = [december, null];
+      const cases: [string, ShiftPattern[], (ShabbatLimits | null)[]][] = [
+        ["restaurant", RESTAURANT, both],
+        ["café", CAFE, both],
+        ["shop", RETAIL, both],
+        // Open all week, Shabbat too: two ranges a day.
+        ["day and night", AROUND_THE_CLOCK, [null]],
       ];
-      for (const [name, patterns, closedFills, openFills] of cases) {
+      for (const [name, patterns, limits] of cases) {
         const screen = draftWeek(WEEK, patterns);
-        for (const [closed, fills] of [
-          [december, closedFills],
-          [null, openFills],
-        ] as const) {
-          for (const second of [false, true]) {
-            const fill = fillOf({
-              screen,
-              staff: team,
-              answers: kept(closed, second),
-              shabbat: closed,
-            });
-            const covered = screen.filter((s) =>
-              fills.includes(s.pattern ?? ""),
+        const places = screen.reduce((sum, s) => sum + s.needed, 0);
+        for (const closed of limits) {
+          const label = `${name}, ${closed ? "closed" : "open"} on Shabbat`;
+          const answers = keptAsSuggested(WEEK, patterns, closed, MANY);
+          // What the form would send, as it would send it.
+          expect(
+            parseAvailabilityForm(
+              { ranges: answers[0]?.ranges, note: "" },
+              WEEK,
+              closed,
+            ).ok,
+            label,
+          ).toBe(true);
+          for (const s of screen) {
+            for (const a of answers) {
+              expect(
+                availableFor(s, a.ranges),
+                `${label}: ${s.day} ${s.start}`,
+              ).toBe(true);
+            }
+          }
+          const full = fillOf({
+            screen,
+            staff: MANY,
+            answers,
+            shabbat: closed,
+          });
+          expect(full.openBefore, label).toBe(places);
+          expect(full.places, label).toBe(places);
+          expect(full.openAfter, label).toBe(0);
+          // Three people can't fill any of these weeks.
+          const few = [noa, yoav, maya];
+          const short = fillOf({
+            screen,
+            staff: few,
+            answers: answers.filter((a) => few.includes(a.userId)),
+            shabbat: closed,
+          });
+          expect(short.places, label).toBeGreaterThan(0);
+          expect(short.openAfter, label).toBeGreaterThan(0);
+          // Where places stay open, everyone not on the shift covers it and
+          // was stopped by a rule; on a shift that has all three, nobody else.
+          for (const s of short.shifts) {
+            if (s.open === 0) continue;
+            const off = few.filter((p) => !who(short, s.index).includes(p));
+            expect(s.partial, label).toBe(0);
+            expect(s.blocked.map((b) => b.user).sort(), label).toEqual(
+              [...off].sort(),
             );
-            const label = `${name}, ${closed ? "closed" : "open"} on Shabbat${second ? ", with the evening" : ""}`;
-            // Every place the suggested hours cover is filled, and no other.
-            expect(fill.places, label).toBe(
-              covered.reduce((sum, s) => sum + s.needed, 0),
-            );
-            expect(
-              fill.shifts.every((s) => s.open === 0 || s.why === "nobody"),
-              label,
-            ).toBe(true);
+            expect(s.why, label).toBe(off.length > 0 ? "blocked" : "nobody");
           }
         }
+      }
+    });
+
+    it("leaves open, from answers kept as suggested, only the shifts Shabbat cuts", () => {
+      // In summer havdalah comes after the restaurant's 19:30 and the café's
+      // 19:00, so Saturday's suggestion starts at havdalah and their Saturday
+      // night stays open, its time named; in Jerusalem's December, candles are
+      // lit before the café's Friday ends at 16:00 (the plan's risk 2). Every
+      // other shift is covered and filled.
+      const june = "2027-06-13";
+      const summer = shabbatLimits(
+        shabbatTimes(ISRAELI_CITIES.telAviv, addDays(june, 5)),
+        zone,
+      );
+      const jerusalem = shabbatLimits(
+        shabbatTimes(ISRAELI_CITIES.jerusalem, day(5)),
+        zone,
+      );
+      // What the cases rest on.
+      expect(summer.havdalah > "19:30").toBe(true);
+      expect(jerusalem.candleLighting < "16:00").toBe(true);
+      const cases: [
+        string,
+        string,
+        ShiftPattern[],
+        ShabbatLimits,
+        string,
+        { side: "friday" | "saturday"; time: string },
+      ][] = [
+        [
+          "restaurant in summer",
+          june,
+          RESTAURANT,
+          summer,
+          "saturday-night",
+          { side: "saturday", time: summer.havdalah },
+        ],
+        [
+          "café in summer",
+          june,
+          CAFE,
+          summer,
+          "saturday-night",
+          { side: "saturday", time: summer.havdalah },
+        ],
+        [
+          "café in Jerusalem's December",
+          WEEK,
+          CAFE,
+          jerusalem,
+          "friday",
+          { side: "friday", time: jerusalem.candleLighting },
+        ],
+      ];
+      for (const [label, weekStart, patterns, closed, cut, side] of cases) {
+        const screen = draftWeek(weekStart, patterns);
+        const answers = keptAsSuggested(weekStart, patterns, closed, MANY);
+        const fill = fillOf({
+          weekStart,
+          screen,
+          staff: MANY,
+          answers,
+          shabbat: closed,
+        });
+        for (const s of fill.shifts) {
+          const shift = screen[s.index];
+          if (shift?.pattern === cut) {
+            // Each answer reaches the shift up to Shabbat's edge, never over.
+            expect(s.added, label).toEqual([]);
+            expect(s.why, label).toBe("shabbat");
+            expect(s.shabbat, label).toEqual(side);
+            expect(s.partial, label).toBe(MANY.length);
+          } else {
+            expect(s.open, `${label}: ${shift?.day} ${shift?.start}`).toBe(0);
+          }
+        }
+        expect(fill.openAfter, label).toBe(
+          screen
+            .filter((s) => s.pattern === cut)
+            .reduce((sum, s) => sum + s.needed, 0),
+        );
       }
     });
 
@@ -1920,6 +2026,48 @@ const RETAIL: ShiftPattern[] = [
     needed: 3,
   },
 ];
+
+/** Shifts around the clock, every day: a guard's or a care home's. */
+const AROUND_THE_CLOCK: ShiftPattern[] = [
+  {
+    key: "day",
+    name: "יום",
+    days: [0, 1, 2, 3, 4, 5, 6],
+    start: "07:00",
+    end: "19:00",
+    needed: 1,
+  },
+  {
+    key: "night",
+    name: "לילה",
+    days: [0, 1, 2, 3, 4, 5, 6],
+    start: "19:00",
+    end: "07:00",
+    needed: 1,
+  },
+];
+
+/** Enough people for every templated place, as the 44-place test has. */
+const MANY = [noa, yoav, maya, itay, shiran, uri, tamar, omer, liya, ID(90)];
+
+/**
+ * Answers kept as the form suggests them: every day of the week as it opens
+ * (`suggestedDay`), from the business's shifts, sent as they are.
+ */
+function keptAsSuggested(
+  weekStart: string,
+  patterns: readonly ShiftPattern[],
+  shabbat: ShabbatLimits | null,
+  team: readonly string[],
+) {
+  const hours = shiftHoursOf(patterns);
+  return team.map((userId) => ({
+    userId,
+    ranges: weekDates(weekStart).flatMap((on) =>
+      suggestedDay(on, shabbat, hours).map((h) => ({ day: on, ...h })),
+    ),
+  }));
+}
 
 /** Free all day on each day of the week starting on `start`. */
 function allWeekOf(start: string, userId: string) {
