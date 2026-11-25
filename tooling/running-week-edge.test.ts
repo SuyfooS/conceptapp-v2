@@ -131,6 +131,28 @@ describe("the locks on a week's row", () => {
     expect(weekLocks(renew)).toEqual([]);
   });
 
+  it("are next week's alone in the demo's sample availability, for share, after its business and before its first answer", () => {
+    // 20261128000100_demo_sample_availability.sql: one week a business, read
+    // to see it isn't published, after the business for key share, which a
+    // save or a publish never locks more strongly. It waits for a publish
+    // under way and then finds the week published; a publish waits for it as
+    // for a write next door.
+    const sample = withoutComments(body("public.renew_demo_availability"));
+    expect(weekLocks(sample)).toEqual(["share"]);
+    const week = sample.search(
+      /from public\.schedule_weeks w\s+where w\.id = week and w\.schedule_published_at is null\s+for share;/,
+    );
+    expect(week).toBeGreaterThan(
+      sample.search(/from public\.businesses b[^;]*for key share;/),
+    );
+    expect(week).toBeLessThan(
+      sample.indexOf("insert into public.availability_submissions"),
+    );
+    expect(week).toBeLessThan(
+      sample.indexOf("perform public.submit_availability("),
+    );
+  });
+
   it("are taken nowhere else, so a new one is ordered here first", () => {
     const locking = [...bodies]
       .filter(([, sql]) => weekLocks(withoutComments(sql)).length > 0)
@@ -141,6 +163,7 @@ describe("the locks on a week's row", () => {
       "private.leave_staff",
       "private.lock_week_edges",
       "public.publish_week_schedule",
+      "public.renew_demo_availability",
     ]);
     const publish = withoutComments(body("public.publish_week_schedule"));
     expect(

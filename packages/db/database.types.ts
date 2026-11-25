@@ -4799,6 +4799,10 @@ export type Database = {
         };
         Returns: undefined;
       };
+      renew_demo_availability: {
+        Args: Record<PropertyKey, never>;
+        Returns: number;
+      };
       renew_demo_schedules: {
         Args: Record<PropertyKey, never>;
         Returns: number;

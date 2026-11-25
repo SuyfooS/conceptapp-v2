@@ -62,7 +62,15 @@ begin
   -- as there, the module off and their writes closed until Orel approves the
   -- screens (tooling/demo-files.test.ts). Both open today's scheduled lists when they are reset
   -- ("scheduledLists": true, 20261110001300_list_schedules.sql), and the
-  -- minute job keeps them coming; the local seed's don't.
+  -- minute job keeps them coming; the local seed's don't. The restaurant's
+  -- manager and two workers, never its owner, have next week's availability
+  -- sent ("sampleAvailability", 20261128000100_demo_sample_availability.sql):
+  -- on each day they can work, the hours the availability form suggests from
+  -- the restaurant's shifts, so "מילוי מהזמינות" in the builder has someone
+  -- to place on most days. The door writes it at every entry for whoever
+  -- hasn't sent next week's, cut by Shabbat as the form cuts it, and leaves an
+  -- answer someone sent alone; the local seed has none, so the browser tests
+  -- send their own (tooling/demo-availability.test.ts).
   insert into private.demo_businesses (business_id, definition)
   values
     ('10000000-0000-4000-b000-000000000001', $json$
@@ -85,6 +93,31 @@ begin
         { "user_id": "10000000-0000-4000-a000-000000000105", "case": "no_bank" },
         { "user_id": "10000000-0000-4000-a000-000000000105", "case": "form101_missing" }
       ] },
+      "sampleAvailability": [
+        { "user_id": "10000000-0000-4000-a000-000000000103", "ranges": [
+          { "weekday": 0, "start": "09:00", "end": "23:30" },
+          { "weekday": 1, "start": "09:00", "end": "23:30" },
+          { "weekday": 2, "start": "09:00", "end": "23:30" },
+          { "weekday": 3, "start": "09:00", "end": "23:30" },
+          { "weekday": 4, "start": "09:00", "end": "23:30" },
+          { "weekday": 5, "start": "08:00", "end": "14:30" }
+        ] },
+        { "user_id": "10000000-0000-4000-a000-000000000104", "ranges": [
+          { "weekday": 0, "start": "09:00", "end": "23:30" },
+          { "weekday": 1, "start": "09:00", "end": "23:30" },
+          { "weekday": 3, "start": "09:00", "end": "23:30" },
+          { "weekday": 4, "start": "09:00", "end": "23:30" },
+          { "weekday": 6, "start": "19:30", "end": "00:00" }
+        ] },
+        { "user_id": "10000000-0000-4000-a000-000000000105", "ranges": [
+          { "weekday": 0, "start": "09:00", "end": "23:30" },
+          { "weekday": 2, "start": "09:00", "end": "23:30" },
+          { "weekday": 3, "start": "09:00", "end": "23:30" },
+          { "weekday": 4, "start": "09:00", "end": "23:30" },
+          { "weekday": 5, "start": "08:00", "end": "14:30" },
+          { "weekday": 6, "start": "19:30", "end": "00:00" }
+        ] }
+      ],
       "people": [
         { "user_id": "10000000-0000-4000-a000-000000000102", "role": "owner", "name": "אורי הדגמה" },
         { "user_id": "10000000-0000-4000-a000-000000000103", "role": "manager", "name": "שירן הדגמה", "departments": ["floor", "bar"] },

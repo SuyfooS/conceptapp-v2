@@ -37,6 +37,8 @@ Migrations reach `conceptapp-dev` only by hand, and never from a nightly run:
 To have something to open, run it with "apply" and "demo" on. "demo" adds the demo
 businesses from `hosted-demo.sql` that aren't there yet, and leaves the others as
 visitors left them; it is safe to run again, and needs the migrations applied first.
+It also writes every definition again, so a change to one (a new key, such as the
+restaurant's `sampleAvailability`) reaches the project only with "demo" on.
 People come in through the demo door at `/enter` (`packages/domain/passive-sign-in.ts`) on a
 site whose `DEMO_DOOR` is on (the default when unset; `packages/db/env.ts`), which needs the
 three Supabase variables in `.env.example` in Vercel and nothing else.
@@ -65,7 +67,14 @@ its template with the same id. Hours, breaks and the log never go with a busines
 visitor's write already under way finish and holds new ones back, then deletes the demo's
 own through `private.purge_business_records`, which only the database's owner may run
 (the reset, and test clean-ups). The shop's week is always published
-(`public.renew_demo_schedules`); the restaurant's is the visitor's to build. Both start
+(`public.renew_demo_schedules`); the restaurant's is the visitor's to build. On the hosted
+project its manager and two workers have next week's availability sent, so the builder's
+fill from availability has someone to place: `hosted-demo.sql`'s `sampleAvailability`,
+written at every entry at the door for whoever hasn't sent theirs, cut by Shabbat as the
+form cuts it, never over an answer someone sent and never on a published week
+(`public.renew_demo_availability`, `20261128000100_demo_sample_availability.sql`); a reset
+takes the week, and the next entry writes it again. `seed.sql` has none, so the browser
+tests send their own. Both start
 with the demo's own conversations (`private.seed_demo_chat`,
 `20261111000300_chat_on.sql`, and from `20261111000400_chat_announce.sql` the manager's
 pinned announcement, which the first two workers confirmed): in the whole team's group, in the first worker's first

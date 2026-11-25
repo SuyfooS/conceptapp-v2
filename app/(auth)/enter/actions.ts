@@ -1,6 +1,10 @@
 "use server";
 
-import { renewDemoSchedules, resetDemoBusinesses } from "@db/demo";
+import {
+  renewDemoAvailability,
+  renewDemoSchedules,
+  resetDemoBusinesses,
+} from "@db/demo";
 import { demoDoorOpen } from "@db/env";
 import { createAdminClient } from "@db/supabase/admin";
 import { createClient } from "@db/supabase/server";
@@ -25,7 +29,10 @@ export type ResetResult = { ok: boolean };
  * They come in to the business the door offered them in (`business`, its
  * key): the accountant is in both (payroll P3b), and whoever came in on this
  * browser before may have left another chosen. A business whose week renews
- * gets it published first, so there is a schedule to see on arrival. They
+ * gets it published first, so there is a schedule to see on arrival, and
+ * next week's sample availability is sent for whoever a definition names and
+ * hasn't sent theirs (`renewDemoAvailability`: the hosted restaurant's), so
+ * the builder has someone to fill from. They
  * land on the page a link asked for before sign-in, as with a code
  * (`takeAfterSignIn`, known issue 21), else on Today; a refused or failed
  * door leaves it kept.
@@ -77,6 +84,14 @@ export async function enterAs(
     } catch (error) {
       console.error("demo schedule renewal failed", (error as Error).message);
     }
+  }
+  // Whichever business they came in to: the definitions say who has a sample,
+  // and the database does nothing for the rest. Sample answers missing are no
+  // reason to keep anyone out either.
+  try {
+    await renewDemoAvailability();
+  } catch (error) {
+    console.error("demo availability renewal failed", (error as Error).message);
   }
   redirect((await takeAfterSignIn()) ?? "/home");
 }
