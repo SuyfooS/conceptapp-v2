@@ -137,7 +137,8 @@ substantive change gets them as separate reviewers, each trying to refute it.
 
 ## The nightly run
 
-1. **Catch up.** Read `docs/agent/LOG.md`, every open issue with label
+1. **Catch up.** Read `docs/agent/LOG.md` (entries before 20 November 2026 are in
+   `docs/agent/log/`, by month: open them only when something points there), every open issue with label
    `question`, `orel` or `urgent`, every other open issue from Orel, with their
    comments, and the comments on `יומן הסוכן` from the last two weeks. Apply
    answers and instructions first. If Orel wrote `בטל`, undo that night before
@@ -430,7 +431,7 @@ The design rework is under way in day sessions with Orel, toward `docs/design/ta
 - Roadmap, with what works and what is missing: `docs/ROADMAP.md`.
 - The approved look: `docs/design/target-prototype.html`. The earlier analysis:
   `docs/design/apple-rework-plan.md`.
-- Running log: `docs/agent/LOG.md` (plus the `יומן הסוכן` issue).
+- Running log: `docs/agent/LOG.md`, older entries in `docs/agent/log/` (plus the `יומן הסוכן` issue).
 - Rules for code and UI: `CLAUDE.md`.
 - Production, the project and the site of real businesses: `docs/production.md`.
 - Product decisions, roadmap and business model: the App Design Document and
