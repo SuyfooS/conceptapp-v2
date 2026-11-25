@@ -1,10 +1,12 @@
 import { weekDates } from "@domain/availability";
-import { shabbatLimits } from "@domain/availability-form";
+import { shabbatLimits, shiftHoursOf } from "@domain/availability-form";
 import { ISRAEL_TIME_ZONE, ISRAELI_CITIES } from "@domain/shabbat";
 import { shabbatTimes } from "@domain/shabbat-times";
 import type { AvailabilityWeek } from "../../../../(app)/schedule/week";
+import { demoShiftPatterns } from "../../data";
 
-// A fixed week for the demo, in Tel Aviv, with an answer sent before.
+// A fixed week for the demo, in Tel Aviv, with an answer sent before, and the
+// restaurant template's shifts, whose hours an empty day opens with.
 const start = "2026-11-01";
 
 export const demoWeek: AvailabilityWeek = {
@@ -16,6 +18,7 @@ export const demoWeek: AvailabilityWeek = {
     shabbatTimes(ISRAELI_CITIES.telAviv, "2026-11-06"),
     ISRAEL_TIME_ZONE,
   ),
+  shiftHours: shiftHoursOf(demoShiftPatterns),
   mine: {
     userId: "demo",
     note: null,

@@ -1962,6 +1962,7 @@
       "end": "Until",
       "candleLighting": "Shabbat starts at <ltr>{time}</ltr>. You can mark hours until then.",
       "havdalah": "Shabbat ends at <ltr>{time}</ltr>. You can mark hours from then.",
+      "shiftHours": "{count, plural, one {This day's shift: {hours}.} other {This day's shifts: {hours}. If you can work only some of them, mark only their hours.}}",
       "note": "Note for your manager",
       "noteHint": "Optional. For example: an exam on Tuesday morning.",
       "summary": "{count, plural, =0 {You have not marked any hours. Sending without hours means you are not available this week.} =7 {You marked hours on every day.} one {You marked hours on one day. You are not available on the other days.} other {You marked hours on # days. You are not available on the other days.}}",
@@ -7368,7 +7369,7 @@
         },
         "shifts": {
           "label": "Shifts",
-          "hint": "Every new week starts from these shifts. A week already saved doesn't change."
+          "hint": "Every new week starts from these shifts. A week already saved doesn't change. Each day of the staff's availability form opens with their hours, and answers already sent stay until the worker sends again."
         }
       }
     },
