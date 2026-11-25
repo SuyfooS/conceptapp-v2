@@ -12,11 +12,14 @@ import { type KeyboardLift, NO_KEYBOARD } from "./use-keyboard-lift";
  * (`use-keyboard-lift.test.ts` reads it from the viewports). Its ✕, where
  * the focus goes as it opens, takes no Enter held down from the press that
  * opened it (accessibility, part 5): its props are noted as it is drawn.
+ * Its page kept hidden with it open (left by back or forward), it moves no
+ * focus, and keeps what opened it for when it does close (25 November 2026).
  */
 
 const reported = vi.hoisted(() => ({
   lift: null as KeyboardLift | null,
   close: null as Record<string, unknown> | null,
+  content: null as Record<string, unknown> | null,
 }));
 
 vi.mock("radix-ui", async (importOriginal) => {
@@ -30,6 +33,10 @@ vi.mock("radix-ui", async (importOriginal) => {
       Close: (props: Parameters<typeof actual.Dialog.Close>[0]) => {
         reported.close = props as Record<string, unknown>;
         return createElement(actual.Dialog.Close, props);
+      },
+      Content: (props: Parameters<typeof actual.Dialog.Content>[0]) => {
+        reported.content = props as Record<string, unknown>;
+        return createElement(actual.Dialog.Content, props);
       },
     },
   };
@@ -49,7 +56,10 @@ const { Sheet } = await import("./sheet");
  * The sheet's own element, the dialog, with its style and classes, and the
  * classes of its body, what holds the field.
  */
-function drawn(lift: KeyboardLift) {
+function drawn(
+  lift: KeyboardLift,
+  more: Partial<Omit<SheetProps, "children">> = {},
+) {
   reported.lift = lift;
   const props: Omit<SheetProps, "children"> = {
     open: true,
@@ -57,6 +67,7 @@ function drawn(lift: KeyboardLift) {
     title: "Title",
     closeLabel: "Close",
     footer: createElement("button", { type: "button" }, "Save"),
+    ...more,
   };
   const html = renderToString(
     createElement(
@@ -131,5 +142,31 @@ describe("Sheet's close", () => {
     const close = reported.close;
     expect(close?.["aria-label"]).toBe("Close");
     expect(close?.onKeyDown).toBe(ignoreHeldEnter);
+  });
+});
+
+describe("Sheet kept hidden with its page", () => {
+  // React lets go of a hidden page's effects, so Radix asks where the focus
+  // goes, the sheet still drawn (connected) and open.
+  it("moves no focus while still drawn, nor chooses where it goes back", () => {
+    const returnFocus = vi.fn(() => null);
+    drawn(NO_KEYBOARD, { returnFocus });
+    const onCloseAutoFocus = reported.content?.onCloseAutoFocus as (event: {
+      target: unknown;
+      preventDefault(): void;
+    }) => void;
+    class Drawn {
+      isConnected = true;
+    }
+    vi.stubGlobal("Node", Drawn);
+    try {
+      const preventDefault = vi.fn();
+      onCloseAutoFocus({ target: new Drawn(), preventDefault });
+      // Radix's own way (its trigger, else the body) takes nothing either.
+      expect(preventDefault).toHaveBeenCalledOnce();
+      expect(returnFocus).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

@@ -147,7 +147,8 @@ const cancelToast = (page: Page) =>
  * the same turn: before the page read again after the write (`refresh()`)
  * can be drawn, whatever the network does. A quick hand on a slow phone
  * found the ✕ held until that page came back (23 November 2026). What the
- * refusal said, once it has pressed.
+ * refusal said, once it has pressed. Only a refusal drawn in the sheet still
+ * open counts (25 November 2026): one drawn as it closes was never said.
  */
 async function closeOnRefusal(
   page: Page,
@@ -162,7 +163,7 @@ async function closeOnRefusal(
           const alert = node.matches('[role="alert"]')
             ? node
             : node.querySelector('[role="alert"]');
-          const dialog = alert?.closest('[role="dialog"]');
+          const dialog = alert?.closest('[role="dialog"][data-state="open"]');
           if (!alert || !dialog) continue;
           watch.disconnect();
           seen.refused = alert.textContent;
@@ -179,6 +180,33 @@ async function closeOnRefusal(
     page.evaluate(
       () => (window as unknown as { refused?: string | null }).refused ?? null,
     );
+}
+
+/**
+ * Escape in every task from a press on, until a refusal is drawn in the
+ * sheet or no sheet is open (25 November 2026). Each posts the next, so one
+ * is always queued ahead of the task React draws the refusal in (its
+ * scheduler posts messages too, served in turn): one comes in between the
+ * write's answer and the refusal drawn, as a key or a tap could, and the
+ * sheet must hold until it has said why.
+ */
+async function escapeUntilRefused(page: Page) {
+  await page.evaluate(() => {
+    const again = new MessageChannel();
+    again.port1.onmessage = () => {
+      if (
+        !document.querySelector('[role="dialog"]') ||
+        document.querySelector('[role="dialog"] [role="alert"]')
+      ) {
+        return;
+      }
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
+      again.port2.postMessage(null);
+    };
+    again.port2.postMessage(null);
+  });
 }
 
 async function expectCleanPage(page: Page) {
@@ -399,9 +427,11 @@ test("a manager adds a shift someone forgot, and hours can't be in the future", 
   await sheet.getByLabel(t.sheet.out).fill("10:00");
   await sheet.getByLabel(t.sheet.reason).fill(reason);
   // ✕ the moment it's refused closes the sheet, the page read again after
-  // the refusal back or not.
+  // the refusal back or not. Escape before that, the answer back included,
+  // closes nothing: the refusal is drawn first, in the sheet still open.
   const refused = await closeOnRefusal(page);
   await sheet.getByRole("button", { name: t.sheet.saveAdd }).click();
+  await escapeUntilRefused(page);
   await expect(sheet).toBeHidden();
   expect(await refused()).toBe(t.failure.times);
 
@@ -414,6 +444,41 @@ test("a manager adds a shift someone forgot, and hours can't be in the future", 
       .getByText(filled(c.history.added, { name: MANAGER.name, note: reason }))
       .filter({ visible: true }),
   ).toBeVisible();
+});
+
+// Left by back with a sheet open and come back to by forward, the person's
+// page was kept hidden (Next's Activity), and its sheet with it: it shows
+// again open, its ✕ with the focus again, and closed, it gives the focus
+// back to what opened it, never to the page's body (25 November 2026).
+test("a sheet left by back and come back to by forward gives the focus back as it closes", async ({
+  page,
+}) => {
+  await signIn(page, MANAGER);
+  // From the team's page, so back and forward stay inside the app.
+  await page.goto("/clock/team");
+  await page
+    .getByRole("main")
+    .getByRole("link", { name: new RegExp(NOA.name) })
+    .filter({ visible: true })
+    .first()
+    .click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(NOA.name);
+  const add = page.getByRole("button", { name: t.person.add });
+  await add.click();
+  const sheet = page.getByRole("dialog", { name: t.sheet.addTitle });
+  const close = sheet.getByRole("button", { name: t.sheet.close });
+  await expect(close).toBeFocused();
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/clock\/team$/);
+  await expect(sheet).toBeHidden();
+  await page.goForward();
+  await expect(page).toHaveURL(new RegExp(`/clock/team/${NOA.id}`));
+  await expect(sheet).toHaveAttribute("data-state", "open");
+  await expect(close).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+  await expect(add).toBeFocused();
 });
 
 // Cancelling a shift entered by mistake (the clock plan's PR4): never without
@@ -556,13 +621,14 @@ test("the toast's undo brings a cancelled shift back, and the right one added ov
 
   // The cancelled one opens from its row, and can't come back over them:
   // ✕ the moment it's refused closes it, the page read again after the
-  // refusal back or not.
+  // refusal back or not, and Escape before that closes nothing.
   const cancelledRow = shiftOpener(page, new RegExp(literal(again)), desktop);
   await cancelledRow.click();
   const cancelled = page.getByRole("dialog", { name: t.cancelled.title });
   await expect(cancelled.getByText(cancelledLine(again))).toBeVisible();
   const refused = await closeOnRefusal(page);
   await cancelled.getByRole("button", { name: t.cancelled.restore }).click();
+  await escapeUntilRefused(page);
   await expect(cancelled).toBeHidden();
   expect(await refused()).toBe(t.failure.overlap);
 
@@ -680,6 +746,9 @@ test("a manager's own shift is cancelled only by an owner, in words", async ({
     await expect(step).toBeVisible();
     expect(await demoActivityActions("clock.cancel", since)).toBe(0);
     await expectCleanPage(page);
+    // Said, the refusal lets the sheet go: Escape closes it.
+    await page.keyboard.press("Escape");
+    await expect(step).toBeHidden();
   } finally {
     await removeDemoShift(own);
   }
@@ -843,6 +912,13 @@ test("a manager fixes a shift's breaks: changes one's end, adds one forgotten, a
   await expect(add.getByRole("alert")).toHaveText(t.failure.breakOverlap);
   expect(await demoActivityActions("clock.break_edit", refused)).toBe(0);
   await expectCleanPage(page);
+  // Said, the refusal lets the sheet go: its ✕ closes it. The break is added
+  // from the shift opened again, why written once more on a new step.
+  await add.getByRole("button", { name: t.sheet.close }).click();
+  await expect(page.getByRole("dialog")).toBeHidden();
+  await shiftOpener(page, endsAt(10, 480), desktop).click();
+  await breakRows(edit).getByRole("button", { name: t.breaks.add }).click();
+  await add.getByLabel(t.sheet.reason).fill(forgot);
 
   // Four hours in, half an hour: it comes off her hours, as the setting says.
   await add.getByLabel(t.breakStep.start).fill(intoShift(240));

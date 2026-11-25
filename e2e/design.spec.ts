@@ -9160,6 +9160,32 @@ test("the person's demo says an overlap and a closed month as the app does", asy
   ).toBeVisible();
 });
 
+// A kind or days left out is said beside its field, drawn before the focus
+// goes there (25 November 2026): read with that field, as its description,
+// once. No alert says it a second time.
+test("the person's demo says a missing kind or days with the field that takes the focus, once", async ({
+  page,
+}) => {
+  const ta = he.app.clock.absences;
+  await page.goto("/design/shell/clock/team/noa?absences=1&state=absenceAdd");
+  const sheet = page.getByRole("dialog", { name: ta.sheet.addTitle });
+  const submit = sheet.getByRole("button", { name: ta.sheet.submit });
+  await submit.click();
+  const vacation = sheet.getByRole("radio", { name: ta.kinds.vacation });
+  await expect(vacation).toBeFocused();
+  await expect(vacation).toHaveAccessibleDescription(ta.failure.kind);
+  await expect(sheet.getByRole("alert")).toHaveCount(0);
+
+  await vacation.check();
+  const from = sheet.getByLabel(ta.sheet.from, { exact: true });
+  await from.fill("");
+  await submit.click();
+  await expect(from).toBeFocused();
+  await expect(from).toHaveAttribute("aria-invalid", "true");
+  await expect(from).toHaveAccessibleDescription(ta.failure.dates);
+  await expect(sheet.getByRole("alert")).toHaveCount(0);
+});
+
 test("next week's demo says who is away on each day, on a shift and in the copy", async ({
   page,
 }, testInfo) => {

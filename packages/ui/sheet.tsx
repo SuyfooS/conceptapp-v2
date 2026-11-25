@@ -24,7 +24,8 @@ export type SheetProps = {
    * A sheet that sends a write holds its close only until the answer
    * (`useSheetWrite`), never until the page read again after it is drawn,
    * unless the answer itself shows only then (a refusal said once the focus
-   * is back on its press): closed before, nothing would say it.
+   * is back on its press): closed before, nothing would say it. Such an
+   * answer is kept as it comes (`keep`) and let go once drawn (`said`).
    */
   onOpenChange: (open: boolean) => void;
   title: ReactNode;
@@ -57,10 +58,12 @@ export type SheetProps = {
 /**
  * A glass sheet that rises from the bottom, for one short task. Dragging the
  * grabber down closes it, and so do the button, the scrim and Escape. It renders
- * inside the nearest [data-accent] wrapper, so it keeps the business's colour.
+ * inside the nearest [data-accent] wrapper, so it keeps the business's colour,
+ * and stays there while its page is kept hidden (left by back or forward).
  * Its ✕, which takes the focus as it opens, takes no Enter still held down
  * from the press that opened it (`ignoreHeldEnter`). Closed, it gives the
- * keyboard's focus back (`returnFocus`), never to the top of the page. On a
+ * keyboard's focus back (`returnFocus`), never to the top of the page, also
+ * once its page, kept hidden with it open, shows again. On a
  * phone it stands over the keyboard, never behind it
  * (`useKeyboardLift`): lifted as the keyboard opens for a field inside it, no
  * taller than what is on screen above it, and the field typed in kept in
@@ -80,10 +83,15 @@ export function Sheet({
   children,
 }: SheetProps) {
   const anchor = useRef<HTMLSpanElement>(null);
-  // What held the focus as it opened, before the sheet takes it.
+  // What held the focus as it opened, before the sheet takes it. Only as it
+  // opens: a page kept hidden (left by back or forward) runs this again as
+  // it shows, the sheet still open and the focus elsewhere by then
+  // (25 November 2026).
   const opener = useRef<Element | null>(null);
+  const wasOpen = useRef(false);
   useLayoutEffect(() => {
-    if (open) opener.current = document.activeElement;
+    if (open && !wasOpen.current) opener.current = document.activeElement;
+    wasOpen.current = open;
   }, [open]);
   const pull = useRef<number | null>(null);
   const [offset, setOffset] = useState(0);
@@ -117,8 +125,19 @@ export function Sheet({
     setOffset(0);
   }
 
-  const container =
-    anchor.current?.closest<HTMLElement>("[data-accent]") ?? undefined;
+  // Inside the nearest [data-accent], found from the anchor once it is
+  // drawn. A page left by back or forward is kept hidden (Next's Activity),
+  // which lets go of its refs (25 November 2026): drawn then, the sheet
+  // stays where it was, never moved to the page's foot, which would draw
+  // all it holds anew, losing what was typed and a refusal it was held for.
+  const home = useRef<HTMLElement | undefined>(undefined);
+  useLayoutEffect(() => {
+    home.current =
+      anchor.current?.closest<HTMLElement>("[data-accent]") ?? undefined;
+  });
+  const container = anchor.current
+    ? (anchor.current.closest<HTMLElement>("[data-accent]") ?? undefined)
+    : home.current;
 
   return (
     <>
@@ -133,6 +152,13 @@ export function Sheet({
             ref={setContent}
             aria-describedby={undefined}
             onCloseAutoFocus={(event) => {
+              // Still drawn, so not closed: its page is kept hidden, and
+              // shows again with the sheet open. The focus stays where it
+              // is, and what opened it stays noted for when it does close.
+              if (event.target instanceof Node && event.target.isConnected) {
+                event.preventDefault();
+                return;
+              }
               const chosen = returnFocus ? returnFocus() : opener.current;
               opener.current = null;
               // Something already took the focus as it closed (a toast's

@@ -511,7 +511,10 @@ test("wrong digits block typing, and the worker goes ahead without a code", asyn
 // Refused for what the page read again shows (clocked in behind its back,
 // another device, say), "כניסה בלי קוד" says why once that page is drawn,
 // which comes after the answer: until it has, the sheet keeps its close, so
-// an Escape meanwhile takes nothing along unsaid.
+// an Escape meanwhile takes nothing along unsaid. That includes the moment
+// between the answer and React drawing the refusal on its next turn
+// (25 November 2026): an Escape every 5 ms came in there only when the page
+// happened to be busy as the answer came, now and then on the phone.
 test("a press without a code refused as already in keeps its sheet until it has said why", async ({
   page,
 }) => {
@@ -525,20 +528,43 @@ test("a press without a code refused as already in keeps its sheet until it has 
   await expect(without.getByText(c.none.body)).toBeVisible();
   await addOpenDemoEntry(NOA.e164, 1);
   await without.getByRole("button", { name: c.none.confirmIn }).click();
-  // Escape, again and again from the press on, until the sheet says why.
+  // Escape in every task from the press on, until the sheet says why. Each
+  // posts the next, so one is always queued ahead of the task React draws
+  // in (its scheduler posts messages too, served in turn): one comes in
+  // between the answer and the refusal drawn, as a tap or a key could.
   await page.evaluate(() => {
-    const again = setInterval(() => {
-      if (document.querySelector('[role="dialog"] [role="alert"]')) {
-        clearInterval(again);
-        return;
-      }
+    const again = new MessageChannel();
+    again.port1.onmessage = () => {
+      if (document.querySelector('[role="dialog"] [role="alert"]')) return;
       document.dispatchEvent(
         new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
       );
-    }, 5);
+      again.port2.postMessage(null);
+    };
+    again.port2.postMessage(null);
   });
+  // And "חזרה לסריקה" pressed in every task beside it, the same way, until
+  // the sheet says why: back to the camera closes the sheet too, so it
+  // waits as the close does, a drawing after the page read again included.
+  await page.evaluate((back) => {
+    const again = new MessageChannel();
+    again.port1.onmessage = () => {
+      const dialog = document.querySelector('[role="dialog"]');
+      if (!dialog || dialog.querySelector('[role="alert"]')) return;
+      for (const button of dialog.querySelectorAll("button")) {
+        if (button.textContent?.trim() === back) button.click();
+      }
+      again.port2.postMessage(null);
+    };
+    again.port2.postMessage(null);
+  }, c.none.back);
   await expect(without.getByRole("alert")).toHaveText(c.failure.alreadyIn);
   await expect(without).toHaveAttribute("data-state", "open");
+  await expectCameraOff(page);
+  // Said, the way back to the camera is open again.
+  await expect(
+    without.getByRole("button", { name: c.none.back }),
+  ).toBeEnabled();
   // The page read again is drawn behind the open sheet, which hides it from
   // the accessibility tree while it stays modal: found with the hidden too.
   await expect(
