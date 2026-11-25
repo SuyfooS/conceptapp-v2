@@ -5,6 +5,12 @@ what is next, defaults applied.
 
 Older entries are in [`log/`](log/): [1–19 November 2026](log/2026-11-01-to-19.md) and [October 2026](log/2026-10.md).
 
+## 2026-11-25 · chat · reduced motion turns transitions off
+
+- `app/globals.css`: under `prefers-reduced-motion: reduce`, every element's transitions are now `0s` (and no delay) instead of `0.01ms`. A transition of 0.01ms is still one of every property, `visibility` included, so an element shown by the same drawing that put the focus on it stayed hidden for a frame or two and refused that focus. #253 found it in the hiring file shown again after its check (in CI, where Playwright asks for reduced motion) and works around it there; this removes the cause for everyone who asks for less motion. Animations keep their `0.01ms` and one iteration, since Radix's sheets wait for `animationend`; nothing in the app or its packages waits for a `transitionend`.
+- Tests: `tooling/reduced-motion.test.ts` (the block's selector, transitions at 0s with no delay, animations still ending). Checked here: `pnpm check` (two repo-wide tooling tests timed out at 5s under load and pass on their own). Not run here: Playwright, which runs every spec with reduced motion, so CI shows whether any spec leaned on the old 0.01ms.
+- Defaults applied, to ask Orel: none.
+
 ## 2026-11-24 · chat · accessibility, part 8: management and lists
 
 - On chat/a11y-lists from origin/main 1837c80 (#250), with origin/main b7ef204 (#251) merged in after the check. The sweep's lists-me-file findings 39, 41, 42, 43, 44 and 54; 40, 45, 46, 47, 50 and 51 came with #243, and 48, 49, 52 and 53 are the sibling part. No migration, no new package, no SQL; in `packages/ui` ChecklistItem's `itemId` (`data-list-item`, on `/design`) and, after the second review, UndoRow's name (`namedByWords`, on `/design` with the gallery's rows); the server actions answer as before. New messages: `app.lists.list.reopened`, "הרשימה נפתחה שוב" / "The list is open again", and after the second review `ui.undoRow.named`, "ביטול: {message}" / "Undo: {message}".
