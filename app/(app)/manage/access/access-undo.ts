@@ -8,6 +8,12 @@ import { byAttribute } from "../editor-focus";
  * `@ui/undo-wait`), and where the focus goes once a person's came back.
  */
 
+/**
+ * How long a way back stays, before a removal is written; the screen's
+ * checks wait past it (e2e/manage-lists-a11y.spec.ts).
+ */
+export const ACCESS_UNDO_MS = 6000;
+
 /** Something with a key: what a way back undoes (a role's switch, a person). */
 export type Keyed = { key: string };
 

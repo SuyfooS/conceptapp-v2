@@ -42,6 +42,7 @@ import type {
   TemplateEditorData,
   TemplatePaths,
 } from "../list-types";
+import { leavingFor, removedArrival } from "../press-arrival";
 import { ItemsEditor } from "./items-editor";
 import { SchedulesEditor } from "./schedules-editor";
 
@@ -474,6 +475,9 @@ export function TemplateEditor({
         refused(result.failure);
         return;
       }
+      // The press goes with the editor: the undo on the templates takes
+      // the focus.
+      leavingFor(removedArrival(id));
       router.push(`${paths.list}?removed=${id}`);
     });
   }

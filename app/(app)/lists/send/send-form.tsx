@@ -48,6 +48,7 @@ import {
   type SendFormData,
   type SendResult,
 } from "../list-types";
+import { leavingFor, sentArrival } from "../press-arrival";
 import { ItemsEditor } from "../templates/items-editor";
 
 type Kind = RecipientKind;
@@ -283,6 +284,8 @@ export function SendForm({
         setFailure(result.failure);
         return;
       }
+      // The press goes with this screen: its "ביטול" on Lists takes the focus.
+      leavingFor(sentArrival(result.value));
       router.push(`${paths.lists}?sent=${result.value}`);
     });
   }

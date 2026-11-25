@@ -12,6 +12,7 @@ import {
 } from "./db";
 import { signIn } from "./session";
 import { setDemoModule } from "./sms";
+import { undoNamed } from "./t";
 import { expect, type Page, test } from "./test";
 
 // Seeded in supabase/seed.sql: the demo restaurant's manager and a worker, and
@@ -279,7 +280,7 @@ test("a shift's refused undo gives the focus back to its 'ביטול'", async ({
   ).toBeVisible();
   await expect(row).toHaveCount(0);
   await expect(undo).toBeFocused();
-  await expect(undo).toHaveAccessibleDescription(removed);
+  await expect(undo).toHaveAccessibleName(undoNamed(removed));
   await pastDrawing(page);
   await expect(saidSince(polite, removed)).toHaveCount(0);
   await page.unroute(saves);

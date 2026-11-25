@@ -20,7 +20,7 @@ import { hearFileCheck } from "./file-watch";
 import { minimalPdf } from "./pdf";
 import { cameraPhoto } from "./photo";
 import { stubAudio } from "./station-audio";
-import { enT, heT } from "./t";
+import { enT, heT, undoNamed } from "./t";
 import { expect, type Locator, type Page, test } from "./test";
 import { readWorkbook, unzip } from "./unzip";
 
@@ -2653,7 +2653,7 @@ test("the gallery's undo row takes the focus, waits while it has it, and gives i
   await expect(row).toBeVisible();
   await expect(remove).toHaveCount(0);
   await expect(undo).toBeFocused();
-  await expect(undo).toHaveAccessibleDescription(removed);
+  await expect(undo).toHaveAccessibleName(undoNamed(removed));
   await expect(page.locator('[data-announcer="polite"]')).not.toContainText(
     removed,
   );
@@ -2718,7 +2718,7 @@ test("the gallery's undo row starts again for a second removal while the first i
   await removeFirst.focus();
   await page.keyboard.press("Enter");
   await expect(undo).toBeFocused();
-  await expect(undo).toHaveAccessibleDescription(removedFirst);
+  await expect(undo).toHaveAccessibleName(undoNamed(removedFirst));
 
   // Back to the other row's remove, pressed with the first's undo still up.
   await page.keyboard.press("Shift+Tab");
@@ -2726,7 +2726,7 @@ test("the gallery's undo row starts again for a second removal while the first i
   await page.keyboard.press("Enter");
   await expect(undo).toHaveCount(1);
   await expect(undo).toBeFocused();
-  await expect(undo).toHaveAccessibleDescription(removedSecond);
+  await expect(undo).toHaveAccessibleName(undoNamed(removedSecond));
   await expect(page.locator('[data-announcer="polite"]')).not.toContainText(
     removedSecond,
   );
@@ -2855,7 +2855,7 @@ test("the person demo's undos take the focus, wait while they have it, and give 
   await remove.focus();
   await page.keyboard.press("Enter");
   await expect(undoRemoval).toBeFocused();
-  await expect(undoRemoval).toHaveAccessibleDescription(removed);
+  await expect(undoRemoval).toHaveAccessibleName(undoNamed(removed));
   await page.waitForTimeout(9_000);
   await expect(undoRemoval).toBeVisible();
   await page.keyboard.press("Enter");
@@ -4264,17 +4264,25 @@ test("the lists demo sends, takes back, and keeps a finished list as it was", as
     .getByRole("button", { name: he.app.manage.undo });
   await expect(takeBack).toBeFocused();
   // Refused (the connection dropped): the row stays and says so, and its
-  // "ביטול", disabled while it waited, has the focus back.
+  // "ביטול", disabled while it waited, has the focus back, before the line
+  // that says so comes, which the focus's move would cut off.
   const takingBack = (url: URL) => url.pathname === "/design/shell/lists";
   await page.route(takingBack, async (route) => {
     if (route.request().method() === "POST") await route.abort();
     else await route.fallback();
   });
+  await noteFocusWhenSaid(
+    page,
+    l.send.cancelFailed,
+    "button",
+    he.app.manage.undo,
+  );
   await page.keyboard.press("Enter");
   await expect(
     page.getByRole("alert").filter({ hasText: l.send.cancelFailed }),
   ).toBeVisible();
   await expect(takeBack).toBeFocused();
+  expect(await focusWhenSaid(page)).toBe(true);
   await page.unroute(takingBack);
   await takeBack.click();
   await expect(page).toHaveURL(/\/design\/shell\/lists$/);
@@ -4657,7 +4665,7 @@ test("the photo demo takes a photo, removes it and brings it back", async ({
     .filter({ hasText: l.photo.undoFailed });
   await expect(notBack).toBeVisible();
   await expect(undoButton).toBeFocused();
-  await expect(undoButton).toHaveAccessibleDescription(l.photo.removed);
+  await expect(undoButton).toHaveAccessibleName(undoNamed(l.photo.removed));
   expect(await focusWhenSaid(page)).toBe(true);
   expect(
     (await statusWords()).filter(({ words }) =>

@@ -31,6 +31,7 @@ import type {
   TemplateRow,
   TemplatesScreenData,
 } from "../list-types";
+import { arrivalTaken, cameFromPress, removedArrival } from "../press-arrival";
 import { useTimeWords } from "./schedule-words";
 
 const th = "px-4 py-3 text-start font-medium text-ink-2 text-sm";
@@ -45,8 +46,10 @@ const td = "border-line border-t px-4 py-3 align-middle";
  * table, with when each goes and who asks for each order.
  * Removed ones wait folded at the end, each with its way back, and the one
  * just removed in its editor has its undo on top, which takes the focus as
- * the screen comes after the press in the editor, and has it back once
- * bringing it back was refused (accessibility, part 8).
+ * the screen comes right after the press in the editor (not on a reload, or
+ * the address opened again: `press-arrival`), and has it back once bringing
+ * it back was refused, before the line that says why (accessibility, part
+ * 8).
  * Used on /lists/templates and by the team in the console.
  */
 export function TemplatesView({
@@ -73,16 +76,25 @@ export function TemplatesView({
   } | null>(null);
   // The undo's "ביטול" waited, disabled, and the focus with it went:
   // refused, the row stays, and the focus is back on it, unless put
-  // elsewhere meanwhile. Once for each refusal: the screen shown again from
-  // a hidden <Activity> leaves the focus where it is.
+  // elsewhere meanwhile, and then the line under it says why (`said`): said
+  // before that move, it would be cut off. Once for each refusal: the
+  // screen shown again from a hidden <Activity> leaves the focus where it
+  // is.
   const undoButton = useRef<HTMLButtonElement>(null);
   const refocused = useRef<typeof failure>(null);
+  const [said, setSaid] = useState<typeof failure>(null);
   useEffect(() => {
     const refused = failure?.fromUndo ? failure : null;
     if (refusalArrived(refocused, refused, pending)) {
       focusFirst([undoButton.current], { title: false });
+      setSaid(refused);
     }
   }, [failure, pending]);
+  // A folded row's refusal moves no focus: said at once.
+  const alerted =
+    failure && (!failure.fromUndo || (failure === said && !pending))
+      ? failure
+      : null;
 
   const groups = templatesByDepartment(data.templates, data.departments);
   const editorOf = (id: string) => `${paths.list}/${id}`;
@@ -212,6 +224,13 @@ export function TemplatesView({
     data.justRemoved && data.justRemoved.id !== undone
       ? data.justRemoved
       : null;
+  // Right after the press in the editor, its "ביטול" takes the focus: read
+  // as it draws, taken once it has.
+  const arrival = just ? removedArrival(just.id) : null;
+  const fromPress = arrival !== null && cameFromPress(arrival);
+  useEffect(() => {
+    if (arrival) arrivalTaken(arrival);
+  }, [arrival]);
 
   return (
     <PageBody className={pageGlowClass}>
@@ -233,14 +252,14 @@ export function TemplatesView({
           message={t("removed", { name: just.name })}
           onUndo={() => bringBack(just, true)}
           pending={pending && restoring === just.id}
-          // The editor's "הסרת הרשימה" went with the editor.
-          autoFocus
+          // The editor's "הסרת הרשימה" went with the editor, just now.
+          autoFocus={fromPress}
           buttonRef={undoButton}
         />
       ) : null}
-      {failure ? (
+      {alerted ? (
         <p role="alert" className="px-1 font-medium text-danger">
-          {t(`failed.${failure.reason}`)}
+          {t(`failed.${alerted.reason}`)}
         </p>
       ) : null}
 

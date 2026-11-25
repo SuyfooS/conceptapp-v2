@@ -1,9 +1,22 @@
 import AxeBuilder from "@axe-core/playwright";
 import he from "../messages/he.json" with { type: "json" };
-import { announcer, heardSoFar, pastDrawing, saidSince } from "./announcer";
-import { demoLists, endViewSessions, resetDemoLists } from "./db";
+import {
+  announcer,
+  focusWhenSaid,
+  heardSoFar,
+  noteFocusWhenSaid,
+  pastDrawing,
+  saidSince,
+} from "./announcer";
+import {
+  demoLists,
+  endViewSessions,
+  finishDemoList,
+  resetDemoLists,
+  setDemoListItem,
+} from "./db";
 import { secondPage, signIn } from "./session";
-import { countedTabName } from "./t";
+import { countedTabName, undoNamed } from "./t";
 import { expect, type Page, test } from "./test";
 
 // Lists, part 2 (L2): the demo restaurant starts with example lists
@@ -160,7 +173,9 @@ test("a worker fills the kitchen's opening list, finishes it and takes it back",
     .getByRole("button", { name: he.app.manage.undo });
   await expect(undo).toBeVisible();
   await expect(undo).toBeFocused();
-  await expect(undo).toHaveAccessibleDescription(l.list.finished);
+  // Its words in its name, said at once with the focus (UndoRow's
+  // `namedByWords`), not after a pause as a description.
+  await expect(undo).toHaveAccessibleName(undoNamed(l.list.finished));
   await pastDrawing(page);
   await expect(saidSince(polite, l.list.finished)).toHaveCount(0);
   await expect
@@ -195,6 +210,43 @@ test("a worker fills the kitchen's opening list, finishes it and takes it back",
     nav(page).getByRole("link", { name: he.modules.lists.name }),
   ).toHaveAccessibleName(he.modules.lists.name);
   await expectCleanPage(page);
+});
+
+// Closed meanwhile from another screen (Shiran's, who runs the lists): Noa's
+// finish is refused, and its answer reads the list again, so the screen
+// starts anew, closed. What she pressed went with the screen before: the
+// list's title has the focus, and only then does the toast say why, which
+// said before that move would be cut off (accessibility, part 8).
+test("a finish refused as the list closed meanwhile focuses the title, then says why", async ({
+  page,
+}) => {
+  await setDemoListItem(NOA.e164, OPENING, "מקרר ראשי", { reading: 3 });
+  await setDemoListItem(NOA.e164, OPENING, "מקפיא", { reading: -19 });
+  await setDemoListItem(NOA.e164, OPENING, "ניקוי משטחי עבודה", {
+    checked: true,
+  });
+  const [list] = await demoLists(OPENING);
+  if (!list) throw new Error("The kitchen's opening list is not there");
+
+  await signIn(page, NOA);
+  await page.goto(`/lists/${list.id}`);
+  const title = page.getByRole("heading", { level: 1, name: OPENING });
+  await expect(title).toBeVisible();
+  await expect(finishButton(page)).toBeEnabled();
+
+  await finishDemoList(MANAGER.e164, OPENING);
+  await noteFocusWhenSaid(page, l.list.failed.finished, "main h1");
+  await finishButton(page).click();
+  await expect(
+    page.getByRole("status").filter({ hasText: l.list.failed.finished }),
+  ).toBeVisible();
+  await expect(title).toBeFocused();
+  expect(await focusWhenSaid(page)).toBe(true);
+  // Read again as it is: closed by Shiran, nothing left to finish.
+  await expect(finishButton(page)).toHaveCount(0);
+  await expect
+    .poll(async () => (await demoLists(OPENING))[0]?.status)
+    .toBe("finished");
 });
 
 test("a manager sends a list to the kitchen, which hears of it and opens it", async ({

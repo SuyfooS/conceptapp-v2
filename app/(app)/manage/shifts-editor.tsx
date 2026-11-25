@@ -43,7 +43,8 @@ const blank = (): ShiftPattern => ({
  * and opens a sheet to change it. Weeks already saved keep their own shifts.
  * Removing one closes its sheet onto the removal's "ביטול", which says what
  * went; undone, the focus is back on the shift's row, and on "ביטול" again
- * when that undo was refused and took the row away (accessibility, part 8).
+ * when that undo was refused and took the row away; the removal refused, on
+ * the shift's row, back in its place (accessibility, part 8).
  */
 export function ShiftsEditor({
   title,
@@ -132,7 +133,12 @@ export function ShiftsEditor({
     const before = removed;
     setRemoved({ shift, index, refused: false });
     const saved = await onChange(shifts.filter((other) => other.key !== key));
-    if (!saved) setRemoved(before);
+    if (saved) return;
+    // Refused: the shift is back, and an earlier removal's way back if there
+    // was one. A sheet still closing gives the focus to the shift's row,
+    // not to that "ביטול".
+    back.kept(() => groupRow(group.current, index));
+    setRemoved(before);
   }
 
   async function undo() {

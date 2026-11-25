@@ -36,14 +36,17 @@ export function groupRow(
 /**
  * Where the focus goes once an editor's sheet has closed, in order: after a
  * removal from it, its "ביטול", which says what went (its row went with the
- * sheet, and was what opened it), else the section's title; otherwise what
- * opened it, else the section's title.
+ * sheet, and was what opened it), else the section's title; after a removal
+ * refused, the row it put back, never a "ביטול" (another removal's, if
+ * any), else the section's title; otherwise what opened it, else the
+ * section's title.
  */
 export function sheetReturnTo({
   removed,
   undo,
   opener,
   heading,
+  kept = null,
 }: {
   /** It closed for a removal from it. */
   removed: boolean;
@@ -53,8 +56,11 @@ export function sheetReturnTo({
   opener: FocusCandidate;
   /** The title of the editor's section. */
   heading: FocusCandidate;
+  /** The row a refused removal put back, there again as another. */
+  kept?: FocusCandidate;
 }): readonly FocusCandidate[] {
-  return removed ? [undo, heading] : [opener, heading];
+  if (removed) return [undo, heading];
+  return kept ? [kept, heading] : [opener, heading];
 }
 
 /**

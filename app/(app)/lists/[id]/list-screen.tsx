@@ -256,9 +256,11 @@ type ListScreenProps = {
 
 /**
  * What the screen read again after its own press starts with: a finish, or
- * an opening again (the finish's undo, "פתיחה מחדש", "פתיחה מחדש לכולם").
+ * an opening again (the finish's undo, "פתיחה מחדש", "פתיחה מחדש לכולם"),
+ * or why one of them was refused, read again with its answer (someone else
+ * closed the list or opened it meanwhile).
  */
-type Arrival = "finished" | "reopened";
+type Arrival = "finished" | "reopened" | { refused: ListFailure };
 
 /**
  * The list's screen, with what it says while it starts anew (`screenKey`
@@ -277,8 +279,8 @@ export function ListScreenFrame({
   );
   const refocusFix = useRef(false);
   // A finish or an opening again on its way: set as it is pressed, so the
-  // screen read again has it however soon it comes, and forgotten once
-  // that screen took it, or the press was refused.
+  // screen read again has it however soon it comes, why in its place when
+  // the press was refused, and forgotten once a screen took it.
   const [arrival, setArrival] = useState<Arrival | null>(null);
   return (
     <>
@@ -614,11 +616,14 @@ function ListScreen({
   // pressed went with the screen before. After a finish, "ביטול" takes the
   // focus, which says the list closed (its row `quiet` meanwhile); else, or
   // with the focus put elsewhere meanwhile, the page's title takes a focus
-  // lost, and what happened is said. Once: a screen shown again from a
-  // hidden <Activity> runs this again. Only for the list as it is now: a
-  // press whose screen was left before its answer leaves what it pressed to
-  // the next screen, maybe a later one, of a list changed since (finished
-  // again, opened again), which this would mis-say.
+  // lost, and what happened is said. Refused, and read again with its
+  // answer (closed or opened again elsewhere meanwhile), the title takes a
+  // focus lost, and only then is why said: said before that move, it would
+  // be cut off. Once: a screen shown again from a hidden <Activity> runs
+  // this again. Only for the list as it is now: a press whose screen was
+  // left before its answer leaves what it pressed to the next screen, maybe
+  // a later one, of a list changed since (finished again, opened again),
+  // which this would mis-say.
   const [came] = useState(arrival);
   const cameSeen = useRef(false);
   const undoButton = useRef<HTMLButtonElement>(null);
@@ -627,6 +632,11 @@ function ListScreen({
     if (came === null || cameSeen.current) return;
     cameSeen.current = true;
     arrive(null);
+    if (typeof came === "object") {
+      focusFirst([]);
+      fail(came.refused);
+      return;
+    }
     if ((came === "finished") !== (list.status !== "open")) return;
     if (came === "finished") {
       const undo = undoButton.current;
@@ -641,10 +651,12 @@ function ListScreen({
 
   // A finish or an opening again refused: what was pressed (the finish, the
   // finish's "ביטול", "פתיחה מחדש", "פתיחה מחדש לכולם") waited, disabled,
-  // and the focus went with it. Held until nothing is on its way, then the
-  // focus is back on it when the screen stays as it is and nothing else
-  // took the focus meanwhile, and only then is why said: said before that
-  // move, it would be cut off.
+  // and the focus went with it. Held until nothing is on its way, for when
+  // this screen is still the one shown then (else the screen read again
+  // says it, `came`, and this one never runs): then the focus is back on it,
+  // unless something else took the focus meanwhile, or on the title for a
+  // refusal that reads the list again, where it may go, and only then is
+  // why said: said before that move, it would be cut off.
   const pressRefused = useRef<{
     reason: ListFailure;
     pressed: Element | null;
@@ -654,7 +666,9 @@ function ListScreen({
     const held = pressRefused.current;
     if (finishing || !held) return;
     pressRefused.current = null;
-    if (!movesOn(held.reason)) focusFirst([held.pressed], { title: false });
+    arrive(null);
+    if (movesOn(held.reason)) focusFirst([]);
+    else focusFirst([held.pressed], { title: false });
     fail(held.reason);
   }, [finishing]);
 
@@ -1241,7 +1255,7 @@ function ListScreen({
    * Finishing, or opening again: the list is read again, and the screen
    * starts anew, which the frame tells where the focus goes (`arrive`), as
    * it is pressed: the screen read again can come before the answer.
-   * Refused, nothing arrives, and the refusal is held (`pressRefused`).
+   * Refused, why arrives instead (`refusedPress`).
    */
   function finish() {
     if (photosBusy) return;
@@ -1254,10 +1268,7 @@ function ListScreen({
       } catch {
         result = { ok: false, failure: "failed" };
       }
-      if (!result.ok) {
-        arrive(null);
-        pressRefused.current = { reason: result.failure, pressed };
-      }
+      if (!result.ok) refusedPress(result.failure, pressed);
     });
   }
 
@@ -1271,11 +1282,20 @@ function ListScreen({
       } catch {
         result = { ok: false, failure: "failed" };
       }
-      if (!result.ok) {
-        arrive(null);
-        pressRefused.current = { reason: result.failure, pressed };
-      }
+      if (!result.ok) refusedPress(result.failure, pressed);
     });
+  }
+
+  /**
+   * A finish or an opening again refused: why, held both in the frame, for
+   * a screen read again with the answer (someone else closed it or opened
+   * it meanwhile: `came`), and here (`pressRefused`), for this screen
+   * when it is still the one shown once nothing is on its way. Whichever
+   * says it forgets it in the other.
+   */
+  function refusedPress(reason: ListFailure, pressed: Element | null) {
+    arrive({ refused: reason });
+    pressRefused.current = { reason, pressed };
   }
 
   /**

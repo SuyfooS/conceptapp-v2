@@ -104,7 +104,8 @@
       "close": "סגירה"
     },
     "undoRow": {
-      "undo": "ביטול"
+      "undo": "ביטול",
+      "named": "ביטול: {message}"
     },
     "checklist": {
       "checked": "סומן",

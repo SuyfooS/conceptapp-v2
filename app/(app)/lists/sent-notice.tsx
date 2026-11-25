@@ -8,6 +8,7 @@ import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { refusalArrived } from "../manage/editor-focus";
 import type { ListActionResult, ListFailure } from "./list-types";
+import { arrivalTaken, cameFromPress, sentArrival } from "./press-arrival";
 
 /**
  * Right after sending: where the list went, and the way to take it back for
@@ -16,8 +17,10 @@ import type { ListActionResult, ListFailure } from "./list-types";
  * once taken back, the list leaves the address and the screen, and this still
  * says so. Lists comes right after the press that sent it, which went with
  * the send screen: "ביטול" takes the focus as it appears, and its focus says
- * where the list went, and has it back once taking it back was refused
- * (accessibility, part 8).
+ * where the list went; reached any other way (a reload, the address again),
+ * the focus stays where it is, and the row says itself (`press-arrival`).
+ * "ביטול" has the focus back once taking it back was refused, and only then
+ * does the line under it say so (accessibility, part 8).
  */
 export function SentNotice({
   sent,
@@ -67,15 +70,26 @@ export function SentNotice({
   const failure =
     !started && shown && failed?.listId === shown.listId ? failed : null;
 
+  // Right after the press that sent it, its "ביטול" takes the focus: read
+  // as it draws, taken once it has.
+  const arrival = shown ? sentArrival(shown.listId) : null;
+  const fromPress = arrival !== null && cameFromPress(arrival);
+  useEffect(() => {
+    if (arrival) arrivalTaken(arrival);
+  }, [arrival]);
+
   // "ביטול" waited, disabled, and the focus with it went: refused (a slip,
   // offline), the row stays, and the focus is back on it, unless put
-  // elsewhere meanwhile. Once for each refusal: the screen shown again from
-  // a hidden <Activity> leaves the focus where it is.
+  // elsewhere meanwhile, and then the line under it says so (`said`): said
+  // before that move, it would be cut off. Once for each refusal: the
+  // screen shown again from a hidden <Activity> leaves the focus where it is.
   const undoButton = useRef<HTMLButtonElement>(null);
   const refocused = useRef<typeof failure>(null);
+  const [said, setSaid] = useState<typeof failure>(null);
   useEffect(() => {
     if (refusalArrived(refocused, failure, pending)) {
       focusFirst([undoButton.current], { title: false });
+      setSaid(failure);
     }
   }, [failure, pending]);
 
@@ -92,7 +106,7 @@ export function SentNotice({
           message={shown.message}
           onUndo={() => undo(shown.listId)}
           pending={pending}
-          autoFocus
+          autoFocus={fromPress}
           buttonRef={undoButton}
         />
       ) : null}
@@ -100,7 +114,8 @@ export function SentNotice({
         <p role="status" className="px-1 text-ink-2">
           {t("send.started")}
         </p>
-      ) : failure ? (
+      ) : failure && failure === said && !pending ? (
+        // Drawn for each refusal once the focus is back.
         <p role="alert" className="px-1 text-danger text-sm">
           {t("send.cancelFailed")}
         </p>

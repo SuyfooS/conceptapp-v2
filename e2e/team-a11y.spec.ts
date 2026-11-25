@@ -7,7 +7,7 @@ import {
   saidSince,
 } from "./announcer";
 import { HOLD_MS } from "./build-screen";
-import { heT } from "./t";
+import { heT, undoNamed } from "./t";
 import { expect, type Page, test } from "./test";
 
 // Accessibility, part 6, on the Team screen's twins (/design/shell/team and
@@ -485,7 +485,7 @@ test("the person twin's name fix holds its sheet until its answer, then closes o
     .filter({ hasText: changed })
     .getByRole("button", { name: he.ui.undoRow.undo });
   await expect(undoName).toBeFocused();
-  await expect(undoName).toHaveAccessibleDescription(changed);
+  await expect(undoName).toHaveAccessibleName(undoNamed(changed));
   await pastDrawing(page);
   await expect(saidSince(polite, changed)).toHaveCount(0);
   await page.unroute("**/design/shell/team/noa");

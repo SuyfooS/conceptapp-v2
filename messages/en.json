@@ -104,7 +104,8 @@
       "close": "Close"
     },
     "undoRow": {
-      "undo": "Undo"
+      "undo": "Undo",
+      "named": "Undo: {message}"
     },
     "checklist": {
       "checked": "Ticked",

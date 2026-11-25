@@ -1,6 +1,14 @@
+import { ACCESS_UNDO_MS } from "../app/(app)/manage/access/access-undo";
 import he from "../messages/he.json" with { type: "json" };
-import { announcer, heardSoFar, pastDrawing, saidSince } from "./announcer";
-import { heT } from "./t";
+import {
+  announcer,
+  focusWhenSaid,
+  heardSoFar,
+  noteFocusWhenSaid,
+  pastDrawing,
+  saidSince,
+} from "./announcer";
+import { heT, undoNamed } from "./t";
 import { expect, type Page, test } from "./test";
 
 // Accessibility, part 8, on the twins of management's editors and the lists
@@ -16,8 +24,6 @@ const m = he.app.manage;
 const l = he.app.lists;
 const UNDO = he.ui.undoRow.undo;
 const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-/** How long the screen of who sees pay offers a way back (access-view.tsx). */
-const ACCESS_UNDO_MS = 6_000;
 // The twin's people (app/design/shell/manage/access/data.ts): Yoav was
 // given access himself, and his role doesn't give it.
 const YOAV = "יואב לוי";
@@ -59,7 +65,7 @@ test("who sees pay gives a removal's 'ביטול' the focus, waits while it is r
   await remove.focus();
   await page.keyboard.press("Enter");
   await expect(undo).toBeFocused();
-  await expect(undo).toHaveAccessibleDescription(removed);
+  await expect(undo).toHaveAccessibleName(undoNamed(removed));
   await expect(remove).toHaveCount(0);
   // Past its time, with the keyboard on it: still there.
   await page.waitForTimeout(ACCESS_UNDO_MS + 1_000);
@@ -102,7 +108,8 @@ test("who sees pay gives a removal's 'ביטול' the focus, waits while it is r
 // removing one from its sheet closes the sheet onto "ביטול", which says
 // what went as the focus reaches it, and the announcer doesn't say it
 // meanwhile; undone, the shift's row has the focus. A sheet closed any
-// other way gives the focus back to the row that opened it.
+// other way gives the focus back to the row that opened it, and so does a
+// removal refused.
 test("the scheduling settings give each removal's 'ביטול' the focus, and the focus back to what it brings back", async ({
   page,
 }) => {
@@ -140,13 +147,50 @@ test("the scheduling settings give each removal's 'ביטול' the focus, and th
   await sheet.getByRole("button", { name: m.shifts.remove }).click();
   await expect(sheet).toBeHidden();
   await expect(shiftUndo).toBeFocused();
-  await expect(shiftUndo).toHaveAccessibleDescription(shiftRemoved);
+  await expect(shiftUndo).toHaveAccessibleName(undoNamed(shiftRemoved));
   await pastDrawing(page);
   await expect(saidSince(polite, shiftRemoved)).toHaveCount(0);
   await expect(row).toHaveCount(0);
   await page.keyboard.press("Enter");
   await expect(row).toBeFocused();
   await expect(shiftUndo).toHaveCount(0);
+
+  // A removal refused (its save dropped at once, while the sheet still
+  // slides away), with an earlier removal's way back still there: the shift
+  // is back, and the sheet closes onto its row, never onto the earlier
+  // removal's "ביטול", which would say that shift went.
+  const SATURDAY = "מוצ״ש";
+  const saturday = page.getByRole("button", {
+    name: new RegExp(`^${SATURDAY}`),
+  });
+  const saturdayUndo = undoOf(
+    page,
+    heT("app.manage.shifts.removed", { name: SATURDAY }),
+  );
+  await saturday.click();
+  await page
+    .getByRole("dialog", { name: SATURDAY })
+    .getByRole("button", { name: m.shifts.remove })
+    .click();
+  await expect(saturdayUndo).toBeFocused();
+  await page.waitForLoadState("networkidle");
+  const saves = (url: URL) =>
+    url.pathname === "/design/shell/manage/scheduling";
+  await page.route(saves, async (route) => {
+    if (route.request().method() === "POST") await route.abort();
+    else await route.fallback();
+  });
+  await row.click();
+  await expect(sheet).toBeVisible();
+  await sheet.getByRole("button", { name: m.shifts.remove }).click();
+  await expect(sheet).toBeHidden();
+  await expect(
+    page.getByRole("alert").filter({ hasText: m.failed.failed }),
+  ).toBeVisible();
+  await expect(row).toBeFocused();
+  await expect(saturdayUndo).toBeVisible();
+  await expect(saturdayUndo).not.toBeFocused();
+  await page.unroute(saves);
 });
 
 // A position's undo refused (its save didn't get there) once the person
@@ -211,8 +255,8 @@ test("the scheduling settings' refused undo leaves the focus where the person we
 });
 
 // A template's editor: an item and a time removed from their sheets close
-// them onto "ביטול", which says what went; undone, the row is back and has
-// the focus.
+// them onto "ביטול", which says what went, in its name, and the announcer
+// doesn't, too; undone, the row is back and has the focus.
 test("the template editor closes a removal's sheet onto its 'ביטול', and gives the focus back to the row it brings back", async ({
   page,
 }) => {
@@ -231,7 +275,7 @@ test("the template editor closes a removal's sheet onto its 'ביטול', and gi
   await itemSheet.getByRole("button", { name: l.items.remove }).click();
   await expect(itemSheet).toBeHidden();
   await expect(itemUndo).toBeFocused();
-  await expect(itemUndo).toHaveAccessibleDescription(itemRemoved);
+  await expect(itemUndo).toHaveAccessibleName(undoNamed(itemRemoved));
   await pastDrawing(page);
   await expect(saidSince(polite, itemRemoved)).toHaveCount(0);
   await expect(item).toHaveCount(0);
@@ -255,12 +299,16 @@ test("the template editor closes a removal's sheet onto its 'ביטול', and gi
   await rows.first().click();
   const timeSheet = page.getByRole("dialog", { name: l.schedules.sheet.title });
   await expect(timeSheet).toBeVisible();
+  await heardSoFar(polite);
   await timeSheet
     .getByRole("button", { name: l.schedules.sheet.remove })
     .click();
   await expect(timeSheet).toBeHidden();
   await expect(timeUndo).toBeFocused();
-  await expect(timeUndo).toHaveAccessibleDescription(l.schedules.removed);
+  await expect(timeUndo).toHaveAccessibleName(undoNamed(l.schedules.removed));
+  // Its focus says it: the announcer doesn't, too (its row `quiet`).
+  await pastDrawing(page);
+  await expect(saidSince(polite, l.schedules.removed)).toHaveCount(0);
   // The time's row went: "הוספת זמן" and "ביטול" are left.
   await expect(rows.first()).toContainText(l.schedules.add);
   await page.keyboard.press("Enter");
@@ -332,4 +380,73 @@ test("the lists' folded sections are headings at every width", async ({
     const summary = page.getByRole("main").locator("summary");
     await expect(summary).toHaveText(closed);
   }
+});
+
+// Lists and the templates reached by their address, not right after the
+// press that sent a list or removed a template (a reload, the address
+// opened again): the way back is there, its "ביטול" leaves the focus where
+// it is, and the announcer says the row. (Right after the press it takes
+// the focus: design.spec.ts and list-templates.spec.ts.) The templates'
+// undo refused (the request dropped, and the twin stores nothing): its
+// "ביטול", disabled while it waited, has the focus back, and only then
+// does the line under it say why; a folded row's own refused restore
+// leaves the top "ביטול" alone.
+test("a way back reached by its address leaves the focus, and the templates' refused undo has it back", async ({
+  page,
+}) => {
+  const polite = announcer(page, "polite");
+  const sent = l.send.sent.replace("{to}", "לאולם");
+  const takeBack = undoOf(page, sent);
+  await page.goto("/design/shell/lists?sent=list-floor-opening");
+  await page.waitForLoadState("networkidle");
+  await expect(takeBack).toBeVisible();
+  await expect(takeBack).not.toBeFocused();
+  await expect(saidSince(polite, sent)).toHaveCount(1);
+
+  const STOCK = "ספירת מלאי חודשית";
+  const removed = heT("app.lists.templates.removed", { name: STOCK });
+  const undo = undoOf(page, removed);
+  const templates = "/design/shell/lists/templates";
+  await page.goto(`${templates}?removed=t-stock-count`);
+  await page.waitForLoadState("networkidle");
+  await expect(undo).toBeVisible();
+  await expect(undo).not.toBeFocused();
+  await expect(saidSince(polite, removed)).toHaveCount(1);
+
+  const restores = (url: URL) => url.pathname === templates;
+  await page.route(restores, async (route) => {
+    if (route.request().method() === "POST") await route.abort();
+    else await route.fallback();
+  });
+  const failed = l.templates.failed.failed;
+  const why = page.getByRole("alert").filter({ hasText: failed });
+  await noteFocusWhenSaid(page, failed, "button", UNDO);
+  await undo.focus();
+  await page.keyboard.press("Enter");
+  await expect(why).toBeVisible();
+  await expect(undo).toBeFocused();
+  await expect(undo).toBeEnabled();
+  expect(await focusWhenSaid(page)).toBe(true);
+
+  // The same template brought back from its folded row, refused: said at
+  // once, and the focus stays off the top "ביטול".
+  await page
+    .getByRole("main")
+    .locator("summary")
+    .filter({ hasText: heT("app.lists.templates.removedTitle", { count: 1 }) })
+    .click();
+  const restore = page.getByRole("button", {
+    name: heT("app.lists.templates.restoreOf", { name: STOCK }),
+  });
+  const refused = page.waitForRequest(
+    (request) =>
+      request.method() === "POST" && restores(new URL(request.url())),
+  );
+  await restore.click();
+  await refused;
+  await expect(restore).toBeEnabled();
+  await expect(why).toBeVisible();
+  await pastDrawing(page);
+  await expect(undo).not.toBeFocused();
+  await page.unroute(restores);
 });

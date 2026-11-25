@@ -41,10 +41,7 @@ import type {
   AccessPaths,
   AccessPersonRow,
 } from "./access-types";
-import { accessRemove, createUndoSlot } from "./access-undo";
-
-/** How long the way back stays, before a removal is written. */
-const UNDO_MS = 6000;
+import { ACCESS_UNDO_MS, accessRemove, createUndoSlot } from "./access-undo";
 
 /**
  * A way back. `key` is what it undoes (a role's switch as it turned, a
@@ -65,7 +62,7 @@ type Undo = {
  */
 function useUndoSlot() {
   const [shown, setShown] = useState<Undo | null>(null);
-  const [slot] = useState(() => createUndoSlot<Undo>(UNDO_MS, setShown));
+  const [slot] = useState(() => createUndoSlot<Undo>(ACCESS_UNDO_MS, setShown));
   return { shown, show: slot.show, clear: slot.clear, waits: slot.waits };
 }
 
@@ -292,7 +289,7 @@ export function AccessView({
     markPersonal(person.userId, false);
     pending.current = {
       person: person.userId,
-      wait: heldTimer(UNDO_MS, () => void commitPending()),
+      wait: heldTimer(ACCESS_UNDO_MS, () => void commitPending()),
     };
     setHolding(person.userId);
     personUndo.show({

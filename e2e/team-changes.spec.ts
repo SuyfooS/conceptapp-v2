@@ -31,7 +31,7 @@ import {
 } from "./db";
 import { secondPage, signIn } from "./session";
 import { latestCode } from "./sms";
-import { heT } from "./t";
+import { heT, undoNamed } from "./t";
 import { expect, type Page, test } from "./test";
 
 // Team changes (Orel, 14 November 2026, issue #1): whoever may invite to a
@@ -476,7 +476,7 @@ test("the owner fixes a name: everywhere in the business and only there, with th
     .filter({ hasText: changed })
     .getByRole("button", { name: he.app.manage.undo });
   await expect(undoName).toBeFocused();
-  await expect(undoName).toHaveAccessibleDescription(changed);
+  await expect(undoName).toHaveAccessibleName(undoNamed(changed));
   await expect.poll(() => teamChangesName(LEAVING.id)).toBe(FIXED);
   expect(await teamChangesOwnName(LEAVING.id)).toBe(LEAVING.name);
 

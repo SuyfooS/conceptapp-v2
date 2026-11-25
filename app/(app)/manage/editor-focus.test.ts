@@ -80,6 +80,32 @@ describe("sheetReturnTo", () => {
       sheetReturnTo({ removed: false, undo: null, opener: null, heading }),
     ).toEqual([null, heading]);
   });
+
+  it("goes onto the row a refused removal put back, never an earlier removal's undo, else the section's title", () => {
+    const back = { name: "row, there again" } as unknown as Element;
+    // The removal refused before the sheet had gone: it is no removal now,
+    // and what opened it went with it.
+    const toRow = sheetReturnTo({
+      removed: false,
+      undo,
+      opener,
+      heading,
+      kept: back,
+    });
+    expect(toRow).toEqual([back, heading]);
+    expect(toRow).not.toContain(undo);
+    expect(toRow).not.toContain(opener);
+    // Not found: the section's title, as for a sheet closed any other way.
+    expect(
+      sheetReturnTo({
+        removed: false,
+        undo,
+        opener: null,
+        heading,
+        kept: null,
+      }),
+    ).toEqual([null, heading]);
+  });
 });
 
 describe("refusalArrived", () => {
