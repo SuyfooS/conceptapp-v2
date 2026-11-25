@@ -814,6 +814,26 @@ export async function buildDemoThisWeek(
   shifts: readonly DemoWeekShift[],
   publish: boolean,
 ): Promise<void> {
+  await buildDemoWeek("this", shifts, publish);
+}
+
+/**
+ * Next week's schedule at the demo restaurant, as `buildDemoThisWeek` writes
+ * this week's: only these shifts, saved as a draft or published, as its
+ * manager. Callers clear the schedule first.
+ */
+export async function buildDemoNextWeek(
+  shifts: readonly DemoWeekShift[],
+  publish: boolean,
+): Promise<void> {
+  await buildDemoWeek("next", shifts, publish);
+}
+
+async function buildDemoWeek(
+  which: "this" | "next",
+  shifts: readonly DemoWeekShift[],
+  publish: boolean,
+): Promise<void> {
   const phones = [
     ...new Set(shifts.flatMap((shift) => shift.people.map(([phone]) => phone))),
   ];
@@ -834,14 +854,14 @@ export async function buildDemoThisWeek(
     ),
     this_week as (
       select today - ((extract(dow from today)::int - starts_on + 7) % 7)
-        as starts_on
+        + (case when ${which}::text = 'next' then 7 else 0 end) as starts_on
       from business
     )
     select public.open_schedule_week(${DEMO_RESTAURANT}, starts_on,
         now() + interval '1 day')::text as id,
       starts_on::text as starts_on
     from this_week`;
-  if (!week) throw new Error("Could not open this week");
+  if (!week) throw new Error(`Could not open ${which} week`);
   const first = Date.parse(`${week.starts_on}T00:00:00Z`);
   const sent = shifts.map((shift) => ({
     day: new Date(first + shift.offset * 86_400_000).toISOString().slice(0, 10),
@@ -968,6 +988,47 @@ export async function scheduleDemoSunday(
       ${sql.json(shifts)})`;
   }
   return week.starts_on;
+}
+
+/**
+ * Another screen puts someone on one of next week's saved Sunday shifts at
+ * the demo restaurant meanwhile (`pattern`: "morning" or "evening"), as
+ * its save leaves it: the shift keeps its id, and what is seen of it (its
+ * digest, `private.week_digests`) changes, so a screen that read it before
+ * and sends it changed is refused (`weekMoved`), while one that sends it as
+ * it was read leaves it so. Written straight to the table: a save from
+ * another screen checks nothing this one needs.
+ */
+export async function putOnDemoNextSunday(
+  pattern: "morning" | "evening",
+  phone: string,
+): Promise<void> {
+  const added = await sql`
+    with business as (
+      select (now() at time zone b.timezone)::date as today,
+        coalesce((m.settings ->> 'weekStartsOn')::int, 0) as starts_on
+      from public.businesses b
+      join public.business_modules m
+        on m.business_id = b.id and m.module_key = 'scheduling'
+      where b.id = ${DEMO_RESTAURANT}
+    ),
+    next_week as (
+      select today - ((extract(dow from today)::int - starts_on + 7) % 7)
+        + 7 as starts_on
+      from business
+    )
+    insert into public.shift_assignments
+      (shift_id, business_id, user_id, position_key)
+    select s.id, s.business_id, p.id, null
+    from public.schedule_shifts s
+    join public.schedule_weeks w on w.id = s.week_id
+    join next_week n on w.starts_on = n.starts_on and s.day = n.starts_on
+    join public.profiles p on p.phone = ${phone}
+    where s.business_id = ${DEMO_RESTAURANT} and s.pattern_key = ${pattern}
+    returning shift_id`;
+  if (added.length !== 1) {
+    throw new Error(`No saved ${pattern} next Sunday to put ${phone} on`);
+  }
 }
 
 /** The tests that waited out midnight, the ones `scheduleDemoToday` serves. */
@@ -1200,11 +1261,15 @@ export async function publishDemoRunningWeek(
  * relative to the real clock, through the database functions the app uses,
  * as its manager, as a draft saved before the week turned stays (the
  * running-week plan's R4): one shift today, "ערב", starting in an hour for an
- * hour, with `person` on it, so nothing still to start lacks anyone. Callers
- * skip near the week's edges and near midnight (`demoRunningWeekClock`). By
- * phone number.
+ * hour, with `person` on it, so nothing still to start lacks anyone; with
+ * `needed` above one, the same shift with places still open in it (the
+ * fill's offer on the week running now). Callers skip near the week's
+ * edges and near midnight (`demoRunningWeekClock`). By phone number.
  */
-export async function saveDemoRunningWeek(person: string): Promise<void> {
+export async function saveDemoRunningWeek(
+  person: string,
+  needed = 1,
+): Promise<void> {
   const [profile] = await sql<{ id: string }[]>`
     select id::text from public.profiles where phone = ${person}`;
   const [week] = await sql<
@@ -1234,7 +1299,7 @@ export async function saveDemoRunningWeek(person: string): Promise<void> {
         name: "ערב",
         start: week.starts,
         end: week.ends,
-        needed: 1,
+        needed,
         pattern: "evening",
         assignees: [{ user: profile.id, position: null }],
       },

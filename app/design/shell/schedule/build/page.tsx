@@ -20,6 +20,7 @@ import {
 } from "../shifts/published";
 import { demoPublishMeanwhile, demoSaveSchedule } from "./actions";
 import {
+  demoAway,
   demoBuildShifts,
   demoShare,
   MEANWHILE_PUBLISHED_AT,
@@ -29,7 +30,12 @@ import {
 } from "./demo";
 
 type Props = {
-  searchParams: Promise<{ state?: string; week?: string; publishes?: string }>;
+  searchParams: Promise<{
+    state?: string;
+    week?: string;
+    publishes?: string;
+    away?: string;
+  }>;
 };
 
 const HREF = "/design/shell/schedule/build";
@@ -70,6 +76,14 @@ const HREF = "/design/shell/schedule/build";
 // The restaurant has no week before this one to copy, as the demo
 // restaurant's weeks start empty: "העתקה מהשבוע שעבר" is on the running
 // twin's next week (?week=next), the shop's.
+//
+// "מילוי מהזמינות" fills next week's open places from the team's answers:
+// Shiran on Sunday morning and Thursday evening, Noa on Saturday night (3
+// places, 12 left open, each saying why), Omer and Shira named as having
+// sent nothing, never Uri, the owner. Nothing is stored: the fill is on the
+// screen until the stand-in saves or publishes it, and its toast's "ביטול"
+// takes it back. &away=1: Shiran is away on Sunday, which the day says, and
+// the fill leaves Sunday morning open, naming her as away.
 export default function ShellScheduleBuild(props: Props) {
   return (
     <Suspense>
@@ -79,7 +93,7 @@ export default function ShellScheduleBuild(props: Props) {
 }
 
 async function Demo({ searchParams }: Props) {
-  const { state, week, publishes: publishing } = await searchParams;
+  const { state, week, publishes: publishing, away } = await searchParams;
   const publishes = publishing !== "no";
   const { members } = buildTeam(teamMembers, teamInvites, teamToday);
   const running =
@@ -92,6 +106,7 @@ async function Demo({ searchParams }: Props) {
         // Another week is another screen, as in the app.
         key="this"
         manageHref="/design/shell/manage/scheduling"
+        teamAvailabilityHref="/design/shell/schedule/availability/team"
         data={{
           ...running,
           // A stand-in for what the database digests of each shift read.
@@ -141,13 +156,14 @@ async function Demo({ searchParams }: Props) {
     hasPattern: true,
     answers: teamAnswers,
     positions: demoPositions,
-    away: [],
+    away: away === "1" ? demoAway : [],
   };
   if (state === "meanwhile") {
     return (
       <ScheduleBuildView
         key="meanwhile"
         manageHref="/design/shell/manage/scheduling"
+        teamAvailabilityHref="/design/shell/schedule/availability/team"
         data={{
           ...common,
           savedAt: MEANWHILE_PUBLISHED_AT,
@@ -168,6 +184,7 @@ async function Demo({ searchParams }: Props) {
     <ScheduleBuildView
       key="next"
       manageHref="/design/shell/manage/scheduling"
+      teamAvailabilityHref="/design/shell/schedule/availability/team"
       data={{
         ...common,
         savedAt: null,

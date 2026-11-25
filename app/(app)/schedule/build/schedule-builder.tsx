@@ -14,6 +14,11 @@ import {
   type WeekCopy,
 } from "@domain/copy-week";
 import {
+  FILL_WEEK_HOURS,
+  fillFromAvailability,
+  type WeekFill,
+} from "@domain/fill-week";
+import {
   begunShifts,
   edgeWeek,
   gapsAhead,
@@ -41,15 +46,29 @@ import type { Position } from "@domain/staffing";
 import { type ShiftSwap, swapsEndedBy } from "@domain/swaps";
 import type { TeamMember } from "@domain/team";
 import { Badge } from "@ui/badge";
-import { Button } from "@ui/button";
+import { Button, type ButtonProps } from "@ui/button";
 import { Card, CardText } from "@ui/card";
 import { cn } from "@ui/cn";
 import { DockButton, FloatingDock } from "@ui/floating-dock";
-import { type FocusCandidate, focusFirst, focusLost } from "@ui/focus-after";
+import {
+  type FocusCandidate,
+  firstOnScreen,
+  focusFirst,
+  focusLost,
+  ignoreHeldEnter,
+} from "@ui/focus-after";
 import { Segmented } from "@ui/segmented";
 import { Sheet } from "@ui/sheet";
 import { StatusToast } from "@ui/status-toast";
-import { CopyPlus, Info, Save, Send, TriangleAlert } from "lucide-react";
+import { useFocusWhenGone } from "@ui/use-focus-after";
+import {
+  CalendarCheck,
+  CopyPlus,
+  Info,
+  Save,
+  Send,
+  TriangleAlert,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -61,6 +80,7 @@ import {
   useActionState,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -81,6 +101,7 @@ import {
   afterScreenEdit,
   builderToast,
   type HeldNotice,
+  namedUndo,
   SCREEN_UNDO_MS,
   type ScreenChange,
   type ScreenNotice,
@@ -89,6 +110,7 @@ import {
   type ToastWords,
 } from "./builder-toast";
 import { CopyWeekSheet } from "./copy-sheet";
+import { FillWeekSheet } from "./fill-sheet";
 import { type BuilderSend, publishWaits, sendOf } from "./publish-hold";
 import {
   AddShiftRow,
@@ -166,10 +188,12 @@ export type ScheduleBuilderProps = {
   /** The business has regular shifts, which a week not saved is drawn from. */
   hasPattern: boolean;
   /**
-   * The staff: who can be put on a shift, and how the app writes about them
-   * (what the sheet says as someone goes on or off a shift).
+   * The staff: who can be put on a shift, how the app writes about them
+   * (what the sheet says as someone goes on or off a shift), and their role:
+   * everyone but an owner owes availability, and the fill's sheet names who
+   * sent none.
    */
-  team: (Pick<TeamMember, "userId" | "name" | "photo"> &
+  team: (Pick<TeamMember, "userId" | "name" | "photo" | "role"> &
     Partial<Pick<TeamMember, "addressForm">>)[];
   /**
    * Everyone on the team, for the names of those on a shift: only someone
@@ -193,6 +217,12 @@ export type ScheduleBuilderProps = {
   nextDays?: readonly ScheduledShift[];
   /** The business's positions (waiter, cook…); none hides the choice. */
   positions: Position[];
+  /**
+   * Where the team's availability is, with its reminder (next week's only):
+   * the fill's sheet leads there from who sent none, while the builder shows
+   * next week.
+   */
+  teamAvailabilityHref?: string;
   /**
    * Which week this is, the server's moment and the switch. Without it (the
    * next-week demo) nothing is ever locked and there is no switch.
@@ -341,7 +371,12 @@ function DockLine({
  * A draft whose week before was built offers "העתקה מהשבוע שעבר"
  * (`copyLastWeek`): a sheet says what it would do, day by day, and who
  * wouldn't be copied and why, and its button puts the copy on the screen
- * only. What changes only the screen has one way back (`builder-toast.ts`):
+ * only. A draft with an open place in a shift still to start offers
+ * "מילוי מהזמינות" beside it (`fillFromAvailability`): a sheet says who goes
+ * into each shift, why a place stays open, who sent no availability (never
+ * placed by it) and who sent some and gets nothing, and its button puts the
+ * fill on the screen only. What changes only the screen has one way back
+ * (`builder-toast.ts`):
  * the toast says nothing is saved yet, with "ביטול" for `SCREEN_UNDO_MS`,
  * which puts the screen back as it was before. The next change on the
  * screen takes that way back away, since it would take the change with it,
@@ -390,8 +425,8 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
   const [heldNotice, setHeldNotice] = useState<HeldNotice | null>(null);
   /**
    * What the toast says of a change made only on the screen (a copy from
-   * last week): made, with what puts the screen back as it was before it,
-   * or undone.
+   * last week, a fill from availability): made, with what puts the screen
+   * back as it was before it, or undone.
    */
   const [screenNotice, setScreenNotice] = useState<ScreenNotice | null>(null);
 
@@ -483,8 +518,8 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
   }
 
   /**
-   * A change went on the screen only (a copy from last week): the toast
-   * offers its way back.
+   * A change went on the screen only (a copy from last week, a fill from
+   * availability): the toast offers its way back.
    */
   function madeOnScreen(what: ScreenChange, count: number, undo: () => void) {
     setScreenNotice(screenMade(what, count, undo, new Date()));
@@ -599,6 +634,8 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
     done,
   });
   const toast = shown ? { ...shown, text: toastText(shown.words) } : null;
+  /** The change whose "ביטול" the toast names in full: the fill's. */
+  const namedFull = shown ? namedUndo(shown.words) : null;
 
   // A draft saved or a week published goes at once, with no way back to
   // offer, and the pressed button goes with the focus: the dock's save
@@ -686,6 +723,11 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
           toast?.undo
             ? {
                 label: t("app.manage.undo"),
+                // The fill's says what it takes off: its toast says only how
+                // many places it filled.
+                fullLabel: namedFull
+                  ? t(`app.build.${namedFull}.undoFull`)
+                  : undefined,
                 onClick: toast.undo === "publish" ? undoPublish : undoScreen,
               }
             : null
@@ -725,7 +767,9 @@ function WeekBuilder({
   people,
   answers,
   away = [],
+  nextDays = [],
   positions,
+  teamAvailabilityHref = "/schedule/availability/team",
   running,
   publishes = true,
   share = null,
@@ -785,9 +829,10 @@ function WeekBuilder({
   /** What sharing the week says of the last publish from this screen. */
   shareKind: "changes" | "other";
   /**
-   * A change went on the screen only (a copy from last week): what it was,
-   * how much (the shifts copied), and what puts the screen back as it was
-   * before it, for the toast's "ביטול".
+   * A change went on the screen only (a copy from last week, a fill from
+   * availability): what it was, how much (the shifts copied, the places
+   * filled), and what puts the screen back as it was before it, for the
+   * toast's "ביטול".
    */
   onMade: (what: ScreenChange, count: number, undo: () => void) => void;
   /**
@@ -847,6 +892,19 @@ function WeekBuilder({
    * read again, a copy just put on the screen would leave nothing to copy.
    */
   const [shownCopy, setShownCopy] = useState<WeekCopy | null>(null);
+  const [fillOpen, setFillOpen] = useState(false);
+  /**
+   * What the fill's sheet showed as it closed, for as long as it slides
+   * away: read again, a fill just put on the screen would leave less to fill.
+   */
+  const [shownFill, setShownFill] = useState<WeekFill | null>(null);
+  // Leaving the screen closes the fill's sheet. Next keeps a screen it
+  // leaves (hidden, in React's Activity) and shows it again on the way back:
+  // without this, the sheet open as its reminder's link went to the team's
+  // availability, with nothing unsaved to ask about first, would be open
+  // again over the builder with nobody pressing (as the clock's panel ends a
+  // scan).
+  useLayoutEffect(() => () => setFillOpen(false), []);
 
   // The design demo stores nothing and doesn't start again after a publish,
   // so its own publish shows through `state`: the later of the two is the
@@ -1050,8 +1108,8 @@ function WeekBuilder({
     setDirty(true);
     setBlocked(false);
     setLockedBack(null);
-    // The "ביטול" of a change made only on the screen (a copy) would undo
-    // this change too: it goes.
+    // The "ביטול" of a change made only on the screen (a copy, a fill) would
+    // undo this change too: it goes.
     onEdited();
   }
 
@@ -1231,6 +1289,75 @@ function WeekBuilder({
     });
   }
 
+  // Filling from availability, offered on a draft while a shift still to
+  // start has an open place (the count behind "# מקומות פנויים"): a
+  // published week changes only by being published again, one that is over
+  // takes nothing more, and once nothing is left to fill it goes, rather
+  // than stay with nothing to do. Worked out while its sheet is open, from
+  // the screen as it stands and the builder's clock. The sheet stays open
+  // on a draft, not on the pill: should the clock begin the last shift with
+  // an open place meanwhile, it says nothing is left to fill until it is
+  // closed, rather than go by itself with `fillOpen` left behind.
+  const fillable = !published && !weekOver;
+  const offerFill = fillable && gaps.people > 0;
+  const liveFill =
+    fillOpen && fillable
+      ? fillFromAvailability({
+          weekStart: week.start,
+          screen: shifts,
+          staff: team.map((m) => m.userId),
+          answers,
+          away,
+          lastWeek,
+          nextDays,
+          weekHours: FILL_WEEK_HOURS,
+          shabbat: week.shabbat,
+          positionKeys: positions.map((p) => p.key),
+          now,
+          timeZone,
+        })
+      : null;
+  const sheetFill = liveFill ?? shownFill;
+
+  function openFill(event: MouseEvent<HTMLElement>) {
+    if (busy) return;
+    opener.current = event.currentTarget;
+    setFillOpen(true);
+  }
+
+  function closeFill() {
+    setShownFill(liveFill);
+    setFillOpen(false);
+    // Its pill, unless the clock took the last open place meanwhile and the
+    // pill with it: then where the toast's "ביטול" of a fill would go, the
+    // copy's pill, else the line that says where the week stands.
+    focusAfterClose([opener.current, ...afterScreen("fill"), BUILDER_STATUS]);
+  }
+
+  /**
+   * The fill goes on the screen as the sheet showed it: each shift keeps its
+   * place and its screen id, with the people it adds after those already on
+   * it. Nothing is sent: the toast's "ביטול" puts back the screen as it was
+   * before, unsaved or not.
+   */
+  function applyFill() {
+    const fill = liveFill;
+    if (busy || !fill || fill.places === 0) return;
+    const before = { rows, dirty };
+    edited(
+      rows.map((row, i) => ({ id: row.id, shift: fill.week[i] ?? row.shift })),
+    );
+    setShownFill(fill);
+    setFillOpen(false);
+    // The toast's "ביטול" takes the focus as the sheet closes. After
+    // `edited`, as for the copy: its way back takes the place of any other.
+    opener.current = null;
+    onMade("fill", fill.places, () => {
+      setRows(before.rows);
+      setDirty(before.dirty);
+    });
+  }
+
   const guard = useLeaveGuard(unsaved || busy);
   // A way out taken while a publish is held (a tab, the switch to the other
   // week) sends it now and goes once it worked, as "פרסום השינויים ויציאה"
@@ -1246,6 +1373,9 @@ function WeekBuilder({
   function saveAndLeave() {
     leaveTo.current = guard.target;
     guard.clear();
+    // The fill's sheet, out of the way while the question was asked (its
+    // reminder's link), stays closed on the way out.
+    setFillOpen(false);
     const button = form.current?.querySelector<HTMLButtonElement>(
       publishedMoment ? 'button[value="publish"]' : 'button[value="save"]',
     );
@@ -1258,9 +1388,41 @@ function WeekBuilder({
   function leaveWithoutSaving() {
     const target = guard.target;
     guard.clear();
-    setDirty(false);
+    setFillOpen(false);
+    letGo();
     if (target) router.push(target);
   }
+
+  /**
+   * The work let go on the way out ("יציאה בלי לשמור") leaves the screen too.
+   * Next keeps the screen it leaves (hidden, in React's Activity), and back
+   * on it the week is as it was read: nothing let go is still on the board
+   * with no unsaved mark, for "פרסום הסידור" to send. A copy's or a fill's
+   * "ביטול" goes with it (`onEdited`), since it would bring back what was
+   * there before that change.
+   */
+  function letGo() {
+    setRows(
+      read.map((shift) => {
+        const id = nextId.current;
+        nextId.current += 1;
+        return { id, shift };
+      }),
+    );
+    setRemoved([]);
+    setGoneMeanwhile(new Map());
+    setCopied(null);
+    setLockedBack(null);
+    setBlocked(false);
+    setDirty(false);
+    onEdited();
+  }
+
+  /** What had the focus as the way out asked: the leave sheet's opener. */
+  const leaveFrom = useRef<Element | null>(null);
+  useLayoutEffect(() => {
+    if (guard.target !== null) leaveFrom.current = document.activeElement;
+  }, [guard.target]);
 
   /** A day's shifts in order, with the way back in place of any removed. */
   const itemsOn = (date: string) =>
@@ -1701,18 +1863,37 @@ function WeekBuilder({
         >
           {status}
         </p>
-        {/* A quiet action: publishing stays the screen's main one. */}
-        {offerCopy ? (
-          <Button
-            variant="secondary"
-            data-copy-week
-            disabled={busy}
-            onClick={openCopy}
-            className="self-start md:ms-auto"
-          >
-            <CopyPlus aria-hidden="true" />
-            {t("app.build.copy.action")}
-          </Button>
+        {/* Quiet actions: publishing stays the screen's main one. Copy
+            first, then fill what is left, the order a manager uses them.
+            Each takes the focus back as its toast's "ביטול" goes, so Enter
+            still held down from that press opens nothing on it. */}
+        {offerCopy || offerFill ? (
+          <div className="flex flex-wrap gap-2 self-start md:ms-auto">
+            {offerCopy ? (
+              <Button
+                variant="secondary"
+                data-copy-week
+                disabled={busy}
+                onClick={openCopy}
+                onKeyDown={ignoreHeldEnter}
+              >
+                <CopyPlus aria-hidden="true" />
+                {t("app.build.copy.action")}
+              </Button>
+            ) : null}
+            {offerFill ? (
+              <FillPill
+                variant="secondary"
+                data-fill-week
+                disabled={busy}
+                onClick={openFill}
+                onKeyDown={ignoreHeldEnter}
+              >
+                <CalendarCheck aria-hidden="true" />
+                {t("app.build.fill.action")}
+              </FillPill>
+            ) : null}
+          </div>
         ) : null}
       </div>
 
@@ -1919,6 +2100,28 @@ function WeekBuilder({
         />
       ) : null}
 
+      <FillWeekSheet
+        // Out of the way while the way out asks about unsaved work (its
+        // reminder's link), and back on "חזרה לסידור".
+        open={fillOpen && fillable && guard.target === null}
+        fill={sheetFill}
+        dates={week.dates}
+        team={team}
+        answers={answers}
+        // The team's availability is next week's: building the week running
+        // now, there is no one to remind there.
+        remindHref={
+          (running?.which ?? "next") === "next" ? teamAvailabilityHref : null
+        }
+        // Days away are read only while the time clock is on.
+        clock={(running?.clock ?? false) || away.length > 0}
+        weekHours={FILL_WEEK_HOURS}
+        onFill={applyFill}
+        onClose={closeFill}
+        nameOf={(user) => nameOf.get(user) ?? t("app.shifts.former")}
+        weekday={weekday}
+      />
+
       <Sheet
         // Not while a publish is held: the way out sends it instead (above).
         open={guard.target !== null && !holding}
@@ -1927,6 +2130,14 @@ function WeekBuilder({
         }}
         title={t("app.build.leave.title")}
         closeLabel={t("app.build.leave.stay")}
+        // Back where the question was asked from (a tab, the week switch).
+        // Asked from the fill's reminder's link, which went with its sheet:
+        // to what opened that sheet (its pill), else the line that says
+        // where the week stands, so a save on the way out that is refused
+        // leaves the focus on the screen, never on the page's body.
+        returnFocus={() =>
+          firstOnScreen([leaveFrom.current, opener.current, BUILDER_STATUS])
+        }
       >
         <div className="flex flex-col gap-3 px-2 pb-1">
           <p className="px-1 text-center text-ink-2">
@@ -1970,4 +2181,17 @@ function WeekBuilder({
       </Sheet>
     </>
   );
+}
+
+/**
+ * "מילוי מהזמינות", by the line that says where the week stands. On a draft
+ * of the week running now the clock can take it away under the focus, as
+ * the last shift with an open place begins: the focus goes where a fill's
+ * "ביטול" would go then, the copy's pill, else that line
+ * (`useFocusWhenGone`), never to the page's body.
+ */
+function FillPill(props: Omit<ButtonProps, "ref">) {
+  const button = useRef<HTMLButtonElement>(null);
+  useFocusWhenGone(button, () => [...afterScreen("fill"), BUILDER_STATUS]);
+  return <Button ref={button} {...props} />;
 }

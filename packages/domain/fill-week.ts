@@ -38,6 +38,8 @@ export const FILL_MAX_DAYS = 6;
 export const FILL_WEEK_HOURS = WEEK_MINUTES / 60;
 /** 58: the regular week and the general permit's overtime (`LIMITS.weekOvertime`). */
 export const FILL_WEEK_HOURS_MAX = (WEEK_MINUTES + LIMITS.weekOvertime) / 60;
+/** 8: the least rest between two shifts the fill gives anyone (`LIMITS.restBetween`), the number the sheet names. */
+export const FILL_REST_HOURS = LIMITS.restBetween / 60;
 
 /**
  * Why someone whose availability covers a shift wasn't put on it, the first

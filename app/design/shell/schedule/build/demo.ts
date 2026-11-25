@@ -1,3 +1,4 @@
+import type { AwaySpan } from "@domain/absences";
 import {
   draftWeek,
   type ScheduledShift,
@@ -84,6 +85,15 @@ export function demoBuildShifts(): ScheduledShift[] {
       ),
     }));
 }
+
+/**
+ * `&away=1`: Shiran is away on Sunday (known issue 19). The day says so,
+ * and the fill from availability leaves Sunday morning, which it would give
+ * her, open, naming her as away.
+ */
+export const demoAway: AwaySpan[] = [
+  { userId: "shiran", from: demoWeek.start, to: demoWeek.start },
+];
 
 /** When the demo week was published, for `?state=meanwhile`. */
 export const MEANWHILE_PUBLISHED_AT = "2026-10-29T15:40:00.000Z";

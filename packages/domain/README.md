@@ -189,14 +189,16 @@ holds, checked in this order: not away during it (`awayDuring` in
 shift sheet's lists (`shiftCandidates`) and the copy read it too; the builder
 reads days away over `awayWindow`, the week and the day after it), never two
 shifts at once, one shift a day, 8 hours between shifts
-(`LIMITS.restBetween`, in real time as payroll measures it, so a night the
-clocks change in counts the hour they skip or repeat), at most
+(`LIMITS.restBetween`, `FILL_REST_HOURS` in the sheet's words, in real time
+as payroll measures it, so a night the clocks change in counts the hour they
+skip or repeat), at most
 `FILL_MAX_DAYS` (6) days, and at most the week's hours (`weekHours`, 42 by
 default, `FILL_WEEK_HOURS`, up to `FILL_WEEK_HOURS_MAX`, 58, the number the
 sheet names). The week's hours are counted on the wall clock, as the
 builder's totals count them. A minor is placed like everyone else (Orel, 25
 November 2026): the fill has no rule of its own for minors, the manager is
-responsible as when placing by hand, and payroll's flags for minors still
+responsible as when placing by hand (the fill's sheet says, in every
+business, that it checks nobody's age), and payroll's flags for minors still
 read the hours worked. Last week, when it is the week just
 before, and next week's first days (`nextWeekEdge` in `running-week.ts`:
 its first two days with people on them, only while the builder shows the
@@ -218,6 +220,9 @@ nobody else: when anyone is on the shift after the fill, whoever put them
 there, the sheet says nobody else covers it, and a Shabbat time beside
 `nobody` or `blocked` comes without saying no answer covers the shift. The
 database checks only that nobody works two shifts at once, never these
-rules: they are the fill's own.
+rules: they are the fill's own (ROADMAP known issue 108). The builder's
+"מילוי מהזמינות" shows what a fill would do in a sheet before anything
+changes on the screen, and puts it there only
+(`app/(app)/schedule/build/fill-sheet.tsx`).
 
 Import as `@domain/<file>`.

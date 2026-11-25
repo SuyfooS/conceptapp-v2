@@ -2210,6 +2210,55 @@
         "done": "{count, plural, one {One shift copied from last week} other {# shifts copied from last week}}. Nothing is saved yet.",
         "undone": "The copy was undone, and the schedule is back as it was."
       },
+      "fill": {
+        "action": "Fill from availability",
+        "title": "Fill from availability",
+        "subtitle": "For the week of <ltr>{from}–{to}</ltr>",
+        "intro": "Each open place gets someone who sent availability for all of the shift's hours. Whoever is on a shift already stays on it, and no shift moves.",
+        "summary": "{places, plural, one {One place will be filled} other {# places will be filled}}, {people, plural, one {with one person} other {with # people}}.",
+        "leftOpen": "{count, plural, one {One place will stay open} other {# places will stay open}}, and below it says why.",
+        "rules": "Each person gets at most one shift a day, up to <ltr>{days}</ltr> days and <ltr>{hours}</ltr> hours a week, with at least <ltr>{rest}</ltr> hours between shifts. Whoever has the fewest hours this week is placed first.",
+        "away": "Whoever is recorded as away isn't placed that day, nor on a night shift that runs into it.",
+        "age": "The fill doesn't check age. Before publishing, check who is under 18.",
+        "noAnswer": "Didn't send availability, so won't be placed: {names}.",
+        "remind": "You can remind them from <link>Team availability</link>.",
+        "byHand": "You can place them by hand from each shift.",
+        "unplaced": "Sent availability and got no shift: {names}.",
+        "daysTitle": "Day by day",
+        "shiftTitle": "{name} · <ltr>{start}–{end}</ltr>",
+        "adds": "Going on: {names}",
+        "stillOpen": "{count, plural, one {One place stays open:} other {# places stay open:}}",
+        "why": {
+          "friday": "The shift ends after Shabbat comes in (<ltr>{time}</ltr>), so it has no availability. You can change the shift's hours or place someone by hand.",
+          "saturday": "The shift starts before Shabbat ends (<ltr>{time}</ltr>), so it has no availability. You can change the shift's hours or place someone by hand.",
+          "fridayToo": "The shift ends after Shabbat comes in (<ltr>{time}</ltr>).",
+          "saturdayToo": "The shift starts before Shabbat ends (<ltr>{time}</ltr>).",
+          "nobody": "Nobody sent availability for all of the shift's hours.",
+          "nobodyElse": "Nobody else sent availability for all of the shift's hours.",
+          "partial": "{count, plural, one {One person is available for only part of the hours.} other {# people are available for only part of the hours.}}",
+          "blocked": "Available but not placed: {people}.",
+          "blockedOne": "{name} ({rule})"
+        },
+        "rule": {
+          "away": "away",
+          "busy": "on another shift at the same hours",
+          "sameDay": "already on another shift that day",
+          "rest": "less than <ltr>{hours}</ltr> hours' rest from another shift",
+          "days": "already <ltr>{days}</ltr> working days this week",
+          "hours": "over <ltr>{hours}</ltr> hours a week"
+        },
+        "note": "Nothing is saved or sent to the team until you save or publish.",
+        "submit": "{count, plural, one {Fill one place} other {Fill # places}}",
+        "nothing": {
+          "noAnswers": "Nobody to place yet: nobody sent availability for this week.",
+          "noAnswersRunning": "Nobody sent availability for this week. You can place people by hand from each shift.",
+          "none": "Nobody to place. Each shift below says why its place stays open.",
+          "full": "No open places are left in shifts still to start."
+        },
+        "done": "{count, plural, one {One place filled from availability} other {# places filled from availability}}. Nothing is saved yet.",
+        "undoFull": "Undo: whoever the fill put on comes off the shifts",
+        "undone": "The fill was undone, and the schedule is back as it was."
+      },
       "editor": {
         "name": "Shift name",
         "namePlaceholder": "For example, midday",
