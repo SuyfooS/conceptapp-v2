@@ -86,6 +86,10 @@ export function CategoriesEditor({
   }
   // Which change is the latest: only its answer says what the list is.
   const latest = useRef(0);
+  // How many changes are on their way, and the latest one refused (its
+  // number) while it is still the latest.
+  const away = useRef(0);
+  const refusedLatest = useRef(0);
   const liveDepartments = departments.filter((d) => d.live);
   const [name, setName] = useState("");
   const [department, setDepartment] = useState(liveDepartments[0]?.id ?? "");
@@ -126,12 +130,16 @@ export function CategoriesEditor({
    * earlier answer leaves the screen as it is, its caller too (an undo, a
    * name typed), and no press made meanwhile is lost. Refused, the screen
    * shows the server's list again: an earlier change's, saved, when Next
-   * hasn't drawn its answer yet (`useLastSaved`). Every answer is told to
-   * the moves, so a move is said by the saves that have it (`useRowMoves`).
+   * hasn't drawn its answer yet (`useLastSaved`). Next can settle an
+   * earlier save after the latest one's refusal, so one that saved then
+   * shows its list, the server's now. Every answer is told to the moves,
+   * with whether any change is still on its way, so a move is said by the
+   * saves that have it once they all answered (`useRowMoves`).
    */
   async function change(next: CategoryInput[]): Promise<boolean | null> {
     latest.current += 1;
     const mine = latest.current;
+    away.current += 1;
     setOrder(next);
     setSending((count) => count + 1);
     let result: Awaited<ReturnType<SaveCategories>>;
@@ -140,22 +148,32 @@ export function CategoriesEditor({
     } catch {
       result = { ok: false, failure: "failed" };
     }
+    away.current -= 1;
     setSending((count) => count - 1);
     const decides = mine === latest.current;
-    moves.answered(mine, result.ok, decides);
+    moves.answered(mine, result.ok, away.current === 0);
     if (result.ok) {
-      // Saved, overtaken or not: what the server has now. The new ones have
-      // their ids, so a removal of one can be undone.
+      // Saved, overtaken or not: what the server has now, unless a newer
+      // change saved. The new ones have their ids, so a removal of one can
+      // be undone.
       const ids = result.value;
       const kept = next.map((c, at) => ({ ...c, id: ids[at] ?? c.id }));
-      server.saved(kept);
-      if (!decides) return null;
+      server.saved(kept, mine);
+      if (!decides) {
+        // The latest change was refused before this answer came: the
+        // screen shows the server's list, which has this one now.
+        if (refusedLatest.current === latest.current) {
+          setOrder(server.refused());
+        }
+        return null;
+      }
       setOrder(kept);
       setFailure(null);
       setSaved((count) => count + 1);
       return true;
     }
     if (!decides) return null;
+    refusedLatest.current = mine;
     setOrder(server.refused());
     setFailure(result.failure);
     setRefusals((count) => count + 1);

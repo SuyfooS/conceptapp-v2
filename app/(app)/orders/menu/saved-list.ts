@@ -4,32 +4,41 @@ import { useLayoutEffect, useState } from "react";
 
 /**
  * What the server has of a list an editor saves whole (the menu's places
- * and categories), for a refusal to show: the latest list a save went
- * through with (`saved`, its new rows with their ids), until the server's
- * own list is drawn again (`drawn`), and then none (`refused` gives null),
- * so the screen shows the list it was given.
+ * and categories), for a refusal to show: the list of the newest change a
+ * save went through with (`saved`, its new rows with their ids, by the
+ * change's number), until the server's own list is drawn again (`drawn`),
+ * and then none (`refused` gives null), so the screen shows the list it was
+ * given.
  *
  * Next draws an action's answer (the server's list, with the menu's new
  * version) only once every action sent after it has answered too: each one
  * sets the router's state in a transition, and React holds them together
- * until the latest is ready, while the action's own answer comes first. So
- * the latest change refused while an earlier one saved finds the list from
- * before both still drawn: shown, the saved change seemed undone until its
- * list came a moment later, and a move it carried was said where it no
- * longer was ("4 עכשיו בשורה 4" for a table the server has in row 5: CI's
- * third run of orders-menu.spec.ts).
+ * until the latest is ready. So the latest change refused while an earlier
+ * one saved can find the list from before both still drawn: shown, the
+ * saved change seemed undone until its list came a moment later (CI's
+ * third run of orders-menu.spec.ts). The answers themselves can come out of
+ * turn too: Next sends the next save once an answer's first row is read,
+ * and settles the earlier save's promise only once its result's own row is
+ * (CI's fourth run). The server took the saves in turn, so the newest
+ * change that saved is kept, and an older one's answer, come late, never
+ * replaces it.
  */
 export function lastSaved<T>(): {
-  /** A save went through with `list`: the server has it now. */
-  saved: (list: T[]) => void;
+  /** Change `change` went through with `list`: the server has it, unless a newer one did since. */
+  saved: (list: T[], change: number) => void;
   /** The server's list was drawn: as new as any save answered before it. */
   drawn: () => void;
   /** Refused: the list the server has, or null for the one drawn. */
   refused: () => T[] | null;
 } {
   let kept: T[] | null = null;
+  // The newest change kept, drawn since or not: an older one answering
+  // after it is behind what the server has.
+  let newest = 0;
   return {
-    saved(list) {
+    saved(list, change) {
+      if (change <= newest) return;
+      newest = change;
       kept = list;
     },
     drawn() {

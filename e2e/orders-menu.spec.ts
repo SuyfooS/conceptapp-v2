@@ -743,7 +743,8 @@ test("a table moved faster than its saves keeps every press, and a refused move 
 
 // Two changes inside one round trip, only one of them refused. The actions
 // go to the server one at a time, the latest change's answer says what the
-// list is, and what each change says comes from the saves that have it.
+// list is, and what each change says comes from the saves that have it,
+// once they all answered, whichever answers first.
 // Table 4 moved down, which saves, and table 7 renamed before its answer,
 // which is refused: the server's list, shown again, has the move, so where
 // table 4 is now is said, never that it is back. Table 11 removed, refused,
@@ -803,8 +804,14 @@ test("a change refused while a later one was on its way leaves the screen to the
   const moved = ["1", "2", "3", "5", "4", "6", "7", "8", "9", "10", "11", "12"];
   const now = rt(`${p}.movedTo`, { name: "4", place: 5, count: 12 });
   const back = rt(`${p}.movedBack`, { name: "4", place: 5, count: 12 });
+  const backWhereItWas = rt(`${p}.movedBack`, {
+    name: "4",
+    place: 4,
+    count: 12,
+  });
   plan.push({ held: true, refused: false }, { held: false, refused: true });
   await noteIfSaid(page, back);
+  await noteIfSaid(page, backWhereItWas);
   await page
     .getByRole("button", {
       name: rt(`${p}.downFor`, { name: "4" }),
@@ -824,11 +831,16 @@ test("a change refused while a later one was on its way leaves the screen to the
       .getByRole("alert")
       .filter({ hasText: rt("app.orders.menu.failed.failed") }),
   ).toBeVisible();
-  // Where the move put it: Next draws the move's answer only once the
-  // rename's has come too, so the refusal shows the list the move saved,
-  // not the one drawn before both (CI's third run: "4 עכשיו בשורה 4").
+  // Where the move put it, never that it is back, in either row. Next draws
+  // the move's answer only once the rename's has come too, and sends the
+  // rename as soon as the move's answer's first row is read, while it
+  // settles the move's own promise only once the row of its result is: so
+  // the rename's refusal can come first, with the list from before both
+  // still drawn, and the move's answer after it (CI's fourth run: the move
+  // heard by the refusal alone, as back, and "4 עכשיו בשורה 5" never said).
   await expect(saidSince(polite, now)).toHaveCount(1);
   expect(await wasSaid(page, back)).toBe(false);
+  expect(await wasSaid(page, backWhereItWas)).toBe(false);
   await expect.poll(rowNames).toEqual(moved);
   expect(await demoOrderPlaces()).toEqual(moved);
 
