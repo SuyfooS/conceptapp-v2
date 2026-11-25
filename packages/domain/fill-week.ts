@@ -79,9 +79,12 @@ export type FillRule =
 /**
  * Why a place stays open, the first that holds:
  * - `shabbat`: the shift reaches into Shabbat while the business is closed
- *   then, so nobody's availability can cover it;
+ *   then, the fill put nobody on it, and nobody else who answered covers it
+ *   (an answer sent before the business closed on Shabbat still can);
  * - `nobody`: nobody who answered, and isn't on it already, covers it;
  * - `blocked`: some do, and each was stopped by a rule (`FillShift.blocked`).
+ * A shift that reaches into Shabbat names it in `FillShift.shabbat` with the
+ * other two as well.
  */
 export type FillWhy = "shabbat" | "nobody" | "blocked";
 
@@ -94,7 +97,11 @@ export type FillShift = {
   open: number;
   /** Null when nothing stays open. */
   why: FillWhy | null;
-  /** With `why: "shabbat"`: which side, and candle lighting or havdalah. */
+  /**
+   * While places stay open on a shift that reaches into Shabbat while the
+   * business is closed then: which side, and candle lighting or havdalah,
+   * whatever `why` is.
+   */
   shabbat: { side: ShabbatConflict; time: string } | null;
   /**
    * While places stay open: people who answered, not on it, whose ranges
@@ -559,11 +566,20 @@ export function fillFromAvailability(input: {
                 : input.shabbat.havdalah,
           }
         : null;
+    // Shabbat is the reason only while no answer of anyone not on the shift
+    // before the fill covers it: never beside someone the fill put on it, or
+    // someone a rule stopped.
+    const why: FillWhy =
+      shabbat && place.added.length === 0 && blocked.length === 0
+        ? "shabbat"
+        : blocked.length > 0
+          ? "blocked"
+          : "nobody";
     return {
       index: place.index,
       added: place.added,
       open,
-      why: shabbat ? "shabbat" : blocked.length > 0 ? "blocked" : "nobody",
+      why,
       shabbat,
       partial,
       blocked,

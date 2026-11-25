@@ -7,7 +7,7 @@ import {
   weekDates,
   weekdayOf,
 } from "./availability";
-import type { ShabbatLimits } from "./availability-form";
+import { type ShabbatLimits, suggestedRange } from "./availability-form";
 import type { CopySource } from "./copy-week";
 import {
   FILL_MAX_DAYS,
@@ -198,6 +198,19 @@ describe("fillFromAvailability", () => {
       expect(fill.openAfter).toBe(0);
     });
 
+    it("still counts a shift that has begun: no second shift that day", () => {
+      // Tuesday at 12:00: Noa's morning has begun, and ended.
+      const fill = fillOf({
+        screen: [
+          shift(day(2), "07:00", "11:00", [noa]),
+          shift(day(2), "19:00", "23:00"),
+        ],
+        now: instantIn(day(2), "12:00", zone),
+        answers: [allWeek(noa)],
+      });
+      expect(ruleOf(fill, 1, noa)).toBe("sameDay");
+    });
+
     it("never passes the people a shift needs", () => {
       const fill = fillOf({
         screen: [shift(day(0), "09:00", "16:00", [], { needed: 2 })],
@@ -282,9 +295,11 @@ describe("fillFromAvailability", () => {
         away: [away(noa, day(1))],
       });
       expect(who(fill, 0)).toEqual([]);
+      // Stopped, so not one who covers only part of it.
       expect(fill.shifts[0]).toMatchObject({
         why: "blocked",
         blocked: [{ user: noa, rule: "away" }],
+        partial: 0,
       });
     });
 
@@ -308,6 +323,8 @@ describe("fillFromAvailability", () => {
           shift(day(0), "16:00", "23:30"),
           shift(day(1), "07:00", "15:00"),
           shift(day(2), "09:00", "16:00"),
+          // Ends at 20:00 exactly.
+          shift(day(3), "12:00", "20:00"),
         ],
         answers: [allWeek(tamar)],
         minors: new Set([tamar]),
@@ -315,6 +332,7 @@ describe("fillFromAvailability", () => {
       expect(ruleOf(fill, 0, tamar)).toBe("minorHours");
       expect(ruleOf(fill, 1, tamar)).toBe("minorHours");
       expect(who(fill, 2)).toEqual([tamar]);
+      expect(who(fill, 3)).toEqual([tamar]);
     });
 
     it("places a minor for at most 8 hours, 7 on a Friday", () => {
@@ -338,20 +356,23 @@ describe("fillFromAvailability", () => {
 
     it("stops a minor at 40 hours, even when the business allows 58", () => {
       // Five mornings placed by hand, 35 hours; Friday's 6 would make 41.
-      const screen = [
+      const screen = (end: string) => [
         ...[0, 1, 2, 3, 4].map((n) =>
           shift(day(n), "08:00", "15:00", [tamar, noa], { needed: 2 }),
         ),
-        shift(day(5), "08:00", "14:00", [], { needed: 2 }),
+        shift(day(5), "08:00", end, [], { needed: 2 }),
       ];
-      const fill = fillOf({
-        screen,
+      const input = {
         answers: [allWeek(tamar), allWeek(noa)],
         minors: new Set([tamar]),
         weekHours: 58,
-      });
+      };
+      const fill = fillOf({ screen: screen("14:00"), ...input });
       expect(who(fill, 5)).toEqual([noa]);
       expect(ruleOf(fill, 5, tamar)).toBe("hours");
+      // Friday's 5 make 40 exactly, which she may reach.
+      const forty = fillOf({ screen: screen("13:00"), ...input });
+      expect(who(forty, 5)).toContain(tamar);
     });
 
     it("gives an adult what a minor can't take", () => {
@@ -412,7 +433,7 @@ describe("fillFromAvailability", () => {
       expect(who(eight, 1)).toEqual([noa]);
     });
 
-    it("reads last week's Saturday night, only when last week is the week just before", () => {
+    it("reads last week's Saturday night, and nothing two weeks back", () => {
       const saturday = addDays(WEEK, -1);
       const lastWeek: CopySource = {
         start: addDays(WEEK, -7),
@@ -432,7 +453,9 @@ describe("fillFromAvailability", () => {
       expect(
         ruleOf(fillOf({ screen: sunday, answers, lastWeek: night }), 0, noa),
       ).toBe("busy");
-      // Two weeks back is no edge: its Saturday was a week before Sunday.
+      // Two weeks back is no edge: `shiftSpan` puts its Saturday a week
+      // before Sunday. (That only the week just before counts at all is
+      // pinned by last week's hours among the tie-breaks.)
       const older: CopySource = {
         start: addDays(WEEK, -14),
         published: true,
@@ -441,6 +464,21 @@ describe("fillFromAvailability", () => {
       expect(
         who(fillOf({ screen: sunday, answers, lastWeek: older }), 0),
       ).toEqual([noa]);
+    });
+
+    it("never reads a shift dated outside last week as last week's", () => {
+      // As the copy's guard: a source holding a shift of this Sunday.
+      const lastWeek: CopySource = {
+        start: addDays(WEEK, -7),
+        published: true,
+        shifts: [shift(day(0), "07:00", "22:00", [noa], { pattern: null })],
+      };
+      const fill = fillOf({
+        screen: [shift(day(0), "08:00", "15:00")],
+        answers: [allWeek(noa)],
+        lastWeek,
+      });
+      expect(who(fill, 0)).toEqual([noa]);
     });
 
     it("reads next week's first days: Sunday's 07:00 stops this Saturday's night", () => {
@@ -480,6 +518,12 @@ describe("fillFromAvailability", () => {
       const answers = [allWeek(noa)];
       expect(ruleOf(fillOf({ screen, answers }), 5, noa)).toBe("hours");
       expect(who(fillOf({ screen, answers, weekHours: 58 }), 5)).toEqual([noa]);
+      // Five days of 7 hours, 35: Sunday's 7 make 42 exactly, which she may reach.
+      const exactly = [
+        ...[1, 2, 3, 4, 5].map((n) => shift(day(n), "08:00", "15:00", [noa])),
+        shift(day(0), "08:00", "15:00"),
+      ];
+      expect(who(fillOf({ screen: exactly, answers }), 5)).toEqual([noa]);
       // Someone already past the cap gets nothing, however short.
       const over = [
         ...[1, 2, 3, 4, 5].map((n) => shift(day(n), "07:00", "16:00", [noa])),
@@ -487,18 +531,105 @@ describe("fillFromAvailability", () => {
       ];
       expect(ruleOf(fillOf({ screen: over, answers }), 5, noa)).toBe("hours");
     });
+
+    describe("in order: the first that fails is the reason", () => {
+      it("away, then the minor's hours, then the minor's length, then busy", () => {
+        const fill = fillOf({
+          screen: [
+            // Too early and too long for a minor.
+            shift(day(1), "06:00", "16:00"),
+            shift(day(2), "06:00", "16:00"),
+            // Within the hours, too long, and at the same time as her own.
+            shift(day(3), "09:00", "18:00", [tamar], {
+              name: "אמצע",
+              pattern: null,
+            }),
+            shift(day(3), "09:00", "18:00"),
+          ],
+          answers: [allWeek(tamar)],
+          minors: new Set([tamar]),
+          away: [away(tamar, day(1))],
+        });
+        expect(ruleOf(fill, 0, tamar)).toBe("away");
+        expect(ruleOf(fill, 1, tamar)).toBe("minorHours");
+        expect(ruleOf(fill, 3, tamar)).toBe("minorLong");
+      });
+
+      it("the same day before rest", () => {
+        // Seven hours apart on one day.
+        const fill = fillOf({
+          screen: [
+            shift(day(1), "07:00", "11:00", [noa]),
+            shift(day(1), "18:00", "22:00"),
+          ],
+          answers: [allWeek(noa)],
+        });
+        expect(ruleOf(fill, 1, noa)).toBe("sameDay");
+      });
+
+      it("rest, then days, then hours", () => {
+        // Six days of 9 hours by hand, 54: Sunday's 8 would be a seventh day
+        // and past 58; last week's Saturday night ends six hours before it.
+        const screen = [
+          ...[1, 2, 3, 4, 5].map((n) => shift(day(n), "08:00", "17:00", [noa])),
+          shift(day(6), "14:00", "23:00", [noa]),
+          shift(day(0), "08:00", "16:00"),
+        ];
+        const input = { screen, answers: [allWeek(noa)], weekHours: 58 };
+        const lastWeek: CopySource = {
+          start: addDays(WEEK, -7),
+          published: true,
+          shifts: [shift(addDays(WEEK, -1), "19:00", "02:00", [noa])],
+        };
+        expect(ruleOf(fillOf({ ...input, lastWeek }), 6, noa)).toBe("rest");
+        expect(ruleOf(fillOf(input), 6, noa)).toBe("days");
+        // Six days of 7 hours, 42: a seventh is past the hours as well.
+        const seven = [
+          ...[1, 2, 3, 4, 5, 6].map((n) =>
+            shift(day(n), "08:00", "15:00", [noa]),
+          ),
+          shift(day(0), "08:00", "15:00"),
+        ];
+        expect(
+          ruleOf(fillOf({ screen: seven, answers: [allWeek(noa)] }), 6, noa),
+        ).toBe("days");
+      });
+    });
   });
 
   describe("order and fairness", () => {
     const place = (extra: Partial<ScheduledShift> = {}) =>
       shift(day(3), "16:00", "23:00", [], extra);
 
-    it("puts whoever has the fewest hours this week first, the manager's placements counted", () => {
+    // With nothing else between them the rotation gives Yoav this week, so
+    // each tie-break below is set against the next one and, where it can,
+    // expects Noa.
+    it("gives Yoav a tie this week, by the rotation alone", () => {
       const fill = fillOf({
-        screen: [shift(day(0), "09:00", "16:00", [noa]), place()],
+        screen: [place()],
         answers: [allWeek(noa), allWeek(yoav)],
       });
-      expect(who(fill, 1)).toEqual([yoav]);
+      expect(who(fill, 0)).toEqual([yoav]);
+    });
+
+    it("puts whoever has the fewest hours this week first, the manager's placements counted, before the fewest shifts", () => {
+      // Noa: two shifts of 3 hours by hand; Yoav: one of 8.
+      const fill = fillOf({
+        screen: [
+          shift(day(0), "10:00", "13:00", [noa], {
+            name: "אמצע",
+            pattern: null,
+          }),
+          shift(day(1), "10:00", "13:00", [noa], {
+            name: "אמצע",
+            pattern: null,
+          }),
+          shift(day(2), "08:00", "16:00", [yoav]),
+          place(),
+        ],
+        answers: [allWeek(noa), allWeek(yoav)],
+      });
+      expect(who(fill, 3)).toEqual([noa]);
     });
 
     it("then whoever has the fewest of the same kind of shift", () => {
@@ -520,23 +651,38 @@ describe("fillFromAvailability", () => {
       ]);
     });
 
-    it("then whoever has the fewest shifts", () => {
+    it("the same kind before the fewest shifts", () => {
+      // Eight hours each: Noa one evening, Yoav two mornings of 4.
       const fill = fillOf({
         screen: [
-          shift(day(0), "10:00", "14:00", [noa], {
-            name: "אמצע",
-            pattern: null,
-          }),
-          shift(day(1), "10:00", "14:00", [noa], {
-            name: "אמצע",
-            pattern: null,
-          }),
-          shift(day(2), "08:00", "16:00", [yoav]),
+          shift(day(0), "16:00", "00:00", [noa]),
+          shift(day(1), "08:00", "12:00", [yoav]),
+          shift(day(2), "08:00", "12:00", [yoav]),
           place(),
         ],
         answers: [allWeek(noa), allWeek(yoav)],
       });
       expect(who(fill, 3)).toEqual([yoav]);
+    });
+
+    it("then whoever has the fewest shifts, before the rotation", () => {
+      // Eight hours each and no evening: Yoav two shifts of 4, Noa one of 8.
+      const fill = fillOf({
+        screen: [
+          shift(day(0), "10:00", "14:00", [yoav], {
+            name: "אמצע",
+            pattern: null,
+          }),
+          shift(day(1), "10:00", "14:00", [yoav], {
+            name: "אמצע",
+            pattern: null,
+          }),
+          shift(day(2), "08:00", "16:00", [noa]),
+          place(),
+        ],
+        answers: [allWeek(noa), allWeek(yoav)],
+      });
+      expect(who(fill, 3)).toEqual([noa]);
     });
 
     it("then whoever worked the fewest hours last week, when it is the week just before", () => {
@@ -724,7 +870,7 @@ describe("fillFromAvailability", () => {
       havdalah: "20:21",
     };
 
-    it("names Shabbat, with havdalah or candle lighting, and still places an answer that covers it", () => {
+    it("names Shabbat, with havdalah or candle lighting, as the reason only where no answer covers the shift", () => {
       const screen = [
         shift(day(6), "19:30", "00:00", [], { needed: 2 }),
         shift(day(5), "07:00", "16:30"),
@@ -739,11 +885,15 @@ describe("fillFromAvailability", () => {
           why: "shabbat",
           shabbat: { side: "friday", time: "16:12" },
         }),
+        // Noa's answer covers it, so it isn't true that none can: nobody
+        // else does, and Shabbat is still named beside that.
         expect.objectContaining({
           index: 0,
+          added: [{ user: noa, position: null }],
           open: 1,
-          why: "shabbat",
+          why: "nobody",
           shabbat: { side: "saturday", time: "20:21" },
+          blocked: [],
         }),
       ]);
       const open = fillOf({ screen, answers, shabbat: null });
@@ -751,6 +901,34 @@ describe("fillFromAvailability", () => {
         ["nobody", null],
         ["nobody", null],
       ]);
+    });
+
+    it("names whoever covers a shift into Shabbat and was stopped, with Shabbat beside them", () => {
+      const fill = fillOf({
+        screen: [shift(day(6), "19:30", "00:00")],
+        answers: [answer(noa, [day(6), "19:30", "00:30"])],
+        away: [away(noa, day(6))],
+        shabbat,
+      });
+      expect(fill.shifts[0]).toMatchObject({
+        open: 1,
+        why: "blocked",
+        shabbat: { side: "saturday", time: "20:21" },
+        blocked: [{ user: noa, rule: "away" }],
+      });
+    });
+
+    it("counts someone already on the shift as neither stopped nor covering part of it", () => {
+      const fill = fillOf({
+        screen: [shift(day(1), "09:00", "16:00", [noa], { needed: 2 })],
+        answers: [allWeek(noa), answer(yoav, [day(1), "10:00", "16:00"])],
+      });
+      expect(fill.shifts[0]).toMatchObject({
+        open: 1,
+        why: "nobody",
+        blocked: [],
+        partial: 1,
+      });
     });
 
     it("lists everyone who covers it, each with the first rule that stopped them", () => {
@@ -868,6 +1046,25 @@ describe("fillFromAvailability", () => {
       expect(openings(yoav)).toBe(2);
     });
 
+    it("tells two shifts added by hand with one name apart by their start", () => {
+      const middle = (
+        on: string,
+        start: string,
+        end: string,
+        people: string[],
+      ) => shift(on, start, end, people, { name: "אמצע", pattern: null });
+      const fill = fillOf({
+        screen: [
+          middle(day(0), "10:00", "14:00", [noa]),
+          middle(day(1), "14:00", "18:00", [yoav]),
+          middle(day(3), "14:00", "18:00", []),
+        ],
+        answers: [allWeek(noa), allWeek(yoav)],
+      });
+      // Yoav already has an afternoon one; Noa only a morning one.
+      expect(who(fill, 2)).toEqual([noa]);
+    });
+
     it("fills the café's and the shop's patterns, a night on the week's last day included", () => {
       for (const patterns of [CAFE, RETAIL]) {
         const fill = fillOf({
@@ -891,6 +1088,67 @@ describe("fillFromAvailability", () => {
       });
       const night = cafe.week.findIndex((s) => s.pattern === "saturday-night");
       expect(who(cafe, night)).toEqual([noa]);
+    });
+
+    it("fills, from answers kept as the form suggests them, only the shifts those hours cover whole", () => {
+      // The form starts an empty day at 09:00–17:00 (then 18:00–23:00),
+      // Friday at 08:00 until 15:00 or candle lighting, Saturday from havdalah
+      // to 23:30 (`suggestedRange`), whatever the business's shifts. Only whole
+      // cover is placed, so the café gets nothing from them and the shop only
+      // its Friday. Whether the form should suggest the business's own shifts,
+      // or the fill take near-fits, is Orel's call before the sheet (PR 4).
+      // Tel Aviv, 11–12 December 2026.
+      const december: ShabbatLimits = {
+        friday: day(5),
+        candleLighting: "16:17",
+        saturday: day(6),
+        havdalah: "17:14",
+      };
+      const team = [noa, yoav, maya, itay, omer];
+      const kept = (closed: ShabbatLimits | null, second: boolean) =>
+        team.map((userId) => ({
+          userId,
+          ranges: D.flatMap((on) => [
+            { day: on, ...suggestedRange(on, false, closed) },
+            ...(second
+              ? [{ day: on, ...suggestedRange(on, true, closed) }]
+              : []),
+          ]),
+        }));
+      const cases: [string, ShiftPattern[], string[], string[]][] = [
+        // Closed on Shabbat, then open.
+        ["restaurant", RESTAURANT, ["friday", "morning"], ["morning"]],
+        ["café", CAFE, [], []],
+        ["shop", RETAIL, ["friday"], []],
+      ];
+      for (const [name, patterns, closedFills, openFills] of cases) {
+        const screen = draftWeek(WEEK, patterns);
+        for (const [closed, fills] of [
+          [december, closedFills],
+          [null, openFills],
+        ] as const) {
+          for (const second of [false, true]) {
+            const fill = fillOf({
+              screen,
+              staff: team,
+              answers: kept(closed, second),
+              shabbat: closed,
+            });
+            const covered = screen.filter((s) =>
+              fills.includes(s.pattern ?? ""),
+            );
+            const label = `${name}, ${closed ? "closed" : "open"} on Shabbat${second ? ", with the evening" : ""}`;
+            // Every place the suggested hours cover is filled, and no other.
+            expect(fill.places, label).toBe(
+              covered.reduce((sum, s) => sum + s.needed, 0),
+            );
+            expect(
+              fill.shifts.every((s) => s.open === 0 || s.why === "nobody"),
+              label,
+            ).toBe(true);
+          }
+        }
+      }
     });
 
     it("never puts a night worker on the next morning, with 12-hour shifts", () => {
