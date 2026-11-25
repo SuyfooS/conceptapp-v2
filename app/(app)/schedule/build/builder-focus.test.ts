@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   afterPerson,
+  afterScreen,
   afterWrite,
   BUILDER_STATUS,
+  COPY_WEEK,
   listHeading,
   type PlacedAfterWrite,
   personButton,
@@ -114,6 +116,16 @@ describe("personButton and listHeading", () => {
     );
     expect(personButton("remove", "7c1e")).toBe('[data-remove-person="7c1e"]');
     expect(listHeading("busy")).toBe('[data-sheet-heading="busy"]');
+  });
+});
+
+// The toast's "ביטול" of a copy goes with the focus: back to the copy's
+// button, only while it can be pressed (none while a write goes), so the
+// builder goes on to the publish button or the status line otherwise.
+describe("afterScreen", () => {
+  it("goes back to the copy's button while it can be pressed", () => {
+    expect(COPY_WEEK).toBe("[data-copy-week]");
+    expect(afterScreen("copy")).toEqual(["[data-copy-week]:enabled"]);
   });
 });
 
