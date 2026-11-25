@@ -11,7 +11,7 @@ import {
 } from "react";
 import { Button } from "./button";
 import { cn } from "./cn";
-import { onScreen } from "./focus-after";
+import { ignoreHeldEnter, onScreen } from "./focus-after";
 import {
   sheetLiftStyle,
   sheetScrollsWhole,
@@ -22,7 +22,9 @@ export type SheetProps = {
   open: boolean;
   /**
    * A sheet that sends a write holds its close only until the answer
-   * (`useSheetWrite`), never until the page read again after it is drawn.
+   * (`useSheetWrite`), never until the page read again after it is drawn,
+   * unless the answer itself shows only then (a refusal said once the focus
+   * is back on its press): closed before, nothing would say it.
    */
   onOpenChange: (open: boolean) => void;
   title: ReactNode;
@@ -56,8 +58,10 @@ export type SheetProps = {
  * A glass sheet that rises from the bottom, for one short task. Dragging the
  * grabber down closes it, and so do the button, the scrim and Escape. It renders
  * inside the nearest [data-accent] wrapper, so it keeps the business's colour.
- * Closed, it gives the keyboard's focus back (`returnFocus`), never to the
- * top of the page. On a phone it stands over the keyboard, never behind it
+ * Its ✕, which takes the focus as it opens, takes no Enter still held down
+ * from the press that opened it (`ignoreHeldEnter`). Closed, it gives the
+ * keyboard's focus back (`returnFocus`), never to the top of the page. On a
+ * phone it stands over the keyboard, never behind it
  * (`useKeyboardLift`): lifted as the keyboard opens for a field inside it, no
  * taller than what is on screen above it, and the field typed in kept in
  * sight in its body. Where that is too short for its header and footer (a
@@ -174,6 +178,7 @@ export function Sheet({
             <div className="relative flex items-center gap-2 px-3 pt-0.5 pb-2.5">
               <Dialog.Close
                 aria-label={closeLabel}
+                onKeyDown={ignoreHeldEnter}
                 className="pressable grid size-11 shrink-0 place-items-center rounded-full bg-surface-2 focus-visible:outline-2 focus-visible:outline-accent [&_svg]:size-5"
               >
                 <X aria-hidden="true" />

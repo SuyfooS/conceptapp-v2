@@ -2510,6 +2510,8 @@
         "back": "Clock",
         "earlier": "Previous month: {month}",
         "later": "Next month: {month}",
+        "monthShown": "{month}: {hours} {caption}",
+        "monthHours": "{hours} {caption}",
         "total": "hours, {count, plural, =0 {no shifts} one {one shift} other {# shifts}}",
         "times": "<ltr>{in}–{out}</ltr>",
         "since": "From <ltr>{in}</ltr>",
@@ -2697,7 +2699,9 @@
           "addBreak": "Break added",
           "removeBreak": "Break removed",
           "restoreBreak": "Break brought back",
-          "undo": "Undo"
+          "undo": "Undo",
+          "undoCancel": "Undo: the shift comes back",
+          "undoRemoveBreak": "Undo: the break comes back"
         },
         "confirm": {
           "title": "{count, plural, one {One entry is waiting for approval} other {# entries are waiting for approval}}",
@@ -2707,7 +2711,7 @@
           "fix": "Fix",
           "approveLabel": "Approve {name}'s hours",
           "fixLabel": "Fix {name}'s hours",
-          "done": "Hours approved"
+          "done": "{name}'s hours approved"
         },
         "stations": {
           "title": "Clock stations",
@@ -2786,7 +2790,8 @@
           "edit": "Change saved",
           "remove": "Days away removed",
           "restore": "Days away back",
-          "undo": "Undo"
+          "undo": "Undo",
+          "undoRemove": "Undo: the days away come back"
         },
         "failure": {
           "kind": "Choose a kind.",

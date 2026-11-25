@@ -1,6 +1,7 @@
 import { CameraOff, X } from "lucide-react";
 import type { ReactNode, Ref } from "react";
 import { cn } from "./cn";
+import { ignoreHeldEnter } from "./focus-after";
 import { IconButton } from "./icon-button";
 import { Spinner } from "./spinner";
 
@@ -21,8 +22,9 @@ export type ScanCircleState =
  * The punch circle turned into a camera: the same place and size, the business's
  * colour as a ring around a round picture, so scanning stays where the press
  * was. One line under it says what is happening, for everyone (a polite live
- * region); the picture itself is decoration. `still` stands in for the camera
- * where there is none to show, as in the gallery.
+ * region), unless `quietRead` keeps the `read` state's line to the eye; the
+ * picture itself is decoration. `still` stands in for the camera where there
+ * is none to show, as in the gallery.
  */
 export function ScanCircle({
   state,
@@ -31,6 +33,7 @@ export function ScanCircle({
   still,
   figure,
   status,
+  quietRead = false,
   cancel,
   className,
 }: {
@@ -46,15 +49,27 @@ export function ScanCircle({
   /** What is happening now, in a sentence. */
   status: ReactNode;
   /**
+   * The line says nothing once a code went through (`read`), though it
+   * still shows: for a screen that says so itself after the focus has
+   * moved on from the camera (the clock's toast), as a line said just
+   * before that move is cut off. Set with the `read` state, the same
+   * drawing: the line is out of the live region as its words change.
+   */
+  quietRead?: boolean;
+  /**
    * Stops scanning: an icon button, so it needs its words. `autoFocus` puts
    * the focus there when the circle turns into the camera, since the button
-   * that was pressed is gone.
+   * that was pressed is gone; Enter held down from that press stops nothing
+   * (`ignoreHeldEnter`), only a key's first press does. `ref` is the
+   * button, for a screen that brings the focus there itself (a sheet's
+   * `returnFocus`, as it leads back to the camera).
    */
   cancel?: {
     label: string;
     onClick: () => void;
     disabled?: boolean;
     autoFocus?: boolean;
+    ref?: Ref<HTMLButtonElement>;
   };
   className?: string;
 }) {
@@ -169,19 +184,21 @@ export function ScanCircle({
 
         {cancel ? (
           <IconButton
+            ref={cancel.ref}
             label={cancel.label}
             icon={<X aria-hidden="true" />}
             variant="secondary"
             disabled={cancel.disabled}
             autoFocus={cancel.autoFocus}
             onClick={cancel.onClick}
+            onKeyDown={ignoreHeldEnter}
             className="absolute end-0 top-0 shadow-card"
           />
         ) : null}
       </div>
 
       <p
-        aria-live="polite"
+        aria-live={quietRead && state === "read" ? "off" : "polite"}
         className="min-h-12 max-w-[320px] text-balance text-center text-base text-ink"
       >
         {status}

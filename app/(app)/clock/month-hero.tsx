@@ -1,4 +1,4 @@
-import { addMonths } from "@domain/time-clock-format";
+import { addMonths, formatHours } from "@domain/time-clock-format";
 import { Card } from "@ui/card";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
@@ -6,10 +6,14 @@ import { useFormatter } from "next-intl";
 import type { ReactNode } from "react";
 import type { Translator } from "../wording";
 import { HoursCount } from "./hours-count";
+import type { MonthWay } from "./month-press";
+import { MonthRow } from "./month-row";
 
 /**
  * A month's total on the business's colour, with the way to the months around
- * it. `overlap` leaves room for a list to rise over its lower edge.
+ * it. `overlap` leaves room for a list to rise over its lower edge. Pressing
+ * an arrow keeps the focus on it in the month it leads to, or on that month's
+ * title, and says the month and its hours (`MonthRow`).
  */
 export function MonthHero({
   month,
@@ -27,7 +31,8 @@ export function MonthHero({
   currentMonth: string;
   hrefFor: (month: string) => string;
   minutes: number;
-  caption: ReactNode;
+  /** The words after the total ("שעות, 5 משמרות"), said with it too. */
+  caption: string;
   /** Names the total, so it counts from the last month shown of the same list. */
   countId: string;
   /**
@@ -53,11 +58,21 @@ export function MonthHero({
       padding="lg"
       className={overlap ? "pb-[76px]" : undefined}
     >
-      <div className="flex items-center justify-between gap-2">
+      <MonthRow
+        list={countId}
+        month={month}
+        said={t("monthShown", {
+          month: monthName(month),
+          hours: formatHours(minutes),
+          caption,
+        })}
+        saidOnTitle={t("monthHours", { hours: formatHours(minutes), caption })}
+      >
         <MonthLink
           href={hrefFor(earlier)}
           label={t("earlier", { month: monthName(earlier) })}
           icon={<ChevronRight className="size-5 ltr:-scale-x-100" />}
+          way="earlier"
         />
         <h2 className="font-semibold text-md">{monthName(month)}</h2>
         {month < currentMonth ? (
@@ -65,11 +80,12 @@ export function MonthHero({
             href={hrefFor(later)}
             label={t("later", { month: monthName(later) })}
             icon={<ChevronLeft className="size-5 ltr:-scale-x-100" />}
+            way="later"
           />
         ) : (
           <span className="size-11" />
         )}
-      </div>
+      </MonthRow>
       <p className="mt-2 text-center">
         <HoursCount
           minutes={minutes}
@@ -86,16 +102,23 @@ export function MonthLink({
   href,
   label,
   icon,
+  way,
 }: {
   href: string;
   label: string;
   icon: ReactNode;
+  /**
+   * Which arrow it is, for the hours card's row (`MonthRow`), which keeps
+   * the focus on it in the month it leads to.
+   */
+  way?: MonthWay;
 }) {
   return (
     <Link
       href={href}
       aria-label={label}
       title={label}
+      data-month-way={way}
       className="pressable grid size-11 shrink-0 place-items-center rounded-full bg-accent-press focus-visible:outline-2 focus-visible:outline-current focus-visible:outline-offset-2"
     >
       {icon}
