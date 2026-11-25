@@ -202,20 +202,28 @@ export function FileOpenWatch({
   }, [warningShown]);
 
   // The focus on its way back into the file shown again, until the page is
-  // drawn (`focusWhenDrawn`).
-  const landing = useRef<Promise<void> | null>(null);
+  // drawn (`focusWhenDrawn`): true once it is, false when the file closed
+  // or was held again first.
+  const landing = useRef<Promise<boolean> | null>(null);
 
   // Kept open after a warning that was on screen: said once, after the
   // focus its "להשאיר פתוח" held has gone back into the file (not again
-  // when the screen is shown again), the file shown again included.
+  // when the screen is shown again), the file shown again included. Never
+  // when the file closed or was held again before that focus landed: a
+  // file that closes says nothing more, and its locked card has the focus.
   const keptSaid = useRef(0);
   useEffect(() => {
     if (kept === keptSaid.current) return;
     keptSaid.current = kept;
     const say = () => announce(t("idle.kept"), { lang: locale });
     const putting = landing.current;
-    if (putting) void putting.then(say);
-    else say();
+    if (!putting) {
+      say();
+      return;
+    }
+    void putting.then((landed) => {
+      if (landed) say();
+    });
   }, [kept, t, locale]);
 
   // Shown again: the focus the hiding took goes back, unless the person

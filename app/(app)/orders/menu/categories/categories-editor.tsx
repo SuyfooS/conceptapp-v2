@@ -117,13 +117,16 @@ export function CategoriesEditor({
     );
 
   /**
-   * Saves the list (the server checks it again); says whether it saved. A
+   * Saves the list (the server checks it again): true when it saved, false
+   * when it was refused, null when a later change's answer decides. A
    * change made before the answer came was made from this list, and saves
    * it whole: only the latest change's answer says what the list is, so an
-   * earlier answer leaves the screen as it is, and no press made meanwhile
-   * is lost. Refused, the screen shows the server's list again.
+   * earlier answer leaves the screen as it is, its caller too (an undo, a
+   * name typed), and no press made meanwhile is lost. Refused, the screen
+   * shows the server's list again. Every answer is told to the moves, so a
+   * move is said by the saves that have it (`useRowMoves`).
    */
-  async function change(next: CategoryInput[]): Promise<boolean> {
+  async function change(next: CategoryInput[]): Promise<boolean | null> {
     latest.current += 1;
     const mine = latest.current;
     setOrder(next);
@@ -135,8 +138,9 @@ export function CategoriesEditor({
       result = { ok: false, failure: "failed" };
     }
     setSending((count) => count - 1);
-    if (mine !== latest.current) return result.ok;
-    moves.answered(result.ok);
+    const decides = mine === latest.current;
+    moves.answered(mine, result.ok, decides);
+    if (!decides) return null;
     if (result.ok) {
       // The new ones have their ids now, so a removal of one can be undone.
       const ids = result.value;
@@ -161,13 +165,12 @@ export function CategoriesEditor({
     }
     setName("");
     setTaken(null);
-    if (
-      await change([...shown, { name: text, department: chosenDepartment }])
-    ) {
-      setRemoved(null);
-    } else {
-      setName((typing) => typing || text);
-    }
+    const saved = await change([
+      ...shown,
+      { name: text, department: chosenDepartment },
+    ]);
+    if (saved) setRemoved(null);
+    else if (saved === false) setName((typing) => typing || text);
   }
 
   /** False when the name stays as it was. */
@@ -199,13 +202,19 @@ export function CategoriesEditor({
     const [moving] = next.splice(index, 1);
     if (!moving) return;
     next.splice(to, 0, moving);
-    moves.moving(categoryKey(moving), by, {
-      moved: (place, count) =>
-        t("movedTo", { name: moving.name, place, count }),
-      back: (place, count) =>
-        t("movedBack", { name: moving.name, place, count }),
-    });
     void change(next);
+    // The move with the change that carries it, numbered as it was sent.
+    moves.moving(
+      categoryKey(moving),
+      by,
+      {
+        moved: (place, count) =>
+          t("movedTo", { name: moving.name, place, count }),
+        back: (place, count) =>
+          t("movedBack", { name: moving.name, place, count }),
+      },
+      latest.current,
+    );
   }
 
   async function remove(index: number) {
@@ -213,7 +222,7 @@ export function CategoriesEditor({
     if (!category) return;
     const before = removed;
     setRemoved({ category, index, count: countOf(category.id) });
-    if (!(await change(shown.filter((_, at) => at !== index)))) {
+    if ((await change(shown.filter((_, at) => at !== index))) === false) {
       setRemoved(before);
     }
   }
@@ -225,7 +234,7 @@ export function CategoriesEditor({
     if (shown.some((c) => c.id !== undefined && c.id === category.id)) return;
     const next = [...shown];
     next.splice(index, 0, category);
-    if (!(await change(next))) setRemoved(removed);
+    if ((await change(next)) === false) setRemoved(removed);
   }
 
   const atMost = shown.length >= MENU_CAPS.categories;

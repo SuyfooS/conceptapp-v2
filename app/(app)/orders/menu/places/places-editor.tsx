@@ -37,10 +37,11 @@ const placeKey = (place: PlaceInput) => place.id ?? `new:${place.name}`;
  * saved whole with each change, as the departments are. Removing one has an
  * undo. A business with none yet makes them all at once, named 1 to N,
  * renamed later as it likes; the last one removed has its undo above the
- * quick start. A move keeps the focus on the place's arrow (the other one
- * once it reaches an end) and says where it went once it saved, or where
- * it is back (`useRowMoves`); Enter held down moves it once, so the other
- * arrow takes no key repeating. The same rows on every screen, one list.
+ * quick start, until the quick start is used. A move keeps the focus on the
+ * place's arrow (the other one once it reaches an end) and says where it
+ * went once it saved, or where it is back (`useRowMoves`); Enter held down
+ * moves it once, so the other arrow takes no key repeating. The same rows
+ * on every screen, one list.
  */
 export function PlacesEditor({
   places,
@@ -88,13 +89,16 @@ export function PlacesEditor({
     );
 
   /**
-   * Saves the list (the server checks it again); says whether it saved. A
+   * Saves the list (the server checks it again): true when it saved, false
+   * when it was refused, null when a later change's answer decides. A
    * change made before the answer came was made from this list, and saves
    * it whole: only the latest change's answer says what the list is, so an
-   * earlier answer leaves the screen as it is, and no press made meanwhile
-   * is lost. Refused, the screen shows the server's list again.
+   * earlier answer leaves the screen as it is, its caller too (an undo, a
+   * name typed), and no press made meanwhile is lost. Refused, the screen
+   * shows the server's list again. Every answer is told to the moves, so a
+   * move is said by the saves that have it (`useRowMoves`).
    */
-  async function change(next: PlaceInput[]): Promise<boolean> {
+  async function change(next: PlaceInput[]): Promise<boolean | null> {
     latest.current += 1;
     const mine = latest.current;
     setOrder(next);
@@ -106,8 +110,9 @@ export function PlacesEditor({
       result = { ok: false, failure: "failed" };
     }
     setSending((n) => n - 1);
-    if (mine !== latest.current) return result.ok;
-    moves.answered(result.ok);
+    const decides = mine === latest.current;
+    moves.answered(mine, result.ok, decides);
+    if (!decides) return null;
     if (result.ok) {
       const ids = result.value;
       setOrder(next.map((p, at) => ({ ...p, id: ids[at] ?? p.id })));
@@ -127,7 +132,15 @@ export function PlacesEditor({
   async function makeAll() {
     setCount(String(quick));
     setMaking(true);
-    await change(quickPlaces(quick, shown));
+    // The last place's undo goes as the quick start's places take the
+    // list's place: drawn again among them it would take the focus again,
+    // and a place named as one of them couldn't come back. Back if they
+    // are refused.
+    const before = removed;
+    setRemoved(null);
+    if ((await change(quickPlaces(quick, shown))) === false) {
+      setRemoved(before);
+    }
     setMaking(false);
   }
 
@@ -141,11 +154,9 @@ export function PlacesEditor({
     }
     setName("");
     setTaken(null);
-    if (await change([...shown, { name: text }])) {
-      setRemoved(null);
-    } else {
-      setName((typing) => typing || text);
-    }
+    const saved = await change([...shown, { name: text }]);
+    if (saved) setRemoved(null);
+    else if (saved === false) setName((typing) => typing || text);
   }
 
   function rename(index: number, text: string): boolean {
@@ -170,13 +181,19 @@ export function PlacesEditor({
     const [moving] = next.splice(index, 1);
     if (!moving) return;
     next.splice(to, 0, moving);
-    moves.moving(placeKey(moving), by, {
-      moved: (place, count) =>
-        t("movedTo", { name: moving.name, place, count }),
-      back: (place, count) =>
-        t("movedBack", { name: moving.name, place, count }),
-    });
     void change(next);
+    // The move with the change that carries it, numbered as it was sent.
+    moves.moving(
+      placeKey(moving),
+      by,
+      {
+        moved: (place, count) =>
+          t("movedTo", { name: moving.name, place, count }),
+        back: (place, count) =>
+          t("movedBack", { name: moving.name, place, count }),
+      },
+      latest.current,
+    );
   }
 
   async function remove(index: number) {
@@ -184,7 +201,7 @@ export function PlacesEditor({
     if (!place) return;
     const before = removed;
     setRemoved({ place, index });
-    if (!(await change(shown.filter((_, at) => at !== index)))) {
+    if ((await change(shown.filter((_, at) => at !== index))) === false) {
       setRemoved(before);
     }
   }
@@ -196,7 +213,7 @@ export function PlacesEditor({
     if (shown.some((p) => p.id !== undefined && p.id === place.id)) return;
     const next = [...shown];
     next.splice(index, 0, place);
-    if (!(await change(next))) setRemoved(removed);
+    if ((await change(next)) === false) setRemoved(removed);
   }
 
   const undoRow = removed ? (

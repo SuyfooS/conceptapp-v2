@@ -741,6 +741,142 @@ test("a table moved faster than its saves keeps every press, and a refused move 
   expect(await demoOrderPlaces()).toEqual(fourAt(7));
 });
 
+// Two changes inside one round trip, only one of them refused. The actions
+// go to the server one at a time, the latest change's answer says what the
+// list is, and what each change says comes from the saves that have it.
+// Table 4 moved down, which saves, and table 7 renamed before its answer,
+// which is refused: the server's list, shown again, has the move, so where
+// table 4 is now is said, never that it is back. Table 11 removed, refused,
+// and table 12 removed before that answer, which saves a list without both:
+// 12's undo stays, with the focus. "בר 1" added, refused, and table 1 moved
+// before that answer, which saves a list with it: the name stays out of the
+// field.
+test("a change refused while a later one was on its way leaves the screen to the later one", async ({
+  page,
+}) => {
+  test.setTimeout(150_000);
+  const p = "app.orders.places" as const;
+  const placesPath = "/orders/menu/places";
+  const nameOf = rt(`${p}.nameOf`, { name: "" }).trim();
+  const rowNames = () =>
+    page
+      .getByRole("textbox", { name: new RegExp(`^${literal(nameOf)}`) })
+      .evaluateAll((fields) =>
+        fields.map((field) => (field as HTMLInputElement).value),
+      );
+  const isSave = (request: Request) =>
+    request.method() === "POST" &&
+    request.headers()["next-action"] !== undefined;
+  const polite = announcer(page, "polite");
+
+  await signIn(page, MANAGER);
+  await page.goto(placesPath);
+  await expect(title(page, rt(`${p}.title`))).toBeVisible();
+  await expect
+    .poll(rowNames)
+    .toEqual(Array.from({ length: 12 }, (_, i) => `${i + 1}`));
+  // What the next saves do, in turn: each held back a moment and a half or
+  // not, then let through or refused (offline); past them, let through.
+  const plan: { held: boolean; refused: boolean }[] = [];
+  let refusals = 0;
+  await page.route(
+    (url) => url.pathname === placesPath,
+    async (route) => {
+      if (!isSave(route.request())) {
+        await route.fallback();
+        return;
+      }
+      const step = plan.shift();
+      if (step?.held) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+      if (step?.refused) {
+        await route.abort();
+        refusals += 1;
+        return;
+      }
+      await route.fallback();
+    },
+  );
+
+  // The move saves, the rename sent before its answer is refused.
+  const moved = ["1", "2", "3", "5", "4", "6", "7", "8", "9", "10", "11", "12"];
+  const now = rt(`${p}.movedTo`, { name: "4", place: 5, count: 12 });
+  const back = rt(`${p}.movedBack`, { name: "4", place: 5, count: 12 });
+  plan.push({ held: true, refused: false }, { held: false, refused: true });
+  await noteIfSaid(page, back);
+  await page
+    .getByRole("button", {
+      name: rt(`${p}.downFor`, { name: "4" }),
+      exact: true,
+    })
+    .focus();
+  await heardSoFar(polite);
+  await page.keyboard.press("Enter");
+  await expect.poll(rowNames).toEqual(moved);
+  const seven = page.getByLabel(rt(`${p}.nameOf`, { name: "7" }), {
+    exact: true,
+  });
+  await seven.fill("מרפסת");
+  await seven.press("Enter");
+  await expect(
+    page
+      .getByRole("alert")
+      .filter({ hasText: rt("app.orders.menu.failed.failed") }),
+  ).toBeVisible();
+  await expect(saidSince(polite, now)).toHaveCount(1);
+  expect(await wasSaid(page, back)).toBe(false);
+  await expect.poll(rowNames).toEqual(moved);
+  expect(await demoOrderPlaces()).toEqual(moved);
+
+  // The first removal refused, the second, sent before its answer, saved.
+  const ten = moved.slice(0, 10);
+  plan.push({ held: true, refused: true });
+  const removalsRefused = refusals;
+  await page
+    .getByRole("button", {
+      name: rt(`${p}.remove`, { name: "11" }),
+      exact: true,
+    })
+    .click();
+  await page
+    .getByRole("button", {
+      name: rt(`${p}.remove`, { name: "12" }),
+      exact: true,
+    })
+    .click();
+  await expect.poll(() => refusals).toBe(removalsRefused + 1);
+  await expect.poll(demoOrderPlaces).toEqual(ten);
+  await pastDrawing(page);
+  await expect(
+    page
+      .getByRole("status")
+      .filter({ hasText: rt(`${p}.removed`, { name: "12" }) })
+      .getByRole("button", { name: he.ui.undoRow.undo }),
+  ).toBeFocused();
+  await expect.poll(rowNames).toEqual(ten);
+
+  // The add refused, the move sent before its answer saved, with it.
+  const withBar = ["2", "1", ...ten.slice(2), "בר 1"];
+  plan.push({ held: true, refused: true });
+  const addRefused = refusals;
+  const newName = page.getByLabel(rt(`${p}.newName`));
+  await newName.fill("בר 1");
+  await page.getByRole("button", { name: rt(`${p}.add`) }).click();
+  await expect(newName).toHaveValue("");
+  await page
+    .getByRole("button", {
+      name: rt(`${p}.downFor`, { name: "1" }),
+      exact: true,
+    })
+    .click();
+  await expect.poll(() => refusals).toBe(addRefused + 1);
+  await expect.poll(demoOrderPlaces).toEqual(withBar);
+  await pastDrawing(page);
+  await expect(newName).toHaveValue("");
+  await expect.poll(rowNames).toEqual(withBar);
+});
+
 test("a department that prepares items says so before it goes, and its undo brings them back", async ({
   page,
 }, testInfo) => {

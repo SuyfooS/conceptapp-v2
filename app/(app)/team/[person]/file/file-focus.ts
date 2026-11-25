@@ -46,32 +46,33 @@ export const DRAWN_WITHIN_MS = 1_000;
  * look: CI's first run of file-a11y.spec.ts drew "פרטים מזהים" again
  * without the focus, while every title never held took it at once. Focus
  * the person put elsewhere meanwhile stays there. `done`
- * settles once that is over, so what is said after the focus landed waits
- * for it; `stop` ends it early, settled (the file held again, or gone).
+ * settles once that is over, true, so what is said after the focus landed
+ * waits for it; `stop` ends it early (the file held again, or gone),
+ * settled false, so nothing is said for a file no longer shown.
  */
 export function focusWhenDrawn(
   target: Focusable,
   page: FocusedPage,
   win: Drawings,
-): { done: Promise<void>; stop: () => void } {
+): { done: Promise<boolean>; stop: () => void } {
   focusIfLost(target, page);
-  let settle: () => void = () => {};
-  const done = new Promise<void>((resolve) => {
+  let settle: (landed: boolean) => void = () => {};
+  const done = new Promise<boolean>((resolve) => {
     settle = resolve;
   });
   let over = false;
   let frame: number | undefined;
   let late: number | undefined;
-  const end = () => {
+  const end = (landed: boolean) => {
     over = true;
     if (frame !== undefined) win.cancelAnimationFrame(frame);
     win.clearTimeout(late);
-    settle();
+    settle(landed);
   };
   const again = () => {
     if (over) return;
     focusIfLost(target, page);
-    end();
+    end(true);
   };
   late = win.setTimeout(again, DRAWN_WITHIN_MS);
   frame = win.requestAnimationFrame(() => {
@@ -80,7 +81,7 @@ export function focusWhenDrawn(
   return {
     done,
     stop: () => {
-      if (!over) end();
+      if (!over) end(false);
     },
   };
 }

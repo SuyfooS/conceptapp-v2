@@ -62,6 +62,56 @@ export function moveSaid<T>(
   return where(index + 1, rows.length);
 }
 
+/** The latest move, waiting for its saves: its row, its words, and its change. */
+type MoveWaiting = {
+  key: string;
+  words: MoveWords;
+  /** The number of the change that carried it. */
+  change: number;
+  /** A save that has the move went through: its own, or a later change's. */
+  saved: boolean;
+};
+
+/**
+ * The latest move's words while the list's saves answer, each change by its
+ * number as the editor sent it. Every answer is told, those a later change
+ * overtook too, as the move's own save may be one of them. Once the latest
+ * change answers, the move is heard: saved when its own change or any later
+ * one saved, since each of those was made from a list that has the move;
+ * refused only when none of them did. A later change refused (a rename, a
+ * removal) never says a move that saved went back.
+ */
+export function moveAnswers(): {
+  /** A row moved by change `change`: only the latest move waits. */
+  moving: (key: string, words: MoveWords, change: number) => void;
+  /** Change `change` answered; the move is heard once the `latest` one has. */
+  answered: (
+    change: number,
+    saved: boolean,
+    latest: boolean,
+  ) => MoveHeard | null;
+  /** Nothing waits any more (the screen went). */
+  forget: () => void;
+} {
+  let waiting: MoveWaiting | null = null;
+  return {
+    moving(key, words, change) {
+      waiting = { key, words, change, saved: false };
+    },
+    answered(change, saved, latest) {
+      const move = waiting;
+      if (!move) return null;
+      if (saved && change >= move.change) move.saved = true;
+      if (!latest) return null;
+      waiting = null;
+      return { key: move.key, words: move.words, saved: move.saved };
+    },
+    forget() {
+      waiting = null;
+    },
+  };
+}
+
 /** Where a row's arrow is kept: the row's key, and which way it moves. */
 const arrowKey = (key: string, by: MoveBy) => `${key}:${by}`;
 
@@ -130,9 +180,10 @@ export function arrowRefs<N>(): ArrowRefs<N> {
  * or a press anywhere else, or the screen goes or is hidden. Nothing moves a
  * focus the person put elsewhere. Where the row went is said only once the
  * list's latest save answers (`answered`), politely, after what the focus
- * reads: where it is then, or, refused, where it is back, after the
- * screen's line saying why. Only the latest move is said, so presses that
- * come faster than the saves say where the row ended.
+ * reads: where it is then, or, when no save that had the move went through,
+ * where it is back, after the screen's line saying why (`moveAnswers`).
+ * Only the latest move is said, so presses that come faster than the saves
+ * say where the row ended.
  */
 export function useRowMoves<T>(
   rows: readonly T[],
@@ -140,13 +191,19 @@ export function useRowMoves<T>(
 ): {
   /** The ref of a row's arrow, the same on every drawing (`arrowRefs`). */
   arrowRef: (key: string, by: MoveBy) => ArrowRef;
-  /** A row's arrow pressed: its arrow keeps the focus, and `words` wait for the save. */
-  moving: (key: string, by: MoveBy, words: MoveWords) => void;
   /**
-   * The list's latest save answered (`saved`, or refused), before what its
-   * answer draws: the latest move's words are said once that is drawn.
+   * A row's arrow pressed, its move carried by change `change` (the number
+   * the editor sent it with): its arrow keeps the focus, and `words` wait
+   * for the saves.
    */
-  answered: (saved: boolean) => void;
+  moving: (key: string, by: MoveBy, words: MoveWords, change: number) => void;
+  /**
+   * A save of the list answered: change `change`, `saved` or refused, and
+   * whether it is the `latest` change, before what its answer draws. Every
+   * answer is told; the latest move's words are said once the latest one's
+   * is drawn.
+   */
+  answered: (change: number, saved: boolean, latest: boolean) => void;
 } {
   const locale = useLocale();
   const [{ arrows, refOf }] = useState(() => arrowRefs<HTMLButtonElement>());
@@ -154,8 +211,8 @@ export function useRowMoves<T>(
   const last = useRef<{ key: string; by: MoveBy } | null>(null);
   // A press whose move isn't drawn yet.
   const pressed = useRef(false);
-  // The latest move's words, until a save answers.
-  const words = useRef<{ key: string; words: MoveWords } | null>(null);
+  // The latest move's words, until the latest change answers.
+  const [answers] = useState(moveAnswers);
   // Answered, saved or not: said once the answer is drawn.
   const heard = useRef<MoveHeard | null>(null);
 
@@ -207,23 +264,28 @@ export function useRowMoves<T>(
       document.removeEventListener("pointerdown", away, true);
       last.current = null;
       pressed.current = false;
-      words.current = null;
+      answers.forget();
       heard.current = null;
     };
-  }, [arrows]);
+  }, [arrows, answers]);
 
-  const moving = useCallback((key: string, by: MoveBy, said: MoveWords) => {
-    last.current = { key, by };
-    pressed.current = true;
-    words.current = { key, words: said };
-    heard.current = null;
-  }, []);
+  const moving = useCallback(
+    (key: string, by: MoveBy, said: MoveWords, change: number) => {
+      last.current = { key, by };
+      pressed.current = true;
+      answers.moving(key, said, change);
+      heard.current = null;
+    },
+    [answers],
+  );
 
-  const answered = useCallback((saved: boolean) => {
-    const move = words.current;
-    words.current = null;
-    if (move) heard.current = { ...move, saved };
-  }, []);
+  const answered = useCallback(
+    (change: number, saved: boolean, latest: boolean) => {
+      const move = answers.answered(change, saved, latest);
+      if (move) heard.current = move;
+    },
+    [answers],
+  );
 
   return { arrowRef: refOf, moving, answered };
 }

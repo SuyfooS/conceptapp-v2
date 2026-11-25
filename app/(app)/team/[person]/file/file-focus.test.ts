@@ -97,7 +97,7 @@ describe("focusWhenDrawn", () => {
     frame();
     expect(title.focus).toHaveBeenCalledTimes(2);
     expect(waiting()).toBe(0);
-    await done;
+    expect(await done).toBe(true);
   });
 
   it("leaves a focus that landed, or one the person put elsewhere meanwhile", async () => {
@@ -112,7 +112,7 @@ describe("focusWhenDrawn", () => {
     const first = focusWhenDrawn(title, page, landed.win);
     landed.frame();
     landed.frame();
-    await first.done;
+    expect(await first.done).toBe(true);
     expect(title.focus).toHaveBeenCalledTimes(1);
 
     // Put on the tab bar before the page was drawn: it stays there.
@@ -122,7 +122,7 @@ describe("focusWhenDrawn", () => {
     const second = focusWhenDrawn(other, page, moved.win);
     moved.frame();
     moved.frame();
-    await second.done;
+    expect(await second.done).toBe(true);
     expect(other.focus).not.toHaveBeenCalled();
   });
 
@@ -134,10 +134,12 @@ describe("focusWhenDrawn", () => {
     late();
     expect(title.focus).toHaveBeenCalledTimes(2);
     expect(waiting()).toBe(0);
-    await done;
+    expect(await done).toBe(true);
   });
 
-  it("ends settled when stopped, putting nothing more", async () => {
+  // The file closed or held again before the page was drawn: what waits
+  // for the focus to land ("התיק נשאר פתוח.") hears false, and says nothing.
+  it("ends settled false when stopped, putting nothing more", async () => {
     const page = { activeElement: body as { isConnected: boolean }, body };
     const title = { focus: vi.fn() };
     const { win, frame, waiting } = drawings();
@@ -147,7 +149,19 @@ describe("focusWhenDrawn", () => {
     frame();
     frame();
     expect(title.focus).toHaveBeenCalledTimes(1);
-    await done;
+    expect(await done).toBe(false);
+  });
+
+  it("stays settled true when stopped after the focus landed", async () => {
+    const page = { activeElement: body as { isConnected: boolean }, body };
+    const title = { focus: vi.fn() };
+    const { win, frame } = drawings();
+    const { done, stop } = focusWhenDrawn(title, page, win);
+    frame();
+    frame();
+    // The file closing later runs the same stop: the line was said already.
+    stop();
+    expect(await done).toBe(true);
   });
 });
 

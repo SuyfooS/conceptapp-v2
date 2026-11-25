@@ -225,6 +225,45 @@ test("the places twin's last place removed keeps its undo above the quick start,
   await expect.poll(() => rowNames(page, nameOf)).toEqual(["1"]);
 });
 
+// The last place removed, and the quick start used instead of its undo: the
+// undo goes as the new places take the list's place. Drawn again among them
+// it took the focus again, and pressed it put a second "1" in, which the
+// real screen's save refuses.
+test("the places twin's quick start, used with the last place's undo up, drops that undo", async ({
+  page,
+}) => {
+  const p = "app.orders.places" as const;
+  const nameOf = rt(`${p}.nameOf`, { name: "" }).trim();
+  await open(page, "/design/order-taking/menu/places?state=noPlaces");
+  const count = page.getByLabel(rt(`${p}.quick.count`));
+  await count.fill("1");
+  await page
+    .getByRole("button", { name: rt(`${p}.quick.action`, { count: 1 }) })
+    .click();
+  await expect.poll(() => rowNames(page, nameOf)).toEqual(["1"]);
+  await page
+    .getByRole("button", {
+      name: rt(`${p}.remove`, { name: "1" }),
+      exact: true,
+    })
+    .click();
+  const undoRow = page
+    .getByRole("status")
+    .filter({ hasText: rt(`${p}.removed`, { name: "1" }) });
+  await expect(
+    undoRow.getByRole("button", { name: he.ui.undoRow.undo }),
+  ).toBeFocused();
+
+  await count.fill("10");
+  await page
+    .getByRole("button", { name: rt(`${p}.quick.action`, { count: 10 }) })
+    .click();
+  await expect
+    .poll(() => rowNames(page, nameOf))
+    .toEqual(Array.from({ length: 10 }, (_, i) => `${i + 1}`));
+  await expect(undoRow).toHaveCount(0);
+});
+
 // Left by the browser's Back, which presses nothing on the screen, and
 // opened again from the menu: Next shows the same screen again, kept for
 // Back, and its effects run again, while the link pressed on the menu is

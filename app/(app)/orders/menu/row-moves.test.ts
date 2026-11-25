@@ -1,14 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { arrowAfter, arrowRefs, type MoveWords, moveSaid } from "./row-moves";
+import {
+  arrowAfter,
+  arrowRefs,
+  type MoveWords,
+  moveAnswers,
+  moveSaid,
+} from "./row-moves";
 
 /*
  * Which arrow of a moved category or place has the focus once the move is
  * drawn (accessibility, part 9): the one pressed while the row can go on
  * that way, the other one once it reached that end. Then what is said once
  * the list's save answered: where the row is in the list as drawn then,
- * moved there or back there, or nothing once it is gone. And the arrows'
- * refs, the same on every drawing, so React never takes a moved row's
- * arrow off the list while it gives the arrow its focus back.
+ * moved there or back there, or nothing once it is gone; and whether it
+ * moved or went back, by the saves that had the move, never by a later
+ * change's alone. And the arrows' refs, the same on every drawing, so React
+ * never takes a moved row's arrow off the list while it gives the arrow its
+ * focus back.
  */
 
 describe("arrowAfter", () => {
@@ -70,6 +78,92 @@ describe("moveSaid", () => {
     expect(
       moveSaid({ key: "4", words, saved: true }, ["1", "2", "3"], key),
     ).toBeNull();
+  });
+});
+
+describe("moveAnswers", () => {
+  const words: MoveWords = {
+    moved: (place, count) => `4 now ${place} of ${count}`,
+    back: (place, count) => `4 back at ${place} of ${count}`,
+  };
+
+  it("hears the move by its own change's answer when that change is the latest", () => {
+    const answers = moveAnswers();
+    answers.moving("4", words, 1);
+    expect(answers.answered(1, true, true)).toEqual({
+      key: "4",
+      words,
+      saved: true,
+    });
+    answers.moving("4", words, 2);
+    expect(answers.answered(2, false, true)).toEqual({
+      key: "4",
+      words,
+      saved: false,
+    });
+  });
+
+  it("hears a move that saved as moved, though a later change sent before its answer was refused", () => {
+    // Table 4 moved (change 1), table 7 renamed before the move answered
+    // (change 2): the move saved, the rename was refused, and the server's
+    // list, now on screen, has the move.
+    const answers = moveAnswers();
+    answers.moving("4", words, 1);
+    expect(answers.answered(1, true, false)).toBeNull();
+    expect(answers.answered(2, false, true)).toEqual({
+      key: "4",
+      words,
+      saved: true,
+    });
+  });
+
+  it("hears it moved when a later change, which has the move, saved after its own was refused", () => {
+    const answers = moveAnswers();
+    answers.moving("4", words, 1);
+    expect(answers.answered(1, false, false)).toBeNull();
+    expect(answers.answered(2, true, false)).toBeNull();
+    expect(answers.answered(3, false, true)?.saved).toBe(true);
+  });
+
+  it("hears it back only when no save that has the move went through", () => {
+    const answers = moveAnswers();
+    answers.moving("4", words, 1);
+    expect(answers.answered(1, false, false)).toBeNull();
+    expect(answers.answered(2, false, true)?.saved).toBe(false);
+  });
+
+  it("takes no change from before the move as its save", () => {
+    // Change 1 a rename, still on its way as table 4 moved (change 2).
+    const answers = moveAnswers();
+    answers.moving("4", words, 2);
+    expect(answers.answered(1, true, false)).toBeNull();
+    expect(answers.answered(2, false, true)?.saved).toBe(false);
+  });
+
+  it("hears the latest move only, once", () => {
+    const other: MoveWords = {
+      moved: () => "5 now",
+      back: () => "5 back",
+    };
+    const answers = moveAnswers();
+    answers.moving("4", words, 1);
+    answers.moving("5", other, 2);
+    // The first move's save counts for nothing of the second's.
+    expect(answers.answered(1, true, false)).toBeNull();
+    expect(answers.answered(2, false, true)).toEqual({
+      key: "5",
+      words: other,
+      saved: false,
+    });
+    // A change after it, with no move: nothing more is heard.
+    expect(answers.answered(3, true, true)).toBeNull();
+  });
+
+  it("hears nothing once forgotten (the screen went)", () => {
+    const answers = moveAnswers();
+    answers.moving("4", words, 1);
+    answers.forget();
+    expect(answers.answered(1, true, true)).toBeNull();
   });
 });
 
