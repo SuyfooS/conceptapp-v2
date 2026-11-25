@@ -25,6 +25,11 @@ type Props = {
 // circle staying the screen's hero; at work, it says the shift she is in
 // counts once it ends. ?estimate=off is a business whose amounts the team
 // hasn't turned on, or that hides them from workers: no card.
+// Each stand-in moves to its state's own address, a page of its own (Next
+// keeps the one before hidden, as it does a month's), so the clock that
+// noted a press is not the one drawn after it: where the focus goes after a
+// press of the clock's buttons (accessibility, part 5) shows only on /clock,
+// the hosted demo's included, where the screen is read again in place.
 export default function ShellClock({ searchParams }: Props) {
   return (
     <Suspense>

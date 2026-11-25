@@ -13,7 +13,11 @@ import {
 } from "@domain/time-clock-format";
 import { Button, type ButtonProps } from "@ui/button";
 import { Card } from "@ui/card";
-import { type FocusCandidate, focusFirst } from "@ui/focus-after";
+import {
+  type FocusCandidate,
+  focusFirst,
+  inClosingSheet,
+} from "@ui/focus-after";
 import { PunchCircle } from "@ui/punch-circle";
 import { StatusToast } from "@ui/status-toast";
 import { useFocusWhenGone } from "@ui/use-focus-after";
@@ -26,6 +30,7 @@ import {
   type Ref,
   useEffect,
   useLayoutEffect,
+  useReducer,
   useRef,
   useState,
   useTransition,
@@ -304,17 +309,34 @@ export function ClockPanel({
    */
   const mainControl = () => endShiftRef.current ?? circleRef.current;
 
+  /**
+   * A sheet gave the focus back as it left the page (its `returnFocus`, the
+   * main control): counted, so a press it held over goes on (`handedBack`).
+   */
+  const [handedBack, noteHandedBack] = useReducer((n: number) => n + 1, 0);
+  const sheetGaveBack = () => {
+    noteHandedBack();
+    return mainControl();
+  };
+
   // A press is over: the button pressed gave way to what it drew (the break's
   // start to "יציאה מהמשמרת", leaving to the undo card, the undo card to the
   // shift again), or was busy while its answer came, and the focus went with
   // it. Only where it was lost, once the screen the press led to is drawn,
   // it goes back to what was pressed when that is still there (a refusal,
   // the circle), else on to the main control. A sheet open or the camera on
-  // keep it until they give it back (a code's punch), and a closing sheet
-  // has given it. Then the press's words: the toast, or why it was refused.
+  // keep it until they give it back (a code's punch). So does a sheet still
+  // sliding away with the focus in it: Radix keeps the rest of the page
+  // hidden from screen readers (aria-hidden) until it has gone, so a focus
+  // put there now may go unsaid. It gives the focus back once gone, and
+  // that runs this again (`handedBack`). Then the press's words: the toast,
+  // or why it was refused.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a sheet handing the focus back is what lets a press it held go on
   useEffect(() => {
     if (!pressOver(pressed.current, { busy, state })) return;
     if (scanning || sheet) return;
+    const active = document.activeElement;
+    if (active && inClosingSheet(active)) return;
     pressed.current = null;
     const was = pressedOn.current;
     pressedOn.current = null;
@@ -324,7 +346,7 @@ export function ClockPanel({
     if (!words) return;
     if ("failure" in words) setFailure(words.failure);
     else setToast(toastOf(words.text));
-  }, [busy, state, scanning, sheet]);
+  }, [busy, state, scanning, sheet, handedBack]);
 
   function goWithoutCode() {
     setNoneFailure(null);
@@ -474,8 +496,9 @@ export function ClockPanel({
             open={sheet === "code"}
             onOpenChange={(next) => setSheet(next ? "code" : null)}
             // Opened from the camera, which went as it opened: closed, back
-            // to the main control, never the top of the page.
-            returnFocus={mainControl}
+            // to the main control, never the top of the page, and then a
+            // punch it held goes on to its words.
+            returnFocus={sheetGaveBack}
             direction={direction}
             locked={locked}
             punchWith={punchWith}
@@ -493,7 +516,7 @@ export function ClockPanel({
               // only the answer: a refusal shows before the page comes back.
               if (!noneHeld()) setSheet(next ? "none" : null);
             }}
-            returnFocus={mainControl}
+            returnFocus={sheetGaveBack}
             direction={direction}
             now={now}
             timeZone={data.timeZone}

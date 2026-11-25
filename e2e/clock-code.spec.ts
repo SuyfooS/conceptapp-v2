@@ -58,6 +58,38 @@ const title = (page: Page, name: string) =>
 /** The circle, for `noteFocusWhenSaid`. */
 const onCircle = '[data-clock="circle"]';
 
+/** Where `noteHiddenFocus` keeps what it saw, on the page's window. */
+type HiddenFocus = { focusedHidden?: string[] };
+
+/**
+ * Notes, from now on, each element that takes the focus while it is hidden
+ * from screen readers (`aria-hidden="true"` on it or around it, as Radix
+ * leaves the rest of the page until a sheet sliding away has gone): Safari's
+ * VoiceOver may say nothing of it, and nothing says it again once that
+ * lifts. `focusedHidden` then lists them, by `data-clock` or tag.
+ */
+const noteHiddenFocus = (page: Page) =>
+  page.evaluate(() => {
+    const seen: string[] = [];
+    (window as unknown as HiddenFocus).focusedHidden = seen;
+    document.addEventListener(
+      "focusin",
+      (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+        if (!target.closest('[aria-hidden="true"]')) return;
+        seen.push(target.getAttribute("data-clock") ?? target.tagName);
+      },
+      true,
+    );
+  });
+
+/** What `noteHiddenFocus` saw take the focus while hidden. */
+const focusedHidden = (page: Page) =>
+  page.evaluate(
+    () => (window as unknown as HiddenFocus).focusedHidden ?? ["not noted"],
+  );
+
 /** The circle, by the last words of its name: the time may come before them. */
 const circle = (page: Page, name: string) =>
   page.getByRole("button", { name: new RegExp(`(^|\\s)${name}$`) });
@@ -209,16 +241,23 @@ test("a manager shows the code, and a worker clocks in and out by typing its dig
     await expect(typeIn.getByLabel(c.type.label)).toBeFocused();
     await expectCleanPage(noa);
     await noa.screenshot({ path: testInfo.outputPath("clock-type.png") });
+    // From here the sheet takes its 220 ms to slide away, as on a phone that
+    // doesn't ask for less motion: the rest of the page stays hidden from
+    // screen readers until it has gone, so nothing may take the focus there
+    // before (`noteHiddenFocus`).
+    await noa.emulateMedia({ reducedMotion: "no-preference" });
+    await noteHiddenFocus(noa);
     await noteFocusWhenSaid(noa, c.done.in, onCircle);
     await typeIn.getByLabel(c.type.label).fill(await digitsOn(page));
     await expect(noa.getByText(c.done.in, { exact: true })).toBeVisible();
     await expect(title(noa, c.title.working)).toBeVisible();
     await expect(typeIn).toBeHidden();
     // The sheet opened from the camera, which went as it opened: closed, it
-    // gives the focus to the circle, never the top of the page, and the
-    // toast is said after that.
+    // gives the focus to the circle, never the top of the page, once it has
+    // gone, and the toast is said after that.
     await expect(circle(noa, c.circle.scanOut)).toBeFocused();
     await expect.poll(() => focusWhenSaid(noa)).toBe(true);
+    expect(await focusedHidden(noa)).toEqual([]);
 
     // A break needs no code.
     await expect(noa.getByText(c.breakNote)).toBeVisible();
@@ -244,6 +283,7 @@ test("a manager shows the code, and a worker clocks in and out by typing its dig
     await expect(title(noa, c.title.off)).toBeVisible();
     await expect(circle(noa, c.circle.scanIn)).toBeFocused();
     await expect.poll(() => focusWhenSaid(noa)).toBe(true);
+    expect(await focusedHidden(noa)).toEqual([]);
 
     expect(await demoEntryProofs(NOA.e164)).toEqual([
       { inProof: "typed", outProof: "typed", confirmed: false },
@@ -359,16 +399,22 @@ test("wrong digits block typing, and the worker goes ahead without a code", asyn
     without.getByRole("button", { name: c.none.back }),
   ).toBeVisible();
   await expectCleanPage(page);
+  // The sheet slides away for its 220 ms, as on a phone that doesn't ask for
+  // less motion, and nothing takes the focus while the page is still hidden.
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await noteHiddenFocus(page);
   await noteFocusWhenSaid(page, c.done.inNone, onCircle);
   await without.getByRole("button", { name: c.none.confirmIn }).click();
   await expect(page.getByText(c.done.inNone)).toBeVisible();
   await expect(title(page, c.title.working)).toBeVisible();
   // Closed with its answer, the sheet gives the focus to the circle, which
-  // says the time now running, never to the top of the page; the toast is
-  // said after it.
+  // says the time now running, never to the top of the page, once it has
+  // gone; the toast is said after it.
   await expect(without).toBeHidden();
   await expect(circle(page, c.circle.scanOut)).toBeFocused();
   await expect.poll(() => focusWhenSaid(page)).toBe(true);
+  expect(await focusedHidden(page)).toEqual([]);
+  await page.emulateMedia({ reducedMotion: "reduce" });
   expect(await demoEntryProofs(NOA.e164)).toEqual([
     { inProof: "none", outProof: null, confirmed: false },
   ]);
