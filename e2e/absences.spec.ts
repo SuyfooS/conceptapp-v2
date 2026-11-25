@@ -435,11 +435,15 @@ test("the builder says who is away on next week's days, in a shift's people, the
     await expect(copy).toHaveCount(0);
 
     // The fill from availability places nobody: Noa, the only one who sent
-    // any, is away on the one day it covers, and Sunday morning says so.
+    // any, is away on the one day it covers, and Sunday morning says so. She
+    // is named as having sent availability and got no shift.
     await page.getByRole("button", { name: tb.fill.action }).click();
     const fill = page.getByRole("dialog", { name: tb.fill.title });
     await expect(fill).toContainText(tb.fill.nothing.none);
     await expect(fill).toContainText(tb.fill.away);
+    await expect(fill).toContainText(
+      heT("app.build.fill.unplaced", { names: NOA.name }),
+    );
     await expect(fill).toContainText(
       heT("app.build.fill.why.blockedOne", {
         name: NOA.name,

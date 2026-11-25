@@ -46,12 +46,13 @@ import type { Position } from "@domain/staffing";
 import { type ShiftSwap, swapsEndedBy } from "@domain/swaps";
 import type { TeamMember } from "@domain/team";
 import { Badge } from "@ui/badge";
-import { Button } from "@ui/button";
+import { Button, type ButtonProps } from "@ui/button";
 import { Card, CardText } from "@ui/card";
 import { cn } from "@ui/cn";
 import { DockButton, FloatingDock } from "@ui/floating-dock";
 import {
   type FocusCandidate,
+  firstOnScreen,
   focusFirst,
   focusLost,
   ignoreHeldEnter,
@@ -59,6 +60,7 @@ import {
 import { Segmented } from "@ui/segmented";
 import { Sheet } from "@ui/sheet";
 import { StatusToast } from "@ui/status-toast";
+import { useFocusWhenGone } from "@ui/use-focus-after";
 import {
   CalendarCheck,
   CopyPlus,
@@ -78,6 +80,7 @@ import {
   useActionState,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -895,6 +898,13 @@ function WeekBuilder({
    * away: read again, a fill just put on the screen would leave less to fill.
    */
   const [shownFill, setShownFill] = useState<WeekFill | null>(null);
+  // Leaving the screen closes the fill's sheet. Next keeps a screen it
+  // leaves (hidden, in React's Activity) and shows it again on the way back:
+  // without this, the sheet open as its reminder's link went to the team's
+  // availability, with nothing unsaved to ask about first, would be open
+  // again over the builder with nobody pressing (as the clock's panel ends a
+  // scan).
+  useLayoutEffect(() => () => setFillOpen(false), []);
 
   // The design demo stores nothing and doesn't start again after a publish,
   // so its own publish shows through `state`: the later of the two is the
@@ -1379,9 +1389,40 @@ function WeekBuilder({
     const target = guard.target;
     guard.clear();
     setFillOpen(false);
-    setDirty(false);
+    letGo();
     if (target) router.push(target);
   }
+
+  /**
+   * The work let go on the way out ("יציאה בלי לשמור") leaves the screen too.
+   * Next keeps the screen it leaves (hidden, in React's Activity), and back
+   * on it the week is as it was read: nothing let go is still on the board
+   * with no unsaved mark, for "פרסום הסידור" to send. A copy's or a fill's
+   * "ביטול" goes with it (`onEdited`), since it would bring back what was
+   * there before that change.
+   */
+  function letGo() {
+    setRows(
+      read.map((shift) => {
+        const id = nextId.current;
+        nextId.current += 1;
+        return { id, shift };
+      }),
+    );
+    setRemoved([]);
+    setGoneMeanwhile(new Map());
+    setCopied(null);
+    setLockedBack(null);
+    setBlocked(false);
+    setDirty(false);
+    onEdited();
+  }
+
+  /** What had the focus as the way out asked: the leave sheet's opener. */
+  const leaveFrom = useRef<Element | null>(null);
+  useLayoutEffect(() => {
+    if (guard.target !== null) leaveFrom.current = document.activeElement;
+  }, [guard.target]);
 
   /** A day's shifts in order, with the way back in place of any removed. */
   const itemsOn = (date: string) =>
@@ -1841,7 +1882,7 @@ function WeekBuilder({
               </Button>
             ) : null}
             {offerFill ? (
-              <Button
+              <FillPill
                 variant="secondary"
                 data-fill-week
                 disabled={busy}
@@ -1850,7 +1891,7 @@ function WeekBuilder({
               >
                 <CalendarCheck aria-hidden="true" />
                 {t("app.build.fill.action")}
-              </Button>
+              </FillPill>
             ) : null}
           </div>
         ) : null}
@@ -2089,6 +2130,14 @@ function WeekBuilder({
         }}
         title={t("app.build.leave.title")}
         closeLabel={t("app.build.leave.stay")}
+        // Back where the question was asked from (a tab, the week switch).
+        // Asked from the fill's reminder's link, which went with its sheet:
+        // to what opened that sheet (its pill), else the line that says
+        // where the week stands, so a save on the way out that is refused
+        // leaves the focus on the screen, never on the page's body.
+        returnFocus={() =>
+          firstOnScreen([leaveFrom.current, opener.current, BUILDER_STATUS])
+        }
       >
         <div className="flex flex-col gap-3 px-2 pb-1">
           <p className="px-1 text-center text-ink-2">
@@ -2132,4 +2181,17 @@ function WeekBuilder({
       </Sheet>
     </>
   );
+}
+
+/**
+ * "מילוי מהזמינות", by the line that says where the week stands. On a draft
+ * of the week running now the clock can take it away under the focus, as
+ * the last shift with an open place begins: the focus goes where a fill's
+ * "ביטול" would go then, the copy's pill, else that line
+ * (`useFocusWhenGone`), never to the page's body.
+ */
+function FillPill(props: Omit<ButtonProps, "ref">) {
+  const button = useRef<HTMLButtonElement>(null);
+  useFocusWhenGone(button, () => [...afterScreen("fill"), BUILDER_STATUS]);
+  return <Button ref={button} {...props} />;
 }

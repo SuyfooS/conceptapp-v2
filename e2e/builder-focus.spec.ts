@@ -112,9 +112,9 @@ test("the builder's sheet keeps the focus among the people, and says who went on
 // inside it, and Escape gives the focus back to the pill. The sheet's
 // "מילוי 3 מקומות" closes it onto the toast's "ביטול", named with what it
 // takes off, which waits past its 10 seconds while the keyboard is on it.
-// Pressed with Enter held down, the screen is as it was before the fill, the
-// focus is back on the pill without moving the page, and the key repeating
-// on the pill opens nothing.
+// Pressed with Enter held down in a short window scrolled past the pill, the
+// screen is as it was before the fill, the focus is back on the pill without
+// moving the page, and the key repeating on the pill opens nothing.
 test("the fill's sheet gives the focus back to its pill, and closes onto its undo", async ({
   page,
 }) => {
@@ -155,7 +155,22 @@ test("the fill's sheet gives the focus back to its pill, and closes onto its und
   await expect(morning).toContainText("שירן");
   await page.waitForTimeout(SCREEN_UNDO_MS + 1_000);
   await expect(undo).toBeFocused();
+  // Out of view, the pill would be brought back into it by a focus that
+  // moves the page: the toast's "ביטול", fixed, stays where it is.
+  await page.setViewportSize({
+    width: page.viewportSize()?.width ?? 390,
+    height: 320,
+  });
+  await fill.evaluate((pill) =>
+    window.scrollTo(
+      0,
+      window.scrollY + pill.getBoundingClientRect().bottom + 1,
+    ),
+  );
+  await expect(fill).not.toBeInViewport();
+  await expect(undo).toBeFocused();
   const at = await scrolled();
+  expect(at).toBeGreaterThan(0);
   await page.keyboard.down("Enter");
   await expect(
     page.getByRole("status").filter({ hasText: tf.undone }),
@@ -247,11 +262,14 @@ test("a shift that begins with changes on the screen puts the focus on why they 
 
 // The shop's next week, drawn from its pattern, on the running twin: Tab
 // goes from the line that says where the week stands to "העתקה מהשבוע שעבר",
-// then to "מילוי מהזמינות". With the fill's sheet open, the twin's clock
-// moves on past the start of every shift of that week, the last with an
-// open place among them: the pill goes, and the sheet stays, saying nothing
-// is left to fill, with nothing to press. Closed, the focus goes to the
-// copy's pill, where the fill's own is gone, and nothing opens again.
+// then to "מילוי מהזמינות". With the fill's sheet open and the keyboard on
+// its "מילוי 9 מקומות", the twin's clock moves on past the start of every
+// shift of that week, the last with an open place among them: the pill and
+// the sheet's button go, and the sheet stays, saying nothing is left to
+// fill, with the focus on that line, so the reason is heard. Closed, the
+// focus goes to the copy's pill, where the fill's own is gone. With the
+// sheet closed and the keyboard on the fill's pill, the clock taking it
+// away puts the focus on the copy's pill beside it, never the page's body.
 test("the fill's sheet open as the clock begins the last open shift stays, says so, and closes onto the copy", async ({
   page,
 }) => {
@@ -259,22 +277,31 @@ test("the fill's sheet open as the clock begins the last open shift stays, says 
   const copy = page.getByRole("button", { name: tb.copy.action });
   const fill = page.getByRole("button", { name: tf.action });
   const sheet = page.getByRole("dialog", { name: tf.title });
+  const submit = sheet.getByRole("button", {
+    name: heT("app.build.fill.submit", { count: 9 }),
+  });
+  /** Tab from the line that says where the week stands to the fill's pill. */
+  const tabToFill = async () => {
+    await page.locator("[data-builder-status]").focus();
+    await page.keyboard.press("Tab");
+    await expect(copy).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(fill).toBeFocused();
+  };
+  /** From Tuesday 17 November to Sunday the 29th, after the shop's next week. */
+  const pastTheWeek = 12 * 24 * 60 * 60_000;
 
   await page.clock.install();
   await page.goto(`${runningWeek}?week=next`);
-  await page.locator("[data-builder-status]").focus();
-  await page.keyboard.press("Tab");
-  await expect(copy).toBeFocused();
-  await page.keyboard.press("Tab");
-  await expect(fill).toBeFocused();
+  await tabToFill();
   await page.keyboard.press("Enter");
   await expect(sheet).toContainText(
     heT("app.build.fill.summary", { places: 9, people: 2 }),
   );
+  await submit.focus();
 
-  // From Tuesday 17 November to Sunday the 29th, after the shop's next week.
-  await page.clock.fastForward(12 * 24 * 60 * 60_000);
-  await expect(sheet).toContainText(tf.nothing.full);
+  await page.clock.fastForward(pastTheWeek);
+  await expect(sheet.getByText(tf.nothing.full, { exact: true })).toBeFocused();
   await expect(sheet).not.toContainText(tf.note);
   // Only its ✕: no "מילוי # מקומות".
   await expect(sheet.getByRole("button")).toHaveCount(1);
@@ -282,8 +309,13 @@ test("the fill's sheet open as the clock begins the last open shift stays, says 
   await expect(sheet).toHaveCount(0);
   await expect(fill).toHaveCount(0);
   await expect(copy).toBeFocused();
-  await page.waitForTimeout(1_000);
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+
+  // Drawn again, the twin's clock is back at Tuesday 11:20.
+  await page.goto(`${runningWeek}?week=next`);
+  await tabToFill();
+  await page.clock.fastForward(pastTheWeek);
+  await expect(fill).toHaveCount(0);
+  await expect(copy).toBeFocused();
 });
 
 // A draft saved and a week's first publish go at once, and the pressed

@@ -2536,12 +2536,15 @@ test("the builder's demos fill from availability, say why places stay open, and 
 });
 
 // After a fill on the restaurant's twin, a change by hand (Uri onto Sunday's
-// morning) takes the fill's "ביטול" away, toast and all, since it would take
-// that change too. With the screen unsaved and 12 places still open, the
-// fill's sheet leads to the team's availability: that way out asks first, as
-// every one does, with the fill's sheet out of the way meanwhile, never two
-// sheets at once. "חזרה לסידור" brings the fill's sheet back; "יציאה בלי
-// לשמור" goes there with neither sheet open.
+// morning) takes the fill's "ביטול" away, toast and all, at once, since it
+// would take that change too; the fill and the change both stay. With the
+// screen unsaved and 12 places still open, the fill's sheet leads to the
+// team's availability: that way out asks first, as every one does, with the
+// fill's sheet out of the way meanwhile, never two sheets at once. "חזרה
+// לסידור" brings the fill's sheet back; "יציאה בלי לשמור" goes there with
+// neither sheet open. Back on the builder (Next keeps it, hidden), the week
+// is as it was read: what was let go is gone, nothing is unsaved, and no
+// "ביטול" brings it back.
 test("the builder's demo: an edit after a fill takes its undo, and the fill's link asks with its sheet away", async ({
   page,
 }) => {
@@ -2565,11 +2568,18 @@ test("the builder's demo: an edit after a fill takes its undo, and the fill's li
     .click();
   await expect(sheet).toHaveCount(0);
   await expect(toast).toBeVisible();
-  await screen.card("בוקר").click();
+  const morning = screen.card("בוקר");
+  await morning.click();
   await screen.addButton("אורי בן דוד").click();
+  // Gone with the change (its words leave half a second after it), well
+  // inside the 10 seconds it would stay otherwise, the shift's sheet still
+  // open: the toast is a live region, which the sheet leaves to be read.
+  await expect(toast).toHaveCount(0, { timeout: 1_500 });
   await screen.closeSheet();
-  // Gone with the change, well inside the 10 seconds it would stay otherwise.
-  await expect(toast).toHaveCount(0, { timeout: 2_000 });
+  await expect(toast).toHaveCount(0);
+  // The fill and the change both stay.
+  await expect(morning).toContainText("שירן");
+  await expect(morning).toContainText("אורי");
   await expect(page.getByText(tb.unsaved)).toBeVisible();
 
   await fill.click();
@@ -2587,6 +2597,43 @@ test("the builder's demo: an edit after a fill takes its undo, and the fill's li
   await expect(page).toHaveURL(
     /\/design\/shell\/schedule\/availability\/team$/,
   );
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/design\/shell\/schedule\/build$/);
+  await expect(page.locator("[data-builder-status]")).toHaveText(tb.draft);
+  await expect(morning).not.toContainText("שירן");
+  await expect(morning).not.toContainText("אורי");
+  await expect(page.getByText(tb.unsaved)).toHaveCount(0);
+  await expect(page.getByRole("button", { name: tf.undoFull })).toHaveCount(0);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
+// With nothing unsaved (the twin's draft as drawn), the fill's link to the
+// team's availability goes there at once. Back on the builder (Next keeps
+// it, hidden), the fill's sheet is closed: nobody pressed it open.
+test("the builder's demo: back from the fill's link, its sheet is closed", async ({
+  page,
+}) => {
+  const tf = he.app.build.fill;
+  const fill = page.getByRole("button", { name: tf.action });
+  const sheet = page.getByRole("dialog", { name: tf.title });
+
+  await page.goto("/design/shell/schedule/build");
+  await fill.click();
+  await sheet
+    .getByRole("link", {
+      name: /<link>(.*)<\/link>/.exec(tf.remind)?.[1] ?? tf.remind,
+    })
+    .click();
+  await expect(page).toHaveURL(
+    /\/design\/shell\/schedule\/availability\/team$/,
+  );
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/design\/shell\/schedule\/build$/);
+  await expect(fill).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 

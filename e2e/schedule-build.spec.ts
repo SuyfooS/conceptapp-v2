@@ -1283,6 +1283,135 @@ test("a fill saved over another screen's change: refused on the same shift, take
   ]);
 });
 
+// Why each place stays open, in the sheet's words, on next week's draft:
+// Sunday's morning is open and Noa's 09:00–17:00 covers it, but she is on
+// Sunday's evening already, so she is named with that rule; Friday's
+// evening ends after candle lighting and no answer covers it, so it says
+// Shabbat's time and what to do. Nobody is placed, so the footer says each
+// shift says why, and the rules are stated with their numbers: 6 days, 42
+// hours, 8 hours' rest.
+test("the fill's sheet says which rule stopped whom, and Shabbat's time", async ({
+  page,
+}) => {
+  const { startsOn } = await skipNearTheWeekTurn();
+  const nextSunday = daysAfter(startsOn, 7);
+  const nextFriday = daysAfter(startsOn, 12);
+  const tf = tb.fill;
+  const fill = fillScreen(page);
+  const shift = (
+    offset: number,
+    name: string,
+    pattern: string | null,
+    people: DemoWeekShift["people"],
+  ): DemoWeekShift => ({
+    offset,
+    name,
+    start: name === "בוקר" ? "09:00" : "16:00",
+    end: name === "בוקר" ? "16:00" : "23:30",
+    needed: 1,
+    pattern,
+    people,
+  });
+  // Friday's reason, at whatever hour candle lighting is that week.
+  const fridayWhy = new RegExp(
+    literal(
+      heT.markup("app.build.fill.why.friday", {
+        time: "TIME",
+        ltr: (chunks) => chunks,
+      }),
+    ).replace("TIME", "\\d{1,2}:\\d{2}"),
+  );
+  await clearAvailability(MANAGER.e164);
+  await buildDemoNextWeek(
+    [
+      shift(0, "בוקר", "morning", []),
+      shift(0, "ערב", "evening", [[NOA.e164, null]]),
+      shift(5, "ערב", null, []),
+    ],
+    false,
+  );
+  await signIn(page, MANAGER);
+  await page.goto("/schedule/build");
+  await expect(
+    page.getByRole("heading", { level: 1, name: tb.title }),
+  ).toBeVisible();
+
+  await fill.action.click();
+  await expect(fill.sheet).toContainText(tf.nothing.none);
+  await expect(fill.row(nextSunday, "בוקר", "09:00–16:00")).toContainText(
+    heT("app.build.fill.why.blocked", {
+      people: heT("app.build.fill.why.blockedOne", {
+        name: NOA.name,
+        rule: tf.rule.sameDay,
+      }),
+    }),
+  );
+  await expect(fill.row(nextFriday, "ערב", "16:00–23:30")).toContainText(
+    fridayWhy,
+  );
+  await expect(fill.sheet).toContainText(
+    heT.markup("app.build.fill.rules", {
+      days: 6,
+      hours: 42,
+      rest: 8,
+      ltr: (chunks) => chunks,
+    }),
+  );
+  await page.keyboard.press("Escape");
+  await expect(fill.sheet).toHaveCount(0);
+});
+
+// Saved on the way out from the fill's reminder link, and refused (another
+// manager saved the week meanwhile): the question was asked from the fill's
+// sheet, gone with it, so the focus goes back to the fill's pill, or to the
+// line that says where the week stands while the save was still on its way,
+// and the refusal is read with the focus on the screen, never on the page's
+// body.
+test("a save on the way out from the fill's link, refused, leaves the focus on the builder", async ({
+  page,
+}) => {
+  await skipNearTheWeekTurn();
+  const tf = tb.fill;
+  const screen = buildScreen(page);
+  const fill = fillScreen(page);
+  const morning = screen.card("בוקר");
+  const leave = page.getByRole("dialog", { name: tb.leave.title });
+  await signIn(page, MANAGER);
+  await page.goto("/schedule/build");
+  await expect(morning).toContainText(tb.nobody);
+  await fill.action.click();
+  await fill.submit(1).click();
+  await expect(fill.sheet).toHaveCount(0);
+  await expect(morning).toContainText(NOA.first);
+
+  // The other manager saves next week meanwhile: Yoav on Sunday morning.
+  await scheduleDemoSunday(
+    { morning: [[YOAV.e164, null]], evening: [] },
+    false,
+  );
+
+  await fill.action.click();
+  await fill.sheet.getByRole("link", { name: linkWords(tf.remind) }).click();
+  await expect(leave).toBeVisible();
+  await expect(fill.sheet).toHaveCount(0);
+  await leave.getByRole("button", { name: tb.leave.save }).click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: tb.errors.weekSaved }),
+  ).toBeVisible();
+  await expect(page).toHaveURL(nextWeekUrl());
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          document.activeElement?.matches(
+            "[data-fill-week], [data-builder-status]",
+          ) ?? false,
+      ),
+    )
+    .toBe(true);
+});
+
 test("a swap approved while the builder was open survives", async ({
   page,
 }) => {

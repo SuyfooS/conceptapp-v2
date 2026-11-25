@@ -9,12 +9,13 @@ import {
   type WeekFill,
 } from "@domain/fill-week";
 import type { TeamMember } from "@domain/team";
-import { Button } from "@ui/button";
+import { Button, type ButtonProps } from "@ui/button";
 import { ListRow } from "@ui/list-row";
 import { Sheet } from "@ui/sheet";
+import { useFocusWhenGone } from "@ui/use-focus-after";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
-import { type ReactNode, useId } from "react";
+import { type ReactNode, type RefObject, useId, useRef } from "react";
 import {
   type FillReason,
   fillDays,
@@ -104,6 +105,8 @@ export function FillWeekSheet({
   const t = useTranslations("app.build");
   const locale = useLocale();
   const daysId = useId();
+  /** The line above the sheet's button, or in its place. */
+  const lineRef = useRef<HTMLParagraphElement>(null);
   const fill = worked ?? NOTHING;
   const canFill = fill.places > 0;
   const line = t(`fill.${fillLine(fill, remindHref !== null)}`);
@@ -220,11 +223,19 @@ export function FillWeekSheet({
       readingLabel={remind ? undefined : t("fill.title")}
       footer={
         <>
-          <p className="px-1 text-center text-base text-ink-2">{line}</p>
+          {/* Where the focus goes should the clock take the button away
+              under it: the line says then that nothing is left to fill. */}
+          <p
+            ref={lineRef}
+            tabIndex={-1}
+            className="px-1 text-center text-base text-ink-2 outline-none"
+          >
+            {line}
+          </p>
           {canFill ? (
-            <Button size="lg" onClick={onFill}>
+            <FillButton size="lg" onClick={onFill} line={lineRef}>
               {t("fill.submit", { count: fill.places })}
-            </Button>
+            </FillButton>
           ) : null}
         </>
       }
@@ -335,4 +346,21 @@ export function FillWeekSheet({
       </div>
     </Sheet>
   );
+}
+
+/**
+ * "מילוי # מקומות". On a draft of the week running now the clock can take it
+ * away under the focus, as the last shift with an open place begins: the
+ * focus goes to the line above it (`line`), which says then that nothing is
+ * left to fill, so the reason is heard rather than only the sheet's name
+ * (`useFocusWhenGone`). Pressed, it goes with the sheet, which leaves the
+ * focus to the toast's "ביטול".
+ */
+function FillButton({
+  line,
+  ...props
+}: Omit<ButtonProps, "ref"> & { line: RefObject<HTMLElement | null> }) {
+  const button = useRef<HTMLButtonElement>(null);
+  useFocusWhenGone(button, () => [line.current]);
+  return <Button ref={button} {...props} />;
 }
