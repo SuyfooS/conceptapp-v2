@@ -1,3 +1,4 @@
+import { SCREEN_UNDO_MS } from "../app/(app)/schedule/build/builder-toast";
 import he from "../messages/he.json" with { type: "json" };
 import { announcer, heardSoFar, noteStatusWords, saidSince } from "./announcer";
 import { before, buildScreen, SHEET_CLOSES_MS } from "./build-screen";
@@ -105,6 +106,89 @@ test("the builder's sheet keeps the focus among the people, and says who went on
   );
 });
 
+// Filling from availability by the keyboard, on the restaurant's twin. Tab
+// reaches the pill right after the line that says where the week stands (the
+// twin has no week before to copy). The pill opens its sheet with the focus
+// inside it, and Escape gives the focus back to the pill. The sheet's
+// "מילוי 3 מקומות" closes it onto the toast's "ביטול", named with what it
+// takes off, which waits past its 10 seconds while the keyboard is on it.
+// Pressed with Enter held down in a short window scrolled past the pill, the
+// screen is as it was before the fill, the focus is back on the pill without
+// moving the page, and the key repeating on the pill opens nothing.
+test("the fill's sheet gives the focus back to its pill, and closes onto its undo", async ({
+  page,
+}) => {
+  // It waits out the toast's 10 seconds with the keyboard on "ביטול".
+  test.setTimeout(60_000);
+  const tf = tb.fill;
+  const fill = page.getByRole("button", { name: tf.action });
+  const sheet = page.getByRole("dialog", { name: tf.title });
+  const submit = sheet.getByRole("button", {
+    name: heT("app.build.fill.submit", { count: 3 }),
+  });
+  const undo = page
+    .getByRole("status")
+    .getByRole("button", { name: tf.undoFull, exact: true });
+  const morning = buildScreen(page).card("בוקר");
+  const scrolled = () => page.evaluate(() => window.scrollY);
+
+  await page.goto("/design/shell/schedule/build");
+  await expect(morning).not.toContainText("שירן");
+  // Shown first: the builder streams in hidden, and React shows it a moment
+  // after the page has loaded, so a focus before that lands nowhere.
+  await expect(fill).toBeVisible();
+  await page.locator("[data-builder-status]").focus();
+  await page.keyboard.press("Tab");
+  await expect(fill).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(sheet).toBeVisible();
+  await expect
+    .poll(() => sheet.evaluate((open) => open.contains(document.activeElement)))
+    .toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(sheet).toHaveCount(0);
+  await expect(fill).toBeFocused();
+
+  await page.keyboard.press("Enter");
+  await expect(sheet).toBeVisible();
+  await submit.focus();
+  await page.keyboard.press("Enter");
+  await expect(sheet).toHaveCount(0);
+  await expect(undo).toBeFocused();
+  await expect(morning).toContainText("שירן");
+  await page.waitForTimeout(SCREEN_UNDO_MS + 1_000);
+  await expect(undo).toBeFocused();
+  // Out of view, the pill would be brought back into it by a focus that
+  // moves the page: the toast's "ביטול", fixed, stays where it is.
+  await page.setViewportSize({
+    width: page.viewportSize()?.width ?? 390,
+    height: 320,
+  });
+  await fill.evaluate((pill) =>
+    window.scrollTo(
+      0,
+      window.scrollY + pill.getBoundingClientRect().bottom + 1,
+    ),
+  );
+  await expect(fill).not.toBeInViewport();
+  await expect(undo).toBeFocused();
+  const at = await scrolled();
+  expect(at).toBeGreaterThan(0);
+  await page.keyboard.down("Enter");
+  await expect(
+    page.getByRole("status").filter({ hasText: tf.undone }),
+  ).toBeVisible();
+  await expect(fill).toBeFocused();
+  // The key repeating (a second keydown with no keyup) on the pill.
+  await page.keyboard.down("Enter");
+  await page.keyboard.up("Enter");
+  await page.waitForTimeout(1_000);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(fill).toBeFocused();
+  await expect(morning).not.toContainText("שירן");
+  expect(await scrolled()).toBe(at);
+});
+
 // The running week's twin: the shop on Tuesday at 11:20, its evening from
 // 15:00 with Roni on it, and Omer and Michal free for it. The twin's clock
 // goes on once a minute from 11:20 by the time gone since the screen came
@@ -177,6 +261,67 @@ test("a shift that begins with changes on the screen puts the focus on why they 
   // Back on it as it was read, and kept there now that it has begun.
   await expect(screen.group(tb.groups.assigned)).toContainText(roni);
   await expect(screen.removeButton(roni)).toHaveCount(0);
+});
+
+// The shop's next week, drawn from its pattern, on the running twin: Tab
+// goes from the line that says where the week stands to "העתקה מהשבוע שעבר",
+// then to "מילוי מהזמינות". With the fill's sheet open and the keyboard on
+// its "מילוי 9 מקומות", the twin's clock moves on past the start of every
+// shift of that week, the last with an open place among them: the pill and
+// the sheet's button go, and the sheet stays, saying nothing is left to
+// fill, with the focus on that line, so the reason is heard. Closed, the
+// focus goes to the copy's pill, where the fill's own is gone. With the
+// sheet closed and the keyboard on the fill's pill, the clock taking it
+// away puts the focus on the copy's pill beside it, never the page's body.
+test("the fill's sheet open as the clock begins the last open shift stays, says so, and closes onto the copy", async ({
+  page,
+}) => {
+  const tf = tb.fill;
+  const copy = page.getByRole("button", { name: tb.copy.action });
+  const fill = page.getByRole("button", { name: tf.action });
+  const sheet = page.getByRole("dialog", { name: tf.title });
+  const submit = sheet.getByRole("button", {
+    name: heT("app.build.fill.submit", { count: 9 }),
+  });
+  /** Tab from the line that says where the week stands to the fill's pill. */
+  const tabToFill = async () => {
+    // Shown first: the builder streams in hidden, and React shows it a
+    // moment after the page has loaded, so a focus before that lands nowhere.
+    await expect(fill).toBeVisible();
+    await page.locator("[data-builder-status]").focus();
+    await page.keyboard.press("Tab");
+    await expect(copy).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(fill).toBeFocused();
+  };
+  /** From Tuesday 17 November to Sunday the 29th, after the shop's next week. */
+  const pastTheWeek = 12 * 24 * 60 * 60_000;
+
+  await page.clock.install();
+  await page.goto(`${runningWeek}?week=next`);
+  await tabToFill();
+  await page.keyboard.press("Enter");
+  await expect(sheet).toContainText(
+    heT("app.build.fill.summary", { places: 9, people: 2 }),
+  );
+  await submit.focus();
+
+  await page.clock.fastForward(pastTheWeek);
+  await expect(sheet.getByText(tf.nothing.full, { exact: true })).toBeFocused();
+  await expect(sheet).not.toContainText(tf.note);
+  // Only its ✕: no "מילוי # מקומות".
+  await expect(sheet.getByRole("button")).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await expect(sheet).toHaveCount(0);
+  await expect(fill).toHaveCount(0);
+  await expect(copy).toBeFocused();
+
+  // Drawn again, the twin's clock is back at Tuesday 11:20.
+  await page.goto(`${runningWeek}?week=next`);
+  await tabToFill();
+  await page.clock.fastForward(pastTheWeek);
+  await expect(fill).toHaveCount(0);
+  await expect(copy).toBeFocused();
 });
 
 // A draft saved and a week's first publish go at once, and the pressed

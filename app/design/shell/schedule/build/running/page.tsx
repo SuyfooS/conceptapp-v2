@@ -68,7 +68,10 @@ const shopPeople = shopTeam.map(({ userId, name, photo }) => ({
 // sheet's switch replaces it. The week under way is published, and offers no
 // copy. &away=1: Itai is away next week from Sunday to Wednesday (known
 // issue 19), which each of those days, the draft's Sunday morning, the
-// sheet's people and the copy's "מי לא הועתק" say, never why.
+// sheet's people and the copy's "מי לא הועתק" say, never why. Next week
+// fills from availability too: Tamar on the mornings, Omer on Monday's and
+// Wednesday's evenings and Thursday's morning, in last week's positions,
+// with Itai and Roni named as having sent nothing.
 export default function ShellScheduleBuildRunning(props: Props) {
   return (
     <Suspense>
@@ -100,6 +103,7 @@ async function Demo({ searchParams }: Props) {
   ];
   const common = {
     manageHref: "/design/shell/manage/scheduling",
+    teamAvailabilityHref: "/design/shell/schedule/availability/team",
     backHref: "/design/shell/schedule",
     share: shopShare,
     wording: baseWording,

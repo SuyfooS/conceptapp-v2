@@ -1,8 +1,10 @@
 import AxeBuilder from "@axe-core/playwright";
+import { SCREEN_UNDO_MS } from "../app/(app)/schedule/build/builder-toast";
 import he from "../messages/he.json" with { type: "json" };
 import { daysLeftToRight } from "../packages/domain/share";
 import { before, buildScreen, HOLD_MS } from "./build-screen";
 import {
+  buildDemoNextWeek,
   buildDemoThisWeek,
   clearAvailability,
   clearSchedule,
@@ -14,6 +16,7 @@ import {
   demoSwaps,
   demoWeekPublished,
   publishDemoRunningWeek,
+  putOnDemoNextSunday,
   requestDemoSwap,
   saveDemoRunningWeek,
   scheduleAssignments,
@@ -998,6 +1001,417 @@ test("a copy into a week saved meanwhile on another screen is not saved", async 
   ]);
 });
 
+/** The fill's sheet and its parts. */
+function fillScreen(page: Page) {
+  const tf = tb.fill;
+  const sheet = page.getByRole("dialog", { name: tf.title });
+  return {
+    action: page.getByRole("button", { name: tf.action }),
+    sheet,
+    /**
+     * A shift's row on a day (YYYY-MM-DD), by its name and hours as the
+     * sheet writes them ("בוקר · 09:00–16:00").
+     */
+    row: (date: string, name: string, hours: string) =>
+      sheet
+        .getByRole("group", {
+          name: heT("app.build.day", {
+            day: weekdayOf(date),
+            date: dayMonthOf(date),
+          }),
+          exact: true,
+        })
+        .locator("div", {
+          has: page.getByText(`${name} · ${hours}`, { exact: true }),
+        })
+        .last(),
+    /** Who sent no availability, and so is never placed. */
+    missing: sheet.getByText(before(tf.noAnswer)),
+    submit: (count: number) =>
+      sheet.getByRole("button", {
+        name: heT("app.build.fill.submit", { count }),
+      }),
+    /** The toast after a fill, while its "ביטול" is offered. */
+    toast: (count: number) =>
+      page
+        .getByRole("status")
+        .filter({ hasText: heT("app.build.fill.done", { count }) }),
+  };
+}
+
+/** The words of a message's `<link>`: "זמינות הצוות". */
+const linkWords = (message: string) =>
+  /<link>(.*)<\/link>/.exec(message)?.[1] ?? message;
+
+// The fill only fills the screen: the sheet says what it will do before
+// anything changes, places only who sent availability for the whole shift
+// (Noa's 09:00–17:00 covers Sunday's morning, and only part of its evening),
+// names who sent nothing (the manager and Yoav, never the owner), "ביטול"
+// takes it back, and saving it writes a draft, with nothing published.
+test("filling from availability places only who sent it, on the screen until saved", async ({
+  page,
+}, testInfo) => {
+  const { startsOn } = await skipNearTheWeekTurn();
+  const nextSunday = daysAfter(startsOn, 7);
+  const since = await databaseNow();
+  const tf = tb.fill;
+  const screen = buildScreen(page);
+  const fill = fillScreen(page);
+  // The manager owes availability too, and sent none for next week.
+  await clearAvailability(MANAGER.e164);
+  await signIn(page, MANAGER);
+  await page.goto("/schedule/build");
+  await expect(
+    page.getByRole("heading", { level: 1, name: tb.title }),
+  ).toBeVisible();
+  const morning = screen.card("בוקר");
+  await expect(morning).toContainText(tb.nobody);
+
+  await fill.action.click();
+  await expect(fill.sheet).toContainText(
+    heT("app.build.fill.summary", { places: 1, people: 1 }),
+  );
+  await expect(fill.row(nextSunday, "בוקר", "09:00–16:00")).toContainText(
+    heT("app.build.fill.adds", { names: NOA.name }),
+  );
+  const evening = fill.row(nextSunday, "ערב", "16:00–23:30");
+  await expect(evening).toContainText(tf.why.nobody);
+  await expect(evening).toContainText(
+    heT("app.build.fill.why.partial", { count: 1 }),
+  );
+  await expect(fill.missing).toContainText(YOAV.name);
+  await expect(fill.missing).toContainText("שירן הדגמה");
+  await expect(fill.missing).not.toContainText("אורי הדגמה");
+  // Next week's reminder is on the team's availability.
+  await expect(
+    fill.sheet.getByRole("link", { name: linkWords(tf.remind) }),
+  ).toHaveAttribute("href", "/schedule/availability/team");
+  await expect(fill.sheet).toContainText(tf.note);
+  await expectCleanPage(page);
+  await page.screenshot({
+    path: testInfo.outputPath("schedule-build-fill.png"),
+    fullPage: true,
+  });
+
+  await fill.submit(1).click();
+  await expect(fill.sheet).toHaveCount(0);
+  await expect(morning).toContainText(NOA.first);
+  await expect(page.getByText(tb.unsaved)).toBeVisible();
+  const undo = fill
+    .toast(1)
+    .getByRole("button", { name: tf.undoFull, exact: true });
+  // The sheet closed onto the way back.
+  await expect(undo).toBeFocused();
+  expect(await scheduleAssignments("next")).toEqual([]);
+  await undo.click();
+  await expect(
+    page.getByRole("status").filter({ hasText: tf.undone }),
+  ).toBeVisible();
+  await expect(morning).toContainText(tb.nobody);
+  await expect(fill.action).toBeFocused();
+
+  // Filled again and saved: a draft, published to nobody, Noa on Sunday
+  // morning with no position (nobody built last week).
+  await fill.action.click();
+  await fill.submit(1).click();
+  await expect(fill.sheet).toHaveCount(0);
+  await page.getByRole("button", { name: tb.submit }).click();
+  await expect(page.getByRole("status")).toHaveText(tb.saved);
+  expect(await scheduleAssignments("next")).toEqual([
+    { weekday: 0, pattern: "morning", phone: NOA.e164, position: null },
+  ]);
+  expect(await demoWeekPublished("next")).toBe(false);
+  expect(await demoActivityActions("schedule.publish", since)).toBe(0);
+});
+
+// A published week changes only by publishing it again: no fill. A draft
+// whose open places the fill fills whole has nothing left to fill, so the
+// pill goes, and as the toast goes the focus goes to "פרסום הסידור".
+test("filling is offered only on a draft with an open place", async ({
+  page,
+}) => {
+  // It waits out the toast's way back.
+  test.setTimeout(HELD_TEST_MS);
+  await skipNearTheWeekTurn();
+  const screen = buildScreen(page);
+  const fill = fillScreen(page);
+  const morning = screen.card("בוקר");
+  await scheduleDemoSunday({ morning: [[NOA.e164, null]], evening: [] }, true);
+  await signIn(page, MANAGER);
+  await page.goto("/schedule/build");
+  await expect(morning).toContainText(NOA.first);
+  await expect(
+    page.getByText(plural(tb.openPlaces)).filter({ visible: true }).first(),
+  ).toBeVisible();
+  await expect(fill.action).toHaveCount(0);
+
+  // Next week as a draft of one shift: Sunday's morning for two, with Yoav.
+  await clearSchedule();
+  await buildDemoNextWeek(
+    [
+      {
+        offset: 0,
+        name: "בוקר",
+        start: "09:00",
+        end: "16:00",
+        needed: 2,
+        pattern: "morning",
+        people: [[YOAV.e164, null]],
+      },
+    ],
+    false,
+  );
+  await page.reload();
+  await expect(morning).toContainText(YOAV.first);
+  await fill.action.click();
+  await expect(fill.sheet).toContainText(
+    heT("app.build.fill.summary", { places: 1, people: 1 }),
+  );
+  await fill.submit(1).click();
+  await expect(fill.sheet).toHaveCount(0);
+  await expect(morning).toContainText(NOA.first);
+  await expect(page.getByText(tb.full)).toBeVisible();
+  await expect(fill.action).toHaveCount(0);
+  // Pressed with a mouse, "ביטול" waits for nobody: once its 10 seconds are
+  // up, nothing is left to fill, and the publish button has the focus.
+  await expect(fill.toast(1)).toHaveCount(0, {
+    timeout: SCREEN_UNDO_MS + 5_000,
+  });
+  await expect(page.getByRole("button", { name: tb.publish })).toBeFocused();
+});
+
+// Two managers: one fills next week's draft drawn from the pattern while the
+// other saves it. The fill is refused rather than written over theirs.
+test("a fill into a week saved meanwhile on another screen is refused", async ({
+  page,
+}) => {
+  await skipNearTheWeekTurn();
+  const screen = buildScreen(page);
+  const fill = fillScreen(page);
+  const morning = screen.card("בוקר");
+  await signIn(page, MANAGER);
+  await page.goto("/schedule/build");
+  await expect(morning).toContainText(tb.nobody);
+  await fill.action.click();
+  await fill.submit(1).click();
+  await expect(fill.sheet).toHaveCount(0);
+  await expect(morning).toContainText(NOA.first);
+
+  // The other manager saves next week meanwhile: Yoav on Sunday morning.
+  await scheduleDemoSunday(
+    { morning: [[YOAV.e164, null]], evening: [] },
+    false,
+  );
+
+  await page.getByRole("button", { name: tb.submit }).click();
+  // (Next's route announcer is an empty alert of its own.)
+  await expect(
+    page.getByRole("alert").filter({ hasText: tb.errors.weekSaved }),
+  ).toBeVisible();
+  expect(await scheduleAssignments("next")).toEqual([
+    { weekday: 0, pattern: "morning", phone: YOAV.e164, position: null },
+  ]);
+});
+
+// What the database checks of a fill, and what it doesn't (known issue 108).
+// Both screens read next week's saved draft. Yoav put on Sunday morning
+// from another screen meanwhile: the fill that changes that morning is
+// refused (`weekMoved`), and the morning comes back as it is now. Noa put on
+// Sunday evening from another screen meanwhile: this screen doesn't see it,
+// fills her into the morning, and the save goes through, since the database
+// checks only that nobody is on two shifts at once, never one shift a day.
+test("a fill saved over another screen's change: refused on the same shift, taken on another", async ({
+  page,
+}) => {
+  const { startsOn } = await skipNearTheWeekTurn();
+  const nextSunday = daysAfter(startsOn, 7);
+  const screen = buildScreen(page);
+  const fill = fillScreen(page);
+  const morning = screen.card("בוקר");
+  const sunday = (name: string, needed: number, pattern: string) => ({
+    offset: 0,
+    name,
+    start: pattern === "morning" ? "09:00" : "16:00",
+    end: pattern === "morning" ? "16:00" : "23:30",
+    needed,
+    pattern,
+    people: [],
+  });
+  await buildDemoNextWeek(
+    [sunday("בוקר", 3, "morning"), sunday("ערב", 4, "evening")],
+    false,
+  );
+  await signIn(page, MANAGER);
+  await page.goto("/schedule/build");
+  await expect(morning).toContainText(tb.nobody);
+
+  await putOnDemoNextSunday("morning", YOAV.e164);
+  await fill.action.click();
+  await fill.submit(1).click();
+  await expect(fill.sheet).toHaveCount(0);
+  await page.getByRole("button", { name: tb.submit }).click();
+  await expect(
+    page.getByRole("alert").filter({
+      hasText: heT("app.build.moved.changedOne", {
+        name: "בוקר",
+        day: he.app.availability.weekdays.sun,
+      }),
+    }),
+  ).toBeVisible();
+  await expect(morning).toContainText(tb.meanwhile);
+  await expect(morning).toContainText(YOAV.first);
+  await expect(morning).not.toContainText(NOA.first);
+  expect(await scheduleAssignments("next")).toEqual([
+    { weekday: 0, pattern: "morning", phone: YOAV.e164, position: null },
+  ]);
+
+  // Noa on Sunday evening from the other screen, which this one doesn't
+  // see: the fill puts her on the morning, and the database takes it.
+  await putOnDemoNextSunday("evening", NOA.e164);
+  await fill.action.click();
+  await expect(fill.row(nextSunday, "בוקר", "09:00–16:00")).toContainText(
+    heT("app.build.fill.adds", { names: NOA.name }),
+  );
+  await fill.submit(1).click();
+  await expect(fill.sheet).toHaveCount(0);
+  await page.getByRole("button", { name: tb.submit }).click();
+  await expect(page.getByRole("status")).toHaveText(tb.saved);
+  expect(await scheduleAssignments("next")).toEqual([
+    { weekday: 0, pattern: "morning", phone: NOA.e164, position: null },
+    { weekday: 0, pattern: "morning", phone: YOAV.e164, position: null },
+    { weekday: 0, pattern: "evening", phone: NOA.e164, position: null },
+  ]);
+});
+
+// Why each place stays open, in the sheet's words, on next week's draft:
+// Sunday's morning is open and Noa's 09:00–17:00 covers it, but she is on
+// Sunday's evening already, so she is named with that rule; Friday's
+// evening ends after candle lighting and no answer covers it, so it says
+// Shabbat's time and what to do. Nobody is placed, so the footer says each
+// shift says why, and the rules are stated with their numbers: 6 days, 42
+// hours, 8 hours' rest.
+test("the fill's sheet says which rule stopped whom, and Shabbat's time", async ({
+  page,
+}) => {
+  const { startsOn } = await skipNearTheWeekTurn();
+  const nextSunday = daysAfter(startsOn, 7);
+  const nextFriday = daysAfter(startsOn, 12);
+  const tf = tb.fill;
+  const fill = fillScreen(page);
+  const shift = (
+    offset: number,
+    name: string,
+    pattern: string | null,
+    people: DemoWeekShift["people"],
+  ): DemoWeekShift => ({
+    offset,
+    name,
+    start: name === "בוקר" ? "09:00" : "16:00",
+    end: name === "בוקר" ? "16:00" : "23:30",
+    needed: 1,
+    pattern,
+    people,
+  });
+  // Friday's reason, at whatever hour candle lighting is that week.
+  const fridayWhy = new RegExp(
+    literal(
+      heT.markup("app.build.fill.why.friday", {
+        time: "TIME",
+        ltr: (chunks) => chunks,
+      }),
+    ).replace("TIME", "\\d{1,2}:\\d{2}"),
+  );
+  await clearAvailability(MANAGER.e164);
+  await buildDemoNextWeek(
+    [
+      shift(0, "בוקר", "morning", []),
+      shift(0, "ערב", "evening", [[NOA.e164, null]]),
+      shift(5, "ערב", null, []),
+    ],
+    false,
+  );
+  await signIn(page, MANAGER);
+  await page.goto("/schedule/build");
+  await expect(
+    page.getByRole("heading", { level: 1, name: tb.title }),
+  ).toBeVisible();
+
+  await fill.action.click();
+  await expect(fill.sheet).toContainText(tf.nothing.none);
+  await expect(fill.row(nextSunday, "בוקר", "09:00–16:00")).toContainText(
+    heT("app.build.fill.why.blocked", {
+      people: heT("app.build.fill.why.blockedOne", {
+        name: NOA.name,
+        rule: tf.rule.sameDay,
+      }),
+    }),
+  );
+  await expect(fill.row(nextFriday, "ערב", "16:00–23:30")).toContainText(
+    fridayWhy,
+  );
+  await expect(fill.sheet).toContainText(
+    heT.markup("app.build.fill.rules", {
+      days: 6,
+      hours: 42,
+      rest: 8,
+      ltr: (chunks) => chunks,
+    }),
+  );
+  await page.keyboard.press("Escape");
+  await expect(fill.sheet).toHaveCount(0);
+});
+
+// Saved on the way out from the fill's reminder link, and refused (another
+// manager saved the week meanwhile): the question was asked from the fill's
+// sheet, gone with it, so the focus goes back to the fill's pill, or to the
+// line that says where the week stands while the save was still on its way,
+// and the refusal is read with the focus on the screen, never on the page's
+// body.
+test("a save on the way out from the fill's link, refused, leaves the focus on the builder", async ({
+  page,
+}) => {
+  await skipNearTheWeekTurn();
+  const tf = tb.fill;
+  const screen = buildScreen(page);
+  const fill = fillScreen(page);
+  const morning = screen.card("בוקר");
+  const leave = page.getByRole("dialog", { name: tb.leave.title });
+  await signIn(page, MANAGER);
+  await page.goto("/schedule/build");
+  await expect(morning).toContainText(tb.nobody);
+  await fill.action.click();
+  await fill.submit(1).click();
+  await expect(fill.sheet).toHaveCount(0);
+  await expect(morning).toContainText(NOA.first);
+
+  // The other manager saves next week meanwhile: Yoav on Sunday morning.
+  await scheduleDemoSunday(
+    { morning: [[YOAV.e164, null]], evening: [] },
+    false,
+  );
+
+  await fill.action.click();
+  await fill.sheet.getByRole("link", { name: linkWords(tf.remind) }).click();
+  await expect(leave).toBeVisible();
+  await expect(fill.sheet).toHaveCount(0);
+  await leave.getByRole("button", { name: tb.leave.save }).click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: tb.errors.weekSaved }),
+  ).toBeVisible();
+  await expect(page).toHaveURL(nextWeekUrl());
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          document.activeElement?.matches(
+            "[data-fill-week], [data-builder-status]",
+          ) ?? false,
+      ),
+    )
+    .toBe(true);
+});
+
 test("a swap approved while the builder was open survives", async ({
   page,
 }) => {
@@ -1496,6 +1910,40 @@ test("this week's saved draft waits for its managers, and the team sees nothing 
   } finally {
     await worker.context().close();
   }
+});
+
+// The fill on a draft of the week running now (R3a), whose answers were all
+// sent before it began: here nobody sent any, and nobody can now. Today's
+// evening, in an hour, for two with Noa on it, has a place open, so the fill
+// is offered. Its sheet says nobody sent availability without "עדיין", names
+// who sent nothing with the way to place them by hand rather than a
+// reminder, and has no link to the team's availability, which is next
+// week's. It says it checks nobody's age, as in every business.
+test("filling this week's draft that nobody answered for says to place people by hand", async ({
+  page,
+}) => {
+  const { startsOn } = await skipNearTheWeekEdges();
+  const tf = tb.fill;
+  const fill = fillScreen(page);
+  await saveDemoRunningWeek(NOA.e164, 2);
+  await signIn(page, MANAGER);
+  await page.goto(`/schedule/build?week=${startsOn}`);
+  await expect(
+    page.getByRole("heading", { level: 1, name: tb.titleRunning }),
+  ).toBeVisible();
+
+  await fill.action.click();
+  await expect(fill.sheet).toContainText(tf.nothing.noAnswersRunning);
+  await expect(fill.sheet).not.toContainText(tf.nothing.noAnswers);
+  await expect(fill.missing).toContainText(YOAV.name);
+  await expect(fill.missing).toContainText(tf.byHand);
+  await expect(fill.missing).not.toContainText(linkWords(tf.remind));
+  await expect(fill.sheet.getByRole("link")).toHaveCount(0);
+  await expect(fill.sheet).toContainText(tf.age);
+  await expectCleanPage(page);
+  await page.keyboard.press("Escape");
+  await expect(fill.sheet).toHaveCount(0);
+  await expect(fill.action).toBeFocused();
 });
 
 // A link to a week already over (an old line, say) says so and leads to the

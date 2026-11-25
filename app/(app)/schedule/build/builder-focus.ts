@@ -18,9 +18,16 @@ export const SHARE_WEEK = "[data-share-week]";
 /** "העתקה מהשבוע שעבר", by the line that says where the week stands. */
 export const COPY_WEEK = "[data-copy-week]";
 
-/** The button that makes each change on the screen, while it can be pressed. */
+/** "מילוי מהזמינות", after the copy's button. */
+export const FILL_WEEK = "[data-fill-week]";
+
+/**
+ * The button that makes each change on the screen, while it can be pressed.
+ * The fill's goes once nothing is left to fill: then the copy's, beside it.
+ */
 const MADE_BY: Record<ScreenChange, readonly string[]> = {
   copy: [`${COPY_WEEK}:enabled`],
+  fill: [`${FILL_WEEK}:enabled`, `${COPY_WEEK}:enabled`],
 };
 
 /**
