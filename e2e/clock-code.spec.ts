@@ -543,8 +543,28 @@ test("a press without a code refused as already in keeps its sheet until it has 
     };
     again.port2.postMessage(null);
   });
+  // And "חזרה לסריקה" pressed in every task beside it, the same way, until
+  // the sheet says why: back to the camera closes the sheet too, so it
+  // waits as the close does, a drawing after the page read again included.
+  await page.evaluate((back) => {
+    const again = new MessageChannel();
+    again.port1.onmessage = () => {
+      const dialog = document.querySelector('[role="dialog"]');
+      if (!dialog || dialog.querySelector('[role="alert"]')) return;
+      for (const button of dialog.querySelectorAll("button")) {
+        if (button.textContent?.trim() === back) button.click();
+      }
+      again.port2.postMessage(null);
+    };
+    again.port2.postMessage(null);
+  }, c.none.back);
   await expect(without.getByRole("alert")).toHaveText(c.failure.alreadyIn);
   await expect(without).toHaveAttribute("data-state", "open");
+  await expectCameraOff(page);
+  // Said, the way back to the camera is open again.
+  await expect(
+    without.getByRole("button", { name: c.none.back }),
+  ).toBeEnabled();
   // The page read again is drawn behind the open sheet, which hides it from
   // the accessibility tree while it stays modal: found with the hidden too.
   await expect(

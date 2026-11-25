@@ -62,7 +62,8 @@ export type SheetProps = {
  * and stays there while its page is kept hidden (left by back or forward).
  * Its ✕, which takes the focus as it opens, takes no Enter still held down
  * from the press that opened it (`ignoreHeldEnter`). Closed, it gives the
- * keyboard's focus back (`returnFocus`), never to the top of the page. On a
+ * keyboard's focus back (`returnFocus`), never to the top of the page, also
+ * once its page, kept hidden with it open, shows again. On a
  * phone it stands over the keyboard, never behind it
  * (`useKeyboardLift`): lifted as the keyboard opens for a field inside it, no
  * taller than what is on screen above it, and the field typed in kept in
@@ -82,10 +83,15 @@ export function Sheet({
   children,
 }: SheetProps) {
   const anchor = useRef<HTMLSpanElement>(null);
-  // What held the focus as it opened, before the sheet takes it.
+  // What held the focus as it opened, before the sheet takes it. Only as it
+  // opens: a page kept hidden (left by back or forward) runs this again as
+  // it shows, the sheet still open and the focus elsewhere by then
+  // (25 November 2026).
   const opener = useRef<Element | null>(null);
+  const wasOpen = useRef(false);
   useLayoutEffect(() => {
-    if (open) opener.current = document.activeElement;
+    if (open && !wasOpen.current) opener.current = document.activeElement;
+    wasOpen.current = open;
   }, [open]);
   const pull = useRef<number | null>(null);
   const [offset, setOffset] = useState(0);
@@ -146,6 +152,13 @@ export function Sheet({
             ref={setContent}
             aria-describedby={undefined}
             onCloseAutoFocus={(event) => {
+              // Still drawn, so not closed: its page is kept hidden, and
+              // shows again with the sheet open. The focus stays where it
+              // is, and what opened it stays noted for when it does close.
+              if (event.target instanceof Node && event.target.isConnected) {
+                event.preventDefault();
+                return;
+              }
               const chosen = returnFocus ? returnFocus() : opener.current;
               opener.current = null;
               // Something already took the focus as it closed (a toast's

@@ -30,6 +30,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { flushSync } from "react-dom";
 import { useMonthName, useShortDate } from "../pay/pay-parts";
 import type { AbsenceRecordsNot, AbsenceRow } from "./team-types";
 
@@ -423,8 +424,12 @@ export function AbsenceForm({
       ? FIELD_OF[failure.failure as AbsenceProblem]
       : null;
 
+  // Drawn before the focus moves, also when it comes from the server (after
+  // an await, which React would draw only on its next turn): the field it
+  // lands on is read with why, its description, once. So a refusal said
+  // beside its field is no alert, which would say it a second time.
   function fail(next: AbsenceFailure, month?: string) {
-    setFailure({ failure: next, month });
+    flushSync(() => setFailure({ failure: next, month }));
     const at = next in FIELD_OF ? FIELD_OF[next as AbsenceProblem] : null;
     if (at === "kind") document.getElementById(`${id}-kind-vacation`)?.focus();
     if (at === "days") fromField.current?.focus();
@@ -476,13 +481,17 @@ export function AbsenceForm({
     </FieldRow>
   );
 
+  // Under the kinds, as the list's own error would be, but describing each
+  // kind rather than the list: the focus goes to one, and a group's
+  // description isn't read with it everywhere (a phone's screen reader).
+  const kindError = field === "kind" && failure ? say(failure.failure) : null;
+
   return (
     <div className="flex flex-col gap-3">
       <ChoiceList
         legend={t("sheet.kind")}
         legendClassName="text-md"
         groupClassName="bg-elevated shadow-none"
-        error={field === "kind" && failure ? say(failure.failure) : undefined}
       >
         {ABSENCE_KINDS.map((kind) => (
           <ChoiceRow
@@ -490,6 +499,7 @@ export function AbsenceForm({
             id={`${id}-kind-${kind}`}
             name={`${id}-kind`}
             value={kind}
+            aria-describedby={kindError ? `${id}-kind-error` : undefined}
             checked={values.kind === kind}
             onChange={() => {
               setValues({ ...values, kind });
@@ -500,12 +510,17 @@ export function AbsenceForm({
           />
         ))}
       </ChoiceList>
+      {kindError ? (
+        <p id={`${id}-kind-error`} className="px-1 text-danger text-sm">
+          {kindError}
+        </p>
+      ) : null}
       <ListGroup className="bg-elevated">
         {dateField("from")}
         {dateField("to")}
       </ListGroup>
       {field === "days" && failure ? (
-        <p id={`${id}-days`} role="alert" className="px-1 text-danger text-sm">
+        <p id={`${id}-days`} className="px-1 text-danger text-sm">
           {say(failure.failure)}
         </p>
       ) : null}
@@ -534,7 +549,12 @@ export function AbsenceForm({
         <Button
           variant="ghost"
           disabled={saving}
-          onClick={() => remove(fail)}
+          onClick={() => {
+            // Cleared as it sends, as the save's is: a refusal in the same
+            // words again is drawn anew, so its alert says it again.
+            setFailure(null);
+            remove(fail);
+          }}
           className="text-danger"
         >
           <Trash2 aria-hidden="true" />

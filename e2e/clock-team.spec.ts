@@ -446,6 +446,41 @@ test("a manager adds a shift someone forgot, and hours can't be in the future", 
   ).toBeVisible();
 });
 
+// Left by back with a sheet open and come back to by forward, the person's
+// page was kept hidden (Next's Activity), and its sheet with it: it shows
+// again open, its ✕ with the focus again, and closed, it gives the focus
+// back to what opened it, never to the page's body (25 November 2026).
+test("a sheet left by back and come back to by forward gives the focus back as it closes", async ({
+  page,
+}) => {
+  await signIn(page, MANAGER);
+  // From the team's page, so back and forward stay inside the app.
+  await page.goto("/clock/team");
+  await page
+    .getByRole("main")
+    .getByRole("link", { name: new RegExp(NOA.name) })
+    .filter({ visible: true })
+    .first()
+    .click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(NOA.name);
+  const add = page.getByRole("button", { name: t.person.add });
+  await add.click();
+  const sheet = page.getByRole("dialog", { name: t.sheet.addTitle });
+  const close = sheet.getByRole("button", { name: t.sheet.close });
+  await expect(close).toBeFocused();
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/clock\/team$/);
+  await expect(sheet).toBeHidden();
+  await page.goForward();
+  await expect(page).toHaveURL(new RegExp(`/clock/team/${NOA.id}`));
+  await expect(sheet).toHaveAttribute("data-state", "open");
+  await expect(close).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+  await expect(add).toBeFocused();
+});
+
 // Cancelling a shift entered by mistake (the clock plan's PR4): never without
 // why, at once rather than "are you sure", and it stays, marked with who,
 // when and why, counting for nothing, as the worker reads it too.
@@ -711,6 +746,9 @@ test("a manager's own shift is cancelled only by an owner, in words", async ({
     await expect(step).toBeVisible();
     expect(await demoActivityActions("clock.cancel", since)).toBe(0);
     await expectCleanPage(page);
+    // Said, the refusal lets the sheet go: Escape closes it.
+    await page.keyboard.press("Escape");
+    await expect(step).toBeHidden();
   } finally {
     await removeDemoShift(own);
   }
@@ -874,6 +912,13 @@ test("a manager fixes a shift's breaks: changes one's end, adds one forgotten, a
   await expect(add.getByRole("alert")).toHaveText(t.failure.breakOverlap);
   expect(await demoActivityActions("clock.break_edit", refused)).toBe(0);
   await expectCleanPage(page);
+  // Said, the refusal lets the sheet go: its ✕ closes it. The break is added
+  // from the shift opened again, why written once more on a new step.
+  await add.getByRole("button", { name: t.sheet.close }).click();
+  await expect(page.getByRole("dialog")).toBeHidden();
+  await shiftOpener(page, endsAt(10, 480), desktop).click();
+  await breakRows(edit).getByRole("button", { name: t.breaks.add }).click();
+  await add.getByLabel(t.sheet.reason).fill(forgot);
 
   // Four hours in, half an hour: it comes off her hours, as the setting says.
   await add.getByLabel(t.breakStep.start).fill(intoShift(240));
