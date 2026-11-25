@@ -149,6 +149,67 @@ test("the scheduling settings give each removal's 'ביטול' the focus, and th
   await expect(shiftUndo).toHaveCount(0);
 });
 
+// A position's undo refused (its save didn't get there) once the person
+// went on, naming a new position: its way back is there again, and its
+// "ביטול" leaves the focus where the person is. (It takes it only from the
+// position's trash button, about to go again, or a focus lost.)
+test("the scheduling settings' refused undo leaves the focus where the person went on", async ({
+  page,
+}) => {
+  const scheduling = "/design/shell/manage/scheduling";
+  const saves = (url: URL) => url.pathname === scheduling;
+  await page.goto(scheduling);
+  await page.waitForLoadState("networkidle");
+
+  // A save held while `held` waits, then dropped; the rest go through.
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = () => resolve();
+  });
+  let holding = false;
+  await page.route(saves, async (route) => {
+    if (route.request().method() !== "POST" || !holding) {
+      await route.fallback();
+      return;
+    }
+    await held;
+    await route.abort();
+  });
+
+  const BARTENDER = "ברמן/ית";
+  const trash = page.getByRole("button", {
+    name: heT("app.manage.positions.remove", { name: BARTENDER }),
+  });
+  const undo = undoOf(
+    page,
+    heT("app.manage.positions.removed", { name: BARTENDER }),
+  );
+  const newName = page.getByRole("textbox", {
+    name: m.positions.newName,
+    exact: true,
+  });
+  const removal = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" && saves(new URL(response.url())),
+  );
+  await trash.click();
+  await expect(undo).toBeFocused();
+  await removal;
+
+  // Undone: the trash button has the focus, and the save waits. The person
+  // goes on to name a new position before it is refused.
+  holding = true;
+  await page.keyboard.press("Enter");
+  await expect(trash).toBeFocused();
+  await expect(undo).toHaveCount(0);
+  await newName.fill("מארח/ת");
+  release();
+  await expect(undo).toBeVisible();
+  await expect(newName).toBeFocused();
+  await expect(newName).toHaveValue("מארח/ת");
+  await page.unroute(saves);
+});
+
 // A template's editor: an item and a time removed from their sheets close
 // them onto "ביטול", which says what went; undone, the row is back and has
 // the focus.
@@ -208,6 +269,33 @@ test("the template editor closes a removal's sheet onto its 'ביטול', and gi
   await expect(rows.first()).not.toContainText(l.schedules.add);
   await expect(rows.first()).toBeFocused();
   await expect(add).not.toBeFocused();
+
+  // A list taller than the screen (a short screen here): the first item,
+  // removed from its sheet, closes it onto a "ביטול" under the whole list,
+  // out of view where the page still is, and brought into view as it takes
+  // the focus.
+  const FRIDGE = "מקרר ראשי";
+  const fridge = page.getByRole("button", { name: new RegExp(`^${FRIDGE}`) });
+  const fridgeUndo = undoOf(
+    page,
+    heT("app.lists.items.removed", { label: FRIDGE }),
+  );
+  await page.setViewportSize({
+    width: page.viewportSize()?.width ?? 390,
+    height: 480,
+  });
+  await fridge.evaluate((row) => row.scrollIntoView({ block: "center" }));
+  await expect(fridge).toBeInViewport();
+  await expect(
+    page.getByRole("button", { name: l.items.add }),
+  ).not.toBeInViewport();
+  await fridge.click();
+  const fridgeSheet = page.getByRole("dialog", { name: FRIDGE });
+  await expect(fridgeSheet).toBeVisible();
+  await fridgeSheet.getByRole("button", { name: l.items.remove }).click();
+  await expect(fridgeSheet).toBeHidden();
+  await expect(fridgeUndo).toBeFocused();
+  await expect(fridgeUndo).toBeInViewport();
 });
 
 // On a phone, what closed today on Lists and what happened on a list are

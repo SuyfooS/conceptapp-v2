@@ -1,6 +1,6 @@
 "use client";
 
-import { firstOnScreen } from "@ui/focus-after";
+import { firstOnScreen, inViewWhenFocused } from "@ui/focus-after";
 import { useRef } from "react";
 import { sheetReturnTo } from "./editor-focus";
 
@@ -35,14 +35,22 @@ export function useSheetReturn() {
     },
     /** The Sheet's `returnFocus`. */
     returnFocus() {
-      const to = sheetReturnTo({
-        removed: removed.current,
-        undo: undoButton.current,
-        opener: opener.current,
-        heading: heading.current,
-      });
+      const removal = removed.current;
       removed.current = false;
-      return firstOnScreen(to);
+      const chosen = firstOnScreen(
+        sheetReturnTo({
+          removed: removal,
+          undo: undoButton.current,
+          opener: opener.current,
+          heading: heading.current,
+        }),
+      );
+      // "ביטול" comes under the whole list, maybe far below the row that
+      // went, where the page still is: brought into view as the Sheet
+      // focuses it (without moving the page), when any of it is out of view.
+      return removal && chosen === undoButton.current
+        ? inViewWhenFocused(chosen)
+        : chosen;
     },
   };
 }

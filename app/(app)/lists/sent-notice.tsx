@@ -1,10 +1,12 @@
 "use client";
 
+import { focusFirst } from "@ui/focus-after";
 import { StatusToast } from "@ui/status-toast";
 import { UndoRow } from "@ui/undo-row";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { refusalArrived } from "../manage/editor-focus";
 import type { ListActionResult, ListFailure } from "./list-types";
 
 /**
@@ -14,7 +16,8 @@ import type { ListActionResult, ListFailure } from "./list-types";
  * once taken back, the list leaves the address and the screen, and this still
  * says so. Lists comes right after the press that sent it, which went with
  * the send screen: "ביטול" takes the focus as it appears, and its focus says
- * where the list went (accessibility, part 8).
+ * where the list went, and has it back once taking it back was refused
+ * (accessibility, part 8).
  */
 export function SentNotice({
   sent,
@@ -64,6 +67,18 @@ export function SentNotice({
   const failure =
     !started && shown && failed?.listId === shown.listId ? failed : null;
 
+  // "ביטול" waited, disabled, and the focus with it went: refused (a slip,
+  // offline), the row stays, and the focus is back on it, unless put
+  // elsewhere meanwhile. Once for each refusal: the screen shown again from
+  // a hidden <Activity> leaves the focus where it is.
+  const undoButton = useRef<HTMLButtonElement>(null);
+  const refocused = useRef<typeof failure>(null);
+  useEffect(() => {
+    if (refusalArrived(refocused, failure, pending)) {
+      focusFirst([undoButton.current], { title: false });
+    }
+  }, [failure, pending]);
+
   return (
     <>
       <StatusToast
@@ -78,6 +93,7 @@ export function SentNotice({
           onUndo={() => undo(shown.listId)}
           pending={pending}
           autoFocus
+          buttonRef={undoButton}
         />
       ) : null}
       {started ? (

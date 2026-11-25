@@ -5,6 +5,7 @@ import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { cn } from "@ui/cn";
 import { EmptyState } from "@ui/empty-state";
+import { focusFirst } from "@ui/focus-after";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
@@ -14,7 +15,14 @@ import { ChevronDown, ClipboardList, Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { type ReactNode, useState, useTransition } from "react";
+import {
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
+import { refusalArrived } from "../../manage/editor-focus";
 import type {
   ListActionResult,
   ListFailure,
@@ -37,7 +45,8 @@ const td = "border-line border-t px-4 py-3 align-middle";
  * table, with when each goes and who asks for each order.
  * Removed ones wait folded at the end, each with its way back, and the one
  * just removed in its editor has its undo on top, which takes the focus as
- * the screen comes after the press in the editor (accessibility, part 8).
+ * the screen comes after the press in the editor, and has it back once
+ * bringing it back was refused (accessibility, part 8).
  * Used on /lists/templates and by the team in the console.
  */
 export function TemplatesView({
@@ -57,7 +66,23 @@ export function TemplatesView({
     null,
   );
   const [undone, setUndone] = useState<string | null>(null);
-  const [failure, setFailure] = useState<ListFailure | null>(null);
+  // Why bringing one back was refused, and whether it was the undo's press.
+  const [failure, setFailure] = useState<{
+    reason: ListFailure;
+    fromUndo: boolean;
+  } | null>(null);
+  // The undo's "ביטול" waited, disabled, and the focus with it went:
+  // refused, the row stays, and the focus is back on it, unless put
+  // elsewhere meanwhile. Once for each refusal: the screen shown again from
+  // a hidden <Activity> leaves the focus where it is.
+  const undoButton = useRef<HTMLButtonElement>(null);
+  const refocused = useRef<typeof failure>(null);
+  useEffect(() => {
+    const refused = failure?.fromUndo ? failure : null;
+    if (refusalArrived(refocused, refused, pending)) {
+      focusFirst([undoButton.current], { title: false });
+    }
+  }, [failure, pending]);
 
   const groups = templatesByDepartment(data.templates, data.departments);
   const editorOf = (id: string) => `${paths.list}/${id}`;
@@ -140,7 +165,7 @@ export function TemplatesView({
       }
       setRestoring(null);
       if (!result.ok) {
-        setFailure(result.failure);
+        setFailure({ reason: result.failure, fromUndo });
         return;
       }
       setBack({ name: row.name, stamp: Date.now() });
@@ -210,11 +235,12 @@ export function TemplatesView({
           pending={pending && restoring === just.id}
           // The editor's "הסרת הרשימה" went with the editor.
           autoFocus
+          buttonRef={undoButton}
         />
       ) : null}
       {failure ? (
         <p role="alert" className="px-1 font-medium text-danger">
-          {t(`failed.${failure}`)}
+          {t(`failed.${failure.reason}`)}
         </p>
       ) : null}
 

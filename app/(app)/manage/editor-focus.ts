@@ -1,11 +1,11 @@
-import type { FocusCandidate } from "@ui/focus-after";
+import { arrived, type FocusCandidate } from "@ui/focus-after";
 
 /**
  * Where the keyboard's focus goes in the editors of a list of things, a
  * sheet for each (the shifts, a list's items and its times) or a row typed
  * over (the positions), with no React (accessibility, part 8): onto the
- * removal's "ביטול" once the sheet closes for it, and back on the row that
- * "ביטול" brings back.
+ * removal's "ביטול" once the sheet closes for it, back on the row that
+ * "ביטול" brings back, and back on a "ביטול" whose way back was refused.
  */
 
 /** A CSS string's own characters, so any value reads as itself in a selector. */
@@ -55,4 +55,21 @@ export function sheetReturnTo({
   heading: FocusCandidate;
 }): readonly FocusCandidate[] {
   return removed ? [undo, heading] : [opener, heading];
+}
+
+/**
+ * Whether a way back's refusal has just arrived, for the effect that puts
+ * the focus back on its "ביטול": the button waited, disabled, and the focus
+ * went with it. Only once it no longer waits (`waiting`), and once for each
+ * refusal, noted in `seen` only then (`arrived`): a screen shown again from
+ * a hidden <Activity> runs its effects again with a refusal long seen. Each
+ * refusal is a new object, so the same refusal twice arrives twice; null is
+ * none.
+ */
+export function refusalArrived<T>(
+  seen: { current: T | null },
+  refusal: T | null,
+  waiting: boolean,
+): boolean {
+  return !waiting && arrived(seen, refusal);
 }

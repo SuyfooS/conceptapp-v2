@@ -5,7 +5,7 @@ import {
   type Position,
   positions as positionsSchema,
 } from "@domain/staffing";
-import { firstOnScreen, inViewWhenFocused } from "@ui/focus-after";
+import { firstOnScreen, focusLost, inViewWhenFocused } from "@ui/focus-after";
 import { IconButton } from "@ui/icon-button";
 import { ListGroup } from "@ui/list-row";
 import { PageSection } from "@ui/page";
@@ -52,9 +52,12 @@ export function PositionsEditor({
   const [name, setName] = useState("");
   // The name someone tried that another position already has.
   const [taken, setTaken] = useState<string | null>(null);
+  // The way back of the last removal; `focus` when its "ביטול" takes the
+  // focus as it appears.
   const [removed, setRemoved] = useState<{
     position: Position;
     index: number;
+    focus: boolean;
   } | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
 
@@ -101,15 +104,25 @@ export function PositionsEditor({
     return true;
   }
 
+  /**
+   * Its trash button goes with its row: "ביטול" takes the focus. Refused,
+   * the position is back, and so is the earlier way back, which takes no
+   * focus: this one's row, going, gives it back to the trash button.
+   */
   async function remove(index: number) {
     const position = positions[index];
     if (!position) return;
     const before = removed;
-    setRemoved({ position, index });
+    setRemoved({ position, index, focus: true });
     const saved = await onChange(positions.filter((_, at) => at !== index));
-    if (!saved) setRemoved(before);
+    if (!saved) setRemoved(before && { ...before, focus: false });
   }
 
+  /**
+   * Refused, the position goes again, and its way back is there again: its
+   * "ביטול" takes the focus only from the trash button about to go, or when
+   * nothing has it, never from where the person went on meanwhile.
+   */
   async function undo() {
     if (!removed) return;
     const { position, index } = removed;
@@ -117,7 +130,12 @@ export function PositionsEditor({
     if (positions.some((other) => other.key === position.key)) return;
     const next = [...positions];
     next.splice(index, 0, position);
-    if (!(await onChange(next))) setRemoved({ position, index });
+    if (await onChange(next)) return;
+    const onTrash =
+      document.activeElement?.matches(
+        byAttribute(POSITION_REMOVE, position.key),
+      ) === true;
+    setRemoved({ position, index, focus: focusLost() || onTrash });
   }
 
   return (
@@ -196,8 +214,8 @@ export function PositionsEditor({
           key={removed.position.key}
           message={t("removed", { name: removed.position.name })}
           onUndo={undo}
-          // The row went with the button pressed.
-          autoFocus
+          // The row went with the button pressed (`focus`).
+          autoFocus={removed.focus}
           // Undone, the position is back where it was, maybe far above this
           // row: its remove button takes the focus, brought into view.
           focusAfter={() => [

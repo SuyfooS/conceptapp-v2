@@ -3886,7 +3886,8 @@ test("the activity demo names the app for a list it closed", async ({
 // The lists demo sends and takes a sending back, keeps its five minutes to
 // take a finish back after it hydrates, and reads a freezer below zero.
 // Lists, reached right after the press that sent, gives "ביטול" the focus,
-// which says where the list went (accessibility, part 8).
+// which says where the list went, and gives it back once taking the list
+// back was refused (accessibility, part 8).
 test("the lists demo sends, takes back, and keeps a finished list as it was", async ({
   page,
 }) => {
@@ -3908,6 +3909,19 @@ test("the lists demo sends, takes back, and keeps a finished list as it was", as
     .filter({ hasText: sent })
     .getByRole("button", { name: he.app.manage.undo });
   await expect(takeBack).toBeFocused();
+  // Refused (the connection dropped): the row stays and says so, and its
+  // "ביטול", disabled while it waited, has the focus back.
+  const takingBack = (url: URL) => url.pathname === "/design/shell/lists";
+  await page.route(takingBack, async (route) => {
+    if (route.request().method() === "POST") await route.abort();
+    else await route.fallback();
+  });
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByRole("alert").filter({ hasText: l.send.cancelFailed }),
+  ).toBeVisible();
+  await expect(takeBack).toBeFocused();
+  await page.unroute(takingBack);
   await takeBack.click();
   await expect(page).toHaveURL(/\/design\/shell\/lists$/);
   await expect(

@@ -26,7 +26,7 @@ import { announce } from "@ui/announcer";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { Card } from "@ui/card";
-import { ChecklistItem } from "@ui/checklist-item";
+import { ChecklistItem, LIST_ITEM } from "@ui/checklist-item";
 import { ChoiceList, ChoiceRow } from "@ui/choice-row";
 import { cn } from "@ui/cn";
 import { DockButton, FloatingDock } from "@ui/floating-dock";
@@ -67,7 +67,7 @@ import {
   useState,
   useTransition,
 } from "react";
-import { byAttribute } from "../../manage/editor-focus";
+import { byAttribute, refusalArrived } from "../../manage/editor-focus";
 import { TYPING_MS } from "../../manage/use-draft";
 import type {
   ItemFailure,
@@ -423,9 +423,13 @@ function ListScreen({
   const [photoUndoing, setPhotoUndoing] = useState(false);
   const photoUndoButton = useRef<HTMLButtonElement>(null);
   // Its "ביטול" waits while the photo comes back, and the focus with it
-  // goes: back on it when the photo didn't, unless put elsewhere.
+  // goes: back on it when the photo didn't, unless put elsewhere. Once for
+  // each time it didn't (a new `photoUndo` each time): the screen shown
+  // again from a hidden <Activity> leaves the focus where it is.
+  const refocusedUndo = useRef<typeof photoUndo>(null);
   useEffect(() => {
-    if (photoUndo?.failed && !photoUndoing) {
+    const refused = photoUndo?.failed ? photoUndo : null;
+    if (refusalArrived(refocusedUndo, refused, photoUndoing)) {
       focusFirst([photoUndoButton.current], { title: false });
     }
   }, [photoUndo, photoUndoing]);
@@ -600,7 +604,10 @@ function ListScreen({
   // focus, which says the list closed (its row `quiet` meanwhile); else, or
   // with the focus put elsewhere meanwhile, the page's title takes a focus
   // lost, and what happened is said. Once: a screen shown again from a
-  // hidden <Activity> runs this again.
+  // hidden <Activity> runs this again. Only for the list as it is now: a
+  // press whose screen was left before its answer leaves what it pressed to
+  // the next screen, maybe a later one, of a list changed since (finished
+  // again, opened again), which this would mis-say.
   const [came] = useState(arrival);
   const cameSeen = useRef(false);
   const undoButton = useRef<HTMLButtonElement>(null);
@@ -609,6 +616,7 @@ function ListScreen({
     if (came === null || cameSeen.current) return;
     cameSeen.current = true;
     arrive(null);
+    if ((came === "finished") !== (list.status !== "open")) return;
     if (came === "finished") {
       const undo = undoButton.current;
       if (undo && focusFirst([undo], { title: false }) === undo) return;
@@ -1172,18 +1180,16 @@ function ListScreen({
           autoFocus={photoUndo.focus}
           buttonRef={photoUndoButton}
           // Back, its remove button, maybe far above in a long list,
-          // brought into view; refused for good, the way to take one.
-          focusAfter={() => [
-            inViewWhenFocused(
-              firstOnScreen([
-                byAttribute(
-                  "aria-label",
-                  `${tl("photo.remove")}: ${item.label}`,
-                ),
-              ]),
-            ),
-            byAttribute("aria-label", `${tl("photo.take")}: ${item.label}`),
-          ]}
+          // brought into view; refused for good, the way to take one. Each
+          // in this item's own row (LIST_ITEM): another can have its label.
+          focusAfter={() => {
+            const own = (words: string) =>
+              `${byAttribute(LIST_ITEM, item.id)} ${byAttribute("aria-label", `${words}: ${item.label}`)}`;
+            return [
+              inViewWhenFocused(firstOnScreen([own(tl("photo.remove"))])),
+              own(tl("photo.take")),
+            ];
+          }}
         />
       ) : null,
     };
@@ -1761,6 +1767,8 @@ function ListScreen({
                     key={item.id}
                     kind={item.kind}
                     label={item.label}
+                    // Its photo's buttons found again in its own row.
+                    itemId={item.id}
                     hint={hintOf(item)}
                     required={item.required}
                     optionalLabel={tl("optional")}

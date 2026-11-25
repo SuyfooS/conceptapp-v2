@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { byAttribute, groupRow, sheetReturnTo } from "./editor-focus";
+import {
+  byAttribute,
+  groupRow,
+  refusalArrived,
+  sheetReturnTo,
+} from "./editor-focus";
 
 // Where the focus goes in the editors of a list of things (accessibility,
 // part 8): onto a removal's "ביטול" once its sheet has closed, back to what
 // opened a sheet closed any other way, the section's title when that is
-// gone, and the row "ביטול" put back.
+// gone, the row "ביטול" put back, and back on a "ביטול" refused.
 
 describe("byAttribute", () => {
   it("finds the elements whose attribute has the value", () => {
@@ -74,5 +79,38 @@ describe("sheetReturnTo", () => {
     expect(
       sheetReturnTo({ removed: false, undo: null, opener: null, heading }),
     ).toEqual([null, heading]);
+  });
+});
+
+describe("refusalArrived", () => {
+  type Refusal = { reason: string };
+
+  it("arrives once for each refusal: shown again, the screen leaves the focus where it is", () => {
+    const seen = { current: null as Refusal | null };
+    const offline: Refusal = { reason: "offline" };
+    expect(refusalArrived(seen, offline, false)).toBe(true);
+    // A screen shown again from a hidden <Activity>: the same one.
+    expect(refusalArrived(seen, offline, false)).toBe(false);
+    // Refused again with the same words: a new one.
+    expect(refusalArrived(seen, { ...offline }, false)).toBe(true);
+  });
+
+  it("waits while its button still waits, and arrives once it no longer does", () => {
+    const seen = { current: null as Refusal | null };
+    const failed: Refusal = { reason: "failed" };
+    expect(refusalArrived(seen, failed, true)).toBe(false);
+    expect(seen.current).toBeNull();
+    expect(refusalArrived(seen, failed, false)).toBe(true);
+    // Pressed again, waiting with the refusal still shown: nothing anew.
+    expect(refusalArrived(seen, failed, true)).toBe(false);
+    expect(refusalArrived(seen, failed, false)).toBe(false);
+  });
+
+  it("is nothing without a refusal, and keeps the one seen", () => {
+    const failed: Refusal = { reason: "failed" };
+    const seen = { current: failed as Refusal | null };
+    expect(refusalArrived(seen, null, false)).toBe(false);
+    expect(seen.current).toBe(failed);
+    expect(refusalArrived(seen, failed, false)).toBe(false);
   });
 });
