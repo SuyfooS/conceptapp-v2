@@ -6,24 +6,44 @@ import { useState, useTransition } from "react";
 export type StartTransition = (action: () => Promise<void>) => void;
 
 /**
- * A sheet's writes, each in `startTransition`, and whether one is still on
- * its way: from the press until its answer is back, and no longer, whatever
- * the transition waits for after it.
+ * A write sent from a sheet. Its argument, called as the answer comes, keeps
+ * the sheet until that answer has been said (`said`): for one that shows
+ * only later than it comes.
+ */
+export type SheetWrite = (keep: () => void) => Promise<void>;
+
+/**
+ * A sheet's writes, each in `startTransition`, and whether one still holds
+ * the sheet: from the press until its answer is back, and no longer,
+ * whatever the transition waits for after it; or, for an answer the write
+ * kept (`keep`), until the sheet has said it (`said`). Kept as it comes,
+ * before the write lets go, the hold passes from the one to the other with
+ * no moment between. A new write lets go of what an earlier answer kept:
+ * it holds the sheet itself, and that answer is no longer the one to say.
  */
 export function sheetWrites(startTransition: StartTransition) {
   let waiting = 0;
+  let kept = false;
+  const keep = () => {
+    kept = true;
+  };
   return {
-    start(write: () => Promise<void>) {
+    start(write: SheetWrite) {
       startTransition(async () => {
         waiting += 1;
+        kept = false;
         try {
-          await write();
+          await write(keep);
         } finally {
           waiting -= 1;
         }
       });
     },
-    held: () => waiting > 0,
+    held: () => waiting > 0 || kept,
+    /** The answer kept for is said: the sheet may close. */
+    said() {
+      kept = false;
+    },
   };
 }
 
@@ -39,10 +59,21 @@ export function sheetWrites(startTransition: StartTransition) {
  * close waits for that and no longer, so ✕, Escape, the scrim or a swipe
  * right after a refusal close it at once. Read `held()` in the sheet's
  * `onOpenChange`, never while drawing.
+ *
+ * An answer the sheet says only later (a refusal said once the page read
+ * again is drawn, 25 November 2026) is kept as it comes (`keep`, the
+ * write's argument), and the sheet holds until it has drawn it and calls
+ * `said`. Kept any later, by the state React draws on its next turn, a close
+ * coming in between (a tap, Escape) would find nothing holding the sheet.
  */
 export function useSheetWrite() {
   const [pending, startTransition] = useTransition();
   // Once, as React keeps `startTransition` the same on every draw.
   const [writes] = useState(() => sheetWrites(startTransition));
-  return { pending, start: writes.start, held: writes.held };
+  return {
+    pending,
+    start: writes.start,
+    held: writes.held,
+    said: writes.said,
+  };
 }

@@ -24,7 +24,8 @@ export type SheetProps = {
    * A sheet that sends a write holds its close only until the answer
    * (`useSheetWrite`), never until the page read again after it is drawn,
    * unless the answer itself shows only then (a refusal said once the focus
-   * is back on its press): closed before, nothing would say it.
+   * is back on its press): closed before, nothing would say it. Such an
+   * answer is kept as it comes (`keep`) and let go once drawn (`said`).
    */
   onOpenChange: (open: boolean) => void;
   title: ReactNode;

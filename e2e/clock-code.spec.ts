@@ -511,7 +511,10 @@ test("wrong digits block typing, and the worker goes ahead without a code", asyn
 // Refused for what the page read again shows (clocked in behind its back,
 // another device, say), "כניסה בלי קוד" says why once that page is drawn,
 // which comes after the answer: until it has, the sheet keeps its close, so
-// an Escape meanwhile takes nothing along unsaid.
+// an Escape meanwhile takes nothing along unsaid. That includes the moment
+// between the answer and React drawing the refusal on its next turn
+// (25 November 2026): an Escape every 5 ms came in there only when the page
+// happened to be busy as the answer came, now and then on the phone.
 test("a press without a code refused as already in keeps its sheet until it has said why", async ({
   page,
 }) => {
@@ -525,17 +528,20 @@ test("a press without a code refused as already in keeps its sheet until it has 
   await expect(without.getByText(c.none.body)).toBeVisible();
   await addOpenDemoEntry(NOA.e164, 1);
   await without.getByRole("button", { name: c.none.confirmIn }).click();
-  // Escape, again and again from the press on, until the sheet says why.
+  // Escape in every task from the press on, until the sheet says why. Each
+  // posts the next, so one is always queued ahead of the task React draws
+  // in (its scheduler posts messages too, served in turn): one comes in
+  // between the answer and the refusal drawn, as a tap or a key could.
   await page.evaluate(() => {
-    const again = setInterval(() => {
-      if (document.querySelector('[role="dialog"] [role="alert"]')) {
-        clearInterval(again);
-        return;
-      }
+    const again = new MessageChannel();
+    again.port1.onmessage = () => {
+      if (document.querySelector('[role="dialog"] [role="alert"]')) return;
       document.dispatchEvent(
         new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
       );
-    }, 5);
+      again.port2.postMessage(null);
+    };
+    again.port2.postMessage(null);
   });
   await expect(without.getByRole("alert")).toHaveText(c.failure.alreadyIn);
   await expect(without).toHaveAttribute("data-state", "open");

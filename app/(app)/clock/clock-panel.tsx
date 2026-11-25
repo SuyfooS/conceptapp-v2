@@ -119,11 +119,13 @@ export function ClockPanel({
   /** The camera's stop, while it is on. */
   const stopRef = useRef<HTMLButtonElement>(null);
   // The press without a code holds its sheet until the answer (`noneHeld`),
-  // and its buttons until the page read again after it is drawn.
+  // or a refusal until the sheet has said it (`noneSaid`), and its buttons
+  // until the page read again after it is drawn.
   const {
     pending: noneBusy,
     start: startNone,
     held: noneHeld,
+    said: noneSaid,
   } = useSheetWrite();
   const [noneFailure, setNoneFailure] = useState<Failure | null>(null);
   // The screen's own buttons wait for both: a refusal without a code lets its
@@ -379,12 +381,16 @@ export function ClockPanel({
     setNoneFailure(null);
     pressed.current = { from: state, refused: false };
     pressedOn.current = null;
-    startNone(async () => {
+    startNone(async (keep) => {
       const result = await punchWith(direction, { kind: "none" });
       if (result.ok) {
         setSheet(null);
       } else {
-        // The sheet stays, saying why, with the focus in it.
+        // The sheet stays, saying why, with the focus in it. Kept now, as
+        // the answer comes: React draws the refusal on its next turn, and
+        // a close coming in before that (a tap, Escape) would find neither
+        // this press nor the sheet holding it.
+        keep();
         pressed.current = null;
         setNoneFailure(result.failure);
       }
@@ -547,7 +553,9 @@ export function ClockPanel({
             onOpenChange={(next) => {
               // The answer to a press under way belongs on this sheet, and
               // only the answer. A refusal shows once the page read again
-              // is drawn, and the sheet itself keeps its close until then.
+              // is drawn: the press holds on from the moment it came until
+              // the sheet has said it (`onSaid`), and the sheet itself
+              // keeps its close as well.
               if (!noneHeld()) setSheet(next ? "none" : null);
             }}
             returnFocus={sheetGaveBack}
@@ -556,6 +564,7 @@ export function ClockPanel({
             timeZone={data.timeZone}
             pending={noneBusy}
             failure={noneFailure}
+            onSaid={noneSaid}
             onConfirm={goWithoutCode}
             // Scanning, which a typing block doesn't stop.
             onBack={sheetToScan}
