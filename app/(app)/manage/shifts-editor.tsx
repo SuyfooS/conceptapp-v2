@@ -11,7 +11,7 @@ import { cn } from "@ui/cn";
 import { DayToggles } from "@ui/day-toggles";
 import { FieldGroup, GroupedField } from "@ui/field-group";
 import { FieldRow, rowPillInputClass } from "@ui/field-row";
-import { inViewWhenFocused } from "@ui/focus-after";
+import { focusFirst, inViewWhenFocused } from "@ui/focus-after";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageSection } from "@ui/page";
 import { Sheet } from "@ui/sheet";
@@ -20,8 +20,8 @@ import { ltrInputClass } from "@ui/text-field";
 import { UndoRow } from "@ui/undo-row";
 import { Plus } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useId, useRef, useState } from "react";
-import { groupRow } from "./editor-focus";
+import { useId, useLayoutEffect, useRef, useState } from "react";
+import { groupRow, refusalArrived } from "./editor-focus";
 import { useSheetReturn } from "./use-sheet-return";
 
 const SHIFTS_MAX = 30;
@@ -42,7 +42,8 @@ const blank = (): ShiftPattern => ({
  * The shifts every new week starts from. Each row says what it is at a glance,
  * and opens a sheet to change it. Weeks already saved keep their own shifts.
  * Removing one closes its sheet onto the removal's "ביטול", which says what
- * went; undone, the focus is back on the shift's row (accessibility, part 8).
+ * went; undone, the focus is back on the shift's row, and on "ביטול" again
+ * when that undo was refused and took the row away (accessibility, part 8).
  */
 export function ShiftsEditor({
   title,
@@ -67,13 +68,29 @@ export function ShiftsEditor({
     isNew: boolean;
     failed: boolean;
   } | null>(null);
+  // The way back of the last removal; `refused` when it is there again
+  // because its undo didn't save.
   const [removed, setRemoved] = useState<{
     shift: ShiftPattern;
     index: number;
+    refused: boolean;
   } | null>(null);
   const back = useSheetReturn();
   // The rows, for the one "ביטול" puts back.
   const group = useRef<HTMLDivElement>(null);
+  // Its undo refused, the shift it brought back goes again, with the focus
+  // that row had: "ביטול", there again, takes a focus lost as it is drawn,
+  // before its row would say its words, so its focus says them once. Where
+  // the person went on meanwhile, or with the row still there, the focus
+  // stays, and the row says itself. Once for each refusal (a new `removed`
+  // each time): the screen shown again from a hidden <Activity> leaves the
+  // focus where it is.
+  const refocused = useRef<typeof removed>(null);
+  useLayoutEffect(() => {
+    if (refusalArrived(refocused, removed?.refused ? removed : null, false)) {
+      focusFirst([back.undoButton.current], { title: false });
+    }
+  }, [removed, back.undoButton]);
 
   const daysOf = (days: number[]) =>
     days.length === 7
@@ -113,7 +130,7 @@ export function ShiftsEditor({
     if (!shift) return;
     back.removing();
     const before = removed;
-    setRemoved({ shift, index });
+    setRemoved({ shift, index, refused: false });
     const saved = await onChange(shifts.filter((other) => other.key !== key));
     if (!saved) setRemoved(before);
   }
@@ -125,7 +142,7 @@ export function ShiftsEditor({
     if (shifts.some((other) => other.key === shift.key)) return;
     const next = [...shifts];
     next.splice(index, 0, shift);
-    if (!(await onChange(next))) setRemoved({ shift, index });
+    if (!(await onChange(next))) setRemoved({ shift, index, refused: true });
   }
 
   return (
@@ -173,8 +190,9 @@ export function ShiftsEditor({
           key={removed.shift.key}
           message={t("removed", { name: removed.shift.name })}
           onUndo={undo}
-          // The sheet closes onto it, and its focus says it.
-          quiet
+          // The sheet closes onto it, and its focus says it. There again
+          // after a refused undo, it says itself unless it took the focus.
+          quiet={!removed.refused}
           buttonRef={back.undoButton}
           // Undone, the shift is back in its place, maybe above this row:
           // its row takes the focus, brought into view.

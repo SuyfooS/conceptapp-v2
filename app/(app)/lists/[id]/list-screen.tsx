@@ -138,6 +138,19 @@ const removeProblem = (failure: ListPhotoFailure | "offline"): PhotoProblem =>
         ? "removeFailed"
         : failure;
 
+/**
+ * A refusal that shows where the list really stands, read again: closed
+ * meanwhile, opened again while it was fixed, moved on elsewhere, past the
+ * window to fix it, or no longer theirs to fix (L6b-2). The screen starts
+ * anew; any other refusal keeps it as it is.
+ */
+const movesOn = (reason: ItemFailure): boolean =>
+  reason === "finished" ||
+  reason === "noAccess" ||
+  reason === "reopened" ||
+  reason === "fixOver" ||
+  reason === "fixNoAccess";
+
 /** A photo prepared but not saved: no connection, or no answer. */
 type PhotoWaiting = { bytes: Blob; failure: "offline" | "failed" };
 
@@ -423,14 +436,18 @@ function ListScreen({
   const [photoUndoing, setPhotoUndoing] = useState(false);
   const photoUndoButton = useRef<HTMLButtonElement>(null);
   // Its "ביטול" waits while the photo comes back, and the focus with it
-  // goes: back on it when the photo didn't, unless put elsewhere. Once for
-  // each time it didn't (a new `photoUndo` each time): the screen shown
-  // again from a hidden <Activity> leaves the focus where it is.
+  // goes: back on it when the photo didn't, unless put elsewhere, and then
+  // the line under it says so (`photoUndoSaid`), once: said before that
+  // move it would be cut off, and the row keeps its words, which its focus
+  // says. Once for each time it didn't (a new `photoUndo` each time): the
+  // screen shown again from a hidden <Activity> leaves the focus where it is.
   const refocusedUndo = useRef<typeof photoUndo>(null);
+  const [photoUndoSaid, setPhotoUndoSaid] = useState<typeof photoUndo>(null);
   useEffect(() => {
     const refused = photoUndo?.failed ? photoUndo : null;
     if (refusalArrived(refocusedUndo, refused, photoUndoing)) {
       focusFirst([photoUndoButton.current], { title: false });
+      setPhotoUndoSaid(refused);
     }
   }, [photoUndo, photoUndoing]);
   const [photoSaved, setPhotoSaved] = useState<number | null>(null);
@@ -546,13 +563,7 @@ function ListScreen({
     // elsewhere, past the window to fix it, or no longer theirs to fix
     // (L6b-2): show where it really stands, and say why from the frame,
     // since the screen starts anew.
-    if (
-      reason === "finished" ||
-      reason === "noAccess" ||
-      reason === "reopened" ||
-      reason === "fixOver" ||
-      reason === "fixNoAccess"
-    ) {
+    if (movesOn(reason)) {
       // A fix ends with it: the list is filled now, or no longer theirs to
       // fix.
       setFixing(false);
@@ -627,6 +638,25 @@ function ListScreen({
     focusFirst([]);
     announce(tl("reopened"));
   }, [came]);
+
+  // A finish or an opening again refused: what was pressed (the finish, the
+  // finish's "ביטול", "פתיחה מחדש", "פתיחה מחדש לכולם") waited, disabled,
+  // and the focus went with it. Held until nothing is on its way, then the
+  // focus is back on it when the screen stays as it is and nothing else
+  // took the focus meanwhile, and only then is why said: said before that
+  // move, it would be cut off.
+  const pressRefused = useRef<{
+    reason: ListFailure;
+    pressed: Element | null;
+  } | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once the press no longer waits, with the refusal it held (a ref)
+  useEffect(() => {
+    const held = pressRefused.current;
+    if (finishing || !held) return;
+    pressRefused.current = null;
+    if (!movesOn(held.reason)) focusFirst([held.pressed], { title: false });
+    fail(held.reason);
+  }, [finishing]);
 
   /** Now, by the server's clock (`clockOffset`). */
   function serverNow(): string {
@@ -1171,26 +1201,34 @@ function ListScreen({
           </Button>
         </div>
       ) : photoUndo?.itemId === item.id ? (
-        <UndoRow
-          message={
-            photoUndo.failed ? tl("photo.undoFailed") : tl("photo.removed")
-          }
-          onUndo={() => void bringPhotoBack()}
-          pending={photoUndoing}
-          autoFocus={photoUndo.focus}
-          buttonRef={photoUndoButton}
-          // Back, its remove button, maybe far above in a long list,
-          // brought into view; refused for good, the way to take one. Each
-          // in this item's own row (LIST_ITEM): another can have its label.
-          focusAfter={() => {
-            const own = (words: string) =>
-              `${byAttribute(LIST_ITEM, item.id)} ${byAttribute("aria-label", `${words}: ${item.label}`)}`;
-            return [
-              inViewWhenFocused(firstOnScreen([own(tl("photo.remove"))])),
-              own(tl("photo.take")),
-            ];
-          }}
-        />
+        <>
+          <UndoRow
+            // Its words stay as a refusal comes: the line under it says
+            // that, and its focus these.
+            message={tl("photo.removed")}
+            onUndo={() => void bringPhotoBack()}
+            pending={photoUndoing}
+            autoFocus={photoUndo.focus}
+            buttonRef={photoUndoButton}
+            // Back, its remove button, maybe far above in a long list,
+            // brought into view; refused for good, the way to take one. Each
+            // in this item's own row (LIST_ITEM): another can have its label.
+            focusAfter={() => {
+              const own = (words: string) =>
+                `${byAttribute(LIST_ITEM, item.id)} ${byAttribute("aria-label", `${words}: ${item.label}`)}`;
+              return [
+                inViewWhenFocused(firstOnScreen([own(tl("photo.remove"))])),
+                own(tl("photo.take")),
+              ];
+            }}
+          />
+          {/* Drawn again for each refusal, after the focus is back. */}
+          {photoUndo === photoUndoSaid && !photoUndoing ? (
+            <p role="alert" className="font-medium text-danger text-sm">
+              {tl("photo.undoFailed")}
+            </p>
+          ) : null}
+        </>
       ) : null,
     };
   };
@@ -1203,10 +1241,11 @@ function ListScreen({
    * Finishing, or opening again: the list is read again, and the screen
    * starts anew, which the frame tells where the focus goes (`arrive`), as
    * it is pressed: the screen read again can come before the answer.
-   * Refused, nothing arrives.
+   * Refused, nothing arrives, and the refusal is held (`pressRefused`).
    */
   function finish() {
     if (photosBusy) return;
+    const pressed = document.activeElement;
     arrive("finished");
     startFinish(async () => {
       let result: ListActionResult;
@@ -1217,12 +1256,13 @@ function ListScreen({
       }
       if (!result.ok) {
         arrive(null);
-        fail(result.failure);
+        pressRefused.current = { reason: result.failure, pressed };
       }
     });
   }
 
   function reopen() {
+    const pressed = document.activeElement;
     arrive("reopened");
     startFinish(async () => {
       let result: ListActionResult;
@@ -1233,7 +1273,7 @@ function ListScreen({
       }
       if (!result.ok) {
         arrive(null);
-        fail(result.failure);
+        pressRefused.current = { reason: result.failure, pressed };
       }
     });
   }
