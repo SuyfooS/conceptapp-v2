@@ -2174,10 +2174,12 @@ the answer's one trigger (`availability_submissions_resolve`) only settles
 reminders, which demo businesses never get. Locks: the business (`for key
 share`, a demo reset first), then the week, then each answer.
 `reset_demo_business` is unchanged: a reset takes the week, and the next entry
-writes the sample again. The wrapper, `renewDemoAvailability()` in
+or Today writes the sample again. The wrapper, `renewDemoAvailability()` in
 `@db/demo`, answers 0 before the migration reaches the project
-(`isMissingFunction`), and is called by the door's `enterAs` after sign-in,
-behind `demoDoorOpen()`, in its own try/catch (`tooling/demo-door.test.ts`).
+(`isMissingFunction`), and is called by the door's `enterAs` after sign-in
+and by Today's `renewDemoWeek` (`app/(app)/demo.ts`) in either demo business,
+for whoever stayed signed in past the week's turn, each behind
+`demoDoorOpen()` and in its own try/catch (`tooling/demo-door.test.ts`).
 Covered by `demo_availability.test.sql`, `demo.test.ts`,
 `tooling/demo-availability.test.ts` (the hosted sample against the
 restaurant's shifts and the fill) and `tooling/running-week-edge.test.ts` (its

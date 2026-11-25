@@ -70,10 +70,11 @@ own through `private.purge_business_records`, which only the database's owner ma
 (`public.renew_demo_schedules`); the restaurant's is the visitor's to build. On the hosted
 project its manager and two workers have next week's availability sent, so the builder's
 fill from availability has someone to place: `hosted-demo.sql`'s `sampleAvailability`,
-written at every entry at the door for whoever hasn't sent theirs, cut by Shabbat as the
+written at every entry at the door and every time Today opens there (for whoever stayed
+signed in past the week's turn) for whoever hasn't sent theirs, cut by Shabbat as the
 form cuts it, never over an answer someone sent and never on a published week
 (`public.renew_demo_availability`, `20261128000100_demo_sample_availability.sql`); a reset
-takes the week, and the next entry writes it again. `seed.sql` has none, so the browser
+takes the week, and the next entry or Today writes it again. `seed.sql` has none, so the browser
 tests send their own. Both start
 with the demo's own conversations (`private.seed_demo_chat`,
 `20261111000300_chat_on.sql`, and from `20261111000400_chat_announce.sql` the manager's
