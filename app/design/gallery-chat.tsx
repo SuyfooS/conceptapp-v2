@@ -35,6 +35,7 @@ import {
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
+import { actionsNameValues } from "../(app)/chat/actions-name";
 import { demoPdfHref } from "./chat/demo-pdf";
 import { listPhotos } from "./list-photos";
 import { portraits } from "./portraits";
@@ -240,22 +241,53 @@ export function GalleryChat() {
       >
         {t("chatNewBelow")}
       </Button>
-      <Composer
-        floating={false}
-        label={tc("conversation.placeholder")}
-        sendLabel={tc("conversation.send")}
-        value=""
-        onValueChange={() => {}}
-        onSend={() => {}}
-        tooLong={tooLong}
-        blocked={tc("conversation.closed")}
-      />
+      <GalleryClosing tooLong={tooLong} />
       <GalleryAnnouncements />
       <GalleryPictures />
       <GalleryPdfs />
       <p className="text-ink-2">{t("chatImmersive")}</p>
       <Button asChild variant="secondary" className="w-full">
         <Link href="/design/chat">{t("chatDemo")}</Link>
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * The composer where nobody can write (a removed department), as the gallery
+ * opens it, and the switch to it while drawn: sending here closes the chat,
+ * as one removed while someone wrote, and the line that says why takes the
+ * focus that was in the field; the button closes it with the focus on
+ * itself, and the line's words are said where the focus is. The button's
+ * words say what a press does now: open the chat, or close it.
+ */
+function GalleryClosing({ tooLong }: { tooLong: ReactNode }) {
+  const t = useTranslations("design");
+  const tc = useTranslations("app.chat");
+  const [closed, setClosed] = useState(true);
+  const [draft, setDraft] = useState("");
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-ink-2">{t("chatClosedText")}</p>
+      <Composer
+        floating={false}
+        label={tc("conversation.placeholder")}
+        sendLabel={tc("conversation.send")}
+        value={draft}
+        onValueChange={setDraft}
+        onSend={() => {
+          setDraft("");
+          setClosed(true);
+        }}
+        tooLong={tooLong}
+        blocked={closed ? tc("conversation.closed") : null}
+      />
+      <Button
+        variant="secondary"
+        onClick={() => setClosed(!closed)}
+        className="self-start"
+      >
+        {closed ? t("chatOpen") : t("chatClose")}
       </Button>
     </div>
   );
@@ -490,7 +522,21 @@ function GalleryPdfs() {
             },
           }}
           time={{ label: "07:58", at: at(TODAY, "07:58") }}
-          actions={{ label: tc("messageActions.open"), onOpen: () => {} }}
+          actions={{
+            label: tc("messageActions.open"),
+            fullLabel: tc.markup("messageActions.openFor", {
+              name: t("person2"),
+              ...actionsNameValues({
+                day: TODAY,
+                today: TODAY,
+                time: "07:58",
+                words: tc("list.pdfWith", {
+                  caption: chatPreview(t("chatPdfCaption")),
+                }),
+              }),
+            }),
+            onOpen: () => {},
+          }}
         />
         {going ? (
           <MessageBubble
@@ -776,6 +822,15 @@ function GalleryAnnouncements() {
               ? null
               : {
                   label: tc("messageActions.open"),
+                  fullLabel: tc.markup("messageActions.openFor", {
+                    name: t("person1"),
+                    ...actionsNameValues({
+                      day: TODAY,
+                      today: TODAY,
+                      time: "08:14",
+                      words: t("chatSample6"),
+                    }),
+                  }),
                   onOpen: () => setActions(true),
                 }
           }

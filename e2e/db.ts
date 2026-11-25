@@ -2103,6 +2103,29 @@ export async function archiveDemoDepartment(name: string): Promise<void> {
       and archived_at is null`;
 }
 
+/**
+ * Removes one of the demo restaurant's own departments for a while, as the
+ * screen removes one: its group closes (written by the trigger), and only
+ * those who run the chat still read it. Returns what brings that same
+ * department back, its group open again; call it in a `finally`, since
+ * clearDemoChat leaves departments as they are.
+ */
+export async function closeDemoDepartment(
+  name: string,
+): Promise<() => Promise<void>> {
+  const closed = await sql<{ id: string }[]>`
+    update public.departments set archived_at = now()
+    where business_id = ${DEMO_RESTAURANT} and name = ${name}
+      and archived_at is null
+    returning id`;
+  const ids = closed.map((row) => row.id);
+  return async () => {
+    if (ids.length === 0) return;
+    await sql`update public.departments set archived_at = null
+      where id in ${sql(ids)}`;
+  };
+}
+
 /** Renames a live demo restaurant department, as someone else's screen would. */
 export async function renameDemoDepartment(
   from: string,
@@ -3384,6 +3407,38 @@ export async function demoChatMessagesSince(
     select count(*)::int as count from public.chat_messages m
     where m.conversation_id = ${conversation} and m.created_at >= ${since}`;
   return row?.count ?? 0;
+}
+
+/**
+ * What the newest message with these words in a conversation was sent as
+ * ("text" or "announcement"), or null when none has them.
+ */
+export async function demoChatKind(
+  conversation: string,
+  words: string,
+): Promise<string | null> {
+  const [row] = await sql<{ kind: string }[]>`
+    select m.kind from public.chat_messages m
+    where m.conversation_id = ${conversation} and m.body = ${words}
+    order by m.created_at desc
+    limit 1`;
+  return row?.kind ?? null;
+}
+
+/**
+ * "הודעה מההנהלה" (chat.announce) taken from the demo restaurant's managers
+ * by a rule for their role, or back on its default, which keeps no row:
+ * written as `setDemoWorkersFix` writes its rule, with no line to anyone and
+ * no row in the log. Back on is the cleanup.
+ */
+export async function setDemoManagersAnnounce(on: boolean): Promise<void> {
+  await sql`delete from public.role_permissions
+    where business_id = ${DEMO_RESTAURANT} and role = 'manager'
+      and perm = 'chat.announce' and named_role is null`;
+  if (!on) {
+    await sql`insert into public.role_permissions (business_id, role, perm, allowed)
+      values (${DEMO_RESTAURANT}, 'manager', 'chat.announce', false)`;
+  }
 }
 
 /**

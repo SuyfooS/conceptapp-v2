@@ -1,10 +1,10 @@
 import { Button } from "@ui/button";
 import { cn } from "@ui/cn";
-import { EmptyState } from "@ui/empty-state";
 import { PageBody } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
 import { Compass } from "lucide-react";
 import Link from "next/link";
+import { NotFoundState } from "./not-found-state";
 import { baseWording, translator } from "./wording";
 
 // Inside the app: a screen that does not exist, or a module that is off for
@@ -14,11 +14,11 @@ export default async function AppNotFound() {
   const t = translator(baseWording, "app.notFound");
   return (
     <PageBody className={cn("min-h-[70dvh] justify-center", pageGlowClass)}>
-      <EmptyState icon={<Compass />} title={t("title")} body={t("body")}>
+      <NotFoundState icon={<Compass />} title={t("title")} body={t("body")}>
         <Button asChild size="lg">
           <Link href="/home">{t("home")}</Link>
         </Button>
-      </EmptyState>
+      </NotFoundState>
     </PageBody>
   );
 }
