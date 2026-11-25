@@ -24,7 +24,6 @@ import { Card, CardText, CardTitle } from "@ui/card";
 import { ChoiceMenu } from "@ui/choice-menu";
 import { DataTable } from "@ui/data-table";
 import { EmptyState } from "@ui/empty-state";
-import { focusFirst } from "@ui/focus-after";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
@@ -57,9 +56,9 @@ import type { DocumentsScreenData } from "./document-screen-types";
 import type { DocumentActionResult } from "./document-types";
 import { type DocumentsPaths, documentsPathsAt } from "./documents-paths";
 import {
-  CHOSEN_ROW,
   FILTER_MENU,
   filtersRead,
+  focusChosenRow,
   whenFocused,
 } from "./filter-count";
 import { DocumentSpaceNote } from "./space-note";
@@ -508,7 +507,8 @@ function DesktopDocuments({
   // How many documents the filters leave, said once each time they change,
   // never on load: once the documents a person's filter reads are drawn
   // (they come with the address), and once the menu chosen from gave its
-  // button the focus back, which would cut the words off.
+  // button the focus back, which would cut the words off. A choice is drawn,
+  // and this runs, while its menu still has the focus.
   const counted = useRef(filters);
   const counting = useRef<() => void>(() => {});
   useEffect(() => () => counting.current(), []);
@@ -717,13 +717,10 @@ function DesktopDocuments({
             reader={reader}
             words={words}
             href={paths.document(preview.id)}
-            onClose={() => {
+            onClose={(fromKeys) => {
               // Its button goes with it: the row that opened it takes the
-              // focus first, brought into view.
-              focusFirst([CHOSEN_ROW], {
-                root: root.current,
-                onlyIfLost: false,
-              });
+              // focus first, then the choice is cleared.
+              focusChosenRow(root.current, { fromKeys });
               setSelected(null);
             }}
           />
@@ -789,7 +786,8 @@ function DocumentPreview({
   reader: DocumentReader;
   words: DocumentWords;
   href: string;
-  onClose: () => void;
+  /** Closed from the keyboard (or a screen reader), not by a mouse's click. */
+  onClose: (fromKeys: boolean) => void;
 }) {
   const t = words.t;
   const headingId = useId();
@@ -820,7 +818,8 @@ function DocumentPreview({
           size="md"
           aria-label={t("office.preview.close")}
           title={t("office.preview.close")}
-          onClick={onClose}
+          // A key's press clicks with no count of clicks (`detail` 0).
+          onClick={(event) => onClose(event.detail === 0)}
           className="-me-2 -mt-1 size-11 shrink-0 px-0"
         >
           <X aria-hidden="true" />
