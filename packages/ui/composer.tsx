@@ -100,7 +100,9 @@ export type ComposerProps = {
    * field and the button. Given while the composer is drawn (the chat
    * closed while someone wrote), the line takes the keyboard's focus that
    * was in the composer, which went with the field; with the focus
-   * elsewhere, a screen reader hears it where it is.
+   * elsewhere, a screen reader hears it where it is. Drawn so from the
+   * start, or shown again so after the screen was hidden for going back,
+   * nothing is said and the focus stays.
    */
   blocked?: ReactNode;
   /** A line over the field that doesn't stop writing ("יותר מדי הודעות בדקה…"). */
@@ -208,7 +210,12 @@ export function Composer({
   const writing = !blocked;
   /** Whether the focus is, or was last, in the form: watched while it is drawn. */
   const hadFocus = useRef<() => boolean>(() => false);
-  const wasWriting = useRef(writing);
+  /**
+   * Whether it was writing at its last drawing: null before its first, and
+   * again once it was hidden (a screen kept in an <Activity> for going
+   * back), so a screen shown again is drawn so from the start.
+   */
+  const wasWriting = useRef<boolean | null>(null);
   /** Why writing stopped, said where the focus is: it didn't land on the line. */
   const [stopSaid, setStopSaid] = useState(false);
   const checked = checkMessage(value);
@@ -241,6 +248,18 @@ export function Composer({
     node.style.height = `${node.scrollHeight}px`;
   }, [value]);
 
+  // Hidden (an <Activity> keeps the screen for going back) or gone: what it
+  // knew of its last drawing is forgotten. Shown again, perhaps closed
+  // meanwhile, nothing stopped while it was drawn, and the focus that was in
+  // the form then is no reason to move it now.
+  useLayoutEffect(
+    () => () => {
+      wasWriting.current = null;
+      hadFocus.current = () => false;
+    },
+    [],
+  );
+
   // While writing, where the focus is in the form is watched: a move away
   // from it forgets it, a fall to nowhere (the field gone) doesn't.
   useLayoutEffect(() => {
@@ -255,11 +274,12 @@ export function Composer({
   // Writing stopped while the composer was drawn: the line that says why
   // takes the focus that was in the form, gone with it, without moving the
   // page; else its words are said where the focus is. Drawn so from the
-  // start, it is read in its place like any line.
+  // start (`was` null: its first drawing, or shown again after hidden), it
+  // is read in its place like any line.
   useLayoutEffect(() => {
     const was = wasWriting.current;
     wasWriting.current = writing;
-    if (writing || !was) {
+    if (writing || was !== true) {
       setStopSaid(false);
       return;
     }

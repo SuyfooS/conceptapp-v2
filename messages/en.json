@@ -5983,6 +5983,7 @@
         "seen": "Read",
         "failed": "Not sent. Try again",
         "notSent": "The message wasn't sent. You can try again under it.",
+        "notSentBlocked": "The message wasn't sent, because you can't write here.",
         "newBelow": "New messages below",
         "privateNote": "Only the two of you see this chat",
         "teamNote": "Seen by: the whole team from the day they joined, and the owners and whoever runs the chat, all of it",

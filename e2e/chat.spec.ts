@@ -5,7 +5,10 @@ import { chatDay, chatShortDate } from "../packages/domain/chat-days";
 import { noteIfSaid, pastDrawing, wasSaid } from "./announcer";
 import {
   clearDemoChat,
+  closeDemoDepartment,
+  databaseNow,
   demoChatLines,
+  demoChatMessagesSince,
   demoConversation,
   demoOldTeamMessage,
   endViewSessions,
@@ -112,6 +115,15 @@ const log = (page: Page) =>
   page.getByRole("log", { name: c.conversation.log }).filter({ visible: true });
 const notFoundTitle = (page: Page) =>
   page.getByRole("heading", { level: 1, name: he.app.notFound.title });
+/** What has the keyboard's focus now, and its words. */
+const focused = (page: Page) =>
+  page.evaluate(() => {
+    const active = document.activeElement;
+    return {
+      tag: active?.tagName.toLowerCase() ?? null,
+      words: active?.textContent?.trim() ?? "",
+    };
+  });
 
 async function send(page: Page, words: string) {
   await composer(page).fill(words);
@@ -602,6 +614,128 @@ test("a message that didn't go is said, and each message's actions say whose and
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
+// Accessibility, part 7. The kitchen removed while Shiran writes there: she
+// runs the chat, so she still reads it, closed. Her message doesn't go
+// ("closed"), the screen is drawn again with the reason, and that line
+// takes the focus the field had; nothing says "אפשר לנסות שוב", nor the
+// reason a second time. Tried again from its bubble while the chat is
+// closed, nothing on screen changes, so the conversation says it didn't go
+// and why. Nothing is written; the kitchen comes back after.
+test("a message sent as its chat closes says only why, and trying it again there says it didn't go", async ({
+  page,
+}) => {
+  const words = "e2e: written as the kitchen closed";
+  const kitchen = await demoConversation({ kind: "department", name: KITCHEN });
+  expect(kitchen).not.toBeNull();
+  await enterAs(page, "manager");
+  await page.goto(`/chat/${kitchen}`);
+  await expect(
+    page.getByRole("heading", { level: 1, name: KITCHEN }),
+  ).toBeVisible();
+  await composer(page).fill(words);
+  await noteIfSaid(page, c.conversation.notSent);
+  await noteIfSaid(page, c.conversation.closed);
+  const since = await databaseNow();
+  const reopen = await closeDemoDepartment(KITCHEN);
+  try {
+    await sendButton(page).click();
+    await expect(composer(page)).toHaveCount(0);
+    await expect
+      .poll(() => focused(page))
+      .toEqual({ tag: "p", words: c.conversation.closed });
+    const again = log(page).getByRole("button", {
+      name: c.conversation.failed,
+    });
+    await expect(again).toBeVisible();
+    await pastDrawing(page);
+    expect(await wasSaid(page, c.conversation.notSent)).toBe(false);
+    expect(await wasSaid(page, c.conversation.closed)).toBe(false);
+
+    // Tried again from the keyboard: refused again, and said so.
+    await noteIfSaid(page, c.conversation.notSentBlocked);
+    await again.focus();
+    await page.keyboard.press("Enter");
+    await expect
+      .poll(() => wasSaid(page, c.conversation.notSentBlocked))
+      .toBe(true);
+    await expect(again).toBeVisible();
+    expect(await wasSaid(page, c.conversation.notSent)).toBe(false);
+    expect(await demoChatMessagesSince(kitchen ?? "", since)).toBe(0);
+  } finally {
+    await reopen();
+  }
+});
+
+// The kitchen removed while Noa, who is in it, writes there: she no longer
+// reads it, so her message doesn't go ("noAccess") and the chat's
+// not-found screen takes its place, with no composer to say why: its title
+// takes the focus that went with the field. Nothing is written.
+test("a message sent as its chat goes from the reader gives the not-found title the focus", async ({
+  page,
+}) => {
+  const words = "e2e: written as the kitchen went";
+  const kitchen = await demoConversation({ kind: "department", name: KITCHEN });
+  expect(kitchen).not.toBeNull();
+  await enterAs(page, "worker");
+  await page.goto(`/chat/${kitchen}`);
+  await expect(
+    page.getByRole("heading", { level: 1, name: KITCHEN }),
+  ).toBeVisible();
+  await composer(page).fill(words);
+  const since = await databaseNow();
+  const reopen = await closeDemoDepartment(KITCHEN);
+  try {
+    await sendButton(page).click();
+    await expect(notFoundTitle(page).filter({ visible: true })).toBeFocused();
+    expect(await demoChatMessagesSince(kitchen ?? "", since)).toBe(0);
+  } finally {
+    await reopen();
+  }
+});
+
+// The kitchen removed while Shiran's screen of it is kept hidden for going
+// back, left with the focus in its field: opened again from the list, it is
+// drawn so from the start. Its title takes the focus, as a conversation
+// opened from the list does on a phone, never the line that says why
+// nobody writes there, and that line isn't said.
+test("a chat that closed while kept for going back opens with its title focused, and says nothing", async ({
+  page,
+}) => {
+  const kitchen = await demoConversation({ kind: "department", name: KITCHEN });
+  expect(kitchen).not.toBeNull();
+  await enterAs(page, "manager");
+  await chatTab(page).click();
+  await expect(page).toHaveURL(/\/chat$/);
+  const kitchenRow = page
+    .locator(`a[href="/chat/${kitchen}"]`)
+    .filter({ visible: true })
+    .first();
+  await kitchenRow.click();
+  await expect(page).toHaveURL(new RegExp(`/chat/${kitchen}$`));
+  await composer(page).click();
+  await expect(composer(page)).toBeFocused();
+  const reopen = await closeDemoDepartment(KITCHEN);
+  try {
+    await page.goBack();
+    await expect(page).toHaveURL(/\/chat$/);
+    await noteIfSaid(page, c.conversation.closed);
+    await kitchenRow.click();
+    await expect(page).toHaveURL(new RegExp(`/chat/${kitchen}$`));
+    await expect(
+      page.getByText(c.conversation.closed).filter({ visible: true }).first(),
+    ).toBeVisible();
+    await expect(
+      page
+        .getByRole("heading", { level: 1, name: KITCHEN })
+        .filter({ visible: true }),
+    ).toBeFocused();
+    await pastDrawing(page);
+    expect(await wasSaid(page, c.conversation.closed)).toBe(false);
+  } finally {
+    await reopen();
+  }
+});
+
 /**
  * Holds a chat screen on its way, as a slow phone network does: the answer
  * to its navigation waits until `release`. Never a prefetch, so what Next
@@ -636,8 +770,9 @@ async function holdScreen(page: Page, path: string) {
 // conversation; one run, on the phone's device, as the rest of this file).
 // A chat opened from the list, by the keyboard, whose focus stays on the
 // row pressed, gives its title the focus: every chat has the same page
-// title, so nothing else says it opened. A focus moved on while a screen
-// loads stays where it was put, on another row of the list too. A chat
+// title, so nothing else says it opened; the announcements' title too. A
+// focus moved on while a screen loads stays where it was put, on another
+// row of the list too. A chat
 // chosen in "שליחת הודעה" beside it takes the focus to its title: while it
 // is on its way the sheet's button holds it, never the chat being left or
 // a skeleton; the chat on screen chosen again, at once. Closed with no one
@@ -685,6 +820,17 @@ test("beside the list, a chat opened from it or chosen in a new message takes th
   await expect(title(c.announcement.page.title)).toBeVisible();
   await pastDrawing(page);
   await expect(kitchenRow).toBeFocused();
+
+  // That row pressed: the kitchen, kept for going back, gives its title the
+  // focus again. Then the announcements' row, nothing held: their title
+  // takes the focus from it, as a conversation's does (ChatPageHeader).
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(new RegExp(`/chat/${kitchen}$`));
+  await expect(title(KITCHEN)).toBeFocused();
+  await row("/chat/announcements").focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/chat\/announcements$/);
+  await expect(title(c.announcement.page.title)).toBeFocused();
 
   const newMessage = page
     .getByRole("button", { name: c.list.newMessage, exact: true })

@@ -2103,6 +2103,29 @@ export async function archiveDemoDepartment(name: string): Promise<void> {
       and archived_at is null`;
 }
 
+/**
+ * Removes one of the demo restaurant's own departments for a while, as the
+ * screen removes one: its group closes (written by the trigger), and only
+ * those who run the chat still read it. Returns what brings that same
+ * department back, its group open again; call it in a `finally`, since
+ * clearDemoChat leaves departments as they are.
+ */
+export async function closeDemoDepartment(
+  name: string,
+): Promise<() => Promise<void>> {
+  const closed = await sql<{ id: string }[]>`
+    update public.departments set archived_at = now()
+    where business_id = ${DEMO_RESTAURANT} and name = ${name}
+      and archived_at is null
+    returning id`;
+  const ids = closed.map((row) => row.id);
+  return async () => {
+    if (ids.length === 0) return;
+    await sql`update public.departments set archived_at = null
+      where id in ${sql(ids)}`;
+  };
+}
+
 const DEMO_SHOP = "00000000-0000-4000-b000-000000000002";
 const SHOP_OWNER = "00000000-0000-4000-a000-000000000007";
 

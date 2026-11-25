@@ -38,12 +38,16 @@ const focused = (page: Page) =>
 // sending there closes the chat, as one removed while someone wrote. The
 // line that says why takes the focus the field had, and isn't said twice;
 // closed with the focus elsewhere (the gallery's own button), its words
-// are said where the focus is, which stays. The button's words say what a
-// press does now: open the chat while it is closed, close it while open.
+// are said where the focus is, which stays. Closed as the gallery opens,
+// nothing is said. The button's words say what a press does now: open the
+// chat while it is closed, close it while open.
 test("the composer gives its line the focus when the chat closes while writing, and says it when the focus is elsewhere", async ({
   page,
 }) => {
   await page.goto("/design");
+  // From before the page has surely hydrated: drawn closed from the start,
+  // its reason is never said.
+  await noteIfSaid(page, c.conversation.closed);
   // Its part of the gallery: the words over it, the composer, the button.
   const part = page
     .getByText(he.design.chatClosedText, { exact: true })
@@ -70,6 +74,8 @@ test("the composer gives its line the focus when the chat closes while writing, 
   await expect(toClose).toBeFocused();
   await expect(toOpen).toHaveCount(0);
   await expect(field).toBeVisible();
+  // Hydrated by now (the button answered): nothing was said on load.
+  expect(await wasSaid(page, c.conversation.closed)).toBe(false);
 
   // Written and sent: the chat closes, and its line has the focus.
   await field.fill("נתראה בשש");
@@ -221,6 +227,60 @@ test("the documents table gives the row back its focus, and says what the filter
   await expect(page).toHaveURL(/\?person=noa$/);
   await expect.poll(() => focusWhenSaid(page)).toBe(true);
   await expect(table.locator("tbody tr")).toHaveCount(3);
+});
+
+// The desktop's table is there in every shape, hidden below 1280px. A
+// person chosen in the tablet's list (a link to `?person=noa`) is then the
+// person its filter reads, unsaid, once the screen is wide enough for it
+// (an iPad turned on its side): the menu says her name, and the next change
+// of a filter is counted again. Noa's documents: three, one a sick note.
+test("the desktop's filters take the person chosen in the tablet's list, and still say their count", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "the desktop's table");
+  const count = (n: number) =>
+    heT("app.chat.documents.office.filters.count", { count: n });
+  const menu = (field: string, value: string) =>
+    page.getByRole("button", { name: `${field}: ${value}`, exact: true });
+  const table = page
+    .getByRole("table", { name: d.office.table.caption })
+    .filter({ visible: true });
+  const person = d.office.filters.person;
+  const category = d.office.filters.category;
+
+  await page.setViewportSize({ width: 820, height: 1180 });
+  await page.goto("/design/chat/documents?state=seen");
+  // Noa chosen in the tablet's list: nothing said of the table hidden.
+  await noteIfSaid(page, count(3));
+  await page
+    .locator('a[href="/design/chat/documents?person=noa"]')
+    .filter({ visible: true })
+    .click();
+  await expect(page).toHaveURL(/\?person=noa$/);
+  await expect(
+    page.getByRole("heading", {
+      name: heT("app.chat.documents.office.personTitle", { name: "נועה כהן" }),
+    }),
+  ).toBeVisible();
+  await pastDrawing(page);
+  expect(await wasSaid(page, count(3))).toBe(false);
+
+  // Turned on its side: the table reads Noa's three, and its menu says so.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(table.locator("tbody tr")).toHaveCount(3);
+  await expect(menu(person, "נועה כהן")).toBeVisible();
+  // Her sick notes: one, said once the menu's button has the focus back.
+  await noteFocusWhenSaid(
+    page,
+    count(1),
+    `[aria-label="${category}: ${d.categories.sick_note}"]`,
+  );
+  await menu(category, d.office.filters.allCategories).click();
+  await page
+    .getByRole("menuitemradio", { name: d.categories.sick_note })
+    .click();
+  await expect.poll(() => focusWhenSaid(page)).toBe(true);
+  await expect(table.locator("tbody tr")).toHaveCount(1);
 });
 
 // The send form's hints, read with their controls: what asking for "קראתי

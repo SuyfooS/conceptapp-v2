@@ -521,6 +521,20 @@ function DesktopDocuments({
     counting.current();
     counting.current = whenFocused(() => announce(words));
   });
+  // The person the menus here last asked the address for. The address moved
+  // anywhere else (a person chosen in the tablet's list, then the screen
+  // widened, or the way back): the person filter follows it, unsaid, so the
+  // menu reads as the address does and the next change is counted again.
+  const asked = useRef(data.person);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the address is what moves it
+  useEffect(() => {
+    if (filtersRead({ person: asked.current }, data.person)) return;
+    asked.current = data.person;
+    if (filtersRead(filters, data.person)) return;
+    const next = { ...filters, person: data.person };
+    counted.current = next;
+    setFilters(next);
+  }, [data.person]);
   const filtered =
     filters.person !== null ||
     filters.category !== null ||
@@ -540,6 +554,7 @@ function DesktopDocuments({
    * screen reads all of theirs, however old, and the other shapes follow.
    */
   function choosePerson(person: string | null) {
+    asked.current = person;
     setFilters((now) => ({ ...now, person }));
     router.replace(person === null ? paths.list : paths.person(person), {
       scroll: false,
@@ -640,6 +655,7 @@ function DesktopDocuments({
               label={t("office.filters.clear")}
               filters={root}
               onClear={() => {
+                asked.current = null;
                 setFilters({ person: null, category: null, state: "all" });
                 if (filters.person !== null) {
                   router.replace(paths.list, { scroll: false });

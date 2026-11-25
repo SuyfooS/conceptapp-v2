@@ -1118,8 +1118,12 @@ export function ConversationScreen(props: Props) {
       setNotice({ of: "conversation", key: "businessChanged" });
     }
     // The chat closed, or the other person left: the screen says so now,
-    // where the field was (the Composer says why writing stopped).
+    // where the field was (the Composer says why writing stopped), or the
+    // not-found screen takes the chat's place and its title the focus.
+    // Closed already as this went (a message that didn't go, tried again
+    // from its bubble), nothing on screen changes: said here.
     else if (result.failure === "closed" || result.failure === "noAccess") {
+      if (props.blocked) say(t("conversation.notSentBlocked"));
       router.refresh();
     }
     // No line over the field says it, and the bubble's way to try again is
