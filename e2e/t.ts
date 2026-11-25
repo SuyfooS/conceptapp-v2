@@ -13,7 +13,18 @@ export const heT = createTranslator({ locale: "he", messages: he });
 /** The same sentences in English, for a twin drawn in English (`?lang=en`). */
 export const enT = createTranslator({ locale: "en", messages: en });
 
+/**
+ * The whole name of an UndoRow's "ביטול" whose own focus says its words (it
+ * takes the focus, or the screen brings it there: `namedByWords` in
+ * packages/ui/undo-row.tsx): "ביטול: הרשימה נסגרה".
+ */
+export const undoNamed = (message: string) =>
+  heT("ui.undoRow.named", { message });
+
 const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** The name of any such "ביטול", whatever it says: only an UndoRow's. */
+export const UNDO_NAMED = new RegExp(`^${literal(undoNamed(""))}`);
 
 /**
  * What a tab says after its comma while `count` things on it need the

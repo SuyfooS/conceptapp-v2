@@ -15,6 +15,11 @@ import { Button } from "@ui/button";
 import { Card } from "@ui/card";
 import { ChoiceMenu } from "@ui/choice-menu";
 import { FieldRow } from "@ui/field-row";
+import {
+  type FocusCandidate,
+  firstOnScreen,
+  inViewWhenFocused,
+} from "@ui/focus-after";
 import { onLeavingBusiness } from "@ui/leaving-business";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
@@ -28,6 +33,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { NoteView } from "../../clock/pay/note-view";
 import type { NotePayView } from "../../clock/pay/pay-types";
+import { type HeldTimer, heldTimer } from "../../held-timer";
 import type {
   AccessActions,
   AccessData,
@@ -35,34 +41,29 @@ import type {
   AccessPaths,
   AccessPersonRow,
 } from "./access-types";
-
-/** How long the way back stays, before a removal is written. */
-const UNDO_MS = 6000;
+import { ACCESS_UNDO_MS, accessRemove, createUndoSlot } from "./access-undo";
 
 /**
  * A way back. `key` is what it undoes (a role's switch as it turned, a
  * person), so another while it is up is a row of its own (UndoRow's `key`).
+ * `after` is where the focus goes when the row goes while it holds it
+ * (undone, or its time up), the page's title after them.
  */
-type Undo = { key: string; message: string; run: () => void };
+type Undo = {
+  key: string;
+  message: string;
+  run: () => void;
+  after: () => readonly FocusCandidate[];
+};
 
-/** One way back, shown for six seconds under what it undoes. */
+/**
+ * One way back, shown for six seconds under what it undoes, waiting while
+ * it is being reached (`createUndoSlot`).
+ */
 function useUndoSlot() {
   const [shown, setShown] = useState<Undo | null>(null);
-  const timer = useRef<number | null>(null);
-  function clear() {
-    if (timer.current !== null) window.clearTimeout(timer.current);
-    timer.current = null;
-    setShown(null);
-  }
-  function show(next: Undo) {
-    if (timer.current !== null) window.clearTimeout(timer.current);
-    setShown(next);
-    timer.current = window.setTimeout(() => {
-      timer.current = null;
-      setShown((now) => (now === next ? null : now));
-    }, UNDO_MS);
-  }
-  return { shown, show, clear };
+  const [slot] = useState(() => createUndoSlot<Undo>(ACCESS_UNDO_MS, setShown));
+  return { shown, show: slot.show, clear: slot.clear, waits: slot.waits };
 }
 
 /**
@@ -87,7 +88,12 @@ function useUndoSlot() {
  * where that role sees it (the roles plan's R11e): they are offered here,
  * and while anyone offered is in one on a role that sees pay, a line under
  * the switches names it, the switch it isn't under, and where to give them
- * access, said as it appears (a switch turned on, a removal).
+ * access, said as it appears (a switch turned on, a removal). A person's
+ * "הסרה" goes with their row, so the undo's "ביטול" takes the focus as it
+ * appears; each way back, and the removal it holds, waits while it is being
+ * reached (accessibility, part 8). Undone, the focus goes back to the
+ * person's "הסרה", or the role's switch; its time up, to the title of its
+ * section.
  */
 export function AccessView({
   data,
@@ -120,10 +126,14 @@ export function AccessView({
     null,
   );
   // A removal waiting for its six seconds: written then, or sooner when the
-  // page is hidden or the screen goes. `holding` is the same, for the effect
-  // that listens while one waits.
-  const pending = useRef<{ person: string; timer: number } | null>(null);
+  // page is hidden or the screen goes. Its wait stops while its "ביטול" is
+  // being reached. `holding` is the same, for the effect that listens while
+  // one waits.
+  const pending = useRef<{ person: string; wait: HeldTimer } | null>(null);
   const [holding, setHolding] = useState<string | null>(null);
+  // Each section's title, where the focus goes once its way back has gone.
+  const rolesTitle = useRef<HTMLHeadingElement>(null);
+  const personalTitle = useRef<HTMLHeadingElement>(null);
 
   const nameOf = (person: AccessPersonRow) => person.name ?? t("noName");
   const disabled = data.viewOnly;
@@ -224,6 +234,11 @@ export function AccessView({
             if (back) say(t("done.undone"));
           });
         },
+        // The switch stays where it was: back on it, else the section.
+        after: () => [
+          document.getElementById(`${id}-${role}`),
+          rolesTitle.current,
+        ],
       });
     });
   }
@@ -232,7 +247,7 @@ export function AccessView({
   function releasePending() {
     const held = pending.current;
     if (!held) return null;
-    window.clearTimeout(held.timer);
+    held.wait.clear();
     pending.current = null;
     setHolding(null);
     return held.person;
@@ -274,7 +289,7 @@ export function AccessView({
     markPersonal(person.userId, false);
     pending.current = {
       person: person.userId,
-      timer: window.setTimeout(commitPending, UNDO_MS),
+      wait: heldTimer(ACCESS_UNDO_MS, () => void commitPending()),
     };
     setHolding(person.userId);
     personUndo.show({
@@ -286,7 +301,26 @@ export function AccessView({
           })
         : t("done.removed", { name: nameOf(person) }),
       run: () => undoRemoval(person),
+      // Back in the list: their "הסרה", maybe far above, brought into view
+      // as it takes the focus. Written, they are gone: the section's title.
+      after: () => [
+        inViewWhenFocused(firstOnScreen([accessRemove(person.userId)])),
+        personalTitle.current,
+      ],
     });
+  }
+
+  /**
+   * The "ביטול" of a removed person is being reached, or no longer: the row
+   * and the removal it holds wait as long. A row going as the next person is
+   * removed changes nothing of the next one's.
+   */
+  function personWaits(personId: string, waiting: boolean) {
+    personUndo.waits(personId, waiting);
+    const held = pending.current;
+    if (held?.person !== personId) return;
+    if (waiting) held.wait.pause();
+    else held.wait.resume();
   }
 
   function add(personId: string) {
@@ -346,6 +380,8 @@ export function AccessView({
     [],
   );
 
+  const roleShown = roleUndo.shown;
+  const personShown = personUndo.shown;
   const count = payHolderCount(people, roles);
   const personal = people.filter((p) => p.personal);
   const candidates = people.filter((p) => canGetPersonalPay(p, roles, data.me));
@@ -388,7 +424,7 @@ export function AccessView({
       ) : null}
 
       <div className="flex flex-col gap-6 md:grid md:grid-cols-2 md:items-start md:gap-8">
-        <PageSection title={t("groups.roles")}>
+        <PageSection title={t("groups.roles")} headingRef={rolesTitle}>
           <ListGroup>
             {fixed("owner")}
             {fixed("accountant")}
@@ -407,11 +443,16 @@ export function AccessView({
               </FieldRow>
             ))}
           </ListGroup>
-          {roleUndo.shown ? (
+          {roleShown ? (
             <UndoRow
-              key={roleUndo.shown.key}
-              message={roleUndo.shown.message}
-              onUndo={roleUndo.shown.run}
+              key={roleShown.key}
+              message={roleShown.message}
+              onUndo={roleShown.run}
+              // The switch keeps the focus; reached, the row waits.
+              onWaitingChange={(waiting) =>
+                roleUndo.waits(roleShown.key, waiting)
+              }
+              focusAfter={roleShown.after}
             />
           ) : null}
           <p className="px-1 text-ink-2">{t("count", { count })}</p>
@@ -452,7 +493,7 @@ export function AccessView({
           ) : null}
         </PageSection>
 
-        <PageSection title={t("groups.personal")}>
+        <PageSection title={t("groups.personal")} headingRef={personalTitle}>
           {personal.length > 0 ? (
             <ListGroup>
               {personal.map((person) => (
@@ -482,6 +523,9 @@ export function AccessView({
                           remove: t("personal.remove"),
                           name: nameOf(person),
                         })}
+                        // Found again by its person once "ביטול" brings
+                        // them back (`accessRemove`).
+                        data-access-remove={person.userId}
                         onClick={() => remove(person)}
                       >
                         {t("personal.remove")}
@@ -498,11 +542,18 @@ export function AccessView({
               </p>
             </Card>
           )}
-          {personUndo.shown ? (
+          {personShown ? (
             <UndoRow
-              key={personUndo.shown.key}
-              message={personUndo.shown.message}
-              onUndo={personUndo.shown.run}
+              // Each person removed a row of its own, which takes the focus.
+              key={personShown.key}
+              message={personShown.message}
+              onUndo={personShown.run}
+              // "הסרה" went with the person's row.
+              autoFocus
+              onWaitingChange={(waiting) =>
+                personWaits(personShown.key, waiting)
+              }
+              focusAfter={personShown.after}
             />
           ) : null}
           {canAdd ? (

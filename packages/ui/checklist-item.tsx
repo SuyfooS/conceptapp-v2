@@ -22,9 +22,20 @@ import { useFocusWhenGone } from "./use-focus-after";
 
 export type ChecklistItemKind = "check" | "number" | "note" | "photo";
 
+/**
+ * The attribute an item's root carries (`itemId`): how a screen finds its
+ * buttons again, its label being no one's own (two items can share one).
+ */
+export const LIST_ITEM = "data-list-item";
+
 export type ChecklistItemProps = {
   kind: ChecklistItemKind;
   label: string;
+  /**
+   * The item's id, on its root (`data-list-item`, `LIST_ITEM`): how the
+   * screen finds its photo's buttons again, to give them the focus back.
+   */
+  itemId?: string;
   /** A line under the label: how to do it, the range, what was asked for. */
   hint?: ReactNode;
   required: boolean;
@@ -161,6 +172,7 @@ const rowClass =
 export function ChecklistItem({
   kind,
   label,
+  itemId,
   hint,
   required,
   optionalLabel,
@@ -386,13 +398,18 @@ export function ChecklistItem({
       </div>
     );
     return counted || historyRow ? (
-      <div className={rowClass}>
+      <div className={rowClass} data-list-item={itemId}>
         {row}
         {counted}
         {historyRow}
       </div>
     ) : (
-      <div className={cn(rowClass, "flex-row items-center gap-3")}>{row}</div>
+      <div
+        className={cn(rowClass, "flex-row items-center gap-3")}
+        data-list-item={itemId}
+      >
+        {row}
+      </div>
     );
   }
 
@@ -406,7 +423,7 @@ export function ChecklistItem({
   ) : null;
 
   return (
-    <div className={rowClass}>
+    <div className={rowClass} data-list-item={itemId}>
       <div className="flex items-start gap-3">
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="flex items-center gap-2">

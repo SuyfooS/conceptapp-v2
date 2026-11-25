@@ -5,7 +5,11 @@ import { describe, expect, it } from "vitest";
 // The words a screen's provider gives it.
 import en from "../../messages/en.json";
 import he from "../../messages/he.json";
-import { ChecklistItem, type ChecklistItemProps } from "./checklist-item";
+import {
+  ChecklistItem,
+  type ChecklistItemProps,
+  LIST_ITEM,
+} from "./checklist-item";
 
 /*
  * A list's item, heard (accessibility, part 1): a number's range is one
@@ -156,5 +160,51 @@ describe("a photo item", () => {
   it("offers its remove as before once it is saved", () => {
     const button = removeButton(photo(null)) ?? "";
     expect(button).not.toContain("aria-disabled=");
+  });
+});
+
+// Two items can share a label: a screen finds an item's buttons by its id,
+// on its root (accessibility, part 8, the photo's way back).
+describe("an item's id", () => {
+  const root = (html: string) => html.match(/^<div[^>]*>/)?.[0] ?? "";
+
+  it(`is on its root, whatever its kind (${LIST_ITEM})`, () => {
+    const kinds: Partial<ChecklistItemProps>[] = [
+      { kind: "check", check: { checked: false, onToggle: () => {} } },
+      {
+        kind: "check",
+        history: {
+          line: "Noa · 07:42",
+          label: "What happened",
+          onOpen: () => {},
+        },
+      },
+      {
+        kind: "note",
+        note: {
+          value: "",
+          onValueChange: () => {},
+          onCommit: () => {},
+          fieldLabel: "Main fridge",
+        },
+      },
+      {
+        kind: "photo",
+        photo: {
+          src: "/list-photo.webp",
+          alt: "The fridge's photo",
+          remove: { label: "Remove the photo", onRemove: () => {} },
+        },
+      },
+    ];
+    for (const props of kinds) {
+      expect(root(draw({ ...props, itemId: "item-7" }))).toContain(
+        `${LIST_ITEM}="item-7"`,
+      );
+    }
+  });
+
+  it("is not drawn without one", () => {
+    expect(draw({})).not.toContain(LIST_ITEM);
   });
 });

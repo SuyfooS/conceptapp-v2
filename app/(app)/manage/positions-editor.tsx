@@ -5,16 +5,21 @@ import {
   type Position,
   positions as positionsSchema,
 } from "@domain/staffing";
+import { firstOnScreen, focusLost, inViewWhenFocused } from "@ui/focus-after";
 import { IconButton } from "@ui/icon-button";
 import { ListGroup } from "@ui/list-row";
 import { PageSection } from "@ui/page";
 import { UndoRow } from "@ui/undo-row";
 import { Plus, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useRef, useState } from "react";
+import { byAttribute } from "./editor-focus";
 
 const NAME_MAX = 40;
 const POSITIONS_MAX = 30;
+
+/** The attribute each position's remove button carries: its key. */
+const POSITION_REMOVE = "data-position-remove";
 
 const rowClass =
   "relative flex min-h-[3.25rem] items-center gap-1 ps-4 pe-1.5 not-first:before:absolute not-first:before:start-4 not-first:before:end-0 not-first:before:top-0 not-first:before:h-px not-first:before:bg-line not-first:before:content-['']";
@@ -24,7 +29,10 @@ const inputClass =
 /**
  * The jobs people do at this business, in its own words. Each is a name to type
  * over, and a person keeps their shift when the job they had on it goes. Whatever
- * doesn't save comes back as it was, with the way back still there.
+ * doesn't save comes back as it was, with the way back still there. The
+ * remove button goes with its row, so "ביטול" takes the focus as it appears;
+ * undone, the focus is on the position's remove button again, not its name,
+ * a field a phone would open its keyboard for (accessibility, part 8).
  */
 export function PositionsEditor({
   title,
@@ -44,10 +52,16 @@ export function PositionsEditor({
   const [name, setName] = useState("");
   // The name someone tried that another position already has.
   const [taken, setTaken] = useState<string | null>(null);
+  // The way back of the last removal; `focus` when its "ביטול" takes the
+  // focus as it appears, `quiet` when it was up already and nothing says it
+  // again as it appears (no news).
   const [removed, setRemoved] = useState<{
     position: Position;
     index: number;
+    focus: boolean;
+    quiet: boolean;
   } | null>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
 
   const named = (text: string, except?: string) =>
     positions.some(
@@ -92,15 +106,26 @@ export function PositionsEditor({
     return true;
   }
 
+  /**
+   * Its trash button goes with its row: "ביטול" takes the focus. Refused,
+   * the position is back, and so is the earlier way back, which takes no
+   * focus (this one's row, going, gives it back to the trash button) and
+   * says nothing as it appears: it was up already, about another position.
+   */
   async function remove(index: number) {
     const position = positions[index];
     if (!position) return;
     const before = removed;
-    setRemoved({ position, index });
+    setRemoved({ position, index, focus: true, quiet: false });
     const saved = await onChange(positions.filter((_, at) => at !== index));
-    if (!saved) setRemoved(before);
+    if (!saved) setRemoved(before && { ...before, focus: false, quiet: true });
   }
 
+  /**
+   * Refused, the position goes again, and its way back is there again: its
+   * "ביטול" takes the focus only from the trash button about to go, or when
+   * nothing has it, never from where the person went on meanwhile.
+   */
   async function undo() {
     if (!removed) return;
     const { position, index } = removed;
@@ -108,11 +133,21 @@ export function PositionsEditor({
     if (positions.some((other) => other.key === position.key)) return;
     const next = [...positions];
     next.splice(index, 0, position);
-    if (!(await onChange(next))) setRemoved({ position, index });
+    if (await onChange(next)) return;
+    const onTrash =
+      document.activeElement?.matches(
+        byAttribute(POSITION_REMOVE, position.key),
+      ) === true;
+    setRemoved({
+      position,
+      index,
+      focus: focusLost() || onTrash,
+      quiet: false,
+    });
   }
 
   return (
-    <PageSection title={title}>
+    <PageSection title={title} headingRef={heading}>
       <ListGroup>
         {positions.length === 0 ? (
           <p className="px-4 py-3.5 text-ink-2">
@@ -143,6 +178,9 @@ export function PositionsEditor({
                 label={t("remove", { name: position.name })}
                 icon={<Trash2 />}
                 className="text-ink-2"
+                // Found again by its key once "ביטול" brings it back
+                // (POSITION_REMOVE).
+                data-position-remove={position.key}
                 onClick={() => remove(index)}
               />
             )}
@@ -179,10 +217,24 @@ export function PositionsEditor({
       ) : null}
       {removed ? (
         <UndoRow
-          // Each removal a row of its own, said afresh.
+          // Each removal a row of its own: another while this one is up
+          // takes the focus again.
           key={removed.position.key}
           message={t("removed", { name: removed.position.name })}
           onUndo={undo}
+          // The row went with the button pressed (`focus`).
+          autoFocus={removed.focus}
+          quiet={removed.quiet}
+          // Undone, the position is back where it was, maybe far above this
+          // row: its remove button takes the focus, brought into view.
+          focusAfter={() => [
+            inViewWhenFocused(
+              firstOnScreen([
+                byAttribute(POSITION_REMOVE, removed.position.key),
+              ]),
+            ),
+            heading.current,
+          ]}
         />
       ) : null}
       {hint ? <p className="px-1 text-ink-2 text-sm">{hint}</p> : null}

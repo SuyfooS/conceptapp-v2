@@ -104,7 +104,8 @@
       "close": "Close"
     },
     "undoRow": {
-      "undo": "Undo"
+      "undo": "Undo",
+      "named": "Undo: {message}"
     },
     "checklist": {
       "checked": "Ticked",
@@ -5375,6 +5376,7 @@
         "finished": "The list is finished",
         "cancelled": "The list was cancelled",
         "reopen": "Open it again",
+        "reopened": "The list is open again",
         "fix": {
           "action": "Fix the list",
           "title": "Fixing a closed list",

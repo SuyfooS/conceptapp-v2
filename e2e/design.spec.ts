@@ -20,7 +20,7 @@ import { hearFileCheck } from "./file-watch";
 import { minimalPdf } from "./pdf";
 import { cameraPhoto } from "./photo";
 import { stubAudio } from "./station-audio";
-import { enT, heT } from "./t";
+import { enT, heT, undoNamed } from "./t";
 import { expect, type Locator, type Page, test } from "./test";
 import { readWorkbook, unzip } from "./unzip";
 
@@ -2653,7 +2653,7 @@ test("the gallery's undo row takes the focus, waits while it has it, and gives i
   await expect(row).toBeVisible();
   await expect(remove).toHaveCount(0);
   await expect(undo).toBeFocused();
-  await expect(undo).toHaveAccessibleDescription(removed);
+  await expect(undo).toHaveAccessibleName(undoNamed(removed));
   await expect(page.locator('[data-announcer="polite"]')).not.toContainText(
     removed,
   );
@@ -2718,7 +2718,7 @@ test("the gallery's undo row starts again for a second removal while the first i
   await removeFirst.focus();
   await page.keyboard.press("Enter");
   await expect(undo).toBeFocused();
-  await expect(undo).toHaveAccessibleDescription(removedFirst);
+  await expect(undo).toHaveAccessibleName(undoNamed(removedFirst));
 
   // Back to the other row's remove, pressed with the first's undo still up.
   await page.keyboard.press("Shift+Tab");
@@ -2726,7 +2726,7 @@ test("the gallery's undo row starts again for a second removal while the first i
   await page.keyboard.press("Enter");
   await expect(undo).toHaveCount(1);
   await expect(undo).toBeFocused();
-  await expect(undo).toHaveAccessibleDescription(removedSecond);
+  await expect(undo).toHaveAccessibleName(undoNamed(removedSecond));
   await expect(page.locator('[data-announcer="polite"]')).not.toContainText(
     removedSecond,
   );
@@ -2855,7 +2855,7 @@ test("the person demo's undos take the focus, wait while they have it, and give 
   await remove.focus();
   await page.keyboard.press("Enter");
   await expect(undoRemoval).toBeFocused();
-  await expect(undoRemoval).toHaveAccessibleDescription(removed);
+  await expect(undoRemoval).toHaveAccessibleName(undoNamed(removed));
   await page.waitForTimeout(9_000);
   await expect(undoRemoval).toBeVisible();
   await page.keyboard.press("Enter");
@@ -4239,6 +4239,9 @@ test("the activity demo names the app for a list it closed", async ({
 
 // The lists demo sends and takes a sending back, keeps its five minutes to
 // take a finish back after it hydrates, and reads a freezer below zero.
+// Lists, reached right after the press that sent, gives "ביטול" the focus,
+// which says where the list went, and gives it back once taking the list
+// back was refused (accessibility, part 8).
 test("the lists demo sends, takes back, and keeps a finished list as it was", async ({
   page,
 }) => {
@@ -4254,23 +4257,45 @@ test("the lists demo sends, takes back, and keeps a finished list as it was", as
   await expect(page).toHaveURL(
     /\/design\/shell\/lists\?sent=list-floor-opening$/,
   );
-  await page
+  const sent = l.send.sent.replace("{to}", "לאולם");
+  const takeBack = page
     .getByRole("status")
-    .filter({ hasText: l.send.sent.replace("{to}", "לאולם") })
-    .getByRole("button", { name: he.app.manage.undo })
-    .click();
+    .filter({ hasText: sent })
+    .getByRole("button", { name: he.app.manage.undo });
+  await expect(takeBack).toBeFocused();
+  // Refused (the connection dropped): the row stays and says so, and its
+  // "ביטול", disabled while it waited, has the focus back, before the line
+  // that says so comes, which the focus's move would cut off.
+  const takingBack = (url: URL) => url.pathname === "/design/shell/lists";
+  await page.route(takingBack, async (route) => {
+    if (route.request().method() === "POST") await route.abort();
+    else await route.fallback();
+  });
+  await noteFocusWhenSaid(
+    page,
+    l.send.cancelFailed,
+    "button",
+    he.app.manage.undo,
+  );
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByRole("alert").filter({ hasText: l.send.cancelFailed }),
+  ).toBeVisible();
+  await expect(takeBack).toBeFocused();
+  expect(await focusWhenSaid(page)).toBe(true);
+  await page.unroute(takingBack);
+  await takeBack.click();
   await expect(page).toHaveURL(/\/design\/shell\/lists$/);
   await expect(
     page.getByRole("status").filter({ hasText: l.send.cancelled }),
   ).toBeVisible();
 
   await page.goto("/design/shell/lists/list-kitchen-opening?state=finished");
-  await expect(
-    page
-      .getByRole("status")
-      .filter({ hasText: l.list.finished })
-      .getByRole("button", { name: he.app.manage.undo }),
-  ).toBeVisible();
+  const finishUndo = page
+    .getByRole("status")
+    .filter({ hasText: l.list.finished })
+    .getByRole("button", { name: he.app.manage.undo });
+  await expect(finishUndo).toBeVisible();
   await expect(page.getByRole("button", { name: l.list.reopen })).toHaveCount(
     0,
   );
@@ -4281,6 +4306,31 @@ test("the lists demo sends, takes back, and keeps a finished list as it was", as
   await expect(
     page.getByLabel(l.list.readingOf.replace("{label}", "מקפיא")),
   ).toHaveValue("-19");
+
+  // Taking the finish back refused (the request dropped): its "ביטול",
+  // disabled while it waited, has the focus back, and only then does the
+  // toast say why (accessibility, part 8).
+  await page.waitForLoadState("networkidle");
+  const reopening = (url: URL) =>
+    url.pathname === "/design/shell/lists/list-kitchen-opening";
+  await page.route(reopening, async (route) => {
+    if (route.request().method() === "POST") await route.abort();
+    else await route.fallback();
+  });
+  await noteFocusWhenSaid(
+    page,
+    l.list.failed.failed,
+    "button",
+    he.app.manage.undo,
+  );
+  await finishUndo.focus();
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByRole("status").filter({ hasText: l.list.failed.failed }),
+  ).toBeVisible();
+  await expect(finishUndo).toBeFocused();
+  expect(await focusWhenSaid(page)).toBe(true);
+  await page.unroute(reopening);
 });
 
 // The template editor's demo (lists L3): an item added from its sheet saves
@@ -4580,15 +4630,54 @@ test("the photo demo takes a photo, removes it and brings it back", async ({
   const taken = await new AxeBuilder({ page }).analyze();
   expect(taken.violations.map((v) => v.id)).toEqual([]);
 
-  await main
-    .getByRole("button", { name: `${l.photo.remove}: ${label}` })
-    .click();
+  // The remove button goes with the photo: "ביטול" takes its focus, and
+  // gives it back to the photo's remove button once the photo is back
+  // (accessibility, part 8).
+  const remove = main.getByRole("button", {
+    name: `${l.photo.remove}: ${label}`,
+  });
+  await remove.click();
   const undo = page.getByRole("status").filter({ hasText: l.photo.removed });
   await expect(undo).toBeVisible();
   await expect(photo).toHaveCount(0);
-  await undo.getByRole("button", { name: he.app.manage.undo }).click();
+  const undoButton = undo.getByRole("button", { name: he.app.manage.undo });
+  await expect(undoButton).toBeFocused();
+  // Bringing it back refused (the request dropped): its "ביטול", disabled
+  // while it waited, has the focus back and still says what was removed;
+  // the line under it says the photo didn't come back, once the focus is
+  // back, and the row's own words never turn into that.
+  const bringsBack = (url: URL) =>
+    url.pathname === "/design/shell/lists/list-weekly-cleaning";
+  await page.route(bringsBack, async (route) => {
+    if (route.request().method() === "POST") await route.abort();
+    else await route.fallback();
+  });
+  const statusWords = await noteStatusWords(page);
+  await noteFocusWhenSaid(
+    page,
+    l.photo.undoFailed,
+    "button",
+    he.app.manage.undo,
+  );
+  await page.keyboard.press("Enter");
+  const notBack = main
+    .getByRole("alert")
+    .filter({ hasText: l.photo.undoFailed });
+  await expect(notBack).toBeVisible();
+  await expect(undoButton).toBeFocused();
+  await expect(undoButton).toHaveAccessibleName(undoNamed(l.photo.removed));
+  expect(await focusWhenSaid(page)).toBe(true);
+  expect(
+    (await statusWords()).filter(({ words }) =>
+      words.includes(l.photo.undoFailed),
+    ),
+  ).toEqual([]);
+  await page.unroute(bringsBack);
+  await undoButton.click();
   await expect(photo).toBeVisible();
   await expect(undo).toHaveCount(0);
+  await expect(notBack).toHaveCount(0);
+  await expect(remove).toBeFocused();
 
   await page.goto("/design/shell/lists/list-weekly-cleaning?state=demo");
   await expect(main.getByText(l.photo.demo, { exact: true })).toBeVisible();

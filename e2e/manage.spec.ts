@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import he from "../messages/he.json" with { type: "json" };
+import { announcer, heardSoFar, pastDrawing, saidSince } from "./announcer";
 import {
   type DemoDetails,
   demoBusinessDetails,
@@ -11,6 +12,7 @@ import {
 } from "./db";
 import { signIn } from "./session";
 import { setDemoModule } from "./sms";
+import { undoNamed } from "./t";
 import { expect, type Page, test } from "./test";
 
 // Seeded in supabase/seed.sql: the demo restaurant's manager and a worker, and
@@ -212,6 +214,77 @@ test("a manager fits the schedule to the business, and it stays", async ({
   await page.getByRole("button", { name: m.undo }).click();
   await expect(row).toContainText("22:00–01:00");
   await expect.poll(async () => (await stored()).shifts).toContain("פתיחה");
+});
+
+// A shift's undo refused, its save dropped while the shift it brought back
+// has the focus (accessibility, part 8): the screen goes back to what is
+// stored, read again since the removal, so the row goes again, and its
+// "ביטול", there again, takes the focus, which says what went (the
+// announcer doesn't, too); never the body.
+test("a shift's refused undo gives the focus back to its 'ביטול'", async ({
+  page,
+}) => {
+  const NAME = "משמרת בדיקה";
+  const scheduling = "/manage/scheduling";
+  const saves = (url: URL) => url.pathname === scheduling;
+  await signIn(page, MANAGER);
+  await page.goto(scheduling);
+
+  // A shift of its own, with a new shift's days and times.
+  const sheet = page.getByRole("dialog");
+  await page.getByRole("button", { name: m.shifts.add }).click();
+  await sheet.getByLabel(m.shifts.name).fill(NAME);
+  await sheet.getByRole("button", { name: m.shifts.create }).click();
+  await expect(sheet).toBeHidden();
+  await expect.poll(async () => (await stored()).shifts).toContain(NAME);
+
+  const row = page.getByRole("button", { name: new RegExp(`^${NAME}`) });
+  const removed = m.shifts.removed.replace("{name}", NAME);
+  const undo = page
+    .getByRole("status")
+    .filter({ hasText: removed })
+    .getByRole("button", { name: m.undo });
+  const removal = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" && saves(new URL(response.url())),
+  );
+  await row.click();
+  await sheet.getByRole("button", { name: m.shifts.remove }).click();
+  await expect(sheet).toBeHidden();
+  await expect(undo).toBeFocused();
+  // Stored without it, and the page read again so.
+  await removal;
+  await expect.poll(async () => (await stored()).shifts).not.toContain(NAME);
+  await pastDrawing(page);
+
+  // The undo's save held while `held` waits, then dropped.
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = () => resolve();
+  });
+  await page.route(saves, async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    await held;
+    await route.abort();
+  });
+  const polite = announcer(page, "polite");
+  await heardSoFar(polite);
+  await page.keyboard.press("Enter");
+  await expect(row).toBeFocused();
+  release();
+  await expect(
+    page.getByRole("alert").filter({ hasText: m.failed.failed }),
+  ).toBeVisible();
+  await expect(row).toHaveCount(0);
+  await expect(undo).toBeFocused();
+  await expect(undo).toHaveAccessibleName(undoNamed(removed));
+  await pastDrawing(page);
+  await expect(saidSince(polite, removed)).toHaveCount(0);
+  await page.unroute(saves);
+  expect((await stored()).shifts).not.toContain(NAME);
 });
 
 test("a manager changes the business's own details", async ({
