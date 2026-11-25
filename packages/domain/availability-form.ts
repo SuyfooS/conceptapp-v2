@@ -253,11 +253,30 @@ function usualRange(
 }
 
 /**
+ * A shift's hours on `day`, cut where Shabbat cuts the day's hours
+ * (`shabbatConflict`): on Friday ending by candle lighting, on Saturday
+ * starting from havdalah. Null for a shift wholly inside Shabbat.
+ */
+function cutByShabbat(
+  day: string,
+  shabbat: ShabbatLimits | null,
+  shift: Hours,
+): Span | null {
+  let { from, to } = spanOf(shift);
+  if (shabbat && day === shabbat.friday) {
+    to = Math.min(to, minutesOf(shabbat.candleLighting));
+  }
+  if (shabbat && day === shabbat.saturday) {
+    from = Math.max(from, minutesOf(shabbat.havdalah));
+  }
+  return from < to ? { from, to } : null;
+}
+
+/**
  * The business's shifts on `day` (`shiftsOn`, as the builder draws them), each
- * cut where Shabbat cuts the day's hours (`shabbatConflict`): on Friday ending
- * by candle lighting, on Saturday starting from havdalah. A shift wholly inside
- * Shabbat is left out. In minutes after the day's midnight; an end past 1440
- * is on the next day.
+ * cut where Shabbat cuts the day's hours (`cutByShabbat`). A shift wholly
+ * inside Shabbat is left out. In minutes after the day's midnight; an end past
+ * 1440 is on the next day.
  */
 function shiftSpans(
   day: string,
@@ -265,15 +284,8 @@ function shiftSpans(
   shifts: readonly ShiftHours[],
 ): Span[] {
   return shiftsOn(shifts, weekdayOf(day)).flatMap((shift) => {
-    let from = minutesOf(shift.start);
-    let to = from + rangeMinutes(shift.start, shift.end);
-    if (shabbat && day === shabbat.friday) {
-      to = Math.min(to, minutesOf(shabbat.candleLighting));
-    }
-    if (shabbat && day === shabbat.saturday) {
-      from = Math.max(from, minutesOf(shabbat.havdalah));
-    }
-    return from < to ? [{ from, to }] : [];
+    const span = cutByShabbat(day, shabbat, shift);
+    return span ? [span] : [];
   });
 }
 
@@ -314,10 +326,12 @@ export function suggestedDay(
 
 /**
  * The hours of each of the business's shifts on `day`, earliest first, each
- * once and cut by Shabbat as the suggestion cuts them (`suggestedDay`): what
- * the day's sheet lists, so someone who can't work all of the day's shifts
- * knows where each starts and ends. Empty where the business has no shift
- * that day, or Shabbat leaves none.
+ * once: what the day's sheet lists, so someone who can't work all of the
+ * day's shifts knows where each starts and ends. Each shift's own hours, never
+ * cut by Shabbat as the suggestion cuts them (`suggestedDay`), since they are
+ * named as the shift's; the sheet's Shabbat line above them says what can be
+ * marked. A shift wholly inside Shabbat is left out, as the suggestion leaves
+ * it. Empty where the business has no shift that day, or Shabbat leaves none.
  */
 export function shiftHoursOn(
   day: string,
@@ -325,7 +339,9 @@ export function shiftHoursOn(
   shifts: readonly ShiftHours[],
 ): Hours[] {
   const seen = new Set<string>();
-  return shiftSpans(day, shabbat, shifts)
+  return shiftsOn(shifts, weekdayOf(day))
+    .filter((shift) => cutByShabbat(day, shabbat, shift) !== null)
+    .map(spanOf)
     .sort((a, b) => a.from - b.from || a.to - b.to)
     .filter(({ from, to }) => {
       const key = `${from}-${to}`;

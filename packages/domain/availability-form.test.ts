@@ -526,18 +526,53 @@ describe("suggestedDay", () => {
 });
 
 describe("shiftHoursOn", () => {
-  it("lists each of the day's shifts once, earliest first, cut as the suggestion cuts them", () => {
+  it("lists each of the day's shifts once, earliest first, in its own hours", () => {
     expect(shiftHoursOn(SUNDAY, LIMITS, RESTAURANT)).toEqual([
       { start: "09:00", end: "16:00" },
       { start: "16:00", end: "23:30" },
     ]);
-    expect(shiftHoursOn(LIMITS.friday, JERUSALEM, CAFE)).toEqual([
-      { start: "07:00", end: "15:58" },
+    expect(shiftHoursOn(LIMITS.friday, LIMITS, RESTAURANT)).toEqual([
+      { start: "08:00", end: "14:30" },
     ]);
+  });
+
+  it("names a shift Shabbat cuts by its own hours, while the day opens with the cut ones", () => {
+    // The restaurant's and the café's Saturday night in summer, and the
+    // café's Friday in Jerusalem's December: the sheet's Shabbat line says
+    // what can be marked, so the shift keeps the hours the business gave it.
     expect(shiftHoursOn(LIMITS.saturday, SUMMER, RESTAURANT)).toEqual([
+      { start: "19:30", end: "00:00" },
+    ]);
+    expect(suggestedDay(LIMITS.saturday, SUMMER, RESTAURANT)).toEqual([
       { start: "20:21", end: "00:00" },
     ]);
-    // One wholly inside Shabbat isn't listed; open on Shabbat, it is.
+    expect(shiftHoursOn(LIMITS.saturday, SUMMER, CAFE)).toEqual([
+      { start: "19:00", end: "01:00" },
+    ]);
+    expect(shiftHoursOn(LIMITS.friday, JERUSALEM, CAFE)).toEqual([
+      { start: "07:00", end: "16:00" },
+    ]);
+    expect(suggestedDay(LIMITS.friday, JERUSALEM, CAFE)).toEqual([
+      { start: "07:00", end: "15:58" },
+    ]);
+    // Mostly inside Shabbat: still the shift's hours, never a short shift
+    // from havdalah or until candle lighting that the business doesn't have.
+    const winter: ShiftHours[] = [
+      { days: [6], start: "09:00", end: "18:00" },
+      { days: [5], start: "12:00", end: "20:00" },
+    ];
+    expect(shiftHoursOn(LIMITS.saturday, LIMITS, winter)).toEqual([
+      { start: "09:00", end: "18:00" },
+    ]);
+    expect(suggestedDay(LIMITS.saturday, LIMITS, winter)).toEqual([
+      { start: "17:24", end: "18:00" },
+    ]);
+    expect(shiftHoursOn(LIMITS.friday, LIMITS, winter)).toEqual([
+      { start: "12:00", end: "20:00" },
+    ]);
+  });
+
+  it("leaves out a shift wholly inside Shabbat, and lists it when open on Shabbat", () => {
     const saturday: ShiftHours[] = [
       { days: [6], start: "19:30", end: "00:00" },
       { days: [6], start: "09:00", end: "14:00" },

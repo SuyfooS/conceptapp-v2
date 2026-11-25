@@ -326,7 +326,9 @@ function TimeInput({
  * What the day's sheet says under its title: what Shabbat means for the day,
  * in full, for a business closed on Shabbat, and the hours of the day's
  * shifts (`shiftHoursOn`), so someone who can't work all of the hours the day
- * opens with knows where each shift starts and ends.
+ * opens with knows where each shift starts and ends. Those are each shift's
+ * own hours, even where Shabbat cuts what can be marked: the line above says
+ * that.
  */
 function dayHint(
   t: ReturnType<typeof useTranslations<"app.availability">>,
