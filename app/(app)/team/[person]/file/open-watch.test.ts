@@ -1320,6 +1320,90 @@ describe("watchOpenFile, the warning a minute before, and the focus moved", () =
     expect(a.warnings()).toEqual([]);
   });
 
+  // A tap on a control or a Tab moves the focus too: the press or the key,
+  // then the focus it brought, a moment apart. One gesture, counted once:
+  // nothing kept for the minute's end, so the file still closes 15 minutes
+  // after it, as for a press alone ("a lone tab still closes 15 minutes
+  // after its last press").
+  it("counts a press or a key and the focus it moves as one gesture: nothing kept for the minute's end", async () => {
+    for (const gesture of ["press", "key"] as const) {
+      const { clock, server, tab } = setup();
+      const a = tab();
+      const start = clock.now();
+      a.watch();
+      await clock.pass(3 * MINUTE);
+      if (gesture === "press") a.page.press();
+      else a.page.key();
+      a.page.focus({});
+      const last = clock.now();
+      await clock.pass(TRIP_MS);
+      expect(a.slides(), gesture).toEqual([true, true]);
+      await clock.pass(2 * MINUTE);
+      expect(a.slides(), gesture).toEqual([true, true]);
+      await clock.to(last + FILE_IDLE_MS + TRIP_MS - 1);
+      expect(a.held(), gesture).toBe(false);
+      await clock.pass(1);
+      expect(a.held(), gesture).toBe(true);
+      await clock.pass(TRIP_MS);
+      closedAlone(a, server, "closed");
+      expect(a.closedAt(), gesture).toBe(last + FILE_IDLE_MS + 2 * TRIP_MS);
+      expect(server.slid, gesture).toEqual([start, last]);
+    }
+  });
+
+  it("asks once for 'להשאיר פתוח' pressed with a finger or a key: its press, the focus and the click are one gesture", async () => {
+    const { clock, server, tab } = setup();
+    const a = tab();
+    const start = clock.now();
+    a.watch();
+    await clock.to(start + TRIP_MS + FILE_IDLE_MS - WARN_BEFORE_MS);
+    expect(a.warnings()).toEqual([true]);
+    a.page.press();
+    a.page.focus({});
+    a.stayOpen();
+    const kept = clock.now();
+    await clock.pass(TRIP_MS);
+    expect(a.slides()).toEqual([true, true]);
+    expect(a.warnings()).toEqual([true, false]);
+    await clock.pass(2 * MINUTE);
+    expect(a.slides()).toEqual([true, true]);
+    expect(server.slid).toEqual([start, kept]);
+  });
+
+  // A check answered with under a minute left puts the warning up at once
+  // (a read the tab slept through, another tab's use): "להשאיר פתוח" pressed
+  // within that check's minute goes to the server then, not at the minute's
+  // end, which would come after the step-up's.
+  it("asks at once for 'להשאיר פתוח' within the minute of a check, so a warning with under a minute left still keeps the file open", async () => {
+    const { clock, server, tab } = setup();
+    const a = tab();
+    const start = clock.now();
+    a.watch();
+    await clock.pass(TRIP_MS);
+    // Another tab in use half a minute in, whose word never came here.
+    await clock.to(start + 30_000);
+    void server.keepOpenFor("b1")(true);
+    const used = clock.now();
+    // Its own 15 minutes: read, under half a minute left, the file shown
+    // again with the warning still up.
+    await clock.to(start + 2 * TRIP_MS + FILE_IDLE_MS);
+    expect(a.slides()).toEqual([true, false]);
+    expect(a.held()).toBe(false);
+    expect(a.warnings()).toEqual([true]);
+    // Ten seconds on: asked at once, and slid while the step-up still lives.
+    await clock.pass(10_000);
+    a.stayOpen();
+    const kept = clock.now();
+    expect(a.slides()).toEqual([true, false, true]);
+    await clock.pass(TRIP_MS);
+    expect(server.slid).toEqual([start, used, kept]);
+    expect(a.warnings()).toEqual([true, false]);
+    // Past where the step-up would have ended: still open.
+    await clock.to(used + FILE_IDLE_MS + MINUTE);
+    expect(a.close).not.toHaveBeenCalled();
+    expect(a.held()).toBe(false);
+  });
+
   it("says nothing of a warning once the file closed, and 'להשאיר פתוח' then asks nothing", async () => {
     const { clock, server, tab } = setup();
     const a = tab();

@@ -96,6 +96,11 @@ export function FileOpenWatch({
   // What held the focus in the file as it was hidden: inert, it lost it.
   const heldFocus = useRef<HTMLElement | null>(null);
   const [held, setHeld] = useState(false);
+  // The hold as the watch last gave it, before it is drawn.
+  const holding = useRef(false);
+  // The warning's own part of the page, and where its focus came from.
+  const warningRoot = useRef<HTMLDivElement>(null);
+  const warningFrom = useRef<Element | null>(null);
   // Held for longer than a moment: the line saying the server is asked.
   const [checking, setChecking] = useState(false);
   const checkingSoon = useRef<number | undefined>(undefined);
@@ -126,13 +131,21 @@ export function FileOpenWatch({
   const closeFromWatch = useEffectEvent((why: FileClose) => close(why));
   const keepOpen = useEffectEvent((slide: boolean) => actions.keepOpen(slide));
   const hold = useEffectEvent((next: boolean) => {
+    holding.current = next;
     const active = document.activeElement;
-    if (
-      next &&
-      active instanceof HTMLElement &&
-      place.current?.contains(active)
-    ) {
-      heldFocus.current = active;
+    if (next && active instanceof HTMLElement) {
+      if (place.current?.contains(active)) {
+        heldFocus.current = active;
+      } else if (warningRoot.current?.contains(active)) {
+        // On "להשאיר פתוח", which goes with the hold: shown again, the
+        // file takes the focus where it came from in it, else at its first
+        // heading; closed, the locked card takes it.
+        const from = warningFrom.current;
+        heldFocus.current =
+          from instanceof HTMLElement && place.current?.contains(from)
+            ? from
+            : (place.current?.querySelector("h2") ?? null);
+      }
     }
     setHeld(next);
     // Each hold waits its own moment before saying anything.
@@ -236,6 +249,9 @@ export function FileOpenWatch({
             onStay={() => stayOpen.current?.()}
             place={place}
             closing={closing}
+            held={holding}
+            root={warningRoot}
+            cameFrom={warningFrom}
           />
         ) : null}
       </div>
@@ -251,26 +267,37 @@ export function FileOpenWatch({
  * Gone with the focus on its button (kept open, by it or by anything else),
  * the focus goes back to where it came from in the file, else to the
  * file's first heading; never when the file closed, whose locked card
- * takes it.
+ * takes it, nor when it went with the file held, inert (its 15 minutes'
+ * check, the page put away): the file takes it as it shows again
+ * (`heldFocus`), or the locked card.
  */
 function IdleWarning({
   onStay,
   place,
   closing,
+  held,
+  root,
+  cameFrom,
 }: {
   onStay: () => void;
   /** The file, where the focus goes back to. */
   place: RefObject<HTMLDivElement | null>;
   /** The file is closing: the locked card takes the focus. */
   closing: RefObject<boolean>;
+  /** The file is held: the focus waits for it to show again, or to close. */
+  held: RefObject<boolean>;
+  /** The warning's own part of the page. */
+  root: RefObject<HTMLDivElement | null>;
+  /** Where the focus came to its button from. */
+  cameFrom: RefObject<Element | null>;
 }) {
   const t = useTranslations("app.team.file.idle");
-  const root = useRef<HTMLDivElement>(null);
-  const cameFrom = useRef<Element | null>(null);
 
   useLayoutEffect(() => {
     const element = root.current;
     if (!element) return;
+    // Each warning counts afresh.
+    cameFrom.current = null;
     const watch = watchFocusIn(element);
     const from = (event: FocusEvent) => {
       const before = event.relatedTarget;
@@ -283,13 +310,13 @@ function IdleWarning({
       element.removeEventListener("focusin", from);
       const had = watch.had();
       watch.stop();
-      if (!had || closing.current) return;
+      if (!had || closing.current || held.current) return;
       const back = [cameFrom.current, place.current?.querySelector("h2")];
       queueMicrotask(() => {
         focusWhenGone(back);
       });
     };
-  }, [place, closing]);
+  }, [place, closing, held, root, cameFrom]);
 
   return (
     <div ref={root}>

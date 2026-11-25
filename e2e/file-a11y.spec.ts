@@ -116,3 +116,49 @@ test("the file twin warns a minute before it locks, and 'להשאיר פתוח' 
   await expect(saidSince(polite, hf.idle.kept)).toHaveCount(1);
   expect(asked).toBeGreaterThan(0);
 });
+
+// A screen reader's first swipe onto "להשאיר פתוח" comes from nowhere, and
+// is no activity: the quarter of an hour ends with the focus on it. The
+// file is held while the server is asked, and the warning goes with it;
+// the focus waits for the answer instead of landing on the page's title.
+// The twin answers open: the file shows again with the focus on its first
+// heading, and it is said that it stays open. (Answered closed, the locked
+// card's title takes it: employee-file-holders.spec.ts.)
+test("the file twin, its quarter of an hour ending with the focus on 'להשאיר פתוח', gives the focus back to the file as it shows again", async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  const polite = announcer(page, "polite");
+  await page.clock.install();
+  await page.goto("/design/shell/team/noa/file");
+  await page.waitForLoadState("networkidle");
+  const checked = await hearFileCheck(page, FILE_TABS_TWIN_CHANNEL);
+  await page.getByRole("button", { name: hf.duties.confirm }).click();
+  const boxes = page.getByLabel(hf.code.label);
+  await expect(boxes).toBeVisible();
+  await boxes.fill("123456");
+  await expect(page).toHaveURL(/\/design\/shell\/team\/noa\/file\?state=open$/);
+  await checked();
+
+  const warning = page.getByRole("alert").filter({ hasText: hf.idle.warning });
+  const keep = page.getByRole("button", {
+    name: hf.idle.keepOpen,
+    exact: true,
+  });
+  const first = page
+    .getByRole("main")
+    .getByRole("heading", { name: hf.sections.identity });
+  await focusNowhere(page);
+  await page.clock.fastForward("14:01");
+  await expect(warning).toBeVisible();
+  await keep.focus();
+  await pastDrawing(page);
+  await expect(warning).toBeVisible();
+
+  await heardSoFar(polite);
+  await page.clock.fastForward("01:00");
+  await expect(warning).toHaveCount(0);
+  await expect(first).toBeVisible();
+  await expect(first).toBeFocused();
+  await expect(saidSince(polite, hf.idle.kept)).toHaveCount(1);
+});

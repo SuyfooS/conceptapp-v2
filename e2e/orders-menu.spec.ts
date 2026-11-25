@@ -473,13 +473,21 @@ test("a manager edits the categories and the places, each removal with its undo"
 
   await page.getByLabel(c.newName).fill("בדיקות");
   await page.getByRole("button", { name: c.add }).click();
+  // The add's answer on screen, which gives the row its id, before it moves:
+  // the database has the row a moment before.
+  await expect(toast(page, c.saved)).toBeVisible();
   await expect.poll(demoMenuCategories).toContainEqual({
     name: "בדיקות",
     department: "kitchen",
   });
-  // Moved up, its arrow keeps the focus and where it went is said.
+  // Moved up, its arrow keeps the focus and where it went is said. (Moved
+  // up, the row stays in the page and its arrow never lost the focus: the
+  // move down below is the one that takes it back.)
   const up = page.getByRole("button", {
     name: heT("app.orders.categories.upFor", { name: "בדיקות" }),
+  });
+  const down = page.getByRole("button", {
+    name: heT("app.orders.categories.downFor", { name: "בדיקות" }),
   });
   const polite = announcer(page, "polite");
   await heardSoFar(polite);
@@ -494,6 +502,26 @@ test("a manager edits the categories and the places, each removal with its undo"
       heT("app.orders.categories.movedTo", {
         name: "בדיקות",
         place: 4,
+        count: 5,
+      }),
+    ),
+  ).toHaveCount(1);
+  // Back down to the end: put back in the page after the row it passed, it
+  // lost the focus, and its "הזזה למטה" can't be pressed again, so "הזזה
+  // למעלה" has it, through the save's answer and the page drawn again.
+  await heardSoFar(polite);
+  await down.click();
+  await expect
+    .poll(async () => (await demoMenuCategories()).map((row) => row.name))
+    .toEqual(["ראשונות", "עיקריות", "קינוחים", "שתייה", "בדיקות"]);
+  await expect(down).toBeDisabled();
+  await expect(up).toBeFocused();
+  await expect(
+    saidSince(
+      polite,
+      heT("app.orders.categories.movedTo", {
+        name: "בדיקות",
+        place: 5,
         count: 5,
       }),
     ),

@@ -7,6 +7,7 @@ import {
   announcer,
   heardSoFar,
   noteIfSaid,
+  pastDrawing,
   saidSince,
   wasSaid,
 } from "./announcer";
@@ -89,6 +90,42 @@ test("the places twin keeps the focus on a moved table's arrow and says where it
   await expect(
     saidSince(polite, rt(`${p}.movedTo`, { name: "3", place: 4, count: 12 })),
   ).toHaveCount(1);
+});
+
+// Left by the browser's Back, which presses nothing on the screen, and
+// opened again from the menu: Next shows the same screen again, kept for
+// Back, and its effects run again, while the link pressed on the menu is
+// hidden. The table moved before is no move of this visit: no arrow of it
+// takes the focus.
+test("the places twin, left by Back and opened again, puts the focus on no moved table's arrow", async ({
+  page,
+}) => {
+  const p = "app.orders.places" as const;
+  const nameOf = rt(`${p}.nameOf`, { name: "" }).trim();
+  const placesLink = page
+    .getByRole("main")
+    .getByRole("link", {
+      name: new RegExp(`^${asIs(rt("app.orders.menu.placesRow"))}`),
+    })
+    .filter({ visible: true })
+    .first();
+  const down3 = arrow(page, rt(`${p}.downFor`, { name: "3" }));
+  const up3 = arrow(page, rt(`${p}.upFor`, { name: "3" }));
+  await open(page, "/design/order-taking/menu");
+  await placesLink.click();
+  await expect(page).toHaveURL(/\/design\/order-taking\/menu\/places$/);
+  await down3.click();
+  await expect.poll(async () => (await rowNames(page, nameOf))[3]).toBe("3");
+  await expect(down3).toBeFocused();
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/design\/order-taking\/menu$/);
+  await placesLink.click();
+  await expect(page).toHaveURL(/\/design\/order-taking\/menu\/places$/);
+  await expect(down3).toBeVisible();
+  await pastDrawing(page);
+  await expect(down3).not.toBeFocused();
+  await expect(up3).not.toBeFocused();
 });
 
 // The same for the menu's categories: down to the end, "הזזה למעלה" has the

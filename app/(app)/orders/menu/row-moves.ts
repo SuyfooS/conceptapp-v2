@@ -36,7 +36,8 @@ type ArrowRef = (node: HTMLButtonElement | null) => (() => void) | undefined;
  * what the focus reads. The row's arrow keeps it through what the save
  * draws after (its answer, a newer press's, a refused save putting the row
  * back), wherever the focus was lost, until the person puts the focus or a
- * press anywhere else. Nothing moves a focus the person put elsewhere.
+ * press anywhere else, or the screen goes or is hidden. Nothing moves a
+ * focus the person put elsewhere.
  */
 export function useRowMoves<T>(
   rows: readonly T[],
@@ -72,7 +73,9 @@ export function useRowMoves<T>(
   }, [rows, keyOf, locale]);
 
   // The focus or a press anywhere but the moved row's arrows: the person
-  // moved on, and the row keeps nothing.
+  // moved on, and the row keeps nothing. Nor once the screen goes or Next
+  // hides it (kept for Back, its listener gone meanwhile): shown again, it
+  // runs the effect above again, and nobody pressed anything on it then.
   useEffect(() => {
     const away = (event: Event) => {
       const want = last.current;
@@ -88,6 +91,8 @@ export function useRowMoves<T>(
     return () => {
       document.removeEventListener("focusin", away, true);
       document.removeEventListener("pointerdown", away, true);
+      last.current = null;
+      words.current = null;
     };
   }, []);
 

@@ -343,11 +343,25 @@ test("a locked file asks for a code again, and the duties only once", async ({
   await expect(main(page).getByText(f.locked.title)).toHaveCount(0);
   expect(await stepUp()).toBe(true);
 
+  // A minute before those end, the warning; a screen reader's first swipe
+  // onto "להשאיר פתוח" comes from nowhere, and is no activity.
+  await page.evaluate(() => {
+    (document.activeElement as HTMLElement | null)?.blur();
+  });
+  await page.clock.fastForward("14:01");
+  const keep = visible(page, "button", f.idle.keepOpen);
+  await expect(keep).toBeVisible();
+  await keep.focus();
+
   // The server's 15 minutes pass too (its cookie gone by itself): the next
-  // look finds the file closed.
+  // look finds the file closed. The focus the warning's button had went
+  // with the file held for that look, and the locked card's title takes it.
   await context.clearCookies({ name: "ca_file_open" });
-  await page.clock.fastForward("15:01");
+  await page.clock.fastForward("01:00");
   await expect(main(page).getByText(f.locked.title)).toBeVisible();
+  await expect(
+    main(page).getByRole("heading", { name: f.locked.title }),
+  ).toBeFocused();
 
   // A code opens it again, with no duties on the way.
   const code = await sendFileCode(page, f.locked.send, GALIT.e164);

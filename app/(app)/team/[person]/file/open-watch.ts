@@ -31,9 +31,14 @@ import type { KeepOpenAnswer, LockAnswer } from "./holder-file-types";
  *    moment (an answer that comes after the tab slept counts for nothing, by
  *    point 3); so when they pass, the server finds the step-up gone unless
  *    activity in some tab slid it since. Activity here (a press, a key, the
- *    focus moved, "להשאיר פתוח"), and another tab's word that a file is in
- *    use there, ask the server at most once a minute, one within the minute
- *    kept for its end, never dropped. The word itself extends nothing.
+ *    focus moved), and another tab's word that a file is in use there, ask
+ *    the server at most once a minute, one within the minute kept for its
+ *    end, never dropped. "להשאיר פתוח" asks at once, whatever the minute:
+ *    the person asked, and less than the minute may be left. One gesture
+ *    counts once: the focus a press or a key brings with it, and the click
+ *    of "להשאיר פתוח" after its own press, within `SAME_GESTURE_MS` of the
+ *    check that slid the step-up for it, ask nothing more. The word itself
+ *    extends nothing.
  * 5. Only a check for the person's activity in this tab slides the step-up:
  *    the file opening, a press or a key, the focus moved from one element to
  *    another (a screen reader's swipe, which presses nothing; never a focus
@@ -52,7 +57,7 @@ import type { KeepOpenAnswer, LockAnswer } from "./holder-file-types";
  *    closes the file in this tab.
  * 7. A minute before this tab's 15 minutes end (`WARN_BEFORE_MS`), the
  *    person is told the file is about to lock (`warn(true)`), with
- *    "להשאיר פתוח" (`stayOpen`), which is activity as a press is. The
+ *    "להשאיר פתוח" (`stayOpen`), activity asked of the server at once. The
  *    warning ends (`warn(false)`) only when an answer moves the 15 minutes
  *    on, the file still open here; a file that closes, or a watch that
  *    stops, says nothing more. The warning keeps nothing open by itself:
@@ -85,6 +90,18 @@ export const SLEPT_AFTER_MS = KEEP_OPEN_WAIT_MS + 5_000;
  * check only reads.
  */
 export const PRESS_FRESH_MS = FILE_TOUCH_EVERY_MS + 5_000;
+
+/**
+ * How soon after a check that slid the step-up for activity here more of it
+ * is still the same gesture: the focus a press or a key brings with it (a
+ * tap and a Tab move it too), and the click of "להשאיר פתוח" after its own
+ * press or key. Counted once, by that check, never kept for the minute's
+ * end as a second press would be: so a lone tap leaves the file its 15
+ * minutes, not 16, at the cost of these two seconds at most. A check that
+ * only read the step-up (the clock's, another tab's word) is no gesture, so
+ * a press right after one counts.
+ */
+export const SAME_GESTURE_MS = 2_000;
 
 /**
  * How long before this tab's 15 minutes end the person is told the file is
@@ -151,7 +168,7 @@ export type OpenFileWatch = {
 export type FileWatch = {
   /** For when its screen hides or goes. */
   stop: () => void;
-  /** "להשאיר פתוח": the person's activity here, as a press is. */
+  /** "להשאיר פתוח": the person's activity here, asked of the server at once. */
   stayOpen: () => void;
 };
 
@@ -190,6 +207,9 @@ export function watchOpenFile({
   // tab frozen in the background, its timer run long after) only reads.
   let later: number | undefined;
   let pressedAt: number | null = null;
+  // When a check last went to slide the step-up: what comes within
+  // `SAME_GESTURE_MS` of it is the same gesture.
+  let lastSlide: number | null = null;
   // The latest hold: only its own answer shows the file again, and putting
   // the page away makes any other stale.
   let look = 0;
@@ -271,6 +291,7 @@ export function watchOpenFile({
     later = undefined;
     pressedAt = null;
     lastCheck = at;
+    if (tells) lastSlide = at;
     const seen = look;
     // Given up on, or answered: what comes after is heard no more.
     let done = false;
@@ -327,6 +348,11 @@ export function watchOpenFile({
     );
   }
 
+  /** Part of the gesture a check just slid the step-up for. */
+  function sameGesture(at: number): boolean {
+    return lastSlide !== null && at - lastSlide < SAME_GESTURE_MS;
+  }
+
   /** Activity, here (`tell`) or in another tab: the server asked now, or at the minute's end. */
   function due(tell: boolean) {
     const at = now();
@@ -334,6 +360,8 @@ export function watchOpenFile({
       check(tell);
       return;
     }
+    // The focus a press or a key just counted brings with it: counted.
+    if (tell && sameGesture(at)) return;
     if (tell) pressedAt = at;
     if (later !== undefined) return;
     later = win.setTimeout(
@@ -386,6 +414,18 @@ export function watchOpenFile({
     if ((event as FocusEvent).relatedTarget) active();
   }
 
+  /**
+   * "להשאיר פתוח": asked at once, past the minute's wait, which could end
+   * after this tab's 15 minutes do; nothing more when its own press or key
+   * just asked.
+   */
+  function stayOpen() {
+    if (held || stopped) return;
+    const at = now();
+    if (at >= shownUntil) lookAgain(true);
+    else if (!sameGesture(at)) check(true);
+  }
+
   function shown() {
     if (page.visibilityState === "visible") lookAgain(true);
     else putAway();
@@ -410,7 +450,7 @@ export function watchOpenFile({
   if (page.visibilityState !== "visible") putAway();
   else if (again) lookAgain(true);
   else check(true);
-  return { stop, stayOpen: active };
+  return { stop, stayOpen };
 }
 
 /**
