@@ -48,7 +48,7 @@ import { useInviteLinks } from "./resend-link";
  * person sending still presses send in WhatsApp.
  */
 
-/** `resendInviteAction`, or the design demo's stand-in. */
+/** `firstLinkAction` (or `resendInviteAction`), or the design demo's stand-in. */
 export type Resend = (
   inviteId: string,
   prev: ResendState,
@@ -67,6 +67,12 @@ type Pending = {
   /** How each row's link went out here, once it did. */
   sent: ReadonlyMap<string, Sent>;
   markSent: (inviteId: string, how: Sent) => void;
+  /**
+   * The rows whose "יצירת קישור" was refused here: a link was made for them
+   * meanwhile, elsewhere ("linked"), and still works.
+   */
+  elsewhere: ReadonlySet<string>;
+  markElsewhere: (inviteId: string) => void;
   /** The business, for the message the link goes with. */
   business: string;
   /** WhatsApp to the person's number; the twin's goes to nobody. */
@@ -86,12 +92,16 @@ const noResend: Resend = async (_inviteId, prev) => prev;
  * asked for here stays where it was, by name, until the page is loaded again
  * (`pendingShown`), though the screen, read again once the link is made,
  * lists it among the open invites, which leave it out meanwhile
- * (`UnlessPendingHere`). How a link went out (WhatsApp or a copy) is kept
- * here too, so each shape says it. Inside `InviteLinks`, whose links every
- * shape shows.
+ * (`UnlessPendingHere`), and only while the screen still reads its invite
+ * (`invites`). How a link went out (WhatsApp or a copy) is kept here too, so
+ * each shape says it, and so is a press refused since a link was made
+ * meanwhile elsewhere. Inside `InviteLinks`, whose links every shape shows;
+ * the page keys the screen by person and business, so nothing held here
+ * outlives either.
  */
 export function PendingLinks({
   rows,
+  invites,
   business,
   toNumber,
   resend,
@@ -99,12 +109,15 @@ export function PendingLinks({
 }: {
   /** The invites the screen read with no link yet, by name (`buildTeam`). */
   rows: readonly PendingRow[];
+  /** Every invite the screen read, in any state: a held row needs its own. */
+  invites: readonly string[];
   business: string;
   /**
    * WhatsApp to each person's own number (`whatsappToHref`). False on a twin,
    * whose made-up numbers may be someone's: WhatsApp then asks whom to.
    */
   toNumber: boolean;
+  /** `firstLinkAction`, or the twin's stand-in. */
   resend: Resend;
   children: ReactNode;
 }) {
@@ -112,18 +125,28 @@ export function PendingLinks({
     () => new Map(),
   );
   const [sent, setSent] = useState<ReadonlyMap<string, Sent>>(() => new Map());
+  const [elsewhere, setElsewhere] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const hold = (row: PendingRow) =>
     setHeld((all) => (all.has(row.id) ? all : new Map(all).set(row.id, row)));
   const markSent = (inviteId: string, how: Sent) =>
     setSent((all) => new Map(all).set(inviteId, how));
+  const markElsewhere = (inviteId: string) =>
+    setElsewhere((all) =>
+      all.has(inviteId) ? all : new Set(all).add(inviteId),
+    );
+  const read = new Set(invites);
   return (
     <PendingContext
       value={{
-        rows: pendingShown(rows, held),
+        rows: pendingShown(rows, held, read),
         hold,
-        here: new Set(held.keys()),
+        here: new Set([...held.keys()].filter((id) => read.has(id))),
         sent,
         markSent,
+        elsewhere,
+        markElsewhere,
         business,
         toNumber,
         resend,
@@ -134,10 +157,16 @@ export function PendingLinks({
   );
 }
 
-/** Whether a link was made on screen for this invite, in any shape. */
+/**
+ * Whether a row has a link now, in any shape: made on screen, or, as its
+ * refused press found, meanwhile elsewhere.
+ */
 function useLinked(): (inviteId: string) => boolean {
   const links = useInviteLinks();
-  return (inviteId) => links?.links.has(inviteId) === true;
+  const pending = use(PendingContext);
+  return (inviteId) =>
+    links?.links.has(inviteId) === true ||
+    pending?.elsewhere.has(inviteId) === true;
 }
 
 /**
@@ -367,7 +396,11 @@ export function ListedUndo({ ids }: { ids: readonly string[] }) {
  * announcer says the link is ready. After WhatsApp or a copy the row says
  * so, and the focus goes to the next person's "יצירת קישור" in this shape,
  * whose name the announcer says. A refusal is a line drawn anew each time,
- * and the press, busy meanwhile, takes back the focus it lost.
+ * and the press, busy meanwhile, takes back the focus it lost. One refused
+ * since a link was made meanwhile elsewhere ("linked": another device,
+ * someone else, the console) makes none, so the link already sent keeps
+ * working: the row says so in every shape in place of its press, counts as
+ * having its link, and the line takes the focus the press lost.
  */
 export function SendLinkRow({ row }: { row: PendingRow }) {
   const pending = use(PendingContext);
@@ -382,12 +415,20 @@ export function SendLinkRow({ row }: { row: PendingRow }) {
   const answer = useAnswerCount(state);
   const press = useRef<HTMLButtonElement>(null);
   const whatsapp = useRef<HTMLAnchorElement>(null);
+  const madeElsewhere = useRef<HTMLParagraphElement>(null);
   // The state it starts with is no answer.
   const seen = useRef<ResendState | null>(state);
 
   // Each answer once, as it arrives: not when the screen is shown again.
   useLayoutEffect(() => {
     if (!arrived(seen, state)) return;
+    if (state.failure === "linked") {
+      pending?.markElsewhere(row.id);
+      if (!focusFirst([madeElsewhere.current], { title: false })) {
+        announce(t("pending.linked", { name: row.shown }));
+      }
+      return;
+    }
     if (!state.link) {
       focusFirst([press.current]);
       return;
@@ -396,7 +437,7 @@ export function SendLinkRow({ row }: { row: PendingRow }) {
     if (!focusFirst([whatsapp.current])) {
       announce(t("pending.ready", { name: row.shown }));
     }
-  }, [state, links, row.id, row.shown, t]);
+  }, [state, links, pending, row.id, row.shown, t]);
 
   /** On to the next person with no link, in the shape `from` is in. */
   const goNext = (how: Sent, from: Element) => {
@@ -462,6 +503,15 @@ export function SendLinkRow({ row }: { row: PendingRow }) {
           onCopied={(button) => goNext("copied", button)}
         />
       </div>
+    );
+  }
+
+  // Refused here or in the screen's other shape: its link was made elsewhere.
+  if (state.failure === "linked" || pending?.elsewhere.has(row.id)) {
+    return (
+      <p ref={madeElsewhere} className="text-pretty text-ink-2 text-sm">
+        {t("link.errors.linked")}
+      </p>
     );
   }
 

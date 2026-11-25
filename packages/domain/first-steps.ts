@@ -51,7 +51,10 @@ export const FIRST_STEP_MODULE: Record<FirstStepKey, ModuleKey | null> = {
  */
 export const OPTIONAL_STEPS: readonly FirstStepKey[] = ["clockCode"];
 
-/** The staff (`isSetupStaff`): joined, and invited with no one joined yet. */
+/**
+ * The staff (`isSetupStaff`): joined, and invited with no one joined yet;
+ * and everyone still waiting for a link, whatever their role.
+ */
 export type TeamProgress = {
   joined: number;
   /** Open invites: a link was made, and is still good. */
@@ -60,7 +63,9 @@ export type TeamProgress = {
   expired: number;
   /**
    * Invites nobody got a link for yet (the console's wizard saves its staff
-   * so): "# אנשים עוד לא קיבלו קישור", not "הוזמנו".
+   * so): "# אנשים עוד לא קיבלו קישור", not "הוזמנו". Every one of them, a
+   * second owner's and an accountant's too, as the Team screen and Today's
+   * team row count them, so the three say one number.
    */
   pending: number;
 };
@@ -111,6 +116,9 @@ export type FirstStepsData = {
  * Where the team stands, counted as the console's checklist counts its staff
  * (`isSetupStaff`: managers and workers; a named role by the role it is
  * built on). Another owner and an accountant, joined or invited, never count.
+ * Those still waiting for a link are counted whatever their role, as the
+ * Team screen and Today's team row count them: the step's words say how many
+ * links the owner has left to send, and the step stays on the staff.
  */
 export function teamProgress(
   team: Pick<Team, "members" | "invites">,
@@ -120,7 +128,7 @@ export function teamProgress(
     joined: team.members.filter((member) => isSetupStaff(member.role)).length,
     invited: invites.filter((invite) => invite.state === "open").length,
     expired: invites.filter((invite) => invite.state === "expired").length,
-    pending: invites.filter((invite) => invite.state === "pending").length,
+    pending: team.invites.filter((invite) => invite.state === "pending").length,
   };
 }
 

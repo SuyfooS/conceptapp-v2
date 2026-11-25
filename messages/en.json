@@ -1543,7 +1543,8 @@
         "opened": "Opened in WhatsApp",
         "message": "You're invited to join {business}'s team in the app. Sign in from this link, with this number:",
         "next": "Next: {name}",
-        "ownerSends": "The owners send this invite's link."
+        "ownerSends": "The owners send this invite's link.",
+        "linked": "A link for {name} was made meanwhile on another screen, and it still works."
       },
       "inviteAction": "Invite to the team",
       "readOnly": "Here you see the team without changing it. To invite someone or change a role, ask an owner.",
@@ -1565,7 +1566,8 @@
           "failed": "We could not create a link. Try again in a moment.",
           "noPermission": "You don't have permission to invite to the team.",
           "viewOnly": "This is view only, so no link was made.",
-          "demo": "This is a demo business, so nobody is invited to it."
+          "demo": "This is a demo business, so nobody is invited to it.",
+          "linked": "A link for this invite was made meanwhile on another screen, and it still works. No new link was made."
         }
       },
       "invite": {
@@ -8032,7 +8034,9 @@
         "invited": "Invited",
         "invite": "Invite",
         "add": "Add a person",
-        "expired": "Invite expired"
+        "expired": "Invite expired",
+        "pending": "No link yet",
+        "pendingHint": "The owners send the link from the Team screen."
       },
       "invite": {
         "create": "Create invite link",

@@ -3,9 +3,12 @@
 -- audit log for the invites saved before, set by the console's wizard
 -- (public.create_business), and cleared by whichever function next makes the
 -- invite a link, by a trigger, never by a cancel. Read under the invites'
--- policy as before.
+-- policy as before. The Team screen's first link
+-- (public.team_invite_first_link) is refused once one was made, and the
+-- console says 'pending' for these, never 'expired' (public.admin_business,
+-- public.admin_businesses).
 begin;
-select plan(33);
+select plan(45);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -38,6 +41,20 @@ create function pg_temp.pending(number text) returns boolean language sql as $$
 $$;
 create function pg_temp.hash(number text) returns text language sql as $$
   select i.token_hash from public.invites i where i.id = pg_temp.inv(number)
+$$;
+-- Why a first link is refused: its SQLSTATE, then its hint if it has one;
+-- 'made' when it is not.
+create function pg_temp.first_link_refusal(actor uuid, invite uuid)
+returns text language plpgsql as $$
+declare
+  why text;
+begin
+  perform public.team_invite_first_link(actor, invite, repeat('9', 64));
+  return 'made';
+exception when others then
+  get stacked diagnostics why = pg_exception_hint;
+  return sqlstate || coalesce(' ' || nullif(why, ''), '');
+end;
 $$;
 
 -- 1. The column ---------------------------------------------------------------
@@ -111,7 +128,8 @@ select lives_ok(
       {"name": "Linked X", "phone": "+972500007613", "role": "worker"},
       {"name": "Refreshed X", "phone": "+972500007614", "role": "worker"},
       {"name": "Console X", "phone": "+972500007615", "role": "worker"},
-      {"name": "Cancelled X", "phone": "+972500007616", "role": "worker"}]')$$,
+      {"name": "Cancelled X", "phone": "+972500007616", "role": "worker"},
+      {"name": "First X", "phone": "+972500007618", "role": "worker"}]')$$,
   'the wizard opens a business with its staff list'
 );
 reset role;
@@ -119,13 +137,14 @@ select results_eq(
   $$select i.full_name, i.link_pending from public.invites i
     where i.business_id = pg_temp.x() order by i.phone$$,
   $$values ('Owner X'::text, true), ('Manager X', true), ('Linked X', true),
-    ('Refreshed X', true), ('Console X', true), ('Cancelled X', true)$$,
+    ('Refreshed X', true), ('Console X', true), ('Cancelled X', true),
+    ('First X', true)$$,
   'every invite the wizard saves has no link yet'
 );
 select is(
   (select a.details -> 'invites' from public.audit_log a
     where a.business_id = pg_temp.x() and a.action = 'business.create'),
-  '6'::jsonb,
+  '7'::jsonb,
   'and the wizard logs them as before'
 );
 
@@ -137,7 +156,7 @@ values
 
 -- 4. Each way a link is made clears it ----------------------------------------
 set local role service_role;
--- The Team screen's "יצירת קישור" (and "קישור חדש").
+-- The Team screen's "קישור חדש", which the first link below goes through.
 select is(
   public.team_invite_link('c5000000-0000-4000-a000-00000000000b',
     pg_temp.inv('+972500007613'), repeat('a', 64)),
@@ -147,6 +166,45 @@ select is(
 select is(pg_temp.pending('+972500007613'), false, 'team_invite_link clears it');
 select is(public.invite_by_token(repeat('a', 64)) ->> 'status', 'open',
   'and its new link reads open');
+
+-- The Team screen's "יצירת קישור": the first link, and only while it is the
+-- first, so a screen not read again never replaces one already sent.
+select is(
+  public.team_invite_first_link('c5000000-0000-4000-a000-00000000000b',
+    pg_temp.inv('+972500007618'), repeat('f', 64)),
+  '+972500007618',
+  'the owner makes a pending invite its first link'
+);
+select is(pg_temp.pending('+972500007618'), false,
+  'team_invite_first_link clears it');
+select is(
+  pg_temp.first_link_refusal('c5000000-0000-4000-a000-00000000000b',
+    pg_temp.inv('+972500007618')),
+  'P0002 linked',
+  'a second first link is refused, as one from a screen not read again: it has its link'
+);
+select is(
+  pg_temp.first_link_refusal('c5000000-0000-4000-a000-00000000000c',
+    pg_temp.inv('+972500007618')),
+  '42501',
+  'a worker of the business is refused as ever, and learns nothing of its link'
+);
+select is(
+  pg_temp.first_link_refusal('c5000000-0000-4000-a000-00000000000d',
+    pg_temp.inv('+972500007618')),
+  '42501',
+  'and so is another business''s manager'
+);
+select is(pg_temp.hash('+972500007618'), repeat('f', 64),
+  'none of them replaces the link made first');
+select is(public.invite_by_token(repeat('f', 64)) ->> 'status', 'open',
+  'which still reads open');
+select is(
+  pg_temp.first_link_refusal('c5000000-0000-4000-a000-00000000000c',
+    pg_temp.inv('+972500007611')),
+  '42501',
+  'a pending invite''s first link takes every check of team_invite_link'
+);
 
 -- The invite form, to a number with an invite open: refreshed with a link.
 select is(
@@ -237,6 +295,13 @@ select ok(
   and not has_function_privilege('anon', 'private.invite_link_given()', 'execute'),
   'browser roles run neither of the new private functions'
 );
+select ok(
+  not has_function_privilege('authenticated',
+    'public.team_invite_first_link(uuid, uuid, text)', 'execute')
+  and not has_function_privilege('anon',
+    'public.team_invite_first_link(uuid, uuid, text)', 'execute'),
+  'nor make a first link: the server does, for the signed-in person'
+);
 
 select pg_temp.sign_in('c5000000-0000-4000-a000-00000000000c');
 select is_empty(
@@ -251,7 +316,8 @@ select results_eq(
     where claimed_at is null order by phone$$,
   $$values ('+972500007611'::text, true), ('+972500007612', false),
     ('+972500007613', false), ('+972500007614', false),
-    ('+972500007615', false), ('+972500007617', false)$$,
+    ('+972500007615', false), ('+972500007617', false),
+    ('+972500007618', false)$$,
   'the owner reads their own business''s open invites, each with whether it has a link'
 );
 reset role;
@@ -261,6 +327,39 @@ select results_eq(
   $$select distinct business_id from public.invites$$,
   $$values ('c5000000-0000-4000-b000-000000000002'::uuid)$$,
   'a manager reads only their own business''s invites'
+);
+reset role;
+
+-- 7. The console says what the Team screen says ------------------------------
+-- The owner's invite, still waiting for its link, and the console's, made,
+-- both past their date.
+update public.invites set expires_at = now() - interval '1 day'
+where id in (pg_temp.inv('+972500007611'), pg_temp.inv('+972500007615'));
+
+select pg_temp.sign_in('c5000000-0000-4000-a000-00000000000a');
+select results_eq(
+  $$select p ->> 'phone', p ->> 'status'
+    from jsonb_array_elements(public.admin_business('ilp-x') -> 'people') p
+    where p ->> 'invite_id' is not null
+    order by 1$$,
+  $$values ('+972500007611'::text, 'pending'::text),
+    ('+972500007612', 'invited'), ('+972500007613', 'invited'),
+    ('+972500007614', 'invited'), ('+972500007615', 'expired'),
+    ('+972500007617', 'invited'), ('+972500007618', 'invited')$$,
+  'the console says an invite with no link yet waits for one, past its date too, never expired'
+);
+select ok(
+  (select max(n) filter (where p ->> 'status' = 'pending')
+      < min(n) filter (where p ->> 'status' = 'expired')
+    from jsonb_array_elements(public.admin_business('ilp-x') -> 'people')
+      with ordinality as people (p, n)),
+  'and lists it with the open invites, before the expired one'
+);
+select results_eq(
+  $$select members, open_invites, expired_invites
+    from public.admin_businesses() where slug = 'ilp-x'$$,
+  $$values (2::bigint, 6::bigint, 1::bigint)$$,
+  'the list counts it among the open invites, never the expired'
 );
 reset role;
 

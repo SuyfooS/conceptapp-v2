@@ -215,9 +215,18 @@ migration), `TeamInvite.linkPending`, and `buildTeam` gives such an invite
 the state `pending` whatever its date, first by name, counted apart
 (`counts.pending`; `open` and `expired` count only invites with a link). The
 Team screen lists them under "עוד לא קיבלו קישור", where each one's link is
-made with `team_invite_link` (`resendInviteAction`), then sent on WhatsApp to
-that number (`whatsappToHref` in @domain/share) or copied; the app sends
-nothing. `invite_links_pending.test.sql` covers it.
+made with `public.team_invite_first_link` (`issueFirstInviteLink`,
+`firstLinkAction`): `team_invite_link` with every check it makes, but only
+while the invite is still pending, its row locked first; once a link was
+made meanwhile elsewhere it is refused (P0002, hint `linked`, told only to
+someone who edits that team), so a screen not read again never replaces a
+link already sent ("קישור חדש" still calls `team_invite_link`, which
+replaces one on purpose; service_role only). The link is then sent on
+WhatsApp to that number (`whatsappToHref` in @domain/share) or copied; the
+app sends nothing. The console says so too: `public.admin_business` gives
+such an invite the status `pending` whatever its date, listed with the open
+ones, and `public.admin_businesses` counts it among the open invites, never
+the expired. `invite_links_pending.test.sql` covers it.
 
 A week is written shift by shift (`20261115000100_week_in_place.sql`; Orel's
 answers of 15 November 2026). `public.week_shifts(week)` reads a week's shifts

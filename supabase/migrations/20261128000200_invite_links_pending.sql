@@ -40,6 +40,15 @@
 --               invites under "עוד לא קיבלו קישור", where each one's link is
 --               made, sent on WhatsApp or copied, one person at a time. The
 --               app sends nothing.
+--   the first   public.team_invite_first_link (new): the Team screen's
+--   link        "יצירת קישור", public.team_invite_link only while the invite
+--               is still pending, so a screen not read again since a link was
+--               made elsewhere never replaces the link already sent.
+--               public.team_invite_link itself, "קישור חדש", is unchanged.
+--   the console public.admin_business says 'pending' for these, never
+--               'expired', and public.admin_businesses counts them among the
+--               open invites, never the expired ones, so the ConceptApp
+--               team's screens say what the owners' Team screen says.
 
 ------------------------------------------------------------------------------
 -- 1. The column
@@ -179,3 +188,174 @@ begin
   return new_id;
 end;
 $$;
+
+------------------------------------------------------------------------------
+-- 5. The first link, only while it is the first
+
+-- The Team screen's "יצירת קישור" (SendLinkRow, firstLinkAction): an invite
+-- nobody got a link for yet gets its first through public.team_invite_link,
+-- unchanged, with every check it makes. Once a link was made for it
+-- meanwhile (another device, someone else, the console), link_pending is
+-- false and the call is refused, P0002 with hint 'linked', so the link
+-- already sent keeps working: a screen read before that never replaces it.
+-- The row is locked first, so of two presses at once the second waits for
+-- the first and is refused. Only someone who edits that business's team
+-- (team.edit there) learns that it has a link; anyone else is refused,
+-- 42501, as team_invite_link refuses them. An invite that is no longer open
+-- is left to team_invite_link, which says so (P0002, no hint). "קישור חדש"
+-- still calls team_invite_link itself, which replaces a link on purpose. No
+-- caller in the database; the app calls it with the secret key
+-- (issueFirstInviteLink in @db/invites).
+create function public.team_invite_first_link(
+  actor uuid,
+  invite uuid,
+  new_token_hash text
+)
+returns text
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  inv public.invites%rowtype;
+begin
+  select * into inv
+  from public.invites i
+  where i.id = invite and i.claimed_at is null
+  for update;
+
+  if inv.id is not null and not inv.link_pending then
+    if not private.holds_perm(inv.business_id, actor, 'team.edit'::text) then
+      raise exception 'Not allowed to send this invite' using errcode = '42501';
+    end if;
+    raise exception 'The invite has its link already'
+      using errcode = 'P0002', hint = 'linked';
+  end if;
+
+  return public.team_invite_link(actor, invite, new_token_hash);
+end;
+$$;
+
+revoke execute on function public.team_invite_first_link(uuid, uuid, text)
+  from public, anon, authenticated;
+grant execute on function public.team_invite_first_link(uuid, uuid, text)
+  to service_role;
+
+------------------------------------------------------------------------------
+-- 6. The console says so too
+
+-- 20261117000700_member_names.sql's, with only this: an invite nobody got a
+-- link for yet reads 'pending' whatever its date, never 'invited' or
+-- 'expired', and is listed with the open ones. The console's checklist counts
+-- it, as it counts an open one, and the console's own link for it is made as
+-- before (the trigger above then clears the flag). The same signature, so its
+-- grants stay; they are given again all the same.
+create or replace function public.admin_business(business_slug text)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  result jsonb;
+begin
+  if not private.is_platform_staff() then
+    raise exception 'Platform staff only' using errcode = '42501';
+  end if;
+
+  select jsonb_build_object(
+    'id', b.id,
+    'slug', b.slug,
+    'name', b.name,
+    'accent', b.accent,
+    'address', b.address,
+    'template_key', b.template_key,
+    'created_at', b.created_at,
+    'people', coalesce((
+      select jsonb_agg(
+        jsonb_build_object(
+          'name', p.name, 'phone', p.phone, 'role', p.role,
+          'status', p.status, 'invite_id', p.invite_id,
+          'expires_at', p.expires_at
+        )
+        order by p.place, p.role, p.name, p.phone
+      )
+      from (
+        select coalesce(n.name, pr.full_name, '') as name, pr.phone, m.role,
+          'member' as status, null::uuid as invite_id,
+          null::timestamptz as expires_at, 0 as place
+        from public.memberships m
+        join public.profiles pr on pr.id = m.user_id
+        left join public.member_names n
+          on n.business_id = m.business_id and n.user_id = m.user_id
+        where m.business_id = b.id and m.active
+        union all
+        select coalesce(i.full_name, ''), i.phone, i.role,
+          case
+            when i.link_pending then 'pending'
+            when i.expires_at > now() then 'invited'
+            else 'expired'
+          end,
+          i.id, i.expires_at,
+          case when i.link_pending or i.expires_at > now() then 1 else 2 end
+        from public.invites i
+        where i.business_id = b.id and i.claimed_at is null
+      ) p
+    ), '[]'::jsonb)
+  )
+  into result
+  from public.businesses b
+  where b.slug = business_slug;
+
+  return result;
+end;
+$$;
+
+revoke execute on function public.admin_business(text) from public, anon;
+grant execute on function public.admin_business(text) to authenticated;
+
+-- 20261107000900_console_people.sql's, with only this: an invite nobody got a
+-- link for yet is counted among the open ones whatever its date, never among
+-- the expired, so the list never says a wizard's business has invites that
+-- ran out. The same columns, so it is replaced in place and its grants stay;
+-- they are given again all the same.
+create or replace function public.admin_businesses()
+returns table (
+  id uuid,
+  slug text,
+  name text,
+  accent text,
+  template_key text,
+  created_at timestamptz,
+  members bigint,
+  open_invites bigint,
+  expired_invites bigint
+)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  if not private.is_platform_staff() then
+    raise exception 'Platform staff only' using errcode = '42501';
+  end if;
+
+  return query
+  select b.id, b.slug, b.name, b.accent, b.template_key, b.created_at,
+    (select count(*) from public.memberships m
+      where m.business_id = b.id and m.active),
+    (select count(*) from public.invites i
+      where i.business_id = b.id and i.claimed_at is null
+        and (i.link_pending or i.expires_at > now())),
+    (select count(*) from public.invites i
+      where i.business_id = b.id and i.claimed_at is null
+        and not i.link_pending and i.expires_at <= now())
+  from public.businesses b
+  order by b.created_at desc, b.name;
+end;
+$$;
+
+revoke execute on function public.admin_businesses() from public, anon;
+grant execute on function public.admin_businesses() to authenticated;

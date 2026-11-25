@@ -34,41 +34,69 @@ const TAL = row("tal", "טל כהן");
 const NONE = row("none", null);
 
 const ids = (rows: readonly { id: string }[]) => rows.map((r) => r.id);
+/** Every invite the screen read, in any state. */
+const read = (...invites: readonly { id: string }[]) =>
+  new Set(invites.map((r) => r.id));
 
 describe("pendingShown", () => {
   it("lists what the screen read, by name, unnamed last", () => {
-    expect(ids(pendingShown([TAL, NONE, DANA, ORI], new Map()))).toEqual([
-      "ori",
-      "dana",
-      "tal",
-      "none",
-    ]);
+    expect(
+      ids(
+        pendingShown(
+          [TAL, NONE, DANA, ORI],
+          new Map(),
+          read(TAL, NONE, DANA, ORI),
+        ),
+      ),
+    ).toEqual(["ori", "dana", "tal", "none"]);
   });
 
   it("keeps a row whose link was asked for here in its place once the screen reads it as open", () => {
-    // Tal's link was made here; the screen, read again, lists only the rest.
+    // Tal's link was made here; the screen, read again, lists only the rest
+    // as waiting for a link, and Tal's invite as open.
     const held = new Map([[TAL.id, TAL]]);
-    expect(ids(pendingShown([DANA, ORI], held))).toEqual([
+    expect(ids(pendingShown([DANA, ORI], held, read(DANA, ORI, TAL)))).toEqual([
       "ori",
       "dana",
       "tal",
     ]);
     // Read again while still pending: once, the screen's own copy.
     const renamed = { ...TAL, role: "מנהל/ת" };
-    const shown = pendingShown([DANA, renamed], held);
+    const shown = pendingShown([DANA, renamed], held, read(DANA, TAL));
     expect(ids(shown)).toEqual(["dana", "tal"]);
     expect(shown.find((r) => r.id === "tal")?.role).toBe("מנהל/ת");
   });
 
   it("drops a row whose link was made elsewhere: nothing held keeps it", () => {
-    expect(ids(pendingShown([DANA], new Map()))).toEqual(["dana"]);
-    expect(pendingShown([], new Map())).toEqual([]);
+    expect(ids(pendingShown([DANA], new Map(), read(DANA, TAL)))).toEqual([
+      "dana",
+    ]);
+    expect(pendingShown([], new Map(), read())).toEqual([]);
+  });
+
+  // The review: Tal's link was made here and Tal joined, so the screen, read
+  // again, has no invite of Tal's at all; nor would another business's.
+  it("drops a held row whose invite the screen no longer reads", () => {
+    const held = new Map([
+      [TAL.id, TAL],
+      [ORI.id, ORI],
+    ]);
+    // Ori's invite still read, open now: kept. Tal's claimed: gone.
+    expect(ids(pendingShown([DANA], held, read(DANA, ORI)))).toEqual([
+      "ori",
+      "dana",
+    ]);
+    // Another business's screen, whose invites are none of these.
+    expect(ids(pendingShown([NONE], held, read(NONE)))).toEqual(["none"]);
+    expect(pendingShown([], held, read())).toEqual([]);
   });
 
   it("changes neither list it was given", () => {
     const rows = [TAL, DANA];
-    pendingShown(rows, new Map([[ORI.id, ORI]]));
+    const held = new Map([[ORI.id, ORI]]);
+    pendingShown(rows, held, read(TAL, DANA, ORI));
     expect(ids(rows)).toEqual(["tal", "dana"]);
+    expect([...held.keys()]).toEqual(["ori"]);
   });
 });
 

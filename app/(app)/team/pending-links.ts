@@ -37,18 +37,24 @@ export type PendingRow = {
  * whose link was asked for here (`held`), which stay in place, by name, until
  * the page is loaded again, though the screen, read again, now has them among
  * the open invites. Only a link made here keeps a row: one made elsewhere
- * (another device, someone else) takes it off, so nobody presses "יצירת
- * קישור" over a link already sent. The screen's own copy of a row wins over
- * the one held.
+ * (another device, someone else) takes it off once the screen is read again,
+ * and a press before that is refused (`firstLinkAction`), so nobody makes a
+ * link over one already sent. A held row stays only while the screen still
+ * reads its invite, in any state (`invites`): one claimed or deleted
+ * meanwhile goes, and so would one of another business or person. The
+ * screen's own copy of a row wins over the one held.
  */
 export function pendingShown(
   rows: readonly PendingRow[],
   held: ReadonlyMap<string, PendingRow>,
+  invites: ReadonlySet<string>,
 ): PendingRow[] {
   const read = new Set(rows.map((row) => row.id));
   return [
     ...rows,
-    ...[...held.values()].filter((row) => !read.has(row.id)),
+    ...[...held.values()].filter(
+      (row) => !read.has(row.id) && invites.has(row.id),
+    ),
   ].sort(byNameThenId);
 }
 

@@ -170,11 +170,50 @@ describe("firstSteps", () => {
     );
     expect(wizard).toMatchObject({
       done: false,
-      // The owner's own invite is no staff, as ever.
-      progress: { joined: 0, invited: 1, expired: 0, pending: 2 },
+      // Waiting for a link whatever the role, a second owner's too, as the
+      // Team screen counts them; the one sent a link is staff, as ever.
+      progress: { joined: 0, invited: 1, expired: 0, pending: 3 },
       href: "/team",
     });
     expect(team([owner], [noLink("shai", "manager", true)]).href).toBe("/team");
+    // Only a second owner waits for a link: the Team screen, where it is sent.
+    expect(team([owner], [noLink("ronit", "owner", true)])).toMatchObject({
+      done: false,
+      progress: { joined: 0, invited: 0, expired: 0, pending: 1 },
+      href: "/team",
+    });
+  });
+
+  // The review: Today's first step and its team row, and /team, said one
+  // number in the same words only while the list had staff alone.
+  it("counts everyone waiting for a link as the Team screen does, a partner and a bookkeeper too", () => {
+    const noLink = (id: string, role: Role): TeamInvite => ({
+      ...invite(id, role, true),
+      linkPending: true,
+    });
+    const built = buildTeam(
+      [member("owner", "owner")],
+      [
+        noLink("partner", "owner"),
+        noLink("books", "accountant"),
+        noLink("shai", "manager"),
+        noLink("tamar", "worker"),
+      ],
+      NOW,
+    );
+    const progress = teamProgress(built);
+    expect(progress).toEqual({ joined: 0, invited: 0, expired: 0, pending: 4 });
+    expect(progress.pending).toBe(built.counts.pending);
+    expect(teamStepWords(progress)).toBe("pending");
+    // Joined is still the staff alone: a partner who joined is no step done.
+    const joined = teamProgress(
+      buildTeam(
+        [member("owner", "owner"), member("partner", "owner")],
+        [noLink("books", "accountant")],
+        NOW,
+      ),
+    );
+    expect(joined).toEqual({ joined: 0, invited: 0, expired: 0, pending: 1 });
   });
 
   it("says first who is still waiting for a link, until one of the staff joined", () => {

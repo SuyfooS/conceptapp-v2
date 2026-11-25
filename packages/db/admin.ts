@@ -54,8 +54,12 @@ export type AdminBusiness = {
   templateKey: string | null;
   createdAt: string;
   members: number;
+  /** Invites nobody claimed yet, still good or still waiting for a link. */
   openInvites: number;
-  /** Invites nobody claimed in time: the business may be stuck without them. */
+  /**
+   * Invites nobody claimed in time: the business may be stuck without them.
+   * Never one waiting for its first link, which has none to run out.
+   */
   expiredInvites: number;
 };
 
@@ -133,7 +137,7 @@ const BusinessSetupRow = z.object({
       name: z.string(),
       phone: z.string().nullable(),
       role: z.enum(ROLES),
-      status: z.enum(["member", "invited", "expired"]),
+      status: z.enum(["member", "invited", "pending", "expired"]),
       invite_id: z.uuid().nullable(),
       expires_at: z.string().nullable().default(null),
     }),
@@ -145,9 +149,13 @@ export type SetupPerson = {
   name: string;
   phone: string | null;
   role: Role;
-  /** A member, an invite still open, or one nobody claimed in time. */
-  status: "member" | "invited" | "expired";
-  /** The invite, open or expired; null for members. */
+  /**
+   * A member; an invite still open; one nobody got a link for yet
+   * (`pending`: the wizard saves its staff so, and the owners send each one
+   * from the Team screen), whatever its date; or one nobody claimed in time.
+   */
+  status: "member" | "invited" | "pending" | "expired";
+  /** The invite, open, pending or expired; null for members. */
   inviteId: string | null;
   /** When the invite runs out, or ran out; null for members. */
   expiresAt: string | null;
@@ -158,7 +166,10 @@ export type BusinessSetup = Omit<
   "members" | "openInvites" | "expiredInvites"
 > & {
   address: string | null;
-  /** Active members, then open invites, then expired ones; owners first. */
+  /**
+   * Active members, then open invites and those waiting for a link, then
+   * expired ones; owners first.
+   */
   people: SetupPerson[];
 };
 

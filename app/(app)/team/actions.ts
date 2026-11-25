@@ -1,6 +1,10 @@
 "use server";
 
-import { inviteToTeam, issueTeamInviteLink } from "@db/invites";
+import {
+  inviteToTeam,
+  issueFirstInviteLink,
+  issueTeamInviteLink,
+} from "@db/invites";
 import { clearProfileBio } from "@db/profile";
 import {
   cancelTeamInvite,
@@ -61,10 +65,11 @@ export type InviteState =
 
 export type ResendState =
   // A fresh link is for someone already invited here, never refused for
-  // being in another business; only the console is refused an owner's.
+  // being in another business; only the console is refused an owner's. A
+  // first link is refused once one was made meanwhile elsewhere ("linked").
   | {
       link?: undefined;
-      failure?: Exclude<TeamFailure, "elsewhere" | "hasOwner">;
+      failure?: Exclude<TeamFailure, "elsewhere" | "hasOwner"> | "linked";
     }
   | { link: string; failure?: undefined };
 
@@ -199,11 +204,35 @@ export async function resendInviteAction(
   _prev: ResendState,
   _form: FormData,
 ): Promise<ResendState> {
+  return await issueLink(inviteId, issueTeamInviteLink);
+}
+
+/**
+ * The first link of an invite nobody got one for yet, from "עוד לא קיבלו
+ * קישור" (`SendLinkRow`): as `resendInviteAction`, but refused ("linked")
+ * once a link was made for it meanwhile, on another screen, by someone else
+ * or from the console, so a screen not read again since never replaces a
+ * link already sent. Then too the screen reads its list again, where the
+ * invite is open now.
+ */
+export async function firstLinkAction(
+  inviteId: string,
+  _prev: ResendState,
+  _form: FormData,
+): Promise<ResendState> {
+  return await issueLink(inviteId, issueFirstInviteLink);
+}
+
+async function issueLink(
+  inviteId: string,
+  issue: typeof issueFirstInviteLink,
+): Promise<ResendState> {
   const actor = await inviter();
   if ("failure" in actor) return { failure: actor.failure };
   try {
-    const result = await issueTeamInviteLink(actor.userId, inviteId);
+    const result = await issue(actor.userId, inviteId);
     if (!result.ok) {
+      if (result.error === "linked") refresh();
       return {
         failure: result.error === "hasOwner" ? "notAllowed" : result.error,
       };

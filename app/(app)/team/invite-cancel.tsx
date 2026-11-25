@@ -7,7 +7,12 @@ import { Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { createContext, type ReactNode, use, useRef, useState } from "react";
 import { useHeldWrite } from "../use-held-write";
-import { inviteCancelTarget, invitesLeft, sectionTitle } from "./invite-focus";
+import {
+  cancelSaid,
+  inviteCancelTarget,
+  invitesLeft,
+  sectionTitle,
+} from "./invite-focus";
 import type {
   CancelInvite,
   InviteCancelResult,
@@ -195,10 +200,14 @@ export function CancelInviteButton({
  * this section, which stays where it is (`invitesLeft`), else the page's.
  * A section that lists some of the invites (`ids`: a phone's and a
  * tablet's "עוד לא קיבלו קישור" and the invites under it) says only its
- * own, so one deleted there has one "ביטול", where its row was.
+ * own, so one deleted there has one "ביטול", where its row was. A refusal of
+ * one neither list has any more (claimed or deleted meanwhile, "gone", and
+ * the screen read again) is said above them (`strays`), so it is never lost
+ * with its row (`cancelSaid`).
  */
 export function InviteCancelUndo({
   ids,
+  strays,
 }: {
   /**
    * The invites its section lists, which is drawn anew once none is left (a
@@ -206,6 +215,12 @@ export function InviteCancelUndo({
    * section stays (the desktop's table, which lists the team too).
    */
   ids?: readonly string[];
+  /**
+   * In place of `ids`, for the line above a phone's and a tablet's lists:
+   * every invite the screen read, whose lists say their own refusals. Only a
+   * refusal of another is said here, and no "ביטול".
+   */
+  strays?: readonly string[];
 }) {
   const cancels = use(CancelsContext);
   const t = useTranslations("app.team");
@@ -213,10 +228,15 @@ export function InviteCancelUndo({
   const anchor = useRef<HTMLSpanElement>(null);
   if (!cancels) return null;
   const { gone } = cancels;
-  const own = (id: string) => ids === undefined || ids.includes(id);
-  const held = cancels.held && own(cancels.held.id) ? cancels.held : null;
+  const where = { ids, strays };
+  const held =
+    cancels.held && cancelSaid(cancels.held.id, "held", where)
+      ? cancels.held
+      : null;
   const failure =
-    cancels.failure && own(cancels.failure.id) ? cancels.failure.failure : null;
+    cancels.failure && cancelSaid(cancels.failure.id, "refusal", where)
+      ? cancels.failure.failure
+      : null;
   const stays = ids === undefined || invitesLeft(ids, gone);
   return (
     <>

@@ -69,6 +69,8 @@ type ViewProps = {
   team: Team;
   viewer: Viewer;
   resend: Resend;
+  /** The first link of an invite with none (`SendLinkRow`). */
+  firstLink: Resend;
   /** A member's own page, under this path. */
   peopleHref: string;
   /** A member's file, for a files-only reader. */
@@ -134,6 +136,7 @@ export function TeamView({
   peopleHref,
   fileHref = (userId) => `${peopleHref}/${userId}/file`,
   resend,
+  firstLink = resend,
   cancel,
   ownerOnly = [],
   named = [],
@@ -157,6 +160,12 @@ export function TeamView({
    */
   fileHref?: (userId: string) => string;
   resend: Resend;
+  /**
+   * The first link of an invite nobody got one for (`firstLinkAction`:
+   * refused once a link was made meanwhile elsewhere, so a screen not read
+   * again never replaces one already sent); `resend` by default, a twin's.
+   */
+  firstLink?: Resend;
   /**
    * `cancelInviteAction` bound to the business, or the demo's stand-in;
    * none while viewing as someone, who changes nothing.
@@ -214,6 +223,7 @@ export function TeamView({
     team,
     viewer,
     resend,
+    firstLink,
     peopleHref,
     fileHref,
     invites,
@@ -339,9 +349,10 @@ function TeamBody({
       <InviteLinks>
         <PendingLinks
           rows={filesOnly ? [] : pendingRows(view)}
+          invites={filesOnly ? [] : team.invites.map((invite) => invite.id)}
           business={business}
           toNumber={toNumber}
-          resend={view.resend}
+          resend={view.firstLink}
         >
           {/* The files alone are one list: across the tablet, capped, with no
             empty column beside it. So are the members under a choice of the
@@ -556,7 +567,9 @@ function noInvites({ t, edits }: ViewProps): string {
  * waits for a link, then the open and expired ones under their own title.
  * With some waiting and none sent, their list says it all; with none at
  * all, what to do instead. A row whose first link was made here stays in
- * the first list, so the second leaves it out meanwhile.
+ * the first list, so the second leaves it out meanwhile. Each list says its
+ * own deleted invites' undo and refusals; one the screen reads no more
+ * (claimed or deleted meanwhile) is said above both.
  */
 function Invites(view: ViewProps) {
   const { t, team, invites } = view;
@@ -567,6 +580,9 @@ function Invites(view: ViewProps) {
     // No invite has a file: shown under "כולם" only (H6b-2).
     <FileShown tags={[]}>
       <div className="flex flex-col gap-6 md:gap-8">
+        {/* Every row of both lists is one the screen read: a held one only
+            while its invite is (`pendingShown`). */}
+        <InviteCancelUndo strays={team.invites.map((i) => i.id)} />
         <PendingList />
         {listed.length > 0 || team.counts.pending === 0 ? (
           <UnlessAllPendingHere ids={ids}>
