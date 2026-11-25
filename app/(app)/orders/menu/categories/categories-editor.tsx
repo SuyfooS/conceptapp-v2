@@ -27,6 +27,7 @@ import type {
   SaveCategories,
 } from "../menu-types";
 import { arrowClass, type MoveBy, useRowMoves } from "../row-moves";
+import { useLastSaved } from "../saved-list";
 
 /** A category's row, as its list keys it: one not saved yet by its name. */
 const categoryKey = (category: CategoryInput) =>
@@ -102,6 +103,7 @@ export function CategoriesEditor({
 
   const shown: CategoryInput[] = order ?? categories;
   const moves = useRowMoves(shown, categoryKey);
+  const server = useLastSaved<CategoryInput>(categories);
   const countOf = (id: string | undefined) =>
     id ? items.filter((item) => item.category === id).length : 0;
   const current =
@@ -123,8 +125,9 @@ export function CategoriesEditor({
    * it whole: only the latest change's answer says what the list is, so an
    * earlier answer leaves the screen as it is, its caller too (an undo, a
    * name typed), and no press made meanwhile is lost. Refused, the screen
-   * shows the server's list again. Every answer is told to the moves, so a
-   * move is said by the saves that have it (`useRowMoves`).
+   * shows the server's list again: an earlier change's, saved, when Next
+   * hasn't drawn its answer yet (`useLastSaved`). Every answer is told to
+   * the moves, so a move is said by the saves that have it (`useRowMoves`).
    */
   async function change(next: CategoryInput[]): Promise<boolean | null> {
     latest.current += 1;
@@ -140,16 +143,20 @@ export function CategoriesEditor({
     setSending((count) => count - 1);
     const decides = mine === latest.current;
     moves.answered(mine, result.ok, decides);
-    if (!decides) return null;
     if (result.ok) {
-      // The new ones have their ids now, so a removal of one can be undone.
+      // Saved, overtaken or not: what the server has now. The new ones have
+      // their ids, so a removal of one can be undone.
       const ids = result.value;
-      setOrder(next.map((c, at) => ({ ...c, id: ids[at] ?? c.id })));
+      const kept = next.map((c, at) => ({ ...c, id: ids[at] ?? c.id }));
+      server.saved(kept);
+      if (!decides) return null;
+      setOrder(kept);
       setFailure(null);
       setSaved((count) => count + 1);
       return true;
     }
-    setOrder(null);
+    if (!decides) return null;
+    setOrder(server.refused());
     setFailure(result.failure);
     setRefusals((count) => count + 1);
     return false;

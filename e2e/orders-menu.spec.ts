@@ -824,6 +824,9 @@ test("a change refused while a later one was on its way leaves the screen to the
       .getByRole("alert")
       .filter({ hasText: rt("app.orders.menu.failed.failed") }),
   ).toBeVisible();
+  // Where the move put it: Next draws the move's answer only once the
+  // rename's has come too, so the refusal shows the list the move saved,
+  // not the one drawn before both (CI's third run: "4 עכשיו בשורה 4").
   await expect(saidSince(polite, now)).toHaveCount(1);
   expect(await wasSaid(page, back)).toBe(false);
   await expect.poll(rowNames).toEqual(moved);

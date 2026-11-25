@@ -18,12 +18,15 @@ export function focusIfLost(
   target: Focusable | null | undefined,
   page: FocusedPage,
 ): boolean {
-  if (!target) return false;
-  const active = page.activeElement;
-  const lost = !active || active === page.body || !active.isConnected;
-  if (!lost) return false;
+  if (!target || !focusLost(page)) return false;
   target.focus();
   return true;
+}
+
+/** Nothing holds the focus: the page's body has it, or nothing, or what is gone. */
+function focusLost(page: FocusedPage): boolean {
+  const active = page.activeElement;
+  return !active || active === page.body || !active.isConnected;
 }
 
 /** What the page's next drawings are waited on with: its window, or a stand-in. */
@@ -39,16 +42,24 @@ export const DRAWN_WITHIN_MS = 1_000;
 
 /**
  * Puts the focus on `target` as the hiring file shows again (`focusIfLost`),
- * and once the page is drawn, two frames on (at most `DRAWN_WITHIN_MS`),
- * puts it there again if it is lost then. The file was held inert and
- * hidden until the very drawing that shows it again, and on that drawing
- * its title may not take the focus yet, or lose it at the browser's next
- * look: CI's first run of file-a11y.spec.ts drew "פרטים מזהים" again
- * without the focus, while every title never held took it at once. Focus
- * the person put elsewhere meanwhile stays there. `done`
- * settles once that is over, true, so what is said after the focus landed
- * waits for it; `stop` ends it early (the file held again, or gone),
- * settled false, so nothing is said for a file no longer shown.
+ * and from the page's second drawing on, puts it there again on each
+ * drawing while it is still lost, until it lands or the person puts it
+ * elsewhere (at most `DRAWN_WITHIN_MS`, a page no longer drawn, with one
+ * last try then). The file was held inert and invisible until the very
+ * drawing that shows it again, and with less motion asked for, the design
+ * system's safety net (`globals.css`: every element's transitions 0.01 ms
+ * long, and an element's transition is of every property unless it names
+ * some) makes its `visibility` a transition too: the file and each of its
+ * titles stay hidden, and refuse the focus, until a drawing of the page
+ * has moved that transition on. So the focus put on that drawing is
+ * always refused, and one two frames on was refused too when no drawing
+ * of the page came in between (a busy page, or a test's clock, whose
+ * frames are timers: CI's first run of file-a11y.spec.ts, and its third at
+ * 820 px, drew "פרטים מזהים" again without the focus). Focus the person
+ * put elsewhere meanwhile stays there. `done` settles once that is over,
+ * true, so what is said after the focus landed waits for it; `stop` ends
+ * it early (the file held again, or gone), settled false, so nothing is
+ * said for a file no longer shown.
  */
 export function focusWhenDrawn(
   target: Focusable,
@@ -63,21 +74,33 @@ export function focusWhenDrawn(
   let over = false;
   let frame: number | undefined;
   let late: number | undefined;
+  let drawn = 0;
   const end = (landed: boolean) => {
     over = true;
     if (frame !== undefined) win.cancelAnimationFrame(frame);
     win.clearTimeout(late);
     settle(landed);
   };
-  const again = () => {
+  const drawing = () => {
+    frame = undefined;
+    if (over) return;
+    drawn += 1;
+    if (drawn >= 2) {
+      focusIfLost(target, page);
+      // On the title now, or where the person put it.
+      if (!focusLost(page)) {
+        end(true);
+        return;
+      }
+    }
+    frame = win.requestAnimationFrame(drawing);
+  };
+  late = win.setTimeout(() => {
     if (over) return;
     focusIfLost(target, page);
     end(true);
-  };
-  late = win.setTimeout(again, DRAWN_WITHIN_MS);
-  frame = win.requestAnimationFrame(() => {
-    frame = win.requestAnimationFrame(again);
-  });
+  }, DRAWN_WITHIN_MS);
+  frame = win.requestAnimationFrame(drawing);
   return {
     done,
     stop: () => {

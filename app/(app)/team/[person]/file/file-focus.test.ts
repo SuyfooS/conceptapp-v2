@@ -12,8 +12,8 @@ import {
  * to "התיק נעול" when the file locks here and to the file's first heading
  * after a right code, each only when what held the focus went with the part
  * of the screen it was in, never away from where the person put it; and
- * back to a title of the file as it shows again after a hold, once more
- * when the page is drawn if it is lost then.
+ * back to a title of the file as it shows again after a hold, and again on
+ * each of the page's drawings from the second while it is still lost.
  */
 
 const body = { isConnected: true };
@@ -84,11 +84,29 @@ function drawings() {
   };
 }
 
+/**
+ * A title that refuses the focus `refused` times before it takes it, as the
+ * file's titles do while their `visibility` is still a transition (less
+ * motion asked for), until a drawing of the page moves it on.
+ */
+function titleRefusing(
+  page: { activeElement: { isConnected: boolean } | null },
+  refused: number,
+) {
+  let tries = 0;
+  const title = { isConnected: true, focus: vi.fn() };
+  title.focus.mockImplementation(() => {
+    tries += 1;
+    if (tries > refused) page.activeElement = title;
+  });
+  return title;
+}
+
 describe("focusWhenDrawn", () => {
   it("puts the focus on the title at once, and again once the page is drawn if it is lost then", async () => {
     const page = { activeElement: body as { isConnected: boolean }, body };
     // A title that doesn't take the focus on the drawing that shows it.
-    const title = { focus: vi.fn() };
+    const title = titleRefusing(page, 1);
     const { win, frame, waiting } = drawings();
     const { done } = focusWhenDrawn(title, page, win);
     expect(title.focus).toHaveBeenCalledTimes(1);
@@ -96,6 +114,46 @@ describe("focusWhenDrawn", () => {
     expect(title.focus).toHaveBeenCalledTimes(1);
     frame();
     expect(title.focus).toHaveBeenCalledTimes(2);
+    expect(page.activeElement).toBe(title);
+    expect(waiting()).toBe(0);
+    expect(await done).toBe(true);
+  });
+
+  // CI's third run of file-a11y.spec.ts at 820 px: no drawing of the page
+  // came in the two frames of the page's clock (timers there), so the title
+  // still refused it then, and the focus stayed on nothing.
+  it("keeps putting it back on each drawing while it is still lost, until it lands", async () => {
+    const page = { activeElement: body as { isConnected: boolean }, body };
+    const title = titleRefusing(page, 3);
+    const { win, frame, waiting } = drawings();
+    let settled: boolean | null = null;
+    const { done } = focusWhenDrawn(title, page, win);
+    void done.then((landed) => {
+      settled = landed;
+    });
+    frame();
+    frame();
+    frame();
+    expect(title.focus).toHaveBeenCalledTimes(3);
+    await Promise.resolve();
+    // Not over while the focus is lost: what waits for it isn't said yet.
+    expect(settled).toBeNull();
+    frame();
+    expect(title.focus).toHaveBeenCalledTimes(4);
+    expect(page.activeElement).toBe(title);
+    expect(waiting()).toBe(0);
+    expect(await done).toBe(true);
+  });
+
+  it("tries once more and ends after DRAWN_WITHIN_MS when it never lands", async () => {
+    const page = { activeElement: body as { isConnected: boolean }, body };
+    const title = { focus: vi.fn() };
+    const { win, frame, late, waiting } = drawings();
+    const { done } = focusWhenDrawn(title, page, win);
+    for (let drawing = 0; drawing < 10; drawing += 1) frame();
+    expect(title.focus).toHaveBeenCalledTimes(10);
+    late();
+    expect(title.focus).toHaveBeenCalledTimes(11);
     expect(waiting()).toBe(0);
     expect(await done).toBe(true);
   });
@@ -124,6 +182,22 @@ describe("focusWhenDrawn", () => {
     moved.frame();
     expect(await second.done).toBe(true);
     expect(other.focus).not.toHaveBeenCalled();
+
+    // Put there while the title still refused it: it stays there too.
+    page.activeElement = body;
+    const refusing = { focus: vi.fn() };
+    const meanwhile = drawings();
+    const third = focusWhenDrawn(refusing, page, meanwhile.win);
+    meanwhile.frame();
+    meanwhile.frame();
+    meanwhile.frame();
+    const tabBar = { isConnected: true };
+    page.activeElement = tabBar;
+    meanwhile.frame();
+    expect(await third.done).toBe(true);
+    expect(refusing.focus).toHaveBeenCalledTimes(3);
+    expect(page.activeElement).toBe(tabBar);
+    expect(meanwhile.waiting()).toBe(0);
   });
 
   it("stops waiting for drawings after DRAWN_WITHIN_MS, a page no longer drawn", async () => {
@@ -135,6 +209,21 @@ describe("focusWhenDrawn", () => {
     expect(title.focus).toHaveBeenCalledTimes(2);
     expect(waiting()).toBe(0);
     expect(await done).toBe(true);
+  });
+
+  it("ends settled false when stopped between drawings while still lost", async () => {
+    const page = { activeElement: body as { isConnected: boolean }, body };
+    const title = { focus: vi.fn() };
+    const { win, frame, waiting } = drawings();
+    const { done, stop } = focusWhenDrawn(title, page, win);
+    frame();
+    frame();
+    frame();
+    stop();
+    expect(waiting()).toBe(0);
+    frame();
+    expect(title.focus).toHaveBeenCalledTimes(3);
+    expect(await done).toBe(false);
   });
 
   // The file closed or held again before the page was drawn: what waits
@@ -154,7 +243,7 @@ describe("focusWhenDrawn", () => {
 
   it("stays settled true when stopped after the focus landed", async () => {
     const page = { activeElement: body as { isConnected: boolean }, body };
-    const title = { focus: vi.fn() };
+    const title = titleRefusing(page, 1);
     const { win, frame } = drawings();
     const { done, stop } = focusWhenDrawn(title, page, win);
     frame();

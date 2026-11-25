@@ -201,9 +201,9 @@ export function FileOpenWatch({
     if (warningShown) warningSeen.current = true;
   }, [warningShown]);
 
-  // The focus on its way back into the file shown again, until the page is
-  // drawn (`focusWhenDrawn`): true once it is, false when the file closed
-  // or was held again first.
+  // The focus on its way back into the file shown again, until it landed
+  // there (`focusWhenDrawn`): true once that is over, false when the file
+  // closed or was held again first.
   const landing = useRef<Promise<boolean> | null>(null);
 
   // Kept open after a warning that was on screen: said once, after the
@@ -227,8 +227,10 @@ export function FileOpenWatch({
   }, [kept, t, locale]);
 
   // Shown again: the focus the hiding took goes back, unless the person
-  // put it somewhere else meanwhile, and once more once the page is drawn
-  // if it is lost then (the title was inert and hidden until this drawing).
+  // put it somewhere else meanwhile, and again on each drawing while it is
+  // still lost: the title was inert and invisible until this drawing, and
+  // with less motion asked for its `visibility` is a transition, hidden
+  // until a drawing moves it on (`focusWhenDrawn`).
   useLayoutEffect(() => {
     if (held) return;
     const back = heldFocus.current;

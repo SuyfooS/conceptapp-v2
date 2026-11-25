@@ -24,6 +24,7 @@ import { inputClass, rowClass } from "../../../manage/list-rows";
 import { FailureLine } from "../menu-parts";
 import type { MenuActionFailure, SavePlaces } from "../menu-types";
 import { arrowClass, type MoveBy, useRowMoves } from "../row-moves";
+import { useLastSaved } from "../saved-list";
 
 /** Where the quick start begins: a small restaurant's floor. */
 const QUICK_START = 10;
@@ -83,6 +84,7 @@ export function PlacesEditor({
 
   const shown: PlaceInput[] = order ?? places;
   const moves = useRowMoves(shown, placeKey);
+  const server = useLastSaved<PlaceInput>(places);
   const named = (text: string, except?: number) =>
     shown.some(
       (p, at) => at !== except && p.name.toLowerCase() === text.toLowerCase(),
@@ -95,8 +97,9 @@ export function PlacesEditor({
    * it whole: only the latest change's answer says what the list is, so an
    * earlier answer leaves the screen as it is, its caller too (an undo, a
    * name typed), and no press made meanwhile is lost. Refused, the screen
-   * shows the server's list again. Every answer is told to the moves, so a
-   * move is said by the saves that have it (`useRowMoves`).
+   * shows the server's list again: an earlier change's, saved, when Next
+   * hasn't drawn its answer yet (`useLastSaved`). Every answer is told to
+   * the moves, so a move is said by the saves that have it (`useRowMoves`).
    */
   async function change(next: PlaceInput[]): Promise<boolean | null> {
     latest.current += 1;
@@ -112,15 +115,20 @@ export function PlacesEditor({
     setSending((n) => n - 1);
     const decides = mine === latest.current;
     moves.answered(mine, result.ok, decides);
-    if (!decides) return null;
     if (result.ok) {
+      // Saved, overtaken or not: what the server has now, the new places
+      // with their ids.
       const ids = result.value;
-      setOrder(next.map((p, at) => ({ ...p, id: ids[at] ?? p.id })));
+      const kept = next.map((p, at) => ({ ...p, id: ids[at] ?? p.id }));
+      server.saved(kept);
+      if (!decides) return null;
+      setOrder(kept);
       setFailure(null);
       setSaved((n) => n + 1);
       return true;
     }
-    setOrder(null);
+    if (!decides) return null;
+    setOrder(server.refused());
     setFailure(result.failure);
     setRefusals((n) => n + 1);
     return false;

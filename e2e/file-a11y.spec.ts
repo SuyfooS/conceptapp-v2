@@ -215,11 +215,15 @@ test("the file twin, its quarter of an hour ending with the focus on 'להשאי
   await page.clock.fastForward("01:00");
   await expect(warning).toHaveCount(0);
   await expect(first).toBeVisible();
-  // "פרטים מזהים" was inert and hidden with the file until the drawing that
-  // shows it again, the one step here no other title takes the focus
-  // after; CI's first run drew it there without the focus. The file puts
-  // the focus there again once the page is drawn if it is lost then
-  // (`focusWhenDrawn`), and only after that says it stays open.
+  // "פרטים מזהים" was inert and invisible with the file until the drawing
+  // that shows it again, and these tests ask for less motion
+  // (playwright.config.ts), so the design system's 0.01 ms transitions
+  // make its `visibility` one too: hidden, refusing the focus, until a
+  // drawing of the page moves it on. CI's first run, and its third at
+  // 820 px, drew it there without the focus, the second try coming two of
+  // the page clock's frames on (timers) before any drawing. The file puts
+  // the focus there again on each drawing while it is lost
+  // (`focusWhenDrawn`), and only once it landed says it stays open.
   await expect(first).toBeFocused();
   await expect(saidSince(polite, hf.idle.kept)).toHaveCount(1);
   await expect.poll(() => focusWhenSaid(page)).toBe(true);
