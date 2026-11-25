@@ -16,6 +16,27 @@ import {
 const at = (minute: number) => new Date(Date.UTC(2026, 10, 25, 8, minute));
 const stamp = (minute: number) => at(minute).toISOString();
 
+/** One update the builder queues on its notice: an updater, or a value. */
+type Queued =
+  | ScreenNotice
+  | null
+  | ((notice: ScreenNotice | null) => ScreenNotice | null);
+
+/**
+ * The builder's notice after one press, as React applies what the press
+ * queued on it, in order: an updater gets what came before it, a value takes
+ * its place.
+ */
+function applied(
+  notice: ScreenNotice | null,
+  queue: readonly Queued[],
+): ScreenNotice | null {
+  return queue.reduce<ScreenNotice | null>(
+    (prev, next) => (typeof next === "function" ? next(prev) : next),
+    notice,
+  );
+}
+
 describe("SCREEN_UNDO_MS", () => {
   it("keeps the copy's ten seconds", () => {
     expect(SCREEN_UNDO_MS).toBe(10_000);
@@ -217,10 +238,12 @@ describe("one way back, as the builder uses it", () => {
     expect(screenUndone(notice, false, at(2))).toBeNull();
     expect(first).toHaveBeenCalledTimes(1);
 
-    // Copied again: the copy's sheet goes through `edited` first, then the
-    // new way back comes in its place.
-    notice = afterScreenEdit(notice);
-    notice = screenMade("copy", 3, second, at(3));
+    // Copied again: `applyCopy` queues `edited`'s updater, then the new way
+    // back, which comes in place of the words that the first was undone.
+    notice = applied(notice, [
+      afterScreenEdit,
+      screenMade("copy", 3, second, at(3)),
+    ]);
     expect(toast(notice)).toEqual({
       words: { of: "screen", what: "copy", kind: "made", count: 3 },
       stamp: stamp(3),
@@ -235,16 +258,57 @@ describe("one way back, as the builder uses it", () => {
     expect(second).not.toHaveBeenCalled();
     expect(first).toHaveBeenCalledTimes(1);
   });
+});
+
+// `applyCopy` calls `edited` (which queues `afterScreenEdit`) before
+// `onMade` (which queues the new notice), and React applies them in that
+// order. These pin what that order gives, and that the other order would
+// drop the new way back on every copy; the e2e (design.spec.ts, "ביטול"
+// focused after a fresh copy) catches a swap in the builder itself.
+describe("a copy after a change on the screen: edited, then made", () => {
+  const offered = (undo: () => void) => screenMade("copy", 3, undo, at(0));
+  const undone: ScreenNotice = {
+    kind: "undone",
+    what: "copy",
+    stamp: stamp(1),
+  };
 
   it("puts back only the latest change: a second copy's way back takes the first's place", () => {
     const first = vi.fn();
     const second = vi.fn();
-    let notice: ScreenNotice | null = screenMade("copy", 3, first, at(0));
-    notice = afterScreenEdit(notice);
-    notice = screenMade("copy", 5, second, at(1));
-    notice = screenUndone(notice, false, at(2));
+    const notice = applied(offered(first), [
+      afterScreenEdit,
+      screenMade("copy", 5, second, at(2)),
+    ]);
+    expect(notice).toMatchObject({ kind: "made", count: 5, stamp: stamp(2) });
+    expect(screenUndone(notice, false, at(3))).toEqual({
+      kind: "undone",
+      what: "copy",
+      stamp: stamp(3),
+    });
     expect(second).toHaveBeenCalledTimes(1);
     expect(first).not.toHaveBeenCalled();
-    expect(notice).toEqual({ kind: "undone", what: "copy", stamp: stamp(2) });
+  });
+
+  it("offers the way back again after one was undone", () => {
+    const second = vi.fn();
+    const notice = applied(undone, [
+      afterScreenEdit,
+      screenMade("copy", 5, second, at(2)),
+    ]);
+    expect(notice).toMatchObject({ kind: "made", count: 5, stamp: stamp(2) });
+  });
+
+  it("would drop the new way back, and its toast, in the other order", () => {
+    for (const before of [offered(vi.fn()), undone, null]) {
+      const second = vi.fn();
+      const notice = applied(before, [
+        screenMade("copy", 5, second, at(2)),
+        afterScreenEdit,
+      ]);
+      expect(notice).toBeNull();
+      expect(screenUndone(notice, false, at(3))).toBeNull();
+      expect(second).not.toHaveBeenCalled();
+    }
   });
 });

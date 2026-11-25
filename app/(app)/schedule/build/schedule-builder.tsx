@@ -1213,7 +1213,8 @@ function WeekBuilder({
     setCopyOpen(false);
     // The toast's "ביטול" takes the focus as the sheet closes. Said after
     // `edited`, which takes the way back of an earlier change made on the
-    // screen: this one's comes in its place.
+    // screen: this one's comes in its place. Said before it, `edited` would
+    // take this one too (builder-toast.test.ts plays both orders).
     opener.current = null;
     onMade("copy", copy.shifts, () => {
       setRows(before.rows);

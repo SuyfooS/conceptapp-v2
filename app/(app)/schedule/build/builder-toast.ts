@@ -6,8 +6,9 @@
  * what the last write did, once nothing is unsaved, on its way or held.
  * Only one change made on the screen is ever offered back: the next change
  * on the screen takes its way back (`afterScreenEdit`), a new one comes in
- * its place, and a write sent takes it too. Words and moments only, so the
- * tests stand in for the screen: the builder puts them into words.
+ * its place, and a write sent takes it too. Without React, so the tests
+ * stand in for the screen: the builder puts the words into its messages.
+ * All of it is pure but `screenUndone`, which calls the change's `undo`.
  */
 
 /**
@@ -62,10 +63,13 @@ export function afterScreenEdit(
 
 /**
  * "ביטול" of a change made only on the screen: the screen as it was before
- * it (its `undo`, called here), and what the toast says then, from `at`.
- * Nothing while a write is on its way or held (`busy`): what is on its way
- * stands as sent, and the builder starts again from it. Null: nothing was
- * undone, and the toast stays as it is.
+ * it, and what the toast says then, from `at`. Not pure: it calls the
+ * change's `undo` (in the builder, the screen's own state is set back), so
+ * it runs once per press, from the press, never in a render or a state
+ * updater, which React may run twice. Nothing while a write is on its way
+ * or held (`busy`): what is on its way stands as sent, and the builder
+ * starts again from it. Null: nothing was undone, and the toast stays as it
+ * is.
  */
 export function screenUndone(
   notice: ScreenNotice | null,
