@@ -2,6 +2,7 @@ import { type AwaySpan, awayDuring, daysApart } from "./absences";
 import {
   type AvailabilityRange,
   addDays,
+  instantIn,
   weekDates,
   weekdayOf,
 } from "./availability";
@@ -62,9 +63,12 @@ export const FILL_MINOR_HOURS = {
  *   included;
  * - `sameDay`: already on another shift that day;
  * - `rest`: less than 8 hours from another shift, before or after it, the
- *   weeks either side included;
+ *   weeks either side included, in real time as payroll's
+ *   `restBetweenUnder8` measures it: a night the clocks go forward in is an
+ *   hour shorter than its wall times say, one they go back in an hour longer;
  * - `days`: already working `FILL_MAX_DAYS` days of the week;
- * - `hours`: it would take them past the week's hours (40 for a minor).
+ * - `hours`: it would take them past the week's hours, or a minor's 40 when
+ *   that is less (`fillWeekCap`, the number the sheet names).
  */
 export type FillRule =
   | "away"
@@ -96,12 +100,18 @@ export type FillShift = {
   added: { user: string; position: string | null }[];
   /** Places still open after the fill. */
   open: number;
-  /** Null when nothing stays open. */
+  /**
+   * Null when nothing stays open. `nobody` means nobody else: when the shift
+   * has anyone on it after the fill (`WeekFill.week[index].assignees`),
+   * whoever put them there, the sheet says nobody else covers it, not
+   * nobody.
+   */
   why: FillWhy | null;
   /**
    * While places stay open on a shift that reaches into Shabbat while the
    * business is closed then: which side, and candle lighting or havdalah,
-   * whatever `why` is.
+   * whatever `why` is. Beside a `why` other than `shabbat` an answer covers
+   * the shift, so the sheet names the time without saying it has none.
    */
   shabbat: { side: ShabbatConflict; time: string } | null;
   /**
@@ -152,19 +162,27 @@ export type WeekFill = {
  * Who of the team is a minor on some day of the week starting on
  * `weekStart`, from each one's 18th birthday (`youth_until`): someone who
  * turns 18 during the week counts as a minor for all of it, the stricter
- * choice. Ids only, sorted: the day itself never needs to reach a browser.
+ * choice. `youth` is id to `youth_until`, as `getTeamYouth` gives it. Ids
+ * only, sorted: the day itself never needs to reach a browser.
  */
 export function weekMinors(
   weekStart: string,
-  youth: readonly { userId: string; youthUntil: string | null }[],
+  youth: Iterable<readonly [userId: string, youthUntil: string | null]>,
 ): string[] {
-  return [
-    ...new Set(
-      youth
-        .filter((one) => isMinorOn(weekStart, one.youthUntil))
-        .map((one) => one.userId),
-    ),
-  ].sort(byText);
+  const minors = new Set<string>();
+  for (const [userId, youthUntil] of youth) {
+    if (isMinorOn(weekStart, youthUntil)) minors.add(userId);
+  }
+  return [...minors].sort(byText);
+}
+
+/**
+ * The most hours a week the fill gives someone: the week's hours
+ * (`weekHours`), or a minor's 40 (`LIMITS.minorWeek`) when that is less. It
+ * is the number the sheet names when `hours` stopped someone.
+ */
+export function fillWeekCap(weekHours: number, minor: boolean): number {
+  return minor ? Math.min(weekHours, LIMITS.minorWeek / 60) : weekHours;
 }
 
 const byText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
@@ -196,6 +214,13 @@ function kindOf(shift: Pick<ScheduledShift, "pattern" | "name" | "start">) {
 
 type Span = [number, number];
 
+/**
+ * A shift in time, twice: `at` on the wall clock, in minutes from the week's
+ * first midnight (`shiftSpan`), for `busy`; `real` in minutes of real time,
+ * as `private.shift_span` places it, for `rest`.
+ */
+type Timed = { at: Span; real: Span };
+
 /** What one person who answered has in the week as it stands. */
 type Person = {
   id: string;
@@ -203,8 +228,8 @@ type Person = {
   minor: boolean;
   /** The most minutes the fill lets them reach. */
   cap: number;
-  /** Their shifts in minutes from the week's first midnight, edges included. */
-  spans: Span[];
+  /** Their shifts, edges included. */
+  spans: Timed[];
   /** The days of the week they work. */
   days: Set<string>;
   minutes: number;
@@ -217,10 +242,9 @@ type Person = {
 };
 
 /** One shift with an open place, as the rules read it. */
-type Place = {
+type Place = Timed & {
   index: number;
   shift: ScheduledShift;
-  at: Span;
   minutes: number;
   kind: string;
   /** Within a minor's hours (`FILL_MINOR_HOURS`). */
@@ -295,10 +319,32 @@ export function fillFromAvailability(input: {
   timeZone: string;
 }): WeekFill {
   const { weekStart, screen, away, minors, lastWeek, now, timeZone } = input;
-  const capOf = (minor: boolean) =>
-    minor
-      ? Math.min(input.weekHours * 60, LIMITS.minorWeek)
-      : input.weekHours * 60;
+
+  // A shift in time, on the wall clock and in real time. Each date and time
+  // is read once: a week has a few hundred.
+  const instants = new Map<string, number>();
+  const realMinute = (date: string, time: string) => {
+    const key = `${date} ${time}`;
+    let minute = instants.get(key);
+    if (minute === undefined) {
+      minute = instantIn(date, time, timeZone).getTime() / 60_000;
+      instants.set(key, minute);
+    }
+    return minute;
+  };
+  const timed = (shift: ScheduledShift): Timed => ({
+    at: shiftSpan(weekStart, shift),
+    real: [
+      realMinute(shift.day, shift.start),
+      // Past midnight it ends the next day, as `rangeMinutes` reads it.
+      realMinute(
+        minutesOf(shift.end) <= minutesOf(shift.start)
+          ? addDays(shift.day, 1)
+          : shift.day,
+        shift.end,
+      ),
+    ],
+  });
 
   // Rule 3: the pool, staff who answered. Two answers of one person join.
   const staff = new Set(input.staff);
@@ -319,7 +365,7 @@ export function fillFromAvailability(input: {
           id,
           ranges: rangesOf.get(id) ?? [],
           minor,
-          cap: capOf(minor),
+          cap: fillWeekCap(input.weekHours, minor) * 60,
           spans: [],
           days: new Set(),
           minutes: 0,
@@ -334,40 +380,43 @@ export function fillFromAvailability(input: {
   );
 
   // Rule 4: what each person already has.
-  const takes = (person: Person, shift: ScheduledShift, at: Span) => {
+  const takes = (person: Person, shift: ScheduledShift, time: Timed) => {
     const kind = kindOf(shift);
-    person.spans.push(at);
+    person.spans.push(time);
     person.days.add(shift.day);
     person.minutes += rangeMinutes(shift.start, shift.end);
     person.shifts += 1;
     person.kinds.set(kind, (person.kinds.get(kind) ?? 0) + 1);
   };
   for (const shift of screen) {
-    const at = shiftSpan(weekStart, shift);
+    const time = timed(shift);
     for (const { user } of shift.assignees) {
       const person = people.get(user);
-      if (person) takes(person, shift, at);
+      if (person) takes(person, shift, time);
     }
   }
   if (lastWeek && addDays(lastWeek.start, 7) === weekStart) {
     const days = new Set(weekDates(lastWeek.start));
+    const begins = realMinute(weekStart, "00:00");
     for (const shift of lastWeek.shifts) {
       if (!days.has(shift.day)) continue;
-      const at = shiftSpan(weekStart, shift);
+      const time = timed(shift);
       for (const { user } of shift.assignees) {
         const person = people.get(user);
         if (!person) continue;
         person.lastMinutes += rangeMinutes(shift.start, shift.end);
         // Only one that ends less than 8 hours before the week begins can
         // stop anyone.
-        if (at[1] > -LIMITS.restBetween) person.spans.push(at);
+        if (time.real[1] > begins - LIMITS.restBetween) {
+          person.spans.push(time);
+        }
       }
     }
   }
   for (const shift of input.nextDays) {
     if (daysApart(weekStart, shift.day) < 7) continue;
-    const at = shiftSpan(weekStart, shift);
-    for (const { user } of shift.assignees) people.get(user)?.spans.push(at);
+    const time = timed(shift);
+    for (const { user } of shift.assignees) people.get(user)?.spans.push(time);
   }
 
   // Rule 8: the positions each held last week, by kind and in all.
@@ -403,12 +452,13 @@ export function fillFromAvailability(input: {
     if (awayDuring(away, person.id, place.shift)) return "away";
     if (person.minor && !place.minorHours) return "minorHours";
     if (person.minor && !place.minorLong) return "minorLong";
-    if (person.spans.some((span) => overlaps(span, place.at))) return "busy";
+    if (person.spans.some(({ at }) => overlaps(at, place.at))) return "busy";
     if (person.days.has(place.shift.day)) return "sameDay";
     if (
       person.spans.some(
-        ([from, to]) =>
-          Math.max(from - place.at[1], place.at[0] - to) < LIMITS.restBetween,
+        ({ real: [from, to] }) =>
+          Math.max(from - place.real[1], place.real[0] - to) <
+          LIMITS.restBetween,
       )
     ) {
       return "rest";
@@ -429,13 +479,12 @@ export function fillFromAvailability(input: {
   week.forEach((shift, index) => {
     if (stillNeeded(shift) === 0) return;
     if (now !== null && shiftStarted(shift, now, timeZone)) return;
-    const at = shiftSpan(weekStart, shift);
     const start = minutesOf(shift.start);
     const minutes = rangeMinutes(shift.start, shift.end);
     places.push({
+      ...timed(shift),
       index,
       shift,
-      at,
       minutes,
       kind: kindOf(shift),
       minorHours: start >= minorFrom && start + minutes <= minorTo,
@@ -507,7 +556,7 @@ export function fillFromAvailability(input: {
     next.added.push(added);
     next.candidates.delete(pick.id);
     next.eligible -= 1;
-    takes(pick, next.shift, next.at);
+    takes(pick, next.shift, { at: next.at, real: next.real });
     pick.added += 1;
     // Only the person placed reads differently now, on every place they cover.
     for (const place of covering.get(pick.id) ?? []) {

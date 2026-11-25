@@ -15,6 +15,7 @@ import {
   FILL_WEEK_HOURS,
   FILL_WEEK_HOURS_MAX,
   fillFromAvailability,
+  fillWeekCap,
   type WeekFill,
   weekMinors,
 } from "./fill-week";
@@ -28,7 +29,6 @@ import {
   type ScheduledShift,
   shiftCandidates,
   shiftSlot,
-  shiftSpan,
   weekSchedule,
 } from "./schedule";
 import { ISRAEL_TIME_ZONE } from "./shabbat";
@@ -132,15 +132,38 @@ describe("weekMinors", () => {
     expect(
       weekMinors(WEEK, [
         // Turns 18 on Wednesday: a minor all week, the stricter choice.
-        { userId: tamar, youthUntil: day(3) },
+        [tamar, day(3)],
         // Turns 18 next week.
-        { userId: noa, youthUntil: day(9) },
+        [noa, day(9)],
         // Turned 18 on the week's first day: an adult all week.
-        { userId: yoav, youthUntil: WEEK },
-        { userId: maya, youthUntil: null },
-        { userId: noa, youthUntil: day(9) },
+        [yoav, WEEK],
+        [maya, null],
+        [noa, day(9)],
       ]),
     ).toEqual([noa, tamar].sort());
+  });
+
+  it("takes the map `getTeamYouth` gives as it is", () => {
+    // Id to youth_until, the minors still under 18 today.
+    const youth = new Map<string, string>([
+      [tamar, day(3)],
+      [noa, day(9)],
+      [yoav, WEEK],
+    ]);
+    expect(weekMinors(WEEK, youth)).toEqual([noa, tamar].sort());
+  });
+});
+
+describe("fillWeekCap", () => {
+  it("is the week's hours, or a minor's 40 when that is less", () => {
+    expect(fillWeekCap(FILL_WEEK_HOURS, false)).toBe(42);
+    expect(fillWeekCap(FILL_WEEK_HOURS_MAX, false)).toBe(58);
+    expect(fillWeekCap(30, false)).toBe(30);
+    expect(fillWeekCap(FILL_WEEK_HOURS, true)).toBe(40);
+    expect(fillWeekCap(FILL_WEEK_HOURS_MAX, true)).toBe(40);
+    // Below 40 the week's hours bind a minor too.
+    expect(fillWeekCap(30, true)).toBe(30);
+    expect(fillWeekCap(4, true)).toBe(4);
   });
 });
 
@@ -375,6 +398,27 @@ describe("fillFromAvailability", () => {
       expect(who(forty, 5)).toContain(tamar);
     });
 
+    it("stops a minor at the week's hours when they are below 40, the number `fillWeekCap` gives the sheet", () => {
+      // Four mornings placed by hand, 28 hours; Friday's 5 would make 33.
+      const screen = (end: string) => [
+        ...[0, 1, 2, 3].map((n) => shift(day(n), "08:00", "15:00", [tamar])),
+        shift(day(5), "08:00", end),
+      ];
+      const input = {
+        answers: [allWeek(tamar)],
+        minors: new Set([tamar]),
+        weekHours: 30,
+      };
+      expect(
+        ruleOf(fillOf({ screen: screen("13:00"), ...input }), 4, tamar),
+      ).toBe("hours");
+      expect(fillWeekCap(input.weekHours, true)).toBe(30);
+      // Friday's 2 make 30 exactly, which she may reach.
+      expect(who(fillOf({ screen: screen("10:00"), ...input }), 4)).toEqual([
+        tamar,
+      ]);
+    });
+
     it("gives an adult what a minor can't take", () => {
       const screen = [
         shift(day(0), "16:00", "23:30"),
@@ -433,6 +477,107 @@ describe("fillFromAvailability", () => {
       expect(who(eight, 1)).toEqual([noa]);
     });
 
+    describe("rest in real time, the nights the clocks change", () => {
+      // Israel's clocks go forward on Friday 27 March 2026 at 02:00 (and
+      // on Friday 26 March 2027), and back on Sunday 25 October 2026 at
+      // 02:00.
+      const spring = ["2026-03-22", "2027-03-21"];
+      const autumn = "2026-10-25";
+      const gap = (from: [string, string], to: [string, string]) =>
+        (instantIn(to[0], to[1], zone).getTime() -
+          instantIn(from[0], from[1], zone).getTime()) /
+        60_000;
+
+      it("are the nights these tests say", () => {
+        for (const start of spring) {
+          const [thursday, friday] = [addDays(start, 4), addDays(start, 5)];
+          expect(weekdayOf(friday)).toBe(5);
+          expect(gap([thursday, "23:30"], [friday, "08:00"])).toBe(450);
+        }
+        expect(gap([autumn, "00:30"], [autumn, "07:30"])).toBe(480);
+      });
+
+      it("keeps the restaurant's Thursday evening off Friday's 08:00 when the clocks go forward: 7½ hours", () => {
+        for (const start of [...spring, "2026-03-29"]) {
+          const [thursday, friday] = [addDays(start, 4), addDays(start, 5)];
+          const evening = (people: string[]) =>
+            shift(thursday, "16:00", "23:30", people, { pattern: "evening" });
+          const morning = shift(friday, "08:00", "14:30", [], {
+            name: "שישי",
+            pattern: "friday",
+          });
+          const answers = [
+            answer(
+              noa,
+              [thursday, "16:00", "23:30"],
+              [friday, "08:00", "14:30"],
+            ),
+          ];
+          const byHand = fillOf({
+            weekStart: start,
+            screen: [evening([noa]), morning],
+            answers,
+          });
+          const both = fillOf({
+            weekStart: start,
+            screen: [evening([]), morning],
+            answers,
+          });
+          if (start === "2026-03-29") {
+            // A week later the clocks don't change: 8½ hours, and she's placed.
+            expect(who(byHand, 1)).toEqual([noa]);
+            expect([...who(both, 0), ...who(both, 1)]).toEqual([noa, noa]);
+            continue;
+          }
+          // 8½ hours on the wall clock.
+          expect(who(byHand, 1)).toEqual([]);
+          expect(ruleOf(byHand, 1, noa)).toBe("rest");
+          // Both open: the fill puts her on one of them only.
+          expect([...who(both, 0), ...who(both, 1)]).toEqual([noa]);
+        }
+      });
+
+      it("counts a night until 01:30, then 09:30, as 7 hours when the clocks go forward", () => {
+        const start = spring[0] as string;
+        const [thursday, friday] = [addDays(start, 4), addDays(start, 5)];
+        const fill = fillOf({
+          weekStart: start,
+          screen: [
+            shift(thursday, "17:30", "01:30", [noa]),
+            shift(friday, "09:30", "14:00"),
+          ],
+          answers: [answer(noa, [friday, "09:30", "14:00"])],
+        });
+        // 8 hours on the wall clock.
+        expect(ruleOf(fill, 1, noa)).toBe("rest");
+      });
+
+      it("counts last week's Saturday until 00:30, then Sunday's 07:30, as 8 hours when the clocks go back", () => {
+        const lastWeek: CopySource = {
+          start: addDays(autumn, -7),
+          published: true,
+          shifts: [shift(addDays(autumn, -1), "18:00", "00:30", [noa])],
+        };
+        const fill = fillOf({
+          weekStart: autumn,
+          screen: [shift(autumn, "07:30", "14:00")],
+          answers: [answer(noa, [autumn, "07:00", "15:00"])],
+          lastWeek,
+        });
+        expect(who(fill, 0)).toEqual([noa]);
+        expect(fill.shifts[0]?.why).toBeNull();
+        expect(fill.unplaced).toEqual([]);
+        // At 07:00 it is 7½ hours, and she isn't.
+        const seven = fillOf({
+          weekStart: autumn,
+          screen: [shift(autumn, "07:00", "14:00")],
+          answers: [answer(noa, [autumn, "07:00", "15:00"])],
+          lastWeek,
+        });
+        expect(ruleOf(seven, 0, noa)).toBe("rest");
+      });
+    });
+
     it("reads last week's Saturday night, and nothing two weeks back", () => {
       const saturday = addDays(WEEK, -1);
       const lastWeek: CopySource = {
@@ -453,8 +598,9 @@ describe("fillFromAvailability", () => {
       expect(
         ruleOf(fillOf({ screen: sunday, answers, lastWeek: night }), 0, noa),
       ).toBe("busy");
-      // Two weeks back is no edge: `shiftSpan` puts its Saturday a week
-      // before Sunday. (That only the week just before counts at all is
+      // Two weeks back is no edge: `shiftSpan`, and real time for the rest,
+      // put its Saturday a week before Sunday. (That only the week just
+      // before counts at all is
       // pinned by last week's hours among the tie-breaks.)
       const older: CopySource = {
         start: addDays(WEEK, -14),
@@ -1863,8 +2009,17 @@ function generated(seed: number): FillInput {
   const pick = <T>(list: readonly T[]): T =>
     list[Math.floor(random() * list.length)] as T;
   const template = pick(TEMPLATES);
-  // A Sunday, a Monday, and a Sunday in summer time.
-  const weekStart = pick(["2026-12-06", "2026-12-07", "2027-06-13"]);
+  // A Sunday, a Monday, and a Sunday in summer time; then the weeks the
+  // clocks change in: forward on Friday 27 March, back on Sunday 25
+  // October, the first day of a Sunday week and the last of a Monday one.
+  const weekStart = pick([
+    "2026-12-06",
+    "2026-12-07",
+    "2027-06-13",
+    "2026-03-22",
+    "2026-10-25",
+    "2026-10-19",
+  ]);
   const dates = weekDates(weekStart);
   const team = STAFF.slice(0, 3 + Math.floor(random() * 6));
   const position = () =>
@@ -1971,6 +2126,24 @@ function generated(seed: number): FillInput {
   };
 }
 
+/** Minutes of real time at a date and time in Israel, each read once. */
+const realMinutes = new Map<string, number>();
+const realAt = (date: string, time: string) => {
+  const key = `${date} ${time}`;
+  const known = realMinutes.get(key);
+  if (known !== undefined) return known;
+  const minute = instantIn(date, time, zone).getTime() / 60_000;
+  realMinutes.set(key, minute);
+  return minute;
+};
+/** A shift's start and end in real time, as `private.shift_span` reads them. */
+const realSpan = (
+  s: Pick<ScheduledShift, "day" | "start" | "end">,
+): [number, number] => [
+  realAt(s.day, s.start),
+  realAt(s.end <= s.start ? addDays(s.day, 1) : s.day, s.end),
+];
+
 /** Everything the fill promises, checked on one week it filled. */
 function checkFill(input: FillInput, fill: WeekFill) {
   const { weekStart, screen } = input;
@@ -1997,14 +2170,14 @@ function checkFill(input: FillInput, fill: WeekFill) {
   if (input.lastWeek && addDays(input.lastWeek.start, 7) === weekStart) {
     for (const s of input.lastWeek.shifts) {
       for (const a of s.assignees) {
-        edges.push({ user: a.user, at: shiftSpan(weekStart, s) });
+        edges.push({ user: a.user, at: realSpan(s) });
       }
     }
   }
   for (const s of input.nextDays) {
     if (s.day < addDays(weekStart, 7)) continue;
     for (const a of s.assignees) {
-      edges.push({ user: a.user, at: shiftSpan(weekStart, s) });
+      edges.push({ user: a.user, at: realSpan(s) });
     }
   }
 
@@ -2054,12 +2227,13 @@ function checkFill(input: FillInput, fill: WeekFill) {
           weekdayOf(s.day) === 5 ? LIMITS.minorEve : LIMITS.minorDay,
         );
       }
-      // One shift that day, and 8 hours from every other, edges included.
-      const at = shiftSpan(weekStart, s);
+      // One shift that day, and 8 hours from every other in real time,
+      // edges included.
+      const at = realSpan(s);
       const others = [
         ...fill.week.flatMap((other, j) =>
           j !== i && other.assignees.some((a) => a.user === user)
-            ? [{ day: other.day, at: shiftSpan(weekStart, other) }]
+            ? [{ day: other.day, at: realSpan(other) }]
             : [],
         ),
         ...edges
@@ -2081,10 +2255,8 @@ function checkFill(input: FillInput, fill: WeekFill) {
   // Whoever the fill gave a shift is within the days and the hours.
   for (const person of fill.byPerson) {
     if (person.added === 0) continue;
-    const cap = input.minors.has(person.user)
-      ? Math.min(input.weekHours * 60, LIMITS.minorWeek)
-      : input.weekHours * 60;
-    expect(person.minutes).toBeLessThanOrEqual(cap);
+    const cap = fillWeekCap(input.weekHours, input.minors.has(person.user));
+    expect(person.minutes).toBeLessThanOrEqual(cap * 60);
     const days = new Set(
       fill.week
         .filter((s) => s.assignees.some((a) => a.user === person.user))

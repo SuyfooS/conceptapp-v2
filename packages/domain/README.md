@@ -157,13 +157,18 @@ only while every `FillRule` holds, checked in this order: not away during it
 (`awayDuring` in `absences.ts`: its day, and the next day for a night past
 midnight), a minor only within 08:00–20:00 (`FILL_MINOR_HOURS`, payroll's
 stricter reading) and for at most 8 hours (7 on a Friday), never two shifts
-at once, one shift a day, 8 hours between shifts (`LIMITS.restBetween`), at
-most `FILL_MAX_DAYS` (6) days, and at most the week's hours (`weekHours`, 42
-by default, `FILL_WEEK_HOURS`, up to `FILL_WEEK_HOURS_MAX`, 58; a minor 40).
-Last week, when it is the week just before, and next week's first days count
-as spans only, placed in time by `shiftSpan` in `schedule.ts` (minutes from
-the week's first midnight on `daysApart`, so last Saturday is day -1 and next
-Sunday day 7; the copy reads it too). The scarcest place goes first; the
+at once, one shift a day, 8 hours between shifts (`LIMITS.restBetween`, in
+real time as payroll measures it, so a night the clocks change in counts the
+hour they skip or repeat), at most `FILL_MAX_DAYS` (6) days, and at most the
+week's hours (`weekHours`, 42 by default, `FILL_WEEK_HOURS`, up to
+`FILL_WEEK_HOURS_MAX`, 58), or a minor's 40 when that is less (`fillWeekCap`,
+the number the sheet names). The week's hours are counted on the wall clock,
+as the builder's totals count them. Last week, when it is the week just
+before, and next week's first days count as spans only, placed in time by
+`shiftSpan` in `schedule.ts` (minutes from the week's first midnight on
+`daysApart`, so last Saturday is day -1 and next Sunday day 7; the copy reads
+it too) and, for the rest between shifts, by `instantIn`, as the database's
+`private.shift_span` places a shift. The scarcest place goes first; the
 person with the fewest hours this week takes it, then the fewest of that kind
 of shift, the fewest shifts, the fewest hours last week, then a rotation that
 changes every week, never the team's order or the alphabet, so the same
@@ -172,7 +177,12 @@ most last week on that kind of shift. Every place left open says why
 (`FillWhy`: Shabbat with its time when no answer covers it, of anyone on it,
 whether the fill or the manager put them there, or of anyone else; nobody
 else covers it; or each one who does with the first rule that stopped them;
-a shift into Shabbat names it beside the other two as well). `weekMinors` is who counts as a minor all week, ids only. The
+a shift into Shabbat names it beside the other two as well). `nobody` means
+nobody else: when anyone is on the shift after the fill, whoever put them
+there, the sheet says nobody else covers it, and a Shabbat time beside
+`nobody` or `blocked` comes without saying no answer covers the shift.
+`weekMinors` is who counts as a minor all week, from `getTeamYouth`'s map of
+id to `youth_until`, ids only. The
 database checks only that nobody works two shifts at once, never these
 rules: they are the fill's own.
 
