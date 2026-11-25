@@ -146,8 +146,9 @@ test("a manager adds a department, names it, puts people in it and removes it wi
 // list is said on its button (aria-current), not only tinted, and a choice
 // puts the focus on their title, which comes after the whole list; the
 // moves are unavailable at the ends rather than disabled under the focus,
-// which stays on them, and the department moved keeps its people shown. A
-// phone opens them in a sheet, and marks none current.
+// which stays on them, and the department moved keeps its people shown,
+// chosen or shown first by default. A phone opens them in a sheet, and
+// marks none current.
 test("the departments twin marks whose people are shown, takes the focus to them, and stops its moves at the ends", async ({
   page,
 }, testInfo) => {
@@ -171,9 +172,27 @@ test("the departments twin marks whose people are shown, takes the focus to them
     return;
   }
 
-  // The first one's people at first, then the one chosen.
+  // The first one's people at first.
   await expect(kitchen).toHaveAttribute("aria-current", "true");
   await expect(bar).not.toHaveAttribute("aria-current");
+  const up = page.getByRole("button", { name: d.up, exact: true });
+  const down = page.getByRole("button", { name: d.down, exact: true });
+
+  // Moved down with none chosen, it keeps its people shown, not those of
+  // the one that is first now.
+  const kitchenTitle = page.getByRole("heading", {
+    level: 2,
+    name: fill(d.peopleOf, { name: "מטבח" }),
+  });
+  await expect(kitchenTitle).toBeVisible();
+  await down.focus();
+  await page.keyboard.press("Enter");
+  await expect(names.nth(1)).toHaveValue("מטבח");
+  await expect(kitchenTitle).toBeVisible();
+  await expect(kitchen).toHaveAttribute("aria-current", "true");
+  await expect(down).toBeFocused();
+
+  // Then the one chosen.
   await bar.click();
   await expect(bar).toHaveAttribute("aria-current", "true");
   await expect(kitchen).not.toHaveAttribute("aria-current");
@@ -185,8 +204,6 @@ test("the departments twin marks whose people are shown, takes the focus to them
 
   // Down to the end: "הזזה למטה" stays where it is, unavailable, with the
   // focus, and a press there moves nothing.
-  const up = page.getByRole("button", { name: d.up, exact: true });
-  const down = page.getByRole("button", { name: d.down, exact: true });
   await expect(up).not.toHaveAttribute("aria-disabled");
   await expect(down).not.toHaveAttribute("aria-disabled");
   await down.focus();

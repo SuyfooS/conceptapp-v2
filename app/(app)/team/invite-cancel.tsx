@@ -21,8 +21,11 @@ type Cancels = {
   failure: TeamChangeActionFailure | null;
   start: (id: string, message: string) => void;
   undo: () => void;
-  /** "ביטול" is being reached (`@ui/undo-wait`): the held write waits as long. */
-  waits: (waiting: boolean) => void;
+  /**
+   * The "ביטול" of invite `id` is being reached (`@ui/undo-wait`): its held
+   * write waits as long, and no other's.
+   */
+  waits: (id: string, waiting: boolean) => void;
 };
 
 const CancelsContext = createContext<Cancels | null>(null);
@@ -94,9 +97,11 @@ function CancelsState({
     if (id !== null) without(id);
   }
 
-  function waits(waiting: boolean) {
-    if (waiting) held.pause();
-    else held.resume();
+  // An earlier invite's row, going as the next is deleted, lets go of
+  // nothing newer: the next one's own focus may be holding it.
+  function waits(id: string, waiting: boolean) {
+    if (waiting) held.pause(id);
+    else held.resume(id);
   }
 
   return (
@@ -203,7 +208,7 @@ export function InviteCancelUndo({
           message={held.message}
           onUndo={cancels.undo}
           autoFocus
-          onWaitingChange={cancels.waits}
+          onWaitingChange={(waiting) => cancels.waits(held.id, waiting)}
           focusAfter={() => [
             inviteCancelTarget(held.id),
             stays ? sectionTitle(anchor.current) : null,

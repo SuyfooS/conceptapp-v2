@@ -5,9 +5,11 @@
 
 /**
  * From a tablet up a department's people sit beside the list, the one
- * chosen marked current; on a phone they open in a sheet. Tailwind's `md`.
+ * chosen marked current; on a phone they open in a sheet. Tailwind's `md`
+ * as the CSS has it, in rem, so a larger default font size moves the
+ * choice with the layout.
  */
-export const PEOPLE_BESIDE = "(min-width: 768px)";
+export const PEOPLE_BESIDE = "(min-width: 48rem)";
 
 /**
  * Which way the department at `index` of `count` can still move: none past

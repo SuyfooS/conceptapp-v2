@@ -20,9 +20,11 @@ export const HOLD_MS = 8000;
  *
  * Its wait can stop while the way back is being reached (`pause`, as a
  * StatusToast with the undo waits for the keyboard or a mouse) and go on
- * with what it had left (`resume`); a hidden page, leaving the screen and a
- * switch of business send it at once all the same. `replace` holds a newer
- * form of the same write in the time it has left.
+ * with what it had left (`resume`), each given what it waits for when an
+ * earlier way back can still be up as the next comes; a hidden page,
+ * leaving the screen and a switch of business send it at once all the
+ * same. `replace` holds a newer form of the same write in the time it has
+ * left.
  */
 export function useHeldWrite<T extends NonNullable<unknown>>(
   write: (value: T) => Promise<unknown>,
@@ -58,14 +60,23 @@ export function useHeldWrite<T extends NonNullable<unknown>>(
     setHeld(value);
   }
 
+  /**
+   * The held write, or, given `value`, only while that is what is held: a
+   * way back that goes as the next one comes lets go of nothing newer.
+   */
+  function heldNow(value: T | undefined) {
+    const now = pending.current;
+    return value === undefined || now?.value === value ? now : null;
+  }
+
   /** Stops the held write's wait, keeping the time it has left. */
-  function pause() {
-    pending.current?.wait.pause();
+  function pause(value?: T) {
+    heldNow(value)?.wait.pause();
   }
 
   /** Goes on with the held write's wait, for the time it had left. */
-  function resume() {
-    pending.current?.wait.resume();
+  function resume(value?: T) {
+    heldNow(value)?.wait.resume();
   }
 
   /** Holds `value` in place of what is held, in the time it has left. */

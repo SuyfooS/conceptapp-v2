@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { movesOf, PEOPLE_BESIDE } from "./department-moves";
 
@@ -23,8 +25,20 @@ describe("movesOf", () => {
   });
 });
 
+/** `--breakpoint-md` as a stylesheet sets it, if it does. */
+function mdIn(file: string): string | undefined {
+  const css = readFileSync(join(__dirname, "../../..", file), "utf8");
+  return css.match(/--breakpoint-md:\s*([^;]+);/)?.[1]?.trim();
+}
+
 describe("PEOPLE_BESIDE", () => {
-  it("is Tailwind's md, where the people panel shows beside the list", () => {
-    expect(PEOPLE_BESIDE).toBe("(min-width: 768px)");
+  // In the CSS's own unit: rem in a media query follows the person's
+  // default font size, so px would part from the layout once it is larger
+  // (the panel hidden, yet a choice sent to it and said current).
+  it("is Tailwind's md as the CSS has it, where the people panel shows beside the list", () => {
+    const md =
+      mdIn("app/globals.css") ?? mdIn("node_modules/tailwindcss/theme.css");
+    expect(md).toBeDefined();
+    expect(PEOPLE_BESIDE).toBe(`(min-width: ${md})`);
   });
 });

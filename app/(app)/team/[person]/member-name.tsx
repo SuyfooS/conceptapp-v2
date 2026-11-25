@@ -62,6 +62,7 @@ type NameValue = {
   undoWaits: (waiting: boolean) => void;
   /** The row "שם", once pressed: where the focus comes back to. */
   nameRow: RefObject<HTMLButtonElement | null>;
+  keepNameRow: (row: HTMLButtonElement) => void;
   /** The undo's "ביטול": the sheet closes onto it after a fix. */
   undoButton: RefObject<HTMLButtonElement | null>;
   toast: { text: string; stamp: string } | null;
@@ -130,6 +131,10 @@ export function MemberNameState({
   const [toast, setToast] = useState<{ text: string; stamp: string } | null>(
     null,
   );
+
+  function keepNameRow(row: HTMLButtonElement) {
+    nameRow.current = row;
+  }
 
   function clearUndo() {
     undoTimer.current?.clear();
@@ -227,6 +232,7 @@ export function MemberNameState({
         undo,
         undoWaits,
         nameRow,
+        keepNameRow,
         undoButton,
         toast,
         open,
@@ -301,14 +307,19 @@ function MemberNameRow() {
         // reachable: the focus comes back to it when the undo goes.
         disabled={value.busy ? "focusable" : false}
         onClick={(event) => {
-          value.nameRow.current = event.currentTarget;
+          value.keepNameRow(event.currentTarget);
           written.current = false;
           value.setOpen(true);
         }}
       />
       <Sheet
         open={value.open}
-        onOpenChange={value.setOpen}
+        // Held while the fix is on its way: its answer belongs on this
+        // sheet, which then closes onto its "ביטול" (✕, Escape, the scrim
+        // and a swipe wait for it, as Sheet asks).
+        onOpenChange={(next) => {
+          if (next || !value.busy) value.setOpen(next);
+        }}
         title={t("nameSheet")}
         closeLabel={t("close")}
         returnFocus={() => {
@@ -441,9 +452,10 @@ function MemberNameNotes() {
         stamp={value.toast?.stamp}
       />
       {fixes && value.undo ? (
-        // Quiet: the sheet closes onto it, and its focus says its words.
-        // Another fix while it is up is a row of its own. Undone, or its
-        // time up, the focus goes back to the row "שם".
+        // Quiet: the sheet closes onto it (it holds its close until the
+        // fix's answer), and its focus says its words. Another fix while it
+        // is up is a row of its own. Undone, or its time up, the focus goes
+        // back to the row "שם".
         <UndoRow
           key={value.undo.key}
           message={value.undo.message}

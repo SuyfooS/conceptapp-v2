@@ -137,7 +137,8 @@ function InviteRound({
     }
     const refused = firstRefused(state.errors);
     if (!refused) {
-      // The role's line or the refusal's says it, as an alert.
+      // The role's line or the refusal's says it, as an alert, each drawn
+      // anew for each answer.
       focusFirst([submit.current], { title: false });
       return;
     }
@@ -239,7 +240,13 @@ function InviteRound({
       </FieldGroup>
       <ChoiceList
         legend={t("role")}
-        error={errors.role ? t(`errors.role.${errors.role}`) : undefined}
+        error={
+          errors.role ? (
+            // Its words drawn anew for each answer, in the list's alert, so
+            // the same refusal again is heard.
+            <span key={answer}>{t(`errors.role.${errors.role}`)}</span>
+          ) : undefined
+        }
         className="md:row-span-2"
       >
         {roles.map((choice) => {
