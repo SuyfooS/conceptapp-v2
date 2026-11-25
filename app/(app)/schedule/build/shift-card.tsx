@@ -1,6 +1,6 @@
 "use client";
 
-import { shortNames } from "@domain/people";
+import { shortNames, shortNamesAmong } from "@domain/people";
 import {
   positionCounts,
   type ScheduledShift,
@@ -82,7 +82,11 @@ export function ShiftCard({
    * are said once, in full, by how many they are.
    */
   people: (AvatarPerson & { former?: boolean })[];
-  /** Those of them who are on another shift at the same time. */
+  /**
+   * Those of them who are on another shift at the same time, by their names
+   * in `people`. This line and the next say them as the people line does,
+   * short over everyone on the shift (`shortNamesAmong`).
+   */
   clashing: string[];
   /**
    * Those of them recorded as away during it (known issue 19): its day, and
@@ -101,8 +105,9 @@ export function ShiftCard({
   const t = useTranslations("app.build");
   const names = people.map((p) => p.name);
   const formers = people.filter((p) => p.former).length;
+  const current = people.filter((p) => !p.former).map((p) => p.name);
   const shown = [
-    ...shortNames(people.filter((p) => !p.former).map((p) => p.name)),
+    ...shortNames(current),
     ...(formers > 0 ? [t("formerCount", { count: formers })] : []),
   ];
   const missing = stillNeeded(shift);
@@ -224,12 +229,16 @@ export function ShiftCard({
       </span>
       {clashing.length > 0 ? (
         <span className="mt-2 block font-medium text-danger text-sm">
-          {t("clashOnShift", { names: shortNames(clashing).join(", ") })}
+          {t("clashOnShift", {
+            names: shortNamesAmong(clashing, current).join(", "),
+          })}
         </span>
       ) : null}
       {away.length > 0 ? (
         <span className="mt-2 block font-medium text-sm text-warning">
-          {t("awayOnShift", { names: shortNames(away).join(", ") })}
+          {t("awayOnShift", {
+            names: shortNamesAmong(away, current).join(", "),
+          })}
         </span>
       ) : null}
     </button>
