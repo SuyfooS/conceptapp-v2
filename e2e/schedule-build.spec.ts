@@ -1372,7 +1372,7 @@ test("the fill's sheet says which rule stopped whom, and Shabbat's time", async 
 // setting is put back however the test ends.
 test("the fill stops at the business's week's hours, which /manage/scheduling sets", async ({
   page,
-}) => {
+}, testInfo) => {
   const { startsOn } = await skipNearTheWeekTurn();
   const nextSunday = daysAfter(startsOn, 7);
   const tf = tb.fill;
@@ -1453,21 +1453,44 @@ test("the fill stops at the business's week's hours, which /manage/scheduling se
       0,
     );
     await page.goto("/manage/activity");
-    await expect(
-      page
-        .getByText(
-          heT("app.manage.activity.actions.module.settings", {
-            module: he.modules.scheduling.name,
+    // The newest settings change on the page (newest first, and nothing logs
+    // another after it), never an older one: manage.spec's 42 to 50, or this
+    // test's own 4 to 5 from a narrower width earlier in the run.
+    const newest = page
+      .getByRole("main")
+      .getByText(
+        heT("app.manage.activity.actions.module.settings", {
+          module: he.modules.scheduling.name,
+        }),
+        { exact: true },
+      )
+      .filter({ visible: true })
+      .first();
+    await expect(newest).toBeVisible();
+    if (testInfo.project.name === "desktop") {
+      // A desktop's table: "…: 4" in the column before, "…: 5" in the one
+      // after, each whole, so 42 and 50 don't pass for them.
+      const row = newest.locator("xpath=ancestor::tr[1]");
+      await expect(
+        row.getByText(`${words.label}: 4`, { exact: true }),
+      ).toBeVisible();
+      await expect(
+        row.getByText(`${words.label}: 5`, { exact: true }),
+      ).toBeVisible();
+    } else {
+      // A phone's and a tablet's list: the line under what changed, whole:
+      // "שעות בשבוע לכל אחד, במילוי מהזמינות: 5, במקום 4".
+      await expect(
+        newest.locator("xpath=..").getByText(
+          heT.markup("app.manage.activity.change", {
+            label: words.label,
+            to: () => "5",
+            from: () => "4",
           }),
-        )
-        .filter({ visible: true })
-        .first(),
-    ).toBeVisible();
-    // "שעות בשבוע לכל אחד, במילוי מהזמינות: 5", with "במקום 4" beside it
-    // on a phone and a tablet, and in the column before it on a desktop.
-    await expect(
-      page.getByText(`${words.label}: 5`).filter({ visible: true }).first(),
-    ).toBeVisible();
+          { exact: true },
+        ),
+      ).toBeVisible();
+    }
   } finally {
     await setDemoModuleSettings("scheduling", stored);
   }

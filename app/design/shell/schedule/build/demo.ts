@@ -106,8 +106,9 @@ export const demoAway: AwaySpan[] = [
  * The most hours a week the demo restaurant's fill gives anyone: its own
  * scheduling settings' `fillWeekHours`, read as the app reads a business's
  * (42 unless set). `&hours=7` sets it on the twin, as /manage/scheduling
- * would; a number out of range (4 to 58) reads as what the settings hold, as
- * one stored so would in the app.
+ * would, in place of what the settings hold; a number out of range (4 to 58),
+ * or no number at all, reads as the default, 42, as one stored out of range
+ * does in the app.
  */
 export function demoFillWeekHours(asked?: string): number {
   const stored = demoModuleRows.find(
