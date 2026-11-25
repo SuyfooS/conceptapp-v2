@@ -105,6 +105,56 @@ test("the builder's sheet keeps the focus among the people, and says who went on
   );
 });
 
+// Filling from availability by the keyboard, on the restaurant's twin. The
+// pill opens its sheet with the focus inside it, and Escape gives the focus
+// back to the pill. The sheet's "מילוי 3 מקומות" closes it onto the toast's
+// "ביטול", named with what it takes off, which waits while the keyboard is
+// on it. Pressed, the screen is as it was before the fill, and the focus is
+// back on the pill, without moving the page.
+test("the fill's sheet gives the focus back to its pill, and closes onto its undo", async ({
+  page,
+}) => {
+  const tf = tb.fill;
+  const fill = page.getByRole("button", { name: tf.action });
+  const sheet = page.getByRole("dialog", { name: tf.title });
+  const submit = sheet.getByRole("button", {
+    name: heT("app.build.fill.submit", { count: 3 }),
+  });
+  const undo = page
+    .getByRole("status")
+    .getByRole("button", { name: tf.undoFull, exact: true });
+  const morning = buildScreen(page).card("בוקר");
+  const scrolled = () => page.evaluate(() => window.scrollY);
+
+  await page.goto("/design/shell/schedule/build");
+  await expect(morning).not.toContainText("שירן");
+  await fill.focus();
+  await page.keyboard.press("Enter");
+  await expect(sheet).toBeVisible();
+  await expect
+    .poll(() => sheet.evaluate((open) => open.contains(document.activeElement)))
+    .toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(sheet).toHaveCount(0);
+  await expect(fill).toBeFocused();
+
+  await page.keyboard.press("Enter");
+  await expect(sheet).toBeVisible();
+  await submit.focus();
+  await page.keyboard.press("Enter");
+  await expect(sheet).toHaveCount(0);
+  await expect(undo).toBeFocused();
+  await expect(morning).toContainText("שירן");
+  const at = await scrolled();
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByRole("status").filter({ hasText: tf.undone }),
+  ).toBeVisible();
+  await expect(fill).toBeFocused();
+  await expect(morning).not.toContainText("שירן");
+  expect(await scrolled()).toBe(at);
+});
+
 // The running week's twin: the shop on Tuesday at 11:20, its evening from
 // 15:00 with Roni on it, and Omer and Michal free for it. The twin's clock
 // goes on once a minute from 11:20 by the time gone since the screen came

@@ -3,6 +3,7 @@ import {
   afterScreenEdit,
   builderToast,
   type HeldNotice,
+  namedUndo,
   SCREEN_UNDO_MS,
   type ScreenNotice,
   screenMade,
@@ -10,7 +11,7 @@ import {
 } from "./builder-toast";
 
 // The builder's one way back for what changes only the screen (a copy from
-// last week), and what its one toast says, in the order it always has: a
+// last week, a fill from availability), and what its one toast says, in the order it always has: a
 // held publish, then the change on the screen, then the last write.
 
 const at = (minute: number) => new Date(Date.UTC(2026, 10, 25, 8, minute));
@@ -310,5 +311,86 @@ describe("a copy after a change on the screen: edited, then made", () => {
       expect(screenUndone(notice, false, at(3))).toBeNull();
       expect(second).not.toHaveBeenCalled();
     }
+  });
+});
+
+// The fill from availability takes the same way back as the copy: one at a
+// time, whichever came last, the next change on the screen taking it.
+describe("a fill, with the copy's way back", () => {
+  const toast = (screen: ScreenNotice | null) =>
+    builderToast({
+      holding: false,
+      held: null,
+      screen,
+      saved: null,
+      done: false,
+    });
+
+  it("offers its way back with the places it filled, and says it was undone", () => {
+    const undo = vi.fn();
+    let notice: ScreenNotice | null = screenMade("fill", 5, undo, at(0));
+    expect(toast(notice)).toEqual({
+      words: { of: "screen", what: "fill", kind: "made", count: 5 },
+      stamp: stamp(0),
+      undo: "screen",
+    });
+    notice = screenUndone(notice, false, at(1));
+    expect(undo).toHaveBeenCalledTimes(1);
+    expect(toast(notice)).toEqual({
+      words: { of: "screen", what: "fill", kind: "undone" },
+      stamp: stamp(1),
+      undo: null,
+    });
+  });
+
+  // `applyFill` queues `edited`'s updater, then its own way back, as
+  // `applyCopy` does: a fill after a copy puts back only the fill, and a
+  // copy after a fill only the copy.
+  it("takes the copy's place after a copy, and a copy takes its place after it", () => {
+    const copied = vi.fn();
+    const filled = vi.fn();
+    let notice = applied(screenMade("copy", 3, copied, at(0)), [
+      afterScreenEdit,
+      screenMade("fill", 2, filled, at(1)),
+    ]);
+    expect(notice).toMatchObject({ kind: "made", what: "fill", count: 2 });
+    notice = applied(notice, [
+      afterScreenEdit,
+      screenMade("copy", 4, copied, at(2)),
+    ]);
+    expect(notice).toMatchObject({ kind: "made", what: "copy", count: 4 });
+    expect(screenUndone(notice, false, at(3))).toMatchObject({
+      kind: "undone",
+      what: "copy",
+    });
+    expect(copied).toHaveBeenCalledTimes(1);
+    expect(filled).not.toHaveBeenCalled();
+  });
+
+  it("goes with the next change on the screen, and never while a write goes", () => {
+    const undo = vi.fn();
+    const made = screenMade("fill", 1, undo, at(0));
+    expect(screenUndone(made, true, at(1))).toBeNull();
+    expect(afterScreenEdit(made)).toBeNull();
+    expect(undo).not.toHaveBeenCalled();
+  });
+});
+
+// Only the fill's "ביטול" has a whole name of its own, and only while it is
+// offered: its toast's words say how many places were filled, not that
+// "ביטול" takes those people off again.
+describe("namedUndo", () => {
+  it("names the fill's way back, and nothing else", () => {
+    expect(
+      namedUndo({ of: "screen", what: "fill", kind: "made", count: 3 }),
+    ).toBe("fill");
+    expect(
+      namedUndo({ of: "screen", what: "copy", kind: "made", count: 3 }),
+    ).toBeNull();
+    expect(
+      namedUndo({ of: "screen", what: "fill", kind: "undone" }),
+    ).toBeNull();
+    expect(namedUndo({ of: "held", kind: "waiting" })).toBeNull();
+    expect(namedUndo({ of: "write", published: false })).toBeNull();
   });
 });

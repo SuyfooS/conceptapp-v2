@@ -11,6 +11,7 @@ import { type ShabbatLimits, suggestedRange } from "./availability-form";
 import type { CopySource } from "./copy-week";
 import {
   FILL_MAX_DAYS,
+  FILL_REST_HOURS,
   FILL_WEEK_HOURS,
   FILL_WEEK_HOURS_MAX,
   fillFromAvailability,
@@ -119,6 +120,12 @@ describe("the fill's limits", () => {
     expect(FILL_WEEK_HOURS).toBe(42);
     expect(FILL_WEEK_HOURS_MAX).toBe(58);
     expect(FILL_MAX_DAYS).toBe(6);
+  });
+
+  // The sheet names it; the rule measures it in minutes.
+  it("rests 8 hours between shifts, as `rest` measures it", () => {
+    expect(FILL_REST_HOURS).toBe(8);
+    expect(FILL_REST_HOURS * 60).toBe(LIMITS.restBetween);
   });
 });
 
@@ -1479,7 +1486,7 @@ describe("the twins, as the PR shows them", () => {
           ([user, position]) => ({ user, position }),
         ),
       }));
-    const fill = fillFromAvailability({
+    const input: FillInput = {
       weekStart: start,
       screen,
       staff: ["uri", "shiran", "itay", "yoav", "maya", "noa", "omer", "shira"],
@@ -1528,7 +1535,8 @@ describe("the twins, as the PR shows them", () => {
       positionKeys: ["waiter", "bartender", "cook", "host"],
       now: null,
       timeZone: zone,
-    });
+    };
+    const fill = fillFromAvailability(input);
     expect(fill).toMatchObject({
       places: 3,
       people: 2,
@@ -1569,6 +1577,23 @@ describe("the twins, as the PR shows them", () => {
     expect(fill.shifts.map((s) => s.shabbat)).toEqual(
       fill.shifts.map(() => null),
     );
+
+    // `&away=1`: Shiran away on Sunday. Sunday morning, which the fill gave
+    // her, stays open with her named as away, and the rest is as before.
+    // (On Monday she is on the morning already, and her answer covers no
+    // other shift that day, so the sheet would say nothing of it.)
+    const away = fillFromAvailability({
+      ...input,
+      away: [{ userId: "shiran", from: start, to: start }],
+    });
+    expect(away).toMatchObject({ places: 2, people: 2, openAfter: 13 });
+    expect(away.shifts[0]).toMatchObject({
+      added: [],
+      open: 1,
+      why: "blocked",
+      blocked: [{ user: "shiran", rule: "away" }],
+    });
+    expect(away.shifts.slice(1)).toEqual(fill.shifts.slice(1));
   });
 
   it("keeps the café's evening worker off the next morning", () => {

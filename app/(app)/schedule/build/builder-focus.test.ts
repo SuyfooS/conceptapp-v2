@@ -5,6 +5,7 @@ import {
   afterWrite,
   BUILDER_STATUS,
   COPY_WEEK,
+  FILL_WEEK,
   listHeading,
   type PlacedAfterWrite,
   personButton,
@@ -119,13 +120,24 @@ describe("personButton and listHeading", () => {
   });
 });
 
-// The toast's "ביטול" of a copy goes with the focus: back to the copy's
-// button, only while it can be pressed (none while a write goes), so the
-// builder goes on to the publish button or the status line otherwise.
+// The toast's "ביטול" of a copy or a fill goes with the focus: back to the
+// button that made it, only while it can be pressed (none while a write
+// goes), so the builder goes on to the publish button or the status line
+// otherwise.
 describe("afterScreen", () => {
   it("goes back to the copy's button while it can be pressed", () => {
     expect(COPY_WEEK).toBe("[data-copy-week]");
     expect(afterScreen("copy")).toEqual(["[data-copy-week]:enabled"]);
+  });
+
+  // Once the fill left nothing open its button is gone: the copy's, beside
+  // it, before the builder goes on as after any toast.
+  it("goes back to the fill's button, else to the copy's beside it", () => {
+    expect(FILL_WEEK).toBe("[data-fill-week]");
+    expect(afterScreen("fill")).toEqual([
+      "[data-fill-week]:enabled",
+      "[data-copy-week]:enabled",
+    ]);
   });
 });
 

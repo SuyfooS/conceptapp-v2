@@ -26,11 +26,12 @@ import { readWorkbook, sheetCells, unzip } from "./unzip";
 // record her own; then changes it to reserve duty, removes it, brings it
 // back with the toast's "ביטול", and removes it again. Today shows whoever
 // builds the schedule who is away, never why, and Noa reads her own day away
-// on her hours. The builder says it on the day, in a shift's people and in
-// the copy from last week, and her page leads to the week of a shift still
-// on a day away. The owner's hours for payroll count the days by kind, list
-// each date, and the file has them. Every test starts and ends with no days
-// away at the restaurant, and one that builds a week clears it after.
+// on her hours. The builder says it on the day, in a shift's people, in
+// the copy from last week and in the fill from availability, and her page
+// leads to the week of a shift still on a day away. The owner's hours for
+// payroll count the days by kind, list each date, and the file has them.
+// Every test starts and ends with no days away at the restaurant, and one
+// that builds a week clears it after.
 const TZ = "Asia/Jerusalem";
 const OWNER = { local: "050-000-0001", e164: "+972500000001" };
 const MANAGER = {
@@ -381,7 +382,7 @@ test("Today says who is away to whoever builds the schedule, never why, and the 
   }
 });
 
-test("the builder says who is away on next week's days, in a shift's people and in the copy", async ({
+test("the builder says who is away on next week's days, in a shift's people, the copy and the fill", async ({
   page,
 }) => {
   test.setTimeout(90_000);
@@ -432,6 +433,23 @@ test("the builder says who is away on next week's days, in a shift's people and 
     await expect(screen.group(tb.groups.away)).toContainText(NOA.name);
     await page.keyboard.press("Escape");
     await expect(copy).toHaveCount(0);
+
+    // The fill from availability places nobody: Noa, the only one who sent
+    // any, is away on the one day it covers, and Sunday morning says so.
+    await page.getByRole("button", { name: tb.fill.action }).click();
+    const fill = page.getByRole("dialog", { name: tb.fill.title });
+    await expect(fill).toContainText(tb.fill.nothing.none);
+    await expect(fill).toContainText(tb.fill.away);
+    await expect(fill).toContainText(
+      heT("app.build.fill.why.blockedOne", {
+        name: NOA.name,
+        rule: tb.fill.rule.away,
+      }),
+    );
+    await expect(fill.getByRole("button", { name: /^מילוי / })).toHaveCount(0);
+    await expectCleanPage(page);
+    await page.keyboard.press("Escape");
+    await expect(fill).toHaveCount(0);
   } finally {
     await clearSchedule();
     await clearAvailability(NOA.e164);

@@ -18,7 +18,7 @@ import { type BuilderWeeks, ScheduleBuilder } from "./schedule-builder";
 /**
  * The page around the builder. Also rendered with mock data on
  * /design/shell/schedule/build and /design/shell/schedule/build/running,
- * whose next week has a last week to copy.
+ * whose next week has a last week to copy. Both fill from availability.
  */
 export function ScheduleBuildView({
   data,
@@ -28,6 +28,7 @@ export function ScheduleBuildView({
   save,
   backHref = "/schedule",
   manageHref = "/manage/scheduling",
+  teamAvailabilityHref = "/schedule/availability/team",
   running,
   publishes = true,
   share = null,
@@ -54,6 +55,11 @@ export function ScheduleBuildView({
    * management page.
    */
   manageHref?: string | null;
+  /**
+   * Where the team's availability is, with its reminder: the fill's sheet
+   * leads there from who sent none, on next week.
+   */
+  teamAvailabilityHref?: string;
   /**
    * Which of the two weeks this is, the moment the server read it, and the
    * switch between them. Without it (the next-week demo) the screen is next
@@ -106,6 +112,7 @@ export function ScheduleBuildView({
         away={data.away}
         positions={data.positions}
         manageHref={manageHref}
+        teamAvailabilityHref={teamAvailabilityHref}
         running={running}
         publishes={publishes}
         share={share}

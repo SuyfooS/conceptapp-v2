@@ -2,8 +2,9 @@
  * What the builder's one toast says, and the way back it offers. A publish
  * of changes held for its undo says so for as long as it waits, then that it
  * was let go unsent; then a change made only on the screen (a copy from last
- * week), with "ביטול" for `SCREEN_UNDO_MS`, or that it was undone; otherwise
- * what the last write did, once nothing is unsaved, on its way or held.
+ * week, a fill from availability), with "ביטול" for `SCREEN_UNDO_MS`, or that
+ * it was undone; otherwise what the last write did, once nothing is unsaved,
+ * on its way or held.
  * Only one change made on the screen is ever offered back: the next change
  * on the screen takes its way back (`afterScreenEdit`), a new one comes in
  * its place, and a write sent takes it too. Without React, so the tests
@@ -12,18 +13,19 @@
  */
 
 /**
- * What changes only the screen, with one way back: a copy from last week.
- * Nothing of it is saved or sent until the dock's buttons are pressed.
+ * What changes only the screen, with one way back: a copy from last week, or
+ * a fill from availability. Nothing of it is saved or sent until the dock's
+ * buttons are pressed.
  */
-export type ScreenChange = "copy";
+export type ScreenChange = "copy" | "fill";
 
 /** How long "ביטול" of a change made only on the screen stays in the toast. */
 export const SCREEN_UNDO_MS = 10_000;
 
 /**
  * What the toast says of a change made only on the screen: made, how much
- * (the shifts a copy put there), with what puts the screen back as it was
- * before it; or undone.
+ * (the shifts a copy put there, the places a fill filled), with what puts the
+ * screen back as it was before it; or undone.
  */
 export type ScreenNotice =
   | {
@@ -50,10 +52,11 @@ export function screenMade(
 
 /**
  * The screen changed after a change made only on it (a shift added,
- * changed, removed or brought back, or the next copy): "ביטול" would put the
- * screen back as it was before that change and take this one with it, so
- * the way back goes, and the toast with it. What was made stays, as any
- * other work on the screen. That it was undone is no way back, and stays.
+ * changed, removed or brought back, or the next copy or fill): "ביטול"
+ * would put the screen back as it was before that change and take this one
+ * with it, so the way back goes, and the toast with it. What was made stays,
+ * as any other work on the screen. That it was undone is no way back, and
+ * stays.
  */
 export function afterScreenEdit(
   notice: ScreenNotice | null,
@@ -157,4 +160,18 @@ export function builderToast(now: {
     };
   }
   return null;
+}
+
+/**
+ * The change whose "ביטול" has a whole name of its own for a screen reader
+ * (`app.build.<what>.undoFull`, starting with the word itself, so speech
+ * input still finds it): the fill's, since its toast says how many places
+ * were filled, not that "ביטול" takes those people off the shifts again.
+ * Null for any other toast: the copy's "ביטול" is its word alone, and one
+ * with no way back has nothing to name.
+ */
+export function namedUndo(words: ToastWords): "fill" | null {
+  return words.of === "screen" && words.kind === "made" && words.what === "fill"
+    ? "fill"
+    : null;
 }

@@ -74,6 +74,8 @@ const PAGES = [
   "/design/shell/schedule/availability/team?state=all",
   "/design/shell/schedule/availability/team?state=empty",
   "/design/shell/schedule/build",
+  // Shiran away on Sunday: the day says so, and the fill leaves her off.
+  "/design/shell/schedule/build?away=1",
   "/design/shell/schedule/build?state=meanwhile",
   "/design/shell/schedule/build?week=2026-11-01",
   // Building without publishing (roles R3): a draft, and a published week read.
@@ -2026,18 +2028,21 @@ test("the builder demo offers sharing once published", async ({ page }) => {
   const share = page.getByRole("button", { name: ts.action });
   const sheet = page.getByRole("dialog", { name: ts.title });
   // The restaurant has no week before to copy, and a published week takes
-  // no copy.
+  // no copy, nor a fill from availability.
   const copy = page.getByRole("button", { name: tb.copy.action });
+  const fill = page.getByRole("button", { name: tb.fill.action });
 
   await page.goto("/design/shell/schedule/build");
   await expect(page.getByRole("button", { name: tb.publish })).toBeVisible();
   await expect(share).toHaveCount(0);
   await expect(copy).toHaveCount(0);
+  await expect(fill).toBeVisible();
   await page.getByRole("button", { name: tb.publish }).click();
   await expect(
     page.getByRole("status").filter({ hasText: tb.published }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: tb.publish })).toHaveCount(0);
+  await expect(fill).toHaveCount(0);
   await share.click();
   await expect(sheet).toBeVisible();
   // The demo week, 1 to 7 November, in the browser's own words, its days
@@ -2081,6 +2086,7 @@ test("the builder demo offers sharing once published", async ({ page }) => {
       page.getByRole("button", { name: tb.publishChanges }),
     ).toHaveCount(0);
     await expect(copy).toHaveCount(0);
+    await expect(fill).toHaveCount(0);
   }
 
   // The shop's week under way, by the shop's own name.
@@ -2412,6 +2418,118 @@ test("next week's demo copies last week, says who was left out, and takes it bac
   await expect(page.getByText(tb.unsaved)).toBeVisible();
   // Gone with the change, well inside the 10 seconds it would stay otherwise.
   await expect(toast).toHaveCount(0, { timeout: 2_000 });
+});
+
+// Filling from availability on the twins, at every size. The restaurant's
+// next week: the sheet says it fills 3 places with 2 people and leaves 12
+// open, each with why; Shiran goes into Sunday's morning; Sunday's evening,
+// with people on it, says nobody else sent availability for all of it, and
+// that two cover part of it; Omer and Shira sent nothing, and are named,
+// with the way to remind them, never Uri, the owner. Nothing is saved until
+// the dock is pressed. Filled, the toast's "ביטול", which takes the focus
+// and says what it takes off, brings the morning back as it was. With
+// Shiran away on Sunday (&away=1), Sunday's morning stays open, naming her
+// as away, and the sheet says that days away count. The shop's next week,
+// saved as a draft, fills from its own answers in its own sheet.
+test("the builder's demos fill from availability, say why places stay open, and take it back", async ({
+  page,
+}) => {
+  const tb = he.app.build;
+  const tf = tb.fill;
+  const path = "/design/shell/schedule/build";
+  const screen = buildScreen(page);
+  const fill = page.getByRole("button", { name: tf.action });
+  const sheet = page.getByRole("dialog", { name: tf.title });
+  const sun = { day: he.app.availability.weekdays.sun, date: "1.11" };
+  const morning = screen.card("בוקר", sun);
+  /** A shift's row on a day, by its name and hours as the sheet writes them. */
+  const row = (on: { day: string; date: string }, title: string) =>
+    sheet
+      .getByRole("group", { name: heT("app.build.day", on), exact: true })
+      .locator("div", { has: page.getByText(title, { exact: true }) })
+      .last();
+  const missing = sheet.getByText(before(tf.noAnswer));
+
+  await page.goto(path);
+  await expect(morning).not.toContainText("שירן");
+  await fill.click();
+  await expect(sheet).toContainText(
+    `${heT("app.build.fill.summary", { places: 3, people: 2 })} ${heT("app.build.fill.leftOpen", { count: 12 })}`,
+  );
+  await expect(row(sun, "בוקר · 09:00–16:00")).toContainText(
+    heT("app.build.fill.adds", { names: "שירן אלון" }),
+  );
+  const evening = row(sun, "ערב · 16:00–23:30");
+  await expect(evening).toContainText(
+    heT("app.build.fill.stillOpen", { count: 1 }),
+  );
+  await expect(evening).toContainText(tf.why.nobodyElse);
+  await expect(evening).toContainText(
+    heT("app.build.fill.why.partial", { count: 2 }),
+  );
+  await expect(missing).toContainText(
+    heT("app.build.fill.noAnswer", { names: "עומר אזולאי, שירה ביטון" }),
+  );
+  await expect(missing).not.toContainText("אורי");
+  await expect(
+    sheet.getByRole("link", {
+      name: /<link>(.*)<\/link>/.exec(tf.remind)?.[1] ?? tf.remind,
+    }),
+  ).toHaveAttribute("href", "/design/shell/schedule/availability/team");
+  await expect(sheet).toContainText(tf.note);
+  // The twin has no clock to say days away are known: no line about them.
+  await expect(sheet).not.toContainText(tf.away);
+  await expectCleanPage(page, path, true);
+
+  await sheet
+    .getByRole("button", { name: heT("app.build.fill.submit", { count: 3 }) })
+    .click();
+  await expect(sheet).toHaveCount(0);
+  await expect(morning).toContainText("שירן");
+  await expect(page.getByText(tb.unsaved)).toBeVisible();
+  const toast = page
+    .getByRole("status")
+    .filter({ hasText: heT("app.build.fill.done", { count: 3 }) });
+  const undo = toast.getByRole("button", { name: tf.undoFull, exact: true });
+  await expect(undo).toBeFocused();
+  await undo.click();
+  await expect(
+    page.getByRole("status").filter({ hasText: tf.undone }),
+  ).toBeVisible();
+  await expect(morning).not.toContainText("שירן");
+  await expect(fill).toBeFocused();
+
+  // Shiran away on Sunday: the fill leaves Sunday's morning open for her.
+  await page.goto(`${path}?away=1`);
+  await fill.click();
+  await expect(sheet).toContainText(
+    heT("app.build.fill.summary", { places: 2, people: 2 }),
+  );
+  await expect(row(sun, "בוקר · 09:00–16:00")).toContainText(
+    heT("app.build.fill.why.blockedOne", {
+      name: "שירן אלון",
+      rule: tf.rule.away,
+    }),
+  );
+  await expect(sheet).toContainText(tf.away);
+  await expectCleanPage(page, `${path}?away=1`, true);
+  await page.keyboard.press("Escape");
+  await expect(sheet).toHaveCount(0);
+
+  // The shop's next week, saved as a draft: its own sheet, clean too.
+  const shop = "/design/shell/schedule/build/running?week=next&state=draft";
+  await page.goto(shop);
+  await fill.click();
+  await expect(sheet).toContainText(
+    heT("app.build.fill.summary", { places: 8, people: 2 }),
+  );
+  await expect(missing).toContainText(
+    heT("app.build.fill.noAnswer", { names: "איתי מזרחי, רוני שלום" }),
+  );
+  await expectCleanPage(page, shop, true);
+  await page.keyboard.press("Escape");
+  await expect(sheet).toHaveCount(0);
+  await expect(fill).toBeFocused();
 });
 
 // The demo door per site (P9): the demo's site offers it from sign-in; the

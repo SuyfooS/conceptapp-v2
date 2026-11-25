@@ -1,0 +1,331 @@
+"use client";
+
+import { missingAvailability } from "@domain/availability";
+import { dayMonth } from "@domain/availability-form";
+import {
+  FILL_MAX_DAYS,
+  FILL_REST_HOURS,
+  type FillRule,
+  type WeekFill,
+} from "@domain/fill-week";
+import type { TeamMember } from "@domain/team";
+import { Button } from "@ui/button";
+import { ListRow } from "@ui/list-row";
+import { Sheet } from "@ui/sheet";
+import Link from "next/link";
+import { useLocale, useTranslations } from "next-intl";
+import { type ReactNode, useId } from "react";
+import { type FillReason, fillDays, fillReason } from "./fill-reasons";
+import { SheetSection } from "./sheet-section";
+
+const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
+
+/**
+ * Hours and numbers inside a sentence put together as text (a person and the
+ * rule that stopped them): held left to right in Unicode isolates, as
+ * `<ltr>` holds them on screen.
+ */
+const isolate = (chunks: string) => `⁦${chunks}⁩`;
+
+/** Before the sheet first opens: nothing worked out yet. */
+const NOTHING: WeekFill = {
+  week: [],
+  shifts: [],
+  places: 0,
+  people: 0,
+  openBefore: 0,
+  openAfter: 0,
+  answered: 0,
+  byPerson: [],
+  unplaced: [],
+};
+
+/**
+ * What filling the week from the staff's availability would do, before
+ * anything changes on the screen ("מילוי מהזמינות"): how many places and
+ * people, the rules it keeps, who sent no availability (and so is never
+ * placed) with the way to remind them while the week is next week's, who
+ * sent some and gets no shift, and each shift that has an open place, day by
+ * day: who goes on it, and why a place stays open. Its main action puts the
+ * fill on the screen; nothing is saved or sent until the dock's buttons are
+ * pressed, and the sheet says so. With nobody to place it says why instead,
+ * and each shift still says what keeps it open. It is drawn closed before
+ * anything is worked out (`fill` null), as the builder's other sheets are,
+ * so it opens inside the business's colour.
+ */
+export function FillWeekSheet({
+  open,
+  fill: worked,
+  dates,
+  team,
+  answers,
+  remindHref,
+  clock,
+  weekHours,
+  onFill,
+  onClose,
+  nameOf,
+  weekday,
+}: {
+  open: boolean;
+  /** What the fill would do; null before it was first worked out. */
+  fill: WeekFill | null;
+  /** The week's days, for its first and last. */
+  dates: readonly string[];
+  /** The staff: who owes availability is everyone but an owner. */
+  team: readonly Pick<TeamMember, "userId" | "role">[];
+  /** Who sent availability for the week. */
+  answers: readonly { userId: string }[];
+  /**
+   * Where the team's availability is, with its reminder, while the builder
+   * shows the week that screen covers (next week); null otherwise.
+   */
+  remindHref: string | null;
+  /** Days away are known (the time clock is on): the sheet says they count. */
+  clock: boolean;
+  /** The most hours a week the fill gives anyone, as the rule read it. */
+  weekHours: number;
+  onFill: () => void;
+  onClose: () => void;
+  /** A name on the team, by id. */
+  nameOf: (userId: string) => string;
+  /** A date's weekday in words ("ראשון"). */
+  weekday: (date: string) => string;
+}) {
+  const t = useTranslations("app.build");
+  const locale = useLocale();
+  const daysId = useId();
+  const fill = worked ?? NOTHING;
+  const canFill = fill.places > 0;
+  const line = canFill
+    ? t("fill.note")
+    : fill.answered === 0
+      ? t("fill.nothing.noAnswers")
+      : t("fill.nothing.none");
+
+  /** Names, by name, joined as the screens join them. */
+  const names = (users: readonly string[]) =>
+    users
+      .map(nameOf)
+      .sort((a, b) => a.localeCompare(b, locale))
+      .join(", ");
+
+  // Staff who owe availability and sent none, never an owner: the fill
+  // places none of them, and the manager can still put them on by hand.
+  const missing = missingAvailability(
+    team,
+    answers.map((answer) => answer.userId),
+  ).map((member) => member.userId);
+  const remind = remindHref !== null && missing.length > 0;
+
+  /** The rule that stopped someone, in a few words. */
+  const ruleWords = (rule: FillRule): string => {
+    switch (rule) {
+      case "away":
+        return t("fill.rule.away");
+      case "busy":
+        return t("fill.rule.busy");
+      case "sameDay":
+        return t("fill.rule.sameDay");
+      case "rest":
+        return t.markup("fill.rule.rest", {
+          hours: FILL_REST_HOURS,
+          ltr: isolate,
+        });
+      case "days":
+        return t.markup("fill.rule.days", {
+          days: FILL_MAX_DAYS,
+          ltr: isolate,
+        });
+      case "hours":
+        return t.markup("fill.rule.hours", { hours: weekHours, ltr: isolate });
+    }
+  };
+
+  /**
+   * A place left open in words (`fillReason`): Shabbat while no answer
+   * covers the shift; else nobody (else, once anyone is on it) covers it
+   * whole, with how many cover a part; or everyone who does, each with the
+   * first rule that stopped them, by name. A shift that reaches into
+   * Shabbat says its time beside the last two.
+   */
+  const reasonWords = (reason: FillReason): ReactNode => {
+    if (reason.why === "shabbat") {
+      return t.rich(
+        reason.side === "friday" ? "fill.why.friday" : "fill.why.saturday",
+        { time: reason.time, ltr },
+      );
+    }
+    const words =
+      reason.why === "blocked"
+        ? t("fill.why.blocked", {
+            people: [...reason.blocked]
+              .sort((a, b) =>
+                nameOf(a.user).localeCompare(nameOf(b.user), locale),
+              )
+              .map(({ user, rule }) =>
+                t("fill.why.blockedOne", {
+                  name: nameOf(user),
+                  rule: ruleWords(rule),
+                }),
+              )
+              .join(", "),
+          })
+        : [
+            reason.others ? t("fill.why.nobodyElse") : t("fill.why.nobody"),
+            reason.partial > 0
+              ? t("fill.why.partial", { count: reason.partial })
+              : null,
+          ]
+            .filter((part) => part !== null)
+            .join(" ");
+    const { shabbat } = reason;
+    if (!shabbat) return words;
+    return (
+      <>
+        {words}{" "}
+        {t.rich(
+          shabbat.side === "friday"
+            ? "fill.why.fridayToo"
+            : "fill.why.saturdayToo",
+          { time: shabbat.time, ltr },
+        )}
+      </>
+    );
+  };
+
+  const days = fillDays(fill);
+
+  return (
+    <Sheet
+      open={open && worked !== null}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      title={t("fill.title")}
+      subtitle={t.rich("fill.subtitle", {
+        from: dayMonth(dates[0] ?? ""),
+        to: dayMonth(dates.at(-1) ?? dates[0] ?? ""),
+        ltr,
+      })}
+      closeLabel={t("close")}
+      // With no link to the team's availability, nothing in the body takes
+      // the keyboard: the body does, so its days still scroll by keys on a
+      // small screen.
+      readingLabel={remind ? undefined : t("fill.title")}
+      footer={
+        <>
+          <p className="px-1 text-center text-base text-ink-2">{line}</p>
+          {canFill ? (
+            <Button size="lg" onClick={onFill}>
+              {t("fill.submit", { count: fill.places })}
+            </Button>
+          ) : null}
+        </>
+      }
+    >
+      <div className="flex flex-col pb-1">
+        <p className="px-3 pt-1 text-base text-ink-2">{t("fill.intro")}</p>
+        {canFill ? (
+          <p className="px-3 pt-3 font-semibold text-md text-ink">
+            {t("fill.summary", { places: fill.places, people: fill.people })}
+            {fill.openAfter > 0
+              ? ` ${t("fill.leftOpen", { count: fill.openAfter })}`
+              : null}
+          </p>
+        ) : null}
+        <p className="px-3 pt-3 text-base text-ink-2">
+          {t.rich("fill.rules", {
+            days: FILL_MAX_DAYS,
+            hours: weekHours,
+            rest: FILL_REST_HOURS,
+            ltr,
+          })}
+          {/* Days away are read only while the time clock is on: with it
+              off the sheet says nothing of what it can't see. */}
+          {clock ? ` ${t("fill.away")}` : null}
+        </p>
+        {missing.length > 0 ? (
+          <p className="px-3 pt-3 text-base text-ink">
+            {t("fill.noAnswer", { names: names(missing) })}
+            {remind && remindHref ? (
+              <>
+                {" "}
+                {t.rich("fill.remind", {
+                  link: (chunks) => (
+                    <Link
+                      href={remindHref}
+                      className="font-medium text-ink underline"
+                    >
+                      {chunks}
+                    </Link>
+                  ),
+                })}
+              </>
+            ) : null}
+          </p>
+        ) : null}
+        {fill.unplaced.length > 0 ? (
+          <p className="px-3 pt-3 text-base text-ink-2">
+            {t("fill.unplaced", { names: names(fill.unplaced) })}
+          </p>
+        ) : null}
+
+        {days.length > 0 ? (
+          <section aria-labelledby={daysId} className="mt-2 flex flex-col">
+            <h3
+              id={daysId}
+              className="px-3 pt-3 font-semibold text-ink text-md"
+            >
+              {t("fill.daysTitle")}
+            </h3>
+            {days.map((day) => (
+              <SheetSection
+                key={day.date}
+                level={4}
+                title={t("day", {
+                  day: weekday(day.date),
+                  date: dayMonth(day.date),
+                })}
+              >
+                {day.shifts.map((shift) => {
+                  const now = fill.week[shift.index];
+                  if (!now) return null;
+                  const reason = fillReason(shift, now.assignees.length);
+                  return (
+                    <ListRow
+                      key={shift.index}
+                      title={t.rich("fill.shiftTitle", {
+                        name: now.name,
+                        start: now.start,
+                        end: now.end,
+                        ltr,
+                      })}
+                      subtitle={
+                        <>
+                          {shift.added.length > 0 ? (
+                            <span className="block">
+                              {t("fill.adds", {
+                                names: names(shift.added.map((a) => a.user)),
+                              })}
+                            </span>
+                          ) : null}
+                          {reason ? (
+                            <span className="block">
+                              {t("fill.stillOpen", { count: shift.open })}{" "}
+                              {reasonWords(reason)}
+                            </span>
+                          ) : null}
+                        </>
+                      }
+                    />
+                  );
+                })}
+              </SheetSection>
+            ))}
+          </section>
+        ) : null}
+      </div>
+    </Sheet>
+  );
+}
