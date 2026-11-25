@@ -18,6 +18,7 @@ import { focusFirst, focusLost } from "@ui/focus-after";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageSection } from "@ui/page";
 import { TextField } from "@ui/text-field";
+import { useSaid } from "@ui/use-sheet-write";
 import { Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
@@ -29,6 +30,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { flushSync } from "react-dom";
 import { useMonthName, useShortDate } from "../pay/pay-parts";
 import type { AbsenceRecordsNot, AbsenceRow } from "./team-types";
 
@@ -376,6 +378,7 @@ export function AbsenceForm({
   today,
   saving,
   failed,
+  onSaid,
   save,
   remove,
 }: {
@@ -386,6 +389,11 @@ export function AbsenceForm({
   saving: boolean;
   /** Why the toast's "ביטול" didn't go, said as it opens. */
   failed: { failure: AbsenceFailure; month?: string } | null;
+  /**
+   * A refusal is drawn, said: the sheet may close (`@ui/use-sheet-write`'s
+   * `useSaid`).
+   */
+  onSaid: () => void;
   save: (
     values: AbsenceValues,
     onFailure: (failure: AbsenceFailure, month?: string) => void,
@@ -404,6 +412,7 @@ export function AbsenceForm({
   // A new record's last day follows its first, until it is set.
   const [toSet, setToSet] = useState(row !== null);
   const [failure, setFailure] = useState(failed);
+  useSaid(failure !== null, onSaid);
   const changed =
     row === null ||
     values.kind !== start.kind ||
@@ -415,8 +424,12 @@ export function AbsenceForm({
       ? FIELD_OF[failure.failure as AbsenceProblem]
       : null;
 
+  // Drawn before the focus moves, also when it comes from the server (after
+  // an await, which React would draw only on its next turn): the field it
+  // lands on is read with why, its description, once. So a refusal said
+  // beside its field is no alert, which would say it a second time.
   function fail(next: AbsenceFailure, month?: string) {
-    setFailure({ failure: next, month });
+    flushSync(() => setFailure({ failure: next, month }));
     const at = next in FIELD_OF ? FIELD_OF[next as AbsenceProblem] : null;
     if (at === "kind") document.getElementById(`${id}-kind-vacation`)?.focus();
     if (at === "days") fromField.current?.focus();
@@ -468,13 +481,17 @@ export function AbsenceForm({
     </FieldRow>
   );
 
+  // Under the kinds, as the list's own error would be, but describing each
+  // kind rather than the list: the focus goes to one, and a group's
+  // description isn't read with it everywhere (a phone's screen reader).
+  const kindError = field === "kind" && failure ? say(failure.failure) : null;
+
   return (
     <div className="flex flex-col gap-3">
       <ChoiceList
         legend={t("sheet.kind")}
         legendClassName="text-md"
         groupClassName="bg-elevated shadow-none"
-        error={field === "kind" && failure ? say(failure.failure) : undefined}
       >
         {ABSENCE_KINDS.map((kind) => (
           <ChoiceRow
@@ -482,6 +499,7 @@ export function AbsenceForm({
             id={`${id}-kind-${kind}`}
             name={`${id}-kind`}
             value={kind}
+            aria-describedby={kindError ? `${id}-kind-error` : undefined}
             checked={values.kind === kind}
             onChange={() => {
               setValues({ ...values, kind });
@@ -492,12 +510,17 @@ export function AbsenceForm({
           />
         ))}
       </ChoiceList>
+      {kindError ? (
+        <p id={`${id}-kind-error`} className="px-1 text-danger text-sm">
+          {kindError}
+        </p>
+      ) : null}
       <ListGroup className="bg-elevated">
         {dateField("from")}
         {dateField("to")}
       </ListGroup>
       {field === "days" && failure ? (
-        <p id={`${id}-days`} role="alert" className="px-1 text-danger text-sm">
+        <p id={`${id}-days`} className="px-1 text-danger text-sm">
           {say(failure.failure)}
         </p>
       ) : null}
@@ -526,7 +549,12 @@ export function AbsenceForm({
         <Button
           variant="ghost"
           disabled={saving}
-          onClick={() => remove(fail)}
+          onClick={() => {
+            // Cleared as it sends, as the save's is: a refusal in the same
+            // words again is drawn anew, so its alert says it again.
+            setFailure(null);
+            remove(fail);
+          }}
           className="text-danger"
         >
           <Trash2 aria-hidden="true" />

@@ -3,9 +3,9 @@
  * is over (accessibility, part 5): "יציאה להפסקה", "יציאה מהמשמרת" and
  * "ביטול היציאה" each give way to what their press drew, so the focus goes
  * to the screen's main control now, "יציאה מהמשמרת" during a break and the
- * circle otherwise; and when a sheet keeps its close for a refusal it has
- * yet to say. No React here, and no page. A held Enter's repeats are
- * `@ui/focus-after`'s `ignoreHeldEnter`.
+ * circle otherwise; and when a sheet keeps its close (and its way back to
+ * the camera) for a refusal it has yet to say. No React here, and no page.
+ * A held Enter's repeats are `@ui/focus-after`'s `ignoreHeldEnter`.
  */
 
 /** Where the person stands on the clock: their shift, and a break running in it. */
@@ -38,15 +38,29 @@ export function pressOver(
   return press.refused || now.state !== press.from;
 }
 
+/** A refusal a sheet was given, and the one it has said (drawn) so far. */
+export type SheetRefusal<Failure> = {
+  failure: Failure | null;
+  said: Failure | null;
+};
+
 /**
- * Whether a sheet keeps its close for a refusal it has not said yet: it
- * says one once the page read again is drawn, which comes after the answer,
- * and closed before that, nothing would ever say it. A closing only, never
- * an opening.
+ * Whether a sheet has a refusal it has not said yet: it says one once the
+ * page read again is drawn, which comes after the answer.
+ */
+export function refusalUnsaid<Failure>(
+  refusal: SheetRefusal<Failure>,
+): boolean {
+  return refusal.failure !== null && refusal.said !== refusal.failure;
+}
+
+/**
+ * Whether a sheet keeps its close for a refusal it has not said yet: closed
+ * before, nothing would ever say it. A closing only, never an opening.
  */
 export function closeHeldForRefusal<Failure>(
   open: boolean,
-  refusal: { failure: Failure | null; said: Failure | null },
+  refusal: SheetRefusal<Failure>,
 ): boolean {
-  return !open && refusal.failure !== null && refusal.said !== refusal.failure;
+  return !open && refusalUnsaid(refusal);
 }

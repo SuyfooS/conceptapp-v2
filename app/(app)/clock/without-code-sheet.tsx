@@ -4,8 +4,8 @@ import { Button } from "@ui/button";
 import { focusFirst } from "@ui/focus-after";
 import { Sheet } from "@ui/sheet";
 import { useFormatter, useTranslations } from "next-intl";
-import { useEffect, useRef, useState } from "react";
-import { closeHeldForRefusal } from "./clock-focus";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { closeHeldForRefusal, refusalUnsaid } from "./clock-focus";
 import type { ClockActionResult } from "./clock-types";
 
 type Failure = Exclude<ClockActionResult, { ok: true }>["failure"];
@@ -17,9 +17,12 @@ type Failure = Exclude<ClockActionResult, { ok: true }>["failure"];
  * A refusal keeps the sheet, and says why once nothing is on its way, with
  * the focus back on the press first (busy meanwhile, so it lost it, and
  * Radix put it on the sheet's frame): said before that move, it would be
- * cut off. Until it has said it, ✕, Escape, the scrim or a swipe close
- * nothing: the page read again comes after the answer, and a sheet closed
- * meanwhile would take the refusal along unsaid.
+ * cut off. Until it has said it, ✕, Escape, the scrim, a swipe and "חזרה
+ * לסריקה" close nothing: the page read again comes after the answer, and a
+ * sheet closed meanwhile would take the refusal along unsaid. The press's
+ * own hold (`onOpenChange`'s, from the press on) keeps it until then too,
+ * from the moment the answer comes, before React has drawn the refusal
+ * here; drawn, `onSaid` lets it go.
  */
 export function WithoutCodeSheet({
   open,
@@ -30,6 +33,7 @@ export function WithoutCodeSheet({
   timeZone,
   pending,
   failure,
+  onSaid,
   onConfirm,
   onBack,
 }: {
@@ -47,6 +51,11 @@ export function WithoutCodeSheet({
   timeZone: string;
   pending: boolean;
   failure: Failure | null;
+  /**
+   * The refusal is drawn, said: what kept the sheet for it may let go
+   * (`useSheetWrite`'s `said`).
+   */
+  onSaid?: () => void;
   onConfirm: () => void;
   /** Back to scanning the code. */
   onBack?: () => void;
@@ -65,6 +74,11 @@ export function WithoutCodeSheet({
     focusFirst([confirm.current], { title: false });
     setSaid(failure);
   }, [failure, pending]);
+  // As the drawing that puts the alert up is committed, before anything
+  // else can come in.
+  useLayoutEffect(() => {
+    if (said !== null) onSaid?.();
+  }, [said, onSaid]);
   return (
     <Sheet
       open={open}
@@ -108,7 +122,9 @@ export function WithoutCodeSheet({
           <Button
             variant="ghost"
             className="w-full"
-            disabled={pending}
+            // Back to the camera closes the sheet too, so it waits as the
+            // close does until a refusal is said.
+            disabled={pending || refusalUnsaid({ failure, said })}
             onClick={onBack}
           >
             {t("none.back")}
