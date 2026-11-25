@@ -1,8 +1,11 @@
 import AxeBuilder from "@axe-core/playwright";
+import { TYPING_MS } from "../app/(app)/manage/use-draft";
 import he from "../messages/he.json" with { type: "json" };
 import { announcer, heardSoFar, pastDrawing, saidSince } from "./announcer";
 import {
   type DemoDetails,
+  databaseNow,
+  demoActivityActions,
   demoBusinessDetails,
   demoDetailsLogged,
   demoModuleEnabled,
@@ -12,7 +15,7 @@ import {
 } from "./db";
 import { signIn } from "./session";
 import { setDemoModule } from "./sms";
-import { undoNamed } from "./t";
+import { heT, undoNamed } from "./t";
 import { expect, type Page, test } from "./test";
 
 // Seeded in supabase/seed.sql: the demo restaurant's manager and a worker, and
@@ -219,6 +222,61 @@ test("a manager fits the schedule to the business, and it stays", async ({
   await page.getByRole("button", { name: m.undo }).click();
   await expect(row).toContainText("22:00–01:00");
   await expect.poll(async () => (await stored()).shifts).toContain("פתיחה");
+});
+
+// The fill's week's hours, typed (filling from availability, part 5, after
+// review). Its hint is read with it. Nothing saves while digits are typed,
+// however long the pause between them: 60 starts as 6, inside its ends, so
+// "6" waits too, and once it reads 60 the field says its ends, read with it,
+// and goes back to 42 on Enter with nothing saved. 42 to 50 by way of 4, an
+// empty field and 5 saves once, as 50, on Enter, and only then. A press of
+// "+" still saves by itself soon after (the cap's test in
+// schedule-build.spec.ts).
+test("a typed number saves once it is left, never half typed", async ({
+  page,
+}) => {
+  const words = s.fillWeekHours;
+  const settled = () => page.waitForTimeout(TYPING_MS + 500);
+  const before = (await demoModuleSettings("scheduling")).fillWeekHours;
+  await signIn(page, MANAGER);
+  await page.goto("/manage/scheduling");
+  const hours = page.getByRole("spinbutton", { name: words.label });
+  await expect(hours).toHaveValue("42");
+  await expect(hours).toHaveAccessibleDescription(words.hint);
+  const since = await databaseNow();
+
+  await hours.fill("6");
+  await settled();
+  await hours.fill("60");
+  await expect(hours).toHaveAttribute("aria-invalid", "true");
+  await expect(hours).toHaveAccessibleDescription(
+    heT("app.manage.between", { min: 4, max: 58 }),
+  );
+  await settled();
+  await hours.press("Enter");
+  await expect(hours).not.toBeFocused();
+  await expect(hours).toHaveValue("42");
+  await expect(hours).not.toHaveAttribute("aria-invalid", "true");
+  await expect(hours).toHaveAccessibleDescription(words.hint);
+  await settled();
+  expect((await demoModuleSettings("scheduling")).fillWeekHours).toBe(before);
+  expect(await demoActivityActions("module.settings", since)).toBe(0);
+
+  for (const typed of ["4", "", "5", "50"]) {
+    await hours.fill(typed);
+    await settled();
+  }
+  expect((await demoModuleSettings("scheduling")).fillWeekHours).toBe(before);
+  expect(await demoActivityActions("module.settings", since)).toBe(0);
+  await hours.press("Enter");
+  await expect(page.getByText(m.saved, { exact: true })).toBeVisible();
+  await expect
+    .poll(async () => (await demoModuleSettings("scheduling")).fillWeekHours)
+    .toBe(50);
+  await settled();
+  expect(await demoActivityActions("module.settings", since)).toBe(1);
+  await page.reload();
+  await expect(hours).toHaveValue("50");
 });
 
 // A shift's undo refused, its save dropped while the shift it brought back

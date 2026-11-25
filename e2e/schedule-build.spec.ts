@@ -1411,18 +1411,20 @@ test("the fill stops at the business's week's hours, which /manage/scheduling se
         }),
       }),
     );
+    // Her row says her name and "בלי משמרות השבוע", and nothing more: no
+    // "· # מהמילוי" after it.
     const people = fill.sheet.getByRole("region", { name: tf.peopleTitle });
     await expect(
       people
         .locator("div", { has: page.getByText(NOA.name, { exact: true }) })
         .last(),
-    ).toContainText(
-      heT.markup("app.build.fill.person", {
+    ).toHaveText(
+      `${NOA.name}${heT.markup("app.build.fill.person", {
         shifts: 0,
         hours: 0,
         added: 0,
         ltr: (chunks) => chunks,
-      }),
+      })}`,
     );
     await expectCleanPage(page);
     await page.keyboard.press("Escape");

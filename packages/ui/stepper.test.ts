@@ -100,6 +100,73 @@ describe("Stepper at its ends", () => {
   });
 });
 
+/** The stepper as drawn: minus, the number, plus, with their handlers. */
+function drawn(props: Partial<StepperProps>) {
+  const tree = Stepper({
+    value: "42",
+    onValueChange: () => {},
+    min: 4,
+    max: 58,
+    decreaseLabel: "Fewer",
+    increaseLabel: "More",
+    ...props,
+  });
+  type Pressed = { props: { onClick: () => void } };
+  type Typed = {
+    props: { onChange: (event: { target: { value: string } }) => void };
+  };
+  const [fewer, field, more] = tree.props.children as [Pressed, Typed, Pressed];
+  return { fewer, field, more };
+}
+
+// A setting that saves a press soon after it and what is typed only once it
+// is left (the fill's week's hours, filling from availability, part 5) tells
+// the two apart: with `onStep`, a press goes there and typing to
+// `onValueChange`; without it, both go to `onValueChange`.
+describe("Stepper's presses and typing", () => {
+  it("sends a press to onStep and typing to onValueChange", () => {
+    const typed: string[] = [];
+    const pressed: string[] = [];
+    const { fewer, field, more } = drawn({
+      onValueChange: (value) => {
+        typed.push(value);
+      },
+      onStep: (value) => {
+        pressed.push(value);
+      },
+    });
+    more.props.onClick();
+    fewer.props.onClick();
+    field.props.onChange({ target: { value: "6" } });
+    expect(pressed).toEqual(["43", "41"]);
+    expect(typed).toEqual(["6"]);
+  });
+
+  it("sends both to onValueChange without onStep", () => {
+    const typed: string[] = [];
+    const { field, more } = drawn({
+      onValueChange: (value) => {
+        typed.push(value);
+      },
+    });
+    more.props.onClick();
+    field.props.onChange({ target: { value: "6" } });
+    expect(typed).toEqual(["43", "6"]);
+  });
+
+  it("sends nothing for a press at an end", () => {
+    const pressed: string[] = [];
+    const { more } = drawn({
+      value: "58",
+      onStep: (value) => {
+        pressed.push(value);
+      },
+    });
+    more.props.onClick();
+    expect(pressed).toEqual([]);
+  });
+});
+
 describe("Button, dimmed with aria-disabled", () => {
   it("takes no press and dims as disabled does, keeping the focus", () => {
     const html = renderToString(

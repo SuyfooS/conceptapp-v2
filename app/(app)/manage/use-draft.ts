@@ -7,11 +7,12 @@ const asIs = (text: string) => text;
 
 /**
  * A value that's typed, so it can be half written for a moment: what's on
- * screen until it's whole, saved shortly after the typing stops or on leaving.
- * When what's stored changes, the draft follows it, unless the person has
- * typed on since: a save landing doesn't wipe what came after it. `tidy` says
- * which drafts mean what's stored (" 5 " and "5", "05" and "5"), so a draft
- * that only differs in its spaces is not saved again.
+ * screen until it's whole, saved shortly after the typing stops (`delay`) or
+ * on leaving, or only on leaving (a null `delay`). When what's stored
+ * changes, the draft follows it, unless the person has typed on since: a
+ * save landing doesn't wipe what came after it. `tidy` says which drafts mean
+ * what's stored (" 5 " and "5", "05" and "5"), so a draft that only differs
+ * in its spaces is not saved again.
  */
 export function useDraft(
   stored: string,
@@ -36,11 +37,16 @@ export function useDraft(
   return {
     draft,
     whole: isWhole(draft),
-    edit(next: string) {
+    /**
+     * `wait` in place of `delay`, for a change that isn't typed: a number's
+     * minus or plus saves soon after the press, where its typed digits wait
+     * until it is left.
+     */
+    edit(next: string, wait: number | null = delay) {
       setDraft(next);
       settle();
-      if (delay !== null && isWhole(next) && tidy(next) !== stored) {
-        timer.current = setTimeout(() => save(next), delay);
+      if (wait !== null && isWhole(next) && tidy(next) !== stored) {
+        timer.current = setTimeout(() => save(next), wait);
       }
     },
     leave() {

@@ -265,16 +265,19 @@ function PlainField({
 }) {
   const tDays = useTranslations("days");
   const id = useId();
+  // The line under the label, read with the control it is about.
+  const hintId = `${id}-hint`;
 
   switch (field.kind) {
     case "toggle":
       return (
-        <FieldRow label={name} hint={hint} htmlFor={id}>
+        <FieldRow label={name} hint={hint} hintId={hintId} htmlFor={id}>
           <Switch
             id={id}
             checked={value === true}
             disabled={disabled}
             onChange={onChange}
+            aria-describedby={hint ? hintId : undefined}
           />
         </FieldRow>
       );
@@ -302,6 +305,7 @@ function PlainField({
       return (
         <NumberField
           id={id}
+          hintId={hintId}
           name={name}
           hint={hint}
           value={typeof value === "number" ? value : 0}
@@ -329,6 +333,7 @@ function PlainField({
         return (
           <TimeField
             id={id}
+            hintId={hintId}
             name={name}
             hint={hint}
             value={typeof value === "string" ? value : ""}
@@ -380,8 +385,16 @@ function MenuOrValue({
   return <ChoiceMenu {...menu} />;
 }
 
+/**
+ * A whole number between its ends. Its digits save once the field is left
+ * (or on Enter), never as they are typed: on the way from 42 to 50 the field
+ * reads 4 and 5, and out of its ends 60 starts as 6, none of them chosen. A
+ * press of minus or plus saves soon after, so a few quick presses save once.
+ * Its hint, or the ends while what is typed is outside them, is read with it.
+ */
 function NumberField({
   id,
+  hintId,
   name,
   plainName,
   hint,
@@ -392,6 +405,7 @@ function NumberField({
   onChange,
 }: {
   id: string;
+  hintId: string;
   name: ReactNode;
   plainName: string;
   hint: string | undefined;
@@ -406,15 +420,12 @@ function NumberField({
     String(value),
     (text) => /^\d+$/.test(text) && Number(text) >= min && Number(text) <= max,
     (text) => onChange(Number(text)),
-    TYPING_MS,
+    null,
     (text) => (/^\d+$/.test(text) ? String(Number(text)) : text),
   );
+  const line = whole ? hint : t("between", { min, max });
   return (
-    <FieldRow
-      label={name}
-      hint={whole ? hint : t("between", { min, max })}
-      htmlFor={id}
-    >
+    <FieldRow label={name} hint={line} hintId={hintId} htmlFor={id}>
       {disabled ? (
         <span dir="ltr" className="font-medium text-ink-2">
           {value}
@@ -424,8 +435,13 @@ function NumberField({
           id={id}
           value={draft}
           onValueChange={edit}
+          onStep={(next) => edit(next, TYPING_MS)}
           onBlur={leave}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") event.currentTarget.blur();
+          }}
           invalid={!whole}
+          describedBy={line ? hintId : undefined}
           min={min}
           max={max}
           decreaseLabel={t("decrease", { name: plainName })}
@@ -438,6 +454,7 @@ function NumberField({
 
 function TimeField({
   id,
+  hintId,
   name,
   hint,
   value,
@@ -445,6 +462,7 @@ function TimeField({
   onChange,
 }: {
   id: string;
+  hintId: string;
   name: ReactNode;
   hint: string | undefined;
   value: string;
@@ -458,13 +476,14 @@ function TimeField({
     TYPING_MS,
   );
   return (
-    <FieldRow label={name} hint={hint} htmlFor={id}>
+    <FieldRow label={name} hint={hint} hintId={hintId} htmlFor={id}>
       <input
         id={id}
         type="time"
         dir="ltr"
         value={draft}
         disabled={disabled}
+        aria-describedby={hint ? hintId : undefined}
         onChange={(event) => edit(event.target.value)}
         onBlur={leave}
         className={`${rowPillInputClass} ${ltrInputClass}`}

@@ -2565,6 +2565,12 @@ test("the builder's demo: the fill's people, and the week's hours as the busines
       added,
       ltr: (chunks) => chunks,
     });
+  /**
+   * Someone's row says its name and their line, and nothing more: a row
+   * the fill gave nothing to has no "· # מהמילוי" after its hours.
+   */
+  const says = (name: string, shifts: number, hours: number, added: number) =>
+    expect(person(name)).toHaveText(`${name}${line(shifts, hours, added)}`);
   /** A shift's row on Sunday 1.11 or Saturday 7.11, as the sheet writes it. */
   const row = (on: { day: string; date: string }, title: string) =>
     sheet
@@ -2592,11 +2598,12 @@ test("the builder's demo: the fill's people, and the week's hours as the busines
   await fill.click();
   await expect(people).toBeVisible();
   await expect(people).toContainText(ORDER);
-  await expect(person("שירן אלון")).toContainText(line(3, 21.5, 2));
-  await expect(person("יואב לוי")).toContainText(line(4, 29, 0));
-  await expect(person("נועה כהן")).toContainText(line(6, 40, 1));
+  await says("שירן אלון", 3, 21.5, 2);
+  await says("יואב לוי", 4, 29, 0);
   // Maya answered with no hours, and the manager put her on five shifts.
-  await expect(person("מאיה פרץ")).toContainText(line(5, 36, 0));
+  await says("מאיה פרץ", 5, 36, 0);
+  await says("איתי מזרחי", 6, 42, 0);
+  await says("נועה כהן", 6, 40, 1);
   // Never anyone who sent nothing: not Omer, not Uri, the owner.
   await expect(people).not.toContainText("עומר");
   await expect(people).not.toContainText("אורי");
@@ -2626,9 +2633,12 @@ test("the builder's demo: the fill's people, and the week's hours as the busines
     over("נועה כהן", 7),
   );
   await expect(people).toContainText(SEVEN);
-  await expect(person("שירן אלון")).toContainText(line(1, 7, 0));
-  await expect(person("נועה כהן")).toContainText(line(5, 35.5, 0));
-  await expect(person("איתי מזרחי")).toContainText(line(6, 42, 0));
+  // Each one's week as the manager left it, nothing from the fill.
+  await says("שירן אלון", 1, 7, 0);
+  await says("יואב לוי", 4, 29, 0);
+  await says("מאיה פרץ", 5, 36, 0);
+  await says("נועה כהן", 5, 35.5, 0);
+  await says("איתי מזרחי", 6, 42, 0);
   await expectCleanPage(page, `${path}?hours=7`, true);
   await page.keyboard.press("Escape");
   await expect(sheet).toHaveCount(0);

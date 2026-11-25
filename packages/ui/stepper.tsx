@@ -11,6 +11,12 @@ export type StepperProps = {
   /** As typed: the field may be empty for a moment while someone types. */
   value: string;
   onValueChange: (value: string) => void;
+  /**
+   * A press of minus or plus, when it is told apart from typing: a setting
+   * saves a press soon after it, and what is typed only once it is left, so
+   * nothing half typed is saved. Without it a press goes to `onValueChange`.
+   */
+  onStep?: (value: string) => void;
   min: number;
   max: number;
   decreaseLabel: string;
@@ -65,6 +71,7 @@ export function Stepper({
   id,
   value,
   onValueChange,
+  onStep = onValueChange,
   min,
   max,
   decreaseLabel,
@@ -85,7 +92,7 @@ export function Stepper({
   const step = (by: number) => {
     const next = stepped(value, by, min, max);
     if (next === null) return;
-    onValueChange(next);
+    onStep(next);
     announce(spoken ? spoken(Number(next)) : next);
   };
   return (
