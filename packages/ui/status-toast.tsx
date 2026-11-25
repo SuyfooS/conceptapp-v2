@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { cn } from "./cn";
-import { focusFirst, onScreen } from "./focus-after";
+import { focusFirst, ignoreHeldEnter, onScreen } from "./focus-after";
 import { useUndoWait } from "./use-undo-wait";
 
 /** How long the toast takes to leave; keep its words until it has. */
@@ -34,7 +34,9 @@ export type StatusToastProps = {
   /**
    * The keyboard's focus goes to the action as the toast shows: what the
    * action undoes went with the focus (a removed message's actions, a sheet
-   * that closed), and the way back is the next thing to reach.
+   * that closed), and the way back is the next thing to reach. Enter held
+   * down from that press presses it no more (`ignoreHeldEnter`): only a
+   * key's first press takes it back.
    */
   focusAction?: boolean;
   /**
@@ -232,6 +234,9 @@ export function StatusToast({
           aria-describedby={wordsId}
           // Gone with the toast: it can't be pressed once it is leaving.
           tabIndex={actionable ? undefined : -1}
+          // Enter held down on what it took the focus from (`focusAction`:
+          // a stop, a cancel) never goes on to take that back.
+          onKeyDown={ignoreHeldEnter}
           onClick={() => {
             // Leaving, it does nothing: the keyboard may still be on it.
             if (!actionable) return;

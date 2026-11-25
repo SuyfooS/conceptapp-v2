@@ -1505,6 +1505,8 @@ function GalleryBody({
                 </>
               }
               status={tClock("scan.readIn")}
+              // As the clock draws it: its toast says it, after the focus.
+              quietRead
               cancel={{ ...scanCancel, disabled: true }}
             />
             <ScanCircle

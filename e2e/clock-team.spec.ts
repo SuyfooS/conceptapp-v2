@@ -519,7 +519,12 @@ test("the toast's undo brings a cancelled shift back, and the right one added ov
   );
   await step.getByRole("button", { name: t.cancel.save }).click();
   await expect(page.getByRole("dialog")).toBeHidden();
-  await cancelToast(page).getByRole("button", { name: t.done.undo }).click();
+  // Its "ביטול" says what it brings back, so it never sounds like a second
+  // cancel right after "ביטול המשמרת".
+  const undo = cancelToast(page).getByRole("button", { name: t.done.undo });
+  await expect(undo).toBeFocused();
+  await expect(undo).toHaveAccessibleName(t.done.undoCancel);
+  await undo.click();
   await expect(
     page.getByRole("status").filter({ hasText: t.done.restore }),
   ).toBeVisible();
@@ -925,6 +930,7 @@ test("a break pressed by mistake is removed at once, and the toast's undo brings
     .filter({ hasText: t.done.removeBreak })
     .getByRole("button", { name: t.done.undo });
   await expect(undo).toBeVisible();
+  await expect(undo).toHaveAccessibleName(t.done.undoRemoveBreak);
   // Removed, it no longer comes off her hours.
   await expect(heroTotal(page)).toHaveText("8:00");
   await undo.click();

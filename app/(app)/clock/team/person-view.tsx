@@ -63,8 +63,24 @@ import type {
  */
 const UNDO_SHOWN_MS = 10_000;
 
-/** What the toast says, with the way back from a cancel or a removal. */
-type Toast = { text: string; stamp: string; undo?: () => void };
+/**
+ * What the toast says, with the way back from a cancel or a removal, and
+ * the way back's whole name for a screen reader: "ביטול: המשמרת חוזרת", so
+ * it never sounds like a second cancel.
+ */
+type Toast = {
+  text: string;
+  stamp: string;
+  undo?: () => void;
+  undoLabel?: string;
+};
+
+/**
+ * Where the focus goes once a toast holding it goes: what opened the sheet
+ * (a shift's row, still there after a cancel or a break removed), or the
+ * days away's title, as a removed record's row went with its removal.
+ */
+type ToastLeaves = "opener" | "absences";
 
 /**
  * Back on the fix from a step: what led there, for the focus to go back to
@@ -143,8 +159,21 @@ export function PersonHoursView({
   }, [open]);
   const [toast, setToast] = useState<Toast | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
+  /** The days away's title, for the focus once a removed record's toast goes. */
+  const absencesHeading = useRef<HTMLHeadingElement>(null);
   /** What opened the sheet: where the focus goes once a toast holding it goes. */
   const opener = useRef<HTMLElement | null>(null);
+  /** Where the focus goes once the toast with a way back goes holding it. */
+  const toastLeaves = useRef<ToastLeaves>("opener");
+  /**
+   * The record of days away the toast's "ביטול" brought back, a new object
+   * each time: its row takes the focus once the list read again draws it,
+   * and then the toast says it came back.
+   */
+  const [restored, setRestored] = useState<{
+    id: string;
+    shown: () => void;
+  } | null>(null);
   const name = data.person.name ?? t("noName");
   const personHref = `${paths.team}/${data.person.userId}`;
   // The shift as the page has it now: after a write it is read again.
@@ -236,10 +265,14 @@ export function PersonHoursView({
           return;
         }
         setOpen(false);
+        // Its row went with it: once the toast goes holding the focus, the
+        // days away's title has it.
+        toastLeaves.current = "absences";
         setToast({
           text: tAbsences("done.remove"),
           stamp: `remove-absence-${Date.now()}`,
           undo: () => restoreAbsence(removed),
+          undoLabel: tAbsences("done.undoRemove"),
         });
       } catch {
         onFailure("failed");
@@ -250,6 +283,9 @@ export function PersonHoursView({
   /**
    * The toast's "ביטול" after a removal, on its own: when it can't, the
    * toast says why (the record is gone from the list, so nothing opens).
+   * Back, its row takes the focus from the days away's title, where the
+   * toast's going left it, once the list read again draws it; the toast's
+   * words come after that move, which would cut them off.
    */
   function restoreAbsence(removed: AbsenceRow) {
     startUndo(async () => {
@@ -259,17 +295,18 @@ export function PersonHoursView({
       } catch {
         result = { ok: false, failure: "failed" };
       }
-      setToast(
-        result.ok
-          ? {
-              text: tAbsences("done.restore"),
-              stamp: `restore-absence-${Date.now()}`,
-            }
-          : {
-              text: sayAbsence(result.failure, result.month),
-              stamp: `undo-${Date.now()}`,
-            },
-      );
+      if (result.ok) {
+        const back = {
+          text: tAbsences("done.restore"),
+          stamp: `restore-absence-${Date.now()}`,
+        };
+        setRestored({ id: removed.id, shown: () => setToast(back) });
+      } else {
+        setToast({
+          text: sayAbsence(result.failure, result.month),
+          stamp: `undo-${Date.now()}`,
+        });
+      }
     });
   }
 
@@ -291,9 +328,16 @@ export function PersonHoursView({
     setTarget(next);
   }
 
-  /** The focus once the toast that held it goes: what opened the sheet, or the title. */
+  /**
+   * The focus once the toast that held it goes: what opened the sheet, or
+   * the days away's title after a record was removed; else the page's title.
+   */
   function focusBack() {
-    const back = [opener.current, heading.current].find(shownNow);
+    const first =
+      toastLeaves.current === "absences"
+        ? absencesHeading.current
+        : opener.current;
+    const back = [first, heading.current].find(shownNow);
     back?.focus({ preventScroll: true });
   }
 
@@ -342,10 +386,12 @@ export function PersonHoursView({
           return;
         }
         setOpen(false);
+        toastLeaves.current = "opener";
         setToast({
           text: t("done.cancel"),
           stamp: `cancel-${Date.now()}`,
           undo: () => restoreShift(shift),
+          undoLabel: t("done.undoCancel"),
         });
       } catch {
         onFailure("failed");
@@ -434,10 +480,12 @@ export function PersonHoursView({
           return;
         }
         setOpen(false);
+        toastLeaves.current = "opener";
         setToast({
           text: t("done.removeBreak"),
           stamp: `remove-break-${Date.now()}`,
           undo: () => restoreBreak(shift, removed),
+          undoLabel: t("done.undoRemoveBreak"),
         });
       } catch {
         onFailure("failed");
@@ -511,6 +559,9 @@ export function PersonHoursView({
           toast?.undo
             ? {
                 label: t("done.undo"),
+                // Its whole name, starting with what shows: "ביטול: המשמרת
+                // חוזרת", not a second "ביטול" right after cancelling.
+                fullLabel: toast.undoLabel,
                 onClick: () => {
                   const undo = toast.undo;
                   setToast(null);
@@ -584,6 +635,8 @@ export function PersonHoursView({
 
       <AbsencesSection
         rows={data.absences}
+        headingRef={absencesHeading}
+        restored={restored}
         addable={data.canRecord && !data.viewOnly}
         // Viewing only, nothing opens; their own a manager reads only.
         open={
