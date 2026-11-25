@@ -569,7 +569,14 @@ body {
     animation-duration: 0.01ms !important;
     /* biome-ignore lint/complexity/noImportantStyles: the reduced-motion safety net must beat any component transition */
     animation-iteration-count: 1 !important;
+    /* No transition at all, not a very short one: a transition of 0.01ms is still
+       one of every property, visibility included, so an element shown by the same
+       drawing stays hidden for a frame or two and refuses the focus put on it then
+       (the file shown again after its check, #253). Nothing here waits for a
+       transitionend; Radix waits for animationend, which the 0.01ms above keeps. */
     /* biome-ignore lint/complexity/noImportantStyles: the reduced-motion safety net must beat any component transition */
-    transition-duration: 0.01ms !important;
+    transition-duration: 0s !important;
+    /* biome-ignore lint/complexity/noImportantStyles: the reduced-motion safety net must beat any component transition */
+    transition-delay: 0s !important;
   }
 }
