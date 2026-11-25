@@ -28,7 +28,9 @@ export type UndoRowProps = {
   autoFocus?: boolean;
   /**
    * Says nothing as it appears: for a row the screen brings the focus to
-   * itself (a sheet's `returnFocus`), whose focus says its words.
+   * itself (a sheet's `returnFocus`), whose focus says its words, or one
+   * that was up already, drawn again (an earlier removal's way back that a
+   * refused one puts back), which is no news.
    */
   quiet?: boolean;
   /**
@@ -43,7 +45,8 @@ export type UndoRowProps = {
   focusAfter?: () => readonly FocusCandidate[];
   /**
    * Its button, for a screen that brings the focus there (a sheet's
-   * `returnFocus`), whose focus then says its words.
+   * `returnFocus`, a refused way back), whose focus then says its words:
+   * given, they are in its name (`namedByWords`), wherever the focus is.
    */
   buttonRef?: Ref<HTMLButtonElement>;
   className?: string;

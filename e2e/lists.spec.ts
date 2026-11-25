@@ -401,8 +401,15 @@ test("sending isn't taken back once someone started the list", async ({
     await noa.context().close();
   }
 
+  // Its row goes with the refusal: the page's title has the focus, and only
+  // then does the line say why, so the move doesn't cut it off.
+  await noteFocusWhenSaid(page, l.send.started, "main h1");
   await undo.click();
   await expect(page.getByText(l.send.started)).toBeVisible();
+  await expect(
+    page.getByRole("heading", { level: 1, name: l.title }),
+  ).toBeFocused();
+  expect(await focusWhenSaid(page)).toBe(true);
   await expect
     .poll(async () => (await demoLists(CLOSING))[0]?.status)
     .toBe("open");

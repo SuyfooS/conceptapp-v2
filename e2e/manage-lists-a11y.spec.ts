@@ -158,7 +158,8 @@ test("the scheduling settings give each removal's 'ביטול' the focus, and th
   // A removal refused (its save dropped at once, while the sheet still
   // slides away), with an earlier removal's way back still there: the shift
   // is back, and the sheet closes onto its row, never onto the earlier
-  // removal's "ביטול", which would say that shift went.
+  // removal's "ביטול", which would say that shift went; only then is the
+  // refusal said.
   const SATURDAY = "מוצ״ש";
   const saturday = page.getByRole("button", {
     name: new RegExp(`^${SATURDAY}`),
@@ -182,15 +183,121 @@ test("the scheduling settings give each removal's 'ביטול' the focus, and th
   });
   await row.click();
   await expect(sheet).toBeVisible();
+  await noteFocusWhenSaid(page, m.failed.failed, "button", EVENING);
   await sheet.getByRole("button", { name: m.shifts.remove }).click();
   await expect(sheet).toBeHidden();
   await expect(
     page.getByRole("alert").filter({ hasText: m.failed.failed }),
   ).toBeVisible();
   await expect(row).toBeFocused();
+  expect(await focusWhenSaid(page)).toBe(true);
   await expect(saturdayUndo).toBeVisible();
   await expect(saturdayUndo).not.toBeFocused();
   await page.unroute(saves);
+});
+
+/** The scheduling twin's saves, each held until `release` and then dropped. */
+async function holdSaves(page: Page, path: string) {
+  const saves = (url: URL) => url.pathname === path;
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = () => resolve();
+  });
+  await page.route(saves, async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    await held;
+    await route.abort();
+  });
+  const sent = () =>
+    page.waitForRequest(
+      (request) => request.method() === "POST" && saves(new URL(request.url())),
+    );
+  return { sent, release: () => release(), stop: () => page.unroute(saves) };
+}
+
+// A shift's removal refused once its sheet has gone (its save held, then
+// dropped): its "ביטול", which has the focus, goes, the shift's row is back
+// and has the focus, and only then is the refusal said, so the move doesn't
+// cut it off.
+test("the scheduling settings say a shift's removal refused after its sheet has gone once its row has the focus", async ({
+  page,
+}) => {
+  const scheduling = "/design/shell/manage/scheduling";
+  await page.goto(scheduling);
+  await page.waitForLoadState("networkidle");
+  const saves = await holdSaves(page, scheduling);
+
+  const EVENING = "ערב";
+  const row = page.getByRole("button", { name: new RegExp(`^${EVENING}`) });
+  const sheet = page.getByRole("dialog", { name: EVENING });
+  const undo = undoOf(
+    page,
+    heT("app.manage.shifts.removed", { name: EVENING }),
+  );
+  const why = page.getByRole("alert").filter({ hasText: m.failed.failed });
+  await row.click();
+  await expect(sheet).toBeVisible();
+  const removal = saves.sent();
+  await sheet.getByRole("button", { name: m.shifts.remove }).click();
+  await removal;
+  await expect(sheet).toBeHidden();
+  await expect(undo).toBeFocused();
+  await noteFocusWhenSaid(page, m.failed.failed, "button", EVENING);
+  saves.release();
+  await expect(why).toBeVisible();
+  await expect(row).toBeFocused();
+  await expect(undo).toHaveCount(0);
+  expect(await focusWhenSaid(page)).toBe(true);
+  await saves.stop();
+});
+
+// Another shift's sheet opened while a removal waits, and the removal
+// refused meanwhile: that sheet still closes onto its own row, not onto the
+// row the refusal put back.
+test("the scheduling settings close another shift's sheet onto its own row while an earlier removal is refused", async ({
+  page,
+}) => {
+  const scheduling = "/design/shell/manage/scheduling";
+  await page.goto(scheduling);
+  await page.waitForLoadState("networkidle");
+  const saves = await holdSaves(page, scheduling);
+
+  const EVENING = "ערב";
+  const SATURDAY = "מוצ״ש";
+  const evening = page.getByRole("button", {
+    name: new RegExp(`^${EVENING}`),
+  });
+  const saturday = page.getByRole("button", {
+    name: new RegExp(`^${SATURDAY}`),
+  });
+  const eveningSheet = page.getByRole("dialog", { name: EVENING });
+  const saturdaySheet = page.getByRole("dialog", { name: SATURDAY });
+  await evening.click();
+  await expect(eveningSheet).toBeVisible();
+  const removal = saves.sent();
+  await eveningSheet.getByRole("button", { name: m.shifts.remove }).click();
+  await removal;
+  await expect(eveningSheet).toBeHidden();
+  await expect(
+    undoOf(page, heT("app.manage.shifts.removed", { name: EVENING })),
+  ).toBeFocused();
+
+  await saturday.click();
+  await expect(saturdaySheet).toBeVisible();
+  saves.release();
+  // Refused while Saturday's sheet is open: said at once (the page under
+  // the sheet is hidden from the accessibility tree meanwhile, its words
+  // are not).
+  await expect(page.getByText(m.failed.failed)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(saturdaySheet).toBeHidden();
+  await expect(saturday).toBeFocused();
+  await expect(evening).toBeVisible();
+  await expect(evening).not.toBeFocused();
+  await saves.stop();
 });
 
 // A position's undo refused (its save didn't get there) once the person
@@ -251,6 +358,50 @@ test("the scheduling settings' refused undo leaves the focus where the person we
   await expect(undo).toBeVisible();
   await expect(newName).toBeFocused();
   await expect(newName).toHaveValue("מארח/ת");
+  await page.unroute(saves);
+});
+
+// A position's removal refused (its save dropped) while an earlier
+// removal's way back is up: that way back is there again, and nothing says
+// it again as it appears, words about another position long after the
+// fact; the focus is back on the refused position's trash button.
+test("the scheduling settings bring an earlier removal's way back again without saying it when a later removal is refused", async ({
+  page,
+}) => {
+  const polite = announcer(page, "polite");
+  const scheduling = "/design/shell/manage/scheduling";
+  const saves = (url: URL) => url.pathname === scheduling;
+  await page.goto(scheduling);
+  await page.waitForLoadState("networkidle");
+
+  const BARTENDER = "ברמן/ית";
+  const COOK = "טבח/ית";
+  const trashOf = (name: string) =>
+    page.getByRole("button", {
+      name: heT("app.manage.positions.remove", { name }),
+    });
+  const bartenderRemoved = heT("app.manage.positions.removed", {
+    name: BARTENDER,
+  });
+  const bartenderUndo = undoOf(page, bartenderRemoved);
+  const removal = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" && saves(new URL(response.url())),
+  );
+  await trashOf(BARTENDER).click();
+  await expect(bartenderUndo).toBeFocused();
+  await removal;
+
+  await page.route(saves, async (route) => {
+    if (route.request().method() === "POST") await route.abort();
+    else await route.fallback();
+  });
+  await heardSoFar(polite);
+  await trashOf(COOK).click();
+  await expect(bartenderUndo).toBeVisible();
+  await expect(trashOf(COOK)).toBeFocused();
+  await pastDrawing(page);
+  await expect(saidSince(polite, bartenderRemoved)).toHaveCount(0);
   await page.unroute(saves);
 });
 
@@ -389,8 +540,9 @@ test("the lists' folded sections are headings at every width", async ({
 // the focus: design.spec.ts and list-templates.spec.ts.) The templates'
 // undo refused (the request dropped, and the twin stores nothing): its
 // "ביטול", disabled while it waited, has the focus back, and only then
-// does the line under it say why; a folded row's own refused restore
-// leaves the top "ביטול" alone.
+// does the line under it say why; a folded row's own refused restore has
+// the focus back on its "החזרה" the same way, and leaves the top "ביטול"
+// alone.
 test("a way back reached by its address leaves the focus, and the templates' refused undo has it back", async ({
   page,
 }) => {
@@ -413,10 +565,21 @@ test("a way back reached by its address leaves the focus, and the templates' ref
   await expect(undo).not.toBeFocused();
   await expect(saidSince(polite, removed)).toHaveCount(1);
 
+  // Each bringing back dropped: at once, or once `release` lets go while
+  // `holding`.
   const restores = (url: URL) => url.pathname === templates;
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = () => resolve();
+  });
+  let holding = false;
   await page.route(restores, async (route) => {
-    if (route.request().method() === "POST") await route.abort();
-    else await route.fallback();
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    if (holding) await held;
+    await route.abort();
   });
   const failed = l.templates.failed.failed;
   const why = page.getByRole("alert").filter({ hasText: failed });
@@ -428,8 +591,9 @@ test("a way back reached by its address leaves the focus, and the templates' ref
   await expect(undo).toBeEnabled();
   expect(await focusWhenSaid(page)).toBe(true);
 
-  // The same template brought back from its folded row, refused: said at
-  // once, and the focus stays off the top "ביטול".
+  // The same template brought back from its folded row, refused (held,
+  // then dropped): its "החזרה", disabled while it waited, has the focus
+  // back, then the line says why, and the top "ביטול" stays unfocused.
   await page
     .getByRole("main")
     .locator("summary")
@@ -442,11 +606,17 @@ test("a way back reached by its address leaves the focus, and the templates' ref
     (request) =>
       request.method() === "POST" && restores(new URL(request.url())),
   );
+  holding = true;
   await restore.click();
   await refused;
-  await expect(restore).toBeEnabled();
+  // The earlier line went with the press.
+  await expect(why).toHaveCount(0);
+  await noteFocusWhenSaid(page, failed, "button", l.templates.restore);
+  release();
   await expect(why).toBeVisible();
-  await pastDrawing(page);
+  await expect(restore).toBeEnabled();
+  await expect(restore).toBeFocused();
   await expect(undo).not.toBeFocused();
+  expect(await focusWhenSaid(page)).toBe(true);
   await page.unroute(restores);
 });

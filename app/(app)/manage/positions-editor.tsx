@@ -53,11 +53,13 @@ export function PositionsEditor({
   // The name someone tried that another position already has.
   const [taken, setTaken] = useState<string | null>(null);
   // The way back of the last removal; `focus` when its "ביטול" takes the
-  // focus as it appears.
+  // focus as it appears, `quiet` when it was up already and nothing says it
+  // again as it appears (no news).
   const [removed, setRemoved] = useState<{
     position: Position;
     index: number;
     focus: boolean;
+    quiet: boolean;
   } | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
 
@@ -107,15 +109,16 @@ export function PositionsEditor({
   /**
    * Its trash button goes with its row: "ביטול" takes the focus. Refused,
    * the position is back, and so is the earlier way back, which takes no
-   * focus: this one's row, going, gives it back to the trash button.
+   * focus (this one's row, going, gives it back to the trash button) and
+   * says nothing as it appears: it was up already, about another position.
    */
   async function remove(index: number) {
     const position = positions[index];
     if (!position) return;
     const before = removed;
-    setRemoved({ position, index, focus: true });
+    setRemoved({ position, index, focus: true, quiet: false });
     const saved = await onChange(positions.filter((_, at) => at !== index));
-    if (!saved) setRemoved(before && { ...before, focus: false });
+    if (!saved) setRemoved(before && { ...before, focus: false, quiet: true });
   }
 
   /**
@@ -135,7 +138,12 @@ export function PositionsEditor({
       document.activeElement?.matches(
         byAttribute(POSITION_REMOVE, position.key),
       ) === true;
-    setRemoved({ position, index, focus: focusLost() || onTrash });
+    setRemoved({
+      position,
+      index,
+      focus: focusLost() || onTrash,
+      quiet: false,
+    });
   }
 
   return (
@@ -216,6 +224,7 @@ export function PositionsEditor({
           onUndo={undo}
           // The row went with the button pressed (`focus`).
           autoFocus={removed.focus}
+          quiet={removed.quiet}
           // Undone, the position is back where it was, maybe far above this
           // row: its remove button takes the focus, brought into view.
           focusAfter={() => [

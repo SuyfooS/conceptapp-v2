@@ -44,7 +44,8 @@ const blank = (): ShiftPattern => ({
  * Removing one closes its sheet onto the removal's "ביטול", which says what
  * went; undone, the focus is back on the shift's row, and on "ביטול" again
  * when that undo was refused and took the row away; the removal refused, on
- * the shift's row, back in its place (accessibility, part 8).
+ * the shift's row, back in its place, and only then is the refusal said
+ * (accessibility, part 8).
  */
 export function ShiftsEditor({
   title,
@@ -52,13 +53,19 @@ export function ShiftsEditor({
   shifts,
   disabled,
   onChange,
+  sayRefusal,
 }: {
   title: string;
   hint: string | undefined;
   shifts: ShiftPattern[];
   disabled: boolean;
-  /** Saves the list; says whether it saved. */
-  onChange: (next: ShiftPattern[]) => Promise<boolean>;
+  /**
+   * Saves the list; says whether it saved. With `hold`, what a refusal says
+   * waits for `sayRefusal`.
+   */
+  onChange: (next: ShiftPattern[], hold?: boolean) => Promise<boolean>;
+  /** Says the refusal held back (`hold`): the focus is where it goes now. */
+  sayRefusal: () => void;
 }) {
   const t = useTranslations("app.manage.shifts");
   const tDays = useTranslations("days");
@@ -92,6 +99,20 @@ export function ShiftsEditor({
       focusFirst([back.undoButton.current], { title: false });
     }
   }, [removed, back.undoButton]);
+  // A removal refused once its sheet had gone: its "ביטול", gone in this
+  // drawing while it held the focus, gives it to the shift's row (its
+  // `focusAfter`, queued as it went, a moment after this drawing), and only
+  // then is the refusal said, queued after that move: said before it, the
+  // move would cut it off. Once for each refusal (a new one each time).
+  const [goneRefusal, setGoneRefusal] = useState<{ index: number } | null>(
+    null,
+  );
+  const saidGone = useRef<typeof goneRefusal>(null);
+  useLayoutEffect(() => {
+    if (refusalArrived(saidGone, goneRefusal, false)) {
+      queueMicrotask(sayRefusal);
+    }
+  }, [goneRefusal, sayRefusal]);
 
   const daysOf = (days: number[]) =>
     days.length === 7
@@ -129,15 +150,23 @@ export function ShiftsEditor({
     const shift = shifts[index];
     setOpen(false);
     if (!shift) return;
-    back.removing();
+    const removal = back.removing();
     const before = removed;
     setRemoved({ shift, index, refused: false });
-    const saved = await onChange(shifts.filter((other) => other.key !== key));
+    // A refusal is said once the focus is back on the shift's row.
+    const saved = await onChange(
+      shifts.filter((other) => other.key !== key),
+      true,
+    );
     if (saved) return;
     // Refused: the shift is back, and an earlier removal's way back if there
     // was one. A sheet still closing gives the focus to the shift's row,
-    // not to that "ביטול".
-    back.kept(() => groupRow(group.current, index));
+    // not to that "ביטול", and the refusal is said once it has; a sheet
+    // gone already, the "ביטול" that goes gives it, and the refusal is said
+    // after that (`goneRefusal`).
+    if (!back.kept(removal, () => groupRow(group.current, index), sayRefusal)) {
+      setGoneRefusal({ index });
+    }
     setRemoved(before);
   }
 

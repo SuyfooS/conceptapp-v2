@@ -20,7 +20,9 @@ import { arrivalTaken, cameFromPress, sentArrival } from "./press-arrival";
  * where the list went; reached any other way (a reload, the address again),
  * the focus stays where it is, and the row says itself (`press-arrival`).
  * "ביטול" has the focus back once taking it back was refused, and only then
- * does the line under it say so (accessibility, part 8).
+ * does the line under it say so; refused because someone started it, the
+ * row goes, the page's title has the focus, and then the line says why
+ * (accessibility, part 8).
  */
 export function SentNotice({
   sent,
@@ -79,19 +81,23 @@ export function SentNotice({
   }, [arrival]);
 
   // "ביטול" waited, disabled, and the focus with it went: refused (a slip,
-  // offline), the row stays, and the focus is back on it, unless put
-  // elsewhere meanwhile, and then the line under it says so (`said`): said
-  // before that move, it would be cut off. Once for each refusal: the
-  // screen shown again from a hidden <Activity> leaves the focus where it is.
+  // offline), the row stays, and the focus is back on it; someone started
+  // the list meanwhile, the row goes, and the focus to the page's title.
+  // Unless put elsewhere meanwhile; and then the line under it says why
+  // (`said`): said before that move, it would be cut off. Once for each
+  // refusal: the screen shown again from a hidden <Activity> leaves the
+  // focus where it is.
+  const refusal = started || failure ? failed : null;
   const undoButton = useRef<HTMLButtonElement>(null);
-  const refocused = useRef<typeof failure>(null);
-  const [said, setSaid] = useState<typeof failure>(null);
+  const refocused = useRef<typeof failed>(null);
+  const [said, setSaid] = useState<typeof failed>(null);
   useEffect(() => {
-    if (refusalArrived(refocused, failure, pending)) {
-      focusFirst([undoButton.current], { title: false });
-      setSaid(failure);
+    if (refusalArrived(refocused, refusal, pending)) {
+      focusFirst(started ? [] : [undoButton.current], { title: started });
+      setSaid(refusal);
     }
-  }, [failure, pending]);
+  }, [refusal, started, pending]);
+  const saying = refusal !== null && refusal === said && !pending;
 
   return (
     <>
@@ -110,16 +116,17 @@ export function SentNotice({
           buttonRef={undoButton}
         />
       ) : null}
-      {started ? (
-        <p role="status" className="px-1 text-ink-2">
+      {!saying ? null : started ? (
+        // Drawn once the focus has gone on, said as it is drawn.
+        <p role="alert" className="px-1 text-ink-2">
           {t("send.started")}
         </p>
-      ) : failure && failure === said && !pending ? (
+      ) : (
         // Drawn for each refusal once the focus is back.
         <p role="alert" className="px-1 text-danger text-sm">
           {t("send.cancelFailed")}
         </p>
-      ) : null}
+      )}
     </>
   );
 }

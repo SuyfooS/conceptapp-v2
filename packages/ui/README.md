@@ -94,13 +94,19 @@ draft saved). Set by the time its words show, a drawing after the message.
 looking (it was `app/(app)/manage/undo-row.tsx`). Still `role="status"` for the
 screens' checks. As it appears it is quiet (`aria-live="off"`) and said once
 through the announcer, unless its own focus says it (`autoFocus`) or the
-screen brings the focus to it (`quiet`). From its first effect on it is its
-role's own status: a change of its words (a way back that failed) is heard
-wherever the focus is, and with no `aria-live` of its own a sheet opened over
-it hides it with the rest of the page. Its button is described by its words.
+screen brings the focus to it (`quiet`, also for a row that was up already,
+drawn again: no news). From its first effect on it is its role's own status:
+a change of its words (a way back that failed) is heard wherever the focus
+is, and with no `aria-live` of its own a sheet opened over it hides it with
+the rest of the page. Its button is named with its words after its word
+("ביטול: נועה כהן הוסרה מהצוות", `ui.undoRow.named`) when `autoFocus`,
+`quiet` or `buttonRef` is set (`namedByWords`), since its own focus says
+them, and described by them otherwise ("ביטול, נועה כהן הוסרה מהצוות"): a
+`buttonRef` alone names it, even on a row the announcer says as it appears.
 `onWaitingChange` hears the rule above, so a held write pauses as long;
 `focusAfter` says where the focus goes when it leaves holding it, the page's
-title after them; `buttonRef` is for a sheet's `returnFocus`. `autoFocus`
+title after them; `buttonRef` is for a screen that brings the focus there
+itself (a sheet's `returnFocus`, a refused way back). `autoFocus`
 acts once, as the row mounts: a screen that can offer a second undo while the
 first is up keys each row by what it undoes (`key={removed.key}`), so each
 removal is a row of its own, with the focus, its own wait and its own words.

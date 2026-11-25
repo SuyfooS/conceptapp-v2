@@ -197,8 +197,17 @@ describe("whose UndoRow's words are in its button's name", () => {
     );
   });
 
-  it("is not a row the announcer says, whose button they describe", () => {
+  it("is not a row with none of them, whose button they describe", () => {
     expect(namedByWords({})).toBe(false);
     expect(namedByWords({ autoFocus: false, quiet: false })).toBe(false);
+  });
+
+  it("is a row given its button's ref alone, even one the announcer says as it appears", () => {
+    // A screen that brings the focus there itself (a refused way back):
+    // the row is said as it appears, and its focus later says the same.
+    const buttonRef = createRef<HTMLButtonElement>();
+    expect(namedByWords({ autoFocus: false, quiet: false, buttonRef })).toBe(
+      true,
+    );
   });
 });

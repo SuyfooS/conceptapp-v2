@@ -22,7 +22,7 @@ import {
   useState,
   useTransition,
 } from "react";
-import { refusalArrived } from "../../manage/editor-focus";
+import { byAttribute, refusalArrived } from "../../manage/editor-focus";
 import type {
   ListActionResult,
   ListFailure,
@@ -33,6 +33,9 @@ import type {
 } from "../list-types";
 import { arrivalTaken, cameFromPress, removedArrival } from "../press-arrival";
 import { useTimeWords } from "./schedule-words";
+
+/** The attribute each removed template's "החזרה" carries: its id. */
+const TEMPLATE_RESTORE = "data-template-restore";
 
 const th = "px-4 py-3 text-start font-medium text-ink-2 text-sm";
 const td = "border-line border-t px-4 py-3 align-middle";
@@ -48,8 +51,8 @@ const td = "border-line border-t px-4 py-3 align-middle";
  * just removed in its editor has its undo on top, which takes the focus as
  * the screen comes right after the press in the editor (not on a reload, or
  * the address opened again: `press-arrival`), and has it back once bringing
- * it back was refused, before the line that says why (accessibility, part
- * 8).
+ * it back was refused, before the line that says why; a folded row's
+ * "החזרה" refused has the focus back the same way (accessibility, part 8).
  * Used on /lists/templates and by the team in the console.
  */
 export function TemplatesView({
@@ -69,32 +72,36 @@ export function TemplatesView({
     null,
   );
   const [undone, setUndone] = useState<string | null>(null);
-  // Why bringing one back was refused, and whether it was the undo's press.
+  // Why bringing one back was refused, which one (`id`), and whether it was
+  // the undo's press.
   const [failure, setFailure] = useState<{
     reason: ListFailure;
+    id: string;
     fromUndo: boolean;
   } | null>(null);
-  // The undo's "ביטול" waited, disabled, and the focus with it went:
-  // refused, the row stays, and the focus is back on it, unless put
-  // elsewhere meanwhile, and then the line under it says why (`said`): said
-  // before that move, it would be cut off. Once for each refusal: the
-  // screen shown again from a hidden <Activity> leaves the focus where it
-  // is.
+  // The button pressed, the undo's "ביטול" or a folded row's "החזרה",
+  // waited, disabled, and the focus with it went: refused, the row stays,
+  // and the focus is back on it, unless put elsewhere meanwhile, and then
+  // the line under the undo says why (`said`): said before that move, it
+  // would be cut off. Once for each refusal: the screen shown again from a
+  // hidden <Activity> leaves the focus where it is.
   const undoButton = useRef<HTMLButtonElement>(null);
   const refocused = useRef<typeof failure>(null);
   const [said, setSaid] = useState<typeof failure>(null);
   useEffect(() => {
-    const refused = failure?.fromUndo ? failure : null;
-    if (refusalArrived(refocused, refused, pending)) {
-      focusFirst([undoButton.current], { title: false });
-      setSaid(refused);
+    if (failure && refusalArrived(refocused, failure, pending)) {
+      focusFirst(
+        [
+          failure.fromUndo
+            ? undoButton.current
+            : byAttribute(TEMPLATE_RESTORE, failure.id),
+        ],
+        { title: false },
+      );
+      setSaid(failure);
     }
   }, [failure, pending]);
-  // A folded row's refusal moves no focus: said at once.
-  const alerted =
-    failure && (!failure.fromUndo || (failure === said && !pending))
-      ? failure
-      : null;
+  const alerted = failure && failure === said && !pending ? failure : null;
 
   const groups = templatesByDepartment(data.templates, data.departments);
   const editorOf = (id: string) => `${paths.list}/${id}`;
@@ -177,7 +184,7 @@ export function TemplatesView({
       }
       setRestoring(null);
       if (!result.ok) {
-        setFailure({ reason: result.failure, fromUndo });
+        setFailure({ reason: result.failure, id: row.id, fromUndo });
         return;
       }
       setBack({ name: row.name, stamp: Date.now() });
@@ -378,6 +385,9 @@ export function TemplatesView({
                   variant="ghost"
                   loading={pending && restoring === row.id}
                   aria-label={t("restoreOf", { name: row.name })}
+                  // Found again by its id once its refusal arrives
+                  // (TEMPLATE_RESTORE).
+                  data-template-restore={row.id}
                   onClick={() => bringBack(row, false)}
                   className="shrink-0"
                 >
