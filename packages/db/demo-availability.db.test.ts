@@ -116,7 +116,7 @@ async function make() {
         '{"weekStartsOn": 0, "closedOnShabbat": false}')`;
     await tx`
       insert into private.demo_businesses (business_id, definition)
-      values (${BUSINESS}, ${JSON.stringify(DEFINITION)}::jsonb)`;
+      values (${BUSINESS}, ${tx.json(DEFINITION)}::jsonb)`;
   });
 }
 
