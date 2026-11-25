@@ -3,6 +3,14 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-25 · nightly run · the days away's refusals kept equal to their words
+
+- Guessed (Orel left no issue, no question open, no בטל). What merged since the last run: #243, #245 (days away), #246, #248, and during the run #247. The screen says why a write of days away was refused from the error's code and hint (`absenceFailureOf` in `@domain/absences`); nothing held the migration's hints and the domain's cases together, so a hint renamed in a later migration would quietly read "ההיעדרות לא נשמרה. בדקו את החיבור ונסו שוב.". Orel's #247 (the builder and availability) works in other files, none of which this touches.
+- `tooling/absence-refusals.test.ts`: reads the newest body of `private.absence_note_of` and the four writers from the migrations; every 22023 and 55000 refusal carries a hint, every hint has its own case (not `failed`), and the twelve raised are listed, so one dropped or added is seen. Proven by renaming `too_late` in the migration: two cases fail. `packages/domain/absences.test.ts` adds the three value hints it didn't read (`kind`, `dates`, `order`). No code, migration or words changed.
+- Checked here: `pnpm lint:fix`, `pnpm check`. Not run here: `pnpm build`, Playwright, pgTAP (nothing they cover changed); CI runs them.
+- Restore point: branch `backup/before-night-2026-11-25` at `76bb20c` (the tag push was cut off).
+- Next: the other per-screen accessibility parts with Orel. Defaults applied: none.
+
 ## 2026-11-24 · chat · accessibility, part 4: the builder and availability
 
 - On chat/a11y-builder from origin/main c5708a7 (#246). The sweep's today-schedule findings 13, 14, 15 and 18, wired into the builder's shift sheet, its dock and the availability day sheet with the shared parts from #243; the rest of that area (11, 12, 16, 17, 19, 20) is the sibling part. No migration, no new package, no SQL, and the actions answer as before. In `packages/ui`, for every caller: `useFocusWhenGone` leaves the focus to a sheet that closes (`inClosingSheet` in `@ui/focus-after`, which `focusLost` now reads too). What goes with a closing sheet while it holds the focus (Escape on a row's button, or on an UndoRow's "ביטול" inside the sheet) used to send the focus to the page's title in a microtask, before Radix gave it back, and the Sheet then kept the title instead of what opened it. No component changed, so nothing new on `/design`; the README says the rule.
