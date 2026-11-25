@@ -169,10 +169,10 @@ of shift, the fewest shifts, the fewest hours last week, then a rotation that
 changes every week, never the team's order or the alphabet, so the same
 screen always gives the same fill. Each goes on in the position they held
 most last week on that kind of shift. Every place left open says why
-(`FillWhy`: Shabbat with its time when the fill put nobody on it and nobody
-else's answer covers it, nobody else covers it, or each one who does with the
-first rule that stopped them; a shift into Shabbat names it beside the other
-two as well). `weekMinors` is who counts as a minor all week, ids only. The
+(`FillWhy`: Shabbat with its time when no answer covers it, of anyone on it,
+whether the fill or the manager put them there, or of anyone else; nobody
+else covers it; or each one who does with the first rule that stopped them;
+a shift into Shabbat names it beside the other two as well). `weekMinors` is who counts as a minor all week, ids only. The
 database checks only that nobody works two shifts at once, never these
 rules: they are the fill's own.
 

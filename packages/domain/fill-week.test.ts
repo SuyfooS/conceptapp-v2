@@ -903,6 +903,56 @@ describe("fillFromAvailability", () => {
       ]);
     });
 
+    it("gives the same reason whether the fill or the manager put on the one whose answer covers it", () => {
+      const answers = [answer(noa, [day(6), "19:30", "00:30"])];
+      const saturday = (people: string[]) => [
+        shift(day(6), "19:30", "00:00", people, { needed: 2 }),
+      ];
+      const night = { side: "saturday", time: "20:21" } as const;
+      const byFill = fillOf({ screen: saturday([]), answers, shabbat });
+      const byHand = fillOf({ screen: saturday([noa]), answers, shabbat });
+      // The same week either way: Noa on it, one place open, nobody else.
+      expect(byFill.week).toEqual(byHand.week);
+      expect(byFill.shifts[0]).toMatchObject({
+        added: [{ user: noa, position: null }],
+        open: 1,
+        why: "nobody",
+        shabbat: night,
+      });
+      expect(byHand.shifts[0]).toEqual({
+        index: 0,
+        added: [],
+        open: 1,
+        why: "nobody",
+        shabbat: night,
+        partial: 0,
+        blocked: [],
+      });
+      // Someone on it whose answer doesn't cover it, or who sent none, leaves
+      // Shabbat the reason.
+      const short: [string, string, string][][] = [
+        [[day(6), "20:30", "00:30"]],
+        [],
+      ];
+      for (const ranges of short) {
+        const fill = fillOf({
+          screen: saturday([noa]),
+          answers: [answer(noa, ...ranges)],
+          shabbat,
+        });
+        expect(fill.shifts[0]).toMatchObject({
+          added: [],
+          open: 1,
+          why: "shabbat",
+          shabbat: night,
+          partial: 0,
+        });
+      }
+      expect(fillOf({ screen: saturday([noa]), shabbat }).shifts[0]?.why).toBe(
+        "shabbat",
+      );
+    });
+
     it("names whoever covers a shift into Shabbat and was stopped, with Shabbat beside them", () => {
       const fill = fillOf({
         screen: [shift(day(6), "19:30", "00:00")],
@@ -1370,8 +1420,6 @@ describe("the twins, as the PR shows them", () => {
           ([user, position]) => ({ user, position }),
         ),
       }));
-    const at = (on: string, from: string) =>
-      screen.findIndex((s) => s.day === on && s.start === from);
     const fill = fillFromAvailability({
       weekStart: start,
       screen,
@@ -1431,29 +1479,38 @@ describe("the twins, as the PR shows them", () => {
       answered: 5,
       unplaced: [],
     });
-    const row = (on: string, from: string) =>
-      fill.shifts.find((s) => s.index === at(on, from));
-    expect(row("2026-11-01", "09:00")).toMatchObject({
-      added: [{ user: "shiran", position: null }],
-      open: 0,
-    });
-    expect(row("2026-11-01", "12:00")).toMatchObject({
-      open: 1,
-      why: "nobody",
-      partial: 3,
-    });
-    expect(row("2026-11-05", "16:00")).toMatchObject({
-      added: [{ user: "shiran", position: null }],
-      open: 3,
-      why: "nobody",
-      partial: 2,
-    });
-    expect(row("2026-11-07", "19:30")).toMatchObject({
-      added: [{ user: "noa", position: null }],
-      open: 1,
-      why: "nobody",
-    });
+    // Every shift that had an open place, row by row as the PR's table shows
+    // it: who the fill adds, what stays open, why, and how many cover part.
+    expect(
+      fill.shifts.map((s) => [
+        screen[s.index]?.day,
+        screen[s.index]?.start,
+        s.added.map((a) => a.user),
+        s.open,
+        s.why,
+        s.partial,
+      ]),
+    ).toEqual([
+      ["2026-11-01", "09:00", ["shiran"], 0, null, 0],
+      ["2026-11-01", "12:00", [], 1, "nobody", 3],
+      ["2026-11-01", "16:00", [], 1, "nobody", 2],
+      ["2026-11-03", "09:00", [], 1, "nobody", 0],
+      ["2026-11-04", "16:00", [], 2, "nobody", 0],
+      ["2026-11-05", "09:00", [], 2, "nobody", 0],
+      ["2026-11-05", "16:00", ["shiran"], 3, "nobody", 2],
+      ["2026-11-06", "08:00", [], 1, "nobody", 0],
+      ["2026-11-07", "19:30", ["noa"], 1, "nobody", 0],
+    ]);
+    // No last week, so no positions; nobody blocked; nothing into Shabbat.
+    expect(fill.shifts.flatMap((s) => s.added.map((a) => a.position))).toEqual([
+      null,
+      null,
+      null,
+    ]);
     expect(fill.shifts.flatMap((s) => s.blocked)).toEqual([]);
+    expect(fill.shifts.map((s) => s.shabbat)).toEqual(
+      fill.shifts.map(() => null),
+    );
   });
 
   it("keeps the café's evening worker off the next morning", () => {
