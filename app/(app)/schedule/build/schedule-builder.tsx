@@ -70,12 +70,24 @@ import { type ShareWeek, ShareWeekButton } from "../share-week";
 import type { AvailabilityWeek } from "../week";
 import type { MovedShifts, ScheduleState } from "./actions";
 import {
+  afterScreen,
   afterWrite,
   BUILDER_STATUS,
   type PlacedAfterWrite,
   placeAfterWrite,
   SHEET_CLOSES_MS,
 } from "./builder-focus";
+import {
+  afterScreenEdit,
+  builderToast,
+  type HeldNotice,
+  SCREEN_UNDO_MS,
+  type ScreenChange,
+  type ScreenNotice,
+  screenMade,
+  screenUndone,
+  type ToastWords,
+} from "./builder-toast";
 import { CopyWeekSheet } from "./copy-sheet";
 import { type BuilderSend, publishWaits, sendOf } from "./publish-hold";
 import {
@@ -102,9 +114,6 @@ import {
 } from "./week-shapes";
 
 const initialState: ScheduleState = {};
-
-/** How long "ביטול" of a copy from last week stays in the toast. */
-const COPY_UNDO_MS = 10_000;
 
 /** One of the builder's two weeks, for the switch between them. */
 export type BuilderWeek = {
@@ -325,12 +334,14 @@ function DockLine({
  * A draft whose week before was built offers "העתקה מהשבוע שעבר"
  * (`copyLastWeek`): a sheet says what it would do, day by day, and who
  * wouldn't be copied and why, and its button puts the copy on the screen
- * only. The toast says nothing is saved yet, with "ביטול" for
- * `COPY_UNDO_MS`, which puts the screen back as it was before the copy. The
- * next change on the screen takes that way back away, since it would take
- * the change with it: the copy then stays as any other work on the screen.
- * The form then sends the save moment the reading had (`copied`), so a week
- * saved meanwhile on another screen takes no second copy (`copySaved`).
+ * only. What changes only the screen has one way back (`builder-toast.ts`):
+ * the toast says nothing is saved yet, with "ביטול" for `SCREEN_UNDO_MS`,
+ * which puts the screen back as it was before. The next change on the
+ * screen takes that way back away, since it would take the change with it,
+ * and so does a write sent: what was made then stays as any other work on
+ * the screen. After a copy the form sends the save moment the reading had
+ * (`copied`), so a week saved meanwhile on another screen takes no second
+ * copy (`copySaved`).
  */
 export function ScheduleBuilder(props: ScheduleBuilderProps) {
   const t = useTranslations();
@@ -369,27 +380,21 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
   });
 
   /** What the toast says of a held publish: waiting, or let go unsent. */
-  const [heldNotice, setHeldNotice] = useState<{
-    kind: "waiting" | "undone";
-    stamp: string;
-  } | null>(null);
+  const [heldNotice, setHeldNotice] = useState<HeldNotice | null>(null);
   /**
-   * What the toast says of a copy from last week: made, with what puts the
-   * screen back as it was before it, or undone.
+   * What the toast says of a change made only on the screen (a copy from
+   * last week): made, with what puts the screen back as it was before it,
+   * or undone.
    */
-  const [copyNotice, setCopyNotice] = useState<
-    | { kind: "copied"; count: number; stamp: string; undo: () => void }
-    | { kind: "undone"; stamp: string }
-    | null
-  >(null);
+  const [screenNotice, setScreenNotice] = useState<ScreenNotice | null>(null);
 
   const [state, action, pending] = useActionState(
     async (prev: ScheduleState, payload: BuilderSend) => {
       const { form, sent: answered } = sendOf(payload);
-      // Whatever the toast said of a held publish, or of a copy, is over once
-      // one goes: what it would undo is on its way.
+      // Whatever the toast said of a held publish, or of a change made on the
+      // screen, is over once one goes: what it would undo is on its way.
       setHeldNotice(null);
-      setCopyNotice(null);
+      setScreenNotice(null);
       try {
         const result = await save(prev, form);
         const target = leaveTo.current;
@@ -470,32 +475,27 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
     setHeldNotice({ kind: "undone", stamp: new Date().toISOString() });
   }
 
-  /** A copy from last week went on the screen: the toast offers its way back. */
-  function copyMade(count: number, undo: () => void) {
-    setCopyNotice({
-      kind: "copied",
-      count,
-      stamp: new Date().toISOString(),
-      undo,
-    });
+  /**
+   * A change went on the screen only (a copy from last week): the toast
+   * offers its way back.
+   */
+  function madeOnScreen(what: ScreenChange, count: number, undo: () => void) {
+    setScreenNotice(screenMade(what, count, undo, new Date()));
   }
 
   /**
-   * The screen changed after a copy (a shift added, changed, removed or
-   * brought back): "ביטול" would put back the screen as it was before the
-   * copy and take that change with it, so the toast goes with its way back.
-   * The copy stays, as any other work on the screen.
+   * The screen changed after a change made only on it: its way back would
+   * take this change with it, so the toast goes with it (`afterScreenEdit`).
    */
-  function changedAfterCopy() {
-    setCopyNotice((notice) => (notice?.kind === "copied" ? null : notice));
+  function changedOnScreen() {
+    setScreenNotice(afterScreenEdit);
   }
 
-  /** "ביטול" of a copy: the screen as it was before it. */
-  function undoCopy() {
+  /** "ביטול" of a change made only on the screen: the screen as before it. */
+  function undoScreen() {
     // What is on its way stands as sent: the builder starts again from it.
-    if (pending || holding || copyNotice?.kind !== "copied") return;
-    copyNotice.undo();
-    setCopyNotice({ kind: "undone", stamp: new Date().toISOString() });
+    const undone = screenUndone(screenNotice, pending || holding, new Date());
+    if (undone) setScreenNotice(undone);
   }
 
   /** The toast's button went with the focus before there was an answer. */
@@ -526,16 +526,12 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
     if (landed && toast?.write) setQuietAt(toast.stamp);
   }
   /**
-   * After a copy's toast, the focus goes back to the copy's button, which is
-   * by that line: without moving the page either.
+   * After the toast of a change made only on the screen, the focus goes back
+   * to the button that made it (`afterScreen`: the copy's), which is by that
+   * line: without moving the page either.
    */
-  function focusAfterCopy() {
-    if (
-      !focusFirst(["[data-copy-week]:enabled"], {
-        title: false,
-        preventScroll: true,
-      })
-    ) {
+  function focusAfterScreen(what: ScreenChange) {
+    if (!focusFirst(afterScreen(what), { title: false, preventScroll: true })) {
       focusAfterToast();
     }
   }
@@ -564,50 +560,38 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
   }
   const { week } = reading;
 
+  /** The toast's words, in the business's own. */
+  function toastText(words: ToastWords): string {
+    switch (words.of) {
+      case "held":
+        return words.kind === "waiting"
+          ? t("app.build.hold.waiting")
+          : t("app.build.hold.undone");
+      case "screen":
+        return words.kind === "made"
+          ? t(`app.build.${words.what}.done`, { count: words.count })
+          : t(`app.build.${words.what}.undone`);
+      case "write":
+        return words.published
+          ? t("app.build.published")
+          : t("app.build.saved");
+    }
+  }
+
   // A publish held says so with its way back for as long as it waits; let
-  // go, that nobody was told; then a copy from last week, with its way back,
-  // or that it was undone; otherwise what the last write did, once done.
-  const toast: {
-    text: string;
-    stamp: string;
-    undo: "publish" | "copy" | null;
-    /** It says what the last write did: a draft saved, a week published. */
-    write?: true;
-  } | null =
-    holding && heldNotice?.kind === "waiting"
-      ? {
-          text: t("app.build.hold.waiting"),
-          stamp: heldNotice.stamp,
-          undo: "publish",
-        }
-      : heldNotice?.kind === "undone"
-        ? {
-            text: t("app.build.hold.undone"),
-            stamp: heldNotice.stamp,
-            undo: null,
-          }
-        : copyNotice
-          ? copyNotice.kind === "copied"
-            ? {
-                text: t("app.build.copy.done", { count: copyNotice.count }),
-                stamp: copyNotice.stamp,
-                undo: "copy",
-              }
-            : {
-                text: t("app.build.copy.undone"),
-                stamp: copyNotice.stamp,
-                undo: null,
-              }
-          : state.savedAt && done
-            ? {
-                text: state.published
-                  ? t("app.build.published")
-                  : t("app.build.saved"),
-                stamp: state.savedAt,
-                undo: null,
-                write: true,
-              }
-            : null;
+  // go, that nobody was told; then a change made only on the screen, with
+  // its way back, or that it was undone; otherwise what the last write did,
+  // once done (`builderToast`).
+  const shown = builderToast({
+    holding,
+    held: heldNotice,
+    screen: screenNotice,
+    saved: state.savedAt
+      ? { at: state.savedAt, published: state.published === true }
+      : null,
+    done,
+  });
+  const toast = shown ? { ...shown, text: toastText(shown.words) } : null;
 
   // A draft saved or a week published goes at once, with no way back to
   // offer, and the pressed button goes with the focus: the dock's save
@@ -675,34 +659,38 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
         sent={sent}
         changesPressed={changesPressed}
         shareKind={shareKind}
-        onCopied={copyMade}
-        onEdited={changedAfterCopy}
+        onMade={madeOnScreen}
+        onEdited={changedOnScreen}
       />
       <StatusToast
         message={toast?.text ?? null}
         stamp={toast?.stamp}
         quiet={writtenAt !== null && writtenAt === quietAt}
-        // The way back lasts as long as the publish waits for it; a copy's,
-        // as long as any other way back in the app.
+        // The way back lasts as long as the publish waits for it; that of a
+        // change made on the screen, as long as any other way back in the app.
         duration={
           toast?.undo === "publish"
             ? HOLD_MS
-            : toast?.undo === "copy"
-              ? COPY_UNDO_MS
+            : toast?.undo === "screen"
+              ? SCREEN_UNDO_MS
               : undefined
         }
         action={
           toast?.undo
             ? {
                 label: t("app.manage.undo"),
-                onClick: toast.undo === "publish" ? undoPublish : undoCopy,
+                onClick: toast.undo === "publish" ? undoPublish : undoScreen,
               }
             : null
         }
-        // The dock's button went busy with the focus, or the copy's sheet
-        // closed with it: the way back is next.
+        // The dock's button went busy with the focus, or the sheet that made
+        // the change on the screen closed with it: the way back is next.
         focusAction={Boolean(toast?.undo)}
-        onFocusLeave={copyNotice ? focusAfterCopy : focusAfterToast}
+        onFocusLeave={
+          screenNotice
+            ? () => focusAfterScreen(screenNotice.what)
+            : focusAfterToast
+        }
         // While the toast waits for the keyboard or a mouse on "ביטול", the
         // publish waits too: it never goes with the way back still offered.
         onWaitingChange={(waiting) => {
@@ -751,7 +739,7 @@ function WeekBuilder({
   sent,
   changesPressed,
   shareKind,
-  onCopied,
+  onMade,
   onEdited,
 }: Omit<ScheduleBuilderProps, "save"> & {
   /**
@@ -790,13 +778,14 @@ function WeekBuilder({
   /** What sharing the week says of the last publish from this screen. */
   shareKind: "changes" | "other";
   /**
-   * A copy from last week went on the screen: how many shifts, and what puts
-   * the screen back as it was before it, for the toast's "ביטול".
+   * A change went on the screen only (a copy from last week): what it was,
+   * how much (the shifts copied), and what puts the screen back as it was
+   * before it, for the toast's "ביטול".
    */
-  onCopied: (count: number, undo: () => void) => void;
+  onMade: (what: ScreenChange, count: number, undo: () => void) => void;
   /**
-   * The person changed the screen: a copy's way back, should one be offered,
-   * would take that change with it.
+   * The person changed the screen: the way back of a change made only on it,
+   * should one be offered, would take this change with it.
    */
   onEdited: () => void;
 }) {
@@ -1054,7 +1043,8 @@ function WeekBuilder({
     setDirty(true);
     setBlocked(false);
     setLockedBack(null);
-    // A copy's "ביטול" would undo this change too: it goes.
+    // The "ביטול" of a change made only on the screen (a copy) would undo
+    // this change too: it goes.
     onEdited();
   }
 
@@ -1222,10 +1212,11 @@ function WeekBuilder({
     setShownCopy(copy);
     setCopyOpen(false);
     // The toast's "ביטול" takes the focus as the sheet closes. Said after
-    // `edited`, which takes an earlier copy's way back: this one's comes in
-    // its place.
+    // `edited`, which takes the way back of an earlier change made on the
+    // screen: this one's comes in its place. Said before it, `edited` would
+    // take this one too (builder-toast.test.ts plays both orders).
     opener.current = null;
-    onCopied(copy.shifts, () => {
+    onMade("copy", copy.shifts, () => {
       setRows(before.rows);
       setRemoved(before.removed);
       setDirty(before.dirty);
