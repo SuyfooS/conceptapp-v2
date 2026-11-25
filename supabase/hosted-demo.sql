@@ -67,10 +67,11 @@ begin
   -- sent ("sampleAvailability", 20261128000100_demo_sample_availability.sql):
   -- on each day they can work, the hours the availability form suggests from
   -- the restaurant's shifts, so "מילוי מהזמינות" in the builder has someone
-  -- to place on most days. The door writes it at every entry for whoever
-  -- hasn't sent next week's, cut by Shabbat as the form cuts it, and leaves an
-  -- answer someone sent alone; the local seed has none, so the browser tests
-  -- send their own (tooling/demo-availability.test.ts).
+  -- to place on most days. The door writes it at every entry, and Today at
+  -- every load, for whoever hasn't sent next week's, cut by Shabbat as the
+  -- form cuts it, and leaves an answer someone sent alone; the local seed has
+  -- none, so the browser tests send their own
+  -- (tooling/demo-availability.test.ts).
   insert into private.demo_businesses (business_id, definition)
   values
     ('10000000-0000-4000-b000-000000000001', $json$

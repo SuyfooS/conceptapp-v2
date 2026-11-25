@@ -12,8 +12,9 @@
 --                Only supabase/hosted-demo.sql's restaurant has it;
 --                supabase/seed.sql has none, so the local e2e is as it was.
 --   the renewal  public.renew_demo_availability(), with the secret key, from
---                the demo door (enterAs in app/(auth)/enter/actions.ts): for
---                each demo business whose definition has the key, with
+--                the demo door (enterAs in app/(auth)/enter/actions.ts) and
+--                from Today (renewDemoWeek in app/(app)/demo.ts): for each
+--                demo business whose definition has the key, with
 --                scheduling on, next week by its own settings and clock
 --                (private.availability_rules, private.week_start_after: the
 --                week the availability form answers for), unless that week
@@ -46,8 +47,8 @@
 --                leaves demo businesses out); availability_staff_only only
 --                refuses an accountant. A demo business sends no SMS.
 --   the reset    public.reset_demo_business is unchanged: a reset deletes the
---                weeks with the business, and the next entry at the door
---                writes the sample again.
+--                weeks with the business, and the next entry at the door, or
+--                the next Today, writes the sample again.
 --   locks        the business (`for key share`, so a demo reset under way
 --                finishes first; a business it made again meanwhile waits for
 --                the next call), then next week's row (`for share`, as a

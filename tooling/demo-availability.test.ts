@@ -30,10 +30,11 @@ import { describe, expect, it } from "vitest";
 // Orel's yes to the plan's question 3, 25 November 2026): the hosted
 // restaurant's definition names next week's availability for its manager and
 // two workers, and public.renew_demo_availability
-// (20261128000100_demo_sample_availability.sql) sends it at the door for
-// whoever hasn't sent theirs, cut by Shabbat as the form's suggestion is. The
-// local seed names none, so the browser tests send their own. This keeps the
-// sample to those people, each day as the form suggests it from the
+// (20261128000100_demo_sample_availability.sql) sends it at the door, and on
+// Today (renewDemoWeek in app/(app)/demo.ts), for whoever hasn't sent theirs,
+// cut by Shabbat as the form's suggestion is. The local seed names none, so
+// the browser tests send their own. This keeps the sample to those people,
+// each day as the form suggests it from the
 // restaurant's own shifts, and checks that the fill from availability puts
 // each of them on several shifts of the restaurant's week, in winter and in
 // summer. pgTAP's demo_availability.test.sql checks the function itself.

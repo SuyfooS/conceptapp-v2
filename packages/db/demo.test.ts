@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// The demo's sample availability as the door asks for it, with the database
-// stood in for: how many answers it wrote, none while the function isn't on
-// the project yet (the deploy comes before Migrate), and any other failure
-// thrown for the door to log.
+// The demo's sample availability as the door and Today ask for it, with the
+// database stood in for: how many answers it wrote, none while the function
+// isn't on the project yet (the deploy comes before Migrate), and any other
+// failure thrown for its caller to log.
 
 vi.mock("server-only", () => ({}));
 
@@ -49,7 +49,7 @@ describe("renewDemoAvailability", () => {
     }
   });
 
-  it("throws any other failure, for the door to log", async () => {
+  it("throws any other failure, for its caller to log", async () => {
     db.answers.push({
       error: { code: "22023", message: "Ranges on the same day overlap" },
     });
