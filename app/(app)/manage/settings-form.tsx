@@ -394,6 +394,9 @@ function MenuOrValue({
  * Its hint, or the ends while what is typed is outside them, is read with it.
  * Enter on a number outside them keeps it and says the ends; leaving the
  * field with it goes back to what's stored and says that it didn't save.
+ * Minus or plus pressed while it's typed keeps the focus in the field, so
+ * it steps from what's typed, into its ends (60, then minus: 58), rather
+ * than from what's stored after a blur that put it back.
  */
 function NumberField({
   id,
@@ -458,6 +461,7 @@ function NumberField({
             if (whole) event.currentTarget.blur();
             else announce(between);
           }}
+          keepsTyping
           invalid={!whole}
           describedBy={line ? hintId : undefined}
           min={min}

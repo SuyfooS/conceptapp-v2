@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
-import { createElement } from "react";
+import { createElement, type MouseEvent } from "react";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { Button } from "./button";
 import { IconButton } from "./icon-button";
-import { Stepper, type StepperProps, stepped } from "./stepper";
+import { keepTypedFocus, Stepper, type StepperProps, stepped } from "./stepper";
 
 /*
  * The count's minus and plus (accessibility, part 1): a step is kept
@@ -111,7 +111,12 @@ function drawn(props: Partial<StepperProps>) {
     increaseLabel: "More",
     ...props,
   });
-  type Pressed = { props: { onClick: () => void } };
+  type Pressed = {
+    props: {
+      onClick: () => void;
+      onMouseDown?: (event: MouseEvent<HTMLElement>) => void;
+    };
+  };
   type Typed = {
     props: { onChange: (event: { target: { value: string } }) => void };
   };
@@ -164,6 +169,61 @@ describe("Stepper's presses and typing", () => {
     });
     more.props.onClick();
     expect(pressed).toEqual([]);
+  });
+});
+
+/**
+ * A press going down on minus or plus, with the focus in the stepper's own
+ * number or elsewhere; says whether it kept the focus where it was.
+ */
+function pressDown(focus: "number" | "elsewhere"): boolean {
+  const number = { tagName: "INPUT" };
+  let kept = false;
+  const event = {
+    currentTarget: {
+      parentElement: { querySelector: () => number },
+      ownerDocument: { activeElement: focus === "number" ? number : {} },
+    },
+    preventDefault: () => {
+      kept = true;
+    },
+  };
+  keepTypedFocus(event as unknown as MouseEvent<HTMLElement>);
+  return kept;
+}
+
+// The settings' number (the fill's week's hours, after the third check):
+// Enter on 60 keeps it, and the focus, beside its minus. Leaving the field
+// with it puts back what's stored, so a press that blurred the field first
+// stepped from 42 (41 saved, after "it stays 42"). With `keepsTyping` the
+// focus stays in the number, so the press steps from 60, into its ends.
+describe("Stepper's press while the number is typed", () => {
+  it("keeps the focus in its number, and leaves it alone elsewhere", () => {
+    expect(pressDown("number")).toBe(true);
+    expect(pressDown("elsewhere")).toBe(false);
+  });
+
+  it("holds the focus on both buttons with keepsTyping, and on neither without it", () => {
+    const { fewer, more } = drawn({ keepsTyping: true });
+    expect(fewer.props.onMouseDown).toBe(keepTypedFocus);
+    expect(more.props.onMouseDown).toBe(keepTypedFocus);
+    const plain = drawn({});
+    expect(plain.fewer.props.onMouseDown).toBeUndefined();
+    expect(plain.more.props.onMouseDown).toBeUndefined();
+  });
+
+  it("steps from what's typed, into its ends", () => {
+    const pressed: string[] = [];
+    const { fewer, more } = drawn({
+      value: "60",
+      keepsTyping: true,
+      onStep: (value) => {
+        pressed.push(value);
+      },
+    });
+    more.props.onClick();
+    fewer.props.onClick();
+    expect(pressed).toEqual(["58"]);
   });
 });
 

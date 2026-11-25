@@ -17,7 +17,8 @@ export type SentDraft = { draft: string; stored: string; away: boolean };
  * draft went already against the same stored value: as the screen goes,
  * however it went (the field left just before), and as the field is left,
  * when it went as the screen or the page did (a blur that comes after).
- * Left again after a refusal, with nothing typed since, it tries again.
+ * Left again after a refusal, with nothing typed since, it tries again,
+ * however it went: a draft refused is forgotten (`forgetRefused`).
  */
 export function sendsNow(
   draft: string,
@@ -32,6 +33,28 @@ export function sendsNow(
 }
 
 /**
+ * Forgets the draft sent (`mine`) once its save says it didn't save: a
+ * promise of false, or one that fails. Leaving the field, or the screen or
+ * the page going, then tries it again, however it went: one that went as
+ * the page hid, with no signal, stays on screen with its failure, and the
+ * field left once the person is back sends it again. Kept while it's on its
+ * way, once it saved, for a save that says nothing, and when another draft
+ * went since.
+ */
+export async function forgetRefused(
+  outcome: unknown,
+  sent: { current: SentDraft | null },
+  mine: SentDraft,
+): Promise<void> {
+  if (!(outcome instanceof Promise)) return;
+  const saved = await outcome.then(
+    (ok) => ok !== false,
+    () => false,
+  );
+  if (!saved && sent.current === mine) sent.current = null;
+}
+
+/**
  * A value that's typed, so it can be half written for a moment: what's on
  * screen until it's whole, saved shortly after the typing stops (`delay`) or
  * on leaving, or only on leaving (a null `delay`). When what's stored
@@ -43,12 +66,14 @@ export function sendsNow(
  * A whole draft also saves when the page is hidden or closed, and when the
  * screen is left inside the app (Next keeps it in an <Activity>) with the
  * focus still in the field: no blur may come then, as when a screen
- * reader's cursor moved on without the focus. Once, whichever comes first.
+ * reader's cursor moved on without the focus. Once, whichever comes first,
+ * unless `save` says it was refused (a promise of false): then the next of
+ * them tries again.
  */
 export function useDraft(
   stored: string,
   isWhole: (draft: string) => boolean,
-  save: (draft: string) => void,
+  save: (draft: string) => unknown,
   delay: number | null,
   tidy: (draft: string) => string = asIs,
 ) {
@@ -72,8 +97,9 @@ export function useDraft(
   }
 
   function send(text: string, from: string, away: boolean) {
-    sent.current = { draft: now.current.tidy(text), stored: from, away };
-    now.current.save(text);
+    const mine = { draft: now.current.tidy(text), stored: from, away };
+    sent.current = mine;
+    void forgetRefused(now.current.save(text), sent, mine);
   }
 
   /** What's whole and not saved yet goes now: the screen or the page goes. */
