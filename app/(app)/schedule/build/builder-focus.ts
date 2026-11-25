@@ -1,17 +1,38 @@
 /**
  * Where the builder puts the keyboard's focus once what held it went: a
  * person's "+" or "×" in the shift's sheet, which goes with them as they go
- * on or off the shift, and the dock's button after a draft saved or a week
- * published. Selectors, read where the focus goes (`focusFirst`), and when
- * it goes after a write (`placeAfterWrite`), so the tests stand in for the
- * page.
+ * on or off the shift, the toast's "ביטול" of a change made only on the
+ * screen, and the dock's button after a draft saved or a week published.
+ * Selectors, read where the focus goes (`focusFirst`), and when it goes
+ * after a write (`placeAfterWrite`), so the tests stand in for the page.
  */
+
+import type { ScreenChange } from "./builder-toast";
 
 /** The line that says where the week stands: a draft, saved, published. */
 export const BUILDER_STATUS = "[data-builder-status]";
 
 /** Sharing the week, in the dock's place once it is out with nothing new. */
 export const SHARE_WEEK = "[data-share-week]";
+
+/** "העתקה מהשבוע שעבר", by the line that says where the week stands. */
+export const COPY_WEEK = "[data-copy-week]";
+
+/** The button that makes each change on the screen, while it can be pressed. */
+const MADE_BY: Record<ScreenChange, readonly string[]> = {
+  copy: [`${COPY_WEEK}:enabled`],
+};
+
+/**
+ * Where the focus goes as the toast's "ביטול" of a change made only on the
+ * screen goes with it (pressed, or its time up): back to the button that
+ * made the change, by the line that says where the week stands, without
+ * moving the page. Where none can take it (gone, or busy while a write
+ * goes), the builder goes on as after any toast (`focusAfterToast`).
+ */
+export function afterScreen(what: ScreenChange): readonly string[] {
+  return MADE_BY[what];
+}
 
 /**
  * A little longer than a sheet takes to slide away: then the builder gives
