@@ -28,7 +28,9 @@ export type UndoRowProps = {
   autoFocus?: boolean;
   /**
    * Says nothing as it appears: for a row the screen brings the focus to
-   * itself (a sheet's `returnFocus`), whose focus says its words.
+   * itself (a sheet's `returnFocus`), whose focus says its words, or one
+   * that was up already, drawn again (an earlier removal's way back that a
+   * refused one puts back), which is no news.
    */
   quiet?: boolean;
   /**
@@ -41,7 +43,11 @@ export type UndoRowProps = {
    * time up), in order; the page's title after them.
    */
   focusAfter?: () => readonly FocusCandidate[];
-  /** Its button, for a screen that brings the focus there (a sheet's `returnFocus`). */
+  /**
+   * Its button, for a screen that brings the focus there (a sheet's
+   * `returnFocus`, a refused way back), whose focus then says its words:
+   * given, they are in its name (`namedByWords`), wherever the focus is.
+   */
   buttonRef?: Ref<HTMLButtonElement>;
   className?: string;
 };
@@ -60,6 +66,21 @@ export function saidAsItAppears(
 }
 
 /**
+ * Whether an UndoRow's own focus says its words, so they are in its
+ * button's name: the focus comes in with it (`autoFocus`), or the screen
+ * brings it there (`quiet`, `buttonRef`). A name is said at once; a
+ * description VoiceOver says only after a pause, cut off by the next
+ * swipe, and never with its hints off.
+ */
+export function namedByWords({
+  autoFocus,
+  quiet,
+  buttonRef,
+}: Pick<UndoRowProps, "autoFocus" | "quiet" | "buttonRef">): boolean {
+  return Boolean(autoFocus || quiet || buttonRef);
+}
+
+/**
  * What was just removed, with the way back, where the person is looking.
  * A status a screen's checks find by its role. As it appears it is said
  * once, through the page's announcer (a status drawn with its words already
@@ -67,9 +88,11 @@ export function saidAsItAppears(
  * is a status of its own, so a change of its words (a way back that failed)
  * is heard wherever the focus is. Another removal is another row (a `key`
  * of what it undoes), not new words. Its button is described by its words
- * ("ביטול, נועה כהן הוסרה מהצוות"), its way back waits while it is being
- * reached, and when it goes holding the focus the focus goes where the
- * screen says (`focusAfter`), else to the page's title.
+ * ("ביטול, נועה כהן הוסרה מהצוות"), or, where its focus says them
+ * (`namedByWords`), named with them after its word ("ביטול: נועה כהן הוסרה
+ * מהצוות"), so speech input still finds it; its way back waits while it is
+ * being reached, and when it goes holding the focus the focus goes where
+ * the screen says (`focusAfter`), else to the page's title.
  */
 export function UndoRow({
   message,
@@ -96,6 +119,8 @@ export function UndoRow({
   const appeared = useRef(false);
   // Its own status from its first effect on: quiet until then.
   const [live, setLive] = useState(false);
+  // Its words in its name, not also its description: said twice otherwise.
+  const named = namedByWords({ autoFocus, quiet, buttonRef });
 
   useEffect(() => {
     if (appeared.current) return;
@@ -132,7 +157,8 @@ export function UndoRow({
         onClick={onUndo}
         autoFocus={autoFocus}
         onKeyDown={ignoreHeldEnter}
-        aria-describedby={messageId}
+        aria-label={named ? t("named", { message }) : undefined}
+        aria-describedby={named ? undefined : messageId}
         className="shrink-0"
       >
         {t("undo")}

@@ -311,7 +311,14 @@ export function ListsView({
               {data.open.length > 0 ? cards(data.open) : noneOpen}
             </PageSection>
             {asked}
-            {/* Always there, as on the wider screens, saying so when empty. */}
+            {/* Always there, as on the wider screens, saying so when empty.
+                Its title is a heading too, just before it, for the headings
+                a screen reader moves by: one inside the summary, which reads
+                as a button, isn't one for all of them (accessibility, part
+                8). */}
+            <h2 className="sr-only">
+              {t("closedToday", { count: data.closed.length })}
+            </h2>
             <details className="group flex flex-col gap-3">
               <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-full px-1 font-bold text-lg focus-visible:outline-2 focus-visible:outline-accent [&::-webkit-details-marker]:hidden">
                 {t("closedToday", { count: data.closed.length })}

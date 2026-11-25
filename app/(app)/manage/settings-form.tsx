@@ -67,10 +67,12 @@ export function SettingsForm({
   const tm = useTranslations("modules");
   // What this person changed on this screen; the rest is as the server read it.
   const [changed, setChanged] = useState<Record<string, unknown>>({});
-  // The last thing that didn't save, until that setting saves.
+  // The last thing that didn't save, until that setting saves; `held` while
+  // its words wait for `sayHeld`.
   const [failure, setFailure] = useState<{
     key: string;
     reason: SettingsFailure;
+    held: boolean;
   } | null>(null);
   const [saved, setSaved] = useState(0);
   const latest = useRef<Record<string, number>>({});
@@ -78,8 +80,17 @@ export function SettingsForm({
   const currentOf = (key: string) =>
     key in changed ? changed[key] : values[key];
 
-  /** Says whether it saved, for a control with more to do either way. */
-  async function change(key: string, value: unknown): Promise<boolean> {
+  /**
+   * Says whether it saved, for a control with more to do either way. With
+   * `hold`, a refusal's words wait for `sayHeld`: for an editor that moves
+   * the focus as it is refused (a shift's row, back once its sheet has
+   * gone), a move that would cut them off.
+   */
+  async function change(
+    key: string,
+    value: unknown,
+    hold = false,
+  ): Promise<boolean> {
     const mine = (latest.current[key] ?? 0) + 1;
     latest.current[key] = mine;
     setChanged((current) => ({ ...current, [key]: value }));
@@ -94,12 +105,21 @@ export function SettingsForm({
       setSaved((count) => count + 1);
       return true;
     }
-    setFailure({ key, reason: result.failure });
+    setFailure({ key, reason: result.failure, held: hold });
     // A later change to the same setting has the last word.
     if (latest.current[key] === mine) {
       setChanged(({ [key]: _, ...rest }) => rest);
     }
     return false;
+  }
+
+  /** A refusal of `key` held back (`hold`) is said now: the focus has moved. */
+  function sayHeld(key: string) {
+    setFailure((current) =>
+      current?.key === key && current.held
+        ? { ...current, held: false }
+        : current,
+    );
   }
 
   // The keys come from the manifest; tooling/settings-words.test.ts checks them.
@@ -137,7 +157,7 @@ export function SettingsForm({
         stamp={String(saved)}
         duration={1800}
       />
-      {failure ? (
+      {failure && !failure.held ? (
         <Card
           tone="float"
           padding="md"
@@ -212,7 +232,8 @@ export function SettingsForm({
                 hint={hintOf(field)}
                 shifts={currentOf(field.key) as ShiftPattern[]}
                 disabled={viewOnly}
-                onChange={(next) => change(field.key, next)}
+                onChange={(next, hold) => change(field.key, next, hold)}
+                sayRefusal={() => sayHeld(field.key)}
               />
             );
           }

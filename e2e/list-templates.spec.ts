@@ -329,17 +329,19 @@ test("a manager writes a new list of every kind, which saves itself, and sends i
     .click();
   await expect.poll(recipient).toBeNull();
 
-  // Removed, with the undo on the screen of templates.
+  // Removed, with the undo on the screen of templates, which has the focus:
+  // the editor's button went with the editor (accessibility, part 8).
   await page.getByRole("button", { name: te.archive }).click();
   await expect(page).toHaveURL(/\/lists\/templates\?removed=/);
   await expect
     .poll(async () => (await demoTemplates(RENAMED))[0]?.archived)
     .toBe(true);
-  await page
+  const removedUndo = page
     .getByRole("status")
     .filter({ hasText: fill(tt.removed, { name: RENAMED }) })
-    .getByRole("button", { name: he.app.manage.undo })
-    .click();
+    .getByRole("button", { name: he.app.manage.undo });
+  await expect(removedUndo).toBeFocused();
+  await removedUndo.click();
   await expect(page).toHaveURL(/\/lists\/templates$/);
   await expect
     .poll(async () => (await demoTemplates(RENAMED))[0]?.archived)

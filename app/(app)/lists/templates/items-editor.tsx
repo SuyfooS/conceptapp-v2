@@ -19,6 +19,7 @@ import { Button } from "@ui/button";
 import { cn } from "@ui/cn";
 import { FieldGroup, GroupedField } from "@ui/field-group";
 import { FieldRow, rowPillInputClass } from "@ui/field-row";
+import { firstOnScreen, inViewWhenFocused } from "@ui/focus-after";
 import { IconButton } from "@ui/icon-button";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageSection } from "@ui/page";
@@ -38,6 +39,8 @@ import {
   useRef,
   useState,
 } from "react";
+import { byAttribute } from "../../manage/editor-focus";
+import { useSheetReturn } from "../../manage/use-sheet-return";
 import { ITEM_ICONS } from "../list-preview";
 
 /** The kinds an item can be made as: a photo too, from L6. */
@@ -47,6 +50,9 @@ const KINDS = [
   "note",
   "photo",
 ] as const satisfies ListItemKind[];
+
+/** The attribute each item's row carries: its key. */
+const ITEM_ROW = "data-item-row";
 
 const LABEL_MAX = 120;
 const HINT_MAX = 200;
@@ -79,7 +85,9 @@ const blank = (): DraftItem => ({
  * it, with up and down beside it rather than a drag. A move keeps the focus
  * on the item's arrow (the other one once it reaches an end) and is said to
  * a screen reader. Adding is the row at the end. Removing has an undo, which
- * puts the item back where it was. A list that asks for counts (L5) gives
+ * puts the item back where it was: the sheet closes onto its "ביטול", which
+ * says what went, and once undone the focus is on the item's row again
+ * (accessibility, part 8). A list that asks for counts (L5) gives
  * each check its usual count. In a business that takes no photos (a demo
  * one), a photo item is never required, and its sheet says why, so its
  * list can still be finished. Used by the template editor and for a list
@@ -124,6 +132,7 @@ export function ItemsEditor({
   // focus once a move is drawn.
   const arrows = useRef(new Map<string, HTMLButtonElement>());
   const refocus = useRef<{ key: string; by: -1 | 1 } | null>(null);
+  const back = useSheetReturn();
 
   // After a move the pressed arrow may have gone (an end) or moved in the
   // page: the same arrow of the same item gets the focus, or the other one.
@@ -164,6 +173,7 @@ export function ItemsEditor({
   }
 
   function show(item: DraftItem, isNew: boolean) {
+    back.opening();
     setEditing({ item, isNew });
     setOpen(true);
   }
@@ -184,6 +194,7 @@ export function ItemsEditor({
     const index = items.findIndex((item) => item.key === key);
     const item = items[index];
     if (!item) return;
+    back.removing();
     setRemoved({ item, index });
     onChange(items.filter((other) => other.key !== key));
   }
@@ -223,7 +234,7 @@ export function ItemsEditor({
   };
 
   return (
-    <PageSection title={title}>
+    <PageSection title={title} headingRef={back.heading}>
       <ListGroup>
         {items.length === 0 ? (
           <p className="px-4 py-3.5 text-ink-2">
@@ -257,6 +268,9 @@ export function ItemsEditor({
                   <button
                     type="button"
                     className={rowButtonClass}
+                    // Found again by its key once "ביטול" brings it back
+                    // (ITEM_ROW).
+                    data-item-row={item.key}
                     onClick={() => show(item, false)}
                   >
                     {content}
@@ -305,10 +319,21 @@ export function ItemsEditor({
       )}
       {removed ? (
         <UndoRow
-          // Each removal a row of its own, said afresh.
+          // Each removal a row of its own.
           key={removed.item.key}
           message={t("removed", { label: removed.item.label })}
           onUndo={undo}
+          // The sheet closes onto it, and its focus says it.
+          quiet
+          buttonRef={back.undoButton}
+          // Undone, the item is back in its place, maybe far above this
+          // row: its row takes the focus, brought into view.
+          focusAfter={() => [
+            inViewWhenFocused(
+              firstOnScreen([byAttribute(ITEM_ROW, removed.item.key)]),
+            ),
+            back.heading.current,
+          ]}
         />
       ) : null}
       <Sheet
@@ -316,6 +341,7 @@ export function ItemsEditor({
         onOpenChange={setOpen}
         title={editing?.isNew ? t("newTitle") : editing?.item.label}
         closeLabel={t("close")}
+        returnFocus={back.returnFocus}
       >
         {editing ? (
           <ItemForm

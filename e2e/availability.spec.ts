@@ -2,6 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import he from "../messages/he.json" with { type: "json" };
 import { availabilityOf, clearAvailability } from "./db";
 import { signIn } from "./session";
+import { UNDO_NAMED } from "./t";
 import { expect, type Locator, type Page, test } from "./test";
 
 // A seeded worker of the demo restaurant (supabase/seed.sql), which is
@@ -154,13 +155,11 @@ test("a worker sends next week's availability around Shabbat", async ({
   const again = await openDay(page, "sun");
   await expect(again.getByLabel(ta.start)).toHaveValue("09:00");
   // A removal can be taken back: "ביטול" has the focus the removed range's
-  // "×" had, and undone, the range back in its place has it.
+  // "×" had, and undone, the range back in its place has it. Its focus says
+  // what went, in its name ("ביטול: …").
   await removeButton(again).click();
   await expect(again.getByLabel(ta.start)).toHaveCount(0);
-  const undo = again.getByRole("button", {
-    name: he.ui.undoRow.undo,
-    exact: true,
-  });
+  const undo = again.getByRole("button", { name: UNDO_NAMED });
   await expect(undo).toBeFocused();
   await undo.click();
   await expect(again.getByLabel(ta.start)).toHaveValue("09:00");

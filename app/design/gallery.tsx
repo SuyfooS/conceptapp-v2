@@ -1251,10 +1251,13 @@ function GalleryBody({
                 placeholder: tList("answerPlaceholder"),
               }}
             />
-            {/* A photo (L6): taken or chosen here, shown at once, nothing stored. */}
+            {/* A photo (L6): taken or chosen here, shown at once, nothing
+                stored. Its id on its row (`itemId`), as a list's are: the
+                photos below share its label. */}
             <ChecklistItem
               kind="photo"
               label={t("checklistPhoto")}
+              itemId="gallery-photo"
               required={false}
               optionalLabel={tList("optional")}
               done={listPhoto !== null}

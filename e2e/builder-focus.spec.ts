@@ -1,7 +1,7 @@
 import he from "../messages/he.json" with { type: "json" };
 import { announcer, heardSoFar, noteStatusWords, saidSince } from "./announcer";
 import { before, buildScreen, SHEET_CLOSES_MS } from "./build-screen";
-import { heT } from "./t";
+import { heT, UNDO_NAMED } from "./t";
 import { expect, type Locator, type Page, test } from "./test";
 
 // Accessibility, part 4: the builder and availability, on their twins (the
@@ -275,7 +275,7 @@ test("after saving the draft the focus is on where the week stands, after a firs
 });
 
 // A day's sheet on the availability twin: Sunday has 09:00–17:00. Removing
-// a range takes its "×" away: "ביטול" takes the focus, described by what it
+// a range takes its "×" away: "ביטול" takes the focus, named with what it
 // brings back, and undone, the focus is in the range back in its place.
 // Closing the sheet from "ביטול" (Escape) brings the day back as it was, and
 // the focus back to the day.
@@ -292,10 +292,7 @@ test("removing hours in a day's sheet puts the focus on its undo, and undone on 
   const removeMorning = sheet.getByRole("button", {
     name: ta.removeRange.replace("{from}", "09:00").replace("{to}", "17:00"),
   });
-  const undo = sheet.getByRole("button", {
-    name: he.ui.undoRow.undo,
-    exact: true,
-  });
+  const undo = sheet.getByRole("button", { name: UNDO_NAMED });
 
   await page.goto("/design/shell/schedule/availability");
   await day.click();
@@ -306,10 +303,9 @@ test("removing hours in a day's sheet puts the focus on its undo, and undone on 
   await removeMorning.click();
   await expect(starts).toHaveCount(1);
   await expect(undo).toBeFocused();
-  // The hours held left to right inside the sentence, in Unicode isolates.
-  await expect(undo).toHaveAccessibleDescription(
-    new RegExp(isolated("09:00–17:00")),
-  );
+  // The hours held left to right inside the sentence, in Unicode isolates,
+  // in its name: its focus says what went (accessibility, part 8).
+  await expect(undo).toHaveAccessibleName(new RegExp(isolated("09:00–17:00")));
   await expect(sheet.getByRole("status")).toContainText(
     isolated("09:00–17:00"),
   );
