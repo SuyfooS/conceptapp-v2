@@ -3885,6 +3885,8 @@ test("the activity demo names the app for a list it closed", async ({
 
 // The lists demo sends and takes a sending back, keeps its five minutes to
 // take a finish back after it hydrates, and reads a freezer below zero.
+// Lists, reached right after the press that sent, gives "ביטול" the focus,
+// which says where the list went (accessibility, part 8).
 test("the lists demo sends, takes back, and keeps a finished list as it was", async ({
   page,
 }) => {
@@ -3900,11 +3902,13 @@ test("the lists demo sends, takes back, and keeps a finished list as it was", as
   await expect(page).toHaveURL(
     /\/design\/shell\/lists\?sent=list-floor-opening$/,
   );
-  await page
+  const sent = l.send.sent.replace("{to}", "לאולם");
+  const takeBack = page
     .getByRole("status")
-    .filter({ hasText: l.send.sent.replace("{to}", "לאולם") })
-    .getByRole("button", { name: he.app.manage.undo })
-    .click();
+    .filter({ hasText: sent })
+    .getByRole("button", { name: he.app.manage.undo });
+  await expect(takeBack).toBeFocused();
+  await takeBack.click();
   await expect(page).toHaveURL(/\/design\/shell\/lists$/);
   await expect(
     page.getByRole("status").filter({ hasText: l.send.cancelled }),
@@ -4226,15 +4230,22 @@ test("the photo demo takes a photo, removes it and brings it back", async ({
   const taken = await new AxeBuilder({ page }).analyze();
   expect(taken.violations.map((v) => v.id)).toEqual([]);
 
-  await main
-    .getByRole("button", { name: `${l.photo.remove}: ${label}` })
-    .click();
+  // The remove button goes with the photo: "ביטול" takes its focus, and
+  // gives it back to the photo's remove button once the photo is back
+  // (accessibility, part 8).
+  const remove = main.getByRole("button", {
+    name: `${l.photo.remove}: ${label}`,
+  });
+  await remove.click();
   const undo = page.getByRole("status").filter({ hasText: l.photo.removed });
   await expect(undo).toBeVisible();
   await expect(photo).toHaveCount(0);
-  await undo.getByRole("button", { name: he.app.manage.undo }).click();
+  const undoButton = undo.getByRole("button", { name: he.app.manage.undo });
+  await expect(undoButton).toBeFocused();
+  await undoButton.click();
   await expect(photo).toBeVisible();
   await expect(undo).toHaveCount(0);
+  await expect(remove).toBeFocused();
 
   await page.goto("/design/shell/lists/list-weekly-cleaning?state=demo");
   await expect(main.getByText(l.photo.demo, { exact: true })).toBeVisible();

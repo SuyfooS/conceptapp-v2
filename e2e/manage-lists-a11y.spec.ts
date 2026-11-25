@@ -1,0 +1,247 @@
+import he from "../messages/he.json" with { type: "json" };
+import { announcer, heardSoFar, pastDrawing, saidSince } from "./announcer";
+import { heT } from "./t";
+import { expect, type Page, test } from "./test";
+
+// Accessibility, part 8, on the twins of management's editors and the lists
+// (/design/shell/manage/access, /design/shell/manage/scheduling, a
+// template's editor and the lists' screens): no data, no sign-in, nothing
+// stored, so a removal can run out its time and be removed again as often
+// as the test likes. The real screens' own checks are in lists.spec.ts
+// (finishing a list), list-templates.spec.ts (a template removed) and
+// design.spec.ts (the twins' sending and photo flows).
+
+const a = he.app.manage.access;
+const m = he.app.manage;
+const l = he.app.lists;
+const UNDO = he.ui.undoRow.undo;
+const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** How long the screen of who sees pay offers a way back (access-view.tsx). */
+const ACCESS_UNDO_MS = 6_000;
+// The twin's people (app/design/shell/manage/access/data.ts): Yoav was
+// given access himself, and his role doesn't give it.
+const YOAV = "יואב לוי";
+
+/** The "ביטול" of a removal whose words are `words`. */
+const undoOf = (page: Page, words: string) =>
+  page
+    .getByRole("status")
+    .filter({ hasText: words })
+    .getByRole("button", { name: UNDO });
+
+// Who sees pay: "הסרה" goes with the person's row, so "ביטול" takes the
+// focus. With the keyboard on it, it waits past its six seconds, and so
+// does the removal it holds; undone, the focus is back on the person's
+// "הסרה". After a mouse's press nothing waits, and once it goes the title
+// of the personal section has the focus. A role's switch keeps its focus:
+// its "ביטול", reached by Tab, waits too, and undone gives the focus back
+// to the switch.
+test("who sees pay gives a removal's 'ביטול' the focus, waits while it is reached, and gives the focus on", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  const remove = page.getByRole("button", {
+    name: heT("app.manage.access.personal.removeLabel", {
+      remove: a.personal.remove,
+      name: YOAV,
+    }),
+  });
+  const removed = heT("app.manage.access.done.removed", { name: YOAV });
+  const undo = undoOf(page, removed);
+  const personal = page.getByRole("heading", {
+    level: 2,
+    name: a.groups.personal,
+    exact: true,
+  });
+
+  await page.goto("/design/shell/manage/access");
+  await page.waitForLoadState("networkidle");
+  await remove.focus();
+  await page.keyboard.press("Enter");
+  await expect(undo).toBeFocused();
+  await expect(undo).toHaveAccessibleDescription(removed);
+  await expect(remove).toHaveCount(0);
+  // Past its time, with the keyboard on it: still there.
+  await page.waitForTimeout(ACCESS_UNDO_MS + 1_000);
+  await expect(undo).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(remove).toBeFocused();
+  await expect(undo).toHaveCount(0);
+
+  // The twin keeps nothing: afresh, and with a mouse. It goes after its
+  // time, and the section's title has the focus.
+  await page.reload();
+  await page.waitForLoadState("networkidle");
+  await remove.click();
+  await expect(undo).toBeFocused();
+  await expect(undo).toHaveCount(0, { timeout: ACCESS_UNDO_MS + 5_000 });
+  await expect(personal).toBeFocused();
+  await expect(remove).toHaveCount(0);
+
+  // A role's switch: the focus stays on it, and its "ביטול" is next.
+  const workers = page.getByRole("switch", { name: a.roles.worker });
+  const roleWords = heT("app.manage.access.done.roleOn", { role: "worker" });
+  const roleUndo = undoOf(page, roleWords);
+  await workers.focus();
+  await page.keyboard.press("Space");
+  await expect(workers).toHaveAttribute("aria-checked", "true");
+  await expect(roleUndo).toBeVisible();
+  await expect(workers).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(roleUndo).toBeFocused();
+  await page.waitForTimeout(ACCESS_UNDO_MS + 1_000);
+  await expect(roleUndo).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(workers).toHaveAttribute("aria-checked", "false");
+  await expect(workers).toBeFocused();
+  await expect(roleUndo).toHaveCount(0);
+});
+
+// The positions: the trash button goes with its row, so "ביטול" takes the
+// focus; undone, the position's own trash button has it again. The shifts:
+// removing one from its sheet closes the sheet onto "ביטול", which says
+// what went as the focus reaches it, and the announcer doesn't say it
+// meanwhile; undone, the shift's row has the focus. A sheet closed any
+// other way gives the focus back to the row that opened it.
+test("the scheduling settings give each removal's 'ביטול' the focus, and the focus back to what it brings back", async ({
+  page,
+}) => {
+  const polite = announcer(page, "polite");
+  await page.goto("/design/shell/manage/scheduling");
+  await page.waitForLoadState("networkidle");
+
+  const BARTENDER = "ברמן/ית";
+  const trash = page.getByRole("button", {
+    name: heT("app.manage.positions.remove", { name: BARTENDER }),
+  });
+  const positionRemoved = heT("app.manage.positions.removed", {
+    name: BARTENDER,
+  });
+  await trash.click();
+  await expect(undoOf(page, positionRemoved)).toBeFocused();
+  await expect(trash).toHaveCount(0);
+  await page.keyboard.press("Enter");
+  await expect(trash).toBeFocused();
+  await expect(undoOf(page, positionRemoved)).toHaveCount(0);
+
+  const EVENING = "ערב";
+  const row = page.getByRole("button", { name: new RegExp(`^${EVENING}`) });
+  const sheet = page.getByRole("dialog", { name: EVENING });
+  await row.click();
+  await expect(sheet).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+  await expect(row).toBeFocused();
+
+  const shiftRemoved = heT("app.manage.shifts.removed", { name: EVENING });
+  const shiftUndo = undoOf(page, shiftRemoved);
+  await row.click();
+  await heardSoFar(polite);
+  await sheet.getByRole("button", { name: m.shifts.remove }).click();
+  await expect(sheet).toBeHidden();
+  await expect(shiftUndo).toBeFocused();
+  await expect(shiftUndo).toHaveAccessibleDescription(shiftRemoved);
+  await pastDrawing(page);
+  await expect(saidSince(polite, shiftRemoved)).toHaveCount(0);
+  await expect(row).toHaveCount(0);
+  await page.keyboard.press("Enter");
+  await expect(row).toBeFocused();
+  await expect(shiftUndo).toHaveCount(0);
+});
+
+// A template's editor: an item and a time removed from their sheets close
+// them onto "ביטול", which says what went; undone, the row is back and has
+// the focus.
+test("the template editor closes a removal's sheet onto its 'ביטול', and gives the focus back to the row it brings back", async ({
+  page,
+}) => {
+  const polite = announcer(page, "polite");
+  await page.goto("/design/shell/lists/templates/t-kitchen-opening");
+  await page.waitForLoadState("networkidle");
+
+  const SURFACES = "ניקוי משטחי עבודה";
+  const item = page.getByRole("button", { name: new RegExp(`^${SURFACES}`) });
+  const itemRemoved = heT("app.lists.items.removed", { label: SURFACES });
+  const itemUndo = undoOf(page, itemRemoved);
+  await item.click();
+  const itemSheet = page.getByRole("dialog", { name: SURFACES });
+  await expect(itemSheet).toBeVisible();
+  await heardSoFar(polite);
+  await itemSheet.getByRole("button", { name: l.items.remove }).click();
+  await expect(itemSheet).toBeHidden();
+  await expect(itemUndo).toBeFocused();
+  await expect(itemUndo).toHaveAccessibleDescription(itemRemoved);
+  await pastDrawing(page);
+  await expect(saidSince(polite, itemRemoved)).toHaveCount(0);
+  await expect(item).toHaveCount(0);
+  await page.keyboard.press("Enter");
+  await expect(item).toBeFocused();
+  await expect(itemUndo).toHaveCount(0);
+
+  // Its one time, the first row of its section, before "הוספת זמן".
+  const times = page.locator("section").filter({
+    has: page.getByRole("heading", {
+      level: 2,
+      name: l.schedules.title,
+      exact: true,
+    }),
+  });
+  const rows = times.getByRole("button");
+  const add = times.getByRole("button", { name: l.schedules.add });
+  await expect(rows).toHaveCount(2);
+  await expect(rows.first()).not.toContainText(l.schedules.add);
+  const timeUndo = undoOf(page, l.schedules.removed);
+  await rows.first().click();
+  const timeSheet = page.getByRole("dialog", { name: l.schedules.sheet.title });
+  await expect(timeSheet).toBeVisible();
+  await timeSheet
+    .getByRole("button", { name: l.schedules.sheet.remove })
+    .click();
+  await expect(timeSheet).toBeHidden();
+  await expect(timeUndo).toBeFocused();
+  await expect(timeUndo).toHaveAccessibleDescription(l.schedules.removed);
+  // The time's row went: "הוספת זמן" and "ביטול" are left.
+  await expect(rows.first()).toContainText(l.schedules.add);
+  await page.keyboard.press("Enter");
+  await expect(timeUndo).toHaveCount(0);
+  await expect(rows).toHaveCount(2);
+  await expect(rows.first()).not.toContainText(l.schedules.add);
+  await expect(rows.first()).toBeFocused();
+  await expect(add).not.toBeFocused();
+});
+
+// On a phone, what closed today on Lists and what happened on a list are
+// folded under a summary; each is a heading too, as the wider screens'
+// sections are, so a screen reader moving by headings finds it. One
+// heading at every width: the phone's is gone where the sections show.
+test("the lists' folded sections are headings at every width", async ({
+  page,
+}, testInfo) => {
+  await page.goto("/design/shell/lists/list-kitchen-opening");
+  await expect(
+    page.getByRole("heading", {
+      level: 2,
+      name: l.list.timeline.title,
+      exact: true,
+    }),
+  ).toHaveCount(1);
+
+  await page.goto("/design/shell/lists");
+  // What closed today, in each form of its plural, any number in the last.
+  const forms = [0, 1].map((count) =>
+    literal(heT("app.lists.closedToday", { count })),
+  );
+  const many = literal(heT("app.lists.closedToday", { count: 2 })).replace(
+    /^2/,
+    "\\d+",
+  );
+  const closed = new RegExp(`^(${[...forms, many].join("|")})$`);
+  await expect(
+    page.getByRole("main").getByRole("heading", { level: 2, name: closed }),
+  ).toHaveCount(1);
+  if (testInfo.project.name === "phone") {
+    // The summary still opens what it folds, by its words.
+    const summary = page.getByRole("main").locator("summary");
+    await expect(summary).toHaveText(closed);
+  }
+});

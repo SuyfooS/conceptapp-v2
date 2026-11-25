@@ -12,7 +12,9 @@ import type { ListActionResult, ListFailure } from "./list-types";
  * five minutes while nobody has started it, which the database checks again
  * (`cancel_unstarted_list`). Lists always draws it, so it outlives the list:
  * once taken back, the list leaves the address and the screen, and this still
- * says so.
+ * says so. Lists comes right after the press that sent it, which went with
+ * the send screen: "ביטול" takes the focus as it appears, and its focus says
+ * where the list went (accessibility, part 8).
  */
 export function SentNotice({
   sent,
@@ -75,6 +77,7 @@ export function SentNotice({
           message={shown.message}
           onUndo={() => undo(shown.listId)}
           pending={pending}
+          autoFocus
         />
       ) : null}
       {started ? (

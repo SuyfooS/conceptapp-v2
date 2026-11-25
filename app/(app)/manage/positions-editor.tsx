@@ -5,16 +5,21 @@ import {
   type Position,
   positions as positionsSchema,
 } from "@domain/staffing";
+import { firstOnScreen, inViewWhenFocused } from "@ui/focus-after";
 import { IconButton } from "@ui/icon-button";
 import { ListGroup } from "@ui/list-row";
 import { PageSection } from "@ui/page";
 import { UndoRow } from "@ui/undo-row";
 import { Plus, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useRef, useState } from "react";
+import { byAttribute } from "./editor-focus";
 
 const NAME_MAX = 40;
 const POSITIONS_MAX = 30;
+
+/** The attribute each position's remove button carries: its key. */
+const POSITION_REMOVE = "data-position-remove";
 
 const rowClass =
   "relative flex min-h-[3.25rem] items-center gap-1 ps-4 pe-1.5 not-first:before:absolute not-first:before:start-4 not-first:before:end-0 not-first:before:top-0 not-first:before:h-px not-first:before:bg-line not-first:before:content-['']";
@@ -24,7 +29,10 @@ const inputClass =
 /**
  * The jobs people do at this business, in its own words. Each is a name to type
  * over, and a person keeps their shift when the job they had on it goes. Whatever
- * doesn't save comes back as it was, with the way back still there.
+ * doesn't save comes back as it was, with the way back still there. The
+ * remove button goes with its row, so "ביטול" takes the focus as it appears;
+ * undone, the focus is on the position's remove button again, not its name,
+ * a field a phone would open its keyboard for (accessibility, part 8).
  */
 export function PositionsEditor({
   title,
@@ -48,6 +56,7 @@ export function PositionsEditor({
     position: Position;
     index: number;
   } | null>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
 
   const named = (text: string, except?: string) =>
     positions.some(
@@ -112,7 +121,7 @@ export function PositionsEditor({
   }
 
   return (
-    <PageSection title={title}>
+    <PageSection title={title} headingRef={heading}>
       <ListGroup>
         {positions.length === 0 ? (
           <p className="px-4 py-3.5 text-ink-2">
@@ -143,6 +152,9 @@ export function PositionsEditor({
                 label={t("remove", { name: position.name })}
                 icon={<Trash2 />}
                 className="text-ink-2"
+                // Found again by its key once "ביטול" brings it back
+                // (POSITION_REMOVE).
+                data-position-remove={position.key}
                 onClick={() => remove(index)}
               />
             )}
@@ -179,10 +191,23 @@ export function PositionsEditor({
       ) : null}
       {removed ? (
         <UndoRow
-          // Each removal a row of its own, said afresh.
+          // Each removal a row of its own: another while this one is up
+          // takes the focus again.
           key={removed.position.key}
           message={t("removed", { name: removed.position.name })}
           onUndo={undo}
+          // The row went with the button pressed.
+          autoFocus
+          // Undone, the position is back where it was, maybe far above this
+          // row: its remove button takes the focus, brought into view.
+          focusAfter={() => [
+            inViewWhenFocused(
+              firstOnScreen([
+                byAttribute(POSITION_REMOVE, removed.position.key),
+              ]),
+            ),
+            heading.current,
+          ]}
         />
       ) : null}
       {hint ? <p className="px-1 text-ink-2 text-sm">{hint}</p> : null}

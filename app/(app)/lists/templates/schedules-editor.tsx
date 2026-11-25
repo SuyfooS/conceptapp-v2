@@ -31,6 +31,7 @@ import { cn } from "@ui/cn";
 import { DayToggles } from "@ui/day-toggles";
 import { FieldGroup } from "@ui/field-group";
 import { FieldRow, rowPillInputClass } from "@ui/field-row";
+import { inViewWhenFocused } from "@ui/focus-after";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageSection } from "@ui/page";
 import { Segmented } from "@ui/segmented";
@@ -41,6 +42,8 @@ import { UndoRow } from "@ui/undo-row";
 import { CalendarClock, Plus } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { groupRow } from "../../manage/editor-focus";
+import { useSheetReturn } from "../../manage/use-sheet-return";
 import type { EditorTimes, ListRoleOption } from "../list-types";
 import { clockOf, ltr, useTimeWords } from "./schedule-words";
 
@@ -207,8 +210,10 @@ function useScheduleWords(times: EditorTimes, places: SchedulePlacesData) {
  * A template's times (lists L4): each row says when the list opens (its days
  * and its hour, or around a shift), by when, who it goes to and when it is
  * sent next, as the database will open it, and opens a sheet to change,
- * pause or remove it, with the undo of a removal. Adding is the row at the
- * end, up to seven. A time that points at something gone says so on its
+ * pause or remove it, with the undo of a removal: the sheet closes onto its
+ * "ביטול", which says what went, and once undone the focus is on the time's
+ * row again (accessibility, part 8). Adding is the row at the end, up to
+ * seven. A time that points at something gone says so on its
  * row (the editor says on top that it holds the saves, and `fixGone` opens
  * the first such time). A business closed on Shabbat reads its Shabbat rule
  * under them. Used by the template editor.
@@ -261,6 +266,9 @@ export function SchedulesEditor({
     schedule: DraftSchedule;
     index: number;
   } | null>(null);
+  const back = useSheetReturn();
+  // The rows, for the one "ביטול" puts back.
+  const group = useRef<HTMLDivElement>(null);
 
   const blank = (): DraftSchedule => ({
     key: newScheduleKey(),
@@ -277,6 +285,7 @@ export function SchedulesEditor({
   });
 
   function show(schedule: DraftSchedule, isNew: boolean) {
+    back.opening();
     setEditing({ schedule, isNew });
     setOpen(true);
   }
@@ -299,6 +308,7 @@ export function SchedulesEditor({
     const index = schedules.findIndex((schedule) => schedule.key === key);
     const schedule = schedules[index];
     if (!schedule) return;
+    back.removing();
     setRemoved({ schedule, index });
     onChange(schedules.filter((other) => other.key !== key));
   }
@@ -328,8 +338,8 @@ export function SchedulesEditor({
   );
 
   return (
-    <PageSection title={t("title")}>
-      <ListGroup>
+    <PageSection title={t("title")} headingRef={back.heading}>
+      <ListGroup ref={group}>
         {schedules.length === 0 ? (
           <p className="px-4 py-3.5 text-ink-2">
             {readOnly ? t("emptyReadOnly") : t("empty")}
@@ -401,6 +411,15 @@ export function SchedulesEditor({
           key={removed.schedule.key}
           message={t("removed")}
           onUndo={undo}
+          // The sheet closes onto it, and its focus says it.
+          quiet
+          buttonRef={back.undoButton}
+          // Undone, the time is back in its place, maybe above this row: its
+          // row takes the focus, brought into view.
+          focusAfter={() => [
+            inViewWhenFocused(groupRow(group.current, removed.index)),
+            back.heading.current,
+          ]}
         />
       ) : null}
       <Sheet
@@ -408,6 +427,7 @@ export function SchedulesEditor({
         onOpenChange={setOpen}
         title={editing?.isNew ? t("sheet.newTitle") : t("sheet.title")}
         closeLabel={t("sheet.close")}
+        returnFocus={back.returnFocus}
       >
         {editing ? (
           <ScheduleForm

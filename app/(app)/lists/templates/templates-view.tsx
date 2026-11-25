@@ -36,8 +36,9 @@ const td = "border-line border-t px-4 py-3 align-middle";
  * one group under the other. Tablet: the groups in two columns. Desktop: one
  * table, with when each goes and who asks for each order.
  * Removed ones wait folded at the end, each with its way back, and the one
- * just removed in its editor has its undo on top. Used on /lists/templates
- * and by the team in the console.
+ * just removed in its editor has its undo on top, which takes the focus as
+ * the screen comes after the press in the editor (accessibility, part 8).
+ * Used on /lists/templates and by the team in the console.
  */
 export function TemplatesView({
   data,
@@ -207,6 +208,8 @@ export function TemplatesView({
           message={t("removed", { name: just.name })}
           onUndo={() => bringBack(just, true)}
           pending={pending && restoring === just.id}
+          // The editor's "הסרת הרשימה" went with the editor.
+          autoFocus
         />
       ) : null}
       {failure ? (

@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import he from "../messages/he.json" with { type: "json" };
+import { announcer, heardSoFar, pastDrawing, saidSince } from "./announcer";
 import { demoLists, endViewSessions, resetDemoLists } from "./db";
 import { secondPage, signIn } from "./session";
 import { countedTabName } from "./t";
@@ -145,18 +146,32 @@ test("a worker fills the kitchen's opening list, finishes it and takes it back",
   });
 
   // Finishing it, with the optional note left empty, then taking it back.
+  // The screen starts anew each time, without what was pressed: after the
+  // finish "ביטול" has the focus, which says the list closed (the
+  // announcer doesn't, too); once open again the list's title has it, and
+  // the announcer says so (accessibility, part 8).
+  const polite = announcer(page, "polite");
+  const title = page.getByRole("heading", { level: 1, name: OPENING });
+  await heardSoFar(polite);
   await finishButton(page).click();
   const undo = page
     .getByRole("status")
     .filter({ hasText: l.list.finished })
     .getByRole("button", { name: he.app.manage.undo });
   await expect(undo).toBeVisible();
+  await expect(undo).toBeFocused();
+  await expect(undo).toHaveAccessibleDescription(l.list.finished);
+  await pastDrawing(page);
+  await expect(saidSince(polite, l.list.finished)).toHaveCount(0);
   await expect
     .poll(async () => (await demoLists(OPENING))[0]?.status)
     .toBe("finished");
   await expectCleanPage(page);
+  await heardSoFar(polite);
   await undo.click();
   await expect(finishButton(page)).toBeEnabled();
+  await expect(title).toBeFocused();
+  await expect(saidSince(polite, l.list.reopened)).toHaveCount(1);
   await expect
     .poll(async () => (await demoLists(OPENING))[0]?.status)
     .toBe("open");
@@ -165,6 +180,7 @@ test("a worker fills the kitchen's opening list, finishes it and takes it back",
   // and a worker's only way back is the undo.
   await finishButton(page).click();
   await expect(undo).toBeVisible();
+  await expect(undo).toBeFocused();
   await expect
     .poll(async () => (await demoLists(OPENING))[0]?.status)
     .toBe("finished");

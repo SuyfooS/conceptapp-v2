@@ -11,6 +11,7 @@ import { cn } from "@ui/cn";
 import { DayToggles } from "@ui/day-toggles";
 import { FieldGroup, GroupedField } from "@ui/field-group";
 import { FieldRow, rowPillInputClass } from "@ui/field-row";
+import { inViewWhenFocused } from "@ui/focus-after";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageSection } from "@ui/page";
 import { Sheet } from "@ui/sheet";
@@ -19,7 +20,9 @@ import { ltrInputClass } from "@ui/text-field";
 import { UndoRow } from "@ui/undo-row";
 import { Plus } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
+import { groupRow } from "./editor-focus";
+import { useSheetReturn } from "./use-sheet-return";
 
 const SHIFTS_MAX = 30;
 const NAME_MAX = 40;
@@ -38,6 +41,8 @@ const blank = (): ShiftPattern => ({
 /**
  * The shifts every new week starts from. Each row says what it is at a glance,
  * and opens a sheet to change it. Weeks already saved keep their own shifts.
+ * Removing one closes its sheet onto the removal's "ביטול", which says what
+ * went; undone, the focus is back on the shift's row (accessibility, part 8).
  */
 export function ShiftsEditor({
   title,
@@ -66,6 +71,9 @@ export function ShiftsEditor({
     shift: ShiftPattern;
     index: number;
   } | null>(null);
+  const back = useSheetReturn();
+  // The rows, for the one "ביטול" puts back.
+  const group = useRef<HTMLDivElement>(null);
 
   const daysOf = (days: number[]) =>
     days.length === 7
@@ -76,6 +84,7 @@ export function ShiftsEditor({
           .join(" ");
 
   function show(shift: ShiftPattern, isNew: boolean) {
+    back.opening();
     setEditing({ shift, isNew, failed: false });
     setOpen(true);
   }
@@ -102,6 +111,7 @@ export function ShiftsEditor({
     const shift = shifts[index];
     setOpen(false);
     if (!shift) return;
+    back.removing();
     const before = removed;
     setRemoved({ shift, index });
     const saved = await onChange(shifts.filter((other) => other.key !== key));
@@ -119,8 +129,8 @@ export function ShiftsEditor({
   }
 
   return (
-    <PageSection title={title}>
-      <ListGroup>
+    <PageSection title={title} headingRef={back.heading}>
+      <ListGroup ref={group}>
         {shifts.length === 0 ? (
           <p className="px-4 py-3.5 text-ink-2">
             {t(disabled ? "emptyViewOnly" : "empty")}
@@ -159,10 +169,19 @@ export function ShiftsEditor({
       </ListGroup>
       {removed ? (
         <UndoRow
-          // Each removal a row of its own, said afresh.
+          // Each removal a row of its own.
           key={removed.shift.key}
           message={t("removed", { name: removed.shift.name })}
           onUndo={undo}
+          // The sheet closes onto it, and its focus says it.
+          quiet
+          buttonRef={back.undoButton}
+          // Undone, the shift is back in its place, maybe above this row:
+          // its row takes the focus, brought into view.
+          focusAfter={() => [
+            inViewWhenFocused(groupRow(group.current, removed.index)),
+            back.heading.current,
+          ]}
         />
       ) : null}
       {hint ? <p className="px-1 text-ink-2 text-sm">{hint}</p> : null}
@@ -171,6 +190,7 @@ export function ShiftsEditor({
         onOpenChange={setOpen}
         title={editing?.isNew ? t("newTitle") : editing?.shift.name}
         closeLabel={t("close")}
+        returnFocus={back.returnFocus}
       >
         {editing ? (
           <ShiftForm
