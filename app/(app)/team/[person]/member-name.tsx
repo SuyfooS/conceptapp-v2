@@ -5,8 +5,10 @@ import {
   TEAM_NAME_MAX,
   unchangedMemberName,
 } from "@domain/team";
+import { announce } from "@ui/announcer";
 import { Button } from "@ui/button";
 import { FieldGroup, GroupedField } from "@ui/field-group";
+import { arrived, firstOnScreen, focusFirst } from "@ui/focus-after";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { Sheet } from "@ui/sheet";
 import { StatusToast } from "@ui/status-toast";
@@ -16,11 +18,18 @@ import {
   createContext,
   type FormEvent,
   type ReactNode,
+  type RefObject,
   use,
   useLayoutEffect,
   useRef,
   useState,
 } from "react";
+import {
+  answerHeard,
+  focusAt,
+  useQuietWhy,
+} from "../../../(auth)/step-results";
+import { type HeldTimer, heldTimer } from "../../held-timer";
 import { HOLD_MS } from "../../use-held-write";
 import type {
   MemberChangeActions,
@@ -29,7 +38,14 @@ import type {
 } from "../team-change-types";
 import { MemberRoleNotes, MemberRoleRow, useShownRole } from "./member-changes";
 
-type Undo = { message: string; run: () => void };
+/** A fix's undo: each fix a row of its own (`key`), said and focused afresh. */
+type Undo = { key: string; message: string; run: () => void };
+
+/**
+ * What a fix came to: refused (the sheet stays open), nothing written (the
+ * name as it was, or the same once stored), or written, with its undo.
+ */
+type Fixed = false | "same" | "written";
 
 /** A name the screen shows, and whether it is the business's own for them. */
 type Shown = { name: string | null; kept: boolean };
@@ -48,11 +64,18 @@ type NameValue = {
   failure: TeamChangeActionFailure | null;
   /** The undo of a fix just written: the fix back. */
   undo: Undo | null;
+  /** Its "ביטול" is being reached: its time waits as long. */
+  undoWaits: (waiting: boolean) => void;
+  /** The row "שם", once pressed: where the focus comes back to. */
+  nameRow: RefObject<HTMLButtonElement | null>;
+  keepNameRow: (row: HTMLButtonElement) => void;
+  /** The undo's "ביטול": the sheet closes onto it after a fix. */
+  undoButton: RefObject<HTMLButtonElement | null>;
   toast: { text: string; stamp: string } | null;
   /** The sheet is open: a failure shows there, else under the group. */
   open: boolean;
   setOpen: (open: boolean) => void;
-  fix: (name: string) => Promise<boolean>;
+  fix: (name: string) => Promise<Fixed>;
 };
 
 const NameContext = createContext<NameValue | null>(null);
@@ -105,23 +128,38 @@ export function MemberNameState({
   // Made an owner: a sheet left open closes, and stays closed after.
   if (!fixes && open) setOpenState(false);
   const [undo, setUndo] = useState<Undo | null>(null);
-  const undoTimer = useRef<number | null>(null);
+  // The undo waits as a held write does, and stops while its "ביטול" is
+  // being reached.
+  const undoTimer = useRef<HeldTimer | null>(null);
+  const undos = useRef(0);
+  const nameRow = useRef<HTMLButtonElement>(null);
+  const undoButton = useRef<HTMLButtonElement>(null);
   const [toast, setToast] = useState<{ text: string; stamp: string } | null>(
     null,
   );
 
+  function keepNameRow(row: HTMLButtonElement) {
+    nameRow.current = row;
+  }
+
   function clearUndo() {
-    if (undoTimer.current !== null) window.clearTimeout(undoTimer.current);
+    undoTimer.current?.clear();
     undoTimer.current = null;
     setUndo(null);
   }
-  function showUndo(next: Undo) {
+  function showUndo(next: Omit<Undo, "key">) {
     clearUndo();
-    setUndo(next);
-    undoTimer.current = window.setTimeout(() => {
+    undos.current += 1;
+    const shownUndo: Undo = { ...next, key: String(undos.current) };
+    setUndo(shownUndo);
+    undoTimer.current = heldTimer(HOLD_MS, () => {
       undoTimer.current = null;
-      setUndo((now) => (now === next ? null : now));
-    }, HOLD_MS);
+      setUndo((now) => (now === shownUndo ? null : now));
+    });
+  }
+  function undoWaits(waiting: boolean) {
+    if (waiting) undoTimer.current?.pause();
+    else undoTimer.current?.resume();
   }
 
   function setOpen(next: boolean) {
@@ -135,11 +173,12 @@ export function MemberNameState({
    * with the fix back as its undo; nothing when that writes nothing
    * (`unchangedMemberName`: a name the business keeps with what nobody sees
    * is saved clean; their own name keeps no row, however it is stored).
-   * Whether the sheet may close.
+   * Whether the sheet may close, and whether a fix was written, with its
+   * undo, which the sheet closes onto.
    */
-  async function fix(to: string): Promise<boolean> {
+  async function fix(to: string): Promise<Fixed> {
     const from = shown;
-    if (unchangedMemberName(to, from.name, from.kept)) return true;
+    if (unchangedMemberName(to, from.name, from.kept)) return "same";
     if (busy) return false;
     setFailure(null);
     clearUndo();
@@ -150,7 +189,7 @@ export function MemberNameState({
       setFailure(result.failure);
       return false;
     }
-    if (!result.changed) return true;
+    if (!result.changed) return "same";
     // The server keeps `to` as sent and answers with it, unless it is their
     // own name, which keeps no row: then it answers with theirs as stored.
     const now: Shown = { name: result.name, kept: result.name === to };
@@ -159,7 +198,7 @@ export function MemberNameState({
       message: t("nameChanged", { name: now.name ?? to }),
       run: () => void changeBack(from, now),
     });
-    return true;
+    return "written";
   }
 
   /**
@@ -197,6 +236,10 @@ export function MemberNameState({
         busy,
         failure,
         undo,
+        undoWaits,
+        nameRow,
+        keepNameRow,
+        undoButton,
         toast,
         open,
         setOpen,
@@ -249,30 +292,58 @@ export function TeamPlace() {
  * "שם" with the name under it, so a long one wraps, which opens the sheet to
  * fix it. Its sheet comes after it: a sheet leaves a hidden mark in its
  * place, and the rows' hairlines count who comes first. None for an owner,
- * nor while a change to owner waits for its undo (`useFixes`).
+ * nor while a change to owner waits for its undo (`useFixes`). A fix
+ * written closes the sheet onto its "ביטול", which came while the sheet was
+ * open; anything else, onto the row.
  */
 function MemberNameRow() {
   const value = use(NameContext);
   const fixes = useFixes(value);
   const t = useTranslations("app.team.changes");
   const tTeam = useTranslations("app.team");
+  // A fix was written in this opening: the sheet closes onto its undo.
+  const written = useRef(false);
   if (!value || !fixes) return null;
   return (
     <>
       <ListRow
         title={t("name")}
         subtitle={value.shown ?? tTeam("noName")}
-        disabled={value.busy}
-        onClick={() => value.setOpen(true)}
+        // Dimmed while a fix or its undo is on its way, and still
+        // reachable: the focus comes back to it when the undo goes.
+        disabled={value.busy ? "focusable" : false}
+        onClick={(event) => {
+          value.keepNameRow(event.currentTarget);
+          written.current = false;
+          value.setOpen(true);
+        }}
       />
       <Sheet
         open={value.open}
-        onOpenChange={value.setOpen}
+        // Held while the fix is on its way: its answer belongs on this
+        // sheet, which then closes onto its "ביטול" (✕, Escape, the scrim
+        // and a swipe wait for it, as Sheet asks).
+        onOpenChange={(next) => {
+          if (next || !value.busy) value.setOpen(next);
+        }}
         title={t("nameSheet")}
         closeLabel={t("close")}
+        returnFocus={() => {
+          const back = written.current
+            ? [value.undoButton.current, value.nameRow.current]
+            : [value.nameRow.current];
+          written.current = false;
+          return firstOnScreen(back);
+        }}
       >
         {/* Mounted on each opening, so it starts from the name shown. */}
-        <NameForm value={value} />
+        <NameForm
+          value={value}
+          onDone={(fixed) => {
+            written.current = fixed === "written";
+            value.setOpen(false);
+          }}
+        />
       </Sheet>
     </>
   );
@@ -287,13 +358,45 @@ function useNameFailure() {
       : t(`failures.${failure}`);
 }
 
-function NameForm({ value }: { value: NameValue }) {
+/** A name the sheet refused itself, and how many it refused before it. */
+type Refused = { why: "required" | "tooLong"; count: number };
+
+/** A fix the server refused, and how many it refused before it. */
+type Declined = { count: number };
+
+/**
+ * The name to fix, in the sheet. A name it refuses itself (none, too long)
+ * is said once, through the page's announcer, as the invite form says its
+ * name (`answerHeard`): from the press, the field takes the focus and why is
+ * said after its read; from the field itself (Enter), it is said at once.
+ * Either way the field keeps the focus, read as invalid, with why out of its
+ * description meanwhile (`useQuietWhy`), so it isn't said twice. Each
+ * refusal is its own (`Refused.count`), so the same one again is heard too.
+ * A fix the server refuses is said by its line; the press, busy while the
+ * fix was on its way, lost the focus, and takes it back (`Declined`), else
+ * the field, so it never stays on the sheet's frame.
+ */
+function NameForm({
+  value,
+  onDone,
+}: {
+  value: NameValue;
+  /** The fix went through (`Fixed`): the sheet closes. */
+  onDone: (fixed: Exclude<Fixed, false>) => void;
+}) {
   const t = useTranslations("app.team.changes");
   const tInvite = useTranslations("app.team.invite");
   const failureText = useNameFailure();
   const field = useRef<HTMLInputElement>(null);
+  const press = useRef<HTMLButtonElement>(null);
   const [draft, setDraft] = useState(value.shown ?? "");
-  const [error, setError] = useState<"required" | "tooLong" | null>(null);
+  const [refused, setRefused] = useState<Refused | null>(null);
+  const refusals = useRef(0);
+  const seen = useRef<Refused | null>(null);
+  const [declined, setDeclined] = useState<Declined | null>(null);
+  const seenDeclined = useRef<Declined | null>(null);
+  const { quiet, hush } = useQuietWhy(field);
+  const why = refused ? tInvite(`errors.name.${refused.why}`) : undefined;
   const parsed = parseTeamName(draft);
   // A name stored with a double space, or with its letters decomposed, is no
   // fix until a letter really differs. One the business keeps with what
@@ -301,17 +404,37 @@ function NameForm({ value }: { value: NameValue }) {
   // cleans it; their own name it never cleans, so there it is none.
   const same = unchangedMemberName(draft, value.shown, value.kept);
 
+  // Each refusal once, as it is drawn (`arrived`), in the drawing's own
+  // pass, so a field that keeps the focus is drawn without why in its
+  // description.
+  useLayoutEffect(() => {
+    const at = field.current;
+    if (!arrived(seen, refused) || !refused || !why || !at) return;
+    const said = answerHeard({ error: why, at: focusAt(at) });
+    if (said.focus) at.focus();
+    if (said.say) announce(said.say.words, { politeness: said.say.politeness });
+    if (said.quiet) hush(refused.count);
+  }, [refused, why, hush]);
+
+  // Each of the server's refusals once, as it is drawn with the press no
+  // longer busy: only while the focus is lost, so where the person put it
+  // meanwhile stays.
+  useLayoutEffect(() => {
+    if (!arrived(seenDeclined, declined)) return;
+    focusFirst([press.current, field.current], { title: false });
+  }, [declined]);
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (value.busy) return;
     if (!parsed.ok) {
-      // Said as an alert wherever the focus was, then the field takes it, to
-      // write the name at once.
-      setError(parsed.error);
-      field.current?.focus();
+      refusals.current += 1;
+      setRefused({ why: parsed.error, count: refusals.current });
       return;
     }
-    if (await value.fix(parsed.name)) value.setOpen(false);
+    const fixed = await value.fix(parsed.name);
+    if (fixed) onDone(fixed);
+    else setDeclined((was) => ({ count: (was?.count ?? 0) + 1 }));
   }
 
   return (
@@ -332,13 +455,10 @@ function NameForm({ value }: { value: NameValue }) {
           value={draft}
           onChange={(event) => {
             setDraft(event.target.value);
-            setError(null);
+            setRefused(null);
           }}
-          error={
-            error ? (
-              <span role="alert">{tInvite(`errors.name.${error}`)}</span>
-            ) : undefined
-          }
+          error={why}
+          quietMessage={refused !== null && quiet === refused.count}
           required
         />
       </FieldGroup>
@@ -349,6 +469,7 @@ function NameForm({ value }: { value: NameValue }) {
         </p>
       ) : null}
       <Button
+        ref={press}
         type="submit"
         size="lg"
         loading={value.busy}
@@ -379,7 +500,19 @@ function MemberNameNotes() {
         stamp={value.toast?.stamp}
       />
       {fixes && value.undo ? (
-        <UndoRow message={value.undo.message} onUndo={value.undo.run} />
+        // Quiet: the sheet closes onto it (it holds its close until the
+        // fix's answer), and its focus says its words. Another fix while it
+        // is up is a row of its own. Undone, or its time up, the focus goes
+        // back to the row "שם".
+        <UndoRow
+          key={value.undo.key}
+          message={value.undo.message}
+          onUndo={value.undo.run}
+          quiet
+          buttonRef={value.undoButton}
+          onWaitingChange={value.undoWaits}
+          focusAfter={() => [value.nameRow.current]}
+        />
       ) : null}
       {fixes && value.failure && !value.open ? (
         <p role="alert" className="px-1 text-base text-danger">
