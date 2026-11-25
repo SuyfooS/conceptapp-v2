@@ -2425,8 +2425,9 @@ test("next week's demo copies last week, says who was left out, and takes it bac
 // open, each with why; Shiran goes into Sunday's morning; Sunday's evening,
 // with people on it, says nobody else sent availability for all of it, and
 // that two cover part of it; Omer and Shira sent nothing, and are named,
-// with the way to remind them, never Uri, the owner. Nothing is saved until
-// the dock is pressed. Filled, the toast's "ביטול", which takes the focus
+// with the way to remind them, never Uri, the owner. It says it checks
+// nobody's age. Nothing is saved until the dock is pressed. Filled, the
+// toast's "ביטול", which takes the focus
 // and says what it takes off, brings the morning back as it was. With
 // Shiran away on Sunday (&away=1), Sunday's morning stays open, naming her
 // as away, and the sheet says that days away count. The shop's next week,
@@ -2479,6 +2480,8 @@ test("the builder's demos fill from availability, say why places stay open, and 
   await expect(sheet).toContainText(tf.note);
   // The twin has no clock to say days away are known: no line about them.
   await expect(sheet).not.toContainText(tf.away);
+  // The fill checks nobody's age, and says so in every business.
+  await expect(sheet).toContainText(tf.age);
   await expectCleanPage(page, path, true);
 
   await sheet
@@ -2530,6 +2533,61 @@ test("the builder's demos fill from availability, say why places stay open, and 
   await page.keyboard.press("Escape");
   await expect(sheet).toHaveCount(0);
   await expect(fill).toBeFocused();
+});
+
+// After a fill on the restaurant's twin, a change by hand (Uri onto Sunday's
+// morning) takes the fill's "ביטול" away, toast and all, since it would take
+// that change too. With the screen unsaved and 12 places still open, the
+// fill's sheet leads to the team's availability: that way out asks first, as
+// every one does, with the fill's sheet out of the way meanwhile, never two
+// sheets at once. "חזרה לסידור" brings the fill's sheet back; "יציאה בלי
+// לשמור" goes there with neither sheet open.
+test("the builder's demo: an edit after a fill takes its undo, and the fill's link asks with its sheet away", async ({
+  page,
+}) => {
+  const tb = he.app.build;
+  const tf = tb.fill;
+  const screen = buildScreen(page);
+  const fill = page.getByRole("button", { name: tf.action });
+  const sheet = page.getByRole("dialog", { name: tf.title });
+  const leave = page.getByRole("dialog", { name: tb.leave.title });
+  const remind = sheet.getByRole("link", {
+    name: /<link>(.*)<\/link>/.exec(tf.remind)?.[1] ?? tf.remind,
+  });
+  const toast = page
+    .getByRole("status")
+    .filter({ hasText: heT("app.build.fill.done", { count: 3 }) });
+
+  await page.goto("/design/shell/schedule/build");
+  await fill.click();
+  await sheet
+    .getByRole("button", { name: heT("app.build.fill.submit", { count: 3 }) })
+    .click();
+  await expect(sheet).toHaveCount(0);
+  await expect(toast).toBeVisible();
+  await screen.card("בוקר").click();
+  await screen.addButton("אורי בן דוד").click();
+  await screen.closeSheet();
+  // Gone with the change, well inside the 10 seconds it would stay otherwise.
+  await expect(toast).toHaveCount(0, { timeout: 2_000 });
+  await expect(page.getByText(tb.unsaved)).toBeVisible();
+
+  await fill.click();
+  await remind.click();
+  await expect(leave).toBeVisible();
+  await expect(sheet).toHaveCount(0);
+  await leave.getByRole("button", { name: tb.leave.stay }).click();
+  await expect(leave).toHaveCount(0);
+  await expect(sheet).toBeVisible();
+
+  await remind.click();
+  await expect(leave).toBeVisible();
+  await expect(sheet).toHaveCount(0);
+  await leave.getByRole("button", { name: tb.leave.discard }).click();
+  await expect(page).toHaveURL(
+    /\/design\/shell\/schedule\/availability\/team$/,
+  );
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
 // The demo door per site (P9): the demo's site offers it from sign-in; the

@@ -15,7 +15,12 @@ import { Sheet } from "@ui/sheet";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useId } from "react";
-import { type FillReason, fillDays, fillReason } from "./fill-reasons";
+import {
+  type FillReason,
+  fillDays,
+  fillLine,
+  fillReason,
+} from "./fill-reasons";
 import { SheetSection } from "./sheet-section";
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
@@ -43,15 +48,17 @@ const NOTHING: WeekFill = {
 /**
  * What filling the week from the staff's availability would do, before
  * anything changes on the screen ("מילוי מהזמינות"): how many places and
- * people, the rules it keeps, who sent no availability (and so is never
- * placed) with the way to remind them while the week is next week's, who
- * sent some and gets no shift, and each shift that has an open place, day by
- * day: who goes on it, and why a place stays open. Its main action puts the
- * fill on the screen; nothing is saved or sent until the dock's buttons are
- * pressed, and the sheet says so. With nobody to place it says why instead,
- * and each shift still says what keeps it open. It is drawn closed before
- * anything is worked out (`fill` null), as the builder's other sheets are,
- * so it opens inside the business's colour.
+ * people, the rules it keeps, that it checks nobody's age, who sent no
+ * availability (and so is never placed) with the way to remind them while
+ * the week is next week's, else to place them by hand, who sent some and
+ * gets no shift, and each shift that has an open place, day by day: who goes
+ * on it, and why a place stays open. Its main action puts the fill on the
+ * screen; nothing is saved or sent until the dock's buttons are pressed, and
+ * the sheet says so. With nobody to place it says why instead (`fillLine`),
+ * and each shift still says what keeps it open; once the clock has begun the
+ * last shift with an open place, it says nothing is left to fill. It is
+ * drawn closed before anything is worked out (`fill` null), as the builder's
+ * other sheets are, so it opens inside the business's colour.
  */
 export function FillWeekSheet({
   open,
@@ -78,7 +85,9 @@ export function FillWeekSheet({
   answers: readonly { userId: string }[];
   /**
    * Where the team's availability is, with its reminder, while the builder
-   * shows the week that screen covers (next week); null otherwise.
+   * shows the week that screen covers (next week); null otherwise, the week
+   * running now, whose answers can no longer come: then the sheet says to
+   * place people by hand.
    */
   remindHref: string | null;
   /** Days away are known (the time clock is on): the sheet says they count. */
@@ -97,11 +106,7 @@ export function FillWeekSheet({
   const daysId = useId();
   const fill = worked ?? NOTHING;
   const canFill = fill.places > 0;
-  const line = canFill
-    ? t("fill.note")
-    : fill.answered === 0
-      ? t("fill.nothing.noAnswers")
-      : t("fill.nothing.none");
+  const line = t(`fill.${fillLine(fill, remindHref !== null)}`);
 
   /** Names, by name, joined as the screens join them. */
   const names = (users: readonly string[]) =>
@@ -244,14 +249,17 @@ export function FillWeekSheet({
           {/* Days away are read only while the time clock is on: with it
               off the sheet says nothing of what it can't see. */}
           {clock ? ` ${t("fill.away")}` : null}
+          {/* Minors are placed like everyone (Orel, 25.11): the manager
+              checks, so the sheet says the fill doesn't, in every business. */}
+          {` ${t("fill.age")}`}
         </p>
         {missing.length > 0 ? (
           <p className="px-3 pt-3 text-base text-ink">
-            {t("fill.noAnswer", { names: names(missing) })}
-            {remind && remindHref ? (
-              <>
-                {" "}
-                {t.rich("fill.remind", {
+            {t("fill.noAnswer", { names: names(missing) })}{" "}
+            {/* Next week's can still be sent; the week running now's can't,
+                so the way left is by hand. */}
+            {remindHref
+              ? t.rich("fill.remind", {
                   link: (chunks) => (
                     <Link
                       href={remindHref}
@@ -260,9 +268,8 @@ export function FillWeekSheet({
                       {chunks}
                     </Link>
                   ),
-                })}
-              </>
-            ) : null}
+                })
+              : t("fill.byHand")}
           </p>
         ) : null}
         {fill.unplaced.length > 0 ? (

@@ -1261,11 +1261,15 @@ export async function publishDemoRunningWeek(
  * relative to the real clock, through the database functions the app uses,
  * as its manager, as a draft saved before the week turned stays (the
  * running-week plan's R4): one shift today, "ערב", starting in an hour for an
- * hour, with `person` on it, so nothing still to start lacks anyone. Callers
- * skip near the week's edges and near midnight (`demoRunningWeekClock`). By
- * phone number.
+ * hour, with `person` on it, so nothing still to start lacks anyone; with
+ * `needed` above one, the same shift with places still open in it (the
+ * fill's offer on the week running now). Callers skip near the week's
+ * edges and near midnight (`demoRunningWeekClock`). By phone number.
  */
-export async function saveDemoRunningWeek(person: string): Promise<void> {
+export async function saveDemoRunningWeek(
+  person: string,
+  needed = 1,
+): Promise<void> {
   const [profile] = await sql<{ id: string }[]>`
     select id::text from public.profiles where phone = ${person}`;
   const [week] = await sql<
@@ -1295,7 +1299,7 @@ export async function saveDemoRunningWeek(person: string): Promise<void> {
         name: "ערב",
         start: week.starts,
         end: week.ends,
-        needed: 1,
+        needed,
         pattern: "evening",
         assignees: [{ user: profile.id, position: null }],
       },

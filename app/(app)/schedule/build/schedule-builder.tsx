@@ -50,7 +50,12 @@ import { Button } from "@ui/button";
 import { Card, CardText } from "@ui/card";
 import { cn } from "@ui/cn";
 import { DockButton, FloatingDock } from "@ui/floating-dock";
-import { type FocusCandidate, focusFirst, focusLost } from "@ui/focus-after";
+import {
+  type FocusCandidate,
+  focusFirst,
+  focusLost,
+  ignoreHeldEnter,
+} from "@ui/focus-after";
 import { Segmented } from "@ui/segmented";
 import { Sheet } from "@ui/sheet";
 import { StatusToast } from "@ui/status-toast";
@@ -1279,10 +1284,14 @@ function WeekBuilder({
   // published week changes only by being published again, one that is over
   // takes nothing more, and once nothing is left to fill it goes, rather
   // than stay with nothing to do. Worked out while its sheet is open, from
-  // the screen as it stands and the builder's clock.
-  const offerFill = !published && !weekOver && gaps.people > 0;
+  // the screen as it stands and the builder's clock. The sheet stays open
+  // on a draft, not on the pill: should the clock begin the last shift with
+  // an open place meanwhile, it says nothing is left to fill until it is
+  // closed, rather than go by itself with `fillOpen` left behind.
+  const fillable = !published && !weekOver;
+  const offerFill = fillable && gaps.people > 0;
   const liveFill =
-    fillOpen && offerFill
+    fillOpen && fillable
       ? fillFromAvailability({
           weekStart: week.start,
           screen: shifts,
@@ -1309,8 +1318,10 @@ function WeekBuilder({
   function closeFill() {
     setShownFill(liveFill);
     setFillOpen(false);
-    const back = opener.current;
-    if (back) focusAfterClose([back]);
+    // Its pill, unless the clock took the last open place meanwhile and the
+    // pill with it: then where the toast's "ביטול" of a fill would go, the
+    // copy's pill, else the line that says where the week stands.
+    focusAfterClose([opener.current, ...afterScreen("fill"), BUILDER_STATUS]);
   }
 
   /**
@@ -1352,6 +1363,9 @@ function WeekBuilder({
   function saveAndLeave() {
     leaveTo.current = guard.target;
     guard.clear();
+    // The fill's sheet, out of the way while the question was asked (its
+    // reminder's link), stays closed on the way out.
+    setFillOpen(false);
     const button = form.current?.querySelector<HTMLButtonElement>(
       publishedMoment ? 'button[value="publish"]' : 'button[value="save"]',
     );
@@ -1364,6 +1378,7 @@ function WeekBuilder({
   function leaveWithoutSaving() {
     const target = guard.target;
     guard.clear();
+    setFillOpen(false);
     setDirty(false);
     if (target) router.push(target);
   }
@@ -1808,7 +1823,9 @@ function WeekBuilder({
           {status}
         </p>
         {/* Quiet actions: publishing stays the screen's main one. Copy
-            first, then fill what is left, the order a manager uses them. */}
+            first, then fill what is left, the order a manager uses them.
+            Each takes the focus back as its toast's "ביטול" goes, so Enter
+            still held down from that press opens nothing on it. */}
         {offerCopy || offerFill ? (
           <div className="flex flex-wrap gap-2 self-start md:ms-auto">
             {offerCopy ? (
@@ -1817,6 +1834,7 @@ function WeekBuilder({
                 data-copy-week
                 disabled={busy}
                 onClick={openCopy}
+                onKeyDown={ignoreHeldEnter}
               >
                 <CopyPlus aria-hidden="true" />
                 {t("app.build.copy.action")}
@@ -1828,6 +1846,7 @@ function WeekBuilder({
                 data-fill-week
                 disabled={busy}
                 onClick={openFill}
+                onKeyDown={ignoreHeldEnter}
               >
                 <CalendarCheck aria-hidden="true" />
                 {t("app.build.fill.action")}
@@ -2041,7 +2060,9 @@ function WeekBuilder({
       ) : null}
 
       <FillWeekSheet
-        open={fillOpen && offerFill}
+        // Out of the way while the way out asks about unsaved work (its
+        // reminder's link), and back on "חזרה לסידור".
+        open={fillOpen && fillable && guard.target === null}
         fill={sheetFill}
         dates={week.dates}
         team={team}

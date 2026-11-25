@@ -7,7 +7,7 @@ import {
 import type { ScheduledShift } from "@domain/schedule";
 import { ISRAEL_TIME_ZONE } from "@domain/shabbat";
 import { describe, expect, it } from "vitest";
-import { fillDays, fillReason } from "./fill-reasons";
+import { fillDays, fillLine, fillReason } from "./fill-reasons";
 
 // What the fill's sheet says of each shift that had an open place, from the
 // fill itself: the reason a place stays open, and the days in order.
@@ -47,6 +47,7 @@ const fillOf = (
   screen: ScheduledShift[],
   answers: ReturnType<typeof answer>[],
   away: { userId: string; from: string; to: string }[] = [],
+  now: Date | null = null,
 ) =>
   fillFromAvailability({
     weekStart: WEEK,
@@ -59,7 +60,7 @@ const fillOf = (
     weekHours: FILL_WEEK_HOURS,
     shabbat: SHABBAT,
     positionKeys: [],
-    now: null,
+    now,
     timeZone: ISRAEL_TIME_ZONE,
   });
 
@@ -181,6 +182,50 @@ describe("fillReason", () => {
       blocked: [],
     };
     expect(fillReason(odd, 0)).toBeNull();
+  });
+});
+
+// The line above the sheet's button, or in its place. `remindable`: the
+// builder shows next week, whose answers can still come; else the week
+// running now, whose answers were all sent before it began.
+describe("fillLine", () => {
+  const morning = [shift(day(0), "09:00", "16:00")];
+  const noa = answer("noa", [day(0), "09:00", "16:00"]);
+
+  it("says nothing is saved yet while the fill places anyone", () => {
+    expect(fillLine(fillOf(morning, [noa]), true)).toBe("note");
+    expect(fillLine(fillOf(morning, [noa]), false)).toBe("note");
+  });
+
+  // The week running now, the sheet open at 08:59 on Sunday: at 09:00 the
+  // clock begins the morning, its one open place. The sheet stays open and
+  // says nothing is left to fill, whoever answered.
+  it("says nothing is left to fill once the clock began the last shift with an open place", () => {
+    // 09:00 in Israel in December is 07:00 UTC.
+    const at = (iso: string, answers = [noa]) =>
+      fillOf(morning, answers, [], new Date(iso));
+    expect(fillLine(at("2026-12-06T06:59:00Z"), false)).toBe("note");
+    const begun = at("2026-12-06T07:00:00Z");
+    expect(begun.openBefore).toBe(0);
+    expect(begun.places).toBe(0);
+    expect(fillLine(begun, false)).toBe("nothing.full");
+    expect(fillLine(begun, true)).toBe("nothing.full");
+    expect(fillLine(at("2026-12-06T07:00:00Z", []), false)).toBe(
+      "nothing.full",
+    );
+  });
+
+  it("says nobody sent availability, and to place people by hand once nobody can", () => {
+    expect(fillLine(fillOf(morning, []), true)).toBe("nothing.noAnswers");
+    expect(fillLine(fillOf(morning, []), false)).toBe(
+      "nothing.noAnswersRunning",
+    );
+  });
+
+  it("leaves it to each shift to say why once anyone sent availability", () => {
+    const part = answer("noa", [day(0), "12:00", "16:00"]);
+    expect(fillLine(fillOf(morning, [part]), true)).toBe("nothing.none");
+    expect(fillLine(fillOf(morning, [part]), false)).toBe("nothing.none");
   });
 });
 

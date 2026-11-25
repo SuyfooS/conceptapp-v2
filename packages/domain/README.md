@@ -169,7 +169,8 @@ default, `FILL_WEEK_HOURS`, up to `FILL_WEEK_HOURS_MAX`, 58, the number the
 sheet names). The week's hours are counted on the wall clock, as the
 builder's totals count them. A minor is placed like everyone else (Orel, 25
 November 2026): the fill has no rule of its own for minors, the manager is
-responsible as when placing by hand, and payroll's flags for minors still
+responsible as when placing by hand (the fill's sheet says, in every
+business, that it checks nobody's age), and payroll's flags for minors still
 read the hours worked. Last week, when it is the week just
 before, and next week's first days (`nextWeekEdge` in `running-week.ts`:
 its first two days with people on them, only while the builder shows the

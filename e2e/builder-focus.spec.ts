@@ -1,3 +1,4 @@
+import { SCREEN_UNDO_MS } from "../app/(app)/schedule/build/builder-toast";
 import he from "../messages/he.json" with { type: "json" };
 import { announcer, heardSoFar, noteStatusWords, saidSince } from "./announcer";
 import { before, buildScreen, SHEET_CLOSES_MS } from "./build-screen";
@@ -105,15 +106,20 @@ test("the builder's sheet keeps the focus among the people, and says who went on
   );
 });
 
-// Filling from availability by the keyboard, on the restaurant's twin. The
-// pill opens its sheet with the focus inside it, and Escape gives the focus
-// back to the pill. The sheet's "מילוי 3 מקומות" closes it onto the toast's
-// "ביטול", named with what it takes off, which waits while the keyboard is
-// on it. Pressed, the screen is as it was before the fill, and the focus is
-// back on the pill, without moving the page.
+// Filling from availability by the keyboard, on the restaurant's twin. Tab
+// reaches the pill right after the line that says where the week stands (the
+// twin has no week before to copy). The pill opens its sheet with the focus
+// inside it, and Escape gives the focus back to the pill. The sheet's
+// "מילוי 3 מקומות" closes it onto the toast's "ביטול", named with what it
+// takes off, which waits past its 10 seconds while the keyboard is on it.
+// Pressed with Enter held down, the screen is as it was before the fill, the
+// focus is back on the pill without moving the page, and the key repeating
+// on the pill opens nothing.
 test("the fill's sheet gives the focus back to its pill, and closes onto its undo", async ({
   page,
 }) => {
+  // It waits out the toast's 10 seconds with the keyboard on "ביטול".
+  test.setTimeout(60_000);
   const tf = tb.fill;
   const fill = page.getByRole("button", { name: tf.action });
   const sheet = page.getByRole("dialog", { name: tf.title });
@@ -128,7 +134,9 @@ test("the fill's sheet gives the focus back to its pill, and closes onto its und
 
   await page.goto("/design/shell/schedule/build");
   await expect(morning).not.toContainText("שירן");
-  await fill.focus();
+  await page.locator("[data-builder-status]").focus();
+  await page.keyboard.press("Tab");
+  await expect(fill).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(sheet).toBeVisible();
   await expect
@@ -145,11 +153,19 @@ test("the fill's sheet gives the focus back to its pill, and closes onto its und
   await expect(sheet).toHaveCount(0);
   await expect(undo).toBeFocused();
   await expect(morning).toContainText("שירן");
+  await page.waitForTimeout(SCREEN_UNDO_MS + 1_000);
+  await expect(undo).toBeFocused();
   const at = await scrolled();
-  await page.keyboard.press("Enter");
+  await page.keyboard.down("Enter");
   await expect(
     page.getByRole("status").filter({ hasText: tf.undone }),
   ).toBeVisible();
+  await expect(fill).toBeFocused();
+  // The key repeating (a second keydown with no keyup) on the pill.
+  await page.keyboard.down("Enter");
+  await page.keyboard.up("Enter");
+  await page.waitForTimeout(1_000);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(fill).toBeFocused();
   await expect(morning).not.toContainText("שירן");
   expect(await scrolled()).toBe(at);
@@ -227,6 +243,47 @@ test("a shift that begins with changes on the screen puts the focus on why they 
   // Back on it as it was read, and kept there now that it has begun.
   await expect(screen.group(tb.groups.assigned)).toContainText(roni);
   await expect(screen.removeButton(roni)).toHaveCount(0);
+});
+
+// The shop's next week, drawn from its pattern, on the running twin: Tab
+// goes from the line that says where the week stands to "העתקה מהשבוע שעבר",
+// then to "מילוי מהזמינות". With the fill's sheet open, the twin's clock
+// moves on past the start of every shift of that week, the last with an
+// open place among them: the pill goes, and the sheet stays, saying nothing
+// is left to fill, with nothing to press. Closed, the focus goes to the
+// copy's pill, where the fill's own is gone, and nothing opens again.
+test("the fill's sheet open as the clock begins the last open shift stays, says so, and closes onto the copy", async ({
+  page,
+}) => {
+  const tf = tb.fill;
+  const copy = page.getByRole("button", { name: tb.copy.action });
+  const fill = page.getByRole("button", { name: tf.action });
+  const sheet = page.getByRole("dialog", { name: tf.title });
+
+  await page.clock.install();
+  await page.goto(`${runningWeek}?week=next`);
+  await page.locator("[data-builder-status]").focus();
+  await page.keyboard.press("Tab");
+  await expect(copy).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(fill).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(sheet).toContainText(
+    heT("app.build.fill.summary", { places: 9, people: 2 }),
+  );
+
+  // From Tuesday 17 November to Sunday the 29th, after the shop's next week.
+  await page.clock.fastForward(12 * 24 * 60 * 60_000);
+  await expect(sheet).toContainText(tf.nothing.full);
+  await expect(sheet).not.toContainText(tf.note);
+  // Only its ✕: no "מילוי # מקומות".
+  await expect(sheet.getByRole("button")).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await expect(sheet).toHaveCount(0);
+  await expect(fill).toHaveCount(0);
+  await expect(copy).toBeFocused();
+  await page.waitForTimeout(1_000);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
 // A draft saved and a week's first publish go at once, and the pressed

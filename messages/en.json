@@ -2213,8 +2213,10 @@
         "leftOpen": "{count, plural, one {One place will stay open} other {# places will stay open}}, and below it says why.",
         "rules": "Each person gets at most one shift a day, up to <ltr>{days}</ltr> days and <ltr>{hours}</ltr> hours a week, with at least <ltr>{rest}</ltr> hours between shifts. Whoever has the fewest hours this week is placed first.",
         "away": "Whoever is recorded as away isn't placed that day, nor on a night shift that runs into it.",
+        "age": "The fill doesn't check age. Before publishing, check who is under 18.",
         "noAnswer": "Didn't send availability, so won't be placed: {names}.",
         "remind": "You can remind them from <link>Team availability</link>.",
+        "byHand": "You can place them by hand from each shift.",
         "unplaced": "Sent availability and got no shift: {names}.",
         "daysTitle": "Day by day",
         "shiftTitle": "{name} · <ltr>{start}–{end}</ltr>",
@@ -2243,7 +2245,9 @@
         "submit": "{count, plural, one {Fill one place} other {Fill # places}}",
         "nothing": {
           "noAnswers": "Nobody to place yet: nobody sent availability for this week.",
-          "none": "Nobody to place. Each shift below says why its place stays open."
+          "noAnswersRunning": "Nobody sent availability for this week. You can place people by hand from each shift.",
+          "none": "Nobody to place. Each shift below says why its place stays open.",
+          "full": "No open places are left in shifts still to start."
         },
         "done": "{count, plural, one {One place filled from availability} other {# places filled from availability}}. Nothing is saved yet.",
         "undoFull": "Undo: whoever the fill put on comes off the shifts",

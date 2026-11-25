@@ -1783,6 +1783,40 @@ test("this week's saved draft waits for its managers, and the team sees nothing 
   }
 });
 
+// The fill on a draft of the week running now (R3a), whose answers were all
+// sent before it began: here nobody sent any, and nobody can now. Today's
+// evening, in an hour, for two with Noa on it, has a place open, so the fill
+// is offered. Its sheet says nobody sent availability without "עדיין", names
+// who sent nothing with the way to place them by hand rather than a
+// reminder, and has no link to the team's availability, which is next
+// week's. It says it checks nobody's age, as in every business.
+test("filling this week's draft that nobody answered for says to place people by hand", async ({
+  page,
+}) => {
+  const { startsOn } = await skipNearTheWeekEdges();
+  const tf = tb.fill;
+  const fill = fillScreen(page);
+  await saveDemoRunningWeek(NOA.e164, 2);
+  await signIn(page, MANAGER);
+  await page.goto(`/schedule/build?week=${startsOn}`);
+  await expect(
+    page.getByRole("heading", { level: 1, name: tb.titleRunning }),
+  ).toBeVisible();
+
+  await fill.action.click();
+  await expect(fill.sheet).toContainText(tf.nothing.noAnswersRunning);
+  await expect(fill.sheet).not.toContainText(tf.nothing.noAnswers);
+  await expect(fill.missing).toContainText(YOAV.name);
+  await expect(fill.missing).toContainText(tf.byHand);
+  await expect(fill.missing).not.toContainText(linkWords(tf.remind));
+  await expect(fill.sheet.getByRole("link")).toHaveCount(0);
+  await expect(fill.sheet).toContainText(tf.age);
+  await expectCleanPage(page);
+  await page.keyboard.press("Escape");
+  await expect(fill.sheet).toHaveCount(0);
+  await expect(fill.action).toBeFocused();
+});
+
 // A link to a week already over (an old line, say) says so and leads to the
 // week running now.
 test("a week already over says so", async ({ page }) => {
