@@ -1,4 +1,5 @@
 import type { AwaySpan } from "@domain/absences";
+import { readModuleSettings } from "@domain/modules";
 import {
   draftWeek,
   type ScheduledShift,
@@ -6,8 +7,14 @@ import {
   type ShiftBasis,
 } from "@domain/schedule";
 import type { ShiftSwap } from "@domain/swaps";
+import { manifestFor } from "@modules/registry";
 import type { ShareWeek } from "../../../../(app)/schedule/share-week";
-import { business, demoExtraShift, demoShiftPatterns } from "../../data";
+import {
+  business,
+  demoExtraShift,
+  demoModuleRows,
+  demoShiftPatterns,
+} from "../../data";
 import { demoWeek } from "../availability/week";
 
 // Who is already on a shift in the demo, and in which position: a week
@@ -94,6 +101,26 @@ export function demoBuildShifts(): ScheduledShift[] {
 export const demoAway: AwaySpan[] = [
   { userId: "shiran", from: demoWeek.start, to: demoWeek.start },
 ];
+
+/**
+ * The most hours a week the demo restaurant's fill gives anyone: its own
+ * scheduling settings' `fillWeekHours`, read as the app reads a business's
+ * (42 unless set). `&hours=7` sets it on the twin, as /manage/scheduling
+ * would; a number out of range (4 to 58) reads as what the settings hold, as
+ * one stored so would in the app.
+ */
+export function demoFillWeekHours(asked?: string): number {
+  const stored = demoModuleRows.find(
+    (row) => row.key === "scheduling",
+  )?.settings;
+  const settings = typeof stored === "object" && stored !== null ? stored : {};
+  return readModuleSettings(
+    manifestFor("scheduling"),
+    asked === undefined
+      ? settings
+      : { ...settings, fillWeekHours: Number(asked) },
+  ).fillWeekHours;
+}
 
 /** When the demo week was published, for `?state=meanwhile`. */
 export const MEANWHILE_PUBLISHED_AT = "2026-10-29T15:40:00.000Z";

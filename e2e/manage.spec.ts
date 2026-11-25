@@ -125,6 +125,11 @@ test("a manager fits the schedule to the business, and it stays", async ({
 
   // What only the team changes isn't here.
   await expect(page.getByText(s.weekStartsOn.label)).toHaveCount(0);
+  // The week's hours the fill from availability gives anyone, the
+  // business's, drawn by itself from the manifest at its default.
+  await expect(
+    page.getByRole("spinbutton", { name: s.fillWeekHours.label }),
+  ).toHaveValue("42");
 
   // A setting saves itself, and a fresh load still has it.
   const shabbat = page.getByRole("switch", { name: s.closedOnShabbat.label });
@@ -492,6 +497,10 @@ test("the team sees every setting and switches modules", async ({
   // The advanced settings, which managers don't see.
   await expect(page.getByText(s.weekStartsOn.label)).toBeVisible();
   await expect(page.getByText(clock.roundToMinutes.label)).toBeVisible();
+  // And the business's own, as on /manage: the fill's week's hours.
+  await expect(
+    page.getByRole("spinbutton", { name: s.fillWeekHours.label }),
+  ).toHaveValue("42");
   // Whether a code is asked for, which managers don't see either.
   await expect(page.getByText(clock.requirePunchCode.label)).toBeVisible();
 

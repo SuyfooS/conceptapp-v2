@@ -1,3 +1,4 @@
+import { FILL_WEEK_HOURS } from "@domain/fill-week";
 import { gapsAhead } from "@domain/running-week";
 import { ISRAEL_TIME_ZONE } from "@domain/shabbat";
 import { Suspense } from "react";
@@ -132,6 +133,8 @@ async function Demo({ searchParams }: Props) {
           answers: shopNextAnswers,
           positions: shopPositions,
           away: away === "1" ? shopNextAway : [],
+          // The shop keeps the fill's week's hours as they come (42).
+          fillWeekHours: FILL_WEEK_HOURS,
         }}
         swaps={[]}
         lastWeek={shopLastWeek}
@@ -155,6 +158,7 @@ async function Demo({ searchParams }: Props) {
         answers: shopRunningAnswers,
         positions: shopPositions,
         away: [],
+        fillWeekHours: FILL_WEEK_HOURS,
       }}
       swaps={shopSwaps}
       save={demoPublishRunning}

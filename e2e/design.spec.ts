@@ -76,6 +76,8 @@ const PAGES = [
   "/design/shell/schedule/build",
   // Shiran away on Sunday: the day says so, and the fill leaves her off.
   "/design/shell/schedule/build?away=1",
+  // The restaurant's week's hours for the fill set to 7 (`fillWeekHours`).
+  "/design/shell/schedule/build?hours=7",
   "/design/shell/schedule/build?state=meanwhile",
   "/design/shell/schedule/build?week=2026-11-01",
   // Building without publishing (roles R3): a draft, and a published week read.
@@ -2530,6 +2532,104 @@ test("the builder's demos fill from availability, say why places stay open, and 
     heT("app.build.fill.noAnswer", { names: "איתי מזרחי, רוני שלום" }),
   );
   await expectCleanPage(page, shop, true);
+  await page.keyboard.press("Escape");
+  await expect(sheet).toHaveCount(0);
+  await expect(fill).toBeFocused();
+});
+
+// Filling from availability, part 5, on the restaurant's twin at every size.
+// The sheet ends with "לפי אנשים": each one who answered, fewest shifts
+// first, their shifts and hours after the fill and how many the fill gave
+// (Shiran 3, 21.5 hours, 2 of them the fill's). &hours=7: the restaurant's
+// week's hours for the fill (`fillWeekHours`) are 7, which the rules say;
+// everyone who covers an open place has more already, so the fill places
+// nobody, names each of them as over 7 hours, and "לפי אנשים" shows each
+// one's week as the manager left it. Clean with the sheet open.
+test("the builder's demo: the fill's people, and the week's hours as the business sets them", async ({
+  page,
+}) => {
+  const tf = he.app.build.fill;
+  const path = "/design/shell/schedule/build";
+  const fill = page.getByRole("button", { name: tf.action });
+  const sheet = page.getByRole("dialog", { name: tf.title });
+  const people = sheet.getByRole("region", { name: tf.peopleTitle });
+  /** Someone's row in "לפי אנשים", by their name. */
+  const person = (name: string) =>
+    people
+      .locator("div", { has: page.getByText(name, { exact: true }) })
+      .last();
+  const line = (shifts: number, hours: number, added: number) =>
+    heT.markup("app.build.fill.person", {
+      shifts,
+      hours,
+      added,
+      ltr: (chunks) => chunks,
+    });
+  /** A shift's row on Sunday 1.11 or Saturday 7.11, as the sheet writes it. */
+  const row = (on: { day: string; date: string }, title: string) =>
+    sheet
+      .getByRole("group", { name: heT("app.build.day", on), exact: true })
+      .locator("div", { has: page.getByText(title, { exact: true }) })
+      .last();
+  const sun = { day: he.app.availability.weekdays.sun, date: "1.11" };
+  const thu = { day: he.app.availability.weekdays.thu, date: "5.11" };
+  const sat = { day: he.app.availability.weekdays.sat, date: "7.11" };
+  /** Who a rule stopped, as the sheet writes it: hours held left to right. */
+  const over = (name: string, hours: number) =>
+    heT("app.build.fill.why.blocked", {
+      people: heT("app.build.fill.why.blockedOne", {
+        name,
+        rule: heT.markup("app.build.fill.rule.hours", {
+          hours,
+          ltr: (chunks) => `⁦${chunks}⁩`,
+        }),
+      }),
+    });
+  const ORDER = /שירן אלון.*יואב לוי.*מאיה פרץ.*איתי מזרחי.*נועה כהן/;
+  const SEVEN = /שירן אלון.*יואב לוי.*מאיה פרץ.*נועה כהן.*איתי מזרחי/;
+
+  await page.goto(path);
+  await fill.click();
+  await expect(people).toBeVisible();
+  await expect(people).toContainText(ORDER);
+  await expect(person("שירן אלון")).toContainText(line(3, 21.5, 2));
+  await expect(person("יואב לוי")).toContainText(line(4, 29, 0));
+  await expect(person("נועה כהן")).toContainText(line(6, 40, 1));
+  // Maya answered with no hours, and the manager put her on five shifts.
+  await expect(person("מאיה פרץ")).toContainText(line(5, 36, 0));
+  // Never anyone who sent nothing: not Omer, not Uri, the owner.
+  await expect(people).not.toContainText("עומר");
+  await expect(people).not.toContainText("אורי");
+  await page.keyboard.press("Escape");
+  await expect(sheet).toHaveCount(0);
+
+  await page.goto(`${path}?hours=7`);
+  await fill.click();
+  await expect(sheet).toContainText(
+    heT.markup("app.build.fill.rules", {
+      days: 6,
+      hours: 7,
+      rest: 8,
+      ltr: (chunks) => chunks,
+    }),
+  );
+  // Nobody to place: the line says each shift says why, with no button.
+  await expect(sheet).toContainText(tf.nothing.none);
+  await expect(sheet).not.toContainText(tf.note);
+  await expect(row(sun, "בוקר · 09:00–16:00")).toContainText(
+    over("שירן אלון", 7),
+  );
+  await expect(row(thu, "ערב · 16:00–23:30")).toContainText(
+    over("שירן אלון", 7),
+  );
+  await expect(row(sat, "מוצ״ש · 19:30–00:00")).toContainText(
+    over("נועה כהן", 7),
+  );
+  await expect(people).toContainText(SEVEN);
+  await expect(person("שירן אלון")).toContainText(line(1, 7, 0));
+  await expect(person("נועה כהן")).toContainText(line(5, 35.5, 0));
+  await expect(person("איתי מזרחי")).toContainText(line(6, 42, 0));
+  await expectCleanPage(page, `${path}?hours=7`, true);
   await page.keyboard.press("Escape");
   await expect(sheet).toHaveCount(0);
   await expect(fill).toBeFocused();
