@@ -22,6 +22,7 @@ import {
   type FormEvent,
   type RefObject,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   useTransition,
@@ -33,6 +34,7 @@ import {
   unsentOnDevice,
 } from "../../orders/orders-storage";
 import { closeFilesOnDevice } from "../../team/[person]/file/file-tabs";
+import { ignoreHeldEnter } from "../clock-focus";
 import {
   type LockAction,
   type LockKind,
@@ -45,6 +47,9 @@ import {
 const UNDO_SHOWN_MS = 10_000;
 
 type Toast = { text: string; stamp: string; undo?: () => void };
+
+/** What the screen shows in the lock's place: the lock, the stop, or the line alone. */
+type Shown = "lock" | "stop" | "line";
 
 /** A failure in the clock's words: its lock never meets a department, and the clock off reads as no access. */
 const clockKey = (
@@ -141,6 +146,42 @@ export function LockStation({
     stopButton.current,
     otherLine.current,
   ];
+  // And once the stop goes holding it (a stop with no way back, or a
+  // refusal that read the screen again): the lock it opened, else the line.
+  const afterStop = (): readonly FocusCandidate[] => [
+    lockButton.current,
+    otherLine.current,
+  ];
+
+  const shown: Shown = lockOpen(offer)
+    ? "lock"
+    : offer.other && stopper
+      ? "stop"
+      : "line";
+  /** What the screen shows now, for an answer read after it was drawn. */
+  const shownNow = useRef(shown);
+  /**
+   * A toast that waits until the screen no longer shows `from`: what the
+   * press led to drawn, and the focus moved on from the button that went
+   * with it, so its words never come before that move, which would cut them
+   * off.
+   */
+  const waiting = useRef<{ toast: Toast; from: Shown } | null>(null);
+  useLayoutEffect(() => {
+    shownNow.current = shown;
+    const held = waiting.current;
+    if (!held || held.from === shown) return;
+    waiting.current = null;
+    // A microtask on: the button gone with the screen it was on queued the
+    // focus's move as it went (`useFocusWhenGone`), so this comes after it.
+    queueMicrotask(() => setToast(held.toast));
+  }, [shown]);
+
+  /** Shows `next` once the screen no longer shows `from`, now if it already doesn't. */
+  function toastOnceMoved(next: Toast, from: Shown) {
+    if (shownNow.current === from) waiting.current = { toast: next, from };
+    else setToast(next);
+  }
 
   const offered = (() => {
     if (clock) {
@@ -168,30 +209,43 @@ export function LockStation({
           return;
         }
         const undo = result.undo;
-        setToast({
+        const said: Toast = {
           text: tc("stoppedOther", { name: stopped }),
           stamp: `stop-${Date.now()}`,
           ...(undo ? { undo: () => restartIt(stop, undo, stopped) } : {}),
-        });
+        };
+        // With a way back, its "ביטול" takes the focus at once, in the
+        // stop's place. Without one, the lock takes it once the screen read
+        // again opens it, and then the toast says so.
+        if (undo) setToast(said);
+        else toastOnceMoved(said, "stop");
       } catch {
         setStopFailure("failed");
       }
     });
   }
 
-  /** The toast's "ביטול"; when it can't, the toast says why. */
+  /**
+   * The toast's "ביטול"; when it can't, the toast says why. Once the other
+   * one runs again, the stop back in the lock's place has the focus first,
+   * and then the toast says so.
+   */
   function restartIt(stop: StopOther, stationId: string, stopped: string) {
     startRestart(async () => {
-      let text: string;
+      const stamp = `restart-${Date.now()}`;
       try {
         const result = await stop.restart(stationId);
-        text = result.ok
-          ? tc("restartedOther", { name: stopped })
-          : tf(result.failure);
+        if (result.ok) {
+          toastOnceMoved(
+            { text: tc("restartedOther", { name: stopped }), stamp },
+            "lock",
+          );
+        } else {
+          setToast({ text: tf(result.failure), stamp });
+        }
       } catch {
-        text = tf("failed");
+        setToast({ text: tf("failed"), stamp });
       }
-      setToast({ text, stamp: `restart-${Date.now()}` });
     });
   }
 
@@ -242,14 +296,15 @@ export function LockStation({
               : ts("full", { count: MAX_STATIONS })}
         </p>
         {other && stopper ? (
-          <Button
-            ref={stopButton}
+          <WatchedButton
+            buttonRef={stopButton}
+            after={afterStop}
             variant="secondary"
             loading={stopping}
             onClick={() => stopIt(stopper, other.name)}
           >
             {tc("stopOther", { name: other.name })}
-          </Button>
+          </WatchedButton>
         ) : null}
         {stopFailure ? (
           <p role="alert" className="font-medium text-danger">
@@ -311,7 +366,7 @@ export function LockStation({
 
   return (
     <>
-      <OpenLock
+      <WatchedButton
         buttonRef={lockButton}
         after={afterLock}
         variant={primary ? "primary" : "secondary"}
@@ -324,7 +379,7 @@ export function LockStation({
       >
         <Lock aria-hidden="true" />
         {label ?? tc("open")}
-      </OpenLock>
+      </WatchedButton>
       <Sheet
         open={open}
         onOpenChange={setOpen}
@@ -409,11 +464,15 @@ export function LockStation({
 }
 
 /**
- * The button that opens locking. When it goes holding the focus (the stop
- * taken back with "ביטול", so the lock closed again), the focus goes where
- * `after` says, else to the page's title.
+ * The button that opens locking, or the stop of the device's kitchen's
+ * screen or till. When it goes holding the focus (the stop taken back with
+ * "ביטול", so the lock closed again; a stop with no way back, so the lock
+ * opened), the focus goes where `after` says, else to the page's title.
+ * Enter held down presses it no more (`ignoreHeldEnter`): it takes the
+ * focus from the toast's "ביטול", or from the lock, and a key repeating on
+ * it would open the lock or stop the other one again.
  */
-function OpenLock({
+function WatchedButton({
   buttonRef,
   after,
   ...props
@@ -422,5 +481,5 @@ function OpenLock({
   after: () => readonly FocusCandidate[];
 }) {
   useFocusWhenGone(buttonRef, after);
-  return <Button ref={buttonRef} {...props} />;
+  return <Button ref={buttonRef} onKeyDown={ignoreHeldEnter} {...props} />;
 }

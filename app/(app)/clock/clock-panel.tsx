@@ -11,11 +11,12 @@ import {
   formatElapsed,
   formatHours,
 } from "@domain/time-clock-format";
-import { Button } from "@ui/button";
+import { Button, type ButtonProps } from "@ui/button";
 import { Card } from "@ui/card";
-import { focusFirst } from "@ui/focus-after";
+import { type FocusCandidate, focusFirst } from "@ui/focus-after";
 import { PunchCircle } from "@ui/punch-circle";
 import { StatusToast } from "@ui/status-toast";
+import { useFocusWhenGone } from "@ui/use-focus-after";
 import { preloadQrReader } from "@ui/use-qr-camera";
 import { useSheetWrite } from "@ui/use-sheet-write";
 import { Coffee, Fingerprint, LogOut, ScanQrCode } from "lucide-react";
@@ -45,6 +46,11 @@ type Direction = "in" | "out";
 /** What started a scan: the circle, or "End shift" during a break. */
 type ScanFrom = "circle" | "endShift";
 type Failure = Exclude<ClockActionResult, { ok: true }>["failure"];
+/** What a press says once it is over: the toast's words, or why it was refused. */
+type Said = { text: string } | { failure: Failure };
+
+/** A toast's words, stamped, so the same words show again. */
+const toastOf = (text: string) => ({ text, stamp: new Date().toISOString() });
 
 /** The time now, ticking each second while `running`. */
 function useNow(initial: string, running: boolean): number {
@@ -68,7 +74,9 @@ function useNow(initial: string, running: boolean): number {
  * "יציאה מהמשמרת", the undo card to the shift again), and so does a sheet
  * that closes: the keyboard's focus goes on to the screen's main control
  * now, "יציאה מהמשמרת" during a break and the circle otherwise, whose name
- * says the time running and what pressing it does.
+ * says the time running and what pressing it does, as it does when "ביטול
+ * היציאה" goes once its time is up. What a press says (the toast, or why it
+ * was refused) comes after the focus has landed, never before.
  */
 export function ClockPanel({
   data,
@@ -144,8 +152,23 @@ export function ClockPanel({
     return () => clearTimeout(lift);
   }, [locked]);
 
-  function say(text: string) {
-    setToast({ text, stamp: new Date().toISOString() });
+  /**
+   * The words a press says once it is over (`pressOver`): after the focus
+   * has landed on what the press drew, as a focus moved while they are said
+   * cuts them off.
+   */
+  const held = useRef<Said | null>(null);
+
+  /** Says them now, the toast's words or why it was refused. */
+  function utter(words: Said) {
+    if ("failure" in words) setFailure(words.failure);
+    else setToast(toastOf(words.text));
+  }
+
+  /** Holds a press's words until it is over, or says them if it is already. */
+  function sayWhenOver(words: Said) {
+    if (pressed.current) held.current = words;
+    else utter(words);
   }
 
   function run(kind: Kind, action: () => Promise<ClockActionResult>) {
@@ -153,15 +176,16 @@ export function ClockPanel({
     setFailure(null);
     pressed.current = { from: state, refused: false };
     pressedOn.current = document.activeElement;
+    held.current = null;
     start(async () => {
       try {
         const result = await action();
         setRunning(null);
         if (result.ok) {
-          say(t(`done.${kind}`));
+          sayWhenOver({ text: t(`done.${kind}`) });
         } else {
           refused();
-          setFailure(result.failure);
+          sayWhenOver({ failure: result.failure });
         }
       } catch (error) {
         // A press with no signal stays on this screen. A redirect is not a
@@ -169,7 +193,7 @@ export function ClockPanel({
         unstable_rethrow(error);
         refused();
         setRunning(null);
-        setFailure("failed");
+        sayWhenOver({ failure: "failed" });
       }
     });
   }
@@ -180,12 +204,19 @@ export function ClockPanel({
       pressed.current = { ...pressed.current, refused: true };
   }
 
-  /** A punch with a code, from the camera or a sheet, which says what went wrong itself. */
+  /**
+   * A punch with a code, from the camera or a sheet, which says what went
+   * wrong itself. One that went through is a press like the screen's own:
+   * over once the screen it led to is drawn and the sheet or the camera gave
+   * the focus back, when the focus goes on from "יציאה מהמשמרת" if that went
+   * meanwhile, and then the toast says it.
+   */
   async function punchWith(
     to: Direction,
     proof: PunchProof,
   ): Promise<ClockActionResult> {
     setFailure(null);
+    const from = state;
     try {
       const result = await (to === "in"
         ? actions.clockIn(proof)
@@ -195,8 +226,10 @@ export function ClockPanel({
         // What the database recorded, not what was asked: with codes switched
         // off since the page loaded, nothing waits for a manager.
         const none = result.marked === true;
-        say(
-          t(
+        pressed.current = { from, refused: false };
+        pressedOn.current = null;
+        held.current = {
+          text: t(
             to === "in"
               ? none
                 ? "done.inNone"
@@ -205,7 +238,7 @@ export function ClockPanel({
                 ? "done.outNone"
                 : "done.out",
           ),
-        );
+        };
       }
       return result;
     } catch (error) {
@@ -277,14 +310,20 @@ export function ClockPanel({
   // it. Only where it was lost, once the screen the press led to is drawn,
   // it goes back to what was pressed when that is still there (a refusal,
   // the circle), else on to the main control. A sheet open or the camera on
-  // keep it.
+  // keep it until they give it back (a code's punch), and a closing sheet
+  // has given it. Then the press's words: the toast, or why it was refused.
   useEffect(() => {
     if (!pressOver(pressed.current, { busy, state })) return;
+    if (scanning || sheet) return;
     pressed.current = null;
     const was = pressedOn.current;
     pressedOn.current = null;
-    if (scanning || sheet) return;
     focusFirst([was, endShiftRef.current, circleRef.current], { title: false });
+    const words = held.current;
+    held.current = null;
+    if (!words) return;
+    if ("failure" in words) setFailure(words.failure);
+    else setToast(toastOf(words.text));
   }, [busy, state, scanning, sheet]);
 
   function goWithoutCode() {
@@ -372,6 +411,7 @@ export function ClockPanel({
       {pause && !scanning ? (
         <Button
           ref={endShiftRef}
+          data-clock="end-shift"
           variant="secondary"
           size="lg"
           loading={running === "out"}
@@ -412,7 +452,8 @@ export function ClockPanel({
               ltr: (chunks) => <span dir="ltr">{chunks}</span>,
             })}
           </p>
-          <Button
+          <UndoLeaving
+            main={() => [endShiftRef.current, circleRef.current]}
             variant="ghost"
             className="shrink-0"
             loading={running === "undo"}
@@ -423,7 +464,7 @@ export function ClockPanel({
             onKeyDown={ignoreHeldEnter}
           >
             {t("undo")}
-          </Button>
+          </UndoLeaving>
         </Card>
       ) : null}
 
@@ -498,6 +539,7 @@ function Circle({
     return (
       <PunchCircle
         ref={circleRef}
+        data-clock="circle"
         tone="off"
         figure={
           needsCode ? (
@@ -519,6 +561,7 @@ function Circle({
     return (
       <PunchCircle
         ref={circleRef}
+        data-clock="circle"
         tone="paused"
         progress={data.shift ? share(data.shift, now) : null}
         figure={
@@ -538,6 +581,7 @@ function Circle({
   return (
     <PunchCircle
       ref={circleRef}
+      data-clock="circle"
       tone="live"
       progress={data.shift ? share(data.shift, now) : null}
       figure={
@@ -556,4 +600,18 @@ function Circle({
 function share(shift: { from: string; to: string }, now: number): number {
   const from = Date.parse(shift.from);
   return (now - from) / (Date.parse(shift.to) - from);
+}
+
+/**
+ * "ביטול היציאה". It goes with its card, pressed or once its time is up
+ * (the server's window, while the person may be resting on it): holding the
+ * focus, it gives it to the screen's main control (`main`), never the body.
+ */
+function UndoLeaving({
+  main,
+  ...props
+}: Omit<ButtonProps, "ref"> & { main: () => readonly FocusCandidate[] }) {
+  const button = useRef<HTMLButtonElement>(null);
+  useFocusWhenGone(button, main);
+  return <Button ref={button} {...props} />;
 }

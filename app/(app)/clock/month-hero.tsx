@@ -66,6 +66,7 @@ export function MonthHero({
           hours: formatHours(minutes),
           caption,
         })}
+        saidOnTitle={t("monthHours", { hours: formatHours(minutes), caption })}
       >
         <MonthLink
           href={hrefFor(earlier)}

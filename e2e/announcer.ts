@@ -30,23 +30,25 @@ type FocusNote = { focusWhenSaid?: boolean | null };
 
 /**
  * Notes, from now on, where the focus is when `words` first appear in a
- * live region (a status, or what has `aria-live`): a screen reader says them
- * after what the focus reads then, while a focus that moves after them cuts
- * them off. `focusWhenSaid` then tells whether the focus was on `selector`,
- * null until they appear. Before the step that says them; refused when they
- * are said already.
+ * live region (a status, an alert, or what has `aria-live`): a screen
+ * reader says them after what the focus reads then, while a focus that
+ * moves after them cuts them off. `focusWhenSaid` then tells whether the
+ * focus was on `selector`, and had `text` in its words when one is given
+ * (a row, a button by what it says), null until they appear. Before the
+ * step that says them; refused when they are said already.
  */
 export const noteFocusWhenSaid = (
   page: Page,
   words: string,
   selector: string,
+  text?: string,
 ) =>
   page.evaluate(
-    ({ words, selector }) => {
+    ({ words, selector, text }) => {
       const note = window as unknown as FocusNote;
       note.focusWhenSaid = null;
       const live =
-        '[role="status"]:not([aria-live="off"]), [aria-live]:not([aria-live="off"])';
+        '[role="status"]:not([aria-live="off"]), [role="alert"], [aria-live]:not([aria-live="off"])';
       const saying = () =>
         [...document.querySelectorAll(live)].some((region) =>
           region.textContent?.includes(words),
@@ -54,7 +56,10 @@ export const noteFocusWhenSaid = (
       if (saying()) throw new Error(`already said: ${words}`);
       const observer = new MutationObserver(() => {
         if (!saying()) return;
-        note.focusWhenSaid = document.activeElement?.matches(selector) ?? false;
+        const focused = document.activeElement;
+        note.focusWhenSaid =
+          (focused?.matches(selector) ?? false) &&
+          (text === null || (focused?.textContent ?? "").includes(text));
         observer.disconnect();
       });
       observer.observe(document.body, {
@@ -63,7 +68,7 @@ export const noteFocusWhenSaid = (
         characterData: true,
       });
     },
-    { words, selector },
+    { words, selector, text: text ?? null },
   );
 
 /** What `noteFocusWhenSaid` saw: the focus on its selector, or not yet said. */

@@ -1,6 +1,12 @@
 import AxeBuilder from "@axe-core/playwright";
 import he from "../messages/he.json" with { type: "json" };
-import { announcer, heardSoFar, saidSince } from "./announcer";
+import {
+  announcer,
+  focusWhenSaid,
+  heardSoFar,
+  noteFocusWhenSaid,
+  saidSince,
+} from "./announcer";
 import {
   addDemoShift,
   clearPunchState,
@@ -142,28 +148,38 @@ test("a worker clocks in, goes on a break, comes back and leaves", async ({
 // (accessibility, part 5): "יציאה להפסקה", "יציאה מהמשמרת" and "ביטול
 // היציאה" each give way to what their press drew, and the focus goes on to
 // the screen's main control now, "יציאה מהמשמרת" during a break and the
-// circle otherwise. Enter held down on "יציאה להפסקה" ends nothing when the
-// focus has gone on to "יציאה מהמשמרת".
+// circle otherwise. Each press's toast is said once the focus has landed
+// there, never before: a focus moved as it is said would cut it off. Enter
+// held down on "יציאה להפסקה" ends nothing when the focus has gone on to
+// "יציאה מהמשמרת".
 test("the focus goes on to the clock's main control after each press, and a held Enter presses nothing more", async ({
   page,
 }) => {
   const endShift = page.getByRole("button", { name: c.endShift });
   const undo = page.getByRole("button", { name: c.undo });
+  /** Notes where the focus is as `words` are said: the circle, or "יציאה מהמשמרת". */
+  const noteSaidOn = (words: string, on: "circle" | "end-shift") =>
+    noteFocusWhenSaid(page, words, `[data-clock="${on}"]`);
+  const saidThere = () => expect.poll(() => focusWhenSaid(page)).toBe(true);
   await signIn(page, NOA);
   await page.goto("/clock");
   await page.waitForLoadState("networkidle");
   await circle(page, c.circle.in).focus();
+  await noteSaidOn(c.done.in, "circle");
   await page.keyboard.press("Enter");
   await expect(title(page, c.title.working)).toBeVisible();
   await expect(circle(page, c.circle.out)).toBeFocused();
+  await saidThere();
 
   // Held down: the break starts, "יציאה מהמשמרת" in its place has the
   // focus, and the key repeating on it (`repeat`, a second keydown with no
   // keyup) presses nothing.
   await page.getByRole("button", { name: c.startBreak }).focus();
+  await noteSaidOn(c.done.break, "end-shift");
   await page.keyboard.down("Enter");
   await expect(title(page, c.title.break)).toBeVisible();
   await expect(endShift).toBeFocused();
+  await saidThere();
   await page.keyboard.down("Enter");
   await page.keyboard.up("Enter");
   await expect(endShift).not.toHaveAttribute("aria-busy", "true");
@@ -172,35 +188,46 @@ test("the focus goes on to the clock's main control after each press, and a held
   await expect(endShift).toBeFocused();
 
   // Off the clock: the circle has the focus, the way back under it.
+  await noteSaidOn(c.done.out, "circle");
   await page.keyboard.press("Enter");
   await expect(title(page, c.title.off)).toBeVisible();
   await expect(circle(page, c.circle.in)).toBeFocused();
+  await saidThere();
 
   // Taken back: the card goes, and the break it was left from is back, with
   // "יציאה מהמשמרת".
   await undo.focus();
+  await noteSaidOn(c.done.undo, "end-shift");
   await page.keyboard.press("Enter");
   await expect(title(page, c.title.break)).toBeVisible();
   await expect(endShift).toBeFocused();
+  await saidThere();
 
   // Back to work, left from the circle, and taken back: the circle each time.
   await circle(page, c.circle.back).focus();
+  await noteSaidOn(c.done.back, "circle");
   await page.keyboard.press("Enter");
   await expect(title(page, c.title.working)).toBeVisible();
   await expect(circle(page, c.circle.out)).toBeFocused();
+  await saidThere();
+  await noteSaidOn(c.done.out, "circle");
   await page.keyboard.press("Enter");
   await expect(title(page, c.title.off)).toBeVisible();
   await expect(circle(page, c.circle.in)).toBeFocused();
+  await saidThere();
   await undo.focus();
+  await noteSaidOn(c.done.undo, "circle");
   await page.keyboard.press("Enter");
   await expect(title(page, c.title.working)).toBeVisible();
   await expect(circle(page, c.circle.out)).toBeFocused();
+  await saidThere();
 });
 
 // Changing month in the hours card (accessibility, part 5): each month is a
 // page of its own, so the arrow pressed goes with the page it was on. The
 // same arrow in the month it led to has the focus, else that month's title
-// (this month has no "חודש הבא"), and the month and its hours are said.
+// (this month has no "חודש הבא"), and the month and its hours are said:
+// only the hours there, as the title says the month as it takes the focus.
 test("changing month keeps the focus on its arrow, and says the month and its hours", async ({
   page,
 }) => {
@@ -240,7 +267,16 @@ test("changing month keeps the focus on its arrow, and says the month and its ho
   await expect(
     main.getByRole("heading", { level: 2, name: monthName(monthAgo(0)) }),
   ).toBeFocused();
-  await expect(saidSince(polite, said(monthAgo(0), "0:00", 0))).toHaveCount(1);
+  await expect(
+    saidSince(
+      polite,
+      heT("app.clock.history.monthHours", {
+        hours: "0:00",
+        caption: heT("app.clock.history.total", { count: 0 }),
+      }),
+    ),
+  ).toHaveCount(1);
+  await expect(saidSince(polite, monthName(monthAgo(0)))).toHaveCount(0);
 });
 
 test("the month's hours and the history count what was worked", async ({

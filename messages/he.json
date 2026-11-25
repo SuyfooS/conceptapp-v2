@@ -2502,6 +2502,7 @@
         "earlier": "חודש קודם: {month}",
         "later": "חודש הבא: {month}",
         "monthShown": "{month}: {hours} {caption}",
+        "monthHours": "{hours} {caption}",
         "total": "שעות, {count, plural, =0 {אין משמרות} one {משמרת אחת} other {# משמרות}}",
         "times": "<ltr>{in}–{out}</ltr>",
         "since": "מ-<ltr>{in}</ltr>",

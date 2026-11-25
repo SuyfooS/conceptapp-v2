@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import he from "../messages/he.json" with { type: "json" };
+import { focusWhenSaid, noteFocusWhenSaid } from "./announcer";
 import { buildScreen } from "./build-screen";
 import {
   buildDemoThisWeek,
@@ -273,13 +274,20 @@ test("a record is changed, removed, brought back with the toast's undo, and remo
   ).toBeVisible();
   expect((await demoAbsences(NOA.id))[0]?.removed).toBe(true);
   // The toast's "ביטול" has the focus, the row having gone, and says what
-  // it brings back; pressed, the record's row back in the list has it.
+  // it brings back; pressed, the record's row back in the list has it, and
+  // the toast says it came back once it has.
   const undo = page.getByRole("button", {
     name: heT("app.clock.absences.done.undo"),
   });
   await expect(undo).toBeFocused();
   await expect(undo).toHaveAccessibleName(
     heT("app.clock.absences.done.undoRemove"),
+  );
+  await noteFocusWhenSaid(
+    page,
+    heT("app.clock.absences.done.restore"),
+    "button",
+    heT("app.clock.absences.kinds.reserve"),
   );
   await undo.click();
   await expect(
@@ -291,6 +299,7 @@ test("a record is changed, removed, brought back with the toast's undo, and remo
       .filter({ visible: true })
       .first(),
   ).toBeFocused();
+  await expect.poll(() => focusWhenSaid(page)).toBe(true);
   expect((await demoAbsences(NOA.id))[0]?.removed).toBe(false);
   expect(await demoActivityActions("clock.absence_remove", since)).toBe(1);
   expect(await demoActivityActions("clock.absence_restore", since)).toBe(1);

@@ -55,6 +55,9 @@ const approve = (name: string) =>
 const title = (page: Page, name: string) =>
   page.getByRole("heading", { level: 1, name });
 
+/** The circle, for `noteFocusWhenSaid`. */
+const onCircle = '[data-clock="circle"]';
+
 /** The circle, by the last words of its name: the time may come before them. */
 const circle = (page: Page, name: string) =>
   page.getByRole("button", { name: new RegExp(`(^|\\s)${name}$`) });
@@ -206,13 +209,16 @@ test("a manager shows the code, and a worker clocks in and out by typing its dig
     await expect(typeIn.getByLabel(c.type.label)).toBeFocused();
     await expectCleanPage(noa);
     await noa.screenshot({ path: testInfo.outputPath("clock-type.png") });
+    await noteFocusWhenSaid(noa, c.done.in, onCircle);
     await typeIn.getByLabel(c.type.label).fill(await digitsOn(page));
     await expect(noa.getByText(c.done.in, { exact: true })).toBeVisible();
     await expect(title(noa, c.title.working)).toBeVisible();
     await expect(typeIn).toBeHidden();
     // The sheet opened from the camera, which went as it opened: closed, it
-    // gives the focus to the circle, never the top of the page.
+    // gives the focus to the circle, never the top of the page, and the
+    // toast is said after that.
     await expect(circle(noa, c.circle.scanOut)).toBeFocused();
+    await expect.poll(() => focusWhenSaid(noa)).toBe(true);
 
     // A break needs no code.
     await expect(noa.getByText(c.breakNote)).toBeVisible();
@@ -222,12 +228,22 @@ test("a manager shows the code, and a worker clocks in and out by typing its dig
     await circle(noa, c.circle.back).click();
     await expect(title(noa, c.title.working)).toBeVisible();
 
-    // Leaving does, with the digits shown now.
-    const typeOut = await toTyping(noa, "out");
+    // Leaving does, with the digits shown now: from a break this time, by
+    // "יציאה מהמשמרת", which goes with the break. Whether the sheet closes
+    // before the page read again is drawn or after, the circle has the
+    // focus once it is, and then the toast is said.
+    await noa.getByRole("button", { name: c.startBreak }).click();
+    await expect(title(noa, c.title.break)).toBeVisible();
+    await noa.getByRole("button", { name: c.endShift }).click();
+    await noa.getByRole("button", { name: c.type.card }).click();
+    await expectCameraOff(noa);
+    const typeOut = noa.getByRole("dialog", { name: c.type.titleOut });
+    await noteFocusWhenSaid(noa, c.done.out, onCircle);
     await typeOut.getByLabel(c.type.label).fill(await digitsOn(page));
     await expect(noa.getByText(c.done.out, { exact: true })).toBeVisible();
     await expect(title(noa, c.title.off)).toBeVisible();
     await expect(circle(noa, c.circle.scanIn)).toBeFocused();
+    await expect.poll(() => focusWhenSaid(noa)).toBe(true);
 
     expect(await demoEntryProofs(NOA.e164)).toEqual([
       { inProof: "typed", outProof: "typed", confirmed: false },
@@ -343,13 +359,16 @@ test("wrong digits block typing, and the worker goes ahead without a code", asyn
     without.getByRole("button", { name: c.none.back }),
   ).toBeVisible();
   await expectCleanPage(page);
+  await noteFocusWhenSaid(page, c.done.inNone, onCircle);
   await without.getByRole("button", { name: c.none.confirmIn }).click();
   await expect(page.getByText(c.done.inNone)).toBeVisible();
   await expect(title(page, c.title.working)).toBeVisible();
   // Closed with its answer, the sheet gives the focus to the circle, which
-  // says the time now running, never to the top of the page.
+  // says the time now running, never to the top of the page; the toast is
+  // said after it.
   await expect(without).toBeHidden();
   await expect(circle(page, c.circle.scanOut)).toBeFocused();
+  await expect.poll(() => focusWhenSaid(page)).toBe(true);
   expect(await demoEntryProofs(NOA.e164)).toEqual([
     { inProof: "none", outProof: null, confirmed: false },
   ]);

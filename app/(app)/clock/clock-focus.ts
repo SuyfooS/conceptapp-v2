@@ -16,9 +16,9 @@ export function clockState(
 
 /**
  * A press of the clock's own buttons (a break, the end of the shift, the
- * circle, a clock-out taken back, the press without a code): the state it
- * was pressed in, and whether its answer was a refusal, which changes
- * nothing on the screen.
+ * circle, a clock-out taken back, the press without a code), or a code's
+ * punch that went through (scanned or typed): the state it was pressed in,
+ * and whether its answer was a refusal, which changes nothing on the screen.
  */
 export type ClockPress = { from: string; refused: boolean };
 

@@ -6,7 +6,9 @@ import { demoLockDevice } from "../../station/actions";
 import { demoOtherStation, demoStations } from "../team/data";
 import { OtherStationCode } from "./other-station";
 
-type Props = { searchParams: Promise<{ other?: string }> };
+type Props = {
+  searchParams: Promise<{ other?: string; restart?: string }>;
+};
 
 const data: CodeScreenData = {
   businessName: business.name,
@@ -27,7 +29,9 @@ const running = demoStations.rows.map((station) => station.name);
 // codes that nothing stores. Locking the device leads to the station's twin,
 // with nothing stored and nobody signed out. `?other=prep`: the device is
 // already the business's kitchen's screen, which the lock stops first, with
-// "ביטול" in the toast to start it again (kept in the page, nothing stored).
+// "ביטול" in the toast to start it again (kept in the page, nothing stored);
+// `&restart=off` as for someone who can't start it again, so the toast has
+// no "ביטול".
 export default function ShellClockCode({ searchParams }: Props) {
   return (
     <Suspense>
@@ -37,7 +41,7 @@ export default function ShellClockCode({ searchParams }: Props) {
 }
 
 async function Demo({ searchParams }: Props) {
-  const { other } = await searchParams;
+  const { other, restart } = await searchParams;
   if (other === "prep") {
     return (
       <OtherStationCode
@@ -47,6 +51,7 @@ async function Demo({ searchParams }: Props) {
         running={running}
         station={demoOtherStation}
         lock={demoLockDevice}
+        restarts={restart !== "off"}
       />
     );
   }

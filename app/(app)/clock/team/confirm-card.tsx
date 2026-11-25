@@ -2,7 +2,7 @@
 
 import { Button } from "@ui/button";
 import { Card } from "@ui/card";
-import type { FocusCandidate } from "@ui/focus-after";
+import { type FocusCandidate, focusFirst } from "@ui/focus-after";
 import { PersonAvatar } from "@ui/person-row";
 import { StatusToast } from "@ui/status-toast";
 import { useFocusWhenGone } from "@ui/use-focus-after";
@@ -15,7 +15,7 @@ import {
   useState,
   useTransition,
 } from "react";
-import { afterApproval } from "./next-approval";
+import { afterApproval, CONFIRM_TITLE } from "./next-approval";
 import type { EntryFailure, EntryToConfirm, TeamActions } from "./team-types";
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
@@ -29,7 +29,9 @@ const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
  * (the demo's stand-in reads nothing again), and the toast names whose hours
  * were approved. The focus, gone with its "אישור", goes on to the next
  * entry's words (`afterApproval`), or to the page's title once the card is
- * gone; the toast's words come after it.
+ * gone; the toast's words come after it. A refusal keeps the entry, and
+ * gives the focus back to its "אישור" (busy meanwhile, so it lost it) once
+ * nothing is on its way, else to the card's title; then it says why.
  */
 export function ConfirmCard({
   rows,
@@ -51,6 +53,25 @@ export function ConfirmCard({
   const [toast, setToast] = useState<{ name: string; stamp: string } | null>(
     null,
   );
+  /**
+   * A refusal, held until the write is over and the focus is back where it
+   * was: said before that move, it would be cut off.
+   */
+  const refusal = useRef<{
+    failure: EntryFailure;
+    from: Element | null;
+  } | null>(null);
+  useEffect(() => {
+    const held = refusal.current;
+    if (pending || !held) return;
+    refusal.current = null;
+    // A microtask on, so an entry the list read again took away has moved
+    // the focus on first (`useFocusWhenGone`).
+    queueMicrotask(() => {
+      focusFirst([held.from, CONFIRM_TITLE]);
+      setFailure(held.failure);
+    });
+  }, [pending]);
   /** Approved here, until the list is read again without them. */
   const [approved, setApproved] = useState<readonly string[]>([]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: the list read again is what clears it
@@ -73,6 +94,9 @@ export function ConfirmCard({
   function approve(row: EntryToConfirm, name: string) {
     setBusy(row.entryId);
     setFailure(null);
+    // The "אישור" pressed, for the focus to come back to after a refusal.
+    const from = document.activeElement;
+    refusal.current = null;
     start(async () => {
       try {
         const result = await confirm(row.entryId);
@@ -80,10 +104,10 @@ export function ConfirmCard({
           setApproved((done) => [...done, row.entryId]);
           setToast({ name, stamp: new Date().toISOString() });
         } else {
-          setFailure(result.failure);
+          refusal.current = { failure: result.failure, from };
         }
       } catch {
-        setFailure("failed");
+        refusal.current = { failure: "failed", from };
       }
       setBusy(null);
     });

@@ -167,9 +167,13 @@ export function PersonHoursView({
   const toastLeaves = useRef<ToastLeaves>("opener");
   /**
    * The record of days away the toast's "ביטול" brought back, a new object
-   * each time: its row takes the focus once the list read again draws it.
+   * each time: its row takes the focus once the list read again draws it,
+   * and then the toast says it came back.
    */
-  const [restored, setRestored] = useState<{ id: string } | null>(null);
+  const [restored, setRestored] = useState<{
+    id: string;
+    shown: () => void;
+  } | null>(null);
   const name = data.person.name ?? t("noName");
   const personHref = `${paths.team}/${data.person.userId}`;
   // The shift as the page has it now: after a write it is read again.
@@ -280,7 +284,8 @@ export function PersonHoursView({
    * The toast's "ביטול" after a removal, on its own: when it can't, the
    * toast says why (the record is gone from the list, so nothing opens).
    * Back, its row takes the focus from the days away's title, where the
-   * toast's going left it, once the list read again draws it.
+   * toast's going left it, once the list read again draws it; the toast's
+   * words come after that move, which would cut them off.
    */
   function restoreAbsence(removed: AbsenceRow) {
     startUndo(async () => {
@@ -290,18 +295,18 @@ export function PersonHoursView({
       } catch {
         result = { ok: false, failure: "failed" };
       }
-      if (result.ok) setRestored({ id: removed.id });
-      setToast(
-        result.ok
-          ? {
-              text: tAbsences("done.restore"),
-              stamp: `restore-absence-${Date.now()}`,
-            }
-          : {
-              text: sayAbsence(result.failure, result.month),
-              stamp: `undo-${Date.now()}`,
-            },
-      );
+      if (result.ok) {
+        const back = {
+          text: tAbsences("done.restore"),
+          stamp: `restore-absence-${Date.now()}`,
+        };
+        setRestored({ id: removed.id, shown: () => setToast(back) });
+      } else {
+        setToast({
+          text: sayAbsence(result.failure, result.month),
+          stamp: `undo-${Date.now()}`,
+        });
+      }
     });
   }
 

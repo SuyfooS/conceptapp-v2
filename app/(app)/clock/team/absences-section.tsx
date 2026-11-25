@@ -119,7 +119,7 @@ export function useAbsenceFailure(): (
  * one main action, so recording is a row, or a quiet pill beside the table.
  * Where the viewer records none here, a quiet line under it says why. A
  * record brought back (`restored`) takes the focus on its row, on the shape
- * drawn, once the list read again has it.
+ * drawn, once the list read again has it, and then says so (`shown`).
  */
 export function AbsencesSection({
   rows,
@@ -140,9 +140,11 @@ export function AbsencesSection({
   /**
    * The record just brought back, a new object each time: its row takes the
    * focus once it is drawn, where the focus was lost or on the section's
-   * title (where the toast's "ביטול" left it), never from elsewhere.
+   * title (where the toast's "ביטול" left it), never from elsewhere. Then
+   * `shown` is called, for the words that say it came back: after the
+   * focus's move, which would cut them off.
    */
-  restored?: { id: string } | null;
+  restored?: { id: string; shown?: () => void } | null;
   /** The viewer records days away here, writing as themselves. */
   addable: boolean;
   /** Opens a record; leave out where nothing opens (viewing only). */
@@ -172,17 +174,19 @@ export function AbsencesSection({
     if (at < 0) return;
     seen.current = restored;
     const title = headingRef?.current ?? null;
-    if (!focusLost() && document.activeElement !== title) return;
-    focusFirst(
-      [
-        list.current?.children.item(at),
-        table.current
-          ?.querySelector("tbody")
-          ?.children.item(at)
-          ?.querySelector("button"),
-      ],
-      { onlyIfLost: false, title: false },
-    );
+    if (focusLost() || document.activeElement === title) {
+      focusFirst(
+        [
+          list.current?.children.item(at),
+          table.current
+            ?.querySelector("tbody")
+            ?.children.item(at)
+            ?.querySelector("button"),
+        ],
+        { onlyIfLost: false, title: false },
+      );
+    }
+    restored.shown?.();
   }, [restored, rows, headingRef]);
   const shiftsLine = (row: AbsenceRow) =>
     row.shifts > 0 ? (

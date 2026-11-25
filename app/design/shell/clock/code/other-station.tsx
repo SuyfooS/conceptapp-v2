@@ -11,7 +11,8 @@ import type { LockAction } from "../../../../(app)/clock/station/station-types";
 /**
  * The code screen's twin on a device that is already the business's
  * kitchen's screen (`?other=prep`): the lock offers to stop it first, and
- * once stopped the lock opens, with "ביטול" in the toast to start it again.
+ * once stopped the lock opens, with "ביטול" in the toast to start it again
+ * (`restarts`), or none, as for someone who can't start it again.
  * What the screen reads again after each (the real one's `refresh()`) is
  * kept here, in the page, so nothing is stored: a new visit starts over.
  */
@@ -22,6 +23,7 @@ export function OtherStationCode({
   running,
   station,
   lock,
+  restarts = true,
 }: {
   data: CodeScreenData;
   issueUrl: string;
@@ -31,6 +33,8 @@ export function OtherStationCode({
   /** The kitchen's screen the device is. */
   station: { id: string; name: string };
   lock: LockAction;
+  /** Whether the stop offers a way back ("ביטול"). */
+  restarts?: boolean;
 }) {
   const [stopped, setStopped] = useState(false);
   return (
@@ -49,7 +53,7 @@ export function OtherStationCode({
         stopOther: {
           stop: async () => {
             setStopped(true);
-            return { ok: true, undo: station.id };
+            return { ok: true, undo: restarts ? station.id : null };
           },
           restart: async () => {
             setStopped(false);

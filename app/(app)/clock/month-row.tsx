@@ -16,13 +16,16 @@ const presses = createMonthPresses();
  * takes it: the focus, gone with the page the arrow was on, comes back to
  * the same arrow, so it can be pressed again, else to the month's title (the
  * month it is now has no "חודש הבא"); then `said`, the month and its hours,
- * is said through the page's announcer. Only where the focus was lost, and
- * only once: the same month shown again later says nothing.
+ * is said through the page's announcer, or only the hours (`saidOnTitle`)
+ * when the title took the focus and said the month itself. Only where the
+ * focus was lost, and only once: the same month shown again later says
+ * nothing.
  */
 export function MonthRow({
   list,
   month,
   said,
+  saidOnTitle,
   children,
 }: {
   /** The card's list (`MonthHero`'s `countId`). */
@@ -31,6 +34,11 @@ export function MonthRow({
   month: string;
   /** The month and its hours in words: "אוקטובר 2026: 12:30 שעות, 5 משמרות". */
   said: string;
+  /**
+   * The hours alone ("12:30 שעות, 5 משמרות"), for when the month's title has
+   * the focus: it says the month as it takes it.
+   */
+  saidOnTitle: string;
   children: ReactNode;
 }) {
   const locale = useLocale();
@@ -73,15 +81,15 @@ export function MonthRow({
     const press = presses.take(list, month);
     if (!press) return;
     const root = row.current;
-    focusFirst(
-      [
-        root?.querySelector(`[data-month-way="${press.way}"]`),
-        root?.querySelector("h2"),
-      ],
+    const title = root?.querySelector("h2");
+    const landed = focusFirst(
+      [root?.querySelector(`[data-month-way="${press.way}"]`), title],
       { preventScroll: true },
     );
-    announce(said, { lang: locale });
-  }, [list, month, said, locale]);
+    announce(landed !== null && landed === title ? saidOnTitle : said, {
+      lang: locale,
+    });
+  }, [list, month, said, saidOnTitle, locale]);
 
   return (
     <div ref={row} className="flex items-center justify-between gap-2">
