@@ -236,6 +236,9 @@ describe("a refusal", () => {
     expect(absenceFailureOf("55000", "removed")).toBe("removed");
     expect(absenceFailureOf("55000", "not_removed")).toBe("notRemoved");
     expect(absenceFailureOf("55000", "too_late")).toBe("tooLate");
+    expect(absenceFailureOf("22023", "kind")).toBe("kind");
+    expect(absenceFailureOf("22023", "dates")).toBe("dates");
+    expect(absenceFailureOf("22023", "order")).toBe("order");
     expect(absenceFailureOf("22023", "too_long")).toBe("tooLong");
     expect(absenceFailureOf("22023", "too_far")).toBe("tooFar");
     expect(absenceFailureOf("22023", "note")).toBe("note");
