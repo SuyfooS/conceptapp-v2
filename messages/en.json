@@ -1840,6 +1840,11 @@
           "action": "Lock the file",
           "hint": "The files also lock by themselves after a quarter of an hour without activity."
         },
+        "idle": {
+          "warning": "The file will lock in a minute, as there was no activity in it.",
+          "keepOpen": "Keep it open",
+          "kept": "The file stays open."
+        },
         "checking": "Checking that the file is still open",
         "viewing": "Viewing as the app's team, you don't see the file, only how many details are missing.",
         "unavailable": "Files can't be opened here yet.",
@@ -6625,6 +6630,7 @@
         "down": "Move down",
         "upFor": "Move up: {name}",
         "downFor": "Move down: {name}",
+        "movedTo": "{name} is now {place} of {count}",
         "saved": "Saved"
       },
       "places": {
@@ -6649,6 +6655,7 @@
         "empty": "No places yet.",
         "upFor": "Move up: {name}",
         "downFor": "Move down: {name}",
+        "movedTo": "{name} is now row {place} of {count}",
         "saved": "Saved"
       },
       "import": {
@@ -6808,6 +6815,7 @@
         "searchPlaceholder": "Search for an item",
         "found": "What was found",
         "nothingFound": "No item starts with {query}",
+        "foundCount": "{count, plural, one {1 result found} other {# results found}}",
         "most": "Ordered most",
         "categories": "Categories",
         "soldOut": "Sold out",

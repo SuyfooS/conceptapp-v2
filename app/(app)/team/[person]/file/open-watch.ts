@@ -30,23 +30,33 @@ import type { KeepOpenAnswer, LockAnswer } from "./holder-file-types";
  *    more), counted here from the answer, which comes after the server's own
  *    moment (an answer that comes after the tab slept counts for nothing, by
  *    point 3); so when they pass, the server finds the step-up gone unless
- *    activity in some tab slid it since. A press or a key here, and another
- *    tab's word that a file is in use there, ask the server at most once a
- *    minute, one within the minute kept for its end, never dropped. The word
- *    itself extends nothing.
+ *    activity in some tab slid it since. Activity here (a press, a key, the
+ *    focus moved, "להשאיר פתוח"), and another tab's word that a file is in
+ *    use there, ask the server at most once a minute, one within the minute
+ *    kept for its end, never dropped. The word itself extends nothing.
  * 5. Only a check for the person's activity in this tab slides the step-up:
- *    the file opening, a press or a key, coming back to the page, a screen
- *    Next shows again. Answered open, it tells the other tabs a file is in
- *    use. A check for this tab's own clock (its 15 minutes, or a check it
- *    slept through) or for another tab's word only reads the step-up, and
- *    tells nothing. So tabs left alone never keep each other open: the files
- *    close on the device 15 minutes after the last activity in any tab, a
- *    minute more at most for a press kept for the minute's end. A kept press
- *    slides only while it is fresh (`PRESS_FRESH_MS`): run long after, in a
- *    tab frozen in the background, its check only reads.
+ *    the file opening, a press or a key, the focus moved from one element to
+ *    another (a screen reader's swipe, which presses nothing; never a focus
+ *    the screen puts back from nowhere, which nobody moved), "להשאיר פתוח",
+ *    coming back to the page, a screen Next shows again. Answered open, it
+ *    tells the other tabs a file is in use. A check for this tab's own clock
+ *    (its 15 minutes, or a check it slept through) or for another tab's word
+ *    only reads the step-up, and tells nothing. So tabs left alone never
+ *    keep each other open: the files close on the device 15 minutes after
+ *    the last activity in any tab, a minute more at most for a press kept
+ *    for the minute's end. A kept press slides only while it is fresh
+ *    (`PRESS_FRESH_MS`): run long after, in a tab frozen in the background,
+ *    its check only reads.
  * 6. While the file is hidden for an answer, a line says the server is being
  *    asked (`FileOpenWatch`), and no answer within 10 seconds, the tab awake,
  *    closes the file in this tab.
+ * 7. A minute before this tab's 15 minutes end (`WARN_BEFORE_MS`), the
+ *    person is told the file is about to lock (`warn(true)`), with
+ *    "להשאיר פתוח" (`stayOpen`), which is activity as a press is. The
+ *    warning ends (`warn(false)`) only when an answer moves the 15 minutes
+ *    on, the file still open here; a file that closes, or a watch that
+ *    stops, says nothing more. The warning keeps nothing open by itself:
+ *    with nobody there, the file locks as it did.
  */
 
 /**
@@ -76,6 +86,12 @@ export const SLEPT_AFTER_MS = KEEP_OPEN_WAIT_MS + 5_000;
  */
 export const PRESS_FRESH_MS = FILE_TOUCH_EVERY_MS + 5_000;
 
+/**
+ * How long before this tab's 15 minutes end the person is told the file is
+ * about to lock: time to hear it, and to say "להשאיר פתוח".
+ */
+export const WARN_BEFORE_MS = 60_000;
+
 /** Why the file closed in this tab, and in this tab only. */
 export type WatchClose =
   /** The server said it is closed: its 15 minutes passed, it was locked, or the step-up is another's now. */
@@ -95,7 +111,7 @@ export type FileClose = WatchClose | "pressed";
  */
 export type OpenFileMemory = { shown: boolean };
 
-/** The page an open file is on: whether it shows, and its presses and keys. */
+/** The page an open file is on: whether it shows, its presses and keys, and its focus. */
 export type WatchedPage = Pick<
   Document,
   "visibilityState" | "addEventListener" | "removeEventListener"
@@ -119,6 +135,11 @@ export type OpenFileWatch = {
    * on coming back; shows it (false) when the server answers open.
    */
   hold: (held: boolean) => void;
+  /**
+   * The file is about to lock (true), a minute before this tab's 15 minutes
+   * end; or it stays open after all (false), an answer having moved them on.
+   */
+  warn?: (soon: boolean) => void;
   page: WatchedPage;
   win: WatchedWindow;
   /** The device's other tabs. */
@@ -126,9 +147,17 @@ export type OpenFileWatch = {
   now?: () => number;
 };
 
+/** A file being watched. */
+export type FileWatch = {
+  /** For when its screen hides or goes. */
+  stop: () => void;
+  /** "להשאיר פתוח": the person's activity here, as a press is. */
+  stayOpen: () => void;
+};
+
 /**
- * Watch an open file while its screen shows, by the rule above, and return
- * the stop for when it hides or goes. An answer that comes after the stop is
+ * Watch an open file while its screen shows, by the rule above, with its
+ * stop for when it hides or goes. An answer that comes after the stop is
  * left for the next start, which asks again.
  */
 export function watchOpenFile({
@@ -136,11 +165,12 @@ export function watchOpenFile({
   keepOpen,
   close,
   hold,
+  warn,
   page,
   win,
   tabs,
   now = Date.now,
-}: OpenFileWatch): () => void {
+}: OpenFileWatch): FileWatch {
   let stopped = false;
   let listening = false;
   let unhear: (() => void) | null = null;
@@ -148,6 +178,9 @@ export function watchOpenFile({
   // open answer said (until its first, 15 minutes from now).
   let shownUntil = idleLocksAt(now());
   let timer: number | undefined;
+  // The warning a minute before, and whether it was given.
+  let warnTimer: number | undefined;
+  let warned = false;
   // The answers still waited for, each by the timer that gives up on it.
   const waits = new Set<number>();
   let lastCheck: number | null = null;
@@ -165,6 +198,7 @@ export function watchOpenFile({
   function stop() {
     stopped = true;
     win.clearTimeout(timer);
+    win.clearTimeout(warnTimer);
     win.clearTimeout(later);
     for (const wait of waits) win.clearTimeout(wait);
     waits.clear();
@@ -174,6 +208,7 @@ export function watchOpenFile({
     listening = false;
     page.removeEventListener("pointerdown", active);
     page.removeEventListener("keydown", active);
+    page.removeEventListener("focusin", moved);
     page.removeEventListener("visibilitychange", shown);
   }
 
@@ -183,9 +218,31 @@ export function watchOpenFile({
     close(why);
   }
 
+  /**
+   * This tab's 15 minutes counted to their end, and the warning a minute
+   * before; a warning given ends, the end moved on.
+   */
   function arm() {
     win.clearTimeout(timer);
-    timer = win.setTimeout(lapse, Math.max(0, shownUntil - now()));
+    win.clearTimeout(warnTimer);
+    const left = shownUntil - now();
+    timer = win.setTimeout(lapse, Math.max(0, left));
+    if (left > WARN_BEFORE_MS) {
+      if (warned) {
+        warned = false;
+        warn?.(false);
+      }
+      warnTimer = win.setTimeout(soon, left - WARN_BEFORE_MS);
+    } else {
+      soon();
+    }
+  }
+
+  /** A minute left: the person is told, once. */
+  function soon() {
+    if (warned || stopped) return;
+    warned = true;
+    warn?.(true);
   }
 
   function holdFile(next: boolean) {
@@ -313,10 +370,20 @@ export function watchOpenFile({
 
   function active() {
     // Held, the answer it waits for decides.
-    if (held) return;
+    if (held || stopped) return;
     // Past its 15 minutes, its timer held back while the device slept.
     if (now() >= shownUntil) lookAgain(true);
     else due(true);
+  }
+
+  /**
+   * The focus moved from one element to another: the person's doing (a key,
+   * a screen reader's swipe). A focus put on the page from nowhere (the
+   * screen giving it back once the file shows again, or once what had it
+   * went) moved nothing of the person's, and keeps nothing open.
+   */
+  function moved(event: Event) {
+    if ((event as FocusEvent).relatedTarget) active();
   }
 
   function shown() {
@@ -336,13 +403,14 @@ export function watchOpenFile({
   listening = true;
   page.addEventListener("pointerdown", active);
   page.addEventListener("keydown", active);
+  page.addEventListener("focusin", moved);
   page.addEventListener("visibilitychange", shown);
   unhear = tabs.hear(heard);
   arm();
   if (page.visibilityState !== "visible") putAway();
   else if (again) lookAgain(true);
   else check(true);
-  return stop;
+  return { stop, stayOpen: active };
 }
 
 /**

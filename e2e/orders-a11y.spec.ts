@@ -1,0 +1,270 @@
+import { createTranslator } from "next-intl";
+import { SEARCH_SAID_AFTER_MS } from "../app/(app)/orders/search-said";
+import { restaurantWording } from "../app/design/order-taking/data";
+import he from "../messages/he.json" with { type: "json" };
+import { type MessageTree, mergeWording } from "../packages/domain/wording";
+import {
+  announcer,
+  heardSoFar,
+  noteIfSaid,
+  saidSince,
+  wasSaid,
+} from "./announcer";
+import type { heT } from "./t";
+import { expect, type Page, test } from "./test";
+
+// Accessibility, part 9, on waiter mode's twins (/design/order-taking): the
+// places and the categories moved with their arrows, a draft line's allergy
+// saved without words, and the menu's search. No data, no sign-in, nothing
+// stored: the twin's store lives in the page. The real categories' move and
+// the real allergy are in orders-menu.spec.ts and orders.spec.ts.
+
+/** The twin's restaurant's words: the app's, with its template's sentences. */
+const rt = createTranslator({
+  locale: "he",
+  messages: mergeWording(he as MessageTree, restaurantWording) as typeof he,
+}) as typeof heT;
+
+const asIs = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** A row's arrow, by its whole name ("הזזה למטה: 1", never "...: 12"). */
+const arrow = (page: Page, name: string) =>
+  page.getByRole("button", { name, exact: true });
+
+/** The names of the rows of a list whose fields are named `prefix` + the name, in order. */
+const rowNames = (page: Page, prefix: string) =>
+  page
+    .getByRole("textbox", { name: new RegExp(`^${asIs(prefix)}`) })
+    .evaluateAll((fields) =>
+      fields.map((field) => (field as HTMLInputElement).value),
+    );
+
+async function open(page: Page, path: string) {
+  await page.goto(path);
+  await page.waitForLoadState("networkidle");
+}
+
+// A table moved down is put back in the page after the one it passed, which
+// took the focus from its arrow: the same arrow has it again once the move
+// is drawn, and where it went is said after it. Moved up to the top, its
+// "הזזה למעלה" can't be pressed again, so "הזזה למטה" has the focus. A
+// mouse's press is the same.
+test("the places twin keeps the focus on a moved table's arrow and says where it went", async ({
+  page,
+}) => {
+  const polite = announcer(page, "polite");
+  const p = "app.orders.places" as const;
+  const nameOf = rt(`${p}.nameOf`, { name: "" }).trim();
+  await open(page, "/design/order-taking/menu/places");
+  const down1 = arrow(page, rt(`${p}.downFor`, { name: "1" }));
+  const up1 = arrow(page, rt(`${p}.upFor`, { name: "1" }));
+
+  await down1.focus();
+  await heardSoFar(polite);
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(() => rowNames(page, nameOf))
+    .toEqual(["2", "1", ...Array.from({ length: 10 }, (_, i) => `${i + 3}`)]);
+  await expect(down1).toBeFocused();
+  await expect(
+    saidSince(polite, rt(`${p}.movedTo`, { name: "1", place: 2, count: 12 })),
+  ).toHaveCount(1);
+
+  await up1.focus();
+  await heardSoFar(polite);
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => (await rowNames(page, nameOf))[0]).toBe("1");
+  await expect(up1).toBeDisabled();
+  await expect(down1).toBeFocused();
+  await expect(
+    saidSince(polite, rt(`${p}.movedTo`, { name: "1", place: 1, count: 12 })),
+  ).toHaveCount(1);
+
+  // With a mouse: table 3 down, the focus kept on its arrow.
+  const down3 = arrow(page, rt(`${p}.downFor`, { name: "3" }));
+  await heardSoFar(polite);
+  await down3.click();
+  await expect.poll(async () => (await rowNames(page, nameOf))[3]).toBe("3");
+  await expect(down3).toBeFocused();
+  await expect(
+    saidSince(polite, rt(`${p}.movedTo`, { name: "3", place: 4, count: 12 })),
+  ).toHaveCount(1);
+});
+
+// The same for the menu's categories: down to the end, "הזזה למעלה" has the
+// focus; down from the top by a mouse's press, its own arrow keeps it.
+test("the categories twin keeps the focus on a moved category's arrow and says where it went", async ({
+  page,
+}) => {
+  const polite = announcer(page, "polite");
+  const c = "app.orders.categories" as const;
+  const nameOf = rt(`${c}.nameOf`, { name: "" }).trim();
+  await open(page, "/design/order-taking/menu/categories");
+  await expect
+    .poll(() => rowNames(page, nameOf))
+    .toEqual(["ראשונות", "עיקריות", "קינוחים", "שתייה"]);
+
+  await arrow(page, rt(`${c}.downFor`, { name: "קינוחים" })).focus();
+  await heardSoFar(polite);
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(() => rowNames(page, nameOf))
+    .toEqual(["ראשונות", "עיקריות", "שתייה", "קינוחים"]);
+  await expect(
+    arrow(page, rt(`${c}.downFor`, { name: "קינוחים" })),
+  ).toBeDisabled();
+  await expect(
+    arrow(page, rt(`${c}.upFor`, { name: "קינוחים" })),
+  ).toBeFocused();
+  await expect(
+    saidSince(
+      polite,
+      rt(`${c}.movedTo`, { name: "קינוחים", place: 4, count: 4 }),
+    ),
+  ).toHaveCount(1);
+
+  const firstDown = arrow(page, rt(`${c}.downFor`, { name: "ראשונות" }));
+  await heardSoFar(polite);
+  await firstDown.click();
+  await expect
+    .poll(() => rowNames(page, nameOf))
+    .toEqual(["עיקריות", "ראשונות", "שתייה", "קינוחים"]);
+  await expect(firstDown).toBeFocused();
+  await expect(
+    saidSince(
+      polite,
+      rt(`${c}.movedTo`, { name: "ראשונות", place: 2, count: 4 }),
+    ),
+  ).toHaveCount(1);
+});
+
+// An allergy saved without its words: from "שמירת ההערה", the field takes
+// the focus, marked, and why is said after its own read, out of its
+// description while it keeps the focus and back in it once the focus
+// leaves; from the field itself (a screen reader's press that left the
+// focus there), why is said at once. Each said once.
+test("the order twin's allergy without words is said once, the field focused and marked", async ({
+  page,
+}, testInfo) => {
+  const polite = announcer(page, "polite");
+  const assertive = announcer(page, "assertive");
+  const n = "app.orders.note" as const;
+  const why = rt(`${n}.allergyMissing`);
+  await open(
+    page,
+    "/design/order-taking/floor/order?place=table-6&state=draft",
+  );
+  if (testInfo.project.name === "phone") {
+    await page
+      .getByRole("button", {
+        name: new RegExp(`^${asIs(rt("app.orders.order.view.order"))}`),
+      })
+      .filter({ visible: true })
+      .first()
+      .click();
+  }
+  await page
+    .getByRole("button", {
+      name: new RegExp(`^${asIs(rt("app.orders.draft.allergy"))}.*לימונדה`),
+    })
+    .filter({ visible: true })
+    .click();
+  const sheet = page.getByRole("dialog", {
+    name: rt(`${n}.title`, { name: "לימונדה" }),
+  });
+  await expect(sheet).toBeVisible();
+  const field = sheet.getByLabel(rt(`${n}.allergyLabel`));
+  const save = sheet.getByRole("button", { name: rt(`${n}.save`) });
+
+  await heardSoFar(polite);
+  await heardSoFar(assertive);
+  await save.click();
+  await expect(field).toBeFocused();
+  await expect(field).toHaveAttribute("aria-invalid", "true");
+  await expect(sheet.getByText(why)).toBeVisible();
+  await expect(saidSince(polite, why)).toHaveCount(1);
+  await expect(saidSince(assertive, why)).toHaveCount(0);
+  await expect(field).not.toHaveAttribute("aria-describedby");
+  await expect(sheet.getByRole("alert")).toHaveCount(0);
+  // Away from the field, why is its description again.
+  await page.keyboard.press("Tab");
+  await expect(field).not.toBeFocused();
+  await expect(field).toHaveAccessibleDescription(why);
+
+  // The press that leaves the focus on the field: why is said at once.
+  await field.focus();
+  await heardSoFar(polite);
+  await heardSoFar(assertive);
+  await save.dispatchEvent("click");
+  await expect(saidSince(assertive, why)).toHaveCount(1);
+  await expect(field).toBeFocused();
+  await expect(field).not.toHaveAttribute("aria-describedby");
+  await expect(saidSince(polite, why)).toHaveCount(0);
+
+  // Its words, and it saves.
+  await field.fill("בוטנים");
+  await expect(field).not.toHaveAttribute("aria-invalid");
+  await save.click();
+  await expect(sheet).toHaveCount(0);
+});
+
+// The search says what it found once what is typed settles: how many, or
+// that nothing starts so; nothing as the screen opens or as it is emptied,
+// and a word typed letter by letter is said once, for what it found in the
+// end. The nothing-found line is no live region of its own.
+test("the order twin's menu search says how many it found once the typing settles", async ({
+  page,
+}, testInfo) => {
+  const polite = announcer(page, "polite");
+  const pk = "app.orders.picker" as const;
+  const settled = () => page.waitForTimeout(SEARCH_SAID_AFTER_MS + 400);
+  const anyResult = new RegExp(
+    `${asIs(rt(`${pk}.foundCount`, { count: 2 })).replace("2", "\\d+")}|${asIs(
+      rt(`${pk}.foundCount`, { count: 1 }),
+    )}|${asIs(rt(`${pk}.nothingFound`, { query: "" }))}`,
+  );
+  await open(page, "/design/order-taking/floor/order?place=table-6");
+  if (testInfo.project.name === "phone") {
+    // The phone's items, whatever the order shows first.
+    await page
+      .getByRole("button", {
+        name: new RegExp(`^${asIs(rt("app.orders.order.view.add"))}`),
+      })
+      .filter({ visible: true })
+      .first()
+      .click();
+  }
+  const search = page.getByLabel(rt(`${pk}.search`));
+  await expect(search).toBeVisible();
+  await settled();
+  await expect(polite.getByText(anyResult)).toHaveCount(0);
+
+  // "ש" alone finds two (שניצל, עוגת שוקולד), "שנ" one: only the one said.
+  const two = rt(`${pk}.foundCount`, { count: 2 });
+  await noteIfSaid(page, two);
+  await heardSoFar(polite);
+  await search.pressSequentially("שנ", { delay: 80 });
+  const one = rt(`${pk}.foundCount`, { count: 1 });
+  await expect(saidSince(polite, one)).toHaveCount(1);
+  expect(await wasSaid(page, two)).toBe(false);
+
+  // Nothing starts so: said, and shown in a line that is no live region.
+  const nothing = rt(`${pk}.nothingFound`, { query: "שנזז" });
+  await heardSoFar(polite);
+  await search.fill("שנזז");
+  await expect(saidSince(polite, nothing)).toHaveCount(1);
+  await expect(page.getByRole("main").getByText(nothing)).toBeVisible();
+  await expect(
+    page.getByRole("status").filter({ hasText: nothing }),
+  ).toHaveCount(0);
+
+  // Emptied: nothing said. The same search again: said again.
+  await heardSoFar(polite);
+  await search.fill("");
+  await settled();
+  await expect(
+    polite.locator("p:not([data-heard])").filter({ hasText: anyResult }),
+  ).toHaveCount(0);
+  await search.fill("שנ");
+  await expect(saidSince(polite, one)).toHaveCount(1);
+});

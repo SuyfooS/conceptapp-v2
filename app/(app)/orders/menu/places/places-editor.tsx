@@ -22,16 +22,22 @@ import { type FormEvent, useId, useState } from "react";
 import { inputClass, rowClass } from "../../../manage/list-rows";
 import { FailureLine } from "../menu-parts";
 import type { MenuActionFailure, SavePlaces } from "../menu-types";
+import { type MoveBy, useRowMoves } from "../row-moves";
 
 /** Where the quick start begins: a small restaurant's floor. */
 const QUICK_START = 10;
+
+/** A place's row, as its list keys it: one not saved yet by its name. */
+const placeKey = (place: PlaceInput) => place.id ?? `new:${place.name}`;
 
 /**
  * The places orders are taken for (waiter mode P2): tables, seats at the bar
  * or rooms, each a name to type over in the order the floor shows them,
  * saved whole with each change, as the departments are. Removing one has an
  * undo. A business with none yet makes them all at once, named 1 to N,
- * renamed later as it likes. The same rows on every screen, one list.
+ * renamed later as it likes. A move keeps the focus on the place's arrow
+ * (the other one once it reaches an end) and says where it went
+ * (`useRowMoves`). The same rows on every screen, one list.
  */
 export function PlacesEditor({
   places,
@@ -65,6 +71,7 @@ export function PlacesEditor({
   const [saved, setSaved] = useState(0);
 
   const shown: PlaceInput[] = order ?? places;
+  const moves = useRowMoves(shown, placeKey);
   const named = (text: string, except?: number) =>
     shown.some(
       (p, at) => at !== except && p.name.toLowerCase() === text.toLowerCase(),
@@ -134,13 +141,18 @@ export function PlacesEditor({
     return true;
   }
 
-  function move(index: number, by: -1 | 1) {
+  function move(index: number, by: MoveBy) {
     const to = index + by;
     if (to < 0 || to >= shown.length) return;
     const next = [...shown];
     const [moving] = next.splice(index, 1);
     if (!moving) return;
     next.splice(to, 0, moving);
+    moves.moving(
+      placeKey(moving),
+      by,
+      t("movedTo", { name: moving.name, place: to + 1, count: next.length }),
+    );
     void change(next);
   }
 
@@ -206,7 +218,7 @@ export function PlacesEditor({
               <p className="px-4 py-3.5 text-ink-2">{t("empty")}</p>
             ) : null}
             {shown.map((place, index) => (
-              <div key={place.id ?? `new:${place.name}`} className={rowClass}>
+              <div key={placeKey(place)} className={rowClass}>
                 <input
                   key={place.name}
                   aria-label={t("nameOf", { name: place.name })}
@@ -226,6 +238,7 @@ export function PlacesEditor({
                 {disabled ? null : (
                   <>
                     <IconButton
+                      ref={moves.arrowRef(placeKey(place), -1)}
                       label={t("upFor", { name: place.name })}
                       icon={<ArrowUp />}
                       className="text-ink-2"
@@ -233,6 +246,7 @@ export function PlacesEditor({
                       onClick={() => move(index, -1)}
                     />
                     <IconButton
+                      ref={moves.arrowRef(placeKey(place), 1)}
                       label={t("downFor", { name: place.name })}
                       icon={<ArrowDown />}
                       className="text-ink-2"
@@ -282,7 +296,7 @@ export function PlacesEditor({
             <UndoRow
               // Each removal a row of its own (keyed as its row was): another
               // while this one is up takes the focus again.
-              key={removed.place.id ?? `new:${removed.place.name}`}
+              key={placeKey(removed.place)}
               message={t("removed", { name: removed.place.name })}
               onUndo={() => void undo()}
               autoFocus

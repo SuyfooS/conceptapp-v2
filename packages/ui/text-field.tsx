@@ -76,6 +76,12 @@ export type TextAreaProps = ComponentProps<"textarea"> & {
   /** Helper text under the field. Replaced by the error when there is one. */
   hint?: ReactNode;
   error?: ReactNode;
+  /**
+   * The message stays on screen but out of the field's description, for
+   * the moment the screen says it another way (the page's announcer, while
+   * the field has the focus), so a read of the field doesn't say it twice.
+   */
+  quietMessage?: boolean;
 };
 
 /** Several lines of text: a pasted list, a note. Same frame as TextField. */
@@ -86,6 +92,7 @@ export function TextArea({
   id,
   className,
   rows = 5,
+  quietMessage = false,
   ...props
 }: TextAreaProps) {
   const autoId = useId();
@@ -102,7 +109,7 @@ export function TextArea({
         id={inputId}
         rows={rows}
         aria-invalid={error ? true : undefined}
-        aria-describedby={message ? messageId : undefined}
+        aria-describedby={message && !quietMessage ? messageId : undefined}
         className={cn(fieldInputClass, "h-auto min-h-24 py-2.5", className)}
         {...props}
       />

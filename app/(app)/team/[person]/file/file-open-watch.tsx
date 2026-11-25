@@ -1,14 +1,19 @@
 "use client";
 
+import { announce } from "@ui/announcer";
 import { Button } from "@ui/button";
+import { DockButton, FloatingDock } from "@ui/floating-dock";
+import { focusWhenGone, watchFocusIn } from "@ui/focus-after";
 import { Spinner } from "@ui/spinner";
-import { Lock } from "lucide-react";
+import { Lock, LockOpen } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import {
   createContext,
   type ReactNode,
+  type RefObject,
   use,
+  useEffect,
   useEffectEvent,
   useLayoutEffect,
   useRef,
@@ -61,7 +66,10 @@ const CHECKING_AFTER_MS = 300;
  * here (`focusOnOpen`), the focus, which was on the code's boxes, goes to
  * the file's first heading. The twin, which keeps nothing, goes to its
  * locked state instead (`lockedHref`), and its tabs talk among themselves
- * only.
+ * only. A minute before it locks for want of activity, a line says so, at
+ * once to a screen reader, with "להשאיר פתוח" (`IdleWarning`); kept open,
+ * by it or by any activity, "התיק נשאר פתוח" is said. The warning keeps
+ * nothing open by itself.
  */
 export function FileOpenWatch({
   actions,
@@ -92,6 +100,14 @@ export function FileOpenWatch({
   const [checking, setChecking] = useState(false);
   const checkingSoon = useRef<number | undefined>(undefined);
   const channel = lockedHref ? FILE_TABS_TWIN_CHANNEL : FILE_TABS_CHANNEL;
+  const locale = useLocale();
+  // A minute before it locks: the warning, and whether it was on screen
+  // (given while the file was held, it was never seen, nor its end said).
+  const [warned, setWarned] = useState(false);
+  const warningSeen = useRef(false);
+  // How many times a warning seen ended with the file still open.
+  const [kept, setKept] = useState(0);
+  const stayOpen = useRef<(() => void) | null>(null);
 
   function close(why: FileClose) {
     if (closing.current) return;
@@ -130,23 +146,52 @@ export function FileOpenWatch({
     }
   });
 
+  const warn = useEffectEvent((soon: boolean) => {
+    setWarned(soon);
+    if (soon) return;
+    if (warningSeen.current) setKept((count) => count + 1);
+    warningSeen.current = false;
+  });
+
   useLayoutEffect(() => {
     const device = deviceFileTabs(window, channel);
     tabs.current = device;
-    const stop = watchOpenFile({
+    const watching = watchOpenFile({
       memory: memory.current,
       keepOpen: (slide) => keepOpen(slide),
       close: (why) => closeFromWatch(why),
       hold: (next) => hold(next),
+      warn: (soon) => warn(soon),
       page: document,
       win: window,
       tabs: device,
     });
+    stayOpen.current = watching.stayOpen;
     return () => {
-      stop();
+      watching.stop();
+      stayOpen.current = null;
       window.clearTimeout(checkingSoon.current);
+      // A watch that starts again counts afresh, with nothing to warn of.
+      setWarned(false);
+      warningSeen.current = false;
     };
   }, [channel]);
+
+  // The warning on screen: its end is said.
+  const warningShown = warned && !held;
+  useLayoutEffect(() => {
+    if (warningShown) warningSeen.current = true;
+  }, [warningShown]);
+
+  // Kept open after a warning that was on screen: said once, after the
+  // focus its "להשאיר פתוח" held has gone back into the file (not again
+  // when the screen is shown again).
+  const keptSaid = useRef(0);
+  useEffect(() => {
+    if (kept === keptSaid.current) return;
+    keptSaid.current = kept;
+    announce(t("idle.kept"), { lang: locale });
+  }, [kept, t, locale]);
 
   // Shown again: the focus the hiding took goes back, unless the person
   // put it somewhere else meanwhile.
@@ -186,8 +231,83 @@ export function FileOpenWatch({
         >
           {children}
         </div>
+        {warningShown ? (
+          <IdleWarning
+            onStay={() => stayOpen.current?.()}
+            place={place}
+            closing={closing}
+          />
+        ) : null}
       </div>
     </FileClosing>
+  );
+}
+
+/**
+ * The file is about to lock for want of activity: a line that says so, an
+ * alert, so a screen reader says it at once wherever its reader is, and
+ * "להשאיר פתוח", in the dock, within reach wherever the page is scrolled.
+ * It doesn't take the focus: a press anywhere keeps the file open too.
+ * Gone with the focus on its button (kept open, by it or by anything else),
+ * the focus goes back to where it came from in the file, else to the
+ * file's first heading; never when the file closed, whose locked card
+ * takes it.
+ */
+function IdleWarning({
+  onStay,
+  place,
+  closing,
+}: {
+  onStay: () => void;
+  /** The file, where the focus goes back to. */
+  place: RefObject<HTMLDivElement | null>;
+  /** The file is closing: the locked card takes the focus. */
+  closing: RefObject<boolean>;
+}) {
+  const t = useTranslations("app.team.file.idle");
+  const root = useRef<HTMLDivElement>(null);
+  const cameFrom = useRef<Element | null>(null);
+
+  useLayoutEffect(() => {
+    const element = root.current;
+    if (!element) return;
+    const watch = watchFocusIn(element);
+    const from = (event: FocusEvent) => {
+      const before = event.relatedTarget;
+      if (before instanceof Element && !element.contains(before)) {
+        cameFrom.current = before;
+      }
+    };
+    element.addEventListener("focusin", from);
+    return () => {
+      element.removeEventListener("focusin", from);
+      const had = watch.had();
+      watch.stop();
+      if (!had || closing.current) return;
+      const back = [cameFrom.current, place.current?.querySelector("h2")];
+      queueMicrotask(() => {
+        focusWhenGone(back);
+      });
+    };
+  }, [place, closing]);
+
+  return (
+    <div ref={root}>
+      <FloatingDock
+        notice={
+          <p
+            role="alert"
+            className="glass mx-auto w-fit rounded-[22px] px-4 py-2 text-center font-medium text-base"
+          >
+            {t("warning")}
+          </p>
+        }
+      >
+        <DockButton icon={<LockOpen aria-hidden="true" />} onClick={onStay}>
+          {t("keepOpen")}
+        </DockButton>
+      </FloatingDock>
+    </div>
   );
 }
 

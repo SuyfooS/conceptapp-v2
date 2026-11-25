@@ -2,6 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { createTranslator } from "next-intl";
 import he from "../messages/he.json" with { type: "json" };
 import { type MessageTree, mergeWording } from "../packages/domain/wording";
+import { announcer, heardSoFar, saidSince } from "./announcer";
 import {
   archiveDemoDepartment,
   clearDemoMenuRules,
@@ -476,14 +477,27 @@ test("a manager edits the categories and the places, each removal with its undo"
     name: "בדיקות",
     department: "kitchen",
   });
-  await page
-    .getByRole("button", {
-      name: heT("app.orders.categories.upFor", { name: "בדיקות" }),
-    })
-    .click();
+  // Moved up, its arrow keeps the focus and where it went is said.
+  const up = page.getByRole("button", {
+    name: heT("app.orders.categories.upFor", { name: "בדיקות" }),
+  });
+  const polite = announcer(page, "polite");
+  await heardSoFar(polite);
+  await up.click();
   await expect
     .poll(async () => (await demoMenuCategories()).map((row) => row.name))
     .toEqual(["ראשונות", "עיקריות", "קינוחים", "בדיקות", "שתייה"]);
+  await expect(up).toBeFocused();
+  await expect(
+    saidSince(
+      polite,
+      heT("app.orders.categories.movedTo", {
+        name: "בדיקות",
+        place: 4,
+        count: 5,
+      }),
+    ),
+  ).toHaveCount(1);
   const field = page.getByLabel(
     heT("app.orders.categories.nameOf", { name: "בדיקות" }),
   );

@@ -25,6 +25,11 @@ import type {
   MenuDepartment,
   SaveCategories,
 } from "../menu-types";
+import { type MoveBy, useRowMoves } from "../row-moves";
+
+/** A category's row, as its list keys it: one not saved yet by its name. */
+const categoryKey = (category: CategoryInput) =>
+  category.id ?? `new:${category.name}`;
 
 /** A category's row: its name over the rest on a phone, all in a line from a computer. */
 const rowClass =
@@ -33,7 +38,9 @@ const rowClass =
 /**
  * The menu's categories (waiter mode P2): each a name to type over, the
  * department that prepares its items, how many it has, and its place in the
- * menu, saved whole with each change, as the departments are. Removing one
+ * menu, saved whole with each change, as the departments are. A move keeps
+ * the focus on the category's arrow (the other one once it reaches an end)
+ * and says where it went (`useRowMoves`). Removing one
  * has an undo, which brings it back with its items. One whose department was
  * removed says so until another is chosen, and still saves as it is.
  * Phone: one list. Tablet: the list beside the items of the category whose
@@ -84,6 +91,7 @@ export function CategoriesEditor({
   const [saved, setSaved] = useState(0);
 
   const shown: CategoryInput[] = order ?? categories;
+  const moves = useRowMoves(shown, categoryKey);
   const countOf = (id: string | undefined) =>
     id ? items.filter((item) => item.category === id).length : 0;
   const current =
@@ -162,13 +170,18 @@ export function CategoriesEditor({
     );
   }
 
-  function move(index: number, by: -1 | 1) {
+  function move(index: number, by: MoveBy) {
     const to = index + by;
     if (to < 0 || to >= shown.length) return;
     const next = [...shown];
     const [moving] = next.splice(index, 1);
     if (!moving) return;
     next.splice(to, 0, moving);
+    moves.moving(
+      categoryKey(moving),
+      by,
+      t("movedTo", { name: moving.name, place: to + 1, count: next.length }),
+    );
     void change(next);
   }
 
@@ -227,7 +240,7 @@ export function CategoriesEditor({
               }`;
               return (
                 <div
-                  key={category.id ?? `new:${category.name}`}
+                  key={categoryKey(category)}
                   className={cn(
                     rowClass,
                     current === category &&
@@ -304,6 +317,7 @@ export function CategoriesEditor({
                     {disabled ? null : (
                       <>
                         <IconButton
+                          ref={moves.arrowRef(categoryKey(category), -1)}
                           label={t("upFor", { name: category.name })}
                           icon={<ArrowUp />}
                           className="text-ink-2"
@@ -311,6 +325,7 @@ export function CategoriesEditor({
                           onClick={() => move(index, -1)}
                         />
                         <IconButton
+                          ref={moves.arrowRef(categoryKey(category), 1)}
                           label={t("downFor", { name: category.name })}
                           icon={<ArrowDown />}
                           className="text-ink-2"
@@ -373,7 +388,7 @@ export function CategoriesEditor({
             <UndoRow
               // Each removal a row of its own (keyed as its row was): another
               // while this one is up takes the focus again.
-              key={removed.category.id ?? `new:${removed.category.name}`}
+              key={categoryKey(removed.category)}
               message={t("removed", {
                 name: removed.category.name,
                 count: removed.count,
