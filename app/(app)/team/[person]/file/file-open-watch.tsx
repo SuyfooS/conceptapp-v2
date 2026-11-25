@@ -3,7 +3,12 @@
 import { announce } from "@ui/announcer";
 import { Button } from "@ui/button";
 import { DockButton, FloatingDock } from "@ui/floating-dock";
-import { focusWhenGone, watchFocusIn } from "@ui/focus-after";
+import {
+  focusWhenGone,
+  ignoreHeldEnter,
+  onScreen,
+  watchFocusIn,
+} from "@ui/focus-after";
 import { Spinner } from "@ui/spinner";
 import { Lock, LockOpen } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -19,7 +24,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { focusIfLost } from "./file-focus";
+import { focusIfLost, titleAbove } from "./file-focus";
 import {
   deviceFileTabs,
   FILE_TABS_CHANNEL,
@@ -69,7 +74,9 @@ const CHECKING_AFTER_MS = 300;
  * only. A minute before it locks for want of activity, a line says so, at
  * once to a screen reader, with "להשאיר פתוח" (`IdleWarning`); kept open,
  * by it or by any activity, "התיק נשאר פתוח" is said. The warning keeps
- * nothing open by itself.
+ * nothing open by itself. On a phone it is what keeps a screen reader's
+ * file open: a swipe there moves only the reader's own cursor, no focus,
+ * so reading the file is no activity the page hears.
  */
 export function FileOpenWatch({
   actions,
@@ -138,13 +145,10 @@ export function FileOpenWatch({
         heldFocus.current = active;
       } else if (warningRoot.current?.contains(active)) {
         // On "להשאיר פתוח", which goes with the hold: shown again, the
-        // file takes the focus where it came from in it, else at its first
-        // heading; closed, the locked card takes it.
-        const from = warningFrom.current;
-        heldFocus.current =
-          from instanceof HTMLElement && place.current?.contains(from)
-            ? from
-            : (place.current?.querySelector("h2") ?? null);
+        // file takes the focus at the title of the part it came from, else
+        // at its first heading (`landingIn`); closed, the locked card
+        // takes it.
+        heldFocus.current = landingIn(place.current, warningFrom.current);
       }
     }
     setHeld(next);
@@ -265,11 +269,13 @@ export function FileOpenWatch({
  * "להשאיר פתוח", in the dock, within reach wherever the page is scrolled.
  * It doesn't take the focus: a press anywhere keeps the file open too.
  * Gone with the focus on its button (kept open, by it or by anything else),
- * the focus goes back to where it came from in the file, else to the
- * file's first heading; never when the file closed, whose locked card
- * takes it, nor when it went with the file held, inert (its 15 minutes'
- * check, the page put away): the file takes it as it shows again
- * (`heldFocus`), or the locked card.
+ * the focus goes to the title of the part of the file it came from, else
+ * to the file's first heading (`landingIn`), never back to a control the
+ * person was only passing, which an Enter meant for this button would
+ * press; never when the file closed, whose locked card takes it, nor when
+ * it went with the file held, inert (its 15 minutes' check, the page put
+ * away): the file takes it as it shows again (`heldFocus`), or the locked
+ * card. Enter held down on the button presses it once.
  */
 function IdleWarning({
   onStay,
@@ -311,9 +317,9 @@ function IdleWarning({
       const had = watch.had();
       watch.stop();
       if (!had || closing.current || held.current) return;
-      const back = [cameFrom.current, place.current?.querySelector("h2")];
+      const back = landingIn(place.current, cameFrom.current);
       queueMicrotask(() => {
-        focusWhenGone(back);
+        focusWhenGone([back]);
       });
     };
   }, [place, closing, held, root, cameFrom]);
@@ -330,12 +336,30 @@ function IdleWarning({
           </p>
         }
       >
-        <DockButton icon={<LockOpen aria-hidden="true" />} onClick={onStay}>
+        <DockButton
+          icon={<LockOpen aria-hidden="true" />}
+          onClick={onStay}
+          onKeyDown={ignoreHeldEnter}
+        >
           {t("keepOpen")}
         </DockButton>
       </FloatingDock>
     </div>
   );
+}
+
+/**
+ * Where the focus lands in the file as the warning goes with it: the title
+ * of the part it came from, else the file's first heading (`titleAbove`),
+ * among the titles on screen. Null without a file.
+ */
+function landingIn(
+  file: HTMLElement | null,
+  from: Element | null,
+): HTMLElement | null {
+  if (!file) return null;
+  const titles = [...file.querySelectorAll<HTMLElement>("h2")].filter(onScreen);
+  return titleAbove(from && file.contains(from) ? from : null, titles);
 }
 
 /** "נעילת התיק": the file closes here at once, and in every tab of the device. */

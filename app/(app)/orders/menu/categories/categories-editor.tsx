@@ -9,6 +9,7 @@ import {
 import { Button } from "@ui/button";
 import { ChoiceMenu, choiceShown } from "@ui/choice-menu";
 import { cn } from "@ui/cn";
+import { ignoreHeldEnter } from "@ui/focus-after";
 import { IconButton } from "@ui/icon-button";
 import { ListGroup } from "@ui/list-row";
 import { PageSection } from "@ui/page";
@@ -40,7 +41,8 @@ const rowClass =
  * department that prepares its items, how many it has, and its place in the
  * menu, saved whole with each change, as the departments are. A move keeps
  * the focus on the category's arrow (the other one once it reaches an end)
- * and says where it went (`useRowMoves`). Removing one
+ * and says where it went (`useRowMoves`); Enter held down moves it once, so
+ * the other arrow takes no key repeating. Removing one
  * has an undo, which brings it back with its items. One whose department was
  * removed says so until another is chosen, and still saves as it is.
  * Phone: one list. Tablet: the list beside the items of the category whose
@@ -323,6 +325,7 @@ export function CategoriesEditor({
                           className="text-ink-2"
                           disabled={index === 0}
                           onClick={() => move(index, -1)}
+                          onKeyDown={ignoreHeldEnter}
                         />
                         <IconButton
                           ref={moves.arrowRef(categoryKey(category), 1)}
@@ -331,6 +334,7 @@ export function CategoriesEditor({
                           className="text-ink-2"
                           disabled={index === shown.length - 1}
                           onClick={() => move(index, 1)}
+                          onKeyDown={ignoreHeldEnter}
                         />
                         <IconButton
                           label={t("remove", { name: category.name })}

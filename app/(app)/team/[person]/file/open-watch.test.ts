@@ -61,8 +61,9 @@ class Page extends EventTarget {
   }
 
   /**
-   * The focus put on an element: moved from `from` (a key, a screen
-   * reader's swipe), or from nowhere (null: the screen giving it back).
+   * The focus put on an element: moved from `from` (a key, a desktop screen
+   * reader moving the system focus), or from nowhere (null: the screen
+   * giving it back).
    */
   focus(from: object | null) {
     this.dispatchEvent(
@@ -1206,9 +1207,10 @@ describe("watchOpenFile, the screen", () => {
 });
 
 describe("watchOpenFile, the warning a minute before, and the focus moved", () => {
-  // Reading the file with a screen reader presses nothing: a swipe moves
-  // only the focus. The file still locks with nobody there, and says so a
-  // minute before, with "להשאיר פתוח".
+  // Reading the file with a phone's screen reader presses nothing and moves
+  // no focus (a swipe moves only the reader's own cursor), so it is no
+  // activity. The file still locks with nobody there, and says so a minute
+  // before, with "להשאיר פתוח", which keeps it open.
   it("warns a minute before its 15 minutes end, and 'להשאיר פתוח' slides the step-up and ends the warning, the file still open", async () => {
     const { clock, server, tab } = setup();
     const a = tab();
@@ -1297,8 +1299,9 @@ describe("watchOpenFile, the warning a minute before, and the focus moved", () =
     a.page.focus(null);
     await clock.pass(TRIP_MS);
     expect(a.keep).toHaveBeenCalledTimes(1);
-    // A screen reader's swipe from one element to the next: the server is
-    // asked to slide it, as for a press.
+    // The focus moved from one element to the next (by the keyboard, or a
+    // desktop screen reader moving the system focus): the server is asked
+    // to slide it, as for a press.
     a.page.focus({});
     const moved = clock.now();
     await clock.pass(TRIP_MS);
@@ -1310,7 +1313,7 @@ describe("watchOpenFile, the warning a minute before, and the focus moved", () =
     expect(a.keep).toHaveBeenCalledTimes(2);
     await clock.to(moved + FILE_TOUCH_EVERY_MS);
     expect(a.slides()).toEqual([true, true, true]);
-    // Swipes alone keep it open past 15 minutes, a swipe a minute.
+    // Focus moves alone keep it open past 15 minutes, one a minute.
     for (let minute = 0; minute < 20; minute += 1) {
       await clock.pass(MINUTE);
       a.page.focus({});

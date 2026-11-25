@@ -10,6 +10,7 @@ import {
 } from "@domain/order-taking";
 import { Button } from "@ui/button";
 import { EmptyState } from "@ui/empty-state";
+import { ignoreHeldEnter } from "@ui/focus-after";
 import { IconButton } from "@ui/icon-button";
 import { ListGroup } from "@ui/list-row";
 import { PageSection } from "@ui/page";
@@ -37,7 +38,8 @@ const placeKey = (place: PlaceInput) => place.id ?? `new:${place.name}`;
  * undo. A business with none yet makes them all at once, named 1 to N,
  * renamed later as it likes. A move keeps the focus on the place's arrow
  * (the other one once it reaches an end) and says where it went
- * (`useRowMoves`). The same rows on every screen, one list.
+ * (`useRowMoves`); Enter held down moves it once, so the other arrow takes
+ * no key repeating. The same rows on every screen, one list.
  */
 export function PlacesEditor({
   places,
@@ -244,6 +246,7 @@ export function PlacesEditor({
                       className="text-ink-2"
                       disabled={index === 0}
                       onClick={() => move(index, -1)}
+                      onKeyDown={ignoreHeldEnter}
                     />
                     <IconButton
                       ref={moves.arrowRef(placeKey(place), 1)}
@@ -252,6 +255,7 @@ export function PlacesEditor({
                       className="text-ink-2"
                       disabled={index === shown.length - 1}
                       onClick={() => move(index, 1)}
+                      onKeyDown={ignoreHeldEnter}
                     />
                     <IconButton
                       label={t("remove", { name: place.name })}

@@ -41,17 +41,20 @@ import type { KeepOpenAnswer, LockAnswer } from "./holder-file-types";
  *    extends nothing.
  * 5. Only a check for the person's activity in this tab slides the step-up:
  *    the file opening, a press or a key, the focus moved from one element to
- *    another (a screen reader's swipe, which presses nothing; never a focus
- *    the screen puts back from nowhere, which nobody moved), "להשאיר פתוח",
- *    coming back to the page, a screen Next shows again. Answered open, it
- *    tells the other tabs a file is in use. A check for this tab's own clock
- *    (its 15 minutes, or a check it slept through) or for another tab's word
- *    only reads the step-up, and tells nothing. So tabs left alone never
- *    keep each other open: the files close on the device 15 minutes after
- *    the last activity in any tab, a minute more at most for a press kept
- *    for the minute's end. A kept press slides only while it is fresh
- *    (`PRESS_FRESH_MS`): run long after, in a tab frozen in the background,
- *    its check only reads.
+ *    another (by the keyboard, or by a desktop screen reader that moves the
+ *    system focus; never a focus the screen puts back from nowhere, which
+ *    nobody moved), "להשאיר פתוח", coming back to the page, a screen Next
+ *    shows again. A phone's screen reader moves only its own cursor, no
+ *    focus, so reading the file there is no activity: the warning a minute
+ *    before, with "להשאיר פתוח" (point 7), is what keeps it open. Answered
+ *    open, it tells the other tabs a file is in use. A check for this tab's
+ *    own clock (its 15 minutes, or a check it slept through) or for another
+ *    tab's word only reads the step-up, and tells nothing. So tabs left
+ *    alone never keep each other open: the files close on the device 15
+ *    minutes after the last activity in any tab, a minute more at most for
+ *    a press kept for the minute's end. A kept press slides only while it is
+ *    fresh (`PRESS_FRESH_MS`): run long after, in a tab frozen in the
+ *    background, its check only reads.
  * 6. While the file is hidden for an answer, a line says the server is being
  *    asked (`FileOpenWatch`), and no answer within 10 seconds, the tab awake,
  *    closes the file in this tab.
@@ -405,10 +408,12 @@ export function watchOpenFile({
   }
 
   /**
-   * The focus moved from one element to another: the person's doing (a key,
-   * a screen reader's swipe). A focus put on the page from nowhere (the
-   * screen giving it back once the file shows again, or once what had it
-   * went) moved nothing of the person's, and keeps nothing open.
+   * The focus moved from one element to another: the person's doing (by the
+   * keyboard, or by a desktop screen reader that moves the system focus; a
+   * phone's screen reader moves only its own cursor, and nothing comes
+   * here). A focus put on the page from nowhere (the screen giving it back
+   * once the file shows again, or once what had it went) moved nothing of
+   * the person's, and keeps nothing open.
    */
   function moved(event: Event) {
     if ((event as FocusEvent).relatedTarget) active();

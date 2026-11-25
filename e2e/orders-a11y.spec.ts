@@ -92,6 +92,37 @@ test("the places twin keeps the focus on a moved table's arrow and says where it
   ).toHaveCount(1);
 });
 
+// Enter held down on a table's "הזזה למטה" as it reaches the end: the first
+// press moves it, its "הזזה למעלה" takes the focus, and the key repeating
+// presses nothing there, so the table stays at the end instead of running
+// back up.
+test("the places twin moves a table once for Enter held down on its arrow at the end", async ({
+  page,
+}) => {
+  const p = "app.orders.places" as const;
+  const nameOf = rt(`${p}.nameOf`, { name: "" }).trim();
+  await open(page, "/design/order-taking/menu/places");
+  const down11 = arrow(page, rt(`${p}.downFor`, { name: "11" }));
+  const up11 = arrow(page, rt(`${p}.upFor`, { name: "11" }));
+  const atEnd = [
+    ...Array.from({ length: 10 }, (_, i) => `${i + 1}`),
+    "12",
+    "11",
+  ];
+
+  await down11.focus();
+  await page.keyboard.down("Enter");
+  await expect.poll(() => rowNames(page, nameOf)).toEqual(atEnd);
+  await expect(down11).toBeDisabled();
+  await expect(up11).toBeFocused();
+  await page.keyboard.down("Enter");
+  await page.keyboard.down("Enter");
+  await page.keyboard.up("Enter");
+  await page.waitForTimeout(500);
+  expect(await rowNames(page, nameOf)).toEqual(atEnd);
+  await expect(up11).toBeFocused();
+});
+
 // Left by the browser's Back, which presses nothing on the screen, and
 // opened again from the menu: Next shows the same screen again, kept for
 // Back, and its effects run again, while the link pressed on the menu is
@@ -237,6 +268,20 @@ test("the order twin's allergy without words is said once, the field focused and
   await expect(field).toBeFocused();
   await expect(field).not.toHaveAttribute("aria-describedby");
   await expect(saidSince(polite, why)).toHaveCount(0);
+
+  // Enter held down on "שמירת ההערה": the field takes the focus from its
+  // first press, and the key repeating types no line into it, so the field,
+  // still empty, stays marked.
+  await save.focus();
+  await page.keyboard.down("Enter");
+  await expect(field).toBeFocused();
+  await page.keyboard.down("Enter");
+  await page.keyboard.down("Enter");
+  await page.keyboard.up("Enter");
+  await page.waitForTimeout(500);
+  await expect(field).toHaveValue("");
+  await expect(field).toHaveAttribute("aria-invalid", "true");
+  await expect(sheet.getByText(why)).toBeVisible();
 
   // Its words, and it saves.
   await field.fill("בוטנים");

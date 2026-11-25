@@ -343,8 +343,8 @@ test("a locked file asks for a code again, and the duties only once", async ({
   await expect(main(page).getByText(f.locked.title)).toHaveCount(0);
   expect(await stepUp()).toBe(true);
 
-  // A minute before those end, the warning; a screen reader's first swipe
-  // onto "להשאיר פתוח" comes from nowhere, and is no activity.
+  // A minute before those end, the warning; a focus put on "להשאיר פתוח"
+  // from nowhere (a desktop screen reader's first move) is no activity.
   await page.evaluate(() => {
     (document.activeElement as HTMLElement | null)?.blur();
   });

@@ -12,7 +12,7 @@ import { announce } from "@ui/announcer";
 import { Button } from "@ui/button";
 import { Card } from "@ui/card";
 import { FieldRow } from "@ui/field-row";
-import { arrived } from "@ui/focus-after";
+import { arrived, ignoreHeldEnter } from "@ui/focus-after";
 import { DraftLineRow } from "@ui/order-draft";
 import { PageSection } from "@ui/page";
 import { Sheet } from "@ui/sheet";
@@ -227,7 +227,9 @@ type Missing = { count: number; at: FocusAt };
  * from the field itself (a press that left the focus there), it is said at
  * once. Either way why is out of the field's description while it keeps
  * the focus (`useQuietWhy`), so it isn't heard twice, and back in it once
- * the focus leaves. Each such save is said, the same one again too.
+ * the focus leaves. Each such save is said, the same one again too. Enter
+ * held down on "שמירת ההערה" types no lines into the field that took the
+ * focus, which would have cleared why with the field still empty.
  */
 function NoteForm({
   line,
@@ -316,6 +318,7 @@ function NoteForm({
           setText(event.target.value);
           if (missing) setMissing(null);
         }}
+        onKeyDown={ignoreHeldEnter}
       />
       <Button size="lg" onClick={save}>
         {t("note.save")}

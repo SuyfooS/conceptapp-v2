@@ -8,11 +8,15 @@ import { expect, type Page, test } from "./test";
 
 // Accessibility, part 9, on the hiring file's twin (/design/shell/team/noa
 // /file): a minute before the file locks for want of activity, the person
-// is told, with "להשאיר פתוח"; a focus the person moves (a screen reader's
-// swipe, which presses nothing) is activity, one the page puts back from
-// nowhere is not. The twin's code is 123456, it keeps nothing, and its
-// server answers open; that the file still locks with nobody there is the
-// watch's unit tests' (open-watch.test.ts), on a server of their own.
+// is told, with "להשאיר פתוח"; a focus the person moves (by the keyboard,
+// or a desktop screen reader that moves the system focus) is activity, one
+// the page puts back from nowhere is not. A phone's screen reader moves no
+// focus, so there the warning is what keeps a reader's file open. As the
+// warning goes with the focus, the focus lands on a title, which an Enter
+// meant for "להשאיר פתוח" can't press. The twin's code is 123456, it keeps
+// nothing, and its server answers open; that the file still locks with
+// nobody there is the watch's unit tests' (open-watch.test.ts), on a server
+// of their own.
 
 const hf = he.app.team.file;
 
@@ -104,26 +108,62 @@ test("the file twin warns a minute before it locks, and 'להשאיר פתוח' 
   await expect(warning).toBeVisible();
   expect(asked).toBe(0);
 
-  // A screen reader's swipe from "הצגה" to "להשאיר פתוח": the person moved
-  // the focus, so the file stays open; the focus goes back where it came
-  // from as the warning goes, and then it is said.
+  // The focus moved from "הצגה" to "להשאיר פתוח" with no key the page hears
+  // (a desktop screen reader moving the system focus): the person moved it,
+  // so the file stays open. As the warning goes, the focus lands on the
+  // title of the part it came from, never on "הצגה", which an Enter meant
+  // for "להשאיר פתוח" would press; then it is said.
+  const main = page.getByRole("main");
+  const bankTitle = main.getByRole("heading", {
+    name: hf.sections.bank,
+    exact: true,
+  });
   const moved = await hearFileCheck(page, FILE_TABS_TWIN_CHANNEL);
   await heardSoFar(polite);
   await keep.focus();
   await moved();
   await expect(warning).toHaveCount(0);
-  await expect(show).toBeFocused();
+  await expect(bankTitle).toBeFocused();
   await expect(saidSince(polite, hf.idle.kept)).toHaveCount(1);
   expect(asked).toBeGreaterThan(0);
+
+  // From "נעילת התיק", the file's last control, by Tab: the key is
+  // activity, so the warning goes as its answer comes, the focus on
+  // "להשאיר פתוח". The focus lands on the title above "נעילת התיק", and the
+  // Enter meant for "להשאיר פתוח" presses nothing there: the file stays
+  // open, and the step-up stays.
+  const lock = main.getByRole("button", { name: hf.lock.action, exact: true });
+  const historyTitle = main.getByRole("heading", {
+    name: hf.history.title,
+    exact: true,
+  });
+  await focusNowhere(page);
+  await lock.focus();
+  await page.clock.fastForward("14:01");
+  await expect(warning).toBeVisible();
+  const tabbed = await hearFileCheck(page, FILE_TABS_TWIN_CHANNEL);
+  await heardSoFar(polite);
+  await page.keyboard.press("Tab");
+  await tabbed();
+  await expect(warning).toHaveCount(0);
+  await expect(historyTitle).toBeFocused();
+  await expect(saidSince(polite, hf.idle.kept)).toHaveCount(1);
+  await page.keyboard.press("Enter");
+  await pastDrawing(page);
+  await expect(page).toHaveURL(/\/design\/shell\/team\/noa\/file\?state=open$/);
+  await expect(main.getByText(hf.locked.title)).toHaveCount(0);
+  await expect(identity).toBeVisible();
+  await expect(historyTitle).toBeFocused();
 });
 
-// A screen reader's first swipe onto "להשאיר פתוח" comes from nowhere, and
-// is no activity: the quarter of an hour ends with the focus on it. The
-// file is held while the server is asked, and the warning goes with it;
-// the focus waits for the answer instead of landing on the page's title.
-// The twin answers open: the file shows again with the focus on its first
-// heading, and it is said that it stays open. (Answered closed, the locked
-// card's title takes it: employee-file-holders.spec.ts.)
+// A focus put on "להשאיר פתוח" from nowhere (a desktop screen reader's
+// first move, the page's body before it) is no activity: the quarter of an
+// hour ends with the focus on it. The file is held while the server is
+// asked, and the warning goes with it; the focus waits for the answer
+// instead of landing on the page's title. The twin answers open: the file
+// shows again with the focus on its first heading (it came from nowhere),
+// and it is said that it stays open. (Answered closed, the locked card's
+// title takes it: employee-file-holders.spec.ts.)
 test("the file twin, its quarter of an hour ending with the focus on 'להשאיר פתוח', gives the focus back to the file as it shows again", async ({
   page,
 }) => {
