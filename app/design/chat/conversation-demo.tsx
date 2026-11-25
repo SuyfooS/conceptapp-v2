@@ -1,5 +1,6 @@
 "use client";
 
+import { dateIn } from "@domain/availability";
 import {
   CHAT_MESSAGE_MAX,
   type ChatKind,
@@ -56,6 +57,7 @@ import {
 } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
 import { Fragment, type ReactNode, useEffect, useRef, useState } from "react";
+import { actionsNameValues } from "../../(app)/chat/actions-name";
 import { InfoButton } from "../../(app)/chat/info-button";
 
 export type DemoBubble = {
@@ -172,8 +174,6 @@ const PDF_MB = CHAT_PDF_MAX_BYTES / (1024 * 1024);
 const ANSWER_MS = 2200;
 /** This close to the end of the page counts as reading the newest. */
 const NEAR_END = 96;
-/** A time in a button's name: in Unicode isolates, as the app's is. */
-const isolate = (chunks: string) => `⁦${chunks}⁩`;
 
 const runOf = (index: number, length: number): MessageRun =>
   length === 1
@@ -727,6 +727,22 @@ export function ConversationDemo({
     })),
     timeZone,
   );
+  const today = dateIn(new Date(now), timeZone);
+
+  /** A message in words, as the app's actions button names it. */
+  function wordsOf(m: DemoBubble): string {
+    if (m.pdf) {
+      return t("list.pdfWith", {
+        caption: m.body ? chatPreview(m.body) : shownFileName(m.pdf.name),
+      });
+    }
+    if (m.photo || m.fileGone) {
+      return m.body
+        ? t("list.photoWith", { caption: chatPreview(m.body) })
+        : t("list.photo");
+    }
+    return m.body ?? "";
+  }
 
   const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
   const readers = (pinned?.readers ?? []).map((r) =>
@@ -843,16 +859,20 @@ export function ConversationDemo({
                         actionsOf(m).length > 0
                           ? {
                               label: t("messageActions.open"),
-                              fullLabel: own
-                                ? t.markup("messageActions.openForOwn", {
+                              fullLabel: t.markup(
+                                own
+                                  ? "messageActions.openForOwn"
+                                  : "messageActions.openFor",
+                                {
+                                  name: m.authorName,
+                                  ...actionsNameValues({
+                                    day: day.day,
+                                    today,
                                     time,
-                                    ltr: isolate,
-                                  })
-                                : t.markup("messageActions.openFor", {
-                                    name: m.authorName,
-                                    time,
-                                    ltr: isolate,
+                                    words: wordsOf(m),
                                   }),
+                                },
+                              ),
                               onOpen: () => setActionsFor(m),
                             }
                           : null

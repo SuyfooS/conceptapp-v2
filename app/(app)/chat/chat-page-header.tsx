@@ -10,7 +10,9 @@ import { titleTakesFocus } from "./chat-focus";
  * nothing focused: on a phone the list row or the title that opened it has
  * just gone (hidden, kept for going back), and a screen reader starts here,
  * as it does on a conversation. From tablet up, the row that opened it
- * stays in the list beside it, and gives it the focus too.
+ * stays in the list beside it, marked as the screen open, and gives it the
+ * focus too; any other place the person moved to while it loaded keeps it
+ * (`titleTakesFocus`).
  */
 export function ChatPageHeader(props: Omit<PageHeaderProps, "headingRef">) {
   const heading = useRef<HTMLHeadingElement>(null);

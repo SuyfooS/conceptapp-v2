@@ -38,26 +38,37 @@ const focused = (page: Page) =>
 // sending there closes the chat, as one removed while someone wrote. The
 // line that says why takes the focus the field had, and isn't said twice;
 // closed with the focus elsewhere (the gallery's own button), its words
-// are said where the focus is, which stays.
+// are said where the focus is, which stays. The button's words say what a
+// press does now: open the chat while it is closed, close it while open.
 test("the composer gives its line the focus when the chat closes while writing, and says it when the focus is elsewhere", async ({
   page,
 }) => {
   await page.goto("/design");
-  const toggle = page.getByRole("button", {
+  // Its part of the gallery: the words over it, the composer, the button.
+  const part = page
+    .getByText(he.design.chatClosedText, { exact: true })
+    .locator("xpath=..");
+  const field = part.getByRole("textbox", { name: c.conversation.placeholder });
+  const toOpen = part.getByRole("button", {
+    name: he.design.chatOpen,
+    exact: true,
+  });
+  const toClose = part.getByRole("button", {
     name: he.design.chatClose,
     exact: true,
   });
-  // Its part of the gallery: the line, the composer, and the button.
-  const part = toggle.locator("xpath=..");
-  const field = part.getByRole("textbox", { name: c.conversation.placeholder });
-  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  // Closed as the gallery opens: its button opens it.
+  await expect(toOpen).toBeVisible();
+  await expect(toClose).toHaveCount(0);
   await expect(part.getByText(c.conversation.closed)).toBeVisible();
   await expect(field).toHaveCount(0);
 
-  // Open again, from the keyboard.
-  await toggle.focus();
+  // Open again, from the keyboard: the button now closes it, and keeps the
+  // focus.
+  await toOpen.focus();
   await page.keyboard.press("Enter");
-  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await expect(toClose).toBeFocused();
+  await expect(toOpen).toHaveCount(0);
   await expect(field).toBeVisible();
 
   // Written and sent: the chat closes, and its line has the focus.
@@ -79,19 +90,21 @@ test("the composer gives its line the focus when the chat closes while writing, 
 
   // Opened and closed again from the button: the focus stays on it, and
   // the reason is said there.
-  await toggle.focus();
+  await toOpen.focus();
   await page.keyboard.press("Enter");
   await expect(field).toBeVisible();
+  await expect(toClose).toBeFocused();
   await noteIfSaid(page, c.conversation.closed);
   await page.keyboard.press("Enter");
   await expect(field).toHaveCount(0);
-  await expect(toggle).toBeFocused();
+  await expect(toOpen).toBeFocused();
   await expect.poll(() => wasSaid(page, c.conversation.closed)).toBe(true);
 });
 
 // A message's actions button: the tooltip's word for speech input, then
-// whose message it is and when, so each reads apart in a list of the
-// page's buttons.
+// whose message it is, when and how it starts, so each reads apart in a
+// list of the page's buttons. The tooltip says the same, so it adds no
+// second description ("פעולות" again) after the name.
 test("each message's actions say whose message they are for, and when", async ({
   page,
 }) => {
@@ -100,15 +113,17 @@ test("each message's actions say whose message they are for, and when", async ({
     .locator("[data-bubble]")
     .filter({ hasText: he.design.chatSample6 });
   const actions = bubble.locator("[data-message-actions]");
-  await expect(actions).toHaveAttribute(
-    "aria-label",
-    heT.markup("app.chat.messageActions.openFor", {
-      name: he.design.person1,
-      time: "08:14",
-      ltr: isolate,
-    }),
-  );
-  await expect(actions).toHaveAttribute("title", c.messageActions.open);
+  const name = heT.markup("app.chat.messageActions.openFor", {
+    name: he.design.person1,
+    when: "today",
+    date: "",
+    time: "08:14",
+    words: he.design.chatSample6,
+    ltr: isolate,
+  });
+  await expect(actions).toHaveAttribute("aria-label", name);
+  await expect(actions).toHaveAttribute("title", name);
+  await expect(actions).not.toHaveAccessibleDescription(c.messageActions.open);
   await expect(
     bubble.getByRole("button", {
       name: new RegExp(`^${c.messageActions.open}`),

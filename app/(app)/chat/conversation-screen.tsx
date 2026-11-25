@@ -89,6 +89,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { actionsNameValues } from "./actions-name";
 import { focusLost, titleTakesFocus } from "./chat-focus";
 import { ChatNotice } from "./chat-notice";
 import { chatPaths } from "./chat-paths";
@@ -279,11 +280,6 @@ const SAID_MS = 8_000;
 const MOVED_ON_PX = 24;
 /** Where a keyboard or a trackpad is: the field may take the focus. */
 const FINE_POINTER = "(pointer: fine)";
-/**
- * A time in words that aren't drawn (a button's name): in Unicode isolates,
- * as `<ltr>` holds it on screen.
- */
-const isolate = (chunks: string) => `⁦${chunks}⁩`;
 
 /**
  * Where the keyboard's focus goes when what held it goes away (NewBelow
@@ -784,9 +780,10 @@ export function ConversationScreen(props: Props) {
 
   // A conversation opens at its newest, and so does one shown again. On a
   // phone the list it was opened from has just gone, and the focus with it;
-  // from tablet up it stays on the row pressed in the list beside it. The
-  // conversation's title takes it, so a screen reader starts there (every
-  // chat has the same page title, so nothing else says it opened).
+  // from tablet up it stays on the row pressed in the list beside it, or on
+  // "שליחת הודעה". The conversation's title takes it, so a screen reader
+  // starts there (every chat has the same page title, so nothing else says
+  // it opened); a focus moved on while it loaded stays (`titleTakesFocus`).
   useEffect(() => {
     toEnd(false);
     setReady(true);
@@ -1600,6 +1597,20 @@ export function ConversationScreen(props: Props) {
       : t("list.pdf");
   }
 
+  /**
+   * A message in words, as its actions sheet quotes it and its actions
+   * button names it: a picture or a PDF in words, a text as written; none
+   * once removed.
+   */
+  function wordsOf(message: ChatSyncMessage): string | null {
+    if (message.removed) return null;
+    if (message.fileKind === "image") return photoWords(message.body);
+    if (message.fileKind === "pdf") {
+      return pdfWords(message.body, message.fileName);
+    }
+    return message.body;
+  }
+
   /** A PDF's size and kind, under its name: "2.4 MB · PDF". */
   function pdfMeta(size: number | null): ReactNode {
     if (size === null) return null;
@@ -1962,6 +1973,7 @@ export function ConversationScreen(props: Props) {
     if (actionsGone) setActionsFor(null);
   }, [actionsGone]);
   const sheetMessage = actionsGone ? null : actionsMessage;
+  const sheetWords = sheetMessage ? wordsOf(sheetMessage) : null;
 
   // The picture open in its sheet went (removed, or its file no longer
   // kept): the sheet closes, and nothing of it stays on screen.
@@ -2136,18 +2148,23 @@ export function ConversationScreen(props: Props) {
                         shown.kind === "message" && offered.length > 0
                           ? {
                               label: t("messageActions.open"),
-                              // Whose message and when, so each reads apart
-                              // in a list of the page's buttons.
-                              fullLabel: own
-                                ? t.markup("messageActions.openForOwn", {
+                              // Whose message, when and how it starts, so
+                              // each reads apart in a list of the page's
+                              // buttons, a run in one minute's too.
+                              fullLabel: t.markup(
+                                own
+                                  ? "messageActions.openForOwn"
+                                  : "messageActions.openFor",
+                                {
+                                  name: nameOf(item.authorId),
+                                  ...actionsNameValues({
+                                    day: day.day,
+                                    today,
                                     time,
-                                    ltr: isolate,
-                                  })
-                                : t.markup("messageActions.openFor", {
-                                    name: nameOf(item.authorId),
-                                    time,
-                                    ltr: isolate,
+                                    words: wordsOf(shown.message) ?? "",
                                   }),
+                                },
+                              ),
                               onOpen: (trigger) => {
                                 actionsOpener.current = trigger;
                                 setActionsFor({ id: shown.message.id });
@@ -2237,17 +2254,7 @@ export function ConversationScreen(props: Props) {
         onOpenChange={(open) => {
           if (!open) setActionsFor(null);
         }}
-        quote={
-          !sheetMessage || sheetMessage.removed
-            ? null
-            : sheetMessage.fileKind === "image"
-              ? photoWords(sheetMessage.body)
-              : sheetMessage.fileKind === "pdf"
-                ? pdfWords(sheetMessage.body, sheetMessage.fileName)
-                : sheetMessage.body
-                  ? chatPreview(sheetMessage.body, 160)
-                  : null
-        }
+        quote={sheetWords ? chatPreview(sheetWords, 160) : null}
         actions={sheetMessage ? actionsOf(sheetMessage) : []}
         onAction={act}
         // What opened it, while it is still there (a removed message's

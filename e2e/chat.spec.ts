@@ -1,6 +1,8 @@
 import AxeBuilder from "@axe-core/playwright";
 import he from "../messages/he.json" with { type: "json" };
-import { noteIfSaid, wasSaid } from "./announcer";
+import { dateIn } from "../packages/domain/availability";
+import { chatDay, chatShortDate } from "../packages/domain/chat-days";
+import { noteIfSaid, pastDrawing, wasSaid } from "./announcer";
 import {
   clearDemoChat,
   demoChatLines,
@@ -40,6 +42,8 @@ const KITCHEN = "מטבח";
 const SHIRAN_NAME = "שירן הדגמה";
 /** A time in a button's name, as the app writes it: in Unicode isolates. */
 const isolate = (chunks: string) => `⁦${chunks}⁩`;
+/** The demo restaurant's clock. */
+const TZ = "Asia/Jerusalem";
 
 const c = he.app.chat;
 const e = he.auth.enter;
@@ -505,8 +509,10 @@ test("viewing as a manager shows only that chats aren't shown", async ({
 // Accessibility, part 7. A text message whose sending is dropped on its way
 // (nothing reaches the server, so nothing is written) is said where the
 // field keeps the focus, with its way to try again under it; and each
-// message's actions button says whose message it opens and when, after the
-// tooltip's word, so each reads apart in a list of the page's buttons.
+// message's actions button says whose message it opens, when (with its day
+// when not today's: the demo's morning is yesterday's before 09:00) and how
+// it starts, after the tooltip's word, so each reads apart in a list of the
+// page's buttons. Its tooltip says the same, so it adds no description.
 test("a message that didn't go is said, and each message's actions say whose and when", async ({
   page,
 }) => {
@@ -522,28 +528,48 @@ test("a message that didn't go is said, and each message's actions say whose and
   // The kitchen's two from the demo: Noa's own, and Shiran's answer.
   const bubble = (text: string) =>
     log(page).locator("[data-bubble]").filter({ hasText: text });
-  const timeOf = async (one: Locator) =>
-    (await one.locator("time").textContent()) ?? "";
-  const shirans = bubble("תודה, ההזמנה יוצאת היום");
-  const own = bubble("סיימנו לסדר להיום. חסרים חומרי ניקוי");
+  /** What the button says of a message after whose: when, and its words. */
+  const sentAs = async (one: Locator, said: string) => {
+    const time = one.locator("time");
+    const day = dateIn(
+      new Date((await time.getAttribute("datetime")) ?? ""),
+      TZ,
+    );
+    const today = dateIn(new Date(), TZ);
+    const which = chatDay(day, today);
+    return {
+      when: which.kind,
+      date: which.kind === "date" ? chatShortDate(day, today) : "",
+      time: (await time.textContent()) ?? "",
+      words: said,
+      ltr: isolate,
+    };
+  };
+  const shiransWords = "תודה, ההזמנה יוצאת היום";
+  const ownWords = "סיימנו לסדר להיום. חסרים חומרי ניקוי";
+  const shirans = bubble(shiransWords);
+  const own = bubble(ownWords);
+  const shiransName = heT.markup("app.chat.messageActions.openFor", {
+    name: SHIRAN_NAME,
+    ...(await sentAs(shirans, shiransWords)),
+  });
   await expect(shirans.locator("[data-message-actions]")).toHaveAttribute(
     "aria-label",
-    heT.markup("app.chat.messageActions.openFor", {
-      name: SHIRAN_NAME,
-      time: await timeOf(shirans),
-      ltr: isolate,
-    }),
+    shiransName,
   );
   await expect(shirans.locator("[data-message-actions]")).toHaveAttribute(
     "title",
-    c.messageActions.open,
+    shiransName,
   );
+  await expect(
+    shirans.locator("[data-message-actions]"),
+  ).not.toHaveAccessibleDescription(c.messageActions.open);
   await expect(own.locator("[data-message-actions]")).toHaveAttribute(
     "aria-label",
-    heT.markup("app.chat.messageActions.openForOwn", {
-      time: await timeOf(own),
-      ltr: isolate,
-    }),
+    heT.markup(
+      "app.chat.messageActions.openForOwn",
+      await sentAs(own, ownWords),
+    ),
   );
 
   // Its sending dropped on the way: the server never has it.
@@ -576,14 +602,47 @@ test("a message that didn't go is said, and each message's actions say whose and
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
 
+/**
+ * Holds a chat screen on its way, as a slow phone network does: the answer
+ * to its navigation waits until `release`. Never a prefetch, so what Next
+ * draws at once (the screen's skeleton) still comes. `held` says how many
+ * were held, so a test knows the hold was in the way.
+ */
+async function holdScreen(page: Page, path: string) {
+  let release = () => {};
+  const released = new Promise<void>((go) => {
+    release = go;
+  });
+  let held = 0;
+  await page.route(
+    (url) => url.pathname === path,
+    async (route) => {
+      const headers = route.request().headers();
+      if (
+        headers.rsc === "1" &&
+        headers["next-router-prefetch"] === undefined &&
+        headers["next-router-segment-prefetch"] === undefined
+      ) {
+        held += 1;
+        await released;
+      }
+      await route.fallback();
+    },
+  );
+  return { held: () => held, release };
+}
+
 // Accessibility, part 7, in the tablet's shape (the list beside the
 // conversation; one run, on the phone's device, as the rest of this file).
 // A chat opened from the list, by the keyboard, whose focus stays on the
 // row pressed, gives its title the focus: every chat has the same page
-// title, so nothing else says it opened. So does a chat chosen in "שליחת
-// הודעה" beside it; closed with no one chosen, the sheet gives the focus
-// back to its button. Opening chats marks them read: clearDemoChat puts
-// that back.
+// title, so nothing else says it opened. A focus moved on while a screen
+// loads stays where it was put, on another row of the list too. A chat
+// chosen in "שליחת הודעה" beside it takes the focus to its title: while it
+// is on its way the sheet's button holds it, never the chat being left or
+// a skeleton; the chat on screen chosen again, at once. Closed with no one
+// chosen, the sheet gives the focus back to its button. Opening chats marks
+// them read: clearDemoChat puts that back.
 test("beside the list, a chat opened from it or chosen in a new message takes the focus to its title", async ({
   page,
 }) => {
@@ -592,25 +651,70 @@ test("beside the list, a chat opened from it or chosen in a new message takes th
   const team = await demoConversation({ kind: "team" });
   const title = (name: string) =>
     page.getByRole("heading", { level: 1, name }).filter({ visible: true });
+  // A row of the list beside the screen (InboxPane).
+  const row = (href: string) =>
+    page
+      .locator("[data-chat-list]")
+      .filter({ visible: true })
+      .locator(`a[href="${href}"]`)
+      .first();
   await enterAs(page, "worker");
   await page.goto(`/chat/${kitchen}`);
-  await expect(title(KITCHEN)).toBeVisible();
+  // Opened with the focus nowhere: the kitchen's title takes it, once the
+  // page has hydrated and its effect has run.
+  await expect(title(KITCHEN)).toBeFocused();
 
   // The list beside it, its team row pressed from the keyboard.
-  const teamRow = page
-    .locator(`a[href="/chat/${team}"]`)
-    .filter({ visible: true })
-    .first();
+  const teamRow = row(`/chat/${team}`);
   await expect(teamRow).toBeVisible();
   await teamRow.focus();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(new RegExp(`/chat/${team}$`));
   await expect(title(c.list.team)).toBeFocused();
 
+  // The announcements' row pressed, and the kitchen's row moved to while
+  // they load: the focus stays there.
+  const kitchenRow = row(`/chat/${kitchen}`);
+  const announcements = await holdScreen(page, "/chat/announcements");
+  await row("/chat/announcements").focus();
+  await page.keyboard.press("Enter");
+  await expect.poll(() => announcements.held()).toBeGreaterThan(0);
+  await kitchenRow.focus();
+  announcements.release();
+  await expect(page).toHaveURL(/\/chat\/announcements$/);
+  await expect(title(c.announcement.page.title)).toBeVisible();
+  await pastDrawing(page);
+  await expect(kitchenRow).toBeFocused();
+
   const newMessage = page
     .getByRole("button", { name: c.list.newMessage, exact: true })
     .filter({ visible: true });
   const sheet = page.getByRole("dialog", { name: c.list.newMessage });
+
+  // Yoav chosen, his new chat still on its way: the button holds the focus,
+  // and his chat's title takes it as it opens.
+  await newMessage.click();
+  await sheet.getByLabel(c.newMessage.search).fill("יואב");
+  const yoav = sheet.getByRole("link", { name: /יואב לוי/ });
+  const yoavPath = (await yoav.getAttribute("href")) ?? "";
+  expect(yoavPath).toMatch(/^\/chat\/with\/[0-9a-f-]{36}$/);
+  const yoavScreen = await holdScreen(page, yoavPath);
+  await yoav.click();
+  await expect(sheet).toHaveCount(0);
+  await expect.poll(() => yoavScreen.held()).toBeGreaterThan(0);
+  await expect(newMessage).toBeFocused();
+  yoavScreen.release();
+  await expect(page).toHaveURL(new RegExp(`${yoavPath}$`));
+  await expect(title("יואב לוי")).toBeFocused();
+
+  // Shiran chosen: her chat's title.
+  await newMessage.click();
+  await sheet.getByLabel(c.newMessage.search).fill("שירן");
+  await sheet.getByRole("link", { name: new RegExp(SHIRAN_NAME) }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(title(SHIRAN_NAME)).toBeFocused();
+
+  // Chosen again, the chat on screen: its title, with no address to change.
   await newMessage.click();
   await sheet.getByLabel(c.newMessage.search).fill("שירן");
   await sheet.getByRole("link", { name: new RegExp(SHIRAN_NAME) }).click();

@@ -35,6 +35,7 @@ import {
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
+import { actionsNameValues } from "../(app)/chat/actions-name";
 import { demoPdfHref } from "./chat/demo-pdf";
 import { listPhotos } from "./list-photos";
 import { portraits } from "./portraits";
@@ -43,8 +44,6 @@ import { portraits } from "./portraits";
 const YESTERDAY = "2026-11-02";
 const TODAY = "2026-11-03";
 const at = (day: string, time: string) => `${day}T${time}:00.000+02:00`;
-/** A time in a button's name: in Unicode isolates, as the app's is. */
-const isolate = (chunks: string) => `⁦${chunks}⁩`;
 
 type Sent = { id: number; body: string; sending: boolean };
 
@@ -259,7 +258,8 @@ export function GalleryChat() {
  * opens it, and the switch to it while drawn: sending here closes the chat,
  * as one removed while someone wrote, and the line that says why takes the
  * focus that was in the field; the button closes it with the focus on
- * itself, and the line's words are said where the focus is.
+ * itself, and the line's words are said where the focus is. The button's
+ * words say what a press does now: open the chat, or close it.
  */
 function GalleryClosing({ tooLong }: { tooLong: ReactNode }) {
   const t = useTranslations("design");
@@ -284,11 +284,10 @@ function GalleryClosing({ tooLong }: { tooLong: ReactNode }) {
       />
       <Button
         variant="secondary"
-        aria-pressed={closed}
         onClick={() => setClosed(!closed)}
         className="self-start"
       >
-        {t("chatClose")}
+        {closed ? t("chatOpen") : t("chatClose")}
       </Button>
     </div>
   );
@@ -527,8 +526,14 @@ function GalleryPdfs() {
             label: tc("messageActions.open"),
             fullLabel: tc.markup("messageActions.openFor", {
               name: t("person2"),
-              time: "07:58",
-              ltr: isolate,
+              ...actionsNameValues({
+                day: TODAY,
+                today: TODAY,
+                time: "07:58",
+                words: tc("list.pdfWith", {
+                  caption: chatPreview(t("chatPdfCaption")),
+                }),
+              }),
             }),
             onOpen: () => {},
           }}
@@ -819,8 +824,12 @@ function GalleryAnnouncements() {
                   label: tc("messageActions.open"),
                   fullLabel: tc.markup("messageActions.openFor", {
                     name: t("person1"),
-                    time: "08:14",
-                    ltr: isolate,
+                    ...actionsNameValues({
+                      day: TODAY,
+                      today: TODAY,
+                      time: "08:14",
+                      words: t("chatSample6"),
+                    }),
                   }),
                   onOpen: () => setActions(true),
                 }

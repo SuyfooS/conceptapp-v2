@@ -9,7 +9,7 @@ import { SquarePen } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
-import { screenTitle } from "./chat-focus";
+import { CHAT_OPENER, focusLost, screenTitle } from "./chat-focus";
 import { chatPaths } from "./chat-paths";
 import { useChat } from "./chat-provider";
 
@@ -18,10 +18,12 @@ import { useChat } from "./chat-provider";
  * search by name. Choosing someone opens their private chat with the reader,
  * or a new one that the first message makes, and closes the sheet, the chat
  * already open beside it too. In a demo business it says that whoever comes
- * in reads it, not that only the two of them do. Closed with someone chosen,
- * it gives the keyboard's focus to the title of the chat beside the list
- * once that is drawn (until then its button, and the chat takes it from
- * there as it opens); closed with no one chosen, back to its button.
+ * in reads it, not that only the two of them do. Closed with the chat on
+ * screen chosen again, it gives the keyboard's focus to that chat's title;
+ * closed with another chosen, to its button, marked (`CHAT_OPENER`) so the
+ * chosen chat takes it from there as it opens, whatever is drawn beside the
+ * list meanwhile (the chat being left, or a loading skeleton); closed with
+ * no one chosen, back to its button.
  */
 export function NewMessage({ quiet }: { quiet: boolean }) {
   const t = useTranslations("app.chat");
@@ -30,8 +32,11 @@ export function NewMessage({ quiet }: { quiet: boolean }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const button = useRef<HTMLButtonElement>(null);
-  /** Someone was chosen: the sheet closes onto their chat. */
-  const chose = useRef(false);
+  /**
+   * Who was chosen: the chat already on screen ("again", no address
+   * changes), or another, which the sheet closes onto.
+   */
+  const chose = useRef<"again" | "other" | null>(null);
 
   // The sheet lives beside every chat screen: a chat chosen from it closes it.
   // biome-ignore lint/correctness/useExhaustiveDependencies: the address is what closes it
@@ -59,10 +64,13 @@ export function NewMessage({ quiet }: { quiet: boolean }) {
         ref={button}
         variant={quiet ? "secondary" : "primary"}
         onClick={() => {
-          chose.current = false;
+          chose.current = null;
           setQuery("");
           setOpen(true);
         }}
+        // Moved on from, or taken by the chat that opened: no longer what
+        // opens it.
+        onBlur={(event) => event.currentTarget.removeAttribute(CHAT_OPENER)}
       >
         <SquarePen aria-hidden="true" />
         {t("list.newMessage")}
@@ -74,8 +82,17 @@ export function NewMessage({ quiet }: { quiet: boolean }) {
         closeLabel={t("newMessage.close")}
         returnFocus={() => {
           const toChat = chose.current;
-          chose.current = false;
-          return (toChat ? screenTitle() : null) ?? button.current;
+          chose.current = null;
+          // Only the chat on screen is the one chosen: anything else beside
+          // the list now is the chat being left, or its skeleton.
+          const title = toChat === "again" ? screenTitle() : null;
+          if (title) return title;
+          // The chosen chat isn't drawn yet, and nothing took the focus as
+          // the sheet closed: the button holds it until the chat opens.
+          if (toChat && focusLost()) {
+            button.current?.setAttribute(CHAT_OPENER, "");
+          }
+          return button.current;
         }}
       >
         <div className="flex flex-col gap-3 px-2 pb-2">
@@ -93,6 +110,9 @@ export function NewMessage({ quiet }: { quiet: boolean }) {
             <PersonList className="bg-elevated shadow-none">
               {shown.map((contact) => {
                 const conversation = existing.get(contact.id);
+                const href = conversation
+                  ? chatPaths.conversation(conversation)
+                  : chatPaths.withPerson(contact.id);
                 return (
                   <PersonRow
                     key={contact.id}
@@ -100,14 +120,10 @@ export function NewMessage({ quiet }: { quiet: boolean }) {
                     photo={contact.photo}
                     title={contact.name ?? t("list.noName")}
                     subtitle={contact.line}
-                    href={
-                      conversation
-                        ? chatPaths.conversation(conversation)
-                        : chatPaths.withPerson(contact.id)
-                    }
+                    href={href}
                     // The chat on screen chosen again changes no address.
                     onClick={() => {
-                      chose.current = true;
+                      chose.current = href === pathname ? "again" : "other";
                       setOpen(false);
                     }}
                   />

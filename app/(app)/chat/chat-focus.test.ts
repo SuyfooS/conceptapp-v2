@@ -1,6 +1,11 @@
 import type { DocLike } from "@ui/focus-after";
 import { describe, expect, it } from "vitest";
-import { CHAT_LIST, screenTitle, titleTakesFocus } from "./chat-focus";
+import {
+  CHAT_LIST,
+  CHAT_OPENER,
+  screenTitle,
+  titleTakesFocus,
+} from "./chat-focus";
 
 /*
  * Where a chat screen's title takes the keyboard's focus as it opens
@@ -12,6 +17,12 @@ import { CHAT_LIST, screenTitle, titleTakesFocus } from "./chat-focus";
 type Spot = {
   /** In the chat list beside the screen (InboxPane). */
   inList?: boolean;
+  /** A row marked as the chat beside the list (`aria-current`). */
+  current?: boolean;
+  /** "שליחת הודעה" while the chat chosen in it opens. */
+  opener?: boolean;
+  /** Given a tabindex: a title that can take the focus. */
+  tabIndex?: boolean;
   /** In a sheet that is closing. */
   inClosingSheet?: boolean;
   drawn?: boolean;
@@ -22,6 +33,9 @@ type Spot = {
 
 function element({
   inList = false,
+  current = false,
+  opener = false,
+  tabIndex = true,
   inClosingSheet = false,
   drawn = true,
   connected = true,
@@ -32,8 +46,13 @@ function element({
     name,
     isConnected: connected,
     getClientRects: () => ({ length: drawn ? 1 : 0 }),
-    matches: (selectors: string) =>
-      selectors === ":disabled" ? disabled : false,
+    matches: (selectors: string) => {
+      if (selectors === ":disabled") return disabled;
+      if (selectors === '[aria-current]:not([aria-current="false"])') {
+        return current;
+      }
+      return false;
+    },
     closest: (selectors: string) => {
       if (selectors === `[${CHAT_LIST}]`) return inList ? {} : null;
       if (selectors === '[role="dialog"][data-state="closed"]') {
@@ -41,7 +60,12 @@ function element({
       }
       return null;
     },
-    hasAttribute: () => false,
+    hasAttribute: (attribute: string) =>
+      attribute === CHAT_OPENER
+        ? opener
+        : attribute === "tabindex"
+          ? tabIndex
+          : false,
     setAttribute: () => {},
     focus: () => {},
   } as unknown as Element;
@@ -77,8 +101,24 @@ describe("titleTakesFocus", () => {
     }
   });
 
-  it("takes it from the chat list beside the screen, where the row pressed keeps it", () => {
-    expect(titleTakesFocus(pageWith(element({ inList: true })))).toBe(true);
+  it("takes it from what opened the screen in the list beside it: its row, or the new message's button", () => {
+    // The row pressed, marked as the chat now open.
+    expect(
+      titleTakesFocus(pageWith(element({ inList: true, current: true }))),
+    ).toBe(true);
+    // "שליחת הודעה", given the focus back as its sheet closed onto the chat.
+    expect(
+      titleTakesFocus(pageWith(element({ inList: true, opener: true }))),
+    ).toBe(true);
+  });
+
+  it("leaves a focus moved on while the screen loaded, in the list too", () => {
+    // Another row, tabbed or arrowed to after pressing the first, or "שליחת
+    // הודעה" tabbed to: unmarked, neither is what opened the screen.
+    expect(titleTakesFocus(pageWith(element({ inList: true })))).toBe(false);
+    // Marked, or current, outside the list counts for nothing.
+    expect(titleTakesFocus(pageWith(element({ current: true })))).toBe(false);
+    expect(titleTakesFocus(pageWith(element({ opener: true })))).toBe(false);
   });
 
   it("leaves a focus put anywhere else on the screen", () => {
@@ -101,6 +141,13 @@ describe("screenTitle", () => {
     const hidden = element({ drawn: false, name: "מטבח" });
     const shown = element({ name: "שירן הדגמה" });
     expect(screenTitle(pageWith("body", [hidden, shown]))).toBe(shown);
+  });
+
+  it("skips a title that can't take the focus: a loading skeleton's", () => {
+    const skeleton = element({ tabIndex: false, name: "טוען" });
+    expect(screenTitle(pageWith("body", [skeleton]))).toBe(null);
+    const chat = element({ name: "שירן הדגמה" });
+    expect(screenTitle(pageWith("body", [skeleton, chat]))).toBe(chat);
   });
 
   it("is none while only the list is drawn, or on no page", () => {

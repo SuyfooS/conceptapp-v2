@@ -196,7 +196,8 @@ export function InboxPane() {
     <div
       ref={pane}
       // CHAT_LIST: a chat screen opened from here, beside it from tablet
-      // up, gives its title the focus that stayed here (`titleTakesFocus`).
+      // up, gives its title the focus that stayed on what opened it: its
+      // row, or "שליחת הודעה" (`titleTakesFocus`).
       data-chat-list=""
       // Takes the focus when there is nothing else, once the notice goes.
       tabIndex={-1}
