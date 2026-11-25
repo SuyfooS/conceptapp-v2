@@ -2,29 +2,32 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  DEPARTMENT_NAME,
-  departmentName,
+  DEPARTMENT_REMOVE,
+  departmentRemove,
   movesOf,
   PEOPLE_BESIDE,
 } from "./department-moves";
 
 // The departments editor's choices (accessibility, part 6): which way a
 // department can still move, so its move buttons say "unavailable" at the
-// ends instead of going out from under the focus, and where a department
-// brought back by "ביטול" is found again.
+// ends instead of going out from under the focus, and where the focus goes
+// once "ביטול" brought a department back: its "הסרת …", never its name's
+// text field, which a tap's focus would open the phone's keyboard over.
 
-describe("departmentName", () => {
-  it("finds the department's name field by its key", () => {
-    expect(DEPARTMENT_NAME).toBe("data-department-name");
-    expect(departmentName("kitchen")).toBe('[data-department-name="kitchen"]');
-    expect(departmentName("d-0a1b2c3d")).toBe(
-      '[data-department-name="d-0a1b2c3d"]',
+describe("departmentRemove", () => {
+  it("finds the department's remove button by its key", () => {
+    expect(DEPARTMENT_REMOVE).toBe("data-department-remove");
+    expect(departmentRemove("kitchen")).toBe(
+      '[data-department-remove="kitchen"]',
+    );
+    expect(departmentRemove("d-0a1b2c3d")).toBe(
+      '[data-department-remove="d-0a1b2c3d"]',
     );
   });
 
   it("reads any key as itself, quotes and backslashes included", () => {
-    expect(departmentName('a"b\\c')).toBe(
-      '[data-department-name="a\\"b\\\\c"]',
+    expect(departmentRemove('a"b\\c')).toBe(
+      '[data-department-remove="a\\"b\\\\c"]',
     );
   });
 });

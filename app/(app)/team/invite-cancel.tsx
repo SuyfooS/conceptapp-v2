@@ -1,18 +1,13 @@
 "use client";
 
 import { Button } from "@ui/button";
-import { firstOnScreen } from "@ui/focus-after";
+import { firstOnScreen, inViewWhenFocused } from "@ui/focus-after";
 import { UndoRow } from "@ui/undo-row";
 import { Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { createContext, type ReactNode, use, useRef, useState } from "react";
 import { useHeldWrite } from "../use-held-write";
-import {
-  inViewWhenFocused,
-  inviteCancelTarget,
-  invitesLeft,
-  sectionTitle,
-} from "./invite-focus";
+import { inviteCancelTarget, invitesLeft, sectionTitle } from "./invite-focus";
 import type {
   CancelInvite,
   InviteCancelResult,

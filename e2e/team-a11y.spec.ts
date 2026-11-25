@@ -11,7 +11,8 @@ import { heT } from "./t";
 import { expect, type Page, test } from "./test";
 
 // Accessibility, part 6, on the Team screen's twins (/design/shell/team and
-// its invite form): no data, no sign-in, nothing stored, so a deletion can
+// its invite form), and the console's invite link on its own twin at the
+// end: no data, no sign-in, nothing stored, so a deletion can
 // run out its hold and a link be made as often as the test likes. The real
 // screens' own checks are in team-changes.spec.ts and team-invite.spec.ts.
 
@@ -565,4 +566,132 @@ test("the person twin's name sheet says its own refusal once, the same again too
   await expect(saidSince(assertive, required)).toHaveCount(1);
   await expect(field).toBeFocused();
   await expect(field).not.toHaveAttribute("aria-describedby");
+});
+
+// A fix the server refuses (the network drops it, here) keeps the sheet
+// open with its line, and the press, busy while the fix was on its way, has
+// the focus back: never left on the sheet's own frame.
+test("the person twin's name sheet gives the focus back to its press when a fix is refused", async ({
+  page,
+}) => {
+  const tc = tt.changes;
+  const person = "**/design/shell/team/noa";
+  await page.goto("/design/shell/team/noa");
+  await page.waitForLoadState("networkidle");
+  await page
+    .getByRole("main")
+    .getByRole("button")
+    .filter({ has: page.getByText(tc.name, { exact: true }) })
+    .click();
+  const sheet = page.getByRole("dialog");
+  await sheet.getByLabel(ti.name, { exact: true }).fill("נועה כהן-לוי");
+
+  let answer = () => {};
+  const held = new Promise<void>((resolve) => {
+    answer = () => resolve();
+  });
+  await page.route(person, async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.continue();
+      return;
+    }
+    await held;
+    await route.abort();
+  });
+  const submit = sheet.getByRole("button", { name: tc.nameSubmit });
+  await submit.focus();
+  await page.keyboard.press("Enter");
+  await expect(submit).toHaveAttribute("aria-busy", "true");
+  // Busy, it loses the focus as the page is drawn.
+  await pastDrawing(page);
+  answer();
+  await expect(sheet.getByRole("alert")).toHaveText(tc.failures.failed);
+  await expect(sheet).toBeVisible();
+  await expect(submit).toBeFocused();
+  await page.unroute(person);
+});
+
+// The console's invite link, on its twin (/design/console/businesses), as
+// the Team screen's new link: "בר הים" has יואב's invite open and רונית's
+// run out. A link that arrives with the focus put elsewhere while its press
+// was busy is said there; one that arrives in place of its press puts the
+// focus on its copy button, which says whose link it copies.
+const ci = he.admin.setup.invite;
+const CONSOLE_BUSINESS = "/design/console/businesses/bar-hayam";
+const YOAV = "יואב לוי";
+const RONIT = "רונית שמש";
+
+/** The console's press for a person's invite link, in whichever shape is on screen. */
+const issueFor = (page: Page, name: string, renew = false) =>
+  page
+    .getByRole("button", {
+      name: (renew ? ci.renewFor : ci.createFor).replace("{name}", name),
+    })
+    .filter({ visible: true });
+
+test("the console twin's invite link is said where the focus was put, or puts the focus on its copy button", async ({
+  page,
+}) => {
+  const polite = announcer(page, "polite");
+  await page.goto(CONSOLE_BUSINESS);
+  await page.waitForLoadState("networkidle");
+
+  let answer = () => {};
+  const held = new Promise<void>((resolve) => {
+    answer = () => resolve();
+  });
+  const business = (url: URL) => url.pathname === CONSOLE_BUSINESS;
+  await page.route(business, async (route) => {
+    if (route.request().method() === "POST") await held;
+    await route.continue();
+  });
+  const renew = issueFor(page, RONIT, true);
+  await renew.click();
+  await expect(renew).toHaveAttribute("aria-busy", "true");
+  const create = issueFor(page, YOAV);
+  await create.focus();
+  await heardSoFar(polite);
+  answer();
+  await expect(
+    saidSince(polite, ci.ready.replace("{name}", RONIT)),
+  ).toHaveCount(1);
+  await expect(create).toBeFocused();
+  await expect(
+    page.getByLabel(ci.linkFor.replace("{name}", RONIT)).filter({
+      visible: true,
+    }),
+  ).toHaveValue(/\/join\//);
+  await page.unroute(business);
+
+  await page.keyboard.press("Enter");
+  await expect(create).toHaveCount(0);
+  const focused = page.locator(":focus");
+  await expect(focused).toHaveAccessibleName(ci.copy);
+  await expect(focused).toHaveAccessibleDescription(
+    ci.linkFor.replace("{name}", YOAV),
+  );
+});
+
+// A link refused (the twin's ?issue=refused) is a line of its own, drawn
+// anew each time, so the same refusal again is heard, and the press, busy
+// meanwhile, has the focus back.
+test("the console twin's refused invite link is said anew each time, with the focus back on its press", async ({
+  page,
+}) => {
+  await page.goto(`${CONSOLE_BUSINESS}?issue=refused`);
+  await page.waitForLoadState("networkidle");
+  const press = issueFor(page, YOAV);
+  const refusal = page
+    .getByRole("alert")
+    .filter({ hasText: ci.errors.failed })
+    .filter({ visible: true });
+  await press.focus();
+  await page.keyboard.press("Enter");
+  await expect(refusal).toHaveText(ci.errors.failed);
+  await expect(press).toBeFocused();
+  await refusal.evaluate(noteLine);
+  await page.keyboard.press("Enter");
+  await expect.poll(() => refusal.evaluate(anotherLine)).toBe(true);
+  await expect(refusal).toHaveText(ci.errors.failed);
+  await expect(press).toBeFocused();
 });

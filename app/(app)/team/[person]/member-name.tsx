@@ -8,7 +8,7 @@ import {
 import { announce } from "@ui/announcer";
 import { Button } from "@ui/button";
 import { FieldGroup, GroupedField } from "@ui/field-group";
-import { arrived, firstOnScreen } from "@ui/focus-after";
+import { arrived, firstOnScreen, focusFirst } from "@ui/focus-after";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { Sheet } from "@ui/sheet";
 import { StatusToast } from "@ui/status-toast";
@@ -361,6 +361,9 @@ function useNameFailure() {
 /** A name the sheet refused itself, and how many it refused before it. */
 type Refused = { why: "required" | "tooLong"; count: number };
 
+/** A fix the server refused, and how many it refused before it. */
+type Declined = { count: number };
+
 /**
  * The name to fix, in the sheet. A name it refuses itself (none, too long)
  * is said once, through the page's announcer, as the invite form says its
@@ -369,6 +372,9 @@ type Refused = { why: "required" | "tooLong"; count: number };
  * Either way the field keeps the focus, read as invalid, with why out of its
  * description meanwhile (`useQuietWhy`), so it isn't said twice. Each
  * refusal is its own (`Refused.count`), so the same one again is heard too.
+ * A fix the server refuses is said by its line; the press, busy while the
+ * fix was on its way, lost the focus, and takes it back (`Declined`), else
+ * the field, so it never stays on the sheet's frame.
  */
 function NameForm({
   value,
@@ -382,10 +388,13 @@ function NameForm({
   const tInvite = useTranslations("app.team.invite");
   const failureText = useNameFailure();
   const field = useRef<HTMLInputElement>(null);
+  const press = useRef<HTMLButtonElement>(null);
   const [draft, setDraft] = useState(value.shown ?? "");
   const [refused, setRefused] = useState<Refused | null>(null);
   const refusals = useRef(0);
   const seen = useRef<Refused | null>(null);
+  const [declined, setDeclined] = useState<Declined | null>(null);
+  const seenDeclined = useRef<Declined | null>(null);
   const { quiet, hush } = useQuietWhy(field);
   const why = refused ? tInvite(`errors.name.${refused.why}`) : undefined;
   const parsed = parseTeamName(draft);
@@ -407,6 +416,14 @@ function NameForm({
     if (said.quiet) hush(refused.count);
   }, [refused, why, hush]);
 
+  // Each of the server's refusals once, as it is drawn with the press no
+  // longer busy: only while the focus is lost, so where the person put it
+  // meanwhile stays.
+  useLayoutEffect(() => {
+    if (!arrived(seenDeclined, declined)) return;
+    focusFirst([press.current, field.current], { title: false });
+  }, [declined]);
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (value.busy) return;
@@ -417,6 +434,7 @@ function NameForm({
     }
     const fixed = await value.fix(parsed.name);
     if (fixed) onDone(fixed);
+    else setDeclined((was) => ({ count: (was?.count ?? 0) + 1 }));
   }
 
   return (
@@ -451,6 +469,7 @@ function NameForm({
         </p>
       ) : null}
       <Button
+        ref={press}
         type="submit"
         size="lg"
         loading={value.busy}

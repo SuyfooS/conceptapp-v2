@@ -10,7 +10,12 @@ import { AvatarStack } from "@ui/avatar";
 import { Button } from "@ui/button";
 import { Card } from "@ui/card";
 import { cn } from "@ui/cn";
-import { arrived, focusFirst } from "@ui/focus-after";
+import {
+  arrived,
+  firstOnScreen,
+  focusFirst,
+  inViewWhenFocused,
+} from "@ui/focus-after";
 import { IconButton } from "@ui/icon-button";
 import { ListGroup } from "@ui/list-row";
 import { PageSection } from "@ui/page";
@@ -28,7 +33,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { departmentName, movesOf, PEOPLE_BESIDE } from "./department-moves";
+import { departmentRemove, movesOf, PEOPLE_BESIDE } from "./department-moves";
 import { hairlineClass, inputClass, rowClass } from "./list-rows";
 import type { SettingsFailure, SettingsResult } from "./settings-types";
 
@@ -79,8 +84,9 @@ export type SaveDepartmentMembers = (
  * once, from a sheet on a phone and beside the list from a tablet up, as a
  * grid on a computer; there the one shown is marked current, and a choice
  * puts the focus on its people's title. Enter saves a name with the focus
- * still in it, an add keeps it on "+", and "ביטול" gives it to the name
- * brought back. A save that fails is said by a line drawn anew each time,
+ * still in it (`NameField`), an add keeps it on "+", and "ביטול" gives it
+ * to the "הסרת …" brought back, in view. A save that fails, and a name
+ * already there, are said by a line drawn anew each time, the failure's
  * gone once a save goes through. While taking orders is on, each says how many of the
  * menu's items it prepares, before it is removed and in its undo (waiter
  * mode P2). Used on /manage/departments and by the team in the console.
@@ -115,7 +121,13 @@ export function DepartmentsEditor({
   // The people this screen chose, by department, until the server agrees.
   const [chosen, setChosen] = useState<Record<string, string[]>>({});
   const [name, setName] = useState("");
-  const [taken, setTaken] = useState<string | null>(null);
+  // A name already there, each time its own (`stamp`), so the same one
+  // again is said again.
+  const [taken, setTaken] = useState<{ name: string; stamp: number } | null>(
+    null,
+  );
+  const sayTaken = (text: string) =>
+    setTaken((was) => ({ name: text, stamp: (was?.stamp ?? 0) + 1 }));
   const [removed, setRemoved] = useState<{
     department: DepartmentInput;
     index: number;
@@ -191,7 +203,7 @@ export function DepartmentsEditor({
     const text = name.trim();
     if (!text) return;
     if (named(text)) {
-      setTaken(text);
+      sayTaken(text);
       return;
     }
     setName("");
@@ -217,7 +229,7 @@ export function DepartmentsEditor({
     const clean = text.trim();
     if (!clean || clean === before) return false;
     if (named(clean, key)) {
-      setTaken(clean);
+      sayTaken(clean);
       return false;
     }
     setTaken(null);
@@ -426,32 +438,13 @@ export function DepartmentsEditor({
                   )}
                 >
                   <div className="flex min-h-[3.75rem] items-center gap-1">
-                    <input
-                      // The same field while its name changes, so Enter
-                      // saves it with the focus still there; `rename` puts
-                      // the stored name back after a failed save.
-                      key={department.key}
-                      aria-label={t("nameOf", { name: department.name })}
-                      defaultValue={department.name}
-                      maxLength={NAME_MAX}
+                    <NameField
+                      name={department.name}
+                      label={t("nameOf", { name: department.name })}
                       disabled={disabled}
-                      className={inputClass}
-                      // Found again by its department once "ביטול" brings it
-                      // back (`departmentName`).
-                      data-department-name={department.key}
-                      onBlur={(event) => {
-                        const input = event.currentTarget;
-                        if (!rename(department.key, department.name, input)) {
-                          input.value = department.name;
-                        }
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key !== "Enter") return;
-                        const input = event.currentTarget;
-                        if (!rename(department.key, department.name, input)) {
-                          input.value = department.name;
-                        }
-                      }}
+                      rename={(field) =>
+                        rename(department.key, department.name, field)
+                      }
                     />
                     {/*
                      * Named by what it shows, then the department, for a
@@ -488,6 +481,9 @@ export function DepartmentsEditor({
                         label={t("remove", { name: department.name })}
                         icon={<Trash2 />}
                         className="text-ink-2"
+                        // Found again by its department once "ביטול" brings
+                        // it back (`departmentRemove`).
+                        data-department-remove={department.key}
                         onClick={() => remove(index)}
                       />
                     )}
@@ -528,8 +524,13 @@ export function DepartmentsEditor({
             )}
           </ListGroup>
           {taken ? (
-            <p role="alert" className="px-1 text-danger text-sm">
-              {t("taken", { name: taken })}
+            // Drawn anew each time, so the same name again is heard.
+            <p
+              key={taken.stamp}
+              role="alert"
+              className="px-1 text-danger text-sm"
+            >
+              {t("taken", { name: taken.name })}
             </p>
           ) : null}
           {removed ? (
@@ -548,9 +549,13 @@ export function DepartmentsEditor({
               onUndo={undo}
               // The row went with the button pressed.
               autoFocus
-              // Undone, the department's name is back where it was.
+              // Undone, the department is back where it was, maybe far
+              // above this row: its "הסרת …" takes the focus, brought into
+              // view.
               focusAfter={() => [
-                departmentName(removed.department.key),
+                inViewWhenFocused(
+                  firstOnScreen([departmentRemove(removed.department.key)]),
+                ),
                 listTitle.current,
               ]}
             />
@@ -586,5 +591,62 @@ export function DepartmentsEditor({
         </div>
       </Sheet>
     </>
+  );
+}
+
+/**
+ * A department's name, typed over in place: the same field while its name
+ * changes (its row is keyed by the department), so Enter saves it with the
+ * focus still there. Enter, or leaving it, saves only what was typed in it
+ * (`rename`); a field gone through as it was (a Tab, a tap) saves nothing
+ * and shows the stored name. That name follows a rename made elsewhere (the
+ * screen read again after a change of people) as it comes, unless the field
+ * has the focus or something typed in it, which leaving it then settles.
+ */
+function NameField({
+  name,
+  label,
+  disabled,
+  rename,
+}: {
+  /** The stored name, as the screen shows it. */
+  name: string;
+  label: string;
+  disabled: boolean;
+  /** Saves what the field holds; false when the name stays as it was. */
+  rename: (field: HTMLInputElement) => boolean;
+}) {
+  const field = useRef<HTMLInputElement>(null);
+  // Typed in since it was last saved or put back to the stored name.
+  const typed = useRef(false);
+
+  useLayoutEffect(() => {
+    const input = field.current;
+    if (!input || typed.current || input === document.activeElement) return;
+    if (input.value !== name) input.value = name;
+  }, [name]);
+
+  const settle = (input: HTMLInputElement) => {
+    const saving = typed.current && rename(input);
+    typed.current = false;
+    if (!saving) input.value = name;
+  };
+
+  return (
+    <input
+      ref={field}
+      aria-label={label}
+      defaultValue={name}
+      maxLength={NAME_MAX}
+      disabled={disabled}
+      className={inputClass}
+      onChange={() => {
+        typed.current = true;
+      }}
+      onBlur={(event) => settle(event.currentTarget)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") settle(event.currentTarget);
+      }}
+    />
   );
 }
