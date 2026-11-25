@@ -46,7 +46,8 @@ const paneClass =
  * with the conversation open marked, and its title a level down. The first
  * time, the notice of who sees what comes before it; in a demo business, a
  * line that everyone who comes in reads it. Back on a phone's list from a
- * conversation, the keyboard's focus is on that conversation's row again.
+ * conversation, the keyboard's focus is on that conversation's row again;
+ * from tablet up, a chat opened from here takes the focus to its title.
  */
 export function InboxPane() {
   const t = useTranslations("app.chat");
@@ -194,6 +195,9 @@ export function InboxPane() {
   return (
     <div
       ref={pane}
+      // CHAT_LIST: a chat screen opened from here, beside it from tablet
+      // up, gives its title the focus that stayed here (`titleTakesFocus`).
+      data-chat-list=""
       // Takes the focus when there is nothing else, once the notice goes.
       tabIndex={-1}
       className={cn(

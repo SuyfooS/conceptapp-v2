@@ -102,9 +102,17 @@ export type MessageBubbleProps = {
    * them too, but not on a link in it or while text is selected. A picture's
    * message (C4) shows the button below 1280px too: a tap on the picture
    * opens the picture, and the rest of the bubble is too small a place; so
-   * does a PDF's (C5), whose chip is its download.
+   * does a PDF's (C5), whose chip is its download. `fullLabel` is the
+   * button's whole name for a screen reader, starting with `label` so speech
+   * input still finds it, and saying which message it is for ("פעולות
+   * להודעה של מאיה מ-08:14"): every bubble has one, and a list of the page's
+   * buttons reads them apart. By default `label`, which the tooltip shows.
    */
-  actions?: { label: string; onOpen: (trigger: HTMLElement) => void } | null;
+  actions?: {
+    label: string;
+    fullLabel?: string;
+    onOpen: (trigger: HTMLElement) => void;
+  } | null;
   /**
    * The message's id, on the bubble (`data-message-id`): how the screen
    * finds its actions' button again, to give it the focus back.
@@ -222,7 +230,7 @@ export function MessageBubble({
           <button
             type="button"
             data-message-actions=""
-            aria-label={actions.label}
+            aria-label={actions.fullLabel ?? actions.label}
             title={actions.label}
             aria-haspopup="dialog"
             onClick={(event) => actions.onOpen(event.currentTarget)}

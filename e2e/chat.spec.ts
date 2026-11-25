@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import he from "../messages/he.json" with { type: "json" };
+import { noteIfSaid, wasSaid } from "./announcer";
 import {
   clearDemoChat,
   demoChatLines,
@@ -9,8 +10,8 @@ import {
   seeDemoChatNotice,
 } from "./db";
 import { secondPage, signIn } from "./session";
-import { countedTabName, needsActionCount } from "./t";
-import { expect, type Page, test } from "./test";
+import { countedTabName, heT, needsActionCount } from "./t";
+import { expect, type Locator, type Page, test } from "./test";
 
 // Chat on screen (C2 of the chat plan). The demo restaurant's reset writes
 // its conversations (private.seed_demo_chat): Uri's thanks and Shiran's two
@@ -35,6 +36,10 @@ const SHIRAN = { local: "050-000-0002", e164: "+972500000002" };
 const URI = { local: "050-000-0001", e164: "+972500000001" };
 const ADMIN = { local: "050-000-0005", e164: "+972500000005" };
 const KITCHEN = "מטבח";
+/** Shiran, the manager, as the demo restaurant names her. */
+const SHIRAN_NAME = "שירן הדגמה";
+/** A time in a button's name, as the app writes it: in Unicode isolates. */
+const isolate = (chunks: string) => `⁦${chunks}⁩`;
 
 const c = he.app.chat;
 const e = he.auth.enter;
@@ -495,4 +500,126 @@ test("viewing as a manager shows only that chats aren't shown", async ({
   await page.goto(`/chat/${kitchen}`);
   await expect(page.getByText(c.viewing)).toBeVisible();
   await expect(page.getByRole("log")).toHaveCount(0);
+});
+
+// Accessibility, part 7. A text message whose sending is dropped on its way
+// (nothing reaches the server, so nothing is written) is said where the
+// field keeps the focus, with its way to try again under it; and each
+// message's actions button says whose message it opens and when, after the
+// tooltip's word, so each reads apart in a list of the page's buttons.
+test("a message that didn't go is said, and each message's actions say whose and when", async ({
+  page,
+}) => {
+  const words = "e2e: this one never leaves the phone";
+  const kitchen = await demoConversation({ kind: "department", name: KITCHEN });
+  expect(kitchen).not.toBeNull();
+  await enterAs(page, "worker");
+  await page.goto(`/chat/${kitchen}`);
+  await expect(
+    page.getByRole("heading", { level: 1, name: KITCHEN }),
+  ).toBeVisible();
+
+  // The kitchen's two from the demo: Noa's own, and Shiran's answer.
+  const bubble = (text: string) =>
+    log(page).locator("[data-bubble]").filter({ hasText: text });
+  const timeOf = async (one: Locator) =>
+    (await one.locator("time").textContent()) ?? "";
+  const shirans = bubble("תודה, ההזמנה יוצאת היום");
+  const own = bubble("סיימנו לסדר להיום. חסרים חומרי ניקוי");
+  await expect(shirans.locator("[data-message-actions]")).toHaveAttribute(
+    "aria-label",
+    heT.markup("app.chat.messageActions.openFor", {
+      name: SHIRAN_NAME,
+      time: await timeOf(shirans),
+      ltr: isolate,
+    }),
+  );
+  await expect(shirans.locator("[data-message-actions]")).toHaveAttribute(
+    "title",
+    c.messageActions.open,
+  );
+  await expect(own.locator("[data-message-actions]")).toHaveAttribute(
+    "aria-label",
+    heT.markup("app.chat.messageActions.openForOwn", {
+      time: await timeOf(own),
+      ltr: isolate,
+    }),
+  );
+
+  // Its sending dropped on the way: the server never has it.
+  let dropped = 0;
+  await page.route(
+    (url) => url.pathname === `/chat/${kitchen}`,
+    async (route) => {
+      const request = route.request();
+      if (
+        request.method() === "POST" &&
+        request.headers()["next-action"] !== undefined &&
+        (request.postData() ?? "").includes(words)
+      ) {
+        dropped += 1;
+        await route.abort();
+        return;
+      }
+      await route.fallback();
+    },
+  );
+  await noteIfSaid(page, c.conversation.notSent);
+  await send(page, words);
+  await expect(
+    log(page).getByRole("button", { name: c.conversation.failed }),
+  ).toBeVisible();
+  await expect.poll(() => wasSaid(page, c.conversation.notSent)).toBe(true);
+  expect(dropped).toBe(1);
+  // The field keeps the focus, for the next message or the way back.
+  await expect(composer(page)).toBeFocused();
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+// Accessibility, part 7, in the tablet's shape (the list beside the
+// conversation; one run, on the phone's device, as the rest of this file).
+// A chat opened from the list, by the keyboard, whose focus stays on the
+// row pressed, gives its title the focus: every chat has the same page
+// title, so nothing else says it opened. So does a chat chosen in "שליחת
+// הודעה" beside it; closed with no one chosen, the sheet gives the focus
+// back to its button. Opening chats marks them read: clearDemoChat puts
+// that back.
+test("beside the list, a chat opened from it or chosen in a new message takes the focus to its title", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 820, height: 1180 });
+  const kitchen = await demoConversation({ kind: "department", name: KITCHEN });
+  const team = await demoConversation({ kind: "team" });
+  const title = (name: string) =>
+    page.getByRole("heading", { level: 1, name }).filter({ visible: true });
+  await enterAs(page, "worker");
+  await page.goto(`/chat/${kitchen}`);
+  await expect(title(KITCHEN)).toBeVisible();
+
+  // The list beside it, its team row pressed from the keyboard.
+  const teamRow = page
+    .locator(`a[href="/chat/${team}"]`)
+    .filter({ visible: true })
+    .first();
+  await expect(teamRow).toBeVisible();
+  await teamRow.focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(new RegExp(`/chat/${team}$`));
+  await expect(title(c.list.team)).toBeFocused();
+
+  const newMessage = page
+    .getByRole("button", { name: c.list.newMessage, exact: true })
+    .filter({ visible: true });
+  const sheet = page.getByRole("dialog", { name: c.list.newMessage });
+  await newMessage.click();
+  await sheet.getByLabel(c.newMessage.search).fill("שירן");
+  await sheet.getByRole("link", { name: new RegExp(SHIRAN_NAME) }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(title(SHIRAN_NAME)).toBeFocused();
+
+  await newMessage.click();
+  await expect(sheet).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(sheet).toHaveCount(0);
+  await expect(newMessage).toBeFocused();
 });

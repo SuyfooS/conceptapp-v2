@@ -8,7 +8,8 @@ import { VisibilityNote } from "@ui/visibility-note";
 import { SquarePen } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { screenTitle } from "./chat-focus";
 import { chatPaths } from "./chat-paths";
 import { useChat } from "./chat-provider";
 
@@ -17,7 +18,10 @@ import { useChat } from "./chat-provider";
  * search by name. Choosing someone opens their private chat with the reader,
  * or a new one that the first message makes, and closes the sheet, the chat
  * already open beside it too. In a demo business it says that whoever comes
- * in reads it, not that only the two of them do.
+ * in reads it, not that only the two of them do. Closed with someone chosen,
+ * it gives the keyboard's focus to the title of the chat beside the list
+ * once that is drawn (until then its button, and the chat takes it from
+ * there as it opens); closed with no one chosen, back to its button.
  */
 export function NewMessage({ quiet }: { quiet: boolean }) {
   const t = useTranslations("app.chat");
@@ -25,6 +29,9 @@ export function NewMessage({ quiet }: { quiet: boolean }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const button = useRef<HTMLButtonElement>(null);
+  /** Someone was chosen: the sheet closes onto their chat. */
+  const chose = useRef(false);
 
   // The sheet lives beside every chat screen: a chat chosen from it closes it.
   // biome-ignore lint/correctness/useExhaustiveDependencies: the address is what closes it
@@ -49,8 +56,10 @@ export function NewMessage({ quiet }: { quiet: boolean }) {
   return (
     <>
       <Button
+        ref={button}
         variant={quiet ? "secondary" : "primary"}
         onClick={() => {
+          chose.current = false;
           setQuery("");
           setOpen(true);
         }}
@@ -63,6 +72,11 @@ export function NewMessage({ quiet }: { quiet: boolean }) {
         onOpenChange={setOpen}
         title={t("list.newMessage")}
         closeLabel={t("newMessage.close")}
+        returnFocus={() => {
+          const toChat = chose.current;
+          chose.current = false;
+          return (toChat ? screenTitle() : null) ?? button.current;
+        }}
       >
         <div className="flex flex-col gap-3 px-2 pb-2">
           <VisibilityNote icon={chat.demo ? "eye" : "lock"}>
@@ -92,7 +106,10 @@ export function NewMessage({ quiet }: { quiet: boolean }) {
                         : chatPaths.withPerson(contact.id)
                     }
                     // The chat on screen chosen again changes no address.
-                    onClick={() => setOpen(false)}
+                    onClick={() => {
+                      chose.current = true;
+                      setOpen(false);
+                    }}
                   />
                 );
               })}

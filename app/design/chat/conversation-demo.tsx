@@ -172,6 +172,8 @@ const PDF_MB = CHAT_PDF_MAX_BYTES / (1024 * 1024);
 const ANSWER_MS = 2200;
 /** This close to the end of the page counts as reading the newest. */
 const NEAR_END = 96;
+/** A time in a button's name: in Unicode isolates, as the app's is. */
+const isolate = (chunks: string) => `⁦${chunks}⁩`;
 
 const runOf = (index: number, length: number): MessageRun =>
   length === 1
@@ -820,6 +822,7 @@ export function ConversationDemo({
               {day.runs.flatMap((run) =>
                 run.messages.map((m, i) => {
                   const own = m.author === reader;
+                  const time = messageTime(m.at, timeZone);
                   return (
                     <MessageBubble
                       key={m.id}
@@ -834,12 +837,22 @@ export function ConversationDemo({
                             }
                       }
                       content={contentOf(m)}
-                      time={{ label: messageTime(m.at, timeZone), at: m.at }}
+                      time={{ label: time, at: m.at }}
                       status={statusOf(m)}
                       actions={
                         actionsOf(m).length > 0
                           ? {
                               label: t("messageActions.open"),
+                              fullLabel: own
+                                ? t.markup("messageActions.openForOwn", {
+                                    time,
+                                    ltr: isolate,
+                                  })
+                                : t.markup("messageActions.openFor", {
+                                    name: m.authorName,
+                                    time,
+                                    ltr: isolate,
+                                  }),
                               onOpen: () => setActionsFor(m),
                             }
                           : null

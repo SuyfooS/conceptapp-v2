@@ -89,7 +89,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { focusLost } from "./chat-focus";
+import { focusLost, titleTakesFocus } from "./chat-focus";
 import { ChatNotice } from "./chat-notice";
 import { chatPaths } from "./chat-paths";
 import {
@@ -279,6 +279,11 @@ const SAID_MS = 8_000;
 const MOVED_ON_PX = 24;
 /** Where a keyboard or a trackpad is: the field may take the focus. */
 const FINE_POINTER = "(pointer: fine)";
+/**
+ * A time in words that aren't drawn (a button's name): in Unicode isolates,
+ * as `<ltr>` holds it on screen.
+ */
+const isolate = (chunks: string) => `⁦${chunks}⁩`;
 
 /**
  * Where the keyboard's focus goes when what held it goes away (NewBelow
@@ -778,13 +783,15 @@ export function ConversationScreen(props: Props) {
   }, [conversation, reader, chat.watch, addPeople]);
 
   // A conversation opens at its newest, and so does one shown again. On a
-  // phone the list it was opened from has just gone, and the focus with it:
-  // the conversation's title takes it, so a screen reader starts there.
+  // phone the list it was opened from has just gone, and the focus with it;
+  // from tablet up it stays on the row pressed in the list beside it. The
+  // conversation's title takes it, so a screen reader starts there (every
+  // chat has the same page title, so nothing else says it opened).
   useEffect(() => {
     toEnd(false);
     setReady(true);
     markReadNow.current();
-    if (focusLost()) heading.current?.focus({ preventScroll: true });
+    if (titleTakesFocus()) heading.current?.focus({ preventScroll: true });
   }, []);
 
   // New messages: to the newest when the reader was there or wrote one, and
@@ -1113,9 +1120,16 @@ export function ConversationScreen(props: Props) {
     } else if (result.failure === "businessChanged") {
       setNotice({ of: "conversation", key: "businessChanged" });
     }
-    // The chat closed, or the other person left: the screen says so now.
+    // The chat closed, or the other person left: the screen says so now,
+    // where the field was (the Composer says why writing stopped).
     else if (result.failure === "closed" || result.failure === "noAccess") {
       router.refresh();
+    }
+    // No line over the field says it, and the bubble's way to try again is
+    // in the messages, which aren't read out as they change: said here, or
+    // someone whose field emptied on sending believes it went.
+    else {
+      say(t("conversation.notSent"));
     }
   }
 
@@ -2094,6 +2108,7 @@ export function ConversationScreen(props: Props) {
                       : draftKey(shown.outgoing.draft);
                   const offered =
                     shown.kind === "message" ? actionsOf(shown.message) : [];
+                  const time = messageTime(item.createdAt, chat.timeZone);
                   return (
                     <MessageBubble
                       key={key}
@@ -2115,15 +2130,24 @@ export function ConversationScreen(props: Props) {
                           ? contentOf(shown.message)
                           : outgoingContent(shown.outgoing)
                       }
-                      time={{
-                        label: messageTime(item.createdAt, chat.timeZone),
-                        at: item.createdAt,
-                      }}
+                      time={{ label: time, at: item.createdAt }}
                       status={statusOf(shown)}
                       actions={
                         shown.kind === "message" && offered.length > 0
                           ? {
                               label: t("messageActions.open"),
+                              // Whose message and when, so each reads apart
+                              // in a list of the page's buttons.
+                              fullLabel: own
+                                ? t.markup("messageActions.openForOwn", {
+                                    time,
+                                    ltr: isolate,
+                                  })
+                                : t.markup("messageActions.openFor", {
+                                    name: nameOf(item.authorId),
+                                    time,
+                                    ltr: isolate,
+                                  }),
                               onOpen: (trigger) => {
                                 actionsOpener.current = trigger;
                                 setActionsFor({ id: shown.message.id });

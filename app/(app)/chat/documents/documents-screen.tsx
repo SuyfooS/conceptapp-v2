@@ -18,16 +18,19 @@ import {
   matchesFilters,
   waitsFor,
 } from "@domain/documents-screen";
+import { announce } from "@ui/announcer";
 import { Button } from "@ui/button";
 import { Card, CardText, CardTitle } from "@ui/card";
 import { ChoiceMenu } from "@ui/choice-menu";
 import { DataTable } from "@ui/data-table";
 import { EmptyState } from "@ui/empty-state";
+import { focusFirst } from "@ui/focus-after";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
 import { PersonAvatar } from "@ui/person-row";
 import { Segmented } from "@ui/segmented";
+import { useFocusWhenGone } from "@ui/use-focus-after";
 import { Download, FileText, Inbox, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -53,6 +56,12 @@ import {
 import type { DocumentsScreenData } from "./document-screen-types";
 import type { DocumentActionResult } from "./document-types";
 import { type DocumentsPaths, documentsPathsAt } from "./documents-paths";
+import {
+  CHOSEN_ROW,
+  FILTER_MENU,
+  filtersRead,
+  whenFocused,
+} from "./filter-count";
 import { DocumentSpaceNote } from "./space-note";
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
@@ -463,7 +472,11 @@ function PhoneSegments({
   );
 }
 
-/** The desktop's table of every document, its filters and its preview. */
+/**
+ * The desktop's table of every document, its filters and its preview. A
+ * change of the filters says how many documents are left (never on load);
+ * the preview closed gives the focus back to the row that opened it.
+ */
 function DesktopDocuments({
   data,
   paths,
@@ -491,6 +504,23 @@ function DesktopDocuments({
     matchesFilters(d, filters, reader),
   );
   const preview = shown.find((d) => d.id === selected) ?? null;
+  const root = useRef<HTMLDivElement>(null);
+  // How many documents the filters leave, said once each time they change,
+  // never on load: once the documents a person's filter reads are drawn
+  // (they come with the address), and once the menu chosen from gave its
+  // button the focus back, which would cut the words off.
+  const counted = useRef(filters);
+  const counting = useRef<() => void>(() => {});
+  useEffect(() => () => counting.current(), []);
+  useEffect(() => {
+    if (counted.current === filters || !filtersRead(filters, data.person)) {
+      return;
+    }
+    counted.current = filters;
+    const words = t("office.filters.count", { count: shown.length });
+    counting.current();
+    counting.current = whenFocused(() => announce(words));
+  });
   const filtered =
     filters.person !== null ||
     filters.category !== null ||
@@ -525,7 +555,10 @@ function DesktopDocuments({
   );
 
   return (
-    <div className="hidden xl:grid xl:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] xl:items-start xl:gap-8">
+    <div
+      ref={root}
+      className="hidden xl:grid xl:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] xl:items-start xl:gap-8"
+    >
       <div className="flex min-w-0 flex-col gap-3">
         {/* The table's title, for screen readers and the focus after the notice. */}
         <h2 ref={headingRef} tabIndex={-1} className="sr-only">
@@ -603,18 +636,16 @@ function DesktopDocuments({
             />,
           )}
           {filtered ? (
-            <button
-              type="button"
-              onClick={() => {
+            <ClearFilters
+              label={t("office.filters.clear")}
+              filters={root}
+              onClear={() => {
                 setFilters({ person: null, category: null, state: "all" });
                 if (filters.person !== null) {
                   router.replace(paths.list, { scroll: false });
                 }
               }}
-              className="inline-flex min-h-11 items-center font-medium text-ink underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-accent"
-            >
-              {t("office.filters.clear")}
-            </button>
+            />
           ) : null}
         </div>
         {shown.length > 0 ? (
@@ -686,7 +717,15 @@ function DesktopDocuments({
             reader={reader}
             words={words}
             href={paths.document(preview.id)}
-            onClose={() => setSelected(null)}
+            onClose={() => {
+              // Its button goes with it: the row that opened it takes the
+              // focus first, brought into view.
+              focusFirst([CHOSEN_ROW], {
+                root: root.current,
+                onlyIfLost: false,
+              });
+              setSelected(null);
+            }}
           />
         ) : (
           <Card className="flex min-h-48 items-center">
@@ -701,6 +740,35 @@ function DesktopDocuments({
         )}
       </aside>
     </div>
+  );
+}
+
+/**
+ * "ניקוי הסינון": it goes with the filters it clears, and the focus that
+ * pressed it goes on to the first of them, once drawn again with its words
+ * ("שם: כולם").
+ */
+function ClearFilters({
+  label,
+  filters,
+  onClear,
+}: {
+  label: string;
+  /** Where the filters' menus are. */
+  filters: RefObject<HTMLElement | null>;
+  onClear: () => void;
+}) {
+  const button = useRef<HTMLButtonElement>(null);
+  useFocusWhenGone(button, () => [filters.current?.querySelector(FILTER_MENU)]);
+  return (
+    <button
+      ref={button}
+      type="button"
+      onClick={onClear}
+      className="inline-flex min-h-11 items-center font-medium text-ink underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-accent"
+    >
+      {label}
+    </button>
   );
 }
 
