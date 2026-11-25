@@ -45,10 +45,12 @@
 --               is still pending, so a screen not read again since a link was
 --               made elsewhere never replaces the link already sent.
 --               public.team_invite_link itself, "קישור חדש", is unchanged.
---   the console public.admin_business says 'pending' for these, never
---               'expired', and public.admin_businesses counts them among the
---               open invites, never the expired ones, so the ConceptApp
---               team's screens say what the owners' Team screen says.
+--   the console public.admin_business gives each person 'link_pending' and
+--               never says 'expired' for these, and public.admin_businesses
+--               counts them among the open invites, never the expired ones,
+--               so the ConceptApp team's screens say what the owners' Team
+--               screen says. Its statuses stay the three the code before
+--               this reads, so either may reach a project first.
 
 ------------------------------------------------------------------------------
 -- 1. The column
@@ -244,9 +246,15 @@ grant execute on function public.team_invite_first_link(uuid, uuid, text)
 ------------------------------------------------------------------------------
 -- 6. The console says so too
 
--- 20261117000700_member_names.sql's, with only this: an invite nobody got a
--- link for yet reads 'pending' whatever its date, never 'invited' or
--- 'expired', and is listed with the open ones. The console's checklist counts
+-- 20261117000700_member_names.sql's, with only this: each person carries
+-- 'link_pending' (false for a member), and an invite nobody got a link for
+-- yet reads 'invited' whatever its date, never 'expired', and is listed with
+-- the open ones. Its status stays one of the three the code before this
+-- reads ('member', 'invited', 'expired'; @db/admin parses them with a Zod
+-- enum, which a fourth would fail), and that code drops the new key, so the
+-- console keeps working whichever comes first, this migration or the code
+-- that reads it, and after a rollback of the code alone. @db/admin reads an
+-- invited one with link_pending as 'pending'. The console's checklist counts
 -- it, as it counts an open one, and the console's own link for it is made as
 -- before (the trigger above then clears the flag). The same signature, so its
 -- grants stay; they are given again all the same.
@@ -277,14 +285,14 @@ begin
         jsonb_build_object(
           'name', p.name, 'phone', p.phone, 'role', p.role,
           'status', p.status, 'invite_id', p.invite_id,
-          'expires_at', p.expires_at
+          'expires_at', p.expires_at, 'link_pending', p.link_pending
         )
         order by p.place, p.role, p.name, p.phone
       )
       from (
         select coalesce(n.name, pr.full_name, '') as name, pr.phone, m.role,
           'member' as status, null::uuid as invite_id,
-          null::timestamptz as expires_at, 0 as place
+          null::timestamptz as expires_at, false as link_pending, 0 as place
         from public.memberships m
         join public.profiles pr on pr.id = m.user_id
         left join public.member_names n
@@ -292,12 +300,12 @@ begin
         where m.business_id = b.id and m.active
         union all
         select coalesce(i.full_name, ''), i.phone, i.role,
+          -- Still one of the three statuses the code before this reads.
           case
-            when i.link_pending then 'pending'
-            when i.expires_at > now() then 'invited'
+            when i.link_pending or i.expires_at > now() then 'invited'
             else 'expired'
           end,
-          i.id, i.expires_at,
+          i.id, i.expires_at, i.link_pending,
           case when i.link_pending or i.expires_at > now() then 1 else 2 end
         from public.invites i
         where i.business_id = b.id and i.claimed_at is null

@@ -124,6 +124,11 @@ function teamDetail(
 ): string {
   const { joined, invited, expired, pending } = progress;
   switch (teamStepWords(progress)) {
+    case "donePending":
+      return t("home.firstSteps.steps.team.donePending", {
+        count: joined,
+        pending,
+      });
     case "doneWaiting":
       return t("home.firstSteps.steps.team.doneWaiting", {
         count: joined,

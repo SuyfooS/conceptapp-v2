@@ -133,17 +133,29 @@ export function teamProgress(
 }
 
 /**
- * Which words the team's step says (`app.home.firstSteps.steps.team.*`):
- * once one of the staff joined, how many did, and how many more were sent a
- * link; before that, first how many are still waiting for a link, since
- * that is the owner's to do, then how many were sent one, then how many ran
- * out. An invite nobody got a link for is never "הוזמנו".
+ * Which words the team's step says (`app.home.firstSteps.steps.team.*`).
+ * How many are still waiting for a link, while any are, since sending them
+ * is the owner's to do (plan 3.1): after how many joined once one of the
+ * staff did (`donePending`), else alone. With none waiting, once one joined,
+ * how many did and how many more were sent a link; before that, how many
+ * were sent one, then how many ran out. An invite nobody got a link for is
+ * never "הוזמנו".
  */
 export function teamStepWords(
   progress: TeamProgress,
-): "doneWaiting" | "done" | "pending" | "waiting" | "expired" | "none" {
+):
+  | "donePending"
+  | "doneWaiting"
+  | "done"
+  | "pending"
+  | "waiting"
+  | "expired"
+  | "none" {
   const { joined, invited, expired, pending } = progress;
-  if (joined > 0) return invited > 0 ? "doneWaiting" : "done";
+  if (joined > 0) {
+    if (pending > 0) return "donePending";
+    return invited > 0 ? "doneWaiting" : "done";
+  }
   if (pending > 0) return "pending";
   if (invited > 0) return "waiting";
   if (expired > 0) return "expired";

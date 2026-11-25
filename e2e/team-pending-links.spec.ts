@@ -249,6 +249,17 @@ test("the wizard's invites wait on /team for a link, made and sent one person at
     for (const person of [second, third]) {
       expect(await sentSince(person), person.name).toBe(0);
     }
+
+    // Today's first step is done now, and still says who has no link while
+    // any are left (plan 3.1), leading to the Team screen.
+    await page.goto("/home");
+    await expect(teamStep).toContainText(
+      heT("app.home.firstSteps.steps.team.donePending", {
+        count: 1,
+        pending: 2,
+      }),
+    );
+    await expect(teamStep).toHaveAttribute("href", "/team");
   } finally {
     await closePendingLinksBusiness(business);
   }

@@ -1403,7 +1403,8 @@
             "pending": "{count, plural, one {אדם אחד עוד לא קיבל קישור} other {# אנשים עוד לא קיבלו קישור}}. שולחים לכל אחד את הקישור שלו מהמסך של הצוות.",
             "expired": "{count, plural, one {ההזמנה פגה לפני שהצטרפו} other {# הזמנות פגו לפני שהצטרפו}}. שולחים קישור חדש מהמסך של הצוות.",
             "done": "{count, plural, one {אדם אחד הצטרף} other {# אנשים הצטרפו}}",
-            "doneWaiting": "{count, plural, one {אדם אחד הצטרף} other {# אנשים הצטרפו}}, {waiting, plural, one {ועוד אחד הוזמן} other {ועוד # הוזמנו}}"
+            "doneWaiting": "{count, plural, one {אדם אחד הצטרף} other {# אנשים הצטרפו}}, {waiting, plural, one {ועוד אחד הוזמן} other {ועוד # הוזמנו}}",
+            "donePending": "{count, plural, one {אדם אחד הצטרף} other {# אנשים הצטרפו}}, {pending, plural, one {ואחד עוד לא קיבל קישור} other {ו-# עוד לא קיבלו קישור}}"
           },
           "shifts": {
             "title": "תפקידי עבודה ומשמרות",

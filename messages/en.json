@@ -1403,7 +1403,8 @@
             "pending": "{count, plural, one {One person has no link yet} other {# people have no link yet}}. Send each one their link from the Team screen.",
             "expired": "{count, plural, one {The invite ran out before they joined} other {# invites ran out before anyone joined}}. Send a new link from the team screen.",
             "done": "{count, plural, one {One person joined} other {# people joined}}",
-            "doneWaiting": "{count, plural, one {One person joined} other {# people joined}}, {waiting, plural, one {one more invited} other {# more invited}}"
+            "doneWaiting": "{count, plural, one {One person joined} other {# people joined}}, {waiting, plural, one {one more invited} other {# more invited}}",
+            "donePending": "{count, plural, one {One person joined} other {# people joined}}, {pending, plural, one {one has no link yet} other {# have no link yet}}"
           },
           "shifts": {
             "title": "Job roles and shifts",

@@ -224,9 +224,12 @@ link already sent ("קישור חדש" still calls `team_invite_link`, which
 replaces one on purpose; service_role only). The link is then sent on
 WhatsApp to that number (`whatsappToHref` in @domain/share) or copied; the
 app sends nothing. The console says so too: `public.admin_business` gives
-such an invite the status `pending` whatever its date, listed with the open
-ones, and `public.admin_businesses` counts it among the open invites, never
-the expired. `invite_links_pending.test.sql` covers it.
+each person `link_pending` and such an invite the status `invited` whatever
+its date, listed with the open ones (its statuses stay the three the code
+before reads, so the migration and the code may reach a project in either
+order; `getBusinessSetup` reads an invited one with `link_pending` as
+`pending`), and `public.admin_businesses` counts it among the open invites,
+never the expired. `invite_links_pending.test.sql` covers it.
 
 A week is written shift by shift (`20261115000100_week_in_place.sql`; Orel's
 answers of 15 November 2026). `public.week_shifts(week)` reads a week's shifts

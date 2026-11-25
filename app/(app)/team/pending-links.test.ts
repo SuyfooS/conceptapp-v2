@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  holdsAfter,
   leftToLink,
   nextToLink,
   PENDING_CREATE,
@@ -7,6 +8,7 @@ import {
   type PendingRow,
   pendingCreateTarget,
   pendingShown,
+  released,
 } from "./pending-links";
 
 // "עוד לא קיבלו קישור" on the Team screen (inviting from a list, part 2):
@@ -97,6 +99,63 @@ describe("pendingShown", () => {
     pendingShown(rows, held, read(TAL, DANA, ORI));
     expect(ids(rows)).toEqual(["tal", "dana"]);
     expect([...held.keys()]).toEqual(["ori"]);
+  });
+
+  // The final check: Dana's press was refused ("failed"), and meanwhile
+  // someone else made and sent her link; then Tal's link, made here, reads
+  // the screen again with Dana's invite open.
+  it("drops a row whose press was refused once the screen reads it as open", () => {
+    const pressed = new Map([
+      [DANA.id, DANA],
+      [TAL.id, TAL],
+    ]);
+    const after = released(pressed, DANA.id);
+    expect(ids(pendingShown([ORI], after, read(DANA, ORI, TAL)))).toEqual([
+      "ori",
+      "tal",
+    ]);
+    // Held still, she would be listed and counted as having no link.
+    expect(ids(pendingShown([ORI], pressed, read(DANA, ORI, TAL)))).toEqual([
+      "ori",
+      "dana",
+      "tal",
+    ]);
+    // While the screen still reads her as waiting, she is listed as before.
+    expect(ids(pendingShown([DANA, ORI], after, read(DANA, ORI, TAL)))).toEqual(
+      ["ori", "dana", "tal"],
+    );
+  });
+});
+
+describe("holdsAfter", () => {
+  it("keeps a row held for a link made here or one made meanwhile elsewhere", () => {
+    expect(holdsAfter({ link: "https://example.test/join/abc" })).toBe(true);
+    expect(holdsAfter({ failure: "linked" })).toBe(true);
+  });
+
+  it("lets it go for any refusal that made no link", () => {
+    for (const failure of [
+      "failed",
+      "viewOnly",
+      "notAllowed",
+      "gone",
+      "noPermission",
+    ]) {
+      expect(holdsAfter({ failure }), failure).toBe(false);
+    }
+    expect(holdsAfter({})).toBe(false);
+  });
+});
+
+describe("released", () => {
+  it("takes that row alone out, changing nothing it was given", () => {
+    const held = new Map([
+      [DANA.id, DANA],
+      [TAL.id, TAL],
+    ]);
+    expect([...released(held, DANA.id).keys()]).toEqual(["tal"]);
+    expect([...held.keys()]).toEqual(["dana", "tal"]);
+    expect(released(held, ORI.id)).toBe(held);
   });
 });
 

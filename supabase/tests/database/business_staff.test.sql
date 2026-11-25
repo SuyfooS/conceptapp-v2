@@ -102,12 +102,12 @@ select is(
     'address', 'Herzl 1, Haifa',
     'template_key', 'cafe-bar',
     -- Nobody got a link for the wizard's invites yet
-    -- (20261128000200_invite_links_pending.sql).
+    -- (20261128000200_invite_links_pending.sql): open, and waiting for one.
     'people', jsonb_build_array(
       jsonb_build_object('name', 'Ronit', 'phone', '+972500000611',
-        'role', 'owner', 'status', 'pending'),
+        'role', 'owner', 'status', 'invited', 'link_pending', true),
       jsonb_build_object('name', 'Shai', 'phone', '+972500000612',
-        'role', 'worker', 'status', 'pending')
+        'role', 'worker', 'status', 'invited', 'link_pending', true)
     )
   ),
   'a team member reads the business and its people'

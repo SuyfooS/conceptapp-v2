@@ -5,8 +5,8 @@
 -- invite a link, by a trigger, never by a cancel. Read under the invites'
 -- policy as before. The Team screen's first link
 -- (public.team_invite_first_link) is refused once one was made, and the
--- console says 'pending' for these, never 'expired' (public.admin_business,
--- public.admin_businesses).
+-- console says these wait for a link, never 'expired' (public.admin_business,
+-- with link_pending and its three statuses; public.admin_businesses).
 begin;
 select plan(45);
 
@@ -337,23 +337,29 @@ update public.invites set expires_at = now() - interval '1 day'
 where id in (pg_temp.inv('+972500007611'), pg_temp.inv('+972500007615'));
 
 select pg_temp.sign_in('c5000000-0000-4000-a000-00000000000a');
+-- Its status stays one of the three the code before this reads ('invited'
+-- for one with no link, whatever its date), and link_pending says the rest,
+-- so the console works whichever reaches a project first.
 select results_eq(
-  $$select p ->> 'phone', p ->> 'status'
+  $$select p ->> 'phone', p ->> 'status', (p -> 'link_pending')::boolean
     from jsonb_array_elements(public.admin_business('ilp-x') -> 'people') p
     where p ->> 'invite_id' is not null
     order by 1$$,
-  $$values ('+972500007611'::text, 'pending'::text),
-    ('+972500007612', 'invited'), ('+972500007613', 'invited'),
-    ('+972500007614', 'invited'), ('+972500007615', 'expired'),
-    ('+972500007617', 'invited'), ('+972500007618', 'invited')$$,
+  $$values ('+972500007611'::text, 'invited'::text, true),
+    ('+972500007612', 'invited', false), ('+972500007613', 'invited', false),
+    ('+972500007614', 'invited', false), ('+972500007615', 'expired', false),
+    ('+972500007617', 'invited', false), ('+972500007618', 'invited', false)$$,
   'the console says an invite with no link yet waits for one, past its date too, never expired'
 );
 select ok(
-  (select max(n) filter (where p ->> 'status' = 'pending')
-      < min(n) filter (where p ->> 'status' = 'expired')
+  (select bool_and(p ->> 'status' in ('member', 'invited', 'expired'))
+      and bool_and(p ->> 'status' <> 'member'
+        or not (p -> 'link_pending')::boolean)
+      and max(n) filter (where (p -> 'link_pending')::boolean)
+        < min(n) filter (where p ->> 'status' = 'expired')
     from jsonb_array_elements(public.admin_business('ilp-x') -> 'people')
       with ordinality as people (p, n)),
-  'and lists it with the open invites, before the expired one'
+  'and lists it with the open invites, before the expired one, each status one the code before reads, no member waiting for a link'
 );
 select results_eq(
   $$select members, open_invites, expired_invites

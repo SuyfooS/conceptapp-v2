@@ -30,12 +30,14 @@ import {
   useGoneInvites,
 } from "./invite-cancel";
 import {
+  holdsAfter,
   leftToLink,
   nextToLink,
   PENDING_LIST,
   type PendingRow,
   pendingCreateTarget,
   pendingShown,
+  released,
 } from "./pending-links";
 import { useInviteLinks } from "./resend-link";
 
@@ -62,6 +64,8 @@ type Pending = {
   rows: readonly PendingRow[];
   /** Keeps a row in place once its link is asked for. */
   hold: (row: PendingRow) => void;
+  /** Lets it go again: the answer made no link (`holdsAfter`). */
+  release: (inviteId: string) => void;
   /** The ids held so, whose rows the open invites leave out meanwhile. */
   here: ReadonlySet<string>;
   /** How each row's link went out here, once it did. */
@@ -93,8 +97,9 @@ const noResend: Resend = async (_inviteId, prev) => prev;
  * (`pendingShown`), though the screen, read again once the link is made,
  * lists it among the open invites, which leave it out meanwhile
  * (`UnlessPendingHere`), and only while the screen still reads its invite
- * (`invites`). How a link went out (WhatsApp or a copy) is kept here too, so
- * each shape says it, and so is a press refused since a link was made
+ * (`invites`); a press refused with no link made lets its row go
+ * (`holdsAfter`). How a link went out (WhatsApp or a copy) is kept here too,
+ * so each shape says it, and so is a press refused since a link was made
  * meanwhile elsewhere. Inside `InviteLinks`, whose links every shape shows;
  * the page keys the screen by person and business, so nothing held here
  * outlives either.
@@ -130,6 +135,8 @@ export function PendingLinks({
   );
   const hold = (row: PendingRow) =>
     setHeld((all) => (all.has(row.id) ? all : new Map(all).set(row.id, row)));
+  const release = (inviteId: string) =>
+    setHeld((all) => released(all, inviteId));
   const markSent = (inviteId: string, how: Sent) =>
     setSent((all) => new Map(all).set(inviteId, how));
   const markElsewhere = (inviteId: string) =>
@@ -142,6 +149,7 @@ export function PendingLinks({
       value={{
         rows: pendingShown(rows, held, read),
         hold,
+        release,
         here: new Set([...held.keys()].filter((id) => read.has(id))),
         sent,
         markSent,
@@ -422,6 +430,9 @@ export function SendLinkRow({ row }: { row: PendingRow }) {
   // Each answer once, as it arrives: not when the screen is shown again.
   useLayoutEffect(() => {
     if (!arrived(seen, state)) return;
+    // Refused with no link made: the screen's own read lists the row again,
+    // so a link made elsewhere after this takes it off.
+    if (!holdsAfter(state)) pending?.release(row.id);
     if (state.failure === "linked") {
       pending?.markElsewhere(row.id);
       if (!focusFirst([madeElsewhere.current], { title: false })) {
@@ -518,7 +529,8 @@ export function SendLinkRow({ row }: { row: PendingRow }) {
   return (
     <form
       action={action}
-      // Kept in place before the answer: the screen is read again with it.
+      // Kept in place before the answer, as the screen is read again with
+      // it; let go once an answer made no link (`holdsAfter`).
       onSubmit={() => pending?.hold(row)}
       className="flex flex-col items-start gap-1"
     >

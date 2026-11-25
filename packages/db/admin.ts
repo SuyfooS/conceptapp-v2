@@ -137,9 +137,14 @@ const BusinessSetupRow = z.object({
       name: z.string(),
       phone: z.string().nullable(),
       role: z.enum(ROLES),
-      status: z.enum(["member", "invited", "pending", "expired"]),
+      // Three statuses only, as the code before link_pending reads them, so
+      // either the database or the code may be the newer one
+      // (20261128000200_invite_links_pending.sql); a pending invite is an
+      // 'invited' one with link_pending, missing before that migration.
+      status: z.enum(["member", "invited", "expired"]),
       invite_id: z.uuid().nullable(),
       expires_at: z.string().nullable().default(null),
+      link_pending: z.boolean().default(false),
     }),
   ),
 });
@@ -196,10 +201,19 @@ export async function getBusinessSetup(
     address: row.address,
     templateKey: row.template_key,
     createdAt: row.created_at,
-    people: row.people.map(({ invite_id, expires_at, ...person }) => ({
-      ...person,
-      inviteId: invite_id,
-      expiresAt: expires_at,
-    })),
+    people: row.people.map(
+      ({
+        invite_id,
+        expires_at,
+        link_pending,
+        status,
+        ...person
+      }): SetupPerson => ({
+        ...person,
+        status: status === "invited" && link_pending ? "pending" : status,
+        inviteId: invite_id,
+        expiresAt: expires_at,
+      }),
+    ),
   };
 }

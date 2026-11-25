@@ -216,18 +216,42 @@ describe("firstSteps", () => {
     expect(joined).toEqual({ joined: 0, invited: 0, expired: 0, pending: 1 });
   });
 
-  it("says first who is still waiting for a link, until one of the staff joined", () => {
+  it("says who is still waiting for a link while any are, after who joined once one of the staff did", () => {
     const words = (progress: Partial<FirstStepsFacts["team"]>) =>
       teamStepWords({ ...dayOne.team, ...progress });
     expect(words({})).toBe("none");
     expect(words({ expired: 1 })).toBe("expired");
     expect(words({ invited: 2, expired: 1 })).toBe("waiting");
     expect(words({ pending: 3, invited: 2, expired: 1 })).toBe("pending");
-    // Once someone joined the step is done, and says so: who joined, and who
-    // was sent a link; one still waiting for theirs is the Team screen's.
-    expect(words({ joined: 1, pending: 2 })).toBe("done");
-    expect(words({ joined: 1, invited: 1, pending: 2 })).toBe("doneWaiting");
+    // Once someone joined the step is done, and says who joined; while
+    // anyone still waits for a link, those too (plan 3.1), before anyone
+    // sent one, as sending is the owner's to do.
+    expect(words({ joined: 1, pending: 2 })).toBe("donePending");
+    expect(words({ joined: 1, invited: 1, pending: 2 })).toBe("donePending");
+    expect(words({ joined: 1, invited: 1, expired: 1 })).toBe("doneWaiting");
+    expect(words({ joined: 2, expired: 1 })).toBe("done");
     expect(NO_TEAM_PROGRESS).toEqual(dayOne.team);
+  });
+
+  // The plan's demo: the wizard's three staff, the owner sends one link and
+  // that worker joins; two still have no link, and the step says so.
+  it("still says who has no link once one of the wizard's staff joined", () => {
+    const noLink = (id: string, role: Role): TeamInvite => ({
+      ...invite(id, role, true),
+      linkPending: true,
+    });
+    const progress = teamProgress(
+      buildTeam(
+        [member("owner", "owner"), member("first", "worker")],
+        [noLink("second", "worker"), noLink("third", "manager")],
+        NOW,
+      ),
+    );
+    expect(progress).toEqual({ joined: 1, invited: 0, expired: 0, pending: 2 });
+    expect(teamStepWords(progress)).toBe("donePending");
+    expect(
+      step(firstSteps({ ...dayOne, team: progress }), "team"),
+    ).toMatchObject({ done: true });
   });
 
   it("asks for job roles and regular shifts both", () => {

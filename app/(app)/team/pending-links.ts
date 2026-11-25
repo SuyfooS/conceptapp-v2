@@ -36,7 +36,8 @@ export type PendingRow = {
  * The rows to list: the invites the screen read with no link yet, and those
  * whose link was asked for here (`held`), which stay in place, by name, until
  * the page is loaded again, though the screen, read again, now has them among
- * the open invites. Only a link made here keeps a row: one made elsewhere
+ * the open invites; a press refused with no link made lets its row go
+ * (`holdsAfter`). Only a link made here keeps a row: one made elsewhere
  * (another device, someone else) takes it off once the screen is read again,
  * and a press before that is refused (`firstLinkAction`), so nobody makes a
  * link over one already sent. A held row stays only while the screen still
@@ -56,6 +57,32 @@ export function pendingShown(
       (row) => !read.has(row.id) && invites.has(row.id),
     ),
   ].sort(byNameThenId);
+}
+
+/**
+ * Whether an answer to a row's "יצירת קישור" keeps the row held: a link made
+ * here, or a refusal since one was made meanwhile elsewhere ("linked"), which
+ * the row says until the page is loaded again. Any other refusal made no
+ * link, so the row is let go (`released`) and listed again only as the screen
+ * reads it: a link made elsewhere afterwards takes it off, as `pendingShown`
+ * says.
+ */
+export function holdsAfter(answer: {
+  link?: string;
+  failure?: string;
+}): boolean {
+  return answer.link !== undefined || answer.failure === "linked";
+}
+
+/** `held` without that invite's row; the same map when it had none. */
+export function released<Row>(
+  held: ReadonlyMap<string, Row>,
+  inviteId: string,
+): ReadonlyMap<string, Row> {
+  if (!held.has(inviteId)) return held;
+  const rest = new Map(held);
+  rest.delete(inviteId);
+  return rest;
 }
 
 /**
