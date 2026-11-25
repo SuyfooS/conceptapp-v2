@@ -6,6 +6,7 @@ import {
   absenceFailureOf,
   absenceStartFor,
   awayByDay,
+  awayDuring,
   awayOn,
   awayToday,
   canRecordAbsence,
@@ -190,6 +191,29 @@ describe("who is away", () => {
       { userId: "yoav", until: "2026-11-24" },
     ]);
     expect(awayToday(spans, "2026-12-01")).toEqual([]);
+  });
+
+  it("during a shift: its day, and the day after for a night past midnight", () => {
+    // Dana is away from Saturday 28 November.
+    const night = { day: "2026-11-27", start: "19:00", end: "01:00" };
+    expect(awayOn(spans, "dana", night.day)).toBe(false);
+    expect(awayDuring(spans, "dana", night)).toBe(true);
+    // One that ends at 00:00 exactly is its own day's only, and a day
+    // shift too.
+    for (const [start, end] of [
+      ["19:30", "00:00"],
+      ["09:00", "17:00"],
+    ] as const) {
+      expect(awayDuring(spans, "dana", { day: "2026-11-27", start, end })).toBe(
+        false,
+      );
+    }
+    // Away on its own day: a night into a working day still is.
+    const late = (day: string) => ({ day, start: "22:00", end: "06:00" });
+    expect(awayDuring(spans, "yoav", late("2026-11-24"))).toBe(true);
+    expect(awayDuring(spans, "yoav", late("2026-11-25"))).toBe(false);
+    expect(awayDuring(spans, "yoav", late("2026-11-23"))).toBe(true);
+    expect(awayDuring(spans, "noa", late("2026-11-27"))).toBe(true);
   });
 });
 

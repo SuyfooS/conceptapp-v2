@@ -1,11 +1,12 @@
 import { type AwaySpan, awayOn } from "./absences";
 import { type AvailabilityRange, addDays, weekDates } from "./availability";
-import { minutesOf, rangeMinutes } from "./hours";
+import { minutesOf } from "./hours";
 import { weekBuilt } from "./running-week";
 import {
   availableFor,
   type ScheduledShift,
   shiftSlot,
+  shiftSpan,
   shiftStarted,
   withKnownPositions,
 } from "./schedule";
@@ -163,7 +164,8 @@ const byDayAndStart = (a: ScheduledShift, b: ScheduledShift) =>
  * 11. a week that would hold more than `MAX_SHIFTS_IN_A_WEEK` is `tooMany`.
  * A copied shift keeps its place open for whoever was taken off it: the
  * builder's counts show it. Spans are in minutes from the week's first
- * midnight, as the builder's own check of two shifts at once reads them.
+ * midnight (`shiftSpan`), as the builder's own check of two shifts at once
+ * reads them.
  */
 export function copyLastWeek(input: {
   weekStart: string;
@@ -232,12 +234,6 @@ export function copyLastWeek(input: {
   }
 
   const stays = screen.flatMap((_, i) => (makesWay.has(i) ? [] : [i]));
-  const spanOf = (
-    shift: Pick<ScheduledShift, "day" | "start" | "end">,
-  ): [number, number] => {
-    const from = dates.indexOf(shift.day) * 1440 + minutesOf(shift.start);
-    return [from, from + rangeMinutes(shift.start, shift.end)];
-  };
   // Whom the week as it will stand has where: every shift that stays, and
   // last week's night that runs past midnight into this week's first day.
   const taken = new Map<string, [number, number][]>();
@@ -246,16 +242,16 @@ export function copyLastWeek(input: {
   for (const i of stays) {
     const shift = screen[i];
     if (!shift) continue;
-    for (const person of shift.assignees) take(person.user, spanOf(shift));
+    const at = shiftSpan(weekStart, shift);
+    for (const person of shift.assignees) take(person.user, at);
   }
   if (addDays(source.start, 7) === weekStart) {
     for (const shift of source.shifts) {
-      const index = sourceDates.indexOf(shift.day);
-      if (index === -1) continue;
-      const from = (index - 7) * 1440 + minutesOf(shift.start);
-      const to = from + rangeMinutes(shift.start, shift.end);
-      if (to <= 0) continue;
-      for (const person of shift.assignees) take(person.user, [from, to]);
+      if (!sourceDates.includes(shift.day)) continue;
+      // Last week's Saturday is day -1: only a night past its midnight counts.
+      const at = shiftSpan(weekStart, shift);
+      if (at[1] <= 0) continue;
+      for (const person of shift.assignees) take(person.user, at);
     }
   }
   const busy = (user: string, at: [number, number]) =>
@@ -266,7 +262,7 @@ export function copyLastWeek(input: {
   const rangesOf = new Map(input.answers.map((a) => [a.userId, a.ranges]));
   const skipped: CopySkip[] = [];
   const copied = copies.map((shift): ScheduledShift => {
-    const at = spanOf(shift);
+    const at = shiftSpan(weekStart, shift);
     const assignees = shift.assignees.filter((person) => {
       const ranges = rangesOf.get(person.user);
       const reason: CopySkipReason | null = !named.has(person.user)
