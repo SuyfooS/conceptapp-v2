@@ -3794,6 +3794,7 @@
         "notSaved": "The shift wasn't saved. Check your connection and try again."
       },
       "between": "A number from {min} to {max}",
+      "numberNotSaved": "{name}: not saved, as it needs a number from {min} to {max}. It stays {value}.",
       "activity": {
         "title": "Activity log",
         "subtitle": "Who changed what in the business, and when.",

@@ -6,6 +6,7 @@ import type { ModuleKey } from "@domain/modules";
 import { displayIsraeliPhone, normalizeIsraeliPhone } from "@domain/phone";
 import type { SettingEntry, SettingField } from "@domain/settings-form";
 import type { Position, ShiftPattern } from "@domain/staffing";
+import { announce } from "@ui/announcer";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { Card } from "@ui/card";
@@ -391,6 +392,8 @@ function MenuOrValue({
  * reads 4 and 5, and out of its ends 60 starts as 6, none of them chosen. A
  * press of minus or plus saves soon after, so a few quick presses save once.
  * Its hint, or the ends while what is typed is outside them, is read with it.
+ * Enter on a number outside them keeps it and says the ends; leaving the
+ * field with it goes back to what's stored and says that it didn't save.
  */
 function NumberField({
   id,
@@ -423,7 +426,8 @@ function NumberField({
     null,
     (text) => (/^\d+$/.test(text) ? String(Number(text)) : text),
   );
-  const line = whole ? hint : t("between", { min, max });
+  const between = t("between", { min, max });
+  const line = whole ? hint : between;
   return (
     <FieldRow label={name} hint={line} hintId={hintId} htmlFor={id}>
       {disabled ? (
@@ -436,9 +440,23 @@ function NumberField({
           value={draft}
           onValueChange={edit}
           onStep={(next) => edit(next, TYPING_MS)}
-          onBlur={leave}
+          onBlur={() => {
+            // Left outside its ends, it goes back to what's stored, and says
+            // so: the focus is elsewhere now, and a reader hears nothing of
+            // the field it left.
+            if (!whole && draft !== String(value)) {
+              announce(
+                t("numberNotSaved", { name: plainName, min, max, value }),
+              );
+            }
+            leave();
+          }}
           onKeyDown={(event) => {
-            if (event.key === "Enter") event.currentTarget.blur();
+            if (event.key !== "Enter") return;
+            // Enter keeps what is outside its ends, and the focus, and says
+            // the ends; what is within them saves as the field is left.
+            if (whole) event.currentTarget.blur();
+            else announce(between);
           }}
           invalid={!whole}
           describedBy={line ? hintId : undefined}
