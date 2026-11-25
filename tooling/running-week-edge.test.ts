@@ -131,6 +131,51 @@ describe("the locks on a week's row", () => {
     expect(weekLocks(renew)).toEqual([]);
   });
 
+  it("are next week's alone in the demo's sample availability, for share, after its business and before its first answer", () => {
+    // 20261128000100_demo_sample_availability.sql: one week a business, read
+    // to see it isn't published, after the business for key share, which a
+    // save or a publish never locks more strongly. It waits for a publish
+    // under way and then finds the week published; a publish waits for it as
+    // for a write next door.
+    const sample = withoutComments(body("public.renew_demo_availability"));
+    expect(weekLocks(sample)).toEqual(["share"]);
+    const week = sample.search(
+      /from public\.schedule_weeks w\s+where w\.id = week and w\.schedule_published_at is null\s+for share;/,
+    );
+    expect(week).toBeGreaterThan(
+      sample.search(/from public\.businesses b[^;]*for key share;/),
+    );
+    expect(week).toBeLessThan(
+      sample.indexOf("insert into public.availability_submissions"),
+    );
+    expect(week).toBeLessThan(
+      sample.indexOf("perform public.submit_availability("),
+    );
+  });
+
+  it("come before the demo's sample answers, all claimed in one statement before the first is sent", () => {
+    // The trigger on a new answer (availability_submissions_resolve) takes
+    // the week's reminders lock (private.lock_availability_week, an advisory
+    // lock held to the end of the transaction) at the end of the statement
+    // that inserted it. Claimed one at a time, the first claim would hold it
+    // while a later claim waited on an answer the form is sending, whose own
+    // trigger waits for it: a deadlock. Claimed in one statement, in order of
+    // id, the lock comes after every such wait, and only the rows claimed are
+    // sent. packages/db/demo-availability.db.test.ts runs the two at once.
+    const sample = withoutComments(body("public.renew_demo_availability"));
+    const claims = [
+      ...sample.matchAll(/insert into public\.availability_submissions\b/g),
+    ].map((found) => found.index);
+    expect(claims).toHaveLength(1);
+    const claim = sample.slice(claims[0]);
+    expect(claim).toMatch(
+      /^insert into public\.availability_submissions \(business_id, week_id, user_id\)\s+select demo\.business_id, week, k\.id::uuid\s+from jsonb_object_keys\(named\) as k \(id\)\s+order by k\.id::uuid\s+on conflict \(week_id, user_id\) do nothing\s+returning user_id\s+\)\s+select coalesce\(array_agg\(c\.user_id order by c\.user_id\), '\{\}'\) into claimed\s+from claim c;\s+foreach person in array claimed loop\s+perform public\.submit_availability\(person, week, named -> person::text, null\);/,
+    );
+    expect(sample.match(/perform public\.submit_availability\(/g)).toHaveLength(
+      1,
+    );
+  });
+
   it("are taken nowhere else, so a new one is ordered here first", () => {
     const locking = [...bodies]
       .filter(([, sql]) => weekLocks(withoutComments(sql)).length > 0)
@@ -141,6 +186,7 @@ describe("the locks on a week's row", () => {
       "private.leave_staff",
       "private.lock_week_edges",
       "public.publish_week_schedule",
+      "public.renew_demo_availability",
     ]);
     const publish = withoutComments(body("public.publish_week_schedule"));
     expect(

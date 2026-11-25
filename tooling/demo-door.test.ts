@@ -7,11 +7,11 @@ import { jobs, readRepoFile, stepName, steps } from "./workflows";
 
 // The demo door per site (Orel, 22 November 2026): `DEMO_DOOR`, read in one
 // place (`demoDoorOpen` in packages/db/env.ts), with no constant left that
-// says it in code. Whatever puts the demo businesses back or renews their
-// week with the secret key asks the door first, in the same function, since
-// a server action answers a POST from any page. No browser file asks it: a
-// browser reads the setting as unset, so open. And CI builds both sites: the
-// check job closed, the e2e jobs open.
+// says it in code. Whatever puts the demo businesses back, renews their
+// week or sends their sample availability with the secret key asks the door
+// first, in the same function, since a server action answers a POST from any
+// page. No browser file asks it: a browser reads the setting as unset, so
+// open. And CI builds both sites: the check job closed, the e2e jobs open.
 
 const root = join(__dirname, "..");
 const code = [
@@ -22,7 +22,11 @@ const code = [
   .map((file) => ({ file, source: readFileSync(join(root, file), "utf8") }));
 
 /** What runs with the secret key on the demo businesses (packages/db/demo.ts). */
-const DEMO_WRITES = new Set(["resetDemoBusinesses", "renewDemoSchedules"]);
+const DEMO_WRITES = new Set([
+  "resetDemoBusinesses",
+  "renewDemoSchedules",
+  "renewDemoAvailability",
+]);
 
 /**
  * Each use of a demo write in `source`, outside its import: whether it is
@@ -96,6 +100,14 @@ describe("the demo door", () => {
         .filter(({ source }) => source.includes("PASSIVE_SIGN_IN"))
         .map(({ file }) => file),
     ).toEqual([]);
+  });
+
+  it("knows every demo write packages/db/demo.ts has", () => {
+    const source = readFileSync(join(root, "packages/db/demo.ts"), "utf8");
+    const exported = [
+      ...source.matchAll(/^export (?:async )?function (\w+)/gm),
+    ].map(([, name = ""]) => name);
+    expect(exported.sort()).toEqual([...DEMO_WRITES].sort());
   });
 
   it("is asked first wherever the demo businesses are reset or renewed", () => {
