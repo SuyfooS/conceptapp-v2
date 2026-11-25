@@ -46,7 +46,7 @@ import {
   UnlessCancelled,
   WhileAnyInvite,
 } from "./invite-cancel";
-import { ResendLink } from "./resend-link";
+import { InviteLinks, ResendLink } from "./resend-link";
 import { roleLabel } from "./role-label";
 import type { CancelInvite } from "./team-change-types";
 
@@ -286,7 +286,10 @@ export function TeamView({
   );
 }
 
-/** Who is in and who is invited, in each shape: the lists, or the table. */
+/**
+ * Who is in and who is invited, in each shape: the lists, or the table. An
+ * invite deleted, or given a new link, is the same in both.
+ */
 function TeamBody({
   view,
   cancel,
@@ -297,30 +300,32 @@ function TeamBody({
   const { team, filesOnly } = view;
   return (
     <InviteCancels cancel={cancel ?? null}>
-      {/* The files alone are one list: across the tablet, capped, with no
-          empty column beside it. So are the members under a choice of the
-          filter, which hides the invites. */}
-      <FileColumns
-        columns={filesOnly ? 1 : 2}
-        className="grid gap-6 md:items-start md:gap-8 xl:hidden"
-      >
-        {filesOnly ? (
-          <Members {...view} />
-        ) : team.invites.length > 0 ? (
-          <>
-            <Invites {...view} />
+      <InviteLinks>
+        {/* The files alone are one list: across the tablet, capped, with no
+            empty column beside it. So are the members under a choice of the
+            filter, which hides the invites. */}
+        <FileColumns
+          columns={filesOnly ? 1 : 2}
+          className="grid gap-6 md:items-start md:gap-8 xl:hidden"
+        >
+          {filesOnly ? (
             <Members {...view} />
-          </>
-        ) : (
-          <>
-            <Members {...view} />
-            <Invites {...view} />
-          </>
-        )}
-      </FileColumns>
-      <div className="hidden xl:block">
-        <Everyone {...view} />
-      </div>
+          ) : team.invites.length > 0 ? (
+            <>
+              <Invites {...view} />
+              <Members {...view} />
+            </>
+          ) : (
+            <>
+              <Members {...view} />
+              <Invites {...view} />
+            </>
+          )}
+        </FileColumns>
+        <div className="hidden xl:block">
+          <Everyone {...view} />
+        </div>
+      </InviteLinks>
     </InviteCancels>
   );
 }
@@ -492,7 +497,7 @@ function Invites(view: ViewProps) {
                 ))}
               </PersonList>
             </WhileAnyInvite>
-            <InviteCancelUndo />
+            <InviteCancelUndo ids={team.invites.map((i) => i.id)} />
             {note ? <p className="px-1 text-ink-2 text-sm">{note}</p> : null}
           </>
         )}

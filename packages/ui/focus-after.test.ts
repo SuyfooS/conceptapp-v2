@@ -10,6 +10,7 @@ import {
   focusLost,
   focusWhenGone,
   inClosingSheet,
+  inViewWhenFocused,
   landOnTitle,
   onScreen,
   PAGE_TITLE,
@@ -298,6 +299,61 @@ describe("focusWhenGone", () => {
     there.focus();
     expect(focusWhenGone([el(spot("button"))], { doc: at })).toBeNull();
     expect(at.activeElement).toBe(there);
+  });
+});
+
+/** An element whose box is where the test says, noting each scroll asked. */
+class Placed extends EventTarget {
+  scrolled: ScrollIntoViewOptions[] = [];
+  box: { top: number; bottom: number };
+  constructor(box: { top: number; bottom: number }) {
+    super();
+    this.box = box;
+  }
+  getBoundingClientRect() {
+    return this.box;
+  }
+  scrollIntoView(options?: ScrollIntoViewOptions) {
+    this.scrolled.push(options ?? {});
+  }
+}
+
+// What "ביטול" brings back can be far above it on a long list (a deleted
+// invite, a removed department), and `focusWhenGone` doesn't move the page:
+// the candidate is brought into view itself as it takes the focus.
+describe("inViewWhenFocused", () => {
+  const view = { innerHeight: 800 };
+
+  it("centres the element as it takes the focus out of view, above or below", () => {
+    const above = new Placed({ top: -400, bottom: -356 });
+    expect(inViewWhenFocused(above, view)).toBe(above);
+    expect(above.scrolled).toEqual([]);
+    above.dispatchEvent(new Event("focus"));
+    expect(above.scrolled).toEqual([{ block: "center" }]);
+
+    const below = new Placed({ top: 790, bottom: 834 });
+    inViewWhenFocused(below, view);
+    below.dispatchEvent(new Event("focus"));
+    expect(below.scrolled).toEqual([{ block: "center" }]);
+  });
+
+  it("leaves the page where it is when the element is all in view", () => {
+    const shown = new Placed({ top: 0, bottom: 800 });
+    inViewWhenFocused(shown, view);
+    shown.dispatchEvent(new Event("focus"));
+    expect(shown.scrolled).toEqual([]);
+  });
+
+  it("asks once: a later focus (a Tab back to it) is the page's own", () => {
+    const above = new Placed({ top: -400, bottom: -356 });
+    inViewWhenFocused(above, view);
+    above.dispatchEvent(new Event("focus"));
+    above.dispatchEvent(new Event("focus"));
+    expect(above.scrolled).toEqual([{ block: "center" }]);
+  });
+
+  it("passes none through", () => {
+    expect(inViewWhenFocused(null, view)).toBe(null);
   });
 });
 

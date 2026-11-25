@@ -2126,6 +2126,16 @@ export async function closeDemoDepartment(
   };
 }
 
+/** Renames a live demo restaurant department, as someone else's screen would. */
+export async function renameDemoDepartment(
+  from: string,
+  to: string,
+): Promise<void> {
+  await sql`update public.departments set name = ${to}
+    where business_id = ${DEMO_RESTAURANT} and name = ${from}
+      and archived_at is null`;
+}
+
 const DEMO_SHOP = "00000000-0000-4000-b000-000000000002";
 const SHOP_OWNER = "00000000-0000-4000-a000-000000000007";
 

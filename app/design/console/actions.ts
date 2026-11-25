@@ -61,6 +61,15 @@ export async function demoIssueLink(
   };
 }
 
+/** An invite link the demo refuses each time (`?issue=refused`): none is made. */
+export async function demoRefusedIssueLink(
+  _inviteId: string,
+  _prev: InviteLinkState,
+  _form: FormData,
+): Promise<InviteLinkState> {
+  return { failure: "failed" };
+}
+
 export async function demoCreateBusiness(
   _prev: NewBusinessState,
   form: FormData,
