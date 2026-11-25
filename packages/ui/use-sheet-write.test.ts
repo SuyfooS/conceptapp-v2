@@ -94,6 +94,73 @@ describe("sheetWrites", () => {
     expect(transition.state.thrown).toEqual([offline]);
   });
 
+  // "כניסה בלי קוד" refused (25 November 2026): the sheet says why only
+  // once the page read again is drawn, and React draws the refusal itself
+  // only on its next turn after the answer. Kept as it comes, the hold
+  // passes on with no moment free between.
+  it("keeps the sheet for an answer said later, from the moment it comes until said", async () => {
+    const transition = refreshingTransition();
+    const writes = sheetWrites(transition.start);
+    const answer = deferred<{ ok: false; failure: "alreadyIn" }>();
+    const seen: boolean[] = [];
+    let given: string | null = null;
+
+    writes.start(async (keep) => {
+      const result = await answer.promise;
+      keep();
+      given = result.failure;
+    });
+    answer.resolve({ ok: false, failure: "alreadyIn" });
+    // Every turn from the answer on, as a close could come in at any of
+    // them before the refusal is drawn.
+    for (let turn = 0; turn < 10; turn++) {
+      seen.push(writes.held());
+      await Promise.resolve();
+    }
+    await settle();
+    seen.push(writes.held());
+    expect(given).toBe("alreadyIn");
+    expect(seen.every(Boolean)).toBe(true);
+
+    // The page read again is drawn: still held, as it is said only now.
+    transition.drawn();
+    await settle();
+    expect(transition.state.pending).toBe(false);
+    expect(writes.held()).toBe(true);
+
+    writes.said();
+    expect(writes.held()).toBe(false);
+  });
+
+  it("is not let go by said while a write is on its way", () => {
+    const writes = sheetWrites(refreshingTransition().start);
+    writes.start(() => deferred().promise);
+    writes.said();
+    expect(writes.held()).toBe(true);
+  });
+
+  it("lets a new write take over from what an earlier answer kept", async () => {
+    const transition = refreshingTransition();
+    const writes = sheetWrites(transition.start);
+    const first = deferred();
+    writes.start(async (keep) => {
+      await first.promise;
+      keep();
+    });
+    first.resolve();
+    await settle();
+    expect(writes.held()).toBe(true);
+
+    // Pressed again before it was said: the new press holds the sheet, and
+    // once it answers, unkept, nothing is left holding it.
+    const second = deferred();
+    writes.start(() => second.promise);
+    expect(writes.held()).toBe(true);
+    second.resolve();
+    await settle();
+    expect(writes.held()).toBe(false);
+  });
+
   it("holds until the last of two writes on their way answers", async () => {
     const transition = refreshingTransition();
     const writes = sheetWrites(transition.start);
@@ -117,14 +184,14 @@ function Probe() {
   return createElement(
     "p",
     null,
-    `${write.pending}/${write.held()}/${typeof write.start}`,
+    `${write.pending}/${write.held()}/${typeof write.start}/${typeof write.said}`,
   );
 }
 
 describe("useSheetWrite", () => {
   it("draws with nothing pending and nothing held", () => {
     expect(renderToString(createElement(Probe))).toBe(
-      "<p>false/false/function</p>",
+      "<p>false/false/function/function</p>",
     );
   });
 });

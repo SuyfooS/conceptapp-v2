@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { clockState, closeHeldForRefusal, pressOver } from "./clock-focus";
+import {
+  clockState,
+  closeHeldForRefusal,
+  pressOver,
+  refusalUnsaid,
+} from "./clock-focus";
 
 /*
  * When the clock puts the focus back after a press of its own buttons
@@ -59,7 +64,27 @@ describe("pressOver", () => {
 });
 
 // "כניסה בלי קוד" refused (the third check): the sheet says why only once
-// the page read again is drawn, so a close meanwhile would lose it.
+// the page read again is drawn, so a close meanwhile would lose it, and so
+// would "חזרה לסריקה" (25 November 2026), which waits as the close does.
+describe("refusalUnsaid", () => {
+  it("is a refusal given and not said yet", () => {
+    expect(refusalUnsaid({ failure: "alreadyIn", said: null })).toBe(true);
+  });
+
+  it("is over once said, and never without a refusal", () => {
+    expect(refusalUnsaid({ failure: "alreadyIn", said: "alreadyIn" })).toBe(
+      false,
+    );
+    expect(refusalUnsaid({ failure: null, said: null })).toBe(false);
+  });
+
+  it("is a new refusal while an older one is still shown", () => {
+    expect(refusalUnsaid({ failure: "noAccess", said: "alreadyIn" })).toBe(
+      true,
+    );
+  });
+});
+
 describe("closeHeldForRefusal", () => {
   it("keeps the close while a refusal waits to be said", () => {
     expect(

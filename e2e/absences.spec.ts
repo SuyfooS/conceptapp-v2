@@ -17,7 +17,7 @@ import {
 } from "./db";
 import { secondPage, signIn } from "./session";
 import { heT } from "./t";
-import { expect, type Page, test } from "./test";
+import { expect, type Page, type Request, test } from "./test";
 import { readWorkbook, sheetCells, unzip } from "./unzip";
 
 // Days away (known issue 19; 20261127000700_absences.sql) at the demo
@@ -217,7 +217,9 @@ test("whoever edits the clock records days away, is refused an overlap, and neve
   await expect(
     dialog.getByText(heT("app.clock.absences.failure.overlap")),
   ).toBeVisible();
+  // Said, the refusal lets the sheet go: Escape closes it.
   await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
 
   // Her own page offers no way to record her own, and says who does.
   await page.goto(`/clock/team/${MANAGER.id}`);
@@ -337,6 +339,145 @@ test("a record is changed, removed, brought back with the toast's undo, and remo
   await page.goto("/manage/activity");
   await expect(shown(page, logLine(actions.absenceRemove))).toBeVisible();
   await expect(shown(page, logLine(actions.absenceRestore))).toBeVisible();
+});
+
+/** Her page's writes, the server actions it sends. */
+const herWrites = (url: URL) => url.pathname === `/clock/team/${NOA.id}`;
+const isWrite = (request: Request) =>
+  request.method() === "POST" && request.headers()["next-action"] !== undefined;
+
+// A removal that can't go (no signal) says why each time it is pressed: its
+// refusal is cleared as it sends, so the same words again are an alert drawn
+// anew, and heard again (25 November 2026). Said, the sheet closes.
+test("a removal refused twice in the same words says it twice, and the sheet then closes", async ({
+  page,
+}) => {
+  const { sunday, monday } = days();
+  await recordDemoAbsence(NOA.id, "vacation", sunday, monday);
+  await signIn(page, MANAGER);
+  await page.goto(`/clock/team/${NOA.id}`);
+  await page
+    .getByRole("button", { name: heT("app.clock.absences.kinds.vacation") })
+    .filter({ visible: true })
+    .first()
+    .click();
+  const dialog = sheet(page);
+  const remove = dialog.getByRole("button", {
+    name: heT("app.clock.absences.sheet.remove"),
+  });
+  const failed = dialog
+    .getByRole("alert")
+    .filter({ hasText: heT("app.clock.absences.failure.failed") });
+  await page.route(herWrites, async (route) => {
+    if (isWrite(route.request())) await route.abort();
+    else await route.fallback();
+  });
+  try {
+    await remove.click();
+    await expect(failed).toBeVisible();
+    await failed.evaluate((line) => {
+      (window as unknown as { seenLine?: Element }).seenLine = line;
+    });
+    await remove.click();
+    await expect
+      .poll(() =>
+        failed.evaluate(
+          (line) =>
+            line !== (window as unknown as { seenLine?: Element }).seenLine,
+        ),
+      )
+      .toBe(true);
+  } finally {
+    await page.unroute(herWrites);
+  }
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  expect((await demoAbsences(NOA.id))[0]?.removed).toBe(false);
+});
+
+// Left by back while a refused write from the sheet is on its way, and come
+// back to by forward (25 November 2026): her page is kept hidden once the
+// answer is drawn (Next's Activity), and its sheet with it, which stays
+// where it was instead of being drawn anew. It shows again open, with what
+// was typed and the refusal said, closes with its ✕, and gives the focus
+// back to what opened it, never to the page's body.
+test("a refusal on its way as her page is left by back is said once it is come back to by forward", async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  const { sunday, monday } = days();
+  const note = `נרשם אחרי חזרה ${Date.now()}`;
+  await recordDemoAbsence(NOA.id, "vacation", sunday, monday);
+  await signIn(page, MANAGER);
+  // From the team's page, so back and forward stay inside the app.
+  await page.goto("/clock/team");
+  await page
+    .getByRole("main")
+    .getByRole("link", { name: new RegExp(NOA.name) })
+    .filter({ visible: true })
+    .first()
+    .click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(NOA.name);
+  const opener = recordButton(page);
+  await opener.click();
+  const dialog = sheet(page);
+  await dialog
+    .getByRole("radio", { name: heT("app.clock.absences.kinds.sick") })
+    .check();
+  await dialog
+    .getByLabel(heT("app.clock.absences.sheet.from"), { exact: true })
+    .fill(monday);
+  const noteField = dialog.getByLabel(heT("app.clock.absences.sheet.note"), {
+    exact: true,
+  });
+  await noteField.fill(note);
+
+  // The write waits on its way until her page has been left.
+  let letGo = () => {};
+  const held = new Promise<void>((resolve) => {
+    letGo = resolve;
+  });
+  await page.route(herWrites, async (route) => {
+    if (!isWrite(route.request())) {
+      await route.fallback();
+      return;
+    }
+    await held;
+    await route.continue();
+  });
+  try {
+    const answered = page.waitForResponse(
+      (response) =>
+        herWrites(new URL(response.url())) && isWrite(response.request()),
+    );
+    await dialog
+      .getByRole("button", { name: heT("app.clock.absences.sheet.submit") })
+      .click();
+    await page.goBack();
+    await expect(page).toHaveURL(/\/clock\/team$/);
+    // The write runs in a transition (`useSheetWrite`), and React holds a
+    // navigation started meanwhile until it ends: the team's page is drawn,
+    // and hers kept hidden with its sheet, in the drawing of the refusal.
+    letGo();
+    await answered;
+    await expect(dialog).toBeHidden();
+    await page.goForward();
+    await expect(page).toHaveURL(new RegExp(`/clock/team/${NOA.id}`));
+  } finally {
+    letGo();
+    await page.unroute(herWrites);
+  }
+  await expect(dialog).toHaveAttribute("data-state", "open");
+  await expect(dialog.getByRole("alert")).toHaveText(
+    heT("app.clock.absences.failure.overlap"),
+  );
+  await expect(noteField).toHaveValue(note);
+  await dialog
+    .getByRole("button", { name: heT("app.clock.team.sheet.close") })
+    .click();
+  await expect(dialog).toBeHidden();
+  await expect(opener).toBeFocused();
+  expect(await demoAbsences(NOA.id)).toHaveLength(1);
 });
 
 test("Today says who is away to whoever builds the schedule, never why, and the person reads their own", async ({

@@ -21,7 +21,7 @@ import { pageGlowClass } from "@ui/page-glow";
 import { Sheet } from "@ui/sheet";
 import { StatusToast } from "@ui/status-toast";
 import { ltrInputClass, TextField } from "@ui/text-field";
-import { useSheetWrite } from "@ui/use-sheet-write";
+import { useSaid, useSheetWrite } from "@ui/use-sheet-write";
 import { Ban, History, Plus, Trash2, Undo2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import {
@@ -43,6 +43,7 @@ import {
   builderWeekHref,
   useAbsenceFailure,
 } from "./absences-section";
+import { sendFromSheet } from "./sheet-answer";
 import type {
   AbsenceActionResult,
   AbsenceActions,
@@ -146,10 +147,11 @@ export function PersonHoursView({
   // The shift's times as the sheet opened on them: what "typed and not
   // saved" is measured from, whatever a refresh reads meanwhile.
   const [baseline, setBaseline] = useState<EntryValues | null>(null);
-  // A write from the sheet: the sheet stays until its answer (`held`), and
-  // the spinner and the buttons until the page read again after it is drawn
+  // A write from the sheet: the sheet stays until its answer (`held`), a
+  // refusal until the form has drawn it (`said`, 25 November 2026), and the
+  // spinner and the buttons until the page read again after it is drawn
   // (`saving`), so no second write goes out against what was there before.
-  const { pending: saving, start, held } = useSheetWrite();
+  const { pending: saving, start, held, said } = useSheetWrite();
   // The toast's "ביטול" runs on its own, so a sheet opened meanwhile isn't held.
   const [, startUndo] = useTransition();
   // Whether a sheet is open as a write comes back (the state, read late).
@@ -229,24 +231,25 @@ export function PersonHoursView({
     values: AbsenceValues,
     onFailure: (failure: AbsenceFailure, month?: string) => void,
   ) {
-    start(async () => {
-      try {
-        const result = absence
-          ? await absenceActions.change(absence.id, values)
-          : await absenceActions.record(data.person.userId, values);
-        if (!result.ok) {
-          onFailure(result.failure, result.month);
-          return;
-        }
-        setToast({
-          text: tAbsences(absence ? "done.edit" : "done.add"),
-          stamp: new Date().toISOString(),
-        });
-        setOpen(false);
-      } catch {
-        onFailure("failed");
-      }
-    });
+    start((keep) =>
+      sendFromSheet(
+        keep,
+        () =>
+          absence
+            ? absenceActions.change(absence.id, values)
+            : absenceActions.record(data.person.userId, values),
+        {
+          done() {
+            setToast({
+              text: tAbsences(absence ? "done.edit" : "done.add"),
+              stamp: new Date().toISOString(),
+            });
+            setOpen(false);
+          },
+          refused: onFailure,
+        },
+      ),
+    );
   }
 
   /**
@@ -257,27 +260,23 @@ export function PersonHoursView({
     removed: AbsenceRow,
     onFailure: (failure: AbsenceFailure, month?: string) => void,
   ) {
-    start(async () => {
-      try {
-        const result = await absenceActions.remove(removed.id);
-        if (!result.ok) {
-          onFailure(result.failure, result.month);
-          return;
-        }
-        setOpen(false);
-        // Its row went with it: once the toast goes holding the focus, the
-        // days away's title has it.
-        toastLeaves.current = "absences";
-        setToast({
-          text: tAbsences("done.remove"),
-          stamp: `remove-absence-${Date.now()}`,
-          undo: () => restoreAbsence(removed),
-          undoLabel: tAbsences("done.undoRemove"),
-        });
-      } catch {
-        onFailure("failed");
-      }
-    });
+    start((keep) =>
+      sendFromSheet(keep, () => absenceActions.remove(removed.id), {
+        done() {
+          setOpen(false);
+          // Its row went with it: once the toast goes holding the focus, the
+          // days away's title has it.
+          toastLeaves.current = "absences";
+          setToast({
+            text: tAbsences("done.remove"),
+            stamp: `remove-absence-${Date.now()}`,
+            undo: () => restoreAbsence(removed),
+            undoLabel: tAbsences("done.undoRemove"),
+          });
+        },
+        refused: onFailure,
+      }),
+    );
   }
 
   /**
@@ -348,24 +347,25 @@ export function PersonHoursView({
   }, []);
 
   function save(values: EntryValues, onFailure: (f: EntryFailure) => void) {
-    start(async () => {
-      try {
-        const result = record
-          ? await actions.correct(record.id, values)
-          : await actions.add(data.person.userId, values);
-        if (!result.ok) {
-          onFailure(result.failure);
-          return;
-        }
-        setToast({
-          text: t(record ? "done.edit" : "done.add"),
-          stamp: new Date().toISOString(),
-        });
-        setOpen(false);
-      } catch {
-        onFailure("failed");
-      }
-    });
+    start((keep) =>
+      sendFromSheet(
+        keep,
+        () =>
+          record
+            ? actions.correct(record.id, values)
+            : actions.add(data.person.userId, values),
+        {
+          done() {
+            setToast({
+              text: t(record ? "done.edit" : "done.add"),
+              stamp: new Date().toISOString(),
+            });
+            setOpen(false);
+          },
+          refused: onFailure,
+        },
+      ),
+    );
   }
 
   /**
@@ -378,25 +378,21 @@ export function PersonHoursView({
     reason: string,
     onFailure: (f: EntryFailure) => void,
   ) {
-    start(async () => {
-      try {
-        const result = await actions.cancel(shift.id, reason);
-        if (!result.ok) {
-          onFailure(result.failure);
-          return;
-        }
-        setOpen(false);
-        toastLeaves.current = "opener";
-        setToast({
-          text: t("done.cancel"),
-          stamp: `cancel-${Date.now()}`,
-          undo: () => restoreShift(shift),
-          undoLabel: t("done.undoCancel"),
-        });
-      } catch {
-        onFailure("failed");
-      }
-    });
+    start((keep) =>
+      sendFromSheet(keep, () => actions.cancel(shift.id, reason), {
+        done() {
+          setOpen(false);
+          toastLeaves.current = "opener";
+          setToast({
+            text: t("done.cancel"),
+            stamp: `cancel-${Date.now()}`,
+            undo: () => restoreShift(shift),
+            undoLabel: t("done.undoCancel"),
+          });
+        },
+        refused: onFailure,
+      }),
+    );
   }
 
   /**
@@ -407,7 +403,23 @@ export function PersonHoursView({
     shift: ShiftRecord,
     onFailure?: (f: EntryFailure) => void,
   ) {
-    (onFailure ? start : startUndo)(async () => {
+    const restored = () =>
+      setToast({ text: t("done.restore"), stamp: `restore-${Date.now()}` });
+    if (onFailure) {
+      // From its sheet, the sheet closes.
+      start((keep) =>
+        sendFromSheet(keep, () => actions.restore(shift.id), {
+          done() {
+            setOpen(false);
+            restored();
+          },
+          refused: onFailure,
+        }),
+      );
+      return;
+    }
+    // From the toast there was none, and one opened meanwhile stays as it is.
+    startUndo(async () => {
       let result: EntryActionResult;
       try {
         result = await actions.restore(shift.id);
@@ -415,12 +427,7 @@ export function PersonHoursView({
         result = { ok: false, failure: "failed" };
       }
       if (result.ok) {
-        // From its sheet, the sheet closes; from the toast there was none,
-        // and one opened meanwhile stays as it is.
-        if (onFailure) setOpen(false);
-        setToast({ text: t("done.restore"), stamp: `restore-${Date.now()}` });
-      } else if (onFailure) {
-        onFailure(result.failure);
+        restored();
       } else if (!sheetOpen.current) {
         // The toast's "ביטול" didn't go: the shift, cancelled, says why. The
         // focus comes back to what opened it before.
@@ -442,24 +449,25 @@ export function PersonHoursView({
     values: BreakValues,
     onFailure: (f: EntryFailure) => void,
   ) {
-    start(async () => {
-      try {
-        const result = edited
-          ? await actions.changeBreak(shift.id, edited.id, values)
-          : await actions.addBreak(shift.id, values);
-        if (!result.ok) {
-          onFailure(result.failure);
-          return;
-        }
-        setToast({
-          text: t(edited ? "done.changeBreak" : "done.addBreak"),
-          stamp: new Date().toISOString(),
-        });
-        setOpen(false);
-      } catch {
-        onFailure("failed");
-      }
-    });
+    start((keep) =>
+      sendFromSheet(
+        keep,
+        () =>
+          edited
+            ? actions.changeBreak(shift.id, edited.id, values)
+            : actions.addBreak(shift.id, values),
+        {
+          done() {
+            setToast({
+              text: t(edited ? "done.changeBreak" : "done.addBreak"),
+              stamp: new Date().toISOString(),
+            });
+            setOpen(false);
+          },
+          refused: onFailure,
+        },
+      ),
+    );
   }
 
   /**
@@ -472,25 +480,21 @@ export function PersonHoursView({
     reason: string,
     onFailure: (f: EntryFailure) => void,
   ) {
-    start(async () => {
-      try {
-        const result = await actions.removeBreak(removed.id, reason);
-        if (!result.ok) {
-          onFailure(result.failure);
-          return;
-        }
-        setOpen(false);
-        toastLeaves.current = "opener";
-        setToast({
-          text: t("done.removeBreak"),
-          stamp: `remove-break-${Date.now()}`,
-          undo: () => restoreBreak(shift, removed),
-          undoLabel: t("done.undoRemoveBreak"),
-        });
-      } catch {
-        onFailure("failed");
-      }
-    });
+    start((keep) =>
+      sendFromSheet(keep, () => actions.removeBreak(removed.id, reason), {
+        done() {
+          setOpen(false);
+          toastLeaves.current = "opener";
+          setToast({
+            text: t("done.removeBreak"),
+            stamp: `remove-break-${Date.now()}`,
+            undo: () => restoreBreak(shift, removed),
+            undoLabel: t("done.undoRemoveBreak"),
+          });
+        },
+        refused: onFailure,
+      }),
+    );
   }
 
   /**
@@ -666,7 +670,9 @@ export function PersonHoursView({
         onOpenChange={(next) => {
           // A save under way finishes first: its answer belongs on this
           // sheet. Only its answer: a refusal shows at once, while the page
-          // read again after it may still be on its way.
+          // read again after it may still be on its way. At once is React's
+          // next turn, though, so the refusal holds on from the moment it
+          // comes until its form has drawn it (`onSaid`).
           if (!held()) setOpen(next);
         }}
         title={sheetTitle}
@@ -681,6 +687,7 @@ export function PersonHoursView({
             today={data.today}
             saving={saving}
             failed={absenceFailed}
+            onSaid={said}
             save={saveAbsence}
             remove={
               absence
@@ -693,6 +700,7 @@ export function PersonHoursView({
             key={opened}
             record={record}
             saving={saving}
+            onSaid={said}
             cancel={(reason, onFailure) =>
               cancelShift(record, reason, onFailure)
             }
@@ -705,6 +713,7 @@ export function PersonHoursView({
             pause={pause}
             unpaidBreaks={data.unpaidBreaks}
             saving={saving}
+            onSaid={said}
             save={(values, onFailure) =>
               saveBreak(record, pause, values, onFailure)
             }
@@ -724,6 +733,7 @@ export function PersonHoursView({
             record={record}
             failed={failed}
             saving={saving}
+            onSaid={said}
             restore={(onFailure) => restoreShift(record, onFailure)}
           />
         ) : (
@@ -738,6 +748,7 @@ export function PersonHoursView({
             saving={saving}
             save={save}
             failed={failed}
+            onSaid={said}
             returning={stepBack}
             initial={stepBack ? draft : null}
             baseline={baseline}
@@ -771,6 +782,7 @@ function EntryForm({
   saving,
   save,
   failed,
+  onSaid,
   returning,
   initial,
   baseline,
@@ -784,6 +796,8 @@ function EntryForm({
   save: (values: EntryValues, onFailure: (f: EntryFailure) => void) => void;
   /** Why the toast's "ביטול" of a break removed didn't go, said as it opens. */
   failed: EntryFailure | null;
+  /** A refusal is drawn, said: the sheet may close (`useSaid`). */
+  onSaid: () => void;
   /** Back from a step: the focus goes to what led there. */
   returning: StepBack | null;
   /** The fix as it was typed before a step, back from it. */
@@ -814,6 +828,7 @@ function EntryForm({
     },
   );
   const [failure, setFailure] = useState<EntryFailure | null>(failed);
+  useSaid(failure !== null, onSaid);
   // Only a shift still running may be left with no end, while it's within limits.
   const canStayOpen = record?.out === null && !record.overdue;
   // Times typed and not saved: a break's save or removal closes the sheet,
@@ -1038,6 +1053,7 @@ function BreakForm({
   pause,
   unpaidBreaks,
   saving,
+  onSaid,
   save,
   remove,
   back,
@@ -1048,6 +1064,8 @@ function BreakForm({
   /** A break added now comes off the hours. */
   unpaidBreaks: boolean;
   saving: boolean;
+  /** A refusal is drawn, said: the sheet may close (`useSaid`). */
+  onSaid: () => void;
   save: (values: BreakValues, onFailure: (f: EntryFailure) => void) => void;
   remove?: (reason: string, onFailure: (f: EntryFailure) => void) => void;
   back: () => void;
@@ -1063,6 +1081,7 @@ function BreakForm({
     reason: "",
   });
   const [failure, setFailure] = useState<EntryFailure | null>(null);
+  useSaid(failure !== null, onSaid);
   // Which of the two is under way, for its spinner.
   const [removing, setRemoving] = useState(false);
 
@@ -1189,11 +1208,14 @@ function BreakForm({
 function CancelForm({
   record,
   saving,
+  onSaid,
   cancel,
   back,
 }: {
   record: ShiftRecord;
   saving: boolean;
+  /** A refusal is drawn, said: the sheet may close (`useSaid`). */
+  onSaid: () => void;
   cancel: (reason: string, onFailure: (f: EntryFailure) => void) => void;
   back: () => void;
 }) {
@@ -1202,6 +1224,7 @@ function CancelForm({
   const reasonField = useRef<HTMLInputElement>(null);
   const [reason, setReason] = useState("");
   const [failure, setFailure] = useState<EntryFailure | null>(null);
+  useSaid(failure !== null, onSaid);
 
   // Why is the one thing to write here: it has the focus.
   useEffect(() => {
@@ -1273,17 +1296,21 @@ function CancelledForm({
   record,
   failed,
   saving,
+  onSaid,
   restore,
 }: {
   record: ShiftRecord;
   /** Why it didn't come back from the toast's "ביטול", said as it opens. */
   failed: EntryFailure | null;
   saving: boolean;
+  /** A refusal is drawn, said: the sheet may close (`useSaid`). */
+  onSaid: () => void;
   restore: (onFailure: (f: EntryFailure) => void) => void;
 }) {
   const t = useTranslations("app.clock.team");
   const tHistory = useTranslations("app.clock.history");
   const [failure, setFailure] = useState<EntryFailure | null>(failed);
+  useSaid(failure !== null, onSaid);
 
   return (
     <div className="flex flex-col gap-3">
