@@ -416,3 +416,26 @@ export function edgeWeek(
   if (shown === "this") return side;
   return side === "previous" ? "this" : "afterNext";
 }
+
+/**
+ * Next week's shifts that the week on the builder's screen meets at its
+ * edge, for the fill from availability (`fillFromAvailability`'s
+ * `nextDays`): those of next week's first two days with someone on them,
+ * since a night on the screen's last day may run into them or come less than
+ * 8 hours before them. Only while the screen is the week running now (its
+ * next week starts on `nextStart`); building next week there is none, as the
+ * week after it can't be built yet (`builderWeekOf`). A shift outside those
+ * two days, and one with nobody on it, is never an edge.
+ */
+export function nextWeekEdge(
+  shown: "this" | "next",
+  nextStart: string,
+  nextShifts: readonly ScheduledShift[],
+): ScheduledShift[] {
+  if (shown !== "this") return [];
+  const last = addDays(nextStart, 1);
+  return nextShifts.filter(
+    (shift) =>
+      shift.day >= nextStart && shift.day <= last && shift.assignees.length > 0,
+  );
+}

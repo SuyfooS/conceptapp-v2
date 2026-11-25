@@ -170,11 +170,24 @@ export type ScheduleBuilderProps = {
   people: Pick<TeamMember, "userId" | "name" | "photo">[];
   answers: { userId: string; ranges: AvailabilityRange[] }[];
   /**
-   * Who on the staff is away this week, and when (known issue 19): never
-   * why. The days and cards say so, the sheet groups them, and the copy
-   * leaves them off those days. None by default.
+   * Who on the staff is away this week and the day after it, and when (known
+   * issue 19): never why. The days and cards say so, the sheet groups them,
+   * and the copy leaves them off those days, and off a night that runs into
+   * one (`awayDuring`). None by default.
    */
   away?: AwaySpan[];
+  /**
+   * Who on the staff is a minor on some day of the week, ids only
+   * (`currentBuildMinors`), for the fill from availability. None by default,
+   * and while the time clock is off.
+   */
+  minors?: readonly string[];
+  /**
+   * Building the week running now, next week's first two days with people
+   * on them (`nextWeekEdge`), the fill's edge after the week. None by
+   * default, and building next week.
+   */
+  nextDays?: readonly ScheduledShift[];
   /** The business's positions (waiter, cook…); none hides the choice. */
   positions: Position[];
   /**

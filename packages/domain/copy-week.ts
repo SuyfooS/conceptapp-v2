@@ -1,4 +1,4 @@
-import { type AwaySpan, awayOn } from "./absences";
+import { type AwaySpan, awayDuring } from "./absences";
 import { type AvailabilityRange, addDays, weekDates } from "./availability";
 import { minutesOf } from "./hours";
 import { weekBuilt } from "./running-week";
@@ -72,8 +72,9 @@ export function copySourceOf(
  * - `gone`: no longer on the team (counted, never named: their name is no
  *   longer the builder's to read);
  * - `offStaff`: on the team but off the staff (an accountant now);
- * - `away`: recorded as away on the shift's day (vacation, sick leave,
- *   reserve duty, another absence; never which);
+ * - `away`: recorded as away during the shift (vacation, sick leave,
+ *   reserve duty, another absence; never which): on its day, and for a
+ *   night past midnight on the day after too (`awayDuring`);
  * - `unavailable`: they sent availability for this week, and it doesn't
  *   cover the shift (someone who sent nothing is copied);
  * - `busy`: they would be on two shifts at once, with one that stays on the
@@ -152,7 +153,7 @@ const byDayAndStart = (a: ScheduledShift, b: ScheduledShift) =>
  *    `replace`;
  * 6. otherwise its shifts still to start make way, and last week's come in;
  * 7. on each copy, someone not on the team is `gone`, someone off the staff
- *    `offStaff`, someone away on its day `away`, someone whose answer for
+ *    `offStaff`, someone away during it `away`, someone whose answer for
  *    this week doesn't cover it `unavailable`, and someone who sent no
  *    answer is copied;
  * 8. then someone who would work another shift at the same time, in the week
@@ -177,7 +178,10 @@ export function copyLastWeek(input: {
   /** Everyone on the team, the staff included. */
   people: readonly string[];
   answers: readonly { userId: string; ranges: readonly AvailabilityRange[] }[];
-  /** Who is away this week, and when (`public.team_away`). */
+  /**
+   * Who is away this week and the day after it (`awayWindow`), and when
+   * (`public.team_away`).
+   */
   away: readonly AwaySpan[];
   /** Days with people on them take last week's shifts too. */
   replace: boolean;
@@ -269,7 +273,7 @@ export function copyLastWeek(input: {
         ? "gone"
         : !onStaff.has(person.user)
           ? "offStaff"
-          : awayOn(input.away, person.user, shift.day)
+          : awayDuring(input.away, person.user, shift)
             ? "away"
             : ranges && !availableFor(shift, ranges)
               ? "unavailable"

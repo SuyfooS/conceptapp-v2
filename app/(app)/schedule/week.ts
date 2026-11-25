@@ -4,11 +4,12 @@ import {
   getWeekAvailability,
   type OpenScheduleWeek,
 } from "@db/availability";
+import { getTeamYouth } from "@db/payroll-details";
 import { basisOf, getWeekSchedule, type WeekScheduleShift } from "@db/schedule";
 import type { MemberBusiness } from "@db/session";
 import { getEndedSwaps, getLiveSwaps } from "@db/swaps";
 import { type Colleague, getColleagues } from "@db/team";
-import type { AwaySpan } from "@domain/absences";
+import { type AwaySpan, awayWindow } from "@domain/absences";
 import {
   type AvailabilityAnswer,
   addDays,
@@ -26,6 +27,7 @@ import {
   shabbatLimits,
 } from "@domain/availability-form";
 import { type CopySource, copySourceOf } from "@domain/copy-week";
+import { weekMinors } from "@domain/fill-week";
 import { canOpenModule, isStaff } from "@domain/modules";
 import { type BuildWeeks, draftAhead, weekBuilt } from "@domain/running-week";
 import {
@@ -264,8 +266,9 @@ export type ScheduleBuildWeek = {
   answers: Pick<Availability, "userId" | "ranges">[];
   positions: Position[];
   /**
-   * Who on the staff is away on the week's days (known issue 19), and when:
-   * never why. Empty while the time clock is off.
+   * Who on the staff is away on the week's days and the day after it
+   * (`awayWindow`: a night on its last day runs into that day; known issue
+   * 19), and when: never why. Empty while the time clock is off.
    */
   away: AwaySpan[];
 };
@@ -328,10 +331,12 @@ export const currentScheduleBuild = cache(
     const { weeks, now } = scheduling;
     const at = start ?? weeks.nextWeek;
     if (at !== weeks.thisWeek && at !== weeks.nextWeek) return null;
+    // To the day after the week: a night on its last day runs into it.
+    const days = awayWindow(at);
     const [context, team, away] = await Promise.all([
       weekContext(at),
       currentScheduleTeam(),
-      teamAwayFor(membership, scheduling.business.id, at, addDays(at, 6)),
+      teamAwayFor(membership, scheduling.business.id, days.from, days.to),
     ]);
     if (!context || !team) return null;
     const { week, open } = context;
@@ -364,6 +369,42 @@ export const currentScheduleBuild = cache(
       positions: context.positions,
       away,
     };
+  },
+);
+
+/**
+ * Who on the business's staff is a minor today, and until when
+ * (`public.team_youth`), once per request: the builder's weeks share it.
+ */
+const teamYouth = cache((businessId: string) => getTeamYouth(businessId));
+
+/**
+ * Who on the staff is a minor on some day of the week starting on `start`
+ * (`weekMinors`), for the fill from availability: ids only, sorted, never
+ * until when, so no birthday reaches the browser. For whoever builds the
+ * schedule (`buildsSchedule`, or views as a role that does) with scheduling
+ * and the time clock on, and only for the builder's two weeks; none for
+ * anyone else. `public.team_youth` answers under today's rules
+ * (20261115001300_roles_team.sql: team.view or schedule.edit, the clock on,
+ * active staff only, and only those still minors today: in the week running
+ * now, someone whose 18th birthday is today or an earlier day of it is an
+ * adult, as they are for every shift still to start) and answers none until
+ * Migrate brings it. A read that fails otherwise fails the page, as the days
+ * away do.
+ * Memoised per week for the request.
+ */
+export const currentBuildMinors = cache(
+  async (start: string): Promise<string[]> => {
+    const [member, scheduling] = await Promise.all([
+      currentMember(),
+      schedulingContext(),
+    ]);
+    const membership = member?.membership;
+    if (!membership || !buildsSchedule(membership) || !scheduling) return [];
+    const { weeks, business, enabled } = scheduling;
+    if (start !== weeks.thisWeek && start !== weeks.nextWeek) return [];
+    if (!enabled.includes("time_clock")) return [];
+    return weekMinors(start, await teamYouth(business.id));
   },
 );
 

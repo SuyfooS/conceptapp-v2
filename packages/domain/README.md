@@ -144,9 +144,10 @@ kept equal by `tooling/log-families.test.ts`).
 `copy-week.ts` is "העתקה מהשבוע שעבר" on the schedule builder: last week as it
 stands once built (`copySourceOf`), what copying it onto the week on the
 screen does day by day and who it leaves out and why (`copyLastWeek`, its
-rules numbered), and whether the week was saved since the screen copied
-into it (`copiedOver`). It changes the screen only; the week's own write
-checks everything again when it is saved.
+rules numbered; someone away during a shift, a night past midnight into a
+day away included, by `awayDuring`), and whether the week was saved since
+the screen copied into it (`copiedOver`). It changes the screen only; the
+week's own write checks everything again when it is saved.
 
 `fill-week.ts` is "מילוי מהזמינות", the builder's fill of the week's open
 places from the staff's availability (`fillFromAvailability`, its rules
@@ -155,7 +156,9 @@ never moving, removing or re-positioning anyone, never changing a shift. It
 places only staff who sent an answer whose ranges cover the whole shift, and
 only while every `FillRule` holds, checked in this order: not away during it
 (`awayDuring` in `absences.ts`: its day, and the next day for a night past
-midnight), a minor only within 08:00–20:00 (`FILL_MINOR_HOURS`, payroll's
+midnight, as the shift sheet's lists (`shiftCandidates`) and the copy read
+it too; the builder reads days away over `awayWindow`, the week and the day
+after it), a minor only within 08:00–20:00 (`FILL_MINOR_HOURS`, payroll's
 stricter reading) and for at most 8 hours (7 on a Friday), never two shifts
 at once, one shift a day, 8 hours between shifts (`LIMITS.restBetween`, in
 real time as payroll measures it, so a night the clocks change in counts the
@@ -164,7 +167,9 @@ week's hours (`weekHours`, 42 by default, `FILL_WEEK_HOURS`, up to
 `FILL_WEEK_HOURS_MAX`, 58), or a minor's 40 when that is less (`fillWeekCap`,
 the number the sheet names). The week's hours are counted on the wall clock,
 as the builder's totals count them. Last week, when it is the week just
-before, and next week's first days count as spans only, placed in time by
+before, and next week's first days (`nextWeekEdge` in `running-week.ts`:
+its first two days with people on them, only while the builder shows the
+week running now) count as spans only, placed in time by
 `shiftSpan` in `schedule.ts` (minutes from the week's first midnight on
 `daysApart`, so last Saturday is day -1 and next Sunday day 7; the copy reads
 it too) and, for the rest between shifts, by `instantIn`, as the database's
@@ -182,7 +187,8 @@ nobody else: when anyone is on the shift after the fill, whoever put them
 there, the sheet says nobody else covers it, and a Shabbat time beside
 `nobody` or `blocked` comes without saying no answer covers the shift.
 `weekMinors` is who counts as a minor all week, from `getTeamYouth`'s map of
-id to `youth_until`, ids only. The
+id to `youth_until`, ids only (the builder's page reads it through
+`currentBuildMinors`, so no birthday reaches the browser). The
 database checks only that nobody works two shifts at once, never these
 rules: they are the fill's own.
 

@@ -1,5 +1,10 @@
 import { manageReach } from "@domain/manage-access";
-import { builderHref, builderWeekOf, gapsAhead } from "@domain/running-week";
+import {
+  builderHref,
+  builderWeekOf,
+  gapsAhead,
+  nextWeekEdge,
+} from "@domain/running-week";
 import { SCHEDULE_PATH } from "@domain/share";
 import { canWrite } from "@domain/view-as";
 import type { Metadata } from "next";
@@ -8,6 +13,7 @@ import { currentWording } from "../../current-wording";
 import { currentMember } from "../../member";
 import { baseWording, translator } from "../../wording";
 import {
+  currentBuildMinors,
   currentBuildSwaps,
   currentBuildWeeks,
   currentCopySource,
@@ -65,8 +71,8 @@ export default async function ScheduleBuildPage(props: Props) {
     );
   }
   const start = which === "this" ? weeks.thisWeek : weeks.nextWeek;
-  const [data, swaps, thisWeek, nextWeek, member, lastWeek] = await Promise.all(
-    [
+  const [data, swaps, thisWeek, nextWeek, member, lastWeek, minors] =
+    await Promise.all([
       currentScheduleBuild(start),
       currentBuildSwaps(start),
       currentScheduleBuild(weeks.thisWeek),
@@ -74,8 +80,9 @@ export default async function ScheduleBuildPage(props: Props) {
       currentMember(),
       // The week before, for "העתקה מהשבוע שעבר".
       currentCopySource(start),
-    ],
-  );
+      // Who is a minor that week, ids only, for the fill from availability.
+      currentBuildMinors(start),
+    ]);
   if (!data) notFound();
   // The regular shifts are set on the management page, which opens to those
   // who hold manage.view (`manageAccess`, R7): anyone else who builds is told
@@ -94,6 +101,9 @@ export default async function ScheduleBuildPage(props: Props) {
       data={data}
       swaps={swaps}
       lastWeek={lastWeek}
+      minors={minors}
+      // Building the week running now, next week's first days are its edge.
+      nextDays={nextWeekEdge(which, weeks.nextWeek, nextWeek?.shifts ?? [])}
       save={saveScheduleAction}
       manageHref={manageHref}
       publishes={weeks.publishes}

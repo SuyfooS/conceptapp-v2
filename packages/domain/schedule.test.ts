@@ -746,6 +746,46 @@ describe("shiftCandidates", () => {
       "itay:assigned",
     ]);
   });
+
+  it("puts someone away the day after a night past midnight among those away", () => {
+    // Saturday 7 November is the week's last day; Sunday 8 the next week's.
+    const saturday = (start: string, end: string) => ({
+      day: "2026-11-07",
+      start,
+      end,
+      assignees: [],
+    });
+    const shifts = [
+      saturday("20:00", "02:00"),
+      saturday("19:30", "00:00"),
+      saturday("09:00", "16:00"),
+    ];
+    const away = [
+      { userId: "noa", from: "2026-11-08", to: "2026-11-08" },
+      { userId: "omer", from: "2026-11-08", to: "2026-11-10" },
+    ];
+    const states = (index: number) =>
+      shiftCandidates(WEEK, shifts, index, team, answers, away).map(
+        (c) => `${c.member.userId}:${c.state}`,
+      );
+    expect(states(0)).toEqual([
+      "yoav:unavailable",
+      "maya:unavailable",
+      "itay:unavailable",
+      "noa:away",
+      "omer:away",
+    ]);
+    // Until 00:00 exactly, or a day shift: the day after isn't theirs.
+    for (const index of [1, 2]) {
+      expect(states(index)).toEqual([
+        "omer:noAnswer",
+        "noa:unavailable",
+        "yoav:unavailable",
+        "maya:unavailable",
+        "itay:unavailable",
+      ]);
+    }
+  });
 });
 
 describe("overlappingShift", () => {

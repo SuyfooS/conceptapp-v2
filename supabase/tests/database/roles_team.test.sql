@@ -11,8 +11,10 @@
 -- cancelling, removing, changing a role and clearing a line live or are
 -- refused, with the rank rule kept (a worker raised to edit acts on workers
 -- alone); who hears that someone joined, and whether a manager made a worker
--- keeps that line. Then: on today's defaults the old rules and the new give
--- the same answers; a lowered manager's queued push is skipped; a worker
+-- keeps that line. Then: with the time clock off, someone who builds the
+-- schedule without seeing the team reads no minors; on today's defaults the
+-- old rules and the new give the same answers; a lowered manager's queued
+-- push is skipped; a worker
 -- raised to edit the team touches no manager's invite and no accountant's
 -- line; nobody but an owner gives a role that holds pay (by an invite, a
 -- fresh link or a change of role), which today let a manager pass pay on
@@ -22,7 +24,7 @@
 -- built. Every write passes its moment where it takes one. Fixed ids (97…)
 -- and numbers (050-000-970x), so nothing here meets the seed.
 begin;
-select plan(17);
+select plan(19);
 
 -- 1 owner, 2 manager, 3 the worker the matrix follows, 4 a worker the others
 -- act on (with a line about themselves), 5 another manager (above a worker),
@@ -455,6 +457,31 @@ select set_eq(
     ('builds', 'manager,owner,senior', 'true/skipped')$$,
   'team.joined goes to those who see the team, and a change of role settles it only for one who no longer does'
 );
+
+------------------------------------------------------------------------------
+-- The minors with the time clock off (the fill plan's PR 3): still in the
+-- 'builds' state, the worker builds the schedule without seeing the team and
+-- reads who is a minor; with the clock off, nobody does, the builder's own
+-- read (`currentBuildMinors`) asking only while it is on.
+
+select pg_temp.sign_in('97000000-0000-4000-a000-000000000003');
+select is(
+  (select count(*)::integer from public.team_youth('97000000-0000-4000-b000-000000000001')),
+  1,
+  'someone who builds the schedule without seeing the team reads who is a minor while the clock is on'
+);
+reset role;
+update public.business_modules set enabled = false
+where business_id = '97000000-0000-4000-b000-000000000001' and module_key = 'time_clock';
+select pg_temp.sign_in('97000000-0000-4000-a000-000000000003');
+select is(
+  (select count(*)::integer from public.team_youth('97000000-0000-4000-b000-000000000001')),
+  0,
+  'and nothing with the time clock off'
+);
+reset role;
+update public.business_modules set enabled = true
+where business_id = '97000000-0000-4000-b000-000000000001' and module_key = 'time_clock';
 
 ------------------------------------------------------------------------------
 -- Today's defaults: the old rules and the new give the same answers

@@ -387,6 +387,70 @@ describe("copyLastWeek", () => {
     expect(copy.skipped.map((one) => one.reason)).toEqual(["offStaff"]);
   });
 
+  it("skips someone away the day after a night past midnight, as away", () => {
+    const copy = copyOf({
+      source: sourceOf([
+        shift("2026-11-21", "19:30", "00:00", [roni]),
+        shift("2026-11-21", "20:00", "02:00", [tamar, itai]),
+      ]),
+      // Away on Sunday 29, the day after the week: Saturday's night runs
+      // into it, the shift until 00:00 doesn't. An answer that covers the
+      // night doesn't change that.
+      away: [
+        { userId: tamar, from: "2026-11-29", to: "2026-11-30" },
+        { userId: roni, from: "2026-11-29", to: "2026-11-29" },
+      ],
+      answers: [
+        {
+          userId: tamar,
+          ranges: [{ day: "2026-11-28", start: "18:00", end: "03:00" }],
+        },
+      ],
+    });
+    expect(standing(copy).map(who)).toEqual([[roni], [itai]]);
+    expect(copy.skipped).toEqual([
+      {
+        reason: "away",
+        user: tamar,
+        shift: {
+          day: "2026-11-28",
+          name: "לילה",
+          start: "20:00",
+          end: "02:00",
+        },
+      },
+    ]);
+    // Away on the night's own day, it is away too; a week starting on
+    // Monday has its night into the next Monday the same way.
+    expect(
+      copyOf({
+        source: sourceOf([shift("2026-11-21", "20:00", "02:00", [itai])]),
+        away: [{ userId: itai, from: "2026-11-28", to: "2026-11-28" }],
+      }).skipped.map((one) => one.reason),
+    ).toEqual(["away"]);
+    expect(
+      copyOf({
+        weekStart: "2026-11-23",
+        source: sourceOf(
+          [shift("2026-11-22", "22:00", "06:00", [itai])],
+          "2026-11-16",
+        ),
+        away: [{ userId: itai, from: "2026-11-30", to: "2026-11-30" }],
+      }).skipped,
+    ).toEqual([
+      {
+        reason: "away",
+        user: itai,
+        shift: {
+          day: "2026-11-29",
+          name: "לילה",
+          start: "22:00",
+          end: "06:00",
+        },
+      },
+    ]);
+  });
+
   it("joins answers that touch, as the shift's sheet does", () => {
     const copy = copyOf({
       source: sourceOf([shift("2026-11-15", "08:00", "15:00", [tamar])]),
