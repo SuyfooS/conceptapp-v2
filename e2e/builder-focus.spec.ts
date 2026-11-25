@@ -134,6 +134,9 @@ test("the fill's sheet gives the focus back to its pill, and closes onto its und
 
   await page.goto("/design/shell/schedule/build");
   await expect(morning).not.toContainText("שירן");
+  // Shown first: the builder streams in hidden, and React shows it a moment
+  // after the page has loaded, so a focus before that lands nowhere.
+  await expect(fill).toBeVisible();
   await page.locator("[data-builder-status]").focus();
   await page.keyboard.press("Tab");
   await expect(fill).toBeFocused();
@@ -282,6 +285,9 @@ test("the fill's sheet open as the clock begins the last open shift stays, says 
   });
   /** Tab from the line that says where the week stands to the fill's pill. */
   const tabToFill = async () => {
+    // Shown first: the builder streams in hidden, and React shows it a
+    // moment after the page has loaded, so a focus before that lands nowhere.
+    await expect(fill).toBeVisible();
     await page.locator("[data-builder-status]").focus();
     await page.keyboard.press("Tab");
     await expect(copy).toBeFocused();
