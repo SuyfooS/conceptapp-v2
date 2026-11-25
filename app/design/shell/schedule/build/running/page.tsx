@@ -32,6 +32,16 @@ type Props = {
 
 const HREF = "/design/shell/schedule/build/running";
 
+/**
+ * Everyone as the app reads them for the builder: names and photos only, so
+ * how the sheet writes about each comes from the staff (`team`), as there.
+ */
+const shopPeople = shopTeam.map(({ userId, name, photo }) => ({
+  userId,
+  name,
+  photo,
+}));
+
 // The real builder on the week that is already running (the running-week
 // plan's R3a), with the demo shop's people, positions and shifts, on Tuesday
 // 17 November at 11:20 in Haifa: Sunday and Monday are over and dimmed, this
@@ -113,7 +123,7 @@ async function Demo({ searchParams }: Props) {
           shifts: draft ? shopNextDraft : shopNextShifts,
           basis: draft ? shopNextDraftBasis : null,
           team: shopTeam,
-          people: shopTeam,
+          people: shopPeople,
           hasPattern: true,
           answers: shopNextAnswers,
           positions: shopPositions,
@@ -136,7 +146,7 @@ async function Demo({ searchParams }: Props) {
         shifts: shopRunningShifts,
         basis: shopRunningBasis,
         team: shopTeam,
-        people: shopTeam,
+        people: shopPeople,
         hasPattern: true,
         answers: shopRunningAnswers,
         positions: shopPositions,

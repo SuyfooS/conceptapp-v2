@@ -9,6 +9,7 @@ import {
   focusFirst,
   focusLost,
   focusWhenGone,
+  inClosingSheet,
   landOnTitle,
   onScreen,
   PAGE_TITLE,
@@ -157,6 +158,18 @@ describe("focusLost", () => {
 
   it("is never lost where there is no page", () => {
     expect(focusLost(undefined)).toBe(false);
+  });
+});
+
+// What goes with a sheet that closes (`useFocusWhenGone` asks) leaves the
+// focus to the sheet, which gives it back to what opened it.
+describe("inClosingSheet", () => {
+  it("is inside a sheet marked closed, and not in an open one or none", () => {
+    const { spot } = page();
+    const plus = spot("button");
+    expect(inClosingSheet(el(plus))).toBe(false);
+    plus.closingDialog = true;
+    expect(inClosingSheet(el(plus))).toBe(true);
   });
 });
 

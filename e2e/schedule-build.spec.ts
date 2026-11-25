@@ -168,6 +168,9 @@ test("a manager puts people on next week's shifts", async ({
 
   await page.getByRole("button", { name: tb.submit }).click();
   await expect(page.getByRole("status")).toHaveText(tb.saved);
+  // The builder started again from what was saved, the pressed button gone:
+  // the focus is on the line that says where the week stands.
+  await expect(page.locator("[data-builder-status]")).toBeFocused();
   expect(await scheduleAssignments()).toEqual([
     { weekday: 0, pattern: "morning", phone: NOA.e164, position: "waiter" },
   ]);
@@ -221,14 +224,19 @@ test("a manager changes, adds and removes next week's shifts", async ({
   );
   await expect(page.getByText(tb.unsaved)).toBeVisible();
 
-  // Removing a shift can be undone; the second time it stays removed.
+  // Removing a shift can be undone; the second time it stays removed. The
+  // card went with the sheet, so its way back has the focus, and once taken
+  // the card back in its place has it.
   await evening.click();
   await screen.openDetails("ערב");
   await sheet.getByRole("button", { name: te.delete }).click();
   await expect(sheet).toHaveCount(0);
   await expect(evening).toHaveCount(0);
-  await page.getByRole("button", { name: tb.undoRemove }).click();
+  const undoRemove = page.getByRole("button", { name: tb.undoRemove });
+  await expect(undoRemove).toBeFocused();
+  await undoRemove.click();
   await expect(evening).toHaveCount(1);
+  await expect(evening).toBeFocused();
   await evening.click();
   await screen.openDetails("ערב");
   await sheet.getByRole("button", { name: te.delete }).click();
@@ -351,8 +359,10 @@ test("a manager publishes next week's schedule, then publishes changes", async (
   expect(await scheduleAssignments()).toEqual([
     { weekday: 0, pattern: "morning", phone: NOA.e164, position: null },
   ]);
-  // Out, with nothing new: the dock offers sharing it with the team instead.
+  // Out, with nothing new: the dock offers sharing it with the team instead,
+  // and the focus the publish button had is there.
   await expect(page.getByRole("button", { name: ts.action })).toBeInViewport();
+  await expect(page.getByRole("button", { name: ts.action })).toBeFocused();
 
   // Published: no more draft, and nothing to publish until something changes.
   // Changes are published, not saved aside.
@@ -375,8 +385,26 @@ test("a manager publishes next week's schedule, then publishes changes", async (
   await screen.closeSheet();
   await expect(page.getByText(tb.unpublished)).toBeVisible();
   await expect(page.getByRole("button", { name: tb.submit })).toHaveCount(0);
+  // Pressed in the floating dock from the foot of the page.
+  const scrolled = () => page.evaluate(() => window.scrollY);
+  await page.evaluate(() =>
+    window.scrollTo(0, document.documentElement.scrollHeight),
+  );
+  const atFoot = await scrolled();
   await screen.publishChanges();
   await expect(page.getByRole("status")).toHaveText(tb.published);
+  // "ביטול" had the focus and went with the toast; with no publish left to
+  // press, the line that says the week is published has it, in the builder
+  // drawn again from the new reading, and the page stays where it was:
+  // never up to that line, above the board. The board drawn again may be a
+  // little shorter, so the foot may be a little higher.
+  await expect(page.locator("[data-builder-status]")).toBeFocused();
+  const foot = await page.evaluate(() =>
+    Math.max(0, document.documentElement.scrollHeight - window.innerHeight),
+  );
+  expect(await scrolled()).toBeGreaterThanOrEqual(
+    Math.min(atFoot, Math.floor(foot)) - 1,
+  );
   expect(await scheduleAssignments()).toEqual([]);
   expect(await schedulePublished()).toBe(true);
 

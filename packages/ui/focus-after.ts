@@ -81,6 +81,18 @@ export function canTakeFocus(element: unknown): element is HTMLElement {
   );
 }
 
+/** A sheet on its way out: Radix marks its dialog closed as it slides away. */
+const CLOSING_SHEET = '[role="dialog"][data-state="closed"]';
+
+/**
+ * Inside a sheet that is closing (still drawn as it slides away, or about to
+ * leave the page): what goes with it leaves the focus to the sheet, which
+ * gives it back to what opened it (`returnFocus`) once it has gone.
+ */
+export function inClosingSheet(element: Pick<Element, "closest">): boolean {
+  return Boolean(element.closest(CLOSING_SHEET));
+}
+
 /**
  * Nothing holds the focus any more: none, the body, an element gone or not
  * drawn (a screen kept hidden in an <Activity>), one disabled while it waits,
@@ -92,7 +104,7 @@ export function focusLost(doc: DocLike | undefined = thePage()): boolean {
   const active = doc.activeElement;
   if (!active || active === doc.body || !onScreen(active)) return true;
   if (matching(active, ":disabled")) return true;
-  if (active.closest('[role="dialog"][data-state="closed"]')) return true;
+  if (inClosingSheet(active)) return true;
   return matching(active, '[role="dialog"]');
 }
 
