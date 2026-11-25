@@ -440,9 +440,9 @@ test("the builder says who is away on next week's days, in a shift's people and 
 
 // A night past midnight into a day away (`awayDuring`, the fill plan's PR 3):
 // the builder reads days away to the day after the week, so next Saturday's
-// night, which runs into the Sunday after, counts as away for Noa in the copy
-// and in the shift's people, though nothing on next week's own days says she
-// is away.
+// night, which runs into the Sunday after, counts as away for Noa in the copy,
+// in the shift's people and on her row once she is on it, though nothing on
+// next week's own days says she is away.
 test("a night into a day away the day after the week: the copy leaves her off, and its people say she is away", async ({
   page,
 }, testInfo) => {
@@ -522,6 +522,13 @@ test("a night into a day away the day after the week: the copy leaves her off, a
       path: testInfo.outputPath("night-into-a-day-away.png"),
       fullPage: true,
     });
+
+    // Put on it all the same, her own row says so (`noteOf`), as the list
+    // she came from did.
+    await screen.addButton(NOA.name).click();
+    const onIt = screen.group(tb.groups.assigned);
+    await expect(onIt).toContainText(NOA.name);
+    await expect(onIt).toContainText(tb.notes.away);
     await screen.closeSheet();
   } finally {
     await clearSchedule();
