@@ -11,15 +11,12 @@ import { type ShabbatLimits, suggestedRange } from "./availability-form";
 import type { CopySource } from "./copy-week";
 import {
   FILL_MAX_DAYS,
-  FILL_MINOR_HOURS,
   FILL_WEEK_HOURS,
   FILL_WEEK_HOURS_MAX,
   fillFromAvailability,
-  fillWeekCap,
   type WeekFill,
-  weekMinors,
 } from "./fill-week";
-import { minutesOf, rangeMinutes } from "./hours";
+import { minutesOf } from "./hours";
 import { LIMITS } from "./payroll-flags";
 import {
   availableFor,
@@ -94,7 +91,6 @@ const fillOf = (input: Partial<FillInput> & { screen: ScheduledShift[] }) =>
     staff: STAFF,
     answers: [],
     away: [],
-    minors: new Set(),
     lastWeek: null,
     nextDays: [],
     weekHours: FILL_WEEK_HOURS,
@@ -123,47 +119,6 @@ describe("the fill's limits", () => {
     expect(FILL_WEEK_HOURS).toBe(42);
     expect(FILL_WEEK_HOURS_MAX).toBe(58);
     expect(FILL_MAX_DAYS).toBe(6);
-    expect(FILL_MINOR_HOURS).toEqual({ from: "08:00", to: "20:00" });
-  });
-});
-
-describe("weekMinors", () => {
-  it("counts whoever is a minor on any day of the week, for all of it", () => {
-    expect(
-      weekMinors(WEEK, [
-        // Turns 18 on Wednesday: a minor all week, the stricter choice.
-        [tamar, day(3)],
-        // Turns 18 next week.
-        [noa, day(9)],
-        // Turned 18 on the week's first day: an adult all week.
-        [yoav, WEEK],
-        [maya, null],
-        [noa, day(9)],
-      ]),
-    ).toEqual([noa, tamar].sort());
-  });
-
-  it("takes the map `getTeamYouth` gives as it is", () => {
-    // Id to youth_until, the minors still under 18 today.
-    const youth = new Map<string, string>([
-      [tamar, day(3)],
-      [noa, day(9)],
-      [yoav, WEEK],
-    ]);
-    expect(weekMinors(WEEK, youth)).toEqual([noa, tamar].sort());
-  });
-});
-
-describe("fillWeekCap", () => {
-  it("is the week's hours, or a minor's 40 when that is less", () => {
-    expect(fillWeekCap(FILL_WEEK_HOURS, false)).toBe(42);
-    expect(fillWeekCap(FILL_WEEK_HOURS_MAX, false)).toBe(58);
-    expect(fillWeekCap(30, false)).toBe(30);
-    expect(fillWeekCap(FILL_WEEK_HOURS, true)).toBe(40);
-    expect(fillWeekCap(FILL_WEEK_HOURS_MAX, true)).toBe(40);
-    // Below 40 the week's hours bind a minor too.
-    expect(fillWeekCap(30, true)).toBe(30);
-    expect(fillWeekCap(4, true)).toBe(4);
   });
 });
 
@@ -340,96 +295,70 @@ describe("fillFromAvailability", () => {
       expect(who(fill, 1)).toEqual([noa]);
     });
 
-    it("places a minor only between 08:00 and 20:00", () => {
-      const fill = fillOf({
-        screen: [
-          shift(day(0), "16:00", "23:30"),
-          shift(day(1), "07:00", "15:00"),
-          shift(day(2), "09:00", "16:00"),
-          // Ends at 20:00 exactly.
-          shift(day(3), "12:00", "20:00"),
-        ],
-        answers: [allWeek(tamar)],
-        minors: new Set([tamar]),
-      });
-      expect(ruleOf(fill, 0, tamar)).toBe("minorHours");
-      expect(ruleOf(fill, 1, tamar)).toBe("minorHours");
-      expect(who(fill, 2)).toEqual([tamar]);
-      expect(who(fill, 3)).toEqual([tamar]);
-    });
-
-    it("places a minor for at most 8 hours, 7 on a Friday", () => {
+    // Minors are placed like everyone else (Orel, 25 November 2026): the
+    // fill has no hours of the day, no length of a shift and no weekly cap
+    // of its own for them, and the manager is responsible, as by hand.
+    it("places anyone at any hour of the day and for any length of shift", () => {
       // Thursday 10 and Friday 11 December.
       expect(weekdayOf(day(5))).toBe(5);
+      const screen = [
+        // Past 20:00, and from before 08:00.
+        shift(day(0), "16:00", "23:30"),
+        shift(day(2), "07:00", "15:00"),
+        // Nine hours, and seven and a half on a Friday.
+        shift(day(3), "08:00", "17:00"),
+        shift(day(5), "08:00", "15:30"),
+        // A night past midnight.
+        shift(day(6), "20:00", "02:00"),
+      ];
       const fill = fillOf({
-        screen: [
-          shift(day(0), "08:00", "17:00"),
-          shift(day(4), "08:00", "15:30"),
-          shift(day(5), "08:00", "15:30"),
-          shift(day(1), "08:00", "16:00"),
+        screen,
+        answers: [
+          answer(
+            tamar,
+            ...screen.map((s): [string, string, string] => [
+              s.day,
+              s.start,
+              s.end,
+            ]),
+          ),
         ],
-        answers: [allWeek(tamar)],
-        minors: new Set([tamar]),
       });
-      expect(ruleOf(fill, 0, tamar)).toBe("minorLong");
-      expect(who(fill, 1)).toEqual([tamar]);
-      expect(ruleOf(fill, 2, tamar)).toBe("minorLong");
-      expect(who(fill, 3)).toEqual([tamar]);
+      expect(fill.week.map((s) => s.assignees.map((a) => a.user))).toEqual(
+        screen.map(() => [tamar]),
+      );
+      expect(fill.shifts.flatMap((s) => s.blocked)).toEqual([]);
     });
 
-    it("stops a minor at 40 hours, even when the business allows 58", () => {
-      // Five mornings placed by hand, 35 hours; Friday's 6 would make 41.
-      const screen = (end: string) => [
+    it("lets anyone reach the week's hours, past 40", () => {
+      // Five mornings placed by hand, 35 hours; Friday's 6 make 41.
+      const screen = [
         ...[0, 1, 2, 3, 4].map((n) =>
           shift(day(n), "08:00", "15:00", [tamar, noa], { needed: 2 }),
         ),
-        shift(day(5), "08:00", end, [], { needed: 2 }),
+        shift(day(5), "08:00", "14:00", [], { needed: 2 }),
       ];
-      const input = {
-        answers: [allWeek(tamar), allWeek(noa)],
-        minors: new Set([tamar]),
-        weekHours: 58,
-      };
-      const fill = fillOf({ screen: screen("14:00"), ...input });
-      expect(who(fill, 5)).toEqual([noa]);
-      expect(ruleOf(fill, 5, tamar)).toBe("hours");
-      // Friday's 5 make 40 exactly, which she may reach.
-      const forty = fillOf({ screen: screen("13:00"), ...input });
-      expect(who(forty, 5)).toContain(tamar);
+      const answers = [allWeek(tamar), allWeek(noa)];
+      for (const weekHours of [FILL_WEEK_HOURS, FILL_WEEK_HOURS_MAX]) {
+        const fill = fillOf({ screen, answers, weekHours });
+        expect(who(fill, 5).sort()).toEqual([noa, tamar].sort());
+        expect(fill.byPerson.map((p) => p.minutes)).toEqual([41 * 60, 41 * 60]);
+      }
     });
 
-    it("stops a minor at the week's hours when they are below 40, the number `fillWeekCap` gives the sheet", () => {
+    it("stops anyone at the week's hours when the business sets fewer", () => {
       // Four mornings placed by hand, 28 hours; Friday's 5 would make 33.
       const screen = (end: string) => [
         ...[0, 1, 2, 3].map((n) => shift(day(n), "08:00", "15:00", [tamar])),
         shift(day(5), "08:00", end),
       ];
-      const input = {
-        answers: [allWeek(tamar)],
-        minors: new Set([tamar]),
-        weekHours: 30,
-      };
+      const input = { answers: [allWeek(tamar)], weekHours: 30 };
       expect(
         ruleOf(fillOf({ screen: screen("13:00"), ...input }), 4, tamar),
       ).toBe("hours");
-      expect(fillWeekCap(input.weekHours, true)).toBe(30);
       // Friday's 2 make 30 exactly, which she may reach.
       expect(who(fillOf({ screen: screen("10:00"), ...input }), 4)).toEqual([
         tamar,
-      ]);
-    });
-
-    it("gives an adult what a minor can't take", () => {
-      const screen = [
-        shift(day(0), "16:00", "23:30"),
-        shift(day(1), "08:00", "17:00"),
-        shift(day(5), "08:00", "15:30"),
-      ];
-      const fill = fillOf({ screen, answers: [allWeek(tamar)] });
-      expect(fill.week.map((s) => s.assignees.map((a) => a.user))).toEqual([
-        [tamar],
-        [tamar],
-        [tamar],
       ]);
     });
 
@@ -679,26 +608,25 @@ describe("fillFromAvailability", () => {
     });
 
     describe("in order: the first that fails is the reason", () => {
-      it("away, then the minor's hours, then the minor's length, then busy", () => {
+      it("away, then busy", () => {
+        const middle = (on: string) =>
+          shift(on, "09:00", "18:00", [tamar], {
+            name: "אמצע",
+            pattern: null,
+          });
         const fill = fillOf({
           screen: [
-            // Too early and too long for a minor.
-            shift(day(1), "06:00", "16:00"),
-            shift(day(2), "06:00", "16:00"),
-            // Within the hours, too long, and at the same time as her own.
-            shift(day(3), "09:00", "18:00", [tamar], {
-              name: "אמצע",
-              pattern: null,
-            }),
+            // At the same time as her own: on a day away, and on another.
+            middle(day(1)),
+            shift(day(1), "09:00", "18:00"),
+            middle(day(3)),
             shift(day(3), "09:00", "18:00"),
           ],
           answers: [allWeek(tamar)],
-          minors: new Set([tamar]),
           away: [away(tamar, day(1))],
         });
-        expect(ruleOf(fill, 0, tamar)).toBe("away");
-        expect(ruleOf(fill, 1, tamar)).toBe("minorHours");
-        expect(ruleOf(fill, 3, tamar)).toBe("minorLong");
+        expect(ruleOf(fill, 1, tamar)).toBe("away");
+        expect(ruleOf(fill, 3, tamar)).toBe("busy");
       });
 
       it("the same day before rest", () => {
@@ -1184,7 +1112,7 @@ describe("fillFromAvailability", () => {
       expect(weekSchedule(WEEK, []).safeParse(fill.week).success).toBe(true);
     });
 
-    it("fills a week that starts on Monday, Friday read by its weekday", () => {
+    it("fills a week that starts on Monday, last week's Sunday night its edge", () => {
       const monday = "2026-12-07";
       const fill = fillOf({
         weekStart: monday,
@@ -1193,7 +1121,6 @@ describe("fillFromAvailability", () => {
           allWeekOf(monday, tamar),
           answer(noa, [monday, "08:00", "15:00"]),
         ],
-        minors: new Set([tamar]),
         lastWeek: {
           start: addDays(monday, -7),
           published: true,
@@ -1205,18 +1132,6 @@ describe("fillFromAvailability", () => {
       expect(ruleOf(fill, 0, noa)).toBe("rest");
       expect(who(fill, 0)).toEqual([tamar]);
       expect(weekSchedule(monday, []).safeParse(fill.week).success).toBe(true);
-      // Friday is the week's fifth day here, and still a minor's 7 hours.
-      const long = fillOf({
-        weekStart: monday,
-        screen: [
-          shift(addDays(monday, 3), "08:00", "15:30"),
-          shift(addDays(monday, 4), "08:00", "15:30"),
-        ],
-        answers: [allWeekOf(monday, tamar)],
-        minors: new Set([tamar]),
-      });
-      expect(who(long, 0)).toEqual([tamar]);
-      expect(ruleOf(long, 1, tamar)).toBe("minorLong");
     });
 
     it("fills shifts added by hand with no pattern, sharing them out by name and start", () => {
@@ -1448,8 +1363,6 @@ describe("fillFromAvailability", () => {
     expect([...seen].sort()).toEqual(
       [
         "away",
-        "minorHours",
-        "minorLong",
         "busy",
         "sameDay",
         "rest",
@@ -1602,7 +1515,6 @@ describe("the twins, as the PR shows them", () => {
         ),
       ],
       away: [],
-      minors: new Set(),
       lastWeek: null,
       nextDays: [],
       weekHours: FILL_WEEK_HOURS,
@@ -1685,7 +1597,7 @@ describe("the twins, as the PR shows them", () => {
     });
   });
 
-  it("stops the shop's Tamar, a minor, at 40 hours", () => {
+  it("fills the shop's next week in last week's positions, Tamar to 41 hours, and stops her at the week's hours", () => {
     const next = "2026-11-22";
     const last = "2026-11-15";
     const placedLast: Record<string, [string, string][]> = {
@@ -1753,7 +1665,7 @@ describe("the twins, as the PR shows them", () => {
             ]
           : [],
     }));
-    const input = (minor: boolean): FillInput => ({
+    const input = (weekHours: number): FillInput => ({
       weekStart: next,
       screen,
       staff: ["michal", "omer", "tamar", "itai", "roni"],
@@ -1774,10 +1686,9 @@ describe("the twins, as the PR shows them", () => {
         ),
       ],
       away: [],
-      minors: new Set(minor ? ["tamar"] : []),
       lastWeek,
       nextDays: [],
-      weekHours: FILL_WEEK_HOURS,
+      weekHours,
       // Haifa, 27–28 November 2026.
       shabbat: {
         friday: "2026-11-27",
@@ -1793,34 +1704,39 @@ describe("the twins, as the PR shows them", () => {
     const thursday = screen.findIndex(
       (s) => s.day === "2026-11-26" && s.pattern === "morning",
     );
-    const minor = fillFromAvailability(input(true));
-    expect(minor.shifts.find((s) => s.index === thursday)).toMatchObject({
+    // At the week's 42 she takes Thursday morning too: 41 hours. Whether
+    // she is under 18 makes no difference to the fill (Orel, 25.11.2026).
+    const week = fillFromAvailability(input(FILL_WEEK_HOURS));
+    expect(week.week[thursday]?.assignees.map((a) => a.user)).toEqual([
+      "omer",
+      "tamar",
+    ]);
+    expect(week.byPerson).toEqual([
+      { user: "omer", shifts: 3, minutes: 21 * 60, added: 3 },
+      { user: "tamar", shifts: 6, minutes: 41 * 60, added: 5 },
+    ]);
+    // With the week's hours at 40, Thursday's 7 would take her to 41.
+    const forty = fillFromAvailability(input(40));
+    expect(forty.shifts.find((s) => s.index === thursday)).toMatchObject({
       added: [{ user: "omer", position: "lead" }],
       open: 1,
       why: "blocked",
       blocked: [{ user: "tamar", rule: "hours" }],
     });
-    expect(minor.byPerson).toEqual([
+    expect(forty.byPerson).toEqual([
       { user: "omer", shifts: 3, minutes: 21 * 60, added: 3 },
       { user: "tamar", shifts: 5, minutes: 34 * 60, added: 4 },
     ]);
-    // As an adult, she takes Thursday morning too: 41 hours.
-    const adult = fillFromAvailability(input(false));
-    expect(adult.week[thursday]?.assignees.map((a) => a.user)).toEqual([
-      "omer",
-      "tamar",
-    ]);
-    expect(adult.byPerson.find((p) => p.user === "tamar")?.minutes).toBe(
-      41 * 60,
-    );
     // Each goes on in last week's position for that kind of shift.
-    expect(
-      new Set(
-        minor.week.flatMap((s) =>
-          s.assignees.map((a) => `${a.user}=${a.position}`),
+    for (const fill of [week, forty]) {
+      expect(
+        new Set(
+          fill.week.flatMap((s) =>
+            s.assignees.map((a) => `${a.user}=${a.position}`),
+          ),
         ),
-      ),
-    ).toEqual(new Set(["tamar=cashier", "itai=sales", "omer=lead"]));
+      ).toEqual(new Set(["tamar=cashier", "itai=sales", "omer=lead"]));
+    }
   });
 });
 
@@ -1940,7 +1856,6 @@ function defaults(): FillInput {
     staff: STAFF,
     answers: [],
     away: [],
-    minors: new Set(),
     lastWeek: null,
     nextDays: [],
     weekHours: FILL_WEEK_HOURS,
@@ -1990,7 +1905,7 @@ const RANGES: [string, string][] = [
   ["12:00", "20:00"],
   ["19:00", "07:00"],
 ];
-/** Shifts added by hand: a minor's long day and long Friday among them. */
+/** Shifts added by hand: long days, a long Friday and nights among them. */
 const BY_HAND: [string, string][] = [
   ["06:00", "14:00"],
   ["07:00", "19:00"],
@@ -2003,7 +1918,7 @@ const BY_HAND: [string, string][] = [
   ["22:00", "06:00"],
 ];
 
-/** A week to fill: a template's pattern, shifts by hand, people placed by hand, answers, days away, minors and edges. */
+/** A week to fill: a template's pattern, shifts by hand, people placed by hand, answers, days away and edges. */
 function generated(seed: number): FillInput {
   const random = mulberry32(seed);
   const pick = <T>(list: readonly T[]): T =>
@@ -2104,7 +2019,6 @@ function generated(seed: number): FillInput {
     staff: [...team, liya],
     answers: [...answers, allWeekOf(weekStart, liya)],
     away: awayDays,
-    minors: new Set(team.filter(() => random() < 0.3)),
     lastWeek,
     nextDays,
     weekHours: pick([4, 20, FILL_WEEK_HOURS, FILL_WEEK_HOURS_MAX]),
@@ -2216,17 +2130,6 @@ function checkFill(input: FillInput, fill: WeekFill) {
         input.away,
       )[0]?.state;
       expect(state).toBe("available");
-      if (input.minors.has(user)) {
-        const from = minutesOf(s.start);
-        const length = rangeMinutes(s.start, s.end);
-        expect(from).toBeGreaterThanOrEqual(minutesOf(FILL_MINOR_HOURS.from));
-        expect(from + length).toBeLessThanOrEqual(
-          minutesOf(FILL_MINOR_HOURS.to),
-        );
-        expect(length).toBeLessThanOrEqual(
-          weekdayOf(s.day) === 5 ? LIMITS.minorEve : LIMITS.minorDay,
-        );
-      }
       // One shift that day, and 8 hours from every other in real time,
       // edges included.
       const at = realSpan(s);
@@ -2255,8 +2158,7 @@ function checkFill(input: FillInput, fill: WeekFill) {
   // Whoever the fill gave a shift is within the days and the hours.
   for (const person of fill.byPerson) {
     if (person.added === 0) continue;
-    const cap = fillWeekCap(input.weekHours, input.minors.has(person.user));
-    expect(person.minutes).toBeLessThanOrEqual(cap * 60);
+    expect(person.minutes).toBeLessThanOrEqual(input.weekHours * 60);
     const days = new Set(
       fill.week
         .filter((s) => s.assignees.some((a) => a.user === person.user))

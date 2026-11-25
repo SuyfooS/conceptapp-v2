@@ -24,7 +24,6 @@ export function ScheduleBuildView({
   data,
   swaps,
   lastWeek = null,
-  minors = [],
   nextDays = [],
   save,
   backHref = "/schedule",
@@ -42,11 +41,6 @@ export function ScheduleBuildView({
    * copy.
    */
   lastWeek?: CopySource | null;
-  /**
-   * Who on the staff is a minor on some day of the week, ids only
-   * (`currentBuildMinors`); none while the time clock is off, and by default.
-   */
-  minors?: readonly string[];
   /**
    * Building the week running now, next week's first two days with people
    * on them (`nextWeekEdge`); none building next week, and by default.
@@ -104,7 +98,6 @@ export function ScheduleBuildView({
         basis={data.basis}
         swaps={swaps}
         lastWeek={lastWeek}
-        minors={minors}
         nextDays={nextDays}
         team={data.team}
         people={data.people}

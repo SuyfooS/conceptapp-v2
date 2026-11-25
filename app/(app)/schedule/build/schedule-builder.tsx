@@ -177,12 +177,6 @@ export type ScheduleBuilderProps = {
    */
   away?: AwaySpan[];
   /**
-   * Who on the staff is a minor on some day of the week, ids only
-   * (`currentBuildMinors`), for the fill from availability. None by default,
-   * and while the time clock is off.
-   */
-  minors?: readonly string[];
-  /**
    * Building the week running now, next week's first two days with people
    * on them (`nextWeekEdge`), the fill's edge after the week. None by
    * default, and building next week.

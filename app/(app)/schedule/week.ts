@@ -4,7 +4,6 @@ import {
   getWeekAvailability,
   type OpenScheduleWeek,
 } from "@db/availability";
-import { getTeamYouth } from "@db/payroll-details";
 import { basisOf, getWeekSchedule, type WeekScheduleShift } from "@db/schedule";
 import type { MemberBusiness } from "@db/session";
 import { getEndedSwaps, getLiveSwaps } from "@db/swaps";
@@ -27,7 +26,6 @@ import {
   shabbatLimits,
 } from "@domain/availability-form";
 import { type CopySource, copySourceOf } from "@domain/copy-week";
-import { weekMinors } from "@domain/fill-week";
 import { canOpenModule, isStaff } from "@domain/modules";
 import { type BuildWeeks, draftAhead, weekBuilt } from "@domain/running-week";
 import {
@@ -369,42 +367,6 @@ export const currentScheduleBuild = cache(
       positions: context.positions,
       away,
     };
-  },
-);
-
-/**
- * Who on the business's staff is a minor today, and until when
- * (`public.team_youth`), once per request: the builder's weeks share it.
- */
-const teamYouth = cache((businessId: string) => getTeamYouth(businessId));
-
-/**
- * Who on the staff is a minor on some day of the week starting on `start`
- * (`weekMinors`), for the fill from availability: ids only, sorted, never
- * until when, so no birthday reaches the browser. For whoever builds the
- * schedule (`buildsSchedule`, or views as a role that does) with scheduling
- * and the time clock on, and only for the builder's two weeks; none for
- * anyone else. `public.team_youth` answers under today's rules
- * (20261115001300_roles_team.sql: team.view or schedule.edit, the clock on,
- * active staff only, and only those still minors today: in the week running
- * now, someone whose 18th birthday is today or an earlier day of it is an
- * adult, as they are for every shift still to start) and answers none until
- * Migrate brings it. A read that fails otherwise fails the page, as the days
- * away do.
- * Memoised per week for the request.
- */
-export const currentBuildMinors = cache(
-  async (start: string): Promise<string[]> => {
-    const [member, scheduling] = await Promise.all([
-      currentMember(),
-      schedulingContext(),
-    ]);
-    const membership = member?.membership;
-    if (!membership || !buildsSchedule(membership) || !scheduling) return [];
-    const { weeks, business, enabled } = scheduling;
-    if (start !== weeks.thisWeek && start !== weeks.nextWeek) return [];
-    if (!enabled.includes("time_clock")) return [];
-    return weekMinors(start, await teamYouth(business.id));
   },
 );
 
