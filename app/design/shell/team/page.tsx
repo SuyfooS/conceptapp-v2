@@ -6,6 +6,7 @@ import type { TeamFiles } from "../../../(app)/team/file-status";
 import { TeamView } from "../../../(app)/team/team-view";
 import { baseWording } from "../../../(app)/wording";
 import {
+  business,
   demoNamedRole,
   teamFileStatusComplete,
   teamFileStatusFor,
@@ -29,7 +30,10 @@ type Props = {
 };
 
 // The real Team screen with mock people: three members' worth of the demo
-// staff, one open invite and one expired, seen by an owner. Two of the
+// staff, one open invite and one expired, and two the console's wizard saved
+// with no link yet, under "עוד לא קיבלו קישור" (inviting from a list, part
+// 2), seen by an owner. Their links are the stand-in's, and WhatsApp asks whom
+// to send to: a made-up number may be someone's. Two of the
 // workers hold the demo's named role, and the open invite is to it, each
 // shown by its name with its base (the roles plan's R11b). Inviting and
 // new links use the demo's stand-in actions (./actions), and so does
@@ -96,6 +100,7 @@ async function Demo({ searchParams }: Props) {
         fileHref={(userId) => `/design/shell/team/${userId}/file?as=accountant`}
         resend={demoResendAction}
         files={files}
+        businessName={business.name}
         wording={baseWording}
       />
     );
@@ -116,6 +121,7 @@ async function Demo({ searchParams }: Props) {
       cancel={demoCancelInviteAction}
       named={[demoNamedRole]}
       files={files}
+      businessName={business.name}
       wording={baseWording}
     />
   );

@@ -39,6 +39,10 @@ export async function generateMetadata(): Promise<Metadata> {
 // complete their file is, in a holder's words or as a count; someone who
 // holds the files without seeing the team (the accountant) gets the files
 // alone, each row leading to the file, with no numbers and no invites.
+// The invites nobody got a link for yet (the console's wizard saves its
+// staff so) come first, under "עוד לא קיבלו קישור": each one's link is made
+// there, then sent on WhatsApp to that number or copied (inviting from a
+// list, part 2). The app sends nothing.
 export default async function TeamPage() {
   const [member, enabled] = await Promise.all([
     currentMember(),
@@ -75,6 +79,9 @@ export default async function TeamPage() {
         named={named}
         files={files}
         filesOnly={!seesTeam}
+        businessName={membership.business.name}
+        // Each link to the number it was made for: the real screen alone.
+        whatsappToNumber
         wording={await currentWording()}
       />
     </>

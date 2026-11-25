@@ -7,6 +7,7 @@ import {
   stepsCounted,
   stepsDone,
   stepsLeft,
+  teamStepWords,
 } from "@domain/first-steps";
 import { Badge } from "@ui/badge";
 import { Card } from "@ui/card";
@@ -113,27 +114,39 @@ export function FirstStepsCard({
   );
 }
 
+/**
+ * Where the team stands (`teamStepWords`): who joined, who still waits for
+ * a link, who was sent one, whose ran out, or nobody yet.
+ */
+function teamDetail(
+  t: T,
+  progress: Extract<FirstStep, { key: "team" }>["progress"],
+): string {
+  const { joined, invited, expired, pending } = progress;
+  switch (teamStepWords(progress)) {
+    case "doneWaiting":
+      return t("home.firstSteps.steps.team.doneWaiting", {
+        count: joined,
+        waiting: invited,
+      });
+    case "done":
+      return t("home.firstSteps.steps.team.done", { count: joined });
+    case "pending":
+      return t("home.firstSteps.steps.team.pending", { count: pending });
+    case "waiting":
+      return t("home.firstSteps.steps.team.waiting", { count: invited });
+    case "expired":
+      return t("home.firstSteps.steps.team.expired", { count: expired });
+    case "none":
+      return t("home.firstSteps.steps.team.none");
+  }
+}
+
 /** Where a step stands, in words: what is there, or what is still missing. */
 function detailOf(t: T, step: FirstStep): string {
   switch (step.key) {
-    case "team": {
-      const { joined, invited, expired } = step.progress;
-      if (joined > 0) {
-        return invited > 0
-          ? t("home.firstSteps.steps.team.doneWaiting", {
-              count: joined,
-              waiting: invited,
-            })
-          : t("home.firstSteps.steps.team.done", { count: joined });
-      }
-      if (invited > 0) {
-        return t("home.firstSteps.steps.team.waiting", { count: invited });
-      }
-      if (expired > 0) {
-        return t("home.firstSteps.steps.team.expired", { count: expired });
-      }
-      return t("home.firstSteps.steps.team.none");
-    }
+    case "team":
+      return teamDetail(t, step.progress);
     case "shifts":
       return step.done
         ? t("home.firstSteps.steps.shifts.done", {

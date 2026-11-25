@@ -44,10 +44,20 @@ import {
   InviteCancels,
   InviteCancelUndo,
   UnlessCancelled,
-  WhileAnyInvite,
 } from "./invite-cancel";
+import type { PendingRow } from "./pending-links";
 import { InviteLinks, ResendLink } from "./resend-link";
 import { roleLabel } from "./role-label";
+import {
+  ListedUndo,
+  PendingCount,
+  PendingLinks,
+  PendingList,
+  PendingTableRows,
+  UnlessAllPendingHere,
+  UnlessPendingHere,
+  WhileAnyListed,
+} from "./send-links";
 import type { CancelInvite } from "./team-change-types";
 
 type Resend = ComponentProps<typeof ResendLink>["resend"];
@@ -107,8 +117,15 @@ type ViewProps = {
  * empty list and a table of headers. H6b-2 added a filter over every shape
  * (כולם · חסרים פרטים · 101 פתוח, from what the viewer sees, not kept on
  * reload; under a choice the invites go, and the members are one list
- * across a tablet) and, for a holder, the desktop's "שינוי אחרון". Also
- * rendered with mock data on /design/shell/team.
+ * across a tablet) and, for a holder, the desktop's "שינוי אחרון". The
+ * invites nobody got a link for yet (the console's wizard saves its staff
+ * so; inviting from a list, part 2) come first, under "עוד לא קיבלו קישור"
+ * with how many, by name: on a phone and a tablet a list of their own above
+ * the open and expired invites, on a desktop the table's first rows. Each
+ * one's link is made at the moment of sending ("יצירת קישור", then WhatsApp
+ * or a copy, `SendLinkRow`), and a row whose link was made stays in place
+ * until the page is loaded again. Also rendered with mock data on
+ * /design/shell/team.
  */
 export function TeamView({
   team,
@@ -123,6 +140,8 @@ export function TeamView({
   files = null,
   filesOnly = files?.filesOnly === true,
   fileFilter = "all",
+  businessName,
+  whatsappToNumber = false,
   wording,
 }: {
   team: Team;
@@ -168,6 +187,14 @@ export function TeamView({
    * (H6b-2). Another only for a drawing of one already made (the tests).
    */
   fileFilter?: FileChoice;
+  /** The business's name, for the message a link goes with on WhatsApp. */
+  businessName: string;
+  /**
+   * WhatsApp to each person's own number (`whatsappToHref`): the real
+   * screen's, behind the database. A twin's made-up numbers may be someone's,
+   * so by default WhatsApp asks whom to send to.
+   */
+  whatsappToNumber?: boolean;
   /** The business's words; the app's own on the demo. */
   wording: AppWording;
 }) {
@@ -215,7 +242,12 @@ export function TeamView({
         body={t("team.file.filesOnly.empty.body")}
       />
     ) : (
-      <TeamBody view={view} cancel={cancel} />
+      <TeamBody
+        view={view}
+        cancel={cancel}
+        business={businessName}
+        toNumber={whatsappToNumber}
+      />
     );
   return (
     <PageBody className={pageGlowClass}>
@@ -288,46 +320,86 @@ export function TeamView({
 
 /**
  * Who is in and who is invited, in each shape: the lists, or the table. An
- * invite deleted, or given a new link, is the same in both.
+ * invite deleted, given a new link or its first, is the same in both.
  */
 function TeamBody({
   view,
   cancel,
+  business,
+  toNumber,
 }: {
   view: ViewProps;
   cancel: CancelInvite | undefined;
+  business: string;
+  toNumber: boolean;
 }) {
   const { team, filesOnly } = view;
   return (
     <InviteCancels cancel={cancel ?? null}>
       <InviteLinks>
-        {/* The files alone are one list: across the tablet, capped, with no
+        <PendingLinks
+          rows={filesOnly ? [] : pendingRows(view)}
+          business={business}
+          toNumber={toNumber}
+          resend={view.resend}
+        >
+          {/* The files alone are one list: across the tablet, capped, with no
             empty column beside it. So are the members under a choice of the
             filter, which hides the invites. */}
-        <FileColumns
-          columns={filesOnly ? 1 : 2}
-          className="grid gap-6 md:items-start md:gap-8 xl:hidden"
-        >
-          {filesOnly ? (
-            <Members {...view} />
-          ) : team.invites.length > 0 ? (
-            <>
-              <Invites {...view} />
+          <FileColumns
+            columns={filesOnly ? 1 : 2}
+            className="grid gap-6 md:items-start md:gap-8 xl:hidden"
+          >
+            {filesOnly ? (
               <Members {...view} />
-            </>
-          ) : (
-            <>
-              <Members {...view} />
-              <Invites {...view} />
-            </>
-          )}
-        </FileColumns>
-        <div className="hidden xl:block">
-          <Everyone {...view} />
-        </div>
+            ) : team.invites.length > 0 ? (
+              <>
+                <Invites {...view} />
+                <Members {...view} />
+              </>
+            ) : (
+              <>
+                <Members {...view} />
+                <Invites {...view} />
+              </>
+            )}
+          </FileColumns>
+          <div className="hidden xl:block">
+            <Everyone {...view} />
+          </div>
+        </PendingLinks>
       </InviteLinks>
     </InviteCancels>
   );
+}
+
+/**
+ * The invites nobody got a link for yet, as "עוד לא קיבלו קישור" draws them
+ * (`buildTeam` lists them first, by name), with what the viewer may do:
+ * make one's link where they could send a new one (`inviteActions`'s rule),
+ * else why someone else does; delete it by the rank rule. Someone who only
+ * reads the team, or a business closed to invites, gets the rows alone.
+ */
+function pendingRows(view: ViewProps): PendingRow[] {
+  const { t, viewer, invites, edits } = view;
+  return view.team.invites
+    .filter((invite) => invite.state === "pending")
+    .map((invite) => ({
+      id: invite.id,
+      name: invite.name,
+      shown: name(t, invite.name),
+      phone: invite.phone,
+      role: roleLabel(t, invite.role, invite.namedRole),
+      send:
+        !invites || !edits
+          ? null
+          : roleGone(invite)
+            ? "roleGone"
+            : resendable(view, invite)
+              ? "link"
+              : "ownerSends",
+      cancels: invites && canCancelInvite(viewer, invite.role),
+    }));
 }
 
 const name = (t: T, n: string | null) => n ?? t("team.noName");
@@ -336,7 +408,11 @@ const phone = (p: string | null) =>
 
 function InviteBadge({ t, state }: { t: T; state: Invite["state"] }) {
   return (
-    <Badge tone={state === "open" ? "warning" : "danger"}>
+    <Badge
+      tone={
+        state === "pending" ? "accent" : state === "open" ? "warning" : "danger"
+      }
+    >
       {t(`team.state.${state}`)}
     </Badge>
   );
@@ -346,6 +422,23 @@ function InviteBadge({ t, state }: { t: T; state: Invite["state"] }) {
 const roleGone = (invite: Invite) => invite.namedRole?.archived === true;
 
 /**
+ * Whether the viewer makes this invite a link (a new one, or its first): to
+ * a role they give now (`canResendInvite`: a named role among `named`,
+ * live), one that holds pay only from an owner (`ownerOnly`; a named role
+ * never does).
+ */
+function resendable(
+  { viewer, ownerOnly, named }: ViewProps,
+  invite: Invite,
+): boolean {
+  const namedRole = invite.namedRole?.id ?? null;
+  return (
+    canResendInvite(viewer, { role: invite.role, namedRole }, named) &&
+    (namedRole !== null || !ownerOnly.includes(invite.role))
+  );
+}
+
+/**
  * What the viewer may do with this invite: a new link, to a role they give
  * now (`canResendInvite`: a named role among `named`, live), and deleting
  * it, by the rank rule (`canCancelInvite`); a new link for a role that holds
@@ -353,18 +446,13 @@ const roleGone = (invite: Invite) => invite.namedRole?.archived === true;
  * whose named role was removed since gets none from anyone, so a line says
  * why and what to do instead, beside its deleting.
  */
-function inviteActions(
-  { t, viewer, resend, invites, ownerOnly, named }: ViewProps,
-  invite: Invite,
-) {
+function inviteActions(view: ViewProps, invite: Invite) {
+  const { t, viewer, resend, invites } = view;
   if (!invites) return null;
   const who = name(t, invite.name);
-  const namedRole = invite.namedRole?.id ?? null;
-  const resendable =
-    canResendInvite(viewer, { role: invite.role, namedRole }, named) &&
-    (namedRole !== null || !ownerOnly.includes(invite.role));
+  const sends = resendable(view, invite);
   const cancellable = canCancelInvite(viewer, invite.role);
-  if (!resendable && !cancellable) return null;
+  if (!sends && !cancellable) return null;
   return (
     <div className="flex flex-wrap items-start gap-2">
       {roleGone(invite) ? (
@@ -372,7 +460,7 @@ function inviteActions(
           {t("team.invites.roleGone")}
         </p>
       ) : null}
-      {resendable ? (
+      {sends ? (
         <ResendLink inviteId={invite.id} name={who} resend={resend} />
       ) : null}
       {cancellable ? (
@@ -463,45 +551,67 @@ function noInvites({ t, edits }: ViewProps): string {
   return edits ? t("team.invites.empty") : t("team.invites.emptyReadOnly");
 }
 
+/**
+ * The invites on a phone and a tablet: "עוד לא קיבלו קישור" first, while any
+ * waits for a link, then the open and expired ones under their own title.
+ * With some waiting and none sent, their list says it all; with none at
+ * all, what to do instead. A row whose first link was made here stays in
+ * the first list, so the second leaves it out meanwhile.
+ */
 function Invites(view: ViewProps) {
   const { t, team, invites } = view;
   const note = invitesNote(view);
+  const listed = team.invites.filter((i) => i.state !== "pending");
+  const ids = listed.map((i) => i.id);
   return (
     // No invite has a file: shown under "כולם" only (H6b-2).
     <FileShown tags={[]}>
-      <PageSection title={t("team.invites.title")}>
-        {team.invites.length === 0 ? (
-          <Card tone="flat" padding="lg">
-            <CardText>{invites ? noInvites(view) : closedNote(view)}</CardText>
-          </Card>
-        ) : (
-          <>
-            <WhileAnyInvite ids={team.invites.map((i) => i.id)}>
-              <PersonList aria-label={t("team.invites.title")}>
-                {team.invites.map((i) => (
-                  <UnlessCancelled key={i.id} id={i.id}>
-                    <PersonRow
-                      name={i.name}
-                      title={name(t, i.name)}
-                      subtitle={
-                        <>
-                          {roleLabel(t, i.role, i.namedRole)}
-                          {" · "}
-                          {phone(i.phone)}
-                        </>
-                      }
-                      trailing={<InviteBadge t={t} state={i.state} />}
-                      below={inviteActions(view, i)}
-                    />
-                  </UnlessCancelled>
-                ))}
-              </PersonList>
-            </WhileAnyInvite>
-            <InviteCancelUndo ids={team.invites.map((i) => i.id)} />
-            {note ? <p className="px-1 text-ink-2 text-sm">{note}</p> : null}
-          </>
-        )}
-      </PageSection>
+      <div className="flex flex-col gap-6 md:gap-8">
+        <PendingList />
+        {listed.length > 0 || team.counts.pending === 0 ? (
+          <UnlessAllPendingHere ids={ids}>
+            <PageSection title={t("team.invites.title")}>
+              {listed.length === 0 ? (
+                <Card tone="flat" padding="lg">
+                  <CardText>
+                    {invites ? noInvites(view) : closedNote(view)}
+                  </CardText>
+                </Card>
+              ) : (
+                <>
+                  <WhileAnyListed ids={ids}>
+                    <PersonList aria-label={t("team.invites.title")}>
+                      {listed.map((i) => (
+                        <UnlessCancelled key={i.id} id={i.id}>
+                          <UnlessPendingHere id={i.id}>
+                            <PersonRow
+                              name={i.name}
+                              title={name(t, i.name)}
+                              subtitle={
+                                <>
+                                  {roleLabel(t, i.role, i.namedRole)}
+                                  {" · "}
+                                  {phone(i.phone)}
+                                </>
+                              }
+                              trailing={<InviteBadge t={t} state={i.state} />}
+                              below={inviteActions(view, i)}
+                            />
+                          </UnlessPendingHere>
+                        </UnlessCancelled>
+                      ))}
+                    </PersonList>
+                  </WhileAnyListed>
+                  <ListedUndo ids={ids} />
+                  {note ? (
+                    <p className="px-1 text-ink-2 text-sm">{note}</p>
+                  ) : null}
+                </>
+              )}
+            </PageSection>
+          </UnlessAllPendingHere>
+        ) : null}
+      </div>
     </FileShown>
   );
 }
@@ -552,7 +662,16 @@ function Everyone(view: ViewProps) {
   const links = invites && edits;
   // The numbers, for whoever sees the team: a files-only reader has none.
   const phones = !filesOnly;
-  const shownInvites = filesOnly ? [] : team.invites;
+  // Those waiting for a link are the table's first rows (`PendingTableRows`).
+  const shownInvites = filesOnly
+    ? []
+    : team.invites.filter((i) => i.state !== "pending");
+  // What an invite has none of: the hiring file's columns.
+  const blank = [
+    ...(files ? ["details"] : []),
+    ...(files?.form101 ? ["form101"] : []),
+    ...(changed ? ["changed"] : []),
+  ];
   // The files alone list the staff only: the table is named as its section.
   const title = filesOnly ? t("team.members.title") : t("team.everyone");
   return (
@@ -560,8 +679,15 @@ function Everyone(view: ViewProps) {
       {/* Above the table, where the invites are its first rows: with a long
           team, under it would be out of sight while the undo waits. */}
       <InviteCancelUndo />
+      {filesOnly ? null : (
+        // How many wait for a link, over their rows (none under a choice).
+        <FileShown tags={[]}>
+          <PendingCount />
+        </FileShown>
+      )}
       <div className="overflow-hidden rounded-card bg-surface shadow-card">
-        <table className="w-full border-collapse">
+        {/* Where the next person's "יצירת קישור" is found (`PENDING_LIST`). */}
+        <table className="w-full border-collapse" data-pending-links="">
           <caption className="sr-only">{title}</caption>
           <thead>
             <tr>
@@ -604,26 +730,35 @@ function Everyone(view: ViewProps) {
             </tr>
           </thead>
           <tbody>
+            {filesOnly ? null : (
+              <FileShown tags={[]}>
+                <PendingTableRows cell={td} blank={blank} links={links} />
+              </FileShown>
+            )}
             {shownInvites.map((i) => (
               <UnlessCancelled key={i.id} id={i.id}>
-                <FileShown tags={[]}>
-                  <tr>
-                    <NameCell person={i.name} label={name(t, i.name)} />
-                    <td className={cn(td, "text-ink-2")}>{phone(i.phone)}</td>
-                    <td className={td}>{roleLabel(t, i.role, i.namedRole)}</td>
-                    {files ? <td className={td} /> : null}
-                    {files?.form101 ? <td className={td} /> : null}
-                    {changed ? <td className={td} /> : null}
-                    <td className={td}>
-                      <InviteBadge t={t} state={i.state} />
-                    </td>
-                    {links ? (
-                      <td className={cn(td, "w-[28rem]")}>
-                        {inviteActions(view, i)}
+                <UnlessPendingHere id={i.id}>
+                  <FileShown tags={[]}>
+                    <tr>
+                      <NameCell person={i.name} label={name(t, i.name)} />
+                      <td className={cn(td, "text-ink-2")}>{phone(i.phone)}</td>
+                      <td className={td}>
+                        {roleLabel(t, i.role, i.namedRole)}
                       </td>
-                    ) : null}
-                  </tr>
-                </FileShown>
+                      {blank.map((column) => (
+                        <td key={column} className={td} />
+                      ))}
+                      <td className={td}>
+                        <InviteBadge t={t} state={i.state} />
+                      </td>
+                      {links ? (
+                        <td className={cn(td, "w-[28rem]")}>
+                          {inviteActions(view, i)}
+                        </td>
+                      ) : null}
+                    </tr>
+                  </FileShown>
+                </UnlessPendingHere>
               </UnlessCancelled>
             ))}
             {team.members.map((m) => {

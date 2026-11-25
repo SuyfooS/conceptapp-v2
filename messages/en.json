@@ -1400,6 +1400,7 @@
             "title": "Invite your team",
             "none": "Send each person on your team their own link to join.",
             "waiting": "{count, plural, one {One person invited, not joined yet} other {# people invited, none joined yet}}",
+            "pending": "{count, plural, one {One person has no link yet} other {# people have no link yet}}. Send each one their link from the Team screen.",
             "expired": "{count, plural, one {The invite ran out before they joined} other {# invites ran out before anyone joined}}. Send a new link from the team screen.",
             "done": "{count, plural, one {One person joined} other {# people joined}}",
             "doneWaiting": "{count, plural, one {One person joined} other {# people joined}}, {waiting, plural, one {one more invited} other {# more invited}}"
@@ -1504,7 +1505,8 @@
       "state": {
         "member": "On the team",
         "open": "Waiting to join",
-        "expired": "Expired"
+        "expired": "Expired",
+        "pending": "No link yet"
       },
       "columns": {
         "name": "Name",
@@ -1527,6 +1529,21 @@
         "roleGone": "This invite's role was removed, so it gets no new link. You can delete it and invite again to another role.",
         "closed": "This is a demo business, so nobody is invited to it. In a real business, you invite the team from here, with a link.",
         "closedReadOnly": "This is a demo business, so nobody is invited to it."
+      },
+      "pending": {
+        "title": "No link yet",
+        "count": "{count, plural, one {One person has no link yet} other {# people have no link yet}}",
+        "left": "{count, plural, =0 {Everyone has a link} one {One person is left without a link} other {# people are left without a link}}",
+        "hint": "Links aren't sent from here. Make one person's link, send it on WhatsApp or copy it, then go on to the next.",
+        "create": "Make the link",
+        "createFor": "Make the link for {name}",
+        "ready": "{name}'s link is ready",
+        "whatsapp": "WhatsApp",
+        "whatsappFor": "WhatsApp {name}, with the link",
+        "opened": "Opened in WhatsApp",
+        "message": "You're invited to join {business}'s team in the app. Sign in from this link, with this number:",
+        "next": "Next: {name}",
+        "ownerSends": "The owners send this invite's link."
       },
       "inviteAction": "Invite to the team",
       "readOnly": "Here you see the team without changing it. To invite someone or change a role, ask an owner.",

@@ -54,10 +54,15 @@ export const OPTIONAL_STEPS: readonly FirstStepKey[] = ["clockCode"];
 /** The staff (`isSetupStaff`): joined, and invited with no one joined yet. */
 export type TeamProgress = {
   joined: number;
-  /** Open invites. */
+  /** Open invites: a link was made, and is still good. */
   invited: number;
   /** Invites that ran out before anyone joined through them. */
   expired: number;
+  /**
+   * Invites nobody got a link for yet (the console's wizard saves its staff
+   * so): "# אנשים עוד לא קיבלו קישור", not "הוזמנו".
+   */
+  pending: number;
 };
 
 export type FirstStepsFacts = {
@@ -115,8 +120,35 @@ export function teamProgress(
     joined: team.members.filter((member) => isSetupStaff(member.role)).length,
     invited: invites.filter((invite) => invite.state === "open").length,
     expired: invites.filter((invite) => invite.state === "expired").length,
+    pending: invites.filter((invite) => invite.state === "pending").length,
   };
 }
+
+/**
+ * Which words the team's step says (`app.home.firstSteps.steps.team.*`):
+ * once one of the staff joined, how many did, and how many more were sent a
+ * link; before that, first how many are still waiting for a link, since
+ * that is the owner's to do, then how many were sent one, then how many ran
+ * out. An invite nobody got a link for is never "הוזמנו".
+ */
+export function teamStepWords(
+  progress: TeamProgress,
+): "doneWaiting" | "done" | "pending" | "waiting" | "expired" | "none" {
+  const { joined, invited, expired, pending } = progress;
+  if (joined > 0) return invited > 0 ? "doneWaiting" : "done";
+  if (pending > 0) return "pending";
+  if (invited > 0) return "waiting";
+  if (expired > 0) return "expired";
+  return "none";
+}
+
+/** Nobody of the staff joined, was invited or is waiting for a link yet. */
+export const NO_TEAM_PROGRESS: TeamProgress = {
+  joined: 0,
+  invited: 0,
+  expired: 0,
+  pending: 0,
+};
 
 const hasText = (value: string | null) =>
   value !== null && value.trim().length > 0;
@@ -190,13 +222,16 @@ export function nextStep(steps: readonly FirstStep[]): FirstStep | null {
 
 /**
  * The screen that does the step, done or not, so a done one can be checked.
- * The team's is its invite while nobody joined or was invited yet.
+ * The team's is its invite while nobody joined or was invited yet; with
+ * anyone waiting for a link, the Team screen, where each one's is made.
  */
 export function firstStepHref(step: FirstStep): `/${string}` {
   switch (step.key) {
     case "team": {
-      const { joined, invited, expired } = step.progress;
-      return joined + invited + expired === 0 ? "/team/invite" : "/team";
+      const { joined, invited, expired, pending } = step.progress;
+      return joined + invited + expired + pending === 0
+        ? "/team/invite"
+        : "/team";
     }
     case "shifts":
       return "/manage/scheduling";

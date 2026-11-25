@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Role, Viewer } from "./modules";
 import {
   buildTeam,
+  byNameThenId,
   canCancelInvite,
   canEditTeam,
   canFixName,
@@ -14,6 +15,7 @@ import {
   givesRole,
   invitableRoles,
   inviteChoices,
+  inviteState,
   leavesNoOwner,
   leavesStaff,
   mayChangeRole,
@@ -126,7 +128,12 @@ describe("buildTeam", () => {
       null,
       "Gal",
     ]);
-    expect(team.counts).toEqual({ members: 6, open: 0, expired: 0 });
+    expect(team.counts).toEqual({
+      members: 6,
+      open: 0,
+      expired: 0,
+      pending: 0,
+    });
   });
 
   it("marks invites past their date as expired and lists them after open ones", () => {
@@ -144,7 +151,12 @@ describe("buildTeam", () => {
       ["New", "open"],
       ["Old", "expired"],
     ]);
-    expect(team.counts).toEqual({ members: 0, open: 2, expired: 1 });
+    expect(team.counts).toEqual({
+      members: 0,
+      open: 2,
+      expired: 1,
+      pending: 0,
+    });
   });
 
   it("treats an invite that expires right now as expired", () => {
@@ -160,6 +172,91 @@ describe("buildTeam", () => {
     const members = [member("B", "worker"), member("A", "owner")];
     buildTeam(members, [], now);
     expect(members.map((m) => m.name)).toEqual(["B", "A"]);
+  });
+
+  // Inviting from a list, part 2: the wizard's invites, which nobody got.
+  const pending = (
+    name: string | null,
+    role: TeamInvite["role"],
+    expiresAt: string,
+    id = `i-${name}`,
+  ): TeamInvite => ({
+    ...invite(name, role, expiresAt),
+    id,
+    linkPending: true,
+  });
+
+  it("lists the invites with no link first, by name, and counts them apart", () => {
+    const team = buildTeam(
+      [member("Uri", "owner")],
+      [
+        invite("Late", "worker", "2026-10-20T10:00:00Z"),
+        invite("Sent", "manager", "2026-11-01T10:00:00Z"),
+        pending("Zohar", "manager", "2026-11-01T10:00:00Z"),
+        pending(null, "worker", "2026-11-01T10:00:00Z"),
+        pending("Avi", "worker", "2026-11-01T10:00:00Z"),
+        // The owner's, by name with the rest: no role goes first here.
+        pending("Noa", "owner", "2026-11-01T10:00:00Z"),
+      ],
+      now,
+    );
+    expect(team.invites.map((i) => [i.name, i.state])).toEqual([
+      ["Avi", "pending"],
+      ["Noa", "pending"],
+      ["Zohar", "pending"],
+      [null, "pending"],
+      ["Sent", "open"],
+      ["Late", "expired"],
+    ]);
+    // "# הזמנות ממתינות" and "פג תוקף" count only invites with a link.
+    expect(team.counts).toEqual({
+      members: 1,
+      open: 1,
+      expired: 1,
+      pending: 4,
+    });
+  });
+
+  it("keeps an invite with no link pending however old it is", () => {
+    const team = buildTeam(
+      [],
+      [
+        pending("Old", "worker", "2026-09-01T10:00:00Z"),
+        pending("Now", "worker", now.toISOString()),
+      ],
+      now,
+    );
+    expect(team.invites.map((i) => i.state)).toEqual(["pending", "pending"]);
+    expect(team.counts.expired).toBe(0);
+  });
+
+  it("reads an invite without the flag, or with it false, by its date as before", () => {
+    const open = { ...invite("A", "worker", "2026-11-01T10:00:00Z") };
+    const sent = { ...open, id: "i-sent", linkPending: false };
+    expect(inviteState(open, now)).toBe("open");
+    expect(inviteState(sent, now)).toBe("open");
+    expect(
+      inviteState({ ...sent, expiresAt: "2026-10-01T10:00:00Z" }, now),
+    ).toBe("expired");
+    expect(inviteState({ ...sent, linkPending: true }, now)).toBe("pending");
+  });
+
+  it("keeps two people of one name in the order of their ids", () => {
+    const team = buildTeam(
+      [],
+      [
+        pending("Dana", "worker", "2026-11-01T10:00:00Z", "i-2"),
+        pending("Dana", "manager", "2026-11-01T10:00:00Z", "i-1"),
+      ],
+      now,
+    );
+    expect(team.invites.map((i) => i.id)).toEqual(["i-1", "i-2"]);
+    expect(
+      byNameThenId({ id: "b", name: "דנה" }, { id: "a", name: "דנה" }),
+    ).toBeGreaterThan(0);
+    expect(
+      byNameThenId({ id: "a", name: null }, { id: "b", name: "אבי" }),
+    ).toBeGreaterThan(0);
   });
 });
 
