@@ -1,10 +1,11 @@
 import { NextIntlClientProvider } from "next-intl";
 import { createElement, type ReactElement } from "react";
 import { renderToString } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 // The words a screen's provider gives it.
 import en from "../../messages/en.json";
 import he from "../../messages/he.json";
+import { ignoreHeldEnter } from "./focus-after";
 import { saidAsItAppears, UndoRow } from "./undo-row";
 
 /*
@@ -14,8 +15,26 @@ import { saidAsItAppears, UndoRow } from "./undo-row";
  * its first effect its role's own status, so a change of its words is heard
  * wherever the focus is and a sheet opened over it hides it (the browser
  * checks that: e2e/design.spec.ts). "ביטול" described by what it undoes; on
- * its way, busy.
+ * its way, busy; taking the focus in the removed row's place, it takes no
+ * Enter still held down from that press (accessibility, part 5).
  */
+
+/** The props of each Button drawn: a key's handler leaves nothing in the HTML. */
+const buttons = vi.hoisted(() => ({
+  drawn: [] as { autoFocus?: unknown; onKeyDown?: unknown }[],
+}));
+
+vi.mock("./button", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./button")>();
+  const { createElement } = await import("react");
+  return {
+    ...actual,
+    Button: (props: Parameters<typeof actual.Button>[0]) => {
+      buttons.drawn.push(props);
+      return createElement(actual.Button, props);
+    },
+  };
+});
 
 const MESSAGES = { he, en };
 
@@ -74,6 +93,20 @@ describe("UndoRow", () => {
     expect(draw(row(false)).match(/<button[^>]*>/)?.[0]).not.toContain(
       "aria-busy=",
     );
+  });
+
+  it("lets Enter held down from the press that removed the row undo nothing", () => {
+    buttons.drawn.length = 0;
+    draw(
+      createElement(UndoRow, {
+        message: "Noa Cohen was removed from the team",
+        onUndo: () => {},
+        autoFocus: true,
+      }),
+    );
+    const undo = buttons.drawn.at(-1);
+    expect(undo?.autoFocus).toBe(true);
+    expect(undo?.onKeyDown).toBe(ignoreHeldEnter);
   });
 });
 

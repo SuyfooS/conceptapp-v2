@@ -13,7 +13,7 @@ import {
 } from "@ui/use-qr-camera";
 import { Check, Keyboard } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { type Ref, useEffect, useRef, useState, useTransition } from "react";
 import type { ClockActionResult } from "./clock-types";
 
 type Direction = "in" | "out";
@@ -74,6 +74,8 @@ export function ScanPunch({
   direction,
   timeZone,
   punchWith,
+  stopRef,
+  focusStop = true,
   onDone,
   onFailure,
   onCancel,
@@ -84,6 +86,15 @@ export function ScanPunch({
   /** The business's, for the time shown once it went through. */
   timeZone: string;
   punchWith: (to: Direction, proof: PunchProof) => Promise<ClockActionResult>;
+  /** The stop, for a sheet that led back here to give the focus to. */
+  stopRef?: Ref<HTMLButtonElement>;
+  /**
+   * The stop takes the focus as the camera appears, in the place of the
+   * button pressed. Not when a sheet led back here: it is still sliding
+   * away, Radix hides the page meanwhile, and it gives the focus here once
+   * it has gone.
+   */
+  focusStop?: boolean;
   /** It went through: back to the clock. */
   onDone: () => void;
   /** A refusal that isn't about the code, for the clock to say. */
@@ -233,11 +244,16 @@ export function ScanPunch({
           ) : undefined
         }
         status={status}
+        // The clock's toast says it went through, once the focus is back
+        // on the circle: said here, just before that move, it would be cut
+        // off.
+        quietRead
         cancel={{
           label: t("scan.cancel"),
           onClick: onCancel,
           disabled: !scanning,
-          autoFocus: true,
+          autoFocus: focusStop,
+          ref: stopRef,
         }}
       />
 

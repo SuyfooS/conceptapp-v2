@@ -271,6 +271,16 @@ export const demoStations: TeamStations = {
   today: TODAY,
 };
 
+/**
+ * The device on the code screen's twin with `?other=prep`: already the
+ * business's kitchen's screen, which the clock's lock stops first, with
+ * "ביטול" in the toast to start it again.
+ */
+export const demoOtherStation = {
+  id: "station-prep-kitchen",
+  name: "מסך המטבח",
+} as const;
+
 export const demoTeamHours: TeamHoursData = {
   month: MONTH,
   currentMonth: MONTH,

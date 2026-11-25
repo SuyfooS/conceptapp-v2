@@ -1,6 +1,7 @@
 import { createElement, type ReactNode } from "react";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+import { ignoreHeldEnter } from "./focus-after";
 import type { SheetProps } from "./sheet";
 import { type KeyboardLift, NO_KEYBOARD } from "./use-keyboard-lift";
 
@@ -8,18 +9,28 @@ import { type KeyboardLift, NO_KEYBOARD } from "./use-keyboard-lift";
  * A sheet over the phone's keyboard (Orel, 22 November 2026), drawn: what
  * the keyboard's lift reports is what the sheet stands on. The server draws
  * no portal, so the sheet is drawn in place here, and the lift is given
- * (`use-keyboard-lift.test.ts` reads it from the viewports).
+ * (`use-keyboard-lift.test.ts` reads it from the viewports). Its ✕, where
+ * the focus goes as it opens, takes no Enter held down from the press that
+ * opened it (accessibility, part 5): its props are noted as it is drawn.
  */
 
-const reported = vi.hoisted(() => ({ lift: null as KeyboardLift | null }));
+const reported = vi.hoisted(() => ({
+  lift: null as KeyboardLift | null,
+  close: null as Record<string, unknown> | null,
+}));
 
 vi.mock("radix-ui", async (importOriginal) => {
   const actual = await importOriginal<typeof import("radix-ui")>();
+  const { createElement } = await import("react");
   return {
     ...actual,
     Dialog: {
       ...actual.Dialog,
       Portal: ({ children }: { children: ReactNode }) => children,
+      Close: (props: Parameters<typeof actual.Dialog.Close>[0]) => {
+        reported.close = props as Record<string, unknown>;
+        return createElement(actual.Dialog.Close, props);
+      },
     },
   };
 });
@@ -111,5 +122,14 @@ describe("Sheet over the keyboard", () => {
     expect(classes).toContain("overflow-y-auto");
     expect(classes).toContain("overscroll-contain");
     expect(body).toContain("shrink-0");
+  });
+});
+
+describe("Sheet's close", () => {
+  it("lets Enter held down from the press that opened the sheet close nothing", () => {
+    drawn(NO_KEYBOARD);
+    const close = reported.close;
+    expect(close?.["aria-label"]).toBe("Close");
+    expect(close?.onKeyDown).toBe(ignoreHeldEnter);
   });
 });
