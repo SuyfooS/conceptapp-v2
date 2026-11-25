@@ -1,7 +1,14 @@
 import AxeBuilder from "@axe-core/playwright";
 import { FILE_TABS_TWIN_CHANNEL } from "../app/(app)/team/[person]/file/file-tabs";
 import he from "../messages/he.json" with { type: "json" };
-import { announcer, heardSoFar, pastDrawing, saidSince } from "./announcer";
+import {
+  announcer,
+  focusWhenSaid,
+  heardSoFar,
+  noteFocusWhenSaid,
+  pastDrawing,
+  saidSince,
+} from "./announcer";
 import { CAPTCHA_FRAME } from "./captcha";
 import { hearFileCheck } from "./file-watch";
 import { expect, type Page, test } from "./test";
@@ -55,11 +62,14 @@ test("the file twin warns a minute before it locks, and 'להשאיר פתוח' 
   await expect(warning).toHaveCount(0);
 
   // A minute before its quarter of an hour ends: an alert, said at once,
-  // with the way to keep it open, the file still there.
+  // with the way to keep it open, the file still there. The alert names the
+  // button and where it is, and describes it.
   await focusNowhere(page);
   await page.clock.fastForward("14:01");
   await expect(warning).toBeVisible();
+  await expect(warning).toContainText(hf.idle.keepOpen);
   await expect(keep).toBeVisible();
+  await expect(keep).toHaveAccessibleDescription(hf.idle.warning);
   await expect(identity).toBeVisible();
   // Clean with the warning up (Cloudflare's box, if any, isn't the app's).
   const { violations } = await new AxeBuilder({ page })
@@ -112,7 +122,8 @@ test("the file twin warns a minute before it locks, and 'להשאיר פתוח' 
   // (a desktop screen reader moving the system focus): the person moved it,
   // so the file stays open. As the warning goes, the focus lands on the
   // title of the part it came from, never on "הצגה", which an Enter meant
-  // for "להשאיר פתוח" would press; then it is said.
+  // for "להשאיר פתוח" would press; then it is said, after the focus landed
+  // (a focus that moves after a polite line cuts it off).
   const main = page.getByRole("main");
   const bankTitle = main.getByRole("heading", {
     name: hf.sections.bank,
@@ -120,11 +131,13 @@ test("the file twin warns a minute before it locks, and 'להשאיר פתוח' 
   });
   const moved = await hearFileCheck(page, FILE_TABS_TWIN_CHANNEL);
   await heardSoFar(polite);
+  await noteFocusWhenSaid(page, hf.idle.kept, "h2", hf.sections.bank);
   await keep.focus();
   await moved();
   await expect(warning).toHaveCount(0);
   await expect(bankTitle).toBeFocused();
   await expect(saidSince(polite, hf.idle.kept)).toHaveCount(1);
+  await expect.poll(() => focusWhenSaid(page)).toBe(true);
   expect(asked).toBeGreaterThan(0);
 
   // From "נעילת התיק", the file's last control, by Tab: the key is
@@ -143,11 +156,13 @@ test("the file twin warns a minute before it locks, and 'להשאיר פתוח' 
   await expect(warning).toBeVisible();
   const tabbed = await hearFileCheck(page, FILE_TABS_TWIN_CHANNEL);
   await heardSoFar(polite);
+  await noteFocusWhenSaid(page, hf.idle.kept, "h2", hf.history.title);
   await page.keyboard.press("Tab");
   await tabbed();
   await expect(warning).toHaveCount(0);
   await expect(historyTitle).toBeFocused();
   await expect(saidSince(polite, hf.idle.kept)).toHaveCount(1);
+  await expect.poll(() => focusWhenSaid(page)).toBe(true);
   await page.keyboard.press("Enter");
   await pastDrawing(page);
   await expect(page).toHaveURL(/\/design\/shell\/team\/noa\/file\?state=open$/);
@@ -196,9 +211,11 @@ test("the file twin, its quarter of an hour ending with the focus on 'להשאי
   await expect(warning).toBeVisible();
 
   await heardSoFar(polite);
+  await noteFocusWhenSaid(page, hf.idle.kept, "h2", hf.sections.identity);
   await page.clock.fastForward("01:00");
   await expect(warning).toHaveCount(0);
   await expect(first).toBeVisible();
   await expect(first).toBeFocused();
   await expect(saidSince(polite, hf.idle.kept)).toHaveCount(1);
+  await expect.poll(() => focusWhenSaid(page)).toBe(true);
 });

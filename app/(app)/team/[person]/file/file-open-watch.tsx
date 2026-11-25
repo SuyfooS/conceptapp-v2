@@ -20,6 +20,7 @@ import {
   use,
   useEffect,
   useEffectEvent,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -267,7 +268,10 @@ export function FileOpenWatch({
  * The file is about to lock for want of activity: a line that says so, an
  * alert, so a screen reader says it at once wherever its reader is, and
  * "להשאיר פתוח", in the dock, within reach wherever the page is scrolled.
- * It doesn't take the focus: a press anywhere keeps the file open too.
+ * The line names the button and where it is, as a phone's reader, whose
+ * swipes are no activity, comes to it after the whole file; the button is
+ * described by the line. It doesn't take the focus: a press anywhere keeps
+ * the file open too, asked of the server at once (`watchOpenFile`).
  * Gone with the focus on its button (kept open, by it or by anything else),
  * the focus goes to the title of the part of the file it came from, else
  * to the file's first heading (`landingIn`), never back to a control the
@@ -298,6 +302,7 @@ function IdleWarning({
   cameFrom: RefObject<Element | null>;
 }) {
   const t = useTranslations("app.team.file.idle");
+  const warningId = useId();
 
   useLayoutEffect(() => {
     const element = root.current;
@@ -329,6 +334,7 @@ function IdleWarning({
       <FloatingDock
         notice={
           <p
+            id={warningId}
             role="alert"
             className="glass mx-auto w-fit rounded-[22px] px-4 py-2 text-center font-medium text-base"
           >
@@ -340,6 +346,7 @@ function IdleWarning({
           icon={<LockOpen aria-hidden="true" />}
           onClick={onStay}
           onKeyDown={ignoreHeldEnter}
+          aria-describedby={warningId}
         >
           {t("keepOpen")}
         </DockButton>

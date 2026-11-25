@@ -34,7 +34,9 @@ import type { KeepOpenAnswer, LockAnswer } from "./holder-file-types";
  *    focus moved), and another tab's word that a file is in use there, ask
  *    the server at most once a minute, one within the minute kept for its
  *    end, never dropped. "להשאיר פתוח" asks at once, whatever the minute:
- *    the person asked, and less than the minute may be left. One gesture
+ *    the person asked, and less than the minute may be left. So does any
+ *    activity here while the warning is up (point 7): the minute's end
+ *    could come after the step-up's own. One gesture
  *    counts once: the focus a press or a key brings with it, and the click
  *    of "להשאיר פתוח" after its own press, within `SAME_GESTURE_MS` of the
  *    check that slid the step-up for it, ask nothing more. The word itself
@@ -60,7 +62,8 @@ import type { KeepOpenAnswer, LockAnswer } from "./holder-file-types";
  *    closes the file in this tab.
  * 7. A minute before this tab's 15 minutes end (`WARN_BEFORE_MS`), the
  *    person is told the file is about to lock (`warn(true)`), with
- *    "להשאיר פתוח" (`stayOpen`), activity asked of the server at once. The
+ *    "להשאיר פתוח" (`stayOpen`), activity asked of the server at once, as
+ *    any other activity here is while the warning is up. The
  *    warning ends (`warn(false)`) only when an answer moves the 15 minutes
  *    on, the file still open here; a file that closes, or a watch that
  *    stops, says nothing more. The warning keeps nothing open by itself:
@@ -356,7 +359,11 @@ export function watchOpenFile({
     return lastSlide !== null && at - lastSlide < SAME_GESTURE_MS;
   }
 
-  /** Activity, here (`tell`) or in another tab: the server asked now, or at the minute's end. */
+  /**
+   * Activity, here (`tell`) or in another tab: the server asked now, or at
+   * the minute's end; activity here during the warning, now, as
+   * "להשאיר פתוח" is.
+   */
   function due(tell: boolean) {
     const at = now();
     if (touchDue(lastCheck, at)) {
@@ -365,6 +372,13 @@ export function watchOpenFile({
     }
     // The focus a press or a key just counted brings with it: counted.
     if (tell && sameGesture(at)) return;
+    // A warning up within the minute of a check (an answer that left under
+    // a minute): kept for the minute's end, it would come after the
+    // step-up's end. Slid now, the warning ends.
+    if (tell && warned) {
+      check(true);
+      return;
+    }
     if (tell) pressedAt = at;
     if (later !== undefined) return;
     later = win.setTimeout(

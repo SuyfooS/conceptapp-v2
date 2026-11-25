@@ -2,7 +2,15 @@ import AxeBuilder from "@axe-core/playwright";
 import { createTranslator } from "next-intl";
 import he from "../messages/he.json" with { type: "json" };
 import { type MessageTree, mergeWording } from "../packages/domain/wording";
-import { announcer, heardSoFar, saidSince } from "./announcer";
+import {
+  announcer,
+  heardSoFar,
+  noteIfSaid,
+  pastDrawing,
+  pastSameWords,
+  saidSince,
+  wasSaid,
+} from "./announcer";
 import {
   archiveDemoDepartment,
   clearDemoMenuRules,
@@ -21,7 +29,7 @@ import {
 import { secondPage, signIn } from "./session";
 import { setDemoModule } from "./sms";
 import { heT } from "./t";
-import { expect, type Page, test } from "./test";
+import { expect, type Page, type Request, test } from "./test";
 
 // Taking orders' menu on screen (waiter mode P2, issue #191), on the demo
 // restaurant, where the local seed has the module on: the team copies a
@@ -608,6 +616,129 @@ test("a manager edits the categories and the places, each removal with its undo"
   expect(logged).toContain("menu.categories");
   expect(logged).toContain("menu.places");
   expect(logged).toContain("menu.item.save");
+});
+
+type SeenLine = { seenLine?: Element };
+
+// A table's "הזזה למטה" pressed again before its saves answer: the actions
+// go to the server one at a time, and each answer draws the server's list.
+// The first answer, with the second save still on its way, leaves the
+// screen as it is, and the press after it counts from there: three
+// presses, three rows, and where the table ended is said once, after the
+// last answer. Offline, a move is refused: the table goes back, and where
+// it is back is said after the line saying why; refused again, the line is
+// drawn anew, so it is said again.
+test("a table moved faster than its saves keeps every press, and a refused move says where it is back", async ({
+  page,
+}) => {
+  test.setTimeout(150_000);
+  const p = "app.orders.places" as const;
+  const placesPath = "/orders/menu/places";
+  const nameOf = rt(`${p}.nameOf`, { name: "" }).trim();
+  const rowNames = () =>
+    page
+      .getByRole("textbox", { name: new RegExp(`^${literal(nameOf)}`) })
+      .evaluateAll((fields) =>
+        fields.map((field) => (field as HTMLInputElement).value),
+      );
+  /** The twelve tables, table 4 at `row`. */
+  const fourAt = (row: number) => {
+    const others = Array.from({ length: 12 }, (_, i) => `${i + 1}`).filter(
+      (name) => name !== "4",
+    );
+    others.splice(row - 1, 0, "4");
+    return others;
+  };
+  const isSave = (request: Request) =>
+    request.method() === "POST" &&
+    request.headers()["next-action"] !== undefined;
+  const down4 = page.getByRole("button", {
+    name: rt(`${p}.downFor`, { name: "4" }),
+    exact: true,
+  });
+  const polite = announcer(page, "polite");
+  const movedTo = (place: number) =>
+    rt(`${p}.movedTo`, { name: "4", place, count: 12 });
+
+  await signIn(page, MANAGER);
+  await page.goto(placesPath);
+  await expect(title(page, rt(`${p}.title`))).toBeVisible();
+  await expect.poll(rowNames).toEqual(fourAt(4));
+  // Each save held back a moment and a half, or refused (offline).
+  let saves: "held" | "refused" = "held";
+  await page.route(
+    (url) => url.pathname === placesPath,
+    async (route) => {
+      if (!isSave(route.request())) {
+        await route.fallback();
+        return;
+      }
+      if (saves === "refused") {
+        await route.abort();
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      await route.fallback();
+    },
+  );
+
+  await noteIfSaid(page, movedTo(5));
+  await noteIfSaid(page, movedTo(6));
+  await down4.focus();
+  await heardSoFar(polite);
+  const firstAnswer = page.waitForResponse((response) =>
+    isSave(response.request()),
+  );
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+  await expect.poll(rowNames).toEqual(fourAt(6));
+  await expect(down4).toBeFocused();
+  // The first save answered, the second still held: both moves stay.
+  await firstAnswer;
+  await pastDrawing(page);
+  expect(await rowNames()).toEqual(fourAt(6));
+  await page.keyboard.press("Enter");
+  await expect.poll(rowNames).toEqual(fourAt(7));
+  await expect.poll(demoOrderPlaces, { timeout: 15_000 }).toEqual(fourAt(7));
+  await expect(saidSince(polite, movedTo(7))).toHaveCount(1);
+  expect(await wasSaid(page, movedTo(5))).toBe(false);
+  expect(await wasSaid(page, movedTo(6))).toBe(false);
+  expect(await rowNames()).toEqual(fourAt(7));
+  await expect(down4).toBeFocused();
+
+  // Refused: back in row 7, said after why, and never that it went to 8.
+  saves = "refused";
+  const failed = page
+    .getByRole("alert")
+    .filter({ hasText: rt("app.orders.menu.failed.failed") });
+  const back = rt(`${p}.movedBack`, { name: "4", place: 7, count: 12 });
+  await noteIfSaid(page, movedTo(8));
+  await heardSoFar(polite);
+  await page.keyboard.press("Enter");
+  await expect(failed).toBeVisible();
+  await expect.poll(rowNames).toEqual(fourAt(7));
+  await expect(down4).toBeFocused();
+  await expect(saidSince(polite, back)).toHaveCount(1);
+  expect(await wasSaid(page, movedTo(8))).toBe(false);
+
+  // Refused again: a line of its own, so the same words are said again.
+  await failed.evaluate((line) => {
+    (window as unknown as SeenLine).seenLine = line;
+  });
+  await pastSameWords(page);
+  await heardSoFar(polite);
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(() =>
+      failed.evaluate(
+        (line) => line !== (window as unknown as SeenLine).seenLine,
+      ),
+    )
+    .toBe(true);
+  await expect(saidSince(polite, back)).toHaveCount(1);
+  await expect.poll(rowNames).toEqual(fourAt(7));
+  await expect(down4).toBeFocused();
+  expect(await demoOrderPlaces()).toEqual(fourAt(7));
 });
 
 test("a department that prepares items says so before it goes, and its undo brings them back", async ({

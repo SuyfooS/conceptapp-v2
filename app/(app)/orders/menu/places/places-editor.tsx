@@ -19,11 +19,11 @@ import { Stepper } from "@ui/stepper";
 import { UndoRow } from "@ui/undo-row";
 import { ArrowDown, ArrowUp, LayoutGrid, Plus, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { type FormEvent, useId, useState } from "react";
+import { type FormEvent, useId, useRef, useState } from "react";
 import { inputClass, rowClass } from "../../../manage/list-rows";
 import { FailureLine } from "../menu-parts";
 import type { MenuActionFailure, SavePlaces } from "../menu-types";
-import { type MoveBy, useRowMoves } from "../row-moves";
+import { arrowClass, type MoveBy, useRowMoves } from "../row-moves";
 
 /** Where the quick start begins: a small restaurant's floor. */
 const QUICK_START = 10;
@@ -36,10 +36,11 @@ const placeKey = (place: PlaceInput) => place.id ?? `new:${place.name}`;
  * or rooms, each a name to type over in the order the floor shows them,
  * saved whole with each change, as the departments are. Removing one has an
  * undo. A business with none yet makes them all at once, named 1 to N,
- * renamed later as it likes. A move keeps the focus on the place's arrow
- * (the other one once it reaches an end) and says where it went
- * (`useRowMoves`); Enter held down moves it once, so the other arrow takes
- * no key repeating. The same rows on every screen, one list.
+ * renamed later as it likes; the last one removed has its undo above the
+ * quick start. A move keeps the focus on the place's arrow (the other one
+ * once it reaches an end) and says where it went once it saved, or where
+ * it is back (`useRowMoves`); Enter held down moves it once, so the other
+ * arrow takes no key repeating. The same rows on every screen, one list.
  */
 export function PlacesEditor({
   places,
@@ -56,11 +57,16 @@ export function PlacesEditor({
   const t = useTranslations("app.orders.places");
   const quickId = useId();
   const [order, setOrder] = useState<PlaceInput[] | null>(null);
+  // Saves on their way: while any is, a new version (the server's answer to
+  // an earlier one) leaves this screen's newer list, which its own save has.
+  const [sending, setSending] = useState(0);
   const [heldVersion, setHeldVersion] = useState(version);
   if (heldVersion !== version) {
     setHeldVersion(version);
-    setOrder(null);
+    if (sending === 0) setOrder(null);
   }
+  // Which change is the latest: only its answer says what the list is.
+  const latest = useRef(0);
   const [name, setName] = useState("");
   const [count, setCount] = useState(String(QUICK_START));
   const [making, setMaking] = useState(false);
@@ -70,6 +76,8 @@ export function PlacesEditor({
     index: number;
   } | null>(null);
   const [failure, setFailure] = useState<MenuActionFailure | null>(null);
+  // Each refusal a line of its own, so the same words again are heard.
+  const [refusals, setRefusals] = useState(0);
   const [saved, setSaved] = useState(0);
 
   const shown: PlaceInput[] = order ?? places;
@@ -79,16 +87,27 @@ export function PlacesEditor({
       (p, at) => at !== except && p.name.toLowerCase() === text.toLowerCase(),
     );
 
-  /** Saves the list (the server checks it again); says whether it saved. */
+  /**
+   * Saves the list (the server checks it again); says whether it saved. A
+   * change made before the answer came was made from this list, and saves
+   * it whole: only the latest change's answer says what the list is, so an
+   * earlier answer leaves the screen as it is, and no press made meanwhile
+   * is lost. Refused, the screen shows the server's list again.
+   */
   async function change(next: PlaceInput[]): Promise<boolean> {
-    const before = order;
+    latest.current += 1;
+    const mine = latest.current;
     setOrder(next);
+    setSending((n) => n + 1);
     let result: Awaited<ReturnType<SavePlaces>>;
     try {
       result = await save(next);
     } catch {
       result = { ok: false, failure: "failed" };
     }
+    setSending((n) => n - 1);
+    if (mine !== latest.current) return result.ok;
+    moves.answered(result.ok);
     if (result.ok) {
       const ids = result.value;
       setOrder(next.map((p, at) => ({ ...p, id: ids[at] ?? p.id })));
@@ -96,8 +115,9 @@ export function PlacesEditor({
       setSaved((n) => n + 1);
       return true;
     }
-    setOrder(before);
+    setOrder(null);
     setFailure(result.failure);
+    setRefusals((n) => n + 1);
     return false;
   }
 
@@ -150,11 +170,12 @@ export function PlacesEditor({
     const [moving] = next.splice(index, 1);
     if (!moving) return;
     next.splice(to, 0, moving);
-    moves.moving(
-      placeKey(moving),
-      by,
-      t("movedTo", { name: moving.name, place: to + 1, count: next.length }),
-    );
+    moves.moving(placeKey(moving), by, {
+      moved: (place, count) =>
+        t("movedTo", { name: moving.name, place, count }),
+      back: (place, count) =>
+        t("movedBack", { name: moving.name, place, count }),
+    });
     void change(next);
   }
 
@@ -178,6 +199,17 @@ export function PlacesEditor({
     if (!(await change(next))) setRemoved(removed);
   }
 
+  const undoRow = removed ? (
+    <UndoRow
+      // Each removal a row of its own (keyed as its row was): another
+      // while this one is up takes the focus again.
+      key={placeKey(removed.place)}
+      message={t("removed", { name: removed.place.name })}
+      onUndo={() => void undo()}
+      autoFocus
+    />
+  ) : null;
+
   return (
     <>
       <StatusToast
@@ -185,34 +217,38 @@ export function PlacesEditor({
         stamp={String(saved)}
         duration={1800}
       />
-      <FailureLine failure={failure} />
+      <FailureLine key={refusals} failure={failure} />
       {shown.length === 0 && !disabled ? (
-        <EmptyState
-          headingLevel="h2"
-          icon={<LayoutGrid />}
-          title={t("quick.title")}
-          body={t("quick.hint")}
-        >
-          <div className="flex flex-col items-center gap-2">
-            <label htmlFor={quickId} className="font-medium text-sm">
-              {t("quick.count")}
-            </label>
-            <Stepper
-              id={quickId}
-              value={count}
-              onValueChange={setCount}
-              onBlur={() => setCount(String(quick))}
-              min={1}
-              max={MENU_CAPS.places}
-              decreaseLabel={t("quick.fewer")}
-              increaseLabel={t("quick.more")}
-              wide
-            />
-          </div>
-          <Button size="lg" loading={making} onClick={() => void makeAll()}>
-            {t("quick.action", { count: quick })}
-          </Button>
-        </EmptyState>
+        <>
+          {/* The last place removed: its way back, which takes the focus its button had. */}
+          {undoRow ? <div className="md:max-w-2xl">{undoRow}</div> : null}
+          <EmptyState
+            headingLevel="h2"
+            icon={<LayoutGrid />}
+            title={t("quick.title")}
+            body={t("quick.hint")}
+          >
+            <div className="flex flex-col items-center gap-2">
+              <label htmlFor={quickId} className="font-medium text-sm">
+                {t("quick.count")}
+              </label>
+              <Stepper
+                id={quickId}
+                value={count}
+                onValueChange={setCount}
+                onBlur={() => setCount(String(quick))}
+                min={1}
+                max={MENU_CAPS.places}
+                decreaseLabel={t("quick.fewer")}
+                increaseLabel={t("quick.more")}
+                wide
+              />
+            </div>
+            <Button size="lg" loading={making} onClick={() => void makeAll()}>
+              {t("quick.action", { count: quick })}
+            </Button>
+          </EmptyState>
+        </>
       ) : (
         <PageSection title={t("listTitle")} className="md:max-w-2xl">
           <ListGroup>
@@ -243,7 +279,7 @@ export function PlacesEditor({
                       ref={moves.arrowRef(placeKey(place), -1)}
                       label={t("upFor", { name: place.name })}
                       icon={<ArrowUp />}
-                      className="text-ink-2"
+                      className={arrowClass}
                       disabled={index === 0}
                       onClick={() => move(index, -1)}
                       onKeyDown={ignoreHeldEnter}
@@ -252,7 +288,7 @@ export function PlacesEditor({
                       ref={moves.arrowRef(placeKey(place), 1)}
                       label={t("downFor", { name: place.name })}
                       icon={<ArrowDown />}
-                      className="text-ink-2"
+                      className={arrowClass}
                       disabled={index === shown.length - 1}
                       onClick={() => move(index, 1)}
                       onKeyDown={ignoreHeldEnter}
@@ -296,16 +332,7 @@ export function PlacesEditor({
               {t("taken", { name: taken })}
             </p>
           ) : null}
-          {removed ? (
-            <UndoRow
-              // Each removal a row of its own (keyed as its row was): another
-              // while this one is up takes the focus again.
-              key={placeKey(removed.place)}
-              message={t("removed", { name: removed.place.name })}
-              onUndo={() => void undo()}
-              autoFocus
-            />
-          ) : null}
+          {undoRow}
           {!disabled && shown.length >= MENU_CAPS.places ? (
             <p className="px-1 text-ink-2 text-sm">{t("max")}</p>
           ) : null}

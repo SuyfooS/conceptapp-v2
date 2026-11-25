@@ -1841,7 +1841,7 @@
           "hint": "The files also lock by themselves after a quarter of an hour without activity."
         },
         "idle": {
-          "warning": "The file will lock in a minute, as there was no activity in it.",
+          "warning": "The file will lock in a minute, as there was no activity in it. To keep it open, press \"Keep it open\" at the bottom of the screen.",
           "keepOpen": "Keep it open",
           "kept": "The file stays open."
         },
@@ -6636,6 +6636,7 @@
         "upFor": "Move up: {name}",
         "downFor": "Move down: {name}",
         "movedTo": "{name} is now {place} of {count}",
+        "movedBack": "{name} is back at {place} of {count}",
         "saved": "Saved"
       },
       "places": {
@@ -6661,6 +6662,7 @@
         "upFor": "Move up: {name}",
         "downFor": "Move down: {name}",
         "movedTo": "{name} is now row {place} of {count}",
+        "movedBack": "{name} is back in row {place} of {count}",
         "saved": "Saved"
       },
       "import": {

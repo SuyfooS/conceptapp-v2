@@ -18,7 +18,7 @@ import { UndoRow } from "@ui/undo-row";
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useRef, useState } from "react";
 import { inputClass } from "../../../manage/list-rows";
 import { FailureLine } from "../menu-parts";
 import type {
@@ -26,7 +26,7 @@ import type {
   MenuDepartment,
   SaveCategories,
 } from "../menu-types";
-import { type MoveBy, useRowMoves } from "../row-moves";
+import { arrowClass, type MoveBy, useRowMoves } from "../row-moves";
 
 /** A category's row, as its list keys it: one not saved yet by its name. */
 const categoryKey = (category: CategoryInput) =>
@@ -41,8 +41,9 @@ const rowClass =
  * department that prepares its items, how many it has, and its place in the
  * menu, saved whole with each change, as the departments are. A move keeps
  * the focus on the category's arrow (the other one once it reaches an end)
- * and says where it went (`useRowMoves`); Enter held down moves it once, so
- * the other arrow takes no key repeating. Removing one
+ * and says where it went once it saved, or where it is back
+ * (`useRowMoves`); Enter held down moves it once, so the other arrow takes
+ * no key repeating. Removing one
  * has an undo, which brings it back with its items. One whose department was
  * removed says so until another is chosen, and still saves as it is.
  * Phone: one list. Tablet: the list beside the items of the category whose
@@ -74,11 +75,16 @@ export function CategoriesEditor({
   const tm = useTranslations("app.orders.menu");
   // What this screen saved last, in its order, until the server's comes back.
   const [order, setOrder] = useState<CategoryInput[] | null>(null);
+  // Saves on their way: while any is, a new version (the server's answer to
+  // an earlier one) leaves this screen's newer list, which its own save has.
+  const [sending, setSending] = useState(0);
   const [heldVersion, setHeldVersion] = useState(version);
   if (heldVersion !== version) {
     setHeldVersion(version);
-    setOrder(null);
+    if (sending === 0) setOrder(null);
   }
+  // Which change is the latest: only its answer says what the list is.
+  const latest = useRef(0);
   const liveDepartments = departments.filter((d) => d.live);
   const [name, setName] = useState("");
   const [department, setDepartment] = useState(liveDepartments[0]?.id ?? "");
@@ -90,6 +96,8 @@ export function CategoriesEditor({
   } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [failure, setFailure] = useState<MenuActionFailure | null>(null);
+  // Each refusal a line of its own, so the same words again are heard.
+  const [refusals, setRefusals] = useState(0);
   const [saved, setSaved] = useState(0);
 
   const shown: CategoryInput[] = order ?? categories;
@@ -108,16 +116,27 @@ export function CategoriesEditor({
       (c, at) => at !== except && c.name.toLowerCase() === text.toLowerCase(),
     );
 
-  /** Saves the list (the server checks it again); says whether it saved. */
+  /**
+   * Saves the list (the server checks it again); says whether it saved. A
+   * change made before the answer came was made from this list, and saves
+   * it whole: only the latest change's answer says what the list is, so an
+   * earlier answer leaves the screen as it is, and no press made meanwhile
+   * is lost. Refused, the screen shows the server's list again.
+   */
   async function change(next: CategoryInput[]): Promise<boolean> {
-    const before = order;
+    latest.current += 1;
+    const mine = latest.current;
     setOrder(next);
+    setSending((count) => count + 1);
     let result: Awaited<ReturnType<SaveCategories>>;
     try {
       result = await save(next);
     } catch {
       result = { ok: false, failure: "failed" };
     }
+    setSending((count) => count - 1);
+    if (mine !== latest.current) return result.ok;
+    moves.answered(result.ok);
     if (result.ok) {
       // The new ones have their ids now, so a removal of one can be undone.
       const ids = result.value;
@@ -126,8 +145,9 @@ export function CategoriesEditor({
       setSaved((count) => count + 1);
       return true;
     }
-    setOrder(before);
+    setOrder(null);
     setFailure(result.failure);
+    setRefusals((count) => count + 1);
     return false;
   }
 
@@ -179,11 +199,12 @@ export function CategoriesEditor({
     const [moving] = next.splice(index, 1);
     if (!moving) return;
     next.splice(to, 0, moving);
-    moves.moving(
-      categoryKey(moving),
-      by,
-      t("movedTo", { name: moving.name, place: to + 1, count: next.length }),
-    );
+    moves.moving(categoryKey(moving), by, {
+      moved: (place, count) =>
+        t("movedTo", { name: moving.name, place, count }),
+      back: (place, count) =>
+        t("movedBack", { name: moving.name, place, count }),
+    });
     void change(next);
   }
 
@@ -219,7 +240,7 @@ export function CategoriesEditor({
         stamp={String(saved)}
         duration={1800}
       />
-      <FailureLine failure={failure} />
+      <FailureLine key={refusals} failure={failure} />
       <div className="grid items-start gap-6 md:grid-cols-2 md:gap-8 xl:grid-cols-1">
         <PageSection title={t("listTitle")} className="xl:max-w-3xl">
           <ListGroup>
@@ -322,7 +343,7 @@ export function CategoriesEditor({
                           ref={moves.arrowRef(categoryKey(category), -1)}
                           label={t("upFor", { name: category.name })}
                           icon={<ArrowUp />}
-                          className="text-ink-2"
+                          className={arrowClass}
                           disabled={index === 0}
                           onClick={() => move(index, -1)}
                           onKeyDown={ignoreHeldEnter}
@@ -331,7 +352,7 @@ export function CategoriesEditor({
                           ref={moves.arrowRef(categoryKey(category), 1)}
                           label={t("downFor", { name: category.name })}
                           icon={<ArrowDown />}
-                          className="text-ink-2"
+                          className={arrowClass}
                           disabled={index === shown.length - 1}
                           onClick={() => move(index, 1)}
                           onKeyDown={ignoreHeldEnter}

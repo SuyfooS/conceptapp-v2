@@ -123,6 +123,98 @@ test("the places twin moves a table once for Enter held down on its arrow at the
   await expect(up11).toBeFocused();
 });
 
+// On a phone the tab bar floats over the page's bottom. A table moved down
+// from just above it would take its arrow, focused again, under the bar,
+// in the viewport, so the focus alone wouldn't move the page: the arrow is
+// brought up clear of the bar (its scroll margin, the bar's band).
+test("the places twin keeps a table's arrow clear of the tab bar as it moves down", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "phone",
+    "a phone's page is long enough to put a row just above the bar",
+  );
+  const p = "app.orders.places" as const;
+  await open(page, "/design/order-taking/menu/places");
+  const downOf = (name: string) => arrow(page, rt(`${p}.downFor`, { name }));
+  const band = await downOf("1").evaluate((button) =>
+    Number.parseFloat(getComputedStyle(button).scrollMarginBottom),
+  );
+  expect(band).toBeGreaterThan(0);
+  // A table's arrow just above the band, the page scrolled to put it there.
+  let moving: string | null = null;
+  for (const name of ["11", "10", "9", "8", "7", "6", "5"]) {
+    const placed = await downOf(name).evaluate((button, band) => {
+      const target = window.innerHeight - band - 4;
+      const y = window.scrollY + button.getBoundingClientRect().bottom - target;
+      const most = document.documentElement.scrollHeight - window.innerHeight;
+      if (y < 0 || y > most) return false;
+      window.scrollTo(0, y);
+      return Math.abs(button.getBoundingClientRect().bottom - target) < 1;
+    }, band);
+    if (placed) {
+      moving = name;
+      break;
+    }
+  }
+  expect(moving).not.toBeNull();
+  const down = downOf(moving ?? "");
+  const up = arrow(page, rt(`${p}.upFor`, { name: moving ?? "" }));
+  await down.focus();
+  await page.keyboard.press("Enter");
+  // Its "הזזה למטה", or "הזזה למעלה" once it reached the end.
+  await expect
+    .poll(() =>
+      page.evaluate((band) => {
+        const focused = document.activeElement;
+        return (
+          focused instanceof HTMLElement &&
+          focused.tagName === "BUTTON" &&
+          window.innerHeight - focused.getBoundingClientRect().bottom >=
+            band - 1
+        );
+      }, band),
+    )
+    .toBe(true);
+  expect(
+    (await down.evaluate((button) => button === document.activeElement)) ||
+      (await up.evaluate((button) => button === document.activeElement)),
+  ).toBe(true);
+});
+
+// The last place removed: the list goes, and the quick start takes its
+// place, with the removal's "ביטול" above it, which has the focus the
+// removed place's button had. Pressed, the place is back.
+test("the places twin's last place removed keeps its undo above the quick start, focused", async ({
+  page,
+}) => {
+  const p = "app.orders.places" as const;
+  const nameOf = rt(`${p}.nameOf`, { name: "" }).trim();
+  await open(page, "/design/order-taking/menu/places?state=noPlaces");
+  await page.getByLabel(rt(`${p}.quick.count`)).fill("1");
+  await page
+    .getByRole("button", { name: rt(`${p}.quick.action`, { count: 1 }) })
+    .click();
+  await expect.poll(() => rowNames(page, nameOf)).toEqual(["1"]);
+
+  await page
+    .getByRole("button", {
+      name: rt(`${p}.remove`, { name: "1" }),
+      exact: true,
+    })
+    .click();
+  const undo = page
+    .getByRole("status")
+    .filter({ hasText: rt(`${p}.removed`, { name: "1" }) })
+    .getByRole("button", { name: he.ui.undoRow.undo });
+  await expect(
+    page.getByRole("heading", { name: rt(`${p}.quick.title`) }),
+  ).toBeVisible();
+  await expect(undo).toBeFocused();
+  await undo.click();
+  await expect.poll(() => rowNames(page, nameOf)).toEqual(["1"]);
+});
+
 // Left by the browser's Back, which presses nothing on the screen, and
 // opened again from the menu: Next shows the same screen again, kept for
 // Back, and its effects run again, while the link pressed on the menu is
