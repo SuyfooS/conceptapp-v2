@@ -153,11 +153,18 @@ test("a worker sends next week's availability around Shabbat", async ({
   );
   const again = await openDay(page, "sun");
   await expect(again.getByLabel(ta.start)).toHaveValue("09:00");
-  // A removal can be taken back.
+  // A removal can be taken back: "ביטול" has the focus the removed range's
+  // "×" had, and undone, the range back in its place has it.
   await removeButton(again).click();
   await expect(again.getByLabel(ta.start)).toHaveCount(0);
-  await again.getByRole("button", { name: ta.sheet.undo }).click();
+  const undo = again.getByRole("button", {
+    name: he.ui.undoRow.undo,
+    exact: true,
+  });
+  await expect(undo).toBeFocused();
+  await undo.click();
   await expect(again.getByLabel(ta.start)).toHaveValue("09:00");
+  await expect(again.getByLabel(ta.start)).toBeFocused();
   await removeButton(again).click();
   await finishSheet(again);
   await expect(dayButton(page, "sun")).toContainText(ta.noHours);

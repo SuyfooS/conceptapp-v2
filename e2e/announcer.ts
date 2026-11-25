@@ -25,6 +25,45 @@ export const saidSince = (region: Locator, words: string) =>
 export const pastSameWords = (page: Page) =>
   page.waitForTimeout(ANNOUNCE_SAME_MS + 50);
 
+/** A status region's words as they came in, and its `aria-live` then. */
+export type CameIn = { live: string; words: string };
+
+type Noted = Window & { statusWordsCameIn?: CameIn[] };
+
+/**
+ * Notes, from now on, the new words of each status region on the page (a
+ * toast's, `role="status"`) as they come in, with the `aria-live` the region
+ * had then: a screen reader says a polite region's new words as they come,
+ * and an `aria-live` turned "off" after them takes nothing back, so how a
+ * region ends up shows only what it says next. Returns what came in so far.
+ */
+export async function noteStatusWords(
+  page: Page,
+): Promise<() => Promise<CameIn[]>> {
+  await page.evaluate(() => {
+    const came: CameIn[] = [];
+    (window as Noted).statusWordsCameIn = came;
+    const regions = () => document.querySelectorAll('[role="status"]');
+    const had = new WeakMap<Element, string>();
+    for (const region of regions()) had.set(region, region.textContent ?? "");
+    new MutationObserver(() => {
+      for (const region of regions()) {
+        const words = region.textContent ?? "";
+        if (had.get(region) === words) continue;
+        had.set(region, words);
+        // A role of status alone is polite.
+        const live = region.getAttribute("aria-live") ?? "polite";
+        if (words) came.push({ live, words });
+      }
+    }).observe(document.body, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+    });
+  });
+  return () => page.evaluate(() => (window as Noted).statusWordsCameIn ?? []);
+}
+
 /** Where `noteFocusWhenSaid` keeps its note, on the page's window. */
 type FocusNote = { focusWhenSaid?: boolean | null };
 

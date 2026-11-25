@@ -18,6 +18,12 @@ const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 export const HOLD_MS = 8_000;
 
 /**
+ * How long after a sheet closes the builder gives the focus back, should it
+ * be lost by then: the builder's own, so the two never drift apart.
+ */
+export { SHEET_CLOSES_MS } from "../app/(app)/schedule/build/builder-focus";
+
+/**
  * A day of the week on the screen, by its weekday as the screen names it
  * (`he.app.availability.weekdays`), and its date ("17.11") when the week
  * shown could be either of two: next week's Sunday unless it says otherwise.

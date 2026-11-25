@@ -350,6 +350,9 @@
     "toastUndoShow": "הודעה עם ביטול",
     "toastUndoText": "השורה הוסרה",
     "toastUndoBack": "השורה חזרה",
+    "toastQuietShow": "הודעה שהשורה כבר אומרת",
+    "toastQuietText": "הסידור נשמר כטיוטה.",
+    "toastQuietLine": "הסידור נשמר כטיוטה. העובדים יראו אותו רק אחרי הפרסום.",
     "dockShow": "הצגת הפעולה הראשית",
     "dockHide": "הסתרת הפעולה הראשית",
     "dockQuiet": "שמירה",
@@ -1940,8 +1943,7 @@
       "sheet": {
         "close": "סגירה בלי לשמור",
         "done": "סיום",
-        "removed": "השעות <ltr>{from}–{to}</ltr> הוסרו.",
-        "undo": "ביטול"
+        "removed": "השעות <ltr>{from}–{to}</ltr> הוסרו."
       },
       "addRange": "הוספת שעות",
       "removeRange": "הסרת השעות {from}–{to}",
@@ -1955,7 +1957,7 @@
       "submit": "שליחת הזמינות",
       "submitDays": "{count, plural, =0 {בלי שעות} one {יום אחד} other {# ימים}}",
       "saved": "הזמינות נשמרה.",
-      "fix": "יש שעות שצריך לתקן. הן מסומנות באדום.",
+      "fix": "יש שעות שצריך לתקן. ליד כל יום כזה כתוב: יש כאן שעות לתקן.",
       "errors": {
         "ranges": {
           "time": "כתבו שעת התחלה ושעת סיום.",
@@ -2084,6 +2086,8 @@
       "clashOnShift": "{names} גם במשמרת אחרת באותה שעה",
       "awayOnShift": "{names} לא בעבודה ביום הזה",
       "remove": "הסרת {name} מהמשמרת",
+      "added": "{form, select, f {{name} נוספה למשמרת, {assigned} מתוך {needed}} m {{name} נוסף למשמרת, {assigned} מתוך {needed}} other {{name} נוסף/ה למשמרת, {assigned} מתוך {needed}}}",
+      "removed": "{form, select, f {{name} הוסרה מהמשמרת, {assigned} מתוך {needed}} m {{name} הוסר מהמשמרת, {assigned} מתוך {needed}} other {{name} הוסר/ה מהמשמרת, {assigned} מתוך {needed}}}",
       "position": "התפקיד של {name} במשמרת: {position}",
       "noPosition": "בלי תפקיד",
       "inPosition": "{name} {count}",

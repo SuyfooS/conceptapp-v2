@@ -11,6 +11,7 @@ import {
   focusWhenSaid,
   noteFocusWhenSaid,
   noteIfSaid,
+  noteStatusWords,
   wasSaid,
 } from "./announcer";
 import { before, buildScreen, HOLD_MS } from "./build-screen";
@@ -2593,6 +2594,32 @@ test("the gallery's toast stops waiting for a tap's focus after a minute", async
   ).toBeFocused();
   await page.clock.fastForward(61_000);
   await expect(toast).toBeHidden({ timeout: 15_000 });
+});
+
+// The gallery's quiet toast: the line under its button takes the focus and
+// says it, so the toast's words come in with its region off. A plain toast
+// shown right after has words of its own, which come in polite and are
+// said: with the same words as the one before, nothing would change to say.
+test("the gallery's quiet toast only shows, and a plain one right after it is said", async ({
+  page,
+}) => {
+  const d = he.design;
+  const toast = (words: string) =>
+    page.getByRole("status").filter({ hasText: words });
+  await page.goto("/design");
+  const cameIn = await noteStatusWords(page);
+
+  await page
+    .getByRole("button", { name: d.toastQuietShow, exact: true })
+    .click();
+  await expect(page.getByText(d.toastQuietLine, { exact: true })).toBeFocused();
+  await expect(toast(d.toastQuietText)).toBeVisible();
+  await page.getByRole("button", { name: d.toastShow, exact: true }).click();
+  await expect(toast(d.toastText)).toBeVisible();
+  const words = await cameIn();
+  expect(words).toContainEqual({ live: "off", words: d.toastQuietText });
+  expect(words).not.toContainEqual({ live: "polite", words: d.toastQuietText });
+  expect(words).toContainEqual({ live: "polite", words: d.toastText });
 });
 
 // The gallery's undo row: "ביטול" takes the place of the row removed, with
