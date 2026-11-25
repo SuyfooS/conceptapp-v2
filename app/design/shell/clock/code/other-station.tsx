@@ -12,9 +12,11 @@ import type { LockAction } from "../../../../(app)/clock/station/station-types";
  * The code screen's twin on a device that is already the business's
  * kitchen's screen (`?other=prep`): the lock offers to stop it first, and
  * once stopped the lock opens, with "ביטול" in the toast to start it again
- * (`restarts`), or none, as for someone who can't start it again.
- * What the screen reads again after each (the real one's `refresh()`) is
- * kept here, in the page, so nothing is stored: a new visit starts over.
+ * (`restarts`), or none, as for someone who can't start it again; or the
+ * stop refused (`refuses`): no signal, so nothing changes, or the kitchen's
+ * screen gone meanwhile, so the lock opens. What the screen reads again
+ * after each (the real one's `refresh()`) is kept here, in the page, so
+ * nothing is stored: a new visit starts over.
  */
 export function OtherStationCode({
   data,
@@ -24,6 +26,7 @@ export function OtherStationCode({
   station,
   lock,
   restarts = true,
+  refuses,
 }: {
   data: CodeScreenData;
   issueUrl: string;
@@ -35,6 +38,8 @@ export function OtherStationCode({
   lock: LockAction;
   /** Whether the stop offers a way back ("ביטול"). */
   restarts?: boolean;
+  /** The stop refused, and why. */
+  refuses?: "failed" | "gone";
 }) {
   const [stopped, setStopped] = useState(false);
   return (
@@ -52,7 +57,9 @@ export function OtherStationCode({
         clearsDevice: false,
         stopOther: {
           stop: async () => {
+            if (refuses === "failed") return { ok: false, failure: "failed" };
             setStopped(true);
+            if (refuses === "gone") return { ok: false, failure: "gone" };
             return { ok: true, undo: restarts ? station.id : null };
           },
           restart: async () => {

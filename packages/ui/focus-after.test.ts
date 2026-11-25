@@ -9,6 +9,7 @@ import {
   focusFirst,
   focusLost,
   focusWhenGone,
+  ignoreHeldEnter,
   inClosingSheet,
   landOnTitle,
   onScreen,
@@ -657,5 +658,34 @@ describe("arrived", () => {
     const seen = { current: null as object | null };
     expect(arrived(seen, { failure: "failed" })).toBe(true);
     expect(arrived(seen, { failure: "failed" })).toBe(true);
+  });
+});
+
+// Enter held down, with the focus moved on to what took the pressed
+// button's place (accessibility, part 5): its repeats press nothing there.
+describe("ignoreHeldEnter", () => {
+  const key = (name: string, repeat: boolean) => {
+    const event = {
+      key: name,
+      repeat,
+      prevented: false,
+      preventDefault() {
+        event.prevented = true;
+      },
+    };
+    return event;
+  };
+
+  it("stops Enter held down from pressing what took the focus", () => {
+    const held = key("Enter", true);
+    ignoreHeldEnter(held);
+    expect(held.prevented).toBe(true);
+  });
+
+  it("leaves a first Enter, and every other key, as they are", () => {
+    for (const event of [key("Enter", false), key(" ", true), key("a", true)]) {
+      ignoreHeldEnter(event);
+      expect(event.prevented).toBe(false);
+    }
   });
 });

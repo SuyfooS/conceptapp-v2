@@ -9,6 +9,7 @@ import {
 } from "./announcer";
 import {
   addDemoShift,
+  addOpenDemoEntry,
   clearPunchState,
   clearSchedule,
   clearTimeEntries,
@@ -221,6 +222,31 @@ test("the focus goes on to the clock's main control after each press, and a held
   await expect(title(page, c.title.working)).toBeVisible();
   await expect(circle(page, c.circle.out)).toBeFocused();
   await saidThere();
+});
+
+// A press refused (accessibility, part 5): clocked in behind the page's
+// back (another device, say), the circle's press to come in is refused.
+// The circle, busy meanwhile, has the focus back, now saying the shift the
+// screen read again shows, and only then does the alert say why.
+test("a refused press gives the focus back to the circle, and then says why", async ({
+  page,
+}) => {
+  await signIn(page, NOA);
+  await page.goto("/clock");
+  await page.waitForLoadState("networkidle");
+  await addOpenDemoEntry(NOA.e164, 1);
+  await circle(page, c.circle.in).focus();
+  await noteFocusWhenSaid(page, c.failure.alreadyIn, '[data-clock="circle"]');
+  await page.keyboard.press("Enter");
+  await expect(
+    page
+      .getByRole("main")
+      .getByRole("alert")
+      .filter({ hasText: c.failure.alreadyIn }),
+  ).toBeVisible();
+  await expect(title(page, c.title.working)).toBeVisible();
+  await expect(circle(page, c.circle.out)).toBeFocused();
+  await expect.poll(() => focusWhenSaid(page)).toBe(true);
 });
 
 // Changing month in the hours card (accessibility, part 5): each month is a

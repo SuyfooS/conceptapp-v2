@@ -1,6 +1,7 @@
 import { CameraOff, X } from "lucide-react";
 import type { ReactNode, Ref } from "react";
 import { cn } from "./cn";
+import { ignoreHeldEnter } from "./focus-after";
 import { IconButton } from "./icon-button";
 import { Spinner } from "./spinner";
 
@@ -48,7 +49,8 @@ export function ScanCircle({
   /**
    * Stops scanning: an icon button, so it needs its words. `autoFocus` puts
    * the focus there when the circle turns into the camera, since the button
-   * that was pressed is gone.
+   * that was pressed is gone; Enter held down from that press stops nothing
+   * (`ignoreHeldEnter`), only a key's first press does.
    */
   cancel?: {
     label: string;
@@ -175,6 +177,7 @@ export function ScanCircle({
             disabled={cancel.disabled}
             autoFocus={cancel.autoFocus}
             onClick={cancel.onClick}
+            onKeyDown={ignoreHeldEnter}
             className="absolute end-0 top-0 shadow-card"
           />
         ) : null}

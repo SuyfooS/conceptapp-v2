@@ -7,7 +7,7 @@ import { demoOtherStation, demoStations } from "../team/data";
 import { OtherStationCode } from "./other-station";
 
 type Props = {
-  searchParams: Promise<{ other?: string; restart?: string }>;
+  searchParams: Promise<{ other?: string; restart?: string; stop?: string }>;
 };
 
 const data: CodeScreenData = {
@@ -31,7 +31,8 @@ const running = demoStations.rows.map((station) => station.name);
 // already the business's kitchen's screen, which the lock stops first, with
 // "ביטול" in the toast to start it again (kept in the page, nothing stored);
 // `&restart=off` as for someone who can't start it again, so the toast has
-// no "ביטול".
+// no "ביטול"; `&stop=failed` or `&stop=gone`, the stop refused (no signal,
+// or the kitchen's screen gone meanwhile, and the lock opens).
 export default function ShellClockCode({ searchParams }: Props) {
   return (
     <Suspense>
@@ -41,7 +42,7 @@ export default function ShellClockCode({ searchParams }: Props) {
 }
 
 async function Demo({ searchParams }: Props) {
-  const { other, restart } = await searchParams;
+  const { other, restart, stop } = await searchParams;
   if (other === "prep") {
     return (
       <OtherStationCode
@@ -52,6 +53,7 @@ async function Demo({ searchParams }: Props) {
         station={demoOtherStation}
         lock={demoLockDevice}
         restarts={restart !== "off"}
+        refuses={stop === "failed" || stop === "gone" ? stop : undefined}
       />
     );
   }

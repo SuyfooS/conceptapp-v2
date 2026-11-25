@@ -3550,15 +3550,31 @@ test("the code demo on a kitchen's screen gives the focus to the lock after its 
   await page.keyboard.up("Enter");
   await expect(page.getByRole("dialog")).toHaveCount(0);
 
-  // Nothing is kept: stopped again, from the keyboard, and taken back with
-  // Enter held down: the key repeating on the stop back in the lock's
-  // place stops nothing again.
+  // Nothing is kept: stopped again with Enter held down. "ביטול" takes the
+  // focus in the stop's place, and the key repeating on it takes nothing
+  // back: the kitchen's screen stays stopped.
+  const restarted = heT("app.clock.station.lock.restartedOther", { name });
+  await page.reload();
+  await page.waitForLoadState("networkidle");
+  await stop.focus();
+  await page.keyboard.down("Enter");
+  await expect(undo).toBeFocused();
+  await page.keyboard.down("Enter");
+  await page.keyboard.up("Enter");
+  await page.waitForTimeout(1_000);
+  await expect(undo).toBeFocused();
+  await expect(open).toBeVisible();
+  await expect(stop).toHaveCount(0);
+  await expect(page.getByText(restarted)).toHaveCount(0);
+
+  // Stopped again, from the keyboard, and taken back with Enter held down:
+  // the key repeating on the stop back in the lock's place stops nothing
+  // again.
   await page.reload();
   await page.waitForLoadState("networkidle");
   await stop.focus();
   await page.keyboard.press("Enter");
   await expect(undo).toBeFocused();
-  const restarted = heT("app.clock.station.lock.restartedOther", { name });
   await noteFocusWhenSaid(
     page,
     restarted,
@@ -3599,6 +3615,50 @@ test("the code demo's stop with no way back gives the focus to the lock, then sa
   await page.keyboard.press("Enter");
   await expect(toast).toBeVisible();
   await expect(toast.getByRole("button")).toHaveCount(0);
+  await expect(open).toBeFocused();
+  await expect.poll(() => focusWhenSaid(page)).toBe(true);
+});
+
+// The same stop refused: with no signal (`&stop=failed`) nothing changes,
+// and the stop, busy meanwhile, has the focus back before the alert says
+// why; with the kitchen's screen gone meanwhile (`&stop=gone`), the screen
+// read again opens the lock, which has the focus, and the alert says why
+// under it.
+test("the code demo's refused stop gives the focus back, then says why", async ({
+  page,
+}) => {
+  const lock = he.app.clock.station.lock;
+  const name = "מסך המטבח";
+  const stop = page.getByRole("button", {
+    name: heT("app.clock.station.lock.stopOther", { name }),
+  });
+  const open = page.getByRole("button", { name: lock.open });
+  const failure = he.app.orders.stations.failure;
+  await page.goto("/design/shell/clock/code?other=prep&stop=failed");
+  await page.waitForLoadState("networkidle");
+  await stop.focus();
+  await noteFocusWhenSaid(
+    page,
+    failure.failed,
+    "button",
+    heT("app.clock.station.lock.stopOther", { name }),
+  );
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByRole("alert").filter({ hasText: failure.failed }),
+  ).toBeVisible();
+  await expect(stop).toBeFocused();
+  await expect.poll(() => focusWhenSaid(page)).toBe(true);
+
+  await page.goto("/design/shell/clock/code?other=prep&stop=gone");
+  await page.waitForLoadState("networkidle");
+  await stop.focus();
+  await noteFocusWhenSaid(page, failure.gone, "button", lock.open);
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByRole("alert").filter({ hasText: failure.gone }),
+  ).toBeVisible();
+  await expect(stop).toHaveCount(0);
   await expect(open).toBeFocused();
   await expect.poll(() => focusWhenSaid(page)).toBe(true);
 });

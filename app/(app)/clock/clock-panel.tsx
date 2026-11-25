@@ -16,7 +16,7 @@ import { Card } from "@ui/card";
 import {
   type FocusCandidate,
   focusFirst,
-  inClosingSheet,
+  ignoreHeldEnter,
 } from "@ui/focus-after";
 import { PunchCircle } from "@ui/punch-circle";
 import { StatusToast } from "@ui/status-toast";
@@ -35,12 +35,7 @@ import {
   useState,
   useTransition,
 } from "react";
-import {
-  type ClockPress,
-  clockState,
-  ignoreHeldEnter,
-  pressOver,
-} from "./clock-focus";
+import { type ClockPress, clockState, pressOver } from "./clock-focus";
 import type { ClockActionResult, ClockActions, ClockData } from "./clock-types";
 import { PunchCodeSheet } from "./punch-code-sheet";
 import { ScanPunch } from "./scan-punch";
@@ -51,11 +46,20 @@ type Direction = "in" | "out";
 /** What started a scan: the circle, or "End shift" during a break. */
 type ScanFrom = "circle" | "endShift";
 type Failure = Exclude<ClockActionResult, { ok: true }>["failure"];
-/** What a press says once it is over: the toast's words, or why it was refused. */
-type Said = { text: string } | { failure: Failure };
+/**
+ * What a press says once it is over: the toast's words, or why it was
+ * refused. `quiet` shows the toast without saying it: the camera's own
+ * line said it as it read the code.
+ */
+type Said = { text: string; quiet?: boolean } | { failure: Failure };
+type Toast = { text: string; stamp: string; quiet: boolean };
 
 /** A toast's words, stamped, so the same words show again. */
-const toastOf = (text: string) => ({ text, stamp: new Date().toISOString() });
+const toastOf = (text: string, quiet = false): Toast => ({
+  text,
+  stamp: new Date().toISOString(),
+  quiet,
+});
 
 /** The time now, ticking each second while `running`. */
 function useNow(initial: string, running: boolean): number {
@@ -81,7 +85,9 @@ function useNow(initial: string, running: boolean): number {
  * now, "יציאה מהמשמרת" during a break and the circle otherwise, whose name
  * says the time running and what pressing it does, as it does when "ביטול
  * היציאה" goes once its time is up. What a press says (the toast, or why it
- * was refused) comes after the focus has landed, never before.
+ * was refused, by the screen or the camera) comes after the focus has
+ * landed, never before; a scanned punch's toast only shows, as the camera's
+ * line said it.
  */
 export function ClockPanel({
   data,
@@ -99,9 +105,7 @@ export function ClockPanel({
   const [pending, start] = useTransition();
   const [running, setRunning] = useState<Kind | null>(null);
   const [failure, setFailure] = useState<Failure | null>(null);
-  const [toast, setToast] = useState<{ text: string; stamp: string } | null>(
-    null,
-  );
+  const [toast, setToast] = useState<Toast | null>(null);
   // Both sheets stay mounted, closed, so they open inside the business's colour.
   const [sheet, setSheet] = useState<"code" | "none" | null>(null);
   const [direction, setDirection] = useState<Direction>("in");
@@ -167,7 +171,7 @@ export function ClockPanel({
   /** Says them now, the toast's words or why it was refused. */
   function utter(words: Said) {
     if ("failure" in words) setFailure(words.failure);
-    else setToast(toastOf(words.text));
+    else setToast(toastOf(words.text, words.quiet));
   }
 
   /** Holds a press's words until it is over, or says them if it is already. */
@@ -243,6 +247,9 @@ export function ClockPanel({
                 ? "done.outNone"
                 : "done.out",
           ),
+          // The camera's line said it as it read the code ("נקלט. נרשמה
+          // כניסה"): the toast shows it again, and says it no more.
+          quiet: proof.kind === "scan",
         };
       }
       return result;
@@ -293,11 +300,13 @@ export function ClockPanel({
   useEffect(() => {
     if (!refocus || scanning) return;
     // "End shift" while the break goes on; the circle otherwise, as after
-    // clocking out from a break, when "End shift" is gone.
-    (scanFrom === "endShift" && paused
-      ? endShiftRef
-      : circleRef
-    ).current?.focus();
+    // clocking out from a break, when "End shift" is gone. Only where the
+    // focus was lost with the camera: someone who moved on from it (the
+    // history, the tab bar) before it turned itself off stays there.
+    focusFirst(
+      [(scanFrom === "endShift" && paused ? endShiftRef : circleRef).current],
+      { title: false },
+    );
     setRefocus(false);
   }, [refocus, scanning, scanFrom, paused]);
 
@@ -314,7 +323,21 @@ export function ClockPanel({
    * main control): counted, so a press it held over goes on (`handedBack`).
    */
   const [handedBack, noteHandedBack] = useReducer((n: number) => n + 1, 0);
+  /**
+   * A sheet closed and is still sliding away, until it gave the focus back
+   * (`sheetGaveBack`): wherever the focus is meanwhile, as the press without
+   * a code, busy while it waited, left it on the page's body.
+   */
+  const sheetLeaving = useRef(false);
+  const sheetBefore = useRef(sheet);
+  useLayoutEffect(() => {
+    if (sheetBefore.current !== null && sheet === null) {
+      sheetLeaving.current = true;
+    }
+    sheetBefore.current = sheet;
+  }, [sheet]);
   const sheetGaveBack = () => {
+    sheetLeaving.current = false;
     noteHandedBack();
     return mainControl();
   };
@@ -326,26 +349,22 @@ export function ClockPanel({
   // it goes back to what was pressed when that is still there (a refusal,
   // the circle), else on to the main control. A sheet open or the camera on
   // keep it until they give it back (a code's punch). So does a sheet still
-  // sliding away with the focus in it: Radix keeps the rest of the page
-  // hidden from screen readers (aria-hidden) until it has gone, so a focus
-  // put there now may go unsaid. It gives the focus back once gone, and
-  // that runs this again (`handedBack`). Then the press's words: the toast,
-  // or why it was refused.
+  // sliding away (`sheetLeaving`), wherever the focus is: Radix keeps the
+  // rest of the page hidden from screen readers (aria-hidden) until it has
+  // gone, so a focus put there now may go unsaid. It gives the focus back
+  // once gone, and that runs this again (`handedBack`). Then the press's
+  // words: the toast, or why it was refused.
   // biome-ignore lint/correctness/useExhaustiveDependencies: a sheet handing the focus back is what lets a press it held go on
   useEffect(() => {
     if (!pressOver(pressed.current, { busy, state })) return;
-    if (scanning || sheet) return;
-    const active = document.activeElement;
-    if (active && inClosingSheet(active)) return;
+    if (scanning || sheet || sheetLeaving.current) return;
     pressed.current = null;
     const was = pressedOn.current;
     pressedOn.current = null;
     focusFirst([was, endShiftRef.current, circleRef.current], { title: false });
     const words = held.current;
     held.current = null;
-    if (!words) return;
-    if ("failure" in words) setFailure(words.failure);
-    else setToast(toastOf(words.text));
+    if (words) utter(words);
   }, [busy, state, scanning, sheet, handedBack]);
 
   function goWithoutCode() {
@@ -383,7 +402,11 @@ export function ClockPanel({
 
   return (
     <div className="flex flex-col items-center gap-5">
-      <StatusToast message={toast?.text ?? null} stamp={toast?.stamp} />
+      <StatusToast
+        message={toast?.text ?? null}
+        stamp={toast?.stamp}
+        quiet={toast?.quiet ?? false}
+      />
       {scanning ? (
         <ScanPunch
           key={scanning}
@@ -392,8 +415,12 @@ export function ClockPanel({
           punchWith={punchWith}
           onDone={endScan}
           onFailure={(refusal) => {
+            // A refusal the circle says (already in, no access…), as a
+            // press's is: once the focus is back where the scan started.
+            pressed.current = { from: state, refused: true };
+            pressedOn.current = null;
+            held.current = { failure: refusal };
             endScan();
-            setFailure(refusal);
           }}
           onCancel={endScan}
           onType={() => scanToSheet("code")}

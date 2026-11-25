@@ -3,7 +3,8 @@
  * is over (accessibility, part 5): "יציאה להפסקה", "יציאה מהמשמרת" and
  * "ביטול היציאה" each give way to what their press drew, so the focus goes
  * to the screen's main control now, "יציאה מהמשמרת" during a break and the
- * circle otherwise. No React here, and no page.
+ * circle otherwise. No React here, and no page. A held Enter's repeats are
+ * `@ui/focus-after`'s `ignoreHeldEnter`.
  */
 
 /** Where the person stands on the clock: their shift, and a break running in it. */
@@ -34,17 +35,4 @@ export function pressOver(
 ): boolean {
   if (press === null || now.busy) return false;
   return press.refused || now.state !== press.from;
-}
-
-/**
- * Enter held down presses nothing more: with the focus moved on to what took
- * the pressed button's place, a key repeating would press that too (a break's
- * start going on to end the shift). Only a key's first press counts.
- */
-export function ignoreHeldEnter(event: {
-  key: string;
-  repeat: boolean;
-  preventDefault(): void;
-}): void {
-  if (event.key === "Enter" && event.repeat) event.preventDefault();
 }

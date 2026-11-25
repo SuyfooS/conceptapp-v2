@@ -175,6 +175,21 @@ export function focusFirst(
 }
 
 /**
+ * Enter held down presses nothing more, for a button's `onKeyDown`: with the
+ * focus moved on to what took the pressed button's place (a break's start
+ * to "יציאה מהמשמרת", a stop to the toast's "ביטול", the circle to the
+ * camera's "הפסקת הסריקה"), a key repeating would press that too. Only a
+ * key's first press counts.
+ */
+export function ignoreHeldEnter(event: {
+  key: string;
+  repeat: boolean;
+  preventDefault(): void;
+}): void {
+  if (event.key === "Enter" && event.repeat) event.preventDefault();
+}
+
+/**
  * Where the focus goes once what held it went (`useFocusWhenGone`): as
  * `focusFirst`, without moving the page. It lands where what went was, a
  * screen reader follows the focus anyway, and someone who scrolled on

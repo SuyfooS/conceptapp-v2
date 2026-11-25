@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import he from "../messages/he.json" with { type: "json" };
 import { qrMatrix, qrPath } from "../packages/domain/qr";
-import { focusWhenSaid, noteFocusWhenSaid } from "./announcer";
+import { focusWhenSaid, noteFocusWhenSaid, noteStatusWords } from "./announcer";
 import {
   allowCamera,
   expectCameraOff,
@@ -14,6 +14,7 @@ import {
 import { standInForTurnstile } from "./captcha";
 import {
   addOpenDemoEntry,
+  cancelDemoShift,
   clearPunchState,
   clearTimeEntries,
   demoActivityActions,
@@ -89,6 +90,37 @@ const focusedHidden = (page: Page) =>
   page.evaluate(
     () => (window as unknown as HiddenFocus).focusedHidden ?? ["not noted"],
   );
+
+/**
+ * Stretches a sheet's slide away (Radix marks its dialog closed as it
+ * leaves) to two seconds, so the page read again after a punch is drawn
+ * while the rest of the page is still hidden, every time: `noteHiddenFocus`
+ * can't pass by the server's speed. Returns what puts it back.
+ */
+async function slowSheetOut(page: Page): Promise<() => Promise<void>> {
+  const style = await page.addStyleTag({
+    content:
+      '[role="dialog"][data-state="closed"] { animation-duration: 2s !important; }',
+  });
+  return () => style.evaluate((node) => (node as Element).remove());
+}
+
+/** Drops the clock's writes on their way, as with no signal: each is refused. */
+async function dropClockWrites(page: Page): Promise<() => Promise<void>> {
+  const clockPath = (url: URL) => url.pathname === "/clock";
+  await page.route(clockPath, async (route) => {
+    const request = route.request();
+    if (
+      request.method() === "POST" &&
+      request.headers()["next-action"] !== undefined
+    ) {
+      await route.abort();
+      return;
+    }
+    await route.fallback();
+  });
+  return () => page.unroute(clockPath);
+}
 
 /** The circle, by the last words of its name: the time may come before them. */
 const circle = (page: Page, name: string) =>
@@ -241,11 +273,12 @@ test("a manager shows the code, and a worker clocks in and out by typing its dig
     await expect(typeIn.getByLabel(c.type.label)).toBeFocused();
     await expectCleanPage(noa);
     await noa.screenshot({ path: testInfo.outputPath("clock-type.png") });
-    // From here the sheet takes its 220 ms to slide away, as on a phone that
-    // doesn't ask for less motion: the rest of the page stays hidden from
-    // screen readers until it has gone, so nothing may take the focus there
-    // before (`noteHiddenFocus`).
+    // From here the sheet slides away, as on a phone that doesn't ask for
+    // less motion, stretched so the page read again always comes first:
+    // the rest of the page stays hidden from screen readers until it has
+    // gone, so nothing may take the focus there before (`noteHiddenFocus`).
     await noa.emulateMedia({ reducedMotion: "no-preference" });
+    await slowSheetOut(noa);
     await noteHiddenFocus(noa);
     await noteFocusWhenSaid(noa, c.done.in, onCircle);
     await typeIn.getByLabel(c.type.label).fill(await digitsOn(page));
@@ -399,12 +432,27 @@ test("wrong digits block typing, and the worker goes ahead without a code", asyn
     without.getByRole("button", { name: c.none.back }),
   ).toBeVisible();
   await expectCleanPage(page);
-  // The sheet slides away for its 220 ms, as on a phone that doesn't ask for
-  // less motion, and nothing takes the focus while the page is still hidden.
+  // With no signal the press is refused: the sheet stays, the press, busy
+  // meanwhile, has the focus back, and then the alert says why.
+  const confirmIn = without.getByRole("button", { name: c.none.confirmIn });
+  const signalBack = await dropClockWrites(page);
+  await noteFocusWhenSaid(page, c.failure.failed, "button", c.none.confirmIn);
+  await confirmIn.focus();
+  await page.keyboard.press("Enter");
+  await expect(without.getByRole("alert")).toHaveText(c.failure.failed);
+  await expect(confirmIn).toBeFocused();
+  await expect.poll(() => focusWhenSaid(page)).toBe(true);
+  await signalBack();
+  expect(await demoEntryProofs(NOA.e164)).toEqual([]);
+  // The sheet slides away, as on a phone that doesn't ask for less motion,
+  // stretched so the page read again always comes first, and nothing takes
+  // the focus while the page is still hidden. The press, busy meanwhile,
+  // left the focus on the page's body.
   await page.emulateMedia({ reducedMotion: "no-preference" });
+  const slideBack = await slowSheetOut(page);
   await noteHiddenFocus(page);
   await noteFocusWhenSaid(page, c.done.inNone, onCircle);
-  await without.getByRole("button", { name: c.none.confirmIn }).click();
+  await confirmIn.click();
   await expect(page.getByText(c.done.inNone)).toBeVisible();
   await expect(title(page, c.title.working)).toBeVisible();
   // Closed with its answer, the sheet gives the focus to the circle, which
@@ -414,6 +462,7 @@ test("wrong digits block typing, and the worker goes ahead without a code", asyn
   await expect(circle(page, c.circle.scanOut)).toBeFocused();
   await expect.poll(() => focusWhenSaid(page)).toBe(true);
   expect(await focusedHidden(page)).toEqual([]);
+  await slideBack();
   await page.emulateMedia({ reducedMotion: "reduce" });
   expect(await demoEntryProofs(NOA.e164)).toEqual([
     { inProof: "none", outProof: null, confirmed: false },
@@ -515,6 +564,34 @@ test("a manager approves an entry made without a code, and their own waits for t
     .toBe(true);
 });
 
+// The last entry waiting, cancelled behind the page's back (another
+// manager, say): its approval is refused, the list read again takes the
+// card along and the page's title has the focus, and the alert still says
+// why, after it.
+test("an approval refused as the shift was cancelled meanwhile says why once the card has gone", async ({
+  page,
+}) => {
+  await setDemoRequirePunchCode(true);
+  await addOpenDemoEntry(NOA.e164, 2, "none");
+  await signIn(page, MANAGER);
+  await page.goto("/clock/team");
+  await expect(page.getByRole("heading", { name: confirmOne })).toBeVisible();
+  const entryId = await page
+    .locator("[data-confirm-target]")
+    .filter({ visible: true })
+    .getAttribute("data-confirm-target");
+  await cancelDemoShift(entryId ?? "", "e2e: cancelled meanwhile");
+  const cancelled = c.team.failure.cancelled;
+  await noteFocusWhenSaid(page, cancelled, "main h1");
+  await page.getByRole("button", { name: approve(NOA.name) }).click();
+  await expect(
+    page.getByRole("main").getByRole("alert").filter({ hasText: cancelled }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: confirmOne })).toHaveCount(0);
+  await expect(page.getByRole("heading", { level: 1 })).toBeFocused();
+  await expect.poll(() => focusWhenSaid(page)).toBe(true);
+});
+
 test("a worker scans the code inside the circle", async ({
   page,
   browser,
@@ -551,7 +628,22 @@ test("a worker scans the code inside the circle", async ({
     await noa.screenshot({ path: testInfo.outputPath("clock-scan.png") });
 
     // Stopping turns the camera off, and the focus goes back to the circle.
-    await noa.getByRole("button", { name: c.scan.cancel }).click();
+    const cancel = noa.getByRole("button", { name: c.scan.cancel });
+    await cancel.click();
+    await expect(circle(noa, c.circle.scanIn)).toBeFocused();
+    await expectCameraOff(noa);
+
+    // Enter held down on the circle opens the camera and no more: its stop,
+    // which takes the circle's place and the focus, takes no key repeating.
+    await noa.keyboard.down("Enter");
+    await expect(cancel).toBeFocused();
+    await noa.keyboard.down("Enter");
+    await noa.keyboard.up("Enter");
+    await noa.waitForTimeout(1_000);
+    await expect(cancel).toBeFocused();
+    await expect(noa.getByText(c.scan.aim)).toBeVisible();
+    await expectCameraOn(noa);
+    await noa.keyboard.press("Enter");
     await expect(circle(noa, c.circle.scanIn)).toBeFocused();
     await expectCameraOff(noa);
 
@@ -607,28 +699,87 @@ test("a worker scans the code inside the circle", async ({
     }
     expect(await demoEntryProofs(NOA.e164)).toEqual([]);
 
+    // Clocked in behind the page's back (another device, say), the manager's
+    // code is refused for that: the camera gives the circle back with the
+    // focus, and only then does the alert say why.
+    await addOpenDemoEntry(NOA.e164, 1);
+    await noteFocusWhenSaid(noa, c.failure.alreadyIn, onCircle);
+    await film(noa, await qrDrawing(page, c.code.qrLabel));
+    await expect(
+      noa
+        .getByRole("main")
+        .getByRole("alert")
+        .filter({ hasText: c.failure.alreadyIn }),
+    ).toBeVisible();
+    await expectCameraOff(noa);
+    await expect(noa.locator(onCircle)).toBeFocused();
+    await expect.poll(() => focusWhenSaid(noa)).toBe(true);
+    await clearTimeEntries(NOA.e164);
+    await noa.reload();
+    await circle(noa, c.circle.scanIn).click();
+    await expect(noa.getByText(c.scan.aim)).toBeVisible();
+
     // Held up to the manager's code, it clocks in at once, and the camera
-    // turns off.
+    // turns off. Its line says so as it reads the code; once the circle is
+    // back, with the focus, the toast shows it again and says nothing.
+    const toastCameIn = await noteStatusWords(noa);
     await film(noa, await qrDrawing(page, c.code.qrLabel));
     await expect(noa.getByText(c.scan.readIn)).toBeVisible();
     await expectCameraOff(noa);
     await expect(noa.getByText(c.done.in, { exact: true })).toBeVisible();
     await expect(title(noa, c.title.working)).toBeVisible();
+    await expect(circle(noa, c.circle.scanOut)).toBeFocused();
+    expect(
+      (await toastCameIn()).filter(({ words }) => words === c.done.in),
+    ).toEqual([{ live: "off", words: c.done.in }]);
     await film(noa, null);
 
-    // And out, with the code shown now.
-    await circle(noa, c.circle.scanOut).click();
+    // And out, with the code shown now, from a break: "יציאה מהמשמרת"
+    // opens the camera, and the break goes with the punch, so the circle
+    // has the focus once the camera turns off.
+    await noa.getByRole("button", { name: c.startBreak }).click();
+    await expect(title(noa, c.title.break)).toBeVisible();
+    await noa.getByRole("button", { name: c.endShift }).click();
     await expect(noa.getByText(c.scan.aim)).toBeVisible();
     await film(noa, await qrDrawing(page, c.code.qrLabel));
     await expect(noa.getByText(c.scan.readOut)).toBeVisible();
     await expectCameraOff(noa);
     await expect(title(noa, c.title.off)).toBeVisible();
+    await expect(noa.getByText(c.done.out, { exact: true })).toBeVisible();
+    await expect(circle(noa, c.circle.scanIn)).toBeFocused();
+    await expect(noa.getByRole("button", { name: c.endShift })).toHaveCount(0);
     expect(await demoEntryProofs(NOA.e164)).toEqual([
       { inProof: "scan", outProof: "scan", confirmed: false },
     ]);
   } finally {
     await noa.context().close();
   }
+});
+
+// A camera left on turns itself off after two minutes, and the circle is
+// back: someone who moved on from the camera meanwhile (to the history,
+// here) keeps the focus where they put it.
+test("the camera turning itself off leaves the focus where the worker moved it", async ({
+  page,
+}) => {
+  await setDemoRequirePunchCode(true);
+  await standInCamera(page, "film");
+  await signIn(page, NOA);
+  // Before the page loads: the fake clock comes in through an init script.
+  await page.clock.install();
+  await page.goto("/clock");
+  await circle(page, c.circle.scanIn).click();
+  await expect(page.getByText(c.scan.aim)).toBeVisible();
+  await expectCameraOn(page);
+  const history = page
+    .getByRole("main")
+    .getByRole("link", { name: c.history.title })
+    .filter({ visible: true });
+  await history.focus();
+  await page.clock.fastForward("02:01");
+  await expectCameraOff(page);
+  await expect(circle(page, c.circle.scanIn)).toBeVisible();
+  await expect(history).toBeFocused();
 });
 
 test("a refused camera leads to the digits, and to the camera once allowed", async ({

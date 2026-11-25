@@ -31,7 +31,9 @@ const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
  * entry's words (`afterApproval`), or to the page's title once the card is
  * gone; the toast's words come after it. A refusal keeps the entry, and
  * gives the focus back to its "אישור" (busy meanwhile, so it lost it) once
- * nothing is on its way, else to the card's title; then it says why.
+ * nothing is on its way, else to the card's title; then it says why, in the
+ * card, or where it was when the list read again took the card along (the
+ * last entry, cancelled meanwhile).
  */
 export function ConfirmCard({
   rows,
@@ -82,6 +84,12 @@ export function ConfirmCard({
   // As drawn now: an entry that goes next time is among them.
   const ids = waiting.map((row) => row.entryId);
   const after = (id: string) => () => afterApproval(ids, id);
+  const failed = (className: string) =>
+    failure ? (
+      <p role="alert" className={className}>
+        {t(`failure.${failure}`)}
+      </p>
+    ) : null;
 
   const day = (date: string) =>
     format.dateTime(new Date(`${date}T12:00:00Z`), {
@@ -130,11 +138,7 @@ export function ConfirmCard({
             </h2>
             <p className="text-ink-2 text-sm">{t("confirm.body")}</p>
           </div>
-          {failure ? (
-            <p role="alert" className="px-4 pb-2 font-medium text-danger">
-              {t(`failure.${failure}`)}
-            </p>
-          ) : null}
+          {failed("px-4 pb-2 font-medium text-danger")}
           <ul>
             {waiting.map((row) => {
               const name = row.name ?? t("noName");
@@ -159,7 +163,9 @@ export function ConfirmCard({
             })}
           </ul>
         </Card>
-      ) : null}
+      ) : (
+        failed("font-medium text-danger")
+      )}
     </>
   );
 }

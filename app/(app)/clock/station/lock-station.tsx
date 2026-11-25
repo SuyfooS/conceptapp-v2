@@ -11,7 +11,11 @@ import {
 import { orderStationName } from "@domain/order-stations";
 import { Button, type ButtonProps } from "@ui/button";
 import { ChoiceList, ChoiceRow } from "@ui/choice-row";
-import { type FocusCandidate, focusFirst } from "@ui/focus-after";
+import {
+  type FocusCandidate,
+  focusFirst,
+  ignoreHeldEnter,
+} from "@ui/focus-after";
 import { Sheet } from "@ui/sheet";
 import { StatusToast } from "@ui/status-toast";
 import { TextField } from "@ui/text-field";
@@ -21,6 +25,7 @@ import { useTranslations } from "next-intl";
 import {
   type FormEvent,
   type RefObject,
+  useEffect,
   useId,
   useLayoutEffect,
   useRef,
@@ -34,7 +39,6 @@ import {
   unsentOnDevice,
 } from "../../orders/orders-storage";
 import { closeFilesOnDevice } from "../../team/[person]/file/file-tabs";
-import { ignoreHeldEnter } from "../clock-focus";
 import {
   type LockAction,
   type LockKind,
@@ -177,6 +181,27 @@ export function LockStation({
     queueMicrotask(() => setToast(held.toast));
   }, [shown]);
 
+  /**
+   * A refused stop, held until nothing is on its way: then the focus goes
+   * back to the stop if it is still there (busy meanwhile, so it lost it),
+   * else on to the lock the screen read again opened, and only then is the
+   * refusal said, so its words never come before that move.
+   */
+  const refusedStop = useRef<StationStopFailure | null>(null);
+  useEffect(() => {
+    const held = refusedStop.current;
+    if (stopping || !held) return;
+    refusedStop.current = null;
+    // A microtask on: the stop gone with the screen read again queued the
+    // focus's move as it went (`useFocusWhenGone`), so this comes after it.
+    queueMicrotask(() => {
+      focusFirst([stopButton.current, lockButton.current, otherLine.current], {
+        preventScroll: true,
+      });
+      setStopFailure(held);
+    });
+  }, [stopping]);
+
   /** Shows `next` once the screen no longer shows `from`, now if it already doesn't. */
   function toastOnceMoved(next: Toast, from: Shown) {
     if (shownNow.current === from) waiting.current = { toast: next, from };
@@ -201,11 +226,12 @@ export function LockStation({
   /** The device's kitchen's screen or till stopped, so the lock opens once the screen is read again. */
   function stopIt(stop: StopOther, stopped: string) {
     setStopFailure(null);
+    refusedStop.current = null;
     startStop(async () => {
       try {
         const result = await stop.stop();
         if (!result.ok) {
-          setStopFailure(result.failure);
+          refusedStop.current = result.failure;
           return;
         }
         const undo = result.undo;
@@ -220,7 +246,7 @@ export function LockStation({
         if (undo) setToast(said);
         else toastOnceMoved(said, "stop");
       } catch {
-        setStopFailure("failed");
+        refusedStop.current = "failed";
       }
     });
   }
@@ -248,6 +274,14 @@ export function LockStation({
       }
     });
   }
+
+  // Said whichever the screen shows: a stop refused as the other one had
+  // gone already ("gone") opens the lock once the screen is read again.
+  const stopRefused = stopFailure ? (
+    <p role="alert" className="font-medium text-danger">
+      {tf(stopFailure)}
+    </p>
+  ) : null;
 
   // Kept across the stop, by its key: the page read again opens the lock in
   // its place.
@@ -306,11 +340,7 @@ export function LockStation({
             {tc("stopOther", { name: other.name })}
           </WatchedButton>
         ) : null}
-        {stopFailure ? (
-          <p role="alert" className="font-medium text-danger">
-            {tf(stopFailure)}
-          </p>
-        ) : null}
+        {stopRefused}
         {stopToast}
       </>
     );
@@ -373,6 +403,7 @@ export function LockStation({
         size={primary ? "lg" : "md"}
         onClick={() => {
           setFailure(null);
+          setStopFailure(null);
           setOpen(true);
           if (clearsDevice) void unsentOnDevice().then(setUnsent);
         }}
@@ -380,6 +411,7 @@ export function LockStation({
         <Lock aria-hidden="true" />
         {label ?? tc("open")}
       </WatchedButton>
+      {stopRefused}
       <Sheet
         open={open}
         onOpenChange={setOpen}

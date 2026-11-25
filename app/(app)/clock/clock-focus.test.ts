@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { clockState, ignoreHeldEnter, pressOver } from "./clock-focus";
+import { clockState, pressOver } from "./clock-focus";
 
 /*
  * When the clock puts the focus back after a press of its own buttons
  * (accessibility, part 5): once nothing is on its way and the screen the
- * press led to is drawn, or the press was refused; and a held Enter that
- * would press what took the pressed button's place.
+ * press led to is drawn, or the press was refused. A held Enter is
+ * `@ui/focus-after`'s (`ignoreHeldEnter`).
  */
 
 describe("clockState", () => {
@@ -55,32 +55,5 @@ describe("pressOver", () => {
   it("is over at once for a refusal, which changes nothing", () => {
     const press = { from: working, refused: true };
     expect(pressOver(press, { busy: false, state: working })).toBe(true);
-  });
-});
-
-describe("ignoreHeldEnter", () => {
-  const key = (name: string, repeat: boolean) => {
-    const event = {
-      key: name,
-      repeat,
-      prevented: false,
-      preventDefault() {
-        event.prevented = true;
-      },
-    };
-    return event;
-  };
-
-  it("stops Enter held down from pressing what took the focus", () => {
-    const held = key("Enter", true);
-    ignoreHeldEnter(held);
-    expect(held.prevented).toBe(true);
-  });
-
-  it("leaves a first Enter, and every other key, as they are", () => {
-    for (const event of [key("Enter", false), key(" ", true), key("a", true)]) {
-      ignoreHeldEnter(event);
-      expect(event.prevented).toBe(false);
-    }
   });
 });

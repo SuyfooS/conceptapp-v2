@@ -1,8 +1,10 @@
 "use client";
 
 import { Button } from "@ui/button";
+import { focusFirst } from "@ui/focus-after";
 import { Sheet } from "@ui/sheet";
 import { useFormatter, useTranslations } from "next-intl";
+import { useEffect, useRef, useState } from "react";
 import type { ClockActionResult } from "./clock-types";
 
 type Failure = Exclude<ClockActionResult, { ok: true }>["failure"];
@@ -11,6 +13,10 @@ type Failure = Exclude<ClockActionResult, { ok: true }>["failure"];
  * Clocking in or out without a code, for whoever can't type or scan it: the
  * time is kept as it is now, the entry is marked, and a manager approves it.
  * It says the time before it is pressed, so nothing comes as a surprise.
+ * A refusal keeps the sheet, and says why once nothing is on its way, with
+ * the focus back on the press first (busy meanwhile, so it lost it, and
+ * Radix put it on the sheet's frame): said before that move, it would be
+ * cut off.
  */
 export function WithoutCodeSheet({
   open,
@@ -45,6 +51,17 @@ export function WithoutCodeSheet({
   const t = useTranslations("app.clock");
   const format = useFormatter();
   const at = new Date(now);
+  const confirm = useRef<HTMLButtonElement>(null);
+  const [said, setSaid] = useState<Failure | null>(null);
+  useEffect(() => {
+    if (failure === null) {
+      setSaid(null);
+      return;
+    }
+    if (pending) return;
+    focusFirst([confirm.current], { title: false });
+    setSaid(failure);
+  }, [failure, pending]);
   return (
     <Sheet
       open={open}
@@ -67,12 +84,13 @@ export function WithoutCodeSheet({
           })}
         </time>
         <p className="text-ink-2">{t("none.body")}</p>
-        {failure ? (
+        {said ? (
           <p role="alert" className="font-medium text-danger">
-            {t(`failure.${failure}`)}
+            {t(`failure.${said}`)}
           </p>
         ) : null}
         <Button
+          ref={confirm}
           size="lg"
           className="w-full"
           loading={pending}
