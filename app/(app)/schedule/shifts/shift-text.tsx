@@ -1,4 +1,4 @@
-import { awayOn } from "@domain/absences";
+import { assigneesAway } from "@domain/absences";
 import { weekdayOf } from "@domain/availability";
 import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
 import { firstNameOf } from "@domain/people";
@@ -94,23 +94,23 @@ export const positionName = (
   key: string | null | undefined,
 ) => data.positions.find((p) => p.key === key)?.name ?? null;
 
-/** Everyone on a shift as their avatars show them, in the shift's order. */
 /**
- * Who on a shift is recorded as away that day (known issue 19), by name,
- * for whoever builds the schedule: never why. Empty for everyone else, who
- * gets no days away to read.
+ * Who on a shift is recorded as away during it (known issue 19), by name,
+ * for whoever builds the schedule: never why. Its day, and the day after
+ * for a night past midnight (`assigneesAway`, as the builder's card and the
+ * shift's sheet read it; known issue 107). Empty for everyone else, who gets
+ * no days away to read.
  */
 export const awayOnShift = (
   t: AppT,
   data: Pick<ShiftData, "people" | "away">,
-  shift: Pick<ScheduledShift, "assignees" | "day">,
+  shift: Pick<ScheduledShift, "assignees" | "day" | "start" | "end">,
 ): string[] =>
   data.away
-    ? shift.assignees
-        .filter((a) => awayOn(data.away ?? [], a.user, shift.day))
-        .map((a) => nameOf(t, data, a.user))
+    ? assigneesAway(data.away, shift).map((user) => nameOf(t, data, user))
     : [];
 
+/** Everyone on a shift as their avatars show them, in the shift's order. */
 export const assigneePeople = (
   t: AppT,
   data: Pick<ShiftData, "people">,

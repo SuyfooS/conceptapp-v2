@@ -4,6 +4,7 @@ import {
   firstNameOf,
   initialsOf,
   shortNames,
+  shortNamesAmong,
   shownName,
 } from "./people";
 
@@ -47,6 +48,36 @@ describe("shortNames", () => {
       "נועה לוי",
       "איתי",
     ]);
+  });
+});
+
+describe("shortNamesAmong", () => {
+  const shift = ["נועה כהן", "נועה לוי", "איתי מזרחי"];
+
+  it("keeps a full name when the whole list repeats its first name", () => {
+    // Only one of the two Noas is away: the line still says which.
+    expect(shortNamesAmong(["נועה כהן"], shift)).toEqual(["נועה כהן"]);
+    expect(shortNamesAmong(["נועה לוי", "נועה כהן"], shift)).toEqual([
+      "נועה לוי",
+      "נועה כהן",
+    ]);
+  });
+
+  it("keeps first names where the list has no other", () => {
+    expect(shortNamesAmong(["איתי מזרחי"], shift)).toEqual(["איתי"]);
+    expect(shortNamesAmong(["נועה כהן"], ["נועה כהן", "שירן"])).toEqual([
+      "נועה",
+    ]);
+  });
+
+  it("leaves a name not on the list whole", () => {
+    expect(shortNamesAmong(["מי שכבר לא בצוות"], shift)).toEqual([
+      "מי שכבר לא בצוות",
+    ]);
+  });
+
+  it("is empty for nobody", () => {
+    expect(shortNamesAmong([], shift)).toEqual([]);
   });
 });
 

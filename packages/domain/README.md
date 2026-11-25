@@ -169,6 +169,22 @@ Saturday from havdalah to midnight) gets the usual hours all the same, and
 the day's check names the overlap. The form has no rule for holidays, so the
 suggestion has none.
 
+`absences.ts` is days away (known issue 19): the form's checks, the days by
+kind for payroll, and who is away when, never why. Someone is away during a
+shift (`awayDuring`) when they are away on its day, or, for a shift that ends
+after midnight, on the day after; one that ends at 00:00 exactly is its own
+day's only. The schedule reads every warning about one shift through it:
+the shift sheet's lists, the copy, the fill's rule, and a shift's card in the
+builder and on the schedule tab (`assigneesAway`, who on the shift is away
+during it, since 25 November 2026, known issue 107). The sheet, the copy and
+the cards say it in the sheet's words, "לא בעבודה בשעות המשמרת"; the fill
+says its rule in its own ("לא בעבודה" beside a name). A day's own line in the
+builder ("לא בעבודה: {names}", `awayByDay`) and Today still read the day
+alone, so a night into a day away is said on its card and not on its day.
+For the nights, days away are read to the day after the last week shown
+(`awayWindow`): the builder's week and the day after it, the tab's two
+weeks and the day after them.
+
 `copy-week.ts` is "העתקה מהשבוע שעבר" on the schedule builder: last week as it
 stands once built (`copySourceOf`), what copying it onto the week on the
 screen does day by day and who it leaves out and why (`copyLastWeek`, its

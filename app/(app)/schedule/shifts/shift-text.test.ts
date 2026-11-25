@@ -10,6 +10,7 @@ import en from "@/messages/en.json";
 import he from "@/messages/he.json";
 import {
   type AppT,
+  awayOnShift,
   endedRequestLine,
   nameOf,
   outcomeLine,
@@ -48,6 +49,66 @@ describe("nameOf", () => {
 
   it("says no name when there is nobody", () => {
     expect(nameOf(t, { people }, null)).toBe("«shifts.noName»");
+  });
+});
+
+// The schedule tab's warning on a shift, for whoever builds the schedule
+// (known issue 107): who is away during it, as the builder's card and the
+// shift's sheet say it, by name and never why.
+describe("awayOnShift", () => {
+  // Next week's Saturday 5 December and the Sunday after it.
+  const away = [
+    { userId: "noa", from: "2026-12-06", to: "2026-12-06" },
+    { userId: "yoav", from: "2026-12-05", to: "2026-12-05" },
+    { userId: "gone", from: "2026-12-05", to: "2026-12-06" },
+  ];
+  const shift = (start: string, end: string, users: string[]) => ({
+    day: "2026-12-05",
+    start,
+    end,
+    assignees: users.map((user) => ({ user, position: null })),
+  });
+  const named = (on: ReturnType<typeof shift>) =>
+    awayOnShift(t, { people, away }, on);
+
+  it("names whoever is away the day after a night past midnight", () => {
+    // Noa is away on Sunday alone: Saturday's own day said nothing of her.
+    expect(named(shift("20:00", "02:00", ["noa", "shiran"]))).toEqual([
+      "נועה כהן",
+    ]);
+  });
+
+  it("names whoever is away on a day shift's own day, and not the day after", () => {
+    expect(named(shift("09:00", "16:00", ["noa", "yoav"]))).toEqual([
+      "יואב לוי",
+    ]);
+    // Until 00:00 exactly is Saturday's alone.
+    expect(named(shift("19:30", "00:00", ["noa", "yoav"]))).toEqual([
+      "יואב לוי",
+    ]);
+  });
+
+  it("names them in the shift's order, someone no longer on the team as such", () => {
+    expect(named(shift("20:00", "02:00", ["yoav", "gone", "noa"]))).toEqual([
+      "יואב לוי",
+      "«shifts.former»",
+      "נועה כהן",
+    ]);
+  });
+
+  it("says nothing to whoever reads no days away", () => {
+    const night = shift("20:00", "02:00", ["noa", "yoav"]);
+    expect(awayOnShift(t, { people, away: null }, night)).toEqual([]);
+    expect(awayOnShift(t, { people }, night)).toEqual([]);
+  });
+
+  it("is said in the words of the shift's sheet, on the tab and in the builder", () => {
+    const build = he.app.build;
+    expect(build.awayOnShift).toBe(`{names} ${build.groups.away}`);
+    expect(build.notes.away).toBe(build.groups.away);
+    expect(en.app.build.awayOnShift).toBe(
+      `{names}: ${en.app.build.groups.away.toLowerCase()}`,
+    );
   });
 });
 

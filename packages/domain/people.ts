@@ -39,6 +39,20 @@ export function shortNames(names: readonly string[]): string[] {
   );
 }
 
+/**
+ * Some of a list's people, short as `shortNames` makes them over the whole
+ * list, so a line about a few of a card's people (who is away, who clashes)
+ * tells apart two of the same first name as the card's own list does. A name
+ * not on the list stays whole.
+ */
+export function shortNamesAmong(
+  names: readonly string[],
+  list: readonly string[],
+): string[] {
+  const short = shortNames(list);
+  return names.map((name) => short[list.indexOf(name)] ?? name);
+}
+
 /** A stable hue (0 to 359) for a person, so their avatar keeps its colour. */
 export function avatarHue(name: string): number {
   let hash = 0;

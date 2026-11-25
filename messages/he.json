@@ -1957,7 +1957,7 @@
         "removed": "השעות <ltr>{from}–{to}</ltr> הוסרו."
       },
       "addRange": "הוספת שעות",
-      "removeRange": "הסרת השעות {from}–{to}",
+      "removeRange": "הסרת השעות <ltr>{from}–{to}</ltr>",
       "start": "משעה",
       "end": "עד שעה",
       "candleLighting": "כניסת שבת <ltr>{time}</ltr>. אפשר לסמן שעות עד אז.",
@@ -2096,7 +2096,7 @@
       "busyOnDay": "במשמרת {name} ביום {day}, <ltr>{start}–{end}</ltr>",
       "alsoOn": "גם במשמרת {name}",
       "clashOnShift": "{names} גם במשמרת אחרת באותה שעה",
-      "awayOnShift": "{names} לא בעבודה ביום הזה",
+      "awayOnShift": "{names} לא בעבודה בשעות המשמרת",
       "remove": "הסרת {name} מהמשמרת",
       "added": "{form, select, f {{name} נוספה למשמרת, {assigned} מתוך {needed}} m {{name} נוסף למשמרת, {assigned} מתוך {needed}} other {{name} נוסף/ה למשמרת, {assigned} מתוך {needed}}}",
       "removed": "{form, select, f {{name} הוסרה מהמשמרת, {assigned} מתוך {needed}} m {{name} הוסר מהמשמרת, {assigned} מתוך {needed}} other {{name} הוסר/ה מהמשמרת, {assigned} מתוך {needed}}}",

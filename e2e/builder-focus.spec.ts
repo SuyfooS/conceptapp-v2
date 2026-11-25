@@ -434,9 +434,14 @@ test("removing hours in a day's sheet puts the focus on its undo, and undone on 
     name: new RegExp(`^${ta.day.split("{day}")[0]}${ta.weekdays.sun},`),
   });
   const starts = sheet.getByLabel(ta.start);
-  const removeMorning = sheet.getByRole("button", {
-    name: ta.removeRange.replace("{from}", "09:00").replace("{to}", "17:00"),
+  // The "×" has one label for its name and its tooltip, plain text: the
+  // hours in isolates, so the tooltip draws them in order inside the Hebrew.
+  const removeLabel = heT.markup("app.availability.removeRange", {
+    from: "09:00",
+    to: "17:00",
+    ltr: isolated,
   });
+  const removeMorning = sheet.getByRole("button", { name: removeLabel });
   const undo = sheet.getByRole("button", { name: UNDO_NAMED });
 
   await page.goto("/design/shell/schedule/availability");
@@ -445,6 +450,11 @@ test("removing hours in a day's sheet puts the focus on its undo, and undone on 
   await sheet.getByRole("button", { name: ta.addRange }).click();
   await expect(starts).toHaveCount(2);
 
+  await expect(removeMorning).toHaveAccessibleName(removeLabel);
+  await expect(removeMorning).toHaveAccessibleName(
+    new RegExp(isolated("09:00–17:00")),
+  );
+  await expect(removeMorning).toHaveAttribute("title", removeLabel);
   await removeMorning.click();
   await expect(starts).toHaveCount(1);
   await expect(undo).toBeFocused();
