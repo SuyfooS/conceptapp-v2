@@ -539,7 +539,15 @@ test("a press without a code refused as already in keeps its sheet until it has 
   });
   await expect(without.getByRole("alert")).toHaveText(c.failure.alreadyIn);
   await expect(without).toHaveAttribute("data-state", "open");
-  await expect(title(page, c.title.working)).toBeVisible();
+  // The page read again is drawn behind the open sheet, which hides it from
+  // the accessibility tree while it stays modal: found with the hidden too.
+  await expect(
+    page.getByRole("heading", {
+      name: c.title.working,
+      level: 1,
+      includeHidden: true,
+    }),
+  ).toBeVisible();
   // Said, it closes at once, onto the circle.
   await page.keyboard.press("Escape");
   await expect(without).toBeHidden();
