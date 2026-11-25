@@ -395,8 +395,9 @@ test("a removal refused twice in the same words says it twice, and the sheet the
 });
 
 // Left by back while a refused write from the sheet is on its way, and come
-// back to by forward (25 November 2026): her page is kept hidden meanwhile
-// (Next's Activity), and its sheet with it. It shows again open, with what
+// back to by forward (25 November 2026): her page is kept hidden once the
+// answer is drawn (Next's Activity), and its sheet with it, which stays
+// where it was instead of being drawn anew. It shows again open, with what
 // was typed and the refusal said, closes with its ✕, and gives the focus
 // back to what opened it, never to the page's body.
 test("a refusal on its way as her page is left by back is said once it is come back to by forward", async ({
@@ -453,10 +454,12 @@ test("a refusal on its way as her page is left by back is said once it is come b
       .click();
     await page.goBack();
     await expect(page).toHaveURL(/\/clock\/team$/);
-    // Hidden with her page.
-    await expect(dialog).toBeHidden();
+    // The write runs in a transition (`useSheetWrite`), and React holds a
+    // navigation started meanwhile until it ends: the team's page is drawn,
+    // and hers kept hidden with its sheet, in the drawing of the refusal.
     letGo();
     await answered;
+    await expect(dialog).toBeHidden();
     await page.goForward();
     await expect(page).toHaveURL(new RegExp(`/clock/team/${NOA.id}`));
   } finally {
