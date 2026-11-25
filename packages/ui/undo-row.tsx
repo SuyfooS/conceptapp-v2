@@ -5,7 +5,7 @@ import { type Ref, useEffect, useId, useRef, useState } from "react";
 import { announce } from "./announcer";
 import { Button } from "./button";
 import { cn } from "./cn";
-import { type FocusCandidate, onScreen } from "./focus-after";
+import { type FocusCandidate, ignoreHeldEnter, onScreen } from "./focus-after";
 import { useFocusWhenGone } from "./use-focus-after";
 import { useUndoWait } from "./use-undo-wait";
 
@@ -22,7 +22,8 @@ export type UndoRowProps = {
    * undoes (`key={removed.key}`), so each removal mounts a row of its own,
    * which takes the focus, waits and is said afresh. Unkeyed, the row there
    * only changes its words, and the focus stays where the pressed button
-   * went: nowhere.
+   * went: nowhere. Enter held down from that press undoes nothing
+   * (`ignoreHeldEnter`): only a key's first press takes it back.
    */
   autoFocus?: boolean;
   /**
@@ -130,6 +131,7 @@ export function UndoRow({
         loading={pending}
         onClick={onUndo}
         autoFocus={autoFocus}
+        onKeyDown={ignoreHeldEnter}
         aria-describedby={messageId}
         className="shrink-0"
       >

@@ -2512,6 +2512,8 @@
         "back": "שעון",
         "earlier": "חודש קודם: {month}",
         "later": "חודש הבא: {month}",
+        "monthShown": "{month}: {hours} {caption}",
+        "monthHours": "{hours} {caption}",
         "total": "שעות, {count, plural, =0 {אין משמרות} one {משמרת אחת} other {# משמרות}}",
         "times": "<ltr>{in}–{out}</ltr>",
         "since": "מ-<ltr>{in}</ltr>",
@@ -2699,7 +2701,9 @@
           "addBreak": "ההפסקה נוספה",
           "removeBreak": "ההפסקה הוסרה",
           "restoreBreak": "ההפסקה חזרה",
-          "undo": "ביטול"
+          "undo": "ביטול",
+          "undoCancel": "ביטול: המשמרת חוזרת",
+          "undoRemoveBreak": "ביטול: ההפסקה חוזרת"
         },
         "confirm": {
           "title": "{count, plural, one {רישום אחד מחכה לאישור} other {# רישומים מחכים לאישור}}",
@@ -2709,7 +2713,7 @@
           "fix": "תיקון",
           "approveLabel": "אישור השעות של {name}",
           "fixLabel": "תיקון השעות של {name}",
-          "done": "השעות אושרו"
+          "done": "השעות של {name} אושרו"
         },
         "stations": {
           "title": "עמדות השעון",
@@ -2788,7 +2792,8 @@
           "edit": "השינוי נשמר",
           "remove": "ההיעדרות הוסרה",
           "restore": "ההיעדרות חזרה",
-          "undo": "ביטול"
+          "undo": "ביטול",
+          "undoRemove": "ביטול: ההיעדרות חוזרת"
         },
         "failure": {
           "kind": "צריך לבחור סוג.",

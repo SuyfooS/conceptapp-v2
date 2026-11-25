@@ -24,6 +24,7 @@ const SUCCESS_MS = 600;
 export function PunchCodeSheet({
   open,
   onOpenChange,
+  returnFocus,
   direction,
   locked,
   punchWith,
@@ -32,6 +33,12 @@ export function PunchCodeSheet({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * Where the focus goes once it has closed (Sheet's `returnFocus`): it
+   * opens from the camera, which goes as it opens, so what held the focus
+   * then is gone.
+   */
+  returnFocus?: () => HTMLElement | null | undefined;
   direction: "in" | "out";
   /** Typing is blocked for now, after too many wrong digits. */
   locked: boolean;
@@ -48,6 +55,7 @@ export function PunchCodeSheet({
     <Sheet
       open={open}
       onOpenChange={onOpenChange}
+      returnFocus={returnFocus}
       title={t(direction === "in" ? "type.titleIn" : "type.titleOut")}
       subtitle={t("type.subtitle")}
       closeLabel={t("team.sheet.close")}
