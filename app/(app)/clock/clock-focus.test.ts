@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clockState, pressOver } from "./clock-focus";
+import { clockState, closeHeldForRefusal, pressOver } from "./clock-focus";
 
 /*
  * When the clock puts the focus back after a press of its own buttons
@@ -55,5 +55,36 @@ describe("pressOver", () => {
   it("is over at once for a refusal, which changes nothing", () => {
     const press = { from: working, refused: true };
     expect(pressOver(press, { busy: false, state: working })).toBe(true);
+  });
+});
+
+// "כניסה בלי קוד" refused (the third check): the sheet says why only once
+// the page read again is drawn, so a close meanwhile would lose it.
+describe("closeHeldForRefusal", () => {
+  it("keeps the close while a refusal waits to be said", () => {
+    expect(
+      closeHeldForRefusal(false, { failure: "alreadyIn", said: null }),
+    ).toBe(true);
+  });
+
+  it("lets it close once said, or with nothing refused", () => {
+    expect(
+      closeHeldForRefusal(false, { failure: "alreadyIn", said: "alreadyIn" }),
+    ).toBe(false);
+    expect(closeHeldForRefusal(false, { failure: null, said: null })).toBe(
+      false,
+    );
+  });
+
+  it("holds for a new refusal while an older one is still shown", () => {
+    expect(
+      closeHeldForRefusal(false, { failure: "noAccess", said: "alreadyIn" }),
+    ).toBe(true);
+  });
+
+  it("never holds an opening", () => {
+    expect(
+      closeHeldForRefusal(true, { failure: "alreadyIn", said: null }),
+    ).toBe(false);
   });
 });

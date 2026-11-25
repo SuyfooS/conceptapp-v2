@@ -67,8 +67,9 @@ An effect that moves the focus to what arrived (a refusal, a card) asks
 `<Activity>` runs its effects again with the same value, and the focus stays
 where it is then. `ignoreHeldEnter`, a button's `onKeyDown`, lets only a
 key's first press count: what takes the focus in a pressed button's place
-(StatusToast's action with `focusAction`, ScanCircle's stop, the clock's
-buttons) takes no Enter still held down from that press.
+(StatusToast's action with `focusAction`, UndoRow's "ביטול" with `autoFocus`,
+ScanCircle's stop, a Sheet's ✕ as it opens, the clock's buttons) takes no
+Enter still held down from that press.
 
 `@ui/undo-wait` (no React) is the one rule for a way back that waits while it
 is being reached, StatusToast's and UndoRow's: the keyboard's focus on it with

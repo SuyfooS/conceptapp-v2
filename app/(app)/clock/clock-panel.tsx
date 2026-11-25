@@ -46,19 +46,14 @@ type Direction = "in" | "out";
 /** What started a scan: the circle, or "End shift" during a break. */
 type ScanFrom = "circle" | "endShift";
 type Failure = Exclude<ClockActionResult, { ok: true }>["failure"];
-/**
- * What a press says once it is over: the toast's words, or why it was
- * refused. `quiet` shows the toast without saying it: the camera's own
- * line said it as it read the code.
- */
-type Said = { text: string; quiet?: boolean } | { failure: Failure };
-type Toast = { text: string; stamp: string; quiet: boolean };
+/** What a press says once it is over: the toast's words, or why it was refused. */
+type Said = { text: string } | { failure: Failure };
+type Toast = { text: string; stamp: string };
 
 /** A toast's words, stamped, so the same words show again. */
-const toastOf = (text: string, quiet = false): Toast => ({
+const toastOf = (text: string): Toast => ({
   text,
   stamp: new Date().toISOString(),
-  quiet,
 });
 
 /** The time now, ticking each second while `running`. */
@@ -86,8 +81,9 @@ function useNow(initial: string, running: boolean): number {
  * says the time running and what pressing it does, as it does when "ביטול
  * היציאה" goes once its time is up. What a press says (the toast, or why it
  * was refused, by the screen or the camera) comes after the focus has
- * landed, never before; a scanned punch's toast only shows, as the camera's
- * line said it.
+ * landed, never before; for a scanned punch the toast says it, the camera's
+ * line only showing it (`quietRead`), as the focus moving on from the camera
+ * would cut that line off.
  */
 export function ClockPanel({
   data,
@@ -113,6 +109,15 @@ export function ClockPanel({
   const [scanning, setScanning] = useState<Direction | null>(null);
   /** Where the focus goes back to once the camera gives the circle back. */
   const [scanFrom, setScanFrom] = useState<ScanFrom>("circle");
+  /**
+   * The camera came back from a sheet still sliding away (`sheetToScan`):
+   * its stop takes no focus as it appears, while Radix still hides the page
+   * from screen readers; the sheet gives it the focus once it has gone
+   * (`sheetGaveBack`).
+   */
+  const [scanFromSheet, setScanFromSheet] = useState(false);
+  /** The camera's stop, while it is on. */
+  const stopRef = useRef<HTMLButtonElement>(null);
   // The press without a code holds its sheet until the answer (`noneHeld`),
   // and its buttons until the page read again after it is drawn.
   const {
@@ -171,7 +176,7 @@ export function ClockPanel({
   /** Says them now, the toast's words or why it was refused. */
   function utter(words: Said) {
     if ("failure" in words) setFailure(words.failure);
-    else setToast(toastOf(words.text, words.quiet));
+    else setToast(toastOf(words.text));
   }
 
   /** Holds a press's words until it is over, or says them if it is already. */
@@ -247,9 +252,6 @@ export function ClockPanel({
                 ? "done.outNone"
                 : "done.out",
           ),
-          // The camera's line said it as it read the code ("נקלט. נרשמה
-          // כניסה"): the toast shows it again, and says it no more.
-          quiet: proof.kind === "scan",
         };
       }
       return result;
@@ -272,6 +274,7 @@ export function ClockPanel({
     setFailure(null);
     setDirection(to);
     setScanFrom(from);
+    setScanFromSheet(false);
     setScanning(to);
   }
 
@@ -285,6 +288,7 @@ export function ClockPanel({
   /** From a sheet back to the camera, the same way in or out. */
   function sheetToScan() {
     setSheet(null);
+    setScanFromSheet(true);
     setScanning(direction);
   }
 
@@ -302,10 +306,13 @@ export function ClockPanel({
     // "End shift" while the break goes on; the circle otherwise, as after
     // clocking out from a break, when "End shift" is gone. Only where the
     // focus was lost with the camera: someone who moved on from it (the
-    // history, the tab bar) before it turned itself off stays there.
+    // history, the tab bar) before it turned itself off stays there. And
+    // without moving the page: it lands where the camera was, and someone
+    // who only scrolled on meanwhile (a finger, a wheel), the focus left on
+    // the camera's stop, stays where they scrolled.
     focusFirst(
       [(scanFrom === "endShift" && paused ? endShiftRef : circleRef).current],
-      { title: false },
+      { title: false, preventScroll: true },
     );
     setRefocus(false);
   }, [refocus, scanning, scanFrom, paused]);
@@ -313,10 +320,11 @@ export function ClockPanel({
   /**
    * The screen's main control now, where the focus goes once what held it
    * went: "יציאה מהמשמרת" during a break, the circle otherwise (both are
-   * there during a break, "יציאה מהמשמרת" first). Neither while the camera
-   * is on: its own "ביטול" has the focus then.
+   * there during a break, "יציאה מהמשמרת" first). Neither is drawn while
+   * the camera is on: its stop then, for a sheet that led back to it.
    */
-  const mainControl = () => endShiftRef.current ?? circleRef.current;
+  const mainControl = () =>
+    endShiftRef.current ?? circleRef.current ?? stopRef.current;
 
   /**
    * A sheet gave the focus back as it left the page (its `returnFocus`, the
@@ -402,17 +410,15 @@ export function ClockPanel({
 
   return (
     <div className="flex flex-col items-center gap-5">
-      <StatusToast
-        message={toast?.text ?? null}
-        stamp={toast?.stamp}
-        quiet={toast?.quiet ?? false}
-      />
+      <StatusToast message={toast?.text ?? null} stamp={toast?.stamp} />
       {scanning ? (
         <ScanPunch
           key={scanning}
           direction={scanning}
           timeZone={data.timeZone}
           punchWith={punchWith}
+          stopRef={stopRef}
+          focusStop={!scanFromSheet}
           onDone={endScan}
           onFailure={(refusal) => {
             // A refusal the circle says (already in, no access…), as a
@@ -540,7 +546,8 @@ export function ClockPanel({
             open={sheet === "none"}
             onOpenChange={(next) => {
               // The answer to a press under way belongs on this sheet, and
-              // only the answer: a refusal shows before the page comes back.
+              // only the answer. A refusal shows once the page read again
+              // is drawn, and the sheet itself keeps its close until then.
               if (!noneHeld()) setSheet(next ? "none" : null);
             }}
             returnFocus={sheetGaveBack}

@@ -3,7 +3,8 @@
  * is over (accessibility, part 5): "יציאה להפסקה", "יציאה מהמשמרת" and
  * "ביטול היציאה" each give way to what their press drew, so the focus goes
  * to the screen's main control now, "יציאה מהמשמרת" during a break and the
- * circle otherwise. No React here, and no page. A held Enter's repeats are
+ * circle otherwise; and when a sheet keeps its close for a refusal it has
+ * yet to say. No React here, and no page. A held Enter's repeats are
  * `@ui/focus-after`'s `ignoreHeldEnter`.
  */
 
@@ -35,4 +36,17 @@ export function pressOver(
 ): boolean {
   if (press === null || now.busy) return false;
   return press.refused || now.state !== press.from;
+}
+
+/**
+ * Whether a sheet keeps its close for a refusal it has not said yet: it
+ * says one once the page read again is drawn, which comes after the answer,
+ * and closed before that, nothing would ever say it. A closing only, never
+ * an opening.
+ */
+export function closeHeldForRefusal<Failure>(
+  open: boolean,
+  refusal: { failure: Failure | null; said: Failure | null },
+): boolean {
+  return !open && refusal.failure !== null && refusal.said !== refusal.failure;
 }

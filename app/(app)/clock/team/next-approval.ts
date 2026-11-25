@@ -23,3 +23,21 @@ export const afterApproval = (ids: readonly string[], id: string) => [
   ...nextInLine(ids, id).map(entryTarget),
   CONFIRM_TITLE,
 ];
+
+/** A refused approval, with the list of entries drawn as it was said. */
+export type Refusal<Failure, List> = { failure: Failure; list: List };
+
+/**
+ * Why an approval was refused, while the list it came back with is still
+ * the one drawn (the same list, not one with the same entries): in the card,
+ * or where it was once the card went with the entry. A list read again
+ * later (the app back in view, another manager's approval) takes it away:
+ * the entry it was about may be gone, the card may be drawn again over
+ * someone else's, and an alert drawn again is said again.
+ */
+export function refusalNow<Failure, List>(
+  refusal: Refusal<Failure, List> | null,
+  list: List,
+): Failure | null {
+  return refusal !== null && refusal.list === list ? refusal.failure : null;
+}

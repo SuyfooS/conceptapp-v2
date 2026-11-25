@@ -15,7 +15,12 @@ import {
   useState,
   useTransition,
 } from "react";
-import { afterApproval, CONFIRM_TITLE } from "./next-approval";
+import {
+  afterApproval,
+  CONFIRM_TITLE,
+  type Refusal,
+  refusalNow,
+} from "./next-approval";
 import type { EntryFailure, EntryToConfirm, TeamActions } from "./team-types";
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
@@ -33,7 +38,8 @@ const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
  * gives the focus back to its "אישור" (busy meanwhile, so it lost it) once
  * nothing is on its way, else to the card's title; then it says why, in the
  * card, or where it was when the list read again took the card along (the
- * last entry, cancelled meanwhile).
+ * last entry, cancelled meanwhile), for as long as that list is the one
+ * drawn (`refusalNow`).
  */
 export function ConfirmCard({
   rows,
@@ -51,7 +57,10 @@ export function ConfirmCard({
   const format = useFormatter();
   const [pending, start] = useTransition();
   const [busy, setBusy] = useState<string | null>(null);
-  const [failure, setFailure] = useState<EntryFailure | null>(null);
+  const [failure, setFailure] = useState<Refusal<
+    EntryFailure,
+    EntryToConfirm[]
+  > | null>(null);
   const [toast, setToast] = useState<{ name: string; stamp: string } | null>(
     null,
   );
@@ -68,12 +77,13 @@ export function ConfirmCard({
     if (pending || !held) return;
     refusal.current = null;
     // A microtask on, so an entry the list read again took away has moved
-    // the focus on first (`useFocusWhenGone`).
+    // the focus on first (`useFocusWhenGone`). With the list drawn now,
+    // which the write read again: a later read takes the refusal away.
     queueMicrotask(() => {
       focusFirst([held.from, CONFIRM_TITLE]);
-      setFailure(held.failure);
+      setFailure({ failure: held.failure, list: rows });
     });
-  }, [pending]);
+  }, [pending, rows]);
   /** Approved here, until the list is read again without them. */
   const [approved, setApproved] = useState<readonly string[]>([]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: the list read again is what clears it
@@ -84,10 +94,11 @@ export function ConfirmCard({
   // As drawn now: an entry that goes next time is among them.
   const ids = waiting.map((row) => row.entryId);
   const after = (id: string) => () => afterApproval(ids, id);
+  const refused = refusalNow(failure, rows);
   const failed = (className: string) =>
-    failure ? (
+    refused ? (
       <p role="alert" className={className}>
-        {t(`failure.${failure}`)}
+        {t(`failure.${refused}`)}
       </p>
     ) : null;
 

@@ -5,6 +5,7 @@ import { focusFirst } from "@ui/focus-after";
 import { Sheet } from "@ui/sheet";
 import { useFormatter, useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
+import { closeHeldForRefusal } from "./clock-focus";
 import type { ClockActionResult } from "./clock-types";
 
 type Failure = Exclude<ClockActionResult, { ok: true }>["failure"];
@@ -16,7 +17,9 @@ type Failure = Exclude<ClockActionResult, { ok: true }>["failure"];
  * A refusal keeps the sheet, and says why once nothing is on its way, with
  * the focus back on the press first (busy meanwhile, so it lost it, and
  * Radix put it on the sheet's frame): said before that move, it would be
- * cut off.
+ * cut off. Until it has said it, ✕, Escape, the scrim or a swipe close
+ * nothing: the page read again comes after the answer, and a sheet closed
+ * meanwhile would take the refusal along unsaid.
  */
 export function WithoutCodeSheet({
   open,
@@ -65,7 +68,10 @@ export function WithoutCodeSheet({
   return (
     <Sheet
       open={open}
-      onOpenChange={onOpenChange}
+      onOpenChange={(next) => {
+        if (closeHeldForRefusal(next, { failure, said })) return;
+        onOpenChange(next);
+      }}
       returnFocus={returnFocus}
       title={t(direction === "in" ? "none.titleIn" : "none.titleOut")}
       closeLabel={t("team.sheet.close")}

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { afterApproval, CONFIRM_TITLE, entryTarget } from "./next-approval";
+import {
+  afterApproval,
+  CONFIRM_TITLE,
+  entryTarget,
+  refusalNow,
+} from "./next-approval";
 
 /*
  * Where a manager goes on once an entry they approved left the card with
@@ -37,5 +42,28 @@ describe("afterApproval", () => {
   it("has only the card's title once the last one went", () => {
     // The card goes with it: the page's title takes the focus after this.
     expect(afterApproval(["a"], "a")).toEqual([CONFIRM_TITLE]);
+  });
+});
+
+// A refusal is said with the list it came back with (the third check): once
+// the list is read again it is gone, so an old one is never drawn again
+// where the card was, nor over another person's entry.
+describe("refusalNow", () => {
+  it("says why while the list it came back with is drawn", () => {
+    const left: string[] = [];
+    expect(refusalNow({ failure: "cancelled", list: left }, left)).toBe(
+      "cancelled",
+    );
+  });
+
+  it("says nothing once the list is read again, the same entries or others", () => {
+    const refused = { failure: "cancelled", list: ["b"] };
+    expect(refusalNow(refused, ["b"])).toBeNull();
+    expect(refusalNow(refused, ["c"])).toBeNull();
+    expect(refusalNow({ failure: "cancelled", list: [] }, [])).toBeNull();
+  });
+
+  it("says nothing with no refusal", () => {
+    expect(refusalNow(null, [])).toBeNull();
   });
 });

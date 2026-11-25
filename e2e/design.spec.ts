@@ -2626,7 +2626,8 @@ test("the gallery's quiet toast only shows, and a plain one right after it is sa
 // the focus, said by that focus (not again by the page's announcer), and its
 // hold waits while the keyboard is on it. Undone, the row's own button has
 // the focus again; let go, the row is gone for good and the focus is where
-// the keyboard went.
+// the keyboard went. Enter held down on the remove removes and no more:
+// "ביטול", in its place with the focus, takes no key repeating.
 test("the gallery's undo row takes the focus, waits while it has it, and gives it back", async ({
   page,
 }) => {
@@ -2644,7 +2645,13 @@ test("the gallery's undo row takes the focus, waits while it has it, and gives i
   const undo = row.getByRole("button", { name: he.ui.undoRow.undo });
 
   await remove.focus();
-  await page.keyboard.press("Enter");
+  await page.keyboard.down("Enter");
+  await expect(undo).toBeFocused();
+  await page.keyboard.down("Enter");
+  await page.keyboard.up("Enter");
+  await page.waitForTimeout(500);
+  await expect(row).toBeVisible();
+  await expect(remove).toHaveCount(0);
   await expect(undo).toBeFocused();
   await expect(undo).toHaveAccessibleDescription(removed);
   await expect(page.locator('[data-announcer="polite"]')).not.toContainText(
