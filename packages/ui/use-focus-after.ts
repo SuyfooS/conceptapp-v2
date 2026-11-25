@@ -4,6 +4,7 @@ import { type RefObject, useLayoutEffect, useRef } from "react";
 import {
   type FocusCandidate,
   focusWhenGone,
+  inClosingSheet,
   watchFocusIn,
 } from "./focus-after";
 
@@ -14,7 +15,10 @@ import {
  * after the drawing that removed it, so what took its place is in the page
  * (a microtask after the commit), and only if nothing took the focus
  * meanwhile (a screen's own refocus wins). React runs a removal's layout
- * cleanup while the element is still there.
+ * cleanup while the element is still there. One that goes with a sheet that
+ * closes (Escape with the focus on it) leaves the focus to the sheet, which
+ * gives it back to what opened it a moment later (`returnFocus`): its
+ * candidates went with it, and the page's title would take that place.
  */
 export function useFocusWhenGone(
   ref: RefObject<HTMLElement | null>,
@@ -33,7 +37,7 @@ export function useFocusWhenGone(
     return () => {
       const had = watch.had();
       watch.stop();
-      if (!had) return;
+      if (!had || inClosingSheet(element)) return;
       const after = latest.current;
       queueMicrotask(() => {
         focusWhenGone(after?.() ?? []);

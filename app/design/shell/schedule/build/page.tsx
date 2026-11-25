@@ -135,7 +135,9 @@ async function Demo({ searchParams }: Props) {
   const common = {
     week: demoWeek,
     team: members,
-    people: members,
+    // As the app reads them: names and photos only, so how the sheet says
+    // who went on or off comes from the staff (`team`), as it does there.
+    people: members.map(({ userId, name, photo }) => ({ userId, name, photo })),
     hasPattern: true,
     answers: teamAnswers,
     positions: demoPositions,

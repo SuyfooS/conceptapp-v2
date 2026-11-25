@@ -16,6 +16,13 @@ export type StatusToastProps = {
   /** How long it stays, in milliseconds. */
   duration?: number;
   /**
+   * Says nothing of this message, though it still shows: for one whose
+   * words the focus already says, as the screen put it on a line that says
+   * the same (a draft saved, and the line that says when). Set by the time
+   * its words show, a drawing after the message does.
+   */
+  quiet?: boolean;
+  /**
    * The way back from what just happened ("ביטול"), for as long as the toast
    * stays: a destructive action offers this instead of asking first. The
    * toast goes once it is pressed. Its focus reads the toast's words after
@@ -56,7 +63,8 @@ export type StatusToastProps = {
  * A short confirmation that floats at the top in glass and leaves by itself.
  * For what needs no answer: anything the person must act on stays on the
  * screen. The live region is always there, with its own `aria-live`, so
- * screen readers announce it, while a sheet is open or closing too. With an
+ * screen readers announce it, while a sheet is open or closing too (a
+ * `quiet` message, whose words the focus says, is only shown). With an
  * `action`, it carries the way back (an undo) beside its words; it waits
  * while that is being reached (`@ui/undo-wait`: the keyboard on it, a mouse
  * over it, a finger on it, or a focus a tap or a screen reader put there),
@@ -67,6 +75,7 @@ export function StatusToast({
   message,
   stamp,
   duration = 4000,
+  quiet = false,
   action,
   focusAction = false,
   onFocusLeave,
@@ -186,8 +195,8 @@ export function StatusToast({
       ref={root}
       role="status"
       // Its own, not only its role's: Radix leaves a live region out of
-      // what it hides behind an open sheet.
-      aria-live="polite"
+      // what it hides behind an open sheet. Off for a quiet message.
+      aria-live={quiet ? "off" : "polite"}
       {...handlers}
       onFocus={(event) => {
         holds.current = true;

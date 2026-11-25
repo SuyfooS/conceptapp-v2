@@ -3,6 +3,7 @@
 import { type AwaySpan, awayOn } from "@domain/absences";
 import { type AvailabilityRange, weekdayOf } from "@domain/availability";
 import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
+import { formArg } from "@domain/profile";
 import {
   availableFor,
   type CandidateState,
@@ -17,24 +18,28 @@ import {
 } from "@domain/schedule";
 import type { Position } from "@domain/staffing";
 import type { TeamMember } from "@domain/team";
+import { announce } from "@ui/announcer";
 import { Avatar } from "@ui/avatar";
 import { ChoiceMenu } from "@ui/choice-menu";
 import { cn } from "@ui/cn";
 import { FieldRow, rowInputClass, rowPillInputClass } from "@ui/field-row";
-import { IconButton } from "@ui/icon-button";
+import { type FocusCandidate, focusLost } from "@ui/focus-after";
+import { IconButton, type IconButtonProps } from "@ui/icon-button";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { Sheet } from "@ui/sheet";
 import { Stepper } from "@ui/stepper";
+import { useFocusWhenGone } from "@ui/use-focus-after";
 import { ChevronDown, Pencil, Plus, Trash2, X } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import {
   Fragment,
   type ReactNode,
-  useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
+import { afterPerson, type PeopleList, type ShiftStage } from "./builder-focus";
 import { SheetSection } from "./sheet-section";
 
 export type ShiftRow = { id: number; shift: ScheduledShift };
@@ -63,7 +68,9 @@ export type LockedShift = { stage: "now" | "over"; read: ScheduledShift };
  */
 type FieldsProblem = ShiftDetailsProblem | "past" | "pastMoved";
 
-type TeamPerson = Pick<TeamMember, "userId" | "name" | "photo">;
+/** Someone on the team, with how the app writes about them when known. */
+type TeamPerson = Pick<TeamMember, "userId" | "name" | "photo"> &
+  Partial<Pick<TeamMember, "addressForm">>;
 type Answer = { userId: string; ranges: AvailabilityRange[] };
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
@@ -75,7 +82,13 @@ const GROUPS = [
   "unavailable",
   "away",
   "busy",
-] as const;
+] as const satisfies readonly PeopleList[];
+
+/** The lists shown after one of those: the next ones, then who is on it. */
+const listsAfter = (group: (typeof GROUPS)[number]): PeopleList[] => [
+  ...GROUPS.slice(GROUPS.indexOf(group) + 1),
+  "assigned",
+];
 
 type Draft = { name: string; start: string; end: string; needed: string };
 
@@ -247,6 +260,7 @@ export function ShiftSheet({
       fixed={fixed}
       readOnly={readOnly}
       over={over}
+      stage={locked?.stage ?? null}
       onChange={(next) => onChange(row.id, next)}
     />
   );
@@ -279,7 +293,13 @@ export function ShiftSheet({
         // do, and nothing else changes.
         <div className="flex flex-col">
           {note ? <LockedNotice>{note}</LockedNotice> : null}
-          <p className="px-3 pt-1 pb-2 text-base text-ink-2">
+          {/* Where the focus goes when the clock took the focused "+" or
+              "×" away with nothing put back (`afterPerson`): it says why. */}
+          <p
+            data-running-line={locked.stage}
+            tabIndex={-1}
+            className="px-3 pt-1 pb-2 text-base text-ink-2 outline-none"
+          >
             {locked.stage === "over"
               ? clock
                 ? `${tb("running.overLine")} ${tb("running.clockLine")}`
@@ -315,19 +335,16 @@ export function ShiftSheet({
  * Why the open shift locked as the clock reached it, its changes put back:
  * said in the sheet, which covers the dock's own line. The details, and the
  * field that had focus, go as it locks, so focus comes here rather than being
- * lost; when focus is still somewhere in the sheet, it stays there.
+ * lost; when focus is still somewhere in the sheet, it stays there. Taken in
+ * the drawing that brings it (a layout effect), before a person's "+" or "×"
+ * that went with the focus sends it on (`useFocusWhenGone`, a moment later):
+ * the people are drawn again as it locks, those buttons with them, and the
+ * reason would go unheard.
  */
 function LockedNotice({ children }: { children: ReactNode }) {
   const ref = useRef<HTMLParagraphElement>(null);
-  useEffect(() => {
-    const active = document.activeElement;
-    if (
-      active === null ||
-      active === document.body ||
-      active.getAttribute("role") === "dialog"
-    ) {
-      ref.current?.focus();
-    }
+  useLayoutEffect(() => {
+    if (focusLost()) ref.current?.focus();
   }, []);
   return (
     <p
@@ -360,6 +377,7 @@ function ShiftPeople({
   fixed,
   readOnly,
   over = readOnly,
+  stage,
   onChange,
 }: {
   weekStart: string;
@@ -376,16 +394,48 @@ function ShiftPeople({
   readOnly: boolean;
   /** The shift is over: who was on it is said as of then. */
   over?: boolean;
+  /**
+   * Where the clock has put the shift as this is drawn (null: not begun),
+   * for where the focus goes once it moves the shift on.
+   */
+  stage: ShiftStage | null;
   onChange: (shift: ScheduledShift) => void;
 }) {
   const t = useTranslations();
   const tb = useTranslations("app.build");
+  const locale = useLocale();
   const shift = shifts[index];
   if (!shift) return null;
 
   const noName = t("app.team.noName");
   const nameOf = new Map(people.map((m) => [m.userId, m.name ?? noName]));
   const photoOf = new Map(people.map((m) => [m.userId, m.photo]));
+  // How the app writes about each, from the staff, who carry it.
+  const formOf = new Map(
+    [...people, ...team].map((m) => [m.userId, m.addressForm ?? null]),
+  );
+  const onIt = shift.assignees.map((a) => a.user);
+
+  /**
+   * Says what a press of "+" or "×" did, and how many are on the shift now:
+   * the row and its button went with the person, and nothing else on the
+   * sheet says it as it happens.
+   */
+  const say = (
+    key: "added" | "removed",
+    user: string,
+    name: string,
+    assigned: number,
+  ) =>
+    announce(
+      tb(key, {
+        name,
+        form: formArg(formOf.get(user)),
+        assigned,
+        needed: shift.needed,
+      }),
+      { lang: locale },
+    );
   const rangesOf = new Map(answers.map((a) => [a.userId, a.ranges]));
   const clashes = doubleBooked(weekStart, shifts);
   const candidates = shiftCandidates(
@@ -464,7 +514,7 @@ function ShiftPeople({
 
   return (
     <>
-      <SheetSection title={tb("groups.assigned")}>
+      <SheetSection title={tb("groups.assigned")} mark="assigned">
         {shift.assignees.length === 0 ? (
           <ListRow title={over ? tb("running.nobodyPast") : tb("nobody")} />
         ) : (
@@ -530,17 +580,24 @@ function ShiftPeople({
                 }
                 trailing={
                   stays ? null : (
-                    <IconButton
+                    <PersonButton
                       label={tb("remove", { name })}
                       icon={<X />}
                       className="-me-2"
-                      onClick={() =>
+                      data-remove-person={user}
+                      onClick={() => {
                         onChange({
                           ...shift,
                           assignees: shift.assignees.filter(
                             (a) => a.user !== user,
                           ),
-                        })
+                        });
+                        say("removed", user, name, onIt.length - 1);
+                      }}
+                      // The next one's "×", else the list's heading; the
+                      // line that says why, should the clock take them all.
+                      focusAfter={() =>
+                        afterPerson("remove", onIt, user, "assigned", [], stage)
                       }
                     />
                   )
@@ -553,8 +610,9 @@ function ShiftPeople({
       {GROUPS.map((group) => {
         const people = readOnly ? [] : byState(group);
         if (people.length === 0) return null;
+        const inGroup = people.map(({ member }) => member.userId);
         return (
-          <SheetSection key={group} title={tb(`groups.${group}`)}>
+          <SheetSection key={group} title={tb(`groups.${group}`)} mark={group}>
             {people.map(({ member }) => {
               const name = member.name ?? noName;
               return (
@@ -576,18 +634,33 @@ function ShiftPeople({
                   subtitle={subtitleOf(group, member.userId)}
                   trailing={
                     group === "busy" ? null : (
-                      <IconButton
+                      <PersonButton
                         label={tb("addPerson", { name })}
                         icon={<Plus />}
                         className="-me-2 text-accent"
-                        onClick={() =>
+                        data-add-person={member.userId}
+                        onClick={() => {
                           onChange({
                             ...shift,
                             assignees: [
                               ...shift.assignees,
                               { user: member.userId, position: null },
                             ],
-                          })
+                          });
+                          say("added", member.userId, name, onIt.length + 1);
+                        }}
+                        // The next one's "+" in the list, else its heading,
+                        // else (the list left empty) the next list's; the
+                        // line that says why, should the clock take them all.
+                        focusAfter={() =>
+                          afterPerson(
+                            "add",
+                            inGroup,
+                            member.userId,
+                            group,
+                            listsAfter(group),
+                            stage,
+                          )
                         }
                       />
                     )
@@ -600,6 +673,23 @@ function ShiftPeople({
       })}
     </>
   );
+}
+
+/**
+ * A person's "+" or "×" in the sheet. It goes with their row as they go on or
+ * off the shift (they show in another list then), so the focus it had would
+ * fall to the sheet's frame, and a screen reader would start again at its
+ * top: it goes where `focusAfter` says instead (`useFocusWhenGone`), once the
+ * sheet is drawn again. Escape with the focus here closes the sheet, which
+ * gives the focus back to the shift's card itself.
+ */
+function PersonButton({
+  focusAfter,
+  ...props
+}: IconButtonProps & { focusAfter: () => readonly FocusCandidate[] }) {
+  const button = useRef<HTMLButtonElement>(null);
+  useFocusWhenGone(button, focusAfter);
+  return <IconButton ref={button} {...props} />;
 }
 
 /**
