@@ -244,6 +244,7 @@ export function PeopleImportView({
         counts.member +
         counts.same +
         counts.invited +
+        counts.locked +
         counts.expired +
         counts.otherRole +
         of(["same", "member", "invited", "expired", "kept"]),
@@ -336,7 +337,9 @@ export function PeopleImportView({
     const range = lineRange(latest.current, span);
     if (!area || !range) return;
     area.focus();
-    area.setSelectionRange(range.start, range.end);
+    // The caret at the line's end, never the line selected: on a phone the
+    // first key typed would replace all of it.
+    area.setSelectionRange(range.end, range.end);
     // Bring the line into the field's view, near its middle.
     const total = Math.max(1, latest.current.split(/\r?\n/).length);
     area.scrollTop =
@@ -382,7 +385,14 @@ export function PeopleImportView({
           ltr: isolate,
         });
       case "phoneColumns":
-        return t("status.phoneColumns");
+        // A header named them: so do the words, and adding it is no fix.
+        return parsed.phoneHeaders
+          ? t("status.phoneColumnsHeaded", {
+              names: new Intl.ListFormat(locale, {
+                type: "conjunction",
+              }).format(parsed.phoneHeaders),
+            })
+          : t("status.phoneColumns");
       case "nothingNew":
         return t("status.nothingNew");
       default:
@@ -390,9 +400,12 @@ export function PeopleImportView({
     }
   };
   const status = statusWords();
-  const summary = [t("summary.ready", { count: check.send.length }), status]
-    .filter(Boolean)
-    .join(". ");
+  // Only updates: the summary says so, as the button does ("עדכון # הזמנות").
+  const onlyUpdates = check.send.length > 0 && check.counts.new === 0;
+  const readyWords = onlyUpdates
+    ? t("summary.update", { count: check.send.length })
+    : t("summary.ready", { count: check.send.length });
+  const summary = [readyWords, status].filter(Boolean).join(". ");
   useEffect(() => {
     if (!edited.current || done) return;
     const later = setTimeout(
@@ -434,16 +447,17 @@ export function PeopleImportView({
     check.counts.member +
     check.counts.same +
     check.counts.invited +
+    check.counts.locked +
     check.counts.expired +
     check.counts.otherRole;
   const byRole = Object.entries(check.counts.byRole);
+  const headerLine = parsed.lines.find((line) => line.kind === "header")?.line;
   const empty = parsed.lines.length === 0 && !blocked && parsed.people === 0;
   const oneByOne = (role: "owner" | "accountant") =>
     roles.oneByOne.find((one) => one.role === role)?.label ?? "";
-  const label =
-    check.send.length > 0 && check.counts.new === 0
-      ? t("submitUpdate", { count: check.send.length })
-      : t("submit", { count: check.send.length });
+  const label = onlyUpdates
+    ? t("submitUpdate", { count: check.send.length })
+    : t("submit", { count: check.send.length });
 
   return (
     <PageBody className={pageGlowClass}>
@@ -611,6 +625,9 @@ export function PeopleImportView({
                     edited.current = true;
                     setPaste(event.target.value);
                     setFailure(null);
+                    // A removal's "ביטול" brings back the text as it was
+                    // then, so it goes once the text changes since.
+                    setToast(null);
                   }}
                 />
                 <p className="flex items-start gap-1.5 px-1 text-ink-2 text-sm">
@@ -646,9 +663,7 @@ export function PeopleImportView({
                         padding="lg"
                         className="flex flex-col gap-1"
                       >
-                        <p className="font-semibold text-md">
-                          {t("summary.ready", { count: check.send.length })}
-                        </p>
+                        <p className="font-semibold text-md">{readyWords}</p>
                         {byRole.length > 0 ? (
                           <p>
                             {byRole.map(([key, count], index) => (
@@ -669,7 +684,14 @@ export function PeopleImportView({
                         {teamLeftOut > 0 ? (
                           <p>{t("summary.leftOut", { count: teamLeftOut })}</p>
                         ) : null}
-                        {parsed.header ? <p>{t("summary.header")}</p> : null}
+                        {headerLine !== undefined ? (
+                          <p>
+                            {t.rich("summary.header", {
+                              line: headerLine,
+                              ltr,
+                            })}
+                          </p>
+                        ) : null}
                       </Card>
                     ) : null}
                     {parsed.lines.length > 0 ? (

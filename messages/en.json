@@ -1623,11 +1623,12 @@
         },
         "summary": {
           "ready": "{count, plural, =0 {Nobody will be invited yet} one {One person will be invited} other {# people will be invited}}",
+          "update": "{count, plural, one {One invite will be updated} other {# invites will be updated}}",
           "byRole": "{role}: <ltr>{count}</ltr>",
           "fix": "{count, plural, one {One line to fix} other {# lines to fix}}",
           "leftOut": "{count, plural, one {One line is left out, because it is already on the team or among the invites} other {# lines are left out, because they are already on the team or among the invites}}",
           "leftOutAny": "{count, plural, one {One line is left out} other {# lines are left out}}",
-          "header": "The first line was read as the column headers."
+          "header": "Line <ltr>{line}</ltr> was read as the column headers."
         },
         "groups": {
           "fix": "To fix",
@@ -1673,6 +1674,7 @@
           "member": "Already on the team",
           "memberAs": "Already on the team, as {name}",
           "invited": "This number already has an invite with a link, and it stays as it is",
+          "locked": "This number already has an invite you can't change from here, and it stays as it is",
           "expired": "The earlier invite to this number ran out. “New link” on the Team screen opens it again",
           "header": "Header row, left out",
           "sameLine": "The same as line <ltr>{line}</ltr>",
@@ -1687,7 +1689,6 @@
           "reversed": "The line looks reversed, like text copied from a PDF. Copy it from Excel or type it again",
           "excelNumber": "The number came from Excel shortened, like <ltr>5.01E+08</ltr>. Widen the column in Excel, or format it as text, and copy again",
           "duplicate": "The number is already on line <ltr>{line}</ltr>, with another name or role",
-          "unknownRole": "The business has no role called “{word}”. Write a role it has, or leave it empty",
           "oneByOne": "{role}: invited one at a time, from “Invite to the team”",
           "notAllowed": "You can't invite to {role} from here",
           "givesPay": "{role} sees pay, so only owners invite to it",
@@ -1703,7 +1704,8 @@
           "tooMany": "Up to <ltr>{max}</ltr> people at a time, and the list has <ltr>{count}</ltr>. Invite in a few parts.",
           "tooLong": "The text is too long for one go. Invite in a few parts.",
           "tooManyOpen": "The business already has <ltr>{open}</ltr> invites waiting, and the most is <ltr>{max}</ltr>. Delete old invites on the Team screen, or invite fewer.",
-          "phoneColumns": "The list has two columns of mobile numbers, and it isn't clear which is the person's own. Add a header row with “mobile” over the right column, or delete the other one.",
+          "phoneColumns": "The list has two columns of mobile numbers, and it isn't clear which is the person's own. Add a header row with “mobile” over the right column, or delete the column that isn't the person's own.",
+          "phoneColumnsHeaded": "The list has more than one column of mobile numbers ({names}), and it isn't clear which is the person's own. In the sheet, delete every column that isn't the person's own, and copy again.",
           "nothingNew": "Everyone on the list is already on the team or among the invites.",
           "notSent": "The invites are only saved. Nobody gets a message from the app."
         },

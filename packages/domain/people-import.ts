@@ -22,19 +22,23 @@ import { searchable } from "./wording";
  *
  *   the cells     chosen once for the whole paste, from most of its lines
  *                 (a WhatsApp title or a sheet's name in A1 never decides):
- *                 a tab, then `;` or `,` (quote-aware), then the staff
- *                 list's `|` or a spaced dash, else the line is free text.
- *                 A raw line is split first and each cell cleaned on its
- *                 own, since cleaning collapses tabs.
+ *                 a tab (in half the lines is enough), then `;` or `,`
+ *                 (quote-aware), then the staff list's `|` or a spaced dash,
+ *                 else the line is free text. A raw line is split first and
+ *                 each cell cleaned on its own, since cleaning collapses tabs.
  *   a header      a row with no mobile in it, before any row that has one,
  *                 naming its columns (שם, נייד, תפקיד, ת"ז…): it fixes where
  *                 the name, the number and the role are, and anything before
- *                 it is a title. Two phone columns are never guessed between.
- *   no header     a sheet's columns found once, by most of their cells: the
- *                 phone column (Excel's dropped zero allowed), the role
- *                 column, the name (a second single-word column joins it).
- *                 A phone is never taken from another column, so a 9-digit
- *                 ID that starts with 5 is never read as one.
+ *                 it is a title. Two phone columns of mobiles are never
+ *                 guessed between.
+ *   no header     a sheet's columns found once, by most of their cells (one
+ *                 row of a sheet by its cells): the phone column (Excel's
+ *                 dropped zero allowed), the role column, the name (a second
+ *                 single-word column that varies joins it). A phone is never
+ *                 taken from another column, so a 9-digit ID that starts
+ *                 with 5 is never read as one. A line with no delimiter, or
+ *                 typed by hand with its mobile in another place, is read as
+ *                 free text.
  *   free text     the mobile among the runs of digits, which must start with
  *                 0, 972, +972 or 00972; a role at the line's end or start;
  *                 the rest the name. Every other run of 5 digits or more is
@@ -172,7 +176,6 @@ export type PeopleProblem =
   | "nameTooLong"
   | "reversed"
   | "duplicate"
-  | "unknownRole"
   | "oneByOne"
   | "notAllowed"
   | "givesPay"
@@ -208,7 +211,10 @@ export type PeopleLine = {
   last?: number;
   /** The line as pasted, cleaned. */
   text: string;
-  /** Runs of digits and Excel's numbers left out of the name, as written. */
+  /**
+   * Runs of digits and Excel's numbers left out of the name, and a role
+   * column's word that names no role of the business, as written.
+   */
   dropped: string[];
 } & (
   | { kind: "header" }
@@ -228,8 +234,6 @@ export type PeopleLine = {
       problem: PeopleProblem;
       /** The line's number when it was read, for `againstTeam`. */
       phone?: string;
-      /** An unknown role's word. */
-      word?: string;
       /** The earlier line with the same number (`duplicate`). */
       first?: number;
       /** The role a line named, as the business words it. */
@@ -243,10 +247,12 @@ export type IgnoredColumn = { header: string } | { column: number };
 export type ParsedPeople = {
   /** Every non-empty line, in order. Empty with `tooLong`, `tooMany` and `phoneColumns`. */
   lines: PeopleLine[];
-  /** The first line read as the columns' headers. */
+  /** A line was read as the columns' headers, after any title (its `kind: "header"` line). */
   header: boolean;
   /** The columns not read. */
   ignored: IgnoredColumn[];
+  /** With `phoneColumns`: the phone columns' headers, when the header named them. */
+  phoneHeaders?: string[];
   /** The lines of people: not the header or a title, a pair counting once. */
   people: number;
   /**
@@ -390,11 +396,12 @@ const EXCEL_NUMBER = /(?<![\p{L}\d.,])\d(?:[.,]\d+)?E\+\d+(?![\p{L}\d])/giu;
 const DIGITS = /\d/g;
 /**
  * A word that says what the number after it is ("ת.ז 123456782", "נייד:
- * 050…", "טל' 03…"): it leaves the name with its number. "טל" alone is a
- * name, so only with its dot or geresh.
+ * 050…", "סלולרי: 050…", "מס' טלפון 050…", "Cell: 050…", "טל' 03…"): it
+ * leaves the name with its number. "טל" alone is a name, so only with its
+ * dot or geresh.
  */
 const NUMBER_LABEL =
-  /(?<![\p{L}\d])(?:ת[."״]?ז\.?|תעודת זהות|מספר זהות|טל[.'׳]|טלפון|נייד|פלאפון|id|tel|phone|mobile)(?!\p{L})\s?[:.]?\s?(?=\+?\d)/giu;
+  /(?<![\p{L}\d])(?:ת[."״]?ז\.?|תעודת זהות|מספר זהות|טל[.'׳]|(?:(?:מספר|מס[.'׳]?)\s?)?(?:טלפון|נייד|פלאפון|סלולרי|סלולארי)|id|tel|phone|mobile|cell)(?!\p{L})\s?[:.]?\s?(?=\+?\d)/giu;
 /** The most groups of digits a mobile is written in. */
 const MOBILE_PARTS = 6;
 const digitCount = (text: string) => text.match(DIGITS)?.length ?? 0;
@@ -527,16 +534,23 @@ type Delimiter = "tab" | "semicolon" | "comma" | "separators" | "free";
 const SEPARATOR_SPLIT = /\||(?<!\d)\s[-–]\s|\s[-–]\s(?!\d)/u;
 /** What separates fields on a line read as free text, read as a space. */
 const FREE_SEPARATORS = /[,;|\t]+|\s[-–]\s/g;
-const NUMBER_MARKER = /^\d{1,3}[.)]\s+/u;
+/** A list's number before the name: "1.", "1)", or "1 " and "1 - " when letters follow. */
+const NUMBER_MARKER = /^\d{1,3}(?:[.)]\s+|\s+(?:[-–]\s+)?(?=\p{L}))/u;
 /** WhatsApp shows a contact nobody saved with "~" before the name. */
 const TILDE = /^~\s*/u;
 
-/** The delimiter of the whole paste: the one most of its lines hold. */
+/**
+ * The delimiter of the whole paste: the one most of its lines hold. A tab
+ * at least half of them, since nobody types one: a sheet's single row under
+ * a line typed above it is still its cells.
+ */
 function delimiterOf(lines: readonly string[]): Delimiter {
   const most = (test: (line: string) => boolean) =>
     lines.filter(test).length * 2 > lines.length;
   if (lines.length === 0) return "free";
-  if (most((line) => line.includes("\t"))) return "tab";
+  if (lines.filter((line) => line.includes("\t")).length * 2 >= lines.length) {
+    return "tab";
+  }
   const semicolons = lines.filter((line) => line.includes(";")).length;
   const commas = lines.filter((line) => line.includes(",")).length;
   if (Math.max(semicolons, commas) * 2 > lines.length) {
@@ -588,7 +602,7 @@ function csvCells(line: string, separator: string): string[] | null {
   return cells;
 }
 
-/** A first cell's bullet, "1." or "1)", and WhatsApp's "~". */
+/** A first cell's bullet, a list's number ("1.", "1)", "1 "), and WhatsApp's "~". */
 function withoutMarker(cell: string): string {
   let now = cell;
   for (;;) {
@@ -707,18 +721,24 @@ const HEADER_WORDS: ReadonlyMap<string, HeaderKind> = new Map(
   ),
 );
 
-/** Header words that are also a person's: a header only beside another one. */
-const WORKER_HEADERS = new Set(["עובד", "עובדת", "employee"].map(keyOf));
+/**
+ * Header words that are also a person's, or a person's name ("טל"): a
+ * header only beside another one.
+ */
+const WORKER_HEADERS = new Set(["עובד", "עובדת", "employee", "טל"].map(keyOf));
 
 /**
  * A header in other words, once a row was read as the header: "מספר
- * פלאפון", "שם העובד המלא", "טלפון הורה" (a second phone column, which
- * blocks), "מס' ת.ז.".
+ * פלאפון", "שם העובד המלא", "השם", "עובדים", "Staff", "טלפון הורה" (a
+ * second phone column, which blocks), "מס' ת.ז.".
  */
 const LOOSE_HEADERS: readonly (readonly [HeaderKind, RegExp])[] = [
   ["id", /זהות|דרכון|passport|(?:^|\s)(?:תז|id)(?:\s|$)/u],
   ["phone", /נייד|טלפון|פלאפון|סלולרי|סלולארי|phone|mobile/u],
-  ["name", /^שם(?:\s|$)|^שמות$|name/u],
+  [
+    "name",
+    /^ה?שם(?:\s|$)|^שמות(?:\s|$)|^ה?עובדים$|^(?:איש|אנשי) צוות$|name|^(?:workers?|staff|employees)$/u,
+  ],
   ["role", /תפקיד|role/u],
 ];
 
@@ -752,9 +772,16 @@ function namesColumns(row: Row): boolean {
   return exact.length >= 1 || named.length >= 2;
 }
 
-/** Whether a row holds a mobile in any cell, as a sheet's column would read it. */
+/**
+ * Whether a row holds a mobile in any cell: a cell of digits as a sheet's
+ * phone column reads it (Excel's dropped zero), and a cell with words in it
+ * as free text is read, so a title's company or ID number ("ח.פ.
+ * 514789632") is no mobile.
+ */
 function holdsMobile(row: Row): boolean {
-  return row.cells.some((cell) => findPhones(cell, true).mobiles.length > 0);
+  return row.cells.some(
+    (cell) => findPhones(cell, !LETTER.test(cell)).mobiles.length > 0,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -769,14 +796,25 @@ type Columns =
       name: number[];
       /** A header fixed the columns: no role is read at a name's ends. */
       fixed: boolean;
+      /** The lines read as free text all the same (`uneven`), by their number. */
+      free: ReadonlySet<number>;
     }
-  | { kind: "phoneColumns" };
+  | {
+      kind: "phoneColumns";
+      /** The phone columns' headers, when the header named them. */
+      headers: string[];
+    };
 
-/** Where the name, the number and the role are, read once for the whole paste. */
+/**
+ * Where the name, the number and the role are, read once for the whole
+ * paste. `typed`: cells split by anything but a sheet's tabs, so lines
+ * typed by hand, which need not keep their places.
+ */
 function columnsOf(
   rows: readonly Row[],
   header: Row | null,
   roles: RoleMatcher,
+  typed: boolean,
 ): { columns: Columns; ignored: IgnoredColumn[] } {
   const width = Math.max(
     header?.cells.length ?? 0,
@@ -788,20 +826,27 @@ function columnsOf(
     if (!cell) return "none";
     return headerKindOf(cell) ?? "other";
   };
-  const filled = (column: number) =>
-    rows.map((row) => row.cells[column] ?? "").filter(Boolean);
-  const most = (column: number, test: (cell: string) => boolean) => {
-    const cells = filled(column);
+  const filledIn = (among: readonly Row[], column: number) =>
+    among.map((row) => row.cells[column] ?? "").filter(Boolean);
+  const mostIn = (
+    among: readonly Row[],
+    column: number,
+    test: (cell: string) => boolean,
+  ) => {
+    const cells = filledIn(among, column);
     return cells.length > 0 && cells.filter(test).length * 2 > cells.length;
   };
   const open = (column: number) =>
     kindAt(column) === "none" || kindAt(column) === "other";
-  const named = (taken: ReadonlySet<number>): IgnoredColumn[] =>
+  const namedIn = (
+    among: readonly Row[],
+    taken: ReadonlySet<number>,
+  ): IgnoredColumn[] =>
     all
       .filter(
         (column) =>
           !taken.has(column) &&
-          (filled(column).length > 0 || kindAt(column) !== "none"),
+          (filledIn(among, column).length > 0 || kindAt(column) !== "none"),
       )
       .map((column) => {
         const cell = header?.cells[column] ?? "";
@@ -809,12 +854,38 @@ function columnsOf(
       });
 
   const phoneHeaded = all.filter((column) => kindAt(column) === "phone");
-  const phones =
+  // A headed column of landlines, or an empty one, is nobody's mobile: the
+  // headed column of mobiles is the phone, and the other one is left out.
+  const mobileHeaded = phoneHeaded.filter((column) =>
+    mostIn(rows, column, isPhoneCell),
+  );
+  let phones =
     phoneHeaded.length > 0
-      ? phoneHeaded
-      : all.filter((column) => open(column) && most(column, isPhoneCell));
+      ? mobileHeaded.length > 0
+        ? mobileHeaded
+        : phoneHeaded.slice(0, 1)
+      : all.filter(
+          (column) => open(column) && mostIn(rows, column, isPhoneCell),
+        );
+  if (typed && phoneHeaded.length === 0 && phones.length > 1) {
+    // Typed by hand, a number in another place on a line or two is no
+    // column: the phone's column is filled on most lines.
+    const full = phones.filter(
+      (column) => filledIn(rows, column).length * 2 > rows.length,
+    );
+    if (full.length > 0) phones = full;
+  }
   if (phones.length > 1) {
-    return { columns: { kind: "phoneColumns" }, ignored: [] };
+    return {
+      columns: {
+        kind: "phoneColumns",
+        headers:
+          phoneHeaded.length > 0
+            ? phones.map((column) => header?.cells[column] ?? "")
+            : [],
+      },
+      ignored: [],
+    };
   }
   const [phone] = phones;
   if (phone === undefined) {
@@ -822,9 +893,29 @@ function columnsOf(
     const skip = new Set(all.filter((column) => kindAt(column) === "id"));
     return {
       columns: { kind: "free", skip },
-      ignored: header ? named(new Set(all.filter((c) => !skip.has(c)))) : [],
+      ignored: header
+        ? namedIn(rows, new Set(all.filter((c) => !skip.has(c))))
+        : [],
     };
   }
+
+  // A line that doesn't keep the columns is read as free text: one cell (a
+  // line with no delimiter), or, typed by hand with no header, a phone's
+  // cell with no mobile on a line that holds one elsewhere, by free text's
+  // rule ("052-…, יוסי לוי" among "דנה כהן, 050-…").
+  const uneven = (row: Row) => {
+    if (row.free || row.cells.length === 1) return true;
+    if (!typed || header !== null) return false;
+    return (
+      findPhones(row.cells[phone] ?? "", true).mobiles.length === 0 &&
+      findPhones(row.cells.join(" "), false).mobiles.length > 0
+    );
+  };
+  const read = rows.filter((row) => !uneven(row));
+  const free = new Set(rows.filter(uneven).map((row) => row.line));
+  const filled = (column: number) => filledIn(read, column);
+  const most = (column: number, test: (cell: string) => boolean) =>
+    mostIn(read, column, test);
 
   const isRole = (cell: string) => roles.match(cell) !== null;
   const roleHeaded = all.filter((column) => kindAt(column) === "role");
@@ -838,29 +929,60 @@ function columnsOf(
     ) ??
     null;
 
+  const single = (column: number) =>
+    most(column, (cell) => !cell.includes(" "));
   const nameHeaded = all.filter((column) => kindAt(column) === "name");
-  const firstLast = [
-    ...all.filter((column) => kindAt(column) === "first"),
-    ...all.filter((column) => kindAt(column) === "last"),
-  ];
+  const firstHeaded = all.filter((column) => kindAt(column) === "first");
+  const lastHeaded = all.filter((column) => kindAt(column) === "last");
+  const [nameColumn] = nameHeaded;
+  const [lastColumn] = lastHeaded;
   let name: number[];
-  if (nameHeaded.length > 0) name = nameHeaded.slice(0, 1);
-  else if (firstLast.length > 0) name = firstLast.slice(0, 2);
-  else {
-    const text = all.filter(
-      (column) =>
-        column !== phone &&
-        column !== role &&
-        (header ? kindAt(column) === "none" : open(column)) &&
-        most(column, (cell) => LETTER.test(cell)),
+  if (nameColumn !== undefined) {
+    // "שם" beside "שם משפחה", "משפחה" or "Surname" holds the first name:
+    // the two are joined, the first name first.
+    name =
+      firstHeaded.length === 0 && lastColumn !== undefined && single(nameColumn)
+        ? [nameColumn, lastColumn]
+        : [nameColumn];
+  } else if (firstHeaded.length + lastHeaded.length > 0) {
+    name = [...firstHeaded, ...lastHeaded].slice(0, 2);
+  } else {
+    const textAmong = (test: (column: number) => boolean) =>
+      all.filter(
+        (column) =>
+          column !== phone &&
+          column !== role &&
+          test(column) &&
+          most(column, (cell) => LETTER.test(cell)),
+      );
+    let text = textAmong((column) =>
+      header ? kindAt(column) === "none" : open(column),
     );
-    const single = (column: number) =>
-      most(column, (cell) => !cell.includes(" "));
+    if (header && text.length === 0) {
+      // The name's header in words nobody listed ("צוות"): the header's one
+      // column of words is the name, and with two nothing is guessed.
+      const other = textAmong((column) => kindAt(column) === "other");
+      if (other.length === 1) text = other;
+    }
+    /**
+     * Surnames mostly differ, while a position or a department repeats: at
+     * least half the cells are words of their own.
+     */
+    const varied = (column: number) => {
+      const keys = filled(column).map(keyOf);
+      return new Set(keys).size * 2 >= keys.length;
+    };
     const [first, second] = text;
+    // A second column of single words joins the name as its surname: one
+    // that varies, and sits before the phone's column if the first does.
     name =
       first === undefined
         ? []
-        : second !== undefined && single(first) && single(second)
+        : second !== undefined &&
+            single(first) &&
+            single(second) &&
+            varied(second) &&
+            !(first < phone && phone < second)
           ? [first, second]
           : [first];
   }
@@ -873,8 +995,9 @@ function columnsOf(
       role,
       name,
       fixed: header !== null,
+      free,
     },
-    ignored: named(taken),
+    ignored: namedIn(read, taken),
   };
 }
 
@@ -913,8 +1036,6 @@ type Reading = {
   /** The name's words before a role was read off them. */
   nameText: string;
   role: RoleRead;
-  /** A word in the role column that names no role. */
-  unknownRole: string | null;
   dropped: string[];
   /** Where the role came from, for the trailing-word note. */
   free: boolean;
@@ -935,7 +1056,6 @@ function freeReading(
     phone: phoneRead(found),
     nameText: trimName((atEnds?.words ?? words).join(" ")),
     role: roleRead(atEnds?.match ?? null, fallback),
-    unknownRole: null,
     dropped: found.dropped,
     free: true,
   };
@@ -962,14 +1082,16 @@ function columnReading(
   const dropped = [...inName.written, ...inName.dropped];
   const nameText = trimName(inName.rest);
   if (columns.role !== null) {
+    // A word that names no role of the business, as a job title in a
+    // sheet's "תפקיד" ("קופאית"), is left out and said: the line gets the
+    // list's role. A role the viewer can't give from a list still stops it.
     const cell = cells[columns.role] ?? "";
     const match = cell ? roles.match(cell) : null;
     return {
       phone,
       nameText,
       role: roleRead(match, fallback),
-      unknownRole: cell && match === null ? cell : null,
-      dropped,
+      dropped: cell && match === null ? [...dropped, cell] : dropped,
       free: false,
     };
   }
@@ -978,7 +1100,6 @@ function columnReading(
       phone,
       nameText,
       role: roleRead(null, fallback),
-      unknownRole: null,
       dropped,
       free: false,
     };
@@ -989,7 +1110,6 @@ function columnReading(
     phone,
     nameText: trimName((atEnds?.words ?? words).join(" ")),
     role: roleRead(atEnds?.match ?? null, fallback),
-    unknownRole: null,
     dropped,
     free: false,
   };
@@ -1011,7 +1131,7 @@ function lineOf(
   };
   const problem = (
     problem: PeopleProblem,
-    more: { word?: string; roleLabel?: string } = {},
+    more: { roleLabel?: string } = {},
   ): Read => ({
     ...base,
     kind: "problem",
@@ -1024,9 +1144,6 @@ function lineOf(
   const name = parseTeamName(reading.nameText);
   if (!name.ok) {
     return problem(name.error === "required" ? "noName" : "nameTooLong");
-  }
-  if (reading.unknownRole !== null) {
-    return problem("unknownRole", { word: reading.unknownRole });
   }
   if (!reading.role.ok) {
     return problem(reading.role.problem, { roleLabel: reading.role.roleLabel });
@@ -1114,7 +1231,8 @@ function rowsOf(input: string): { line: number; raw: string; text: string }[] {
 
 const personKey = (person: ImportPerson) =>
   `${person.role}|${person.namedRole ?? ""}|${person.roleFromLine}`;
-const nameKey = (name: string) => name.toLocaleLowerCase();
+/** Names compared case aside, the same on every device whatever its language. */
+const nameKey = (name: string) => name.toLowerCase();
 
 /**
  * Reads a pasted list of people against the roles the viewer gives, with
@@ -1169,9 +1287,12 @@ export function parsePeopleList(
     ? [{ line: header.line, text: header.text, dropped: [], kind: "header" }]
     : [];
 
+  // Columns from a header, from most of two lines or more, or from a
+  // sheet's single row: its cells, never joined into a name.
   const { columns, ignored } =
-    delimiter !== "free" && (header !== null || peopleRows.length >= 2)
-      ? columnsOf(peopleRows, header, matcher)
+    delimiter !== "free" &&
+    (header !== null || peopleRows.length >= 2 || delimiter === "tab")
+      ? columnsOf(peopleRows, header, matcher, delimiter !== "tab")
       : {
           columns: { kind: "free", skip: new Set<number>() } as Columns,
           ignored: [],
@@ -1184,13 +1305,14 @@ export function parsePeopleList(
       ignored: [],
       people: peopleRows.length,
       error: "phoneColumns",
+      ...(columns.headers.length > 0 ? { phoneHeaders: columns.headers } : {}),
     };
   }
 
   // A line with nothing to read, letters or digits (a row of dashes): left out.
   const decoration = (row: Row) => !/[\p{L}\d]/u.test(row.text);
   const readings: Reading[] = peopleRows.map((row) =>
-    columns.kind === "columns" && !row.free
+    columns.kind === "columns" && !columns.free.has(row.line)
       ? columnReading(row.cells, columns, matcher, fallback)
       : freeReading(
           row.cells
@@ -1413,8 +1535,10 @@ export type ImportOutcome =
   /** An invite with no link yet, as the line says already. */
   | "same"
   | "member"
-  /** An invite with a link, or one the viewer may not change: left as it is. */
+  /** An invite with a link: left as it is. */
   | "invited"
+  /** An invite with no link yet that the viewer may not change: left as it is. */
+  | "locked"
   /** An invite whose link ran out: "קישור חדש" on the Team screen opens it. */
   | "expired"
   /** An owner's or an accountant's invite: never changed by a list. */
@@ -1490,7 +1614,7 @@ export function againstTeam(parsed: ParsedPeople, known: KnownTeam): TeamCheck {
       if (!invite.linkPending) {
         return { ...line, outcome: invite.expired ? "expired" : "invited" };
       }
-      if (!invite.touchable) return { ...line, outcome: "invited" };
+      if (!invite.touchable) return { ...line, outcome: "locked" };
       if (line.kind !== "person") return line;
       const { person } = line;
       const kept = parseTeamName(invite.name ?? "");
@@ -1527,6 +1651,7 @@ export function againstTeam(parsed: ParsedPeople, known: KnownTeam): TeamCheck {
     same: 0,
     member: 0,
     invited: 0,
+    locked: 0,
     expired: 0,
     otherRole: 0,
     problems: 0,

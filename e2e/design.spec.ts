@@ -9646,11 +9646,20 @@ test("the people import's twin holds the lines to fix, and fixes and removes the
     })
     .click();
   await expect(field).toBeFocused();
+  // The caret at line 5's end, nothing selected: a key typed adds to it.
   expect(
     await field.evaluate((area: HTMLTextAreaElement) =>
-      area.value.slice(area.selectionStart, area.selectionEnd),
+      area.selectionStart === area.selectionEnd
+        ? area.value.slice(0, area.selectionEnd).split("\n").at(-1)
+        : null,
     ),
   ).toBe("יוסף אלמו 03-6100000");
+  expect(
+    await field.evaluate(
+      (area: HTMLTextAreaElement) =>
+        area.value.slice(area.selectionEnd).split("\n")[0],
+    ),
+  ).toBe("");
 
   // Both headings at once, and back with the toast's "ביטול".
   await page
@@ -9680,6 +9689,18 @@ test("the people import's twin holds the lines to fix, and fixes and removes the
     .click();
   await expect(field).not.toHaveValue(/יוסף אלמו/);
   await expect(blocked(7)).toBeVisible();
+  // A keystroke since takes its "ביטול" away, so it never undoes what was typed.
+  const undoFive = page
+    .getByRole("status")
+    .filter({ hasText: /הוסרה מהרשימה/ })
+    .getByRole("button", { name: i.undoRemove, exact: true });
+  await expect(undoFive).toBeFocused();
+  await field.focus();
+  await expect(field).toBeFocused();
+  await page.keyboard.press("End");
+  await page.keyboard.type(" ");
+  await expect(undoFive).toHaveCount(0);
+  await expect(field).not.toHaveValue(/יוסף אלמו/);
 });
 
 test("the people import's twin invites a WhatsApp list, and takes it back with its way back", async ({
@@ -9752,7 +9773,12 @@ test("the people import's twin reads a sheet by its header, and a second paste o
 }, testInfo) => {
   const i = he.app.team.import;
   await page.goto(`${importTwin}?state=sheet`);
-  await expect(page.getByText(i.summary.header, { exact: true })).toBeVisible();
+  // The header is line 3, under the sheet's title and an empty line.
+  await expect(
+    page.getByText(importWords("app.team.import.summary.header", { line: 3 }), {
+      exact: true,
+    }),
+  ).toBeVisible();
   await expect(
     page
       .getByText(/ת\.ז\./)
@@ -9776,6 +9802,17 @@ test("the people import's twin reads a sheet by its header, and a second paste o
     exact: true,
   });
   await expect(update).toBeEnabled();
+  // Nobody new: the summary says the same as the button.
+  await expect(
+    page.getByText(heT("app.team.import.summary.update", { count: 2 }), {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(heT("app.team.import.summary.ready", { count: 2 }), {
+      exact: true,
+    }),
+  ).toHaveCount(0);
   const shown = (text: string) =>
     page.getByText(text, { exact: true }).filter({ visible: true }).first();
   await expect(
@@ -9839,4 +9876,23 @@ test("the people import's twin stops at too many people and at two phone columns
       exact: true,
     }),
   ).toBeDisabled();
+  // Under headers that name both, the words name them, and a header is no fix.
+  await field.fill(
+    [
+      "שם\tנייד\tטלפון הורה",
+      "דנה כהן\t054-710-5501\t054-710-5502",
+      "יוסי לוי\t054-710-5503\t054-710-5504",
+    ].join("\n"),
+  );
+  await expect(
+    page.getByText(
+      heT("app.team.import.status.phoneColumnsHeaded", {
+        names: new Intl.ListFormat("he", { type: "conjunction" }).format([
+          "נייד",
+          "טלפון הורה",
+        ]),
+      }),
+      { exact: true },
+    ),
+  ).toBeVisible();
 });

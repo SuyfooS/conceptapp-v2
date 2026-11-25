@@ -124,8 +124,14 @@ lines (a tab, then `;` or `,` read quote-aware, then the staff list's `|` or
 a spaced dash), splits each raw line before cleaning its cells (cleaning
 collapses tabs), finds a header row after any title (`שם`, `נייד`, `ת"ז`,
 `תפקיד` and the like, an unknown header named in `ignored`), and without one
-the phone, role and name columns by most of their cells; two phone columns
-are never guessed between (`phoneColumns`). In free text a mobile must start
+the phone, role and name columns by most of their cells (a sheet's single row
+by its cells; a line with no delimiter, or typed by hand with its mobile in
+another place, as free text); two columns of mobiles are never guessed
+between (`phoneColumns`, with the headers that named them), and a word in a
+role column that names no role is left out, the line given the list's role.
+"שם" beside "שם משפחה" is the first name, and the two are joined; a second
+column of single words joins the name only when it varies and isn't past the
+phone. In free text a mobile must start
 with 0, 972, +972 or 00972 (Excel's dropped zero only in a sheet's column, so
 a 9-digit ID starting with 5 is never a phone), every other run of 5 digits
 or more and Excel's "5.01E+08" leave the name (`dropped`), a role is read at

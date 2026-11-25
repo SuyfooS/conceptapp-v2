@@ -81,8 +81,6 @@ export function useLineWords(roles: ImportRoles) {
         return t.rich("problem.excelNumber", { ltr });
       case "duplicate":
         return t.rich("problem.duplicate", { line: line.first ?? 0, ltr });
-      case "unknownRole":
-        return t("problem.unknownRole", { word: line.word ?? "" });
       case "oneByOne":
       case "notAllowed":
       case "givesPay":
@@ -125,6 +123,8 @@ export function useLineWords(roles: ImportRoles) {
       }
       case "invited":
         return t("outcome.invited");
+      case "locked":
+        return t("outcome.locked");
       case "expired":
         return t("outcome.expired");
       case "otherRole":
