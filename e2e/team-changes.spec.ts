@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import he from "../messages/he.json" with { type: "json" };
+import { announcer, heardSoFar, saidSince } from "./announcer";
 import { buildScreen, onDate } from "./build-screen";
 import { captchaSettled } from "./captcha";
 import {
@@ -446,15 +447,20 @@ test("the owner fixes a name: everywhere in the business and only there, with th
   await expect(field).toHaveValue(LEAVING.name);
   await expectCleanPage(page);
   await field.fill("");
+  const polite = announcer(page, "polite");
+  await heardSoFar(polite);
   await sheet.getByRole("button", { name: tc.nameSubmit }).click();
-  // Said as it shows, and the field takes the focus, read with it.
-  await expect(sheet.getByRole("alert")).toHaveText(
-    tt.invite.errors.name.required,
-  );
+  // The field takes the focus, read as invalid, and why is said once after
+  // its read, by the announcer and no alert, out of the field's description
+  // meanwhile (accessibility, part 6).
   await expect(field).toBeFocused();
-  await expect(field).toHaveAccessibleDescription(
-    tt.invite.errors.name.required,
+  await expect(field).toHaveAttribute("aria-invalid", "true");
+  await expect(saidSince(polite, tt.invite.errors.name.required)).toHaveCount(
+    1,
   );
+  await expect(field).not.toHaveAttribute("aria-describedby");
+  await expect(sheet.getByText(tt.invite.errors.name.required)).toBeVisible();
+  await expect(sheet.getByRole("alert")).toHaveCount(0);
 
   // Fixed at once, in this business: their own name stays theirs.
   await field.fill(FIXED);

@@ -1533,6 +1533,8 @@
         "hint": "The link is not sent from here. Send it in a message to this number. Valid for 14 days; a new link cancels the old one.",
         "copy": "Copy the link",
         "copied": "Link copied",
+        "ready": "{name}'s new link is ready",
+        "copyFailed": "We couldn't copy the link. It is selected in the field, so you can copy it from there.",
         "errors": {
           "alreadyMember": "This number is already in the team.",
           "notAllowed": "You cannot invite to this role.",
@@ -7939,6 +7941,7 @@
         "hint": "Nothing is sent from here. Send the link in a message to this number. It lasts 14 days, and a new link cancels the old one.",
         "copy": "Copy link",
         "copied": "Link copied",
+        "copyFailed": "We couldn't copy the link. It is selected in the field, so you can copy it from there.",
         "errors": {
           "failed": "Could not create a link. Try again in a moment.",
           "noPermission": "You may not invite people.",

@@ -172,18 +172,21 @@ test("the departments twin marks whose people are shown, takes the focus to them
     return;
   }
 
-  // The first one's people at first.
+  // The first one's people at first; chosen, though shown already, the
+  // focus is on their title.
   await expect(kitchen).toHaveAttribute("aria-current", "true");
   await expect(bar).not.toHaveAttribute("aria-current");
   const up = page.getByRole("button", { name: d.up, exact: true });
   const down = page.getByRole("button", { name: d.down, exact: true });
-
-  // Moved down with none chosen, it keeps its people shown, not those of
-  // the one that is first now.
   const kitchenTitle = page.getByRole("heading", {
     level: 2,
     name: fill(d.peopleOf, { name: "מטבח" }),
   });
+  await kitchen.click();
+  await expect(kitchenTitle).toBeFocused();
+
+  // Moved down with none chosen, it keeps its people shown, not those of
+  // the one that is first now.
   await expect(kitchenTitle).toBeVisible();
   await down.focus();
   await page.keyboard.press("Enter");
@@ -227,4 +230,97 @@ test("the departments twin marks whose people are shown, takes the focus to them
   await expect(down).not.toHaveAttribute("aria-disabled");
   await expect(title).toBeVisible();
   await expect(bar).toHaveAttribute("aria-current", "true");
+
+  // The one shown, chosen again: the focus is on its people's title again.
+  await names.first().focus();
+  await bar.click();
+  await expect(title).toBeFocused();
+});
+
+/** Where the test keeps the failure's line it saw before, on the page's window. */
+type SeenLine = { seenLine?: Element };
+
+// The twin again, which saves nothing: a save the network drops is said by
+// an alert drawn anew each time, the same words again too, and gone once a
+// save goes through. Enter saves a name with the focus still in its field,
+// and one that couldn't be saved is back to the stored name there; an add
+// keeps the focus on "+", unavailable with no name left; "ביטול" gives the
+// focus to the name it brought back.
+test("the departments twin says each failed save anew, and keeps the focus where each change was made", async ({
+  page,
+}) => {
+  const names = page.getByRole("textbox", {
+    name: new RegExp(`^${literal(fill(d.nameOf, { name: "" }))}`),
+  });
+  const kitchen = names.first();
+  const failed = page
+    .getByRole("alert")
+    .filter({ hasText: he.app.manage.failed.failed });
+  const departments = "/design/shell/manage/departments";
+  const saves = (url: URL) => url.pathname === departments;
+  await page.goto(departments);
+  await page.waitForLoadState("networkidle");
+
+  let dropping = true;
+  await page.route(saves, async (route) => {
+    if (route.request().method() !== "POST" || !dropping) {
+      await route.fallback();
+      return;
+    }
+    await route.abort();
+  });
+  await kitchen.fill("מטבח ראשי");
+  await kitchen.press("Enter");
+  await expect(failed).toBeVisible();
+  await expect(kitchen).toHaveValue("מטבח");
+  await expect(kitchen).toBeFocused();
+  await failed.evaluate((line) => {
+    (window as unknown as SeenLine).seenLine = line;
+  });
+  await kitchen.fill("מטבח ראשי");
+  await kitchen.press("Enter");
+  await expect
+    .poll(() =>
+      failed.evaluate(
+        (line) => line !== (window as unknown as SeenLine).seenLine,
+      ),
+    )
+    .toBe(true);
+  await expect(kitchen).toHaveValue("מטבח");
+
+  dropping = false;
+  await kitchen.fill("מטבח ראשי");
+  await kitchen.press("Enter");
+  await expect(failed).toHaveCount(0);
+  await expect(kitchen).toHaveValue("מטבח ראשי");
+  await expect(kitchen).toHaveAccessibleName(
+    fill(d.nameOf, { name: "מטבח ראשי" }),
+  );
+  await expect(kitchen).toBeFocused();
+  await page.unroute(saves);
+
+  // Added with "+" from the keyboard: the focus stays there.
+  const add = page.getByRole("button", { name: d.add });
+  await page.getByLabel(d.newName, { exact: true }).fill("קופה");
+  await add.focus();
+  await page.keyboard.press("Enter");
+  await expect(names.last()).toHaveValue("קופה");
+  await expect(add).toBeFocused();
+  await expect(add).toHaveAttribute("aria-disabled", "true");
+
+  // Removed and brought back: the focus is on its name.
+  await page
+    .getByRole("button", { name: fill(d.remove, { name: "קופה" }) })
+    .focus();
+  await page.keyboard.press("Enter");
+  const undo = page
+    .getByRole("status")
+    .filter({ hasText: fill(d.removed, { name: "קופה" }) })
+    .getByRole("button", { name: he.app.manage.undo });
+  await expect(undo).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(undo).toHaveCount(0);
+  await expect(
+    page.getByRole("textbox", { name: fill(d.nameOf, { name: "קופה" }) }),
+  ).toBeFocused();
 });

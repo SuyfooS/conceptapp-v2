@@ -50,6 +50,15 @@ export async function demoResendAction(
   return { link: await demoLink() };
 }
 
+/** A new link the demo refuses each time (`?resend=refused`): none is made. */
+export async function demoRefusedResendAction(
+  _inviteId: string,
+  _prev: ResendState,
+  _form: FormData,
+): Promise<ResendState> {
+  return { failure: "failed" };
+}
+
 /** Deleting a line on a demo profile: nothing is stored, so it comes back on reload. */
 export async function demoClearBioAction(
   _personId: string,

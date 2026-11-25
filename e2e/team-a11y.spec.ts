@@ -1,5 +1,11 @@
 import he from "../messages/he.json" with { type: "json" };
-import { announcer, heardSoFar, pastSameWords, saidSince } from "./announcer";
+import {
+  announcer,
+  heardSoFar,
+  pastDrawing,
+  pastSameWords,
+  saidSince,
+} from "./announcer";
 import { HOLD_MS } from "./build-screen";
 import { heT } from "./t";
 import { expect, type Page, test } from "./test";
@@ -19,6 +25,39 @@ const RON = "רון שפירא";
 /** Where the invite test keeps what the role's alert said before, on the page's window. */
 type RoleWords = { roleWords?: Node[] };
 
+/** Where a test keeps the refusal's line it saw before, on the page's window. */
+type SeenLine = { seenLine?: Element };
+
+/** Notes `line` as the one seen, on the page's window. */
+const noteLine = (line: Element) => {
+  (window as unknown as SeenLine).seenLine = line;
+};
+
+/** Whether `line` is another than the one noted. */
+const anotherLine = (line: Element) =>
+  line !== (window as unknown as SeenLine).seenLine;
+
+/** A new link's "קישור חדש" for a person, in whichever shape is on screen. */
+const newLinkFor = (page: Page, name: string) =>
+  page
+    .getByRole("button", { name: tl.newFor.replace("{name}", name) })
+    .filter({ visible: true });
+
+/**
+ * The page's clipboard, standing in for the browser's: it takes each copy,
+ * or refuses it, as the test says.
+ */
+const clipboardTakes = (page: Page, takes: boolean) =>
+  page.evaluate((takes) => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: () =>
+          takes ? Promise.resolve() : Promise.reject(new Error("refused")),
+      },
+    });
+  }, takes);
+
 /** A person's "מחיקת ההזמנה", in whichever shape is on screen. */
 const deleteFor = (page: Page, name: string) =>
   page
@@ -35,7 +74,8 @@ const undoFor = (page: Page, name: string) =>
 
 // A deleted invite's "ביטול" takes the focus its button had, in each shape
 // (both draw it; only the one on screen can take it). With the keyboard on
-// it the hold waits; undone, the focus is back on the row's "מחיקת ההזמנה".
+// it the hold waits; undone, the focus is back on the row's "מחיקת ההזמנה",
+// brought into view: the page had moved on under the list meanwhile.
 // After a mouse's press nothing waits, and once it goes the title of the
 // invites' section has the focus, or, with no invite left on a phone's or
 // tablet's lists (whose section is drawn anew after the team then), the
@@ -62,8 +102,13 @@ test("the team twin's deleted invite gives 'ביטול' the focus, waits for the
   // Past the hold, with the keyboard on it: still there.
   await page.waitForTimeout(HOLD_MS + 1_000);
   await expect(undoFor(page, DANA)).toBeVisible();
+  // "ביטול" at the top of the screen: the row it brings back comes above it.
+  await undoFor(page, DANA).evaluate((undo) =>
+    undo.scrollIntoView({ block: "start" }),
+  );
   await page.keyboard.press("Enter");
   await expect(deleteFor(page, DANA)).toBeFocused();
+  await expect(deleteFor(page, DANA)).toBeInViewport();
   await expect(undoFor(page, DANA)).toHaveCount(0);
 
   // The twin keeps nothing: afresh, and with a mouse.
@@ -112,16 +157,16 @@ test("the team twin's next deleted invite waits for its own 'ביטול', whatev
 });
 
 // A new link in place of its press: the copy button takes the focus, and
-// says whose link it copies.
-test("the team twin's new link puts the focus on its copy button", async ({
+// says whose link it copies. Each copy is said by the announcer, the same
+// again too, and never by the button as well; one the browser refuses is
+// said and shown, and the link is selected in its field, to copy by hand.
+test("the team twin's new link puts the focus on its copy button, and each copy is said", async ({
   page,
 }) => {
+  const polite = announcer(page, "polite");
   await page.goto("/design/shell/team");
   await page.waitForLoadState("networkidle");
-  await page
-    .getByRole("button", { name: tl.newFor.replace("{name}", RON) })
-    .filter({ visible: true })
-    .click();
+  await newLinkFor(page, RON).click();
   const copy = page
     .getByRole("button", { name: tl.copy })
     .filter({ visible: true });
@@ -129,14 +174,130 @@ test("the team twin's new link puts the focus on its copy button", async ({
   await expect(copy).toHaveAccessibleDescription(
     tl.linkFor.replace("{name}", RON),
   );
+  await expect(copy).not.toHaveAttribute("aria-live");
+
+  await clipboardTakes(page, true);
+  await heardSoFar(polite);
+  await page.keyboard.press("Enter");
+  const copied = page
+    .getByRole("button", { name: tl.copied })
+    .filter({ visible: true });
+  await expect(copied).toBeFocused();
+  await expect(saidSince(polite, tl.copied)).toHaveCount(1);
+  // Again, its words the same: said again.
+  await pastSameWords(page);
+  await heardSoFar(polite);
+  await page.keyboard.press("Enter");
+  await expect(saidSince(polite, tl.copied)).toHaveCount(1);
+
+  await clipboardTakes(page, false);
+  await heardSoFar(polite);
+  await page.keyboard.press("Enter");
+  await expect(saidSince(polite, tl.copyFailed)).toHaveCount(1);
+  const field = page
+    .getByLabel(tl.linkFor.replace("{name}", RON))
+    .filter({ visible: true });
+  await expect(field).toBeFocused();
+  await expect(
+    page.getByRole("main").getByText(tl.copyFailed).filter({ visible: true }),
+  ).toBeVisible();
+  expect(
+    await field.evaluate((input) => {
+      const shown = input as HTMLInputElement;
+      return (
+        shown.selectionStart === 0 && shown.selectionEnd === shown.value.length
+      );
+    }),
+  ).toBe(true);
+});
+
+// A new link that arrives after the focus was put elsewhere (the next
+// control, while the press was busy) leaves the focus there, and the
+// announcer says the link is ready.
+test("the team twin's new link, ready with the focus put elsewhere meanwhile, is said there", async ({
+  page,
+}) => {
+  const polite = announcer(page, "polite");
+  await page.goto("/design/shell/team");
+  await page.waitForLoadState("networkidle");
+  let answer = () => {};
+  const held = new Promise<void>((resolve) => {
+    answer = () => resolve();
+  });
+  await page.route("**/design/shell/team", async (route) => {
+    if (route.request().method() === "POST") await held;
+    await route.continue();
+  });
+  const press = newLinkFor(page, RON);
+  await press.click();
+  await expect(press).toHaveAttribute("aria-busy", "true");
+  await deleteFor(page, DANA).focus();
+  await heardSoFar(polite);
+  answer();
+  await expect(saidSince(polite, tl.ready.replace("{name}", RON))).toHaveCount(
+    1,
+  );
+  await expect(deleteFor(page, DANA)).toBeFocused();
+  await expect(
+    page.getByRole("button", { name: tl.copy }).filter({ visible: true }),
+  ).toBeVisible();
+  await page.unroute("**/design/shell/team");
+});
+
+// A new link refused (the twin's ?resend=refused) is a line of its own,
+// drawn anew each time, so the same refusal again is heard, and the press,
+// busy meanwhile, has the focus back.
+test("the team twin's refused new link is said anew each time, with the focus back on its press", async ({
+  page,
+}) => {
+  await page.goto("/design/shell/team?resend=refused");
+  await page.waitForLoadState("networkidle");
+  const press = newLinkFor(page, RON);
+  const refusal = page
+    .getByRole("main")
+    .getByRole("alert")
+    .filter({ visible: true });
+  await press.focus();
+  await page.keyboard.press("Enter");
+  await expect(refusal).toHaveText(tl.errors.failed);
+  await expect(press).toBeFocused();
+  await refusal.evaluate(noteLine);
+  await page.keyboard.press("Enter");
+  await expect.poll(() => refusal.evaluate(anotherLine)).toBe(true);
+  await expect(refusal).toHaveText(tl.errors.failed);
+  await expect(press).toBeFocused();
+});
+
+// A new link is the same in every shape: a screen made narrower than the
+// computer's table (a tablet turned) shows it in the lists too, never
+// "קישור חדש" again, whose press would stop the link just made.
+test("the team twin's new link stays when the screen crosses from the table to the lists", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "desktop",
+    "from the computer's table to the lists, once",
+  );
+  await page.goto("/design/shell/team");
+  await page.waitForLoadState("networkidle");
+  await newLinkFor(page, RON).click();
+  const field = page
+    .getByLabel(tl.linkFor.replace("{name}", RON))
+    .filter({ visible: true });
+  await expect(field).toHaveValue(/\/join\//);
+  const link = await field.inputValue();
+  await page.setViewportSize({ width: 1024, height: 900 });
+  await expect(field).toHaveValue(link);
+  await expect(newLinkFor(page, RON)).toHaveCount(0);
 });
 
 // The invite form's answers, each heard once (as sign-in's number is): the
 // first field refused takes a focus that was anywhere in the form, and why
 // is said after its read, out of its description meanwhile; one the person
 // put outside the form stays there, and why is said at once; the role's,
-// the same twice, is drawn anew each time; the link ready puts the focus on
-// its card's title; starting over, on the name.
+// the same twice, is drawn anew each time; the link ready with the focus put
+// outside the form is said there; starting over, the focus is on the name,
+// and the next link ready puts it on its card's title.
 test("the invite twin says each refusal on its field, and the link ready on its title", async ({
   page,
 }) => {
@@ -190,7 +351,10 @@ test("the invite twin says each refusal on its field, and the link ready on its 
   await pastSameWords(page);
   await submit.click();
   await expect(submit).toHaveAttribute("aria-busy", "true");
-  const back = page.getByRole("main").getByRole("link", { name: tt.title });
+  // Exact: the link ready brings "חזרה לצוות" too.
+  const back = page
+    .getByRole("main")
+    .getByRole("link", { name: tt.title, exact: true });
   await back.focus();
   answer();
   await expect(saidSince(assertive, ti.errors.phone.required)).toHaveCount(1);
@@ -232,31 +396,59 @@ test("the invite twin says each refusal on its field, and the link ready on its 
   await expect(roleAlert).toHaveText(ti.errors.role.required);
   await expect(submit).toBeFocused();
 
-  // The link ready: its card's title has the focus, and says so.
-  await phone.fill("050-123-4567");
-  await submit.click();
-  const ready = page.getByRole("heading", {
-    level: 2,
-    name: ti.ready.replace("{name}", "תמר בדיקה"),
+  // The link ready while the focus was put outside the form: it stays
+  // there, and the announcer says the link is ready.
+  let link = () => {};
+  const linkHeld = new Promise<void>((resolve) => {
+    link = () => resolve();
   });
-  await expect(ready).toBeFocused();
+  await page.route("**/design/shell/team/invite", async (route) => {
+    if (route.request().method() === "POST") await linkHeld;
+    await route.continue();
+  });
+  const ready = (who: string) =>
+    page.getByRole("heading", {
+      level: 2,
+      name: ti.ready.replace("{name}", who),
+    });
+  await phone.fill("050-123-4567");
+  await heardSoFar(polite);
+  await submit.click();
+  await expect(submit).toHaveAttribute("aria-busy", "true");
+  await back.focus();
+  link();
+  await expect(ready("תמר בדיקה")).toBeVisible();
+  await expect(
+    saidSince(polite, ti.ready.replace("{name}", "תמר בדיקה")),
+  ).toHaveCount(1);
+  await expect(back).toBeFocused();
+  await expect(ready("תמר בדיקה")).not.toBeFocused();
   await expect(
     page.getByRole("button", { name: tl.copy }),
   ).toHaveAccessibleDescription(tl.linkFor.replace("{name}", "תמר בדיקה"));
+  await page.unroute("**/design/shell/team/invite");
 
-  // Someone else: a fresh form, the name ready to write.
+  // Someone else: a fresh form, the name ready to write. Their link ready,
+  // from the press, puts the focus on its card's title, which says so.
   await page.getByRole("button", { name: ti.another }).click();
-  await expect(page.getByLabel(ti.name, { exact: true })).toBeFocused();
-  await expect(page.getByLabel(ti.name, { exact: true })).toHaveValue("");
+  await expect(name).toBeFocused();
+  await expect(name).toHaveValue("");
+  await name.fill("רון בדיקה");
+  await phone.fill("050-765-4321");
+  await submit.click();
+  await expect(ready("רון בדיקה")).toBeFocused();
 });
 
 // A name fix on its way holds its sheet: Escape and "סגירה" wait for its
 // answer, so the sheet still closes onto the fix's "ביטול", whose focus
-// says what it undoes, and never onto the row with the undo unheard.
+// says what it undoes, and never onto the row with the undo unheard. The
+// row is quiet as it appears, behind the sheet: the announcer doesn't say
+// its words as well.
 test("the person twin's name fix holds its sheet until its answer, then closes onto 'ביטול'", async ({
   page,
 }) => {
   const tc = tt.changes;
+  const polite = announcer(page, "polite");
   const main = page.getByRole("main");
   const nameRow = main
     .getByRole("button")
@@ -281,6 +473,7 @@ test("the person twin's name fix holds its sheet until its answer, then closes o
   await page.keyboard.press("Escape");
   await sheet.getByRole("button", { name: tc.close }).click();
   await expect(sheet).toBeVisible();
+  await heardSoFar(polite);
   answer();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   const changed = heT("app.team.changes.nameChanged", {
@@ -292,5 +485,84 @@ test("the person twin's name fix holds its sheet until its answer, then closes o
     .getByRole("button", { name: he.ui.undoRow.undo });
   await expect(undoName).toBeFocused();
   await expect(undoName).toHaveAccessibleDescription(changed);
+  await pastDrawing(page);
+  await expect(saidSince(polite, changed)).toHaveCount(0);
   await page.unroute("**/design/shell/team/noa");
+});
+
+// The name fixed by the keyboard alone: the sheet closes onto "ביטול",
+// whose focus came from a key, so its eight seconds wait while it has it;
+// undone, the focus is back on the row "שם", and the name as it was.
+test("the person twin's name fix by the keyboard closes onto a 'ביטול' that waits while it has the focus", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  const tc = tt.changes;
+  const main = page.getByRole("main");
+  const nameRow = main
+    .getByRole("button")
+    .filter({ has: page.getByText(tc.name, { exact: true }) });
+  await page.goto("/design/shell/team/noa");
+  await page.waitForLoadState("networkidle");
+  await nameRow.focus();
+  await page.keyboard.press("Enter");
+  const field = page.getByRole("dialog").getByLabel(ti.name, { exact: true });
+  await field.fill("נועה כהן-לוי");
+  await field.press("Enter");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  const undoName = main
+    .getByRole("status")
+    .filter({
+      hasText: heT("app.team.changes.nameChanged", { name: "נועה כהן-לוי" }),
+    })
+    .getByRole("button", { name: he.ui.undoRow.undo });
+  await expect(undoName).toBeFocused();
+  // Past its time, with the keyboard on it: still there.
+  await page.waitForTimeout(HOLD_MS + 1_000);
+  await expect(undoName).toBeVisible();
+  await expect(undoName).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(nameRow).toBeFocused();
+  await expect(
+    main.getByRole("heading", { level: 1, name: "נועה כהן", exact: true }),
+  ).toBeVisible();
+});
+
+// The name sheet's own refusal (no name) is said once, through the
+// announcer, never by an alert as well: from the press, the field takes the
+// focus and why is said after its read; again from the field (Enter), the
+// same words, it is said again, at once. While the field has the focus why
+// is out of its description, so it isn't said twice.
+test("the person twin's name sheet says its own refusal once, the same again too", async ({
+  page,
+}) => {
+  const tc = tt.changes;
+  const required = ti.errors.name.required;
+  const polite = announcer(page, "polite");
+  const assertive = announcer(page, "assertive");
+  await page.goto("/design/shell/team/noa");
+  await page.waitForLoadState("networkidle");
+  await page
+    .getByRole("main")
+    .getByRole("button")
+    .filter({ has: page.getByText(tc.name, { exact: true }) })
+    .click();
+  const sheet = page.getByRole("dialog");
+  const field = sheet.getByLabel(ti.name, { exact: true });
+  await field.fill("");
+  await heardSoFar(polite);
+  await sheet.getByRole("button", { name: tc.nameSubmit }).click();
+  await expect(field).toBeFocused();
+  await expect(field).toHaveAttribute("aria-invalid", "true");
+  await expect(saidSince(polite, required)).toHaveCount(1);
+  await expect(field).not.toHaveAttribute("aria-describedby");
+  await expect(sheet.getByText(required)).toBeVisible();
+  await expect(sheet.getByRole("alert")).toHaveCount(0);
+
+  await pastSameWords(page);
+  await heardSoFar(assertive);
+  await field.press("Enter");
+  await expect(saidSince(assertive, required)).toHaveCount(1);
+  await expect(field).toBeFocused();
+  await expect(field).not.toHaveAttribute("aria-describedby");
 });

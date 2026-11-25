@@ -1,11 +1,33 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { movesOf, PEOPLE_BESIDE } from "./department-moves";
+import {
+  DEPARTMENT_NAME,
+  departmentName,
+  movesOf,
+  PEOPLE_BESIDE,
+} from "./department-moves";
 
 // The departments editor's choices (accessibility, part 6): which way a
 // department can still move, so its move buttons say "unavailable" at the
-// ends instead of going out from under the focus.
+// ends instead of going out from under the focus, and where a department
+// brought back by "ביטול" is found again.
+
+describe("departmentName", () => {
+  it("finds the department's name field by its key", () => {
+    expect(DEPARTMENT_NAME).toBe("data-department-name");
+    expect(departmentName("kitchen")).toBe('[data-department-name="kitchen"]');
+    expect(departmentName("d-0a1b2c3d")).toBe(
+      '[data-department-name="d-0a1b2c3d"]',
+    );
+  });
+
+  it("reads any key as itself, quotes and backslashes included", () => {
+    expect(departmentName('a"b\\c')).toBe(
+      '[data-department-name="a\\"b\\\\c"]',
+    );
+  });
+});
 
 describe("movesOf", () => {
   it("moves a middle department either way", () => {

@@ -28,7 +28,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { movesOf, PEOPLE_BESIDE } from "./department-moves";
+import { departmentName, movesOf, PEOPLE_BESIDE } from "./department-moves";
 import { hairlineClass, inputClass, rowClass } from "./list-rows";
 import type { SettingsFailure, SettingsResult } from "./settings-types";
 
@@ -78,7 +78,10 @@ export type SaveDepartmentMembers = (
  * brings the department back with its people. Who is in a department saves at
  * once, from a sheet on a phone and beside the list from a tablet up, as a
  * grid on a computer; there the one shown is marked current, and a choice
- * puts the focus on its people's title. While taking orders is on, each says how many of the
+ * puts the focus on its people's title. Enter saves a name with the focus
+ * still in it, an add keeps it on "+", and "ביטול" gives it to the name
+ * brought back. A save that fails is said by a line drawn anew each time,
+ * gone once a save goes through. While taking orders is on, each says how many of the
  * menu's items it prepares, before it is removed and in its undo (waiter
  * mode P2). Used on /manage/departments and by the team in the console.
  */
@@ -128,6 +131,7 @@ export function DepartmentsEditor({
   const [chosePeople, setChosePeople] = useState<PeopleChoice | null>(null);
   const seenChoice = useRef<PeopleChoice | null>(null);
   const panelTitle = useRef<HTMLHeadingElement>(null);
+  const listTitle = useRef<HTMLHeadingElement>(null);
   useLayoutEffect(() => {
     if (!arrived(seenChoice, chosePeople)) return;
     focusFirst([panelTitle.current], { onlyIfLost: false, title: false });
@@ -170,6 +174,8 @@ export function DepartmentsEditor({
       result = { ok: false, failure: "failed" };
     }
     if (result.ok) {
+      // A save went through: the last one that didn't is no longer so.
+      setFailure(null);
       setSaved((count) => count + 1);
       return true;
     }
@@ -197,8 +203,17 @@ export function DepartmentsEditor({
     }
   }
 
-  /** False when the name stays as it was. */
-  function rename(key: string, before: string, text: string): boolean {
+  /**
+   * The name typed in `field`, saved; false when the name stays as it was.
+   * One that couldn't be saved is back to the stored name in its field,
+   * unless something else was typed there meanwhile.
+   */
+  function rename(
+    key: string,
+    before: string,
+    field: HTMLInputElement,
+  ): boolean {
+    const text = field.value;
     const clean = text.trim();
     if (!clean || clean === before) return false;
     if (named(clean, key)) {
@@ -208,7 +223,9 @@ export function DepartmentsEditor({
     setTaken(null);
     void change(
       plain().map((d) => (d.key === key ? { ...d, name: clean } : d)),
-    );
+    ).then((saved) => {
+      if (!saved && field.value === text) field.value = before;
+    });
     return true;
   }
 
@@ -268,6 +285,7 @@ export function DepartmentsEditor({
       result = { ok: false, failure: "failed" };
     }
     if (result.ok) {
+      setFailure(null);
       setSaved((count) => count + 1);
       return;
     }
@@ -365,6 +383,8 @@ export function DepartmentsEditor({
       />
       {failure ? (
         <Card
+          // Drawn anew for each failure, so the same words again are heard.
+          key={failure.stamp}
           tone="float"
           padding="md"
           role="alert"
@@ -374,7 +394,7 @@ export function DepartmentsEditor({
         </Card>
       ) : null}
       <div className="grid items-start gap-6 md:grid-cols-2 md:gap-8 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-        <PageSection title={t("listTitle")}>
+        <PageSection title={t("listTitle")} headingRef={listTitle}>
           <ListGroup>
             {shown.length === 0 ? (
               <p className="px-4 py-3.5 text-ink-2">
@@ -407,26 +427,30 @@ export function DepartmentsEditor({
                 >
                   <div className="flex min-h-[3.75rem] items-center gap-1">
                     <input
-                      // Back to the stored name after a failed save.
-                      key={department.name}
+                      // The same field while its name changes, so Enter
+                      // saves it with the focus still there; `rename` puts
+                      // the stored name back after a failed save.
+                      key={department.key}
                       aria-label={t("nameOf", { name: department.name })}
                       defaultValue={department.name}
                       maxLength={NAME_MAX}
                       disabled={disabled}
                       className={inputClass}
+                      // Found again by its department once "ביטול" brings it
+                      // back (`departmentName`).
+                      data-department-name={department.key}
                       onBlur={(event) => {
-                        if (
-                          !rename(
-                            department.key,
-                            department.name,
-                            event.target.value,
-                          )
-                        ) {
-                          event.target.value = department.name;
+                        const input = event.currentTarget;
+                        if (!rename(department.key, department.name, input)) {
+                          input.value = department.name;
                         }
                       }}
                       onKeyDown={(event) => {
-                        if (event.key === "Enter") event.currentTarget.blur();
+                        if (event.key !== "Enter") return;
+                        const input = event.currentTarget;
+                        if (!rename(department.key, department.name, input)) {
+                          input.value = department.name;
+                        }
                       }}
                     />
                     {/*
@@ -496,7 +520,9 @@ export function DepartmentsEditor({
                   label={t("add")}
                   icon={<Plus />}
                   variant="secondary"
-                  disabled={!name.trim()}
+                  // Unavailable with no name, and still reached: an add
+                  // empties the name under the focus, which stays here.
+                  aria-disabled={!name.trim() || undefined}
                 />
               </form>
             )}
@@ -522,6 +548,11 @@ export function DepartmentsEditor({
               onUndo={undo}
               // The row went with the button pressed.
               autoFocus
+              // Undone, the department's name is back where it was.
+              focusAfter={() => [
+                departmentName(removed.department.key),
+                listTitle.current,
+              ]}
             />
           ) : null}
           {on.lists ? (

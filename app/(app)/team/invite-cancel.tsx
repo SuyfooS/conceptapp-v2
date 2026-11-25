@@ -1,12 +1,18 @@
 "use client";
 
 import { Button } from "@ui/button";
+import { firstOnScreen } from "@ui/focus-after";
 import { UndoRow } from "@ui/undo-row";
 import { Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { createContext, type ReactNode, use, useRef, useState } from "react";
 import { useHeldWrite } from "../use-held-write";
-import { inviteCancelTarget, invitesLeft, sectionTitle } from "./invite-focus";
+import {
+  inViewWhenFocused,
+  inviteCancelTarget,
+  invitesLeft,
+  sectionTitle,
+} from "./invite-focus";
 import type {
   CancelInvite,
   InviteCancelResult,
@@ -178,8 +184,8 @@ export function CancelInviteButton({
  * "מחיקת ההזמנה" went with its row, so "ביטול" takes the focus as it
  * appears: each shape draws it, and only the one on screen can take it.
  * While it is being reached the write waits. Undone, the focus goes back to
- * the row's "מחיקת ההזמנה"; its time up, to the title of this section, which
- * stays where it is (`invitesLeft`), else the page's.
+ * the row's "מחיקת ההזמנה", brought into view; its time up, to the title of
+ * this section, which stays where it is (`invitesLeft`), else the page's.
  */
 export function InviteCancelUndo({
   ids,
@@ -210,7 +216,9 @@ export function InviteCancelUndo({
           autoFocus
           onWaitingChange={(waiting) => cancels.waits(held.id, waiting)}
           focusAfter={() => [
-            inviteCancelTarget(held.id),
+            // Back where it was, maybe far above this row: brought into
+            // view as it takes the focus.
+            inViewWhenFocused(firstOnScreen([inviteCancelTarget(held.id)])),
             stays ? sectionTitle(anchor.current) : null,
           ]}
         />

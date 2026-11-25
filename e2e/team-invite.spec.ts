@@ -21,6 +21,10 @@ const OWNER_INVITE = { name: "שותף ממתין", phone: "+972500000922" };
 const tt = he.app.team;
 const ti = tt.invite;
 const tl = tt.link;
+
+/** Where a test keeps the refusal's line it saw before, on the page's window. */
+type SeenLine = { seenLine?: Element };
+
 const allPhones = [
   ...Object.values(NEW).map((p) => p.e164),
   EXPIRED.phone,
@@ -123,16 +127,32 @@ test("a manager invites a worker by phone and gets the link", async ({
 
   // Someone already in the team is not invited again. A fresh form starts
   // on the name; the refusal is a line of its own, and the press keeps the
-  // focus.
+  // focus. The same refusal again is a line drawn anew, so it is heard
+  // again.
   await page.getByRole("button", { name: ti.another }).click();
   await expect(page.getByLabel(ti.name, { exact: true })).toBeFocused();
+  const refusal = page.getByRole("main").getByRole("alert");
+  const submit = page.getByRole("button", { name: ti.submit });
   await page.getByLabel(ti.name).fill(MEMBER.name);
   await page.getByLabel(ti.phone).fill(MEMBER.local);
-  await page.getByRole("button", { name: ti.submit }).click();
-  await expect(page.getByRole("main").getByRole("alert")).toHaveText(
-    ti.errors.alreadyMember,
-  );
-  await expect(page.getByRole("button", { name: ti.submit })).toBeFocused();
+  await submit.click();
+  await expect(refusal).toHaveText(ti.errors.alreadyMember);
+  await expect(submit).toBeFocused();
+  await refusal.evaluate((line) => {
+    (window as unknown as SeenLine).seenLine = line;
+  });
+  await page.getByLabel(ti.name).fill(MEMBER.name);
+  await page.getByLabel(ti.phone).fill(MEMBER.local);
+  await submit.click();
+  await expect
+    .poll(() =>
+      refusal.evaluate(
+        (line) => line !== (window as unknown as SeenLine).seenLine,
+      ),
+    )
+    .toBe(true);
+  await expect(refusal).toHaveText(ti.errors.alreadyMember);
+  await expect(submit).toBeFocused();
 
   // Back on the team, the new invite is waiting.
   await page.goto("/team");

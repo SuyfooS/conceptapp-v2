@@ -5,9 +5,10 @@ import {
   TEAM_NAME_MAX,
   unchangedMemberName,
 } from "@domain/team";
+import { announce } from "@ui/announcer";
 import { Button } from "@ui/button";
 import { FieldGroup, GroupedField } from "@ui/field-group";
-import { firstOnScreen } from "@ui/focus-after";
+import { arrived, firstOnScreen } from "@ui/focus-after";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { Sheet } from "@ui/sheet";
 import { StatusToast } from "@ui/status-toast";
@@ -23,6 +24,11 @@ import {
   useRef,
   useState,
 } from "react";
+import {
+  answerHeard,
+  focusAt,
+  useQuietWhy,
+} from "../../../(auth)/step-results";
 import { type HeldTimer, heldTimer } from "../../held-timer";
 import { HOLD_MS } from "../../use-held-write";
 import type {
@@ -352,6 +358,18 @@ function useNameFailure() {
       : t(`failures.${failure}`);
 }
 
+/** A name the sheet refused itself, and how many it refused before it. */
+type Refused = { why: "required" | "tooLong"; count: number };
+
+/**
+ * The name to fix, in the sheet. A name it refuses itself (none, too long)
+ * is said once, through the page's announcer, as the invite form says its
+ * name (`answerHeard`): from the press, the field takes the focus and why is
+ * said after its read; from the field itself (Enter), it is said at once.
+ * Either way the field keeps the focus, read as invalid, with why out of its
+ * description meanwhile (`useQuietWhy`), so it isn't said twice. Each
+ * refusal is its own (`Refused.count`), so the same one again is heard too.
+ */
 function NameForm({
   value,
   onDone,
@@ -365,7 +383,11 @@ function NameForm({
   const failureText = useNameFailure();
   const field = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState(value.shown ?? "");
-  const [error, setError] = useState<"required" | "tooLong" | null>(null);
+  const [refused, setRefused] = useState<Refused | null>(null);
+  const refusals = useRef(0);
+  const seen = useRef<Refused | null>(null);
+  const { quiet, hush } = useQuietWhy(field);
+  const why = refused ? tInvite(`errors.name.${refused.why}`) : undefined;
   const parsed = parseTeamName(draft);
   // A name stored with a double space, or with its letters decomposed, is no
   // fix until a letter really differs. One the business keeps with what
@@ -373,14 +395,24 @@ function NameForm({
   // cleans it; their own name it never cleans, so there it is none.
   const same = unchangedMemberName(draft, value.shown, value.kept);
 
+  // Each refusal once, as it is drawn (`arrived`), in the drawing's own
+  // pass, so a field that keeps the focus is drawn without why in its
+  // description.
+  useLayoutEffect(() => {
+    const at = field.current;
+    if (!arrived(seen, refused) || !refused || !why || !at) return;
+    const said = answerHeard({ error: why, at: focusAt(at) });
+    if (said.focus) at.focus();
+    if (said.say) announce(said.say.words, { politeness: said.say.politeness });
+    if (said.quiet) hush(refused.count);
+  }, [refused, why, hush]);
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (value.busy) return;
     if (!parsed.ok) {
-      // Said as an alert wherever the focus was, then the field takes it, to
-      // write the name at once.
-      setError(parsed.error);
-      field.current?.focus();
+      refusals.current += 1;
+      setRefused({ why: parsed.error, count: refusals.current });
       return;
     }
     const fixed = await value.fix(parsed.name);
@@ -405,13 +437,10 @@ function NameForm({
           value={draft}
           onChange={(event) => {
             setDraft(event.target.value);
-            setError(null);
+            setRefused(null);
           }}
-          error={
-            error ? (
-              <span role="alert">{tInvite(`errors.name.${error}`)}</span>
-            ) : undefined
-          }
+          error={why}
+          quietMessage={refused !== null && quiet === refused.count}
           required
         />
       </FieldGroup>

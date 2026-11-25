@@ -178,6 +178,7 @@ function InviteRound({
             hint={tl("hint")}
             copy={tl("copy")}
             copied={tl("copied")}
+            failed={tl("copyFailed")}
           />
         </Card>
         <div className="mt-5 flex flex-col gap-1 md:flex-row">

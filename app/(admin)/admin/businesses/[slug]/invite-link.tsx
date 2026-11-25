@@ -65,6 +65,7 @@ export function InviteLink({
       hint={t("hint")}
       copy={t("copy")}
       copied={t("copied")}
+      failed={t("copyFailed")}
     />
   );
 }
