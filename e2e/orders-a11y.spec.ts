@@ -50,10 +50,13 @@ async function open(page: Page, path: string) {
 // is drawn, and where it went is said after it. Moved up to the top, its
 // "הזזה למעלה" can't be pressed again, so "הזזה למטה" has the focus. A
 // mouse's press is the same. Table 1 moved down short of the end is the
-// case CI's first run caught: React gives the arrow it moved its focus back
-// itself, in the middle of drawing the move, and the arrows' refs, new on
-// each drawing, were off the list then, so that focus read as one put
-// elsewhere and the move was forgotten, never said (`arrowRefs`).
+// case CI's first run caught, never said: React gives the arrow it moved
+// its focus back itself, in the middle of drawing the move, which read as a
+// focus put elsewhere, so the move was forgotten, and only a move still
+// known was said. It is said from the save's answer now, known or not, so
+// this test holds with the arrows' refs new on each drawing too; that the
+// move stays known through React's focus (`arrowRefs`) is the tab bar's
+// test below, on a phone.
 test("the places twin keeps the focus on a moved table's arrow and says where it went", async ({
   page,
 }) => {
@@ -134,9 +137,12 @@ test("the places twin moves a table once for Enter held down on its arrow at the
 // that stays short of the end is the one to move: its "הזזה למטה" keeps
 // the focus because React gives it back itself as it draws the move, and
 // puts the page back where it was, so nothing the screen does with the
-// focus brings it up; only the press's own drawing does. (Table 11, moved
-// to the end, has its "הזזה למעלה" focused by the screen, which always
-// brought it into view.)
+// focus brings it up; only the press's own drawing does, and only while
+// the move is still known as React gives the focus back: with the arrows'
+// refs new on each drawing that focus read as one put elsewhere, and the
+// arrow stayed under the bar (`arrowRefs`). Of the browser tests, this is
+// the one that fails without them. (Table 11, moved to the end, has its
+// "הזזה למעלה" focused by the screen, which always brought it into view.)
 test("the places twin keeps a table's arrow clear of the tab bar as it moves down", async ({
   page,
 }, testInfo) => {
@@ -259,7 +265,8 @@ test("the places twin, left by Back and opened again, puts the focus on no moved
 // focus; down from the top by a mouse's press, its own arrow keeps it. The
 // mouse's move, short of the end, is the one CI's first run caught, as
 // table 1's above: its arrow keeps the focus because React gives it back,
-// and that once made the move forgotten and never said.
+// and that once made the move forgotten and never said. It is said from
+// the save's answer now, as table 1's is.
 test("the categories twin keeps the focus on a moved category's arrow and says where it went", async ({
   page,
 }) => {
