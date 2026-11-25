@@ -153,6 +153,29 @@ describe("the locks on a week's row", () => {
     );
   });
 
+  it("come before the demo's sample answers, all claimed in one statement before the first is sent", () => {
+    // The trigger on a new answer (availability_submissions_resolve) takes
+    // the week's reminders lock (private.lock_availability_week, an advisory
+    // lock held to the end of the transaction) at the end of the statement
+    // that inserted it. Claimed one at a time, the first claim would hold it
+    // while a later claim waited on an answer the form is sending, whose own
+    // trigger waits for it: a deadlock. Claimed in one statement, in order of
+    // id, the lock comes after every such wait, and only the rows claimed are
+    // sent. packages/db/demo-availability.db.test.ts runs the two at once.
+    const sample = withoutComments(body("public.renew_demo_availability"));
+    const claims = [
+      ...sample.matchAll(/insert into public\.availability_submissions\b/g),
+    ].map((found) => found.index);
+    expect(claims).toHaveLength(1);
+    const claim = sample.slice(claims[0]);
+    expect(claim).toMatch(
+      /^insert into public\.availability_submissions \(business_id, week_id, user_id\)\s+select demo\.business_id, week, k\.id::uuid\s+from jsonb_object_keys\(named\) as k \(id\)\s+order by k\.id::uuid\s+on conflict \(week_id, user_id\) do nothing\s+returning user_id\s+\)\s+select coalesce\(array_agg\(c\.user_id order by c\.user_id\), '\{\}'\) into claimed\s+from claim c;\s+foreach person in array claimed loop\s+perform public\.submit_availability\(person, week, named -> person::text, null\);/,
+    );
+    expect(sample.match(/perform public\.submit_availability\(/g)).toHaveLength(
+      1,
+    );
+  });
+
   it("are taken nowhere else, so a new one is ordered here first", () => {
     const locking = [...bodies]
       .filter(([, sql]) => weekLocks(withoutComments(sql)).length > 0)

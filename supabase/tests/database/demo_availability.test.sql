@@ -6,7 +6,8 @@
 -- for a business closed on Shabbat. Never an owner, an accountant or someone
 -- who left; never an answer someone sent, an empty one too; nothing on a
 -- published week, with scheduling off or for a definition without the key;
--- no row of the log, no notification and no push; nothing the second time;
+-- no row of the log, and no notification (so no push) with notifications on;
+-- nothing the second time, and an answer sent over the sample kept as sent;
 -- the sample again once a reset took the week; submit_availability's own
 -- rules hold; only the server may call it. Fixed ids of its own, so nothing
 -- here meets the seeded people, whose definitions name no sample.
@@ -35,7 +36,8 @@ values
 -- named only inside Shabbat, d a worker who sent "not available". O, open on
 -- Shabbat, weeks from Monday: 9 a manager. P, next week published: a a
 -- worker. Q, scheduling off: b a worker. R, a definition without the key: c
--- a worker. Every one of them a demo business.
+-- a worker. Every one of them a demo business. X and O have notifications
+-- on, so anything of the sample's that would notify writes a line.
 insert into public.businesses (id, slug, name)
 values
   ('dc000000-0000-4000-b000-000000000001', 'demo-avail-x', 'Demo availability X'),
@@ -63,7 +65,9 @@ values
 insert into public.business_modules (business_id, module_key, enabled, settings)
 values
   ('dc000000-0000-4000-b000-000000000001', 'scheduling', true, '{"weekStartsOn": 0}'),
+  ('dc000000-0000-4000-b000-000000000001', 'notifications', true, '{}'),
   ('dc000000-0000-4000-b000-000000000002', 'scheduling', true, '{"weekStartsOn": 1, "closedOnShabbat": false}'),
+  ('dc000000-0000-4000-b000-000000000002', 'notifications', true, '{}'),
   ('dc000000-0000-4000-b000-000000000003', 'scheduling', true, '{"weekStartsOn": 0}'),
   ('dc000000-0000-4000-b000-000000000004', 'scheduling', false, '{"weekStartsOn": 0}'),
   ('dc000000-0000-4000-b000-000000000005', 'scheduling', true, '{"weekStartsOn": 0}');
@@ -145,6 +149,15 @@ create function pg_temp.havdalah(on_day date) returns text language sql as $$
   select to_char(upper(private.shabbat_span('dc000000-0000-4000-b000-000000000001', on_day))
     at time zone 'Asia/Jerusalem', 'HH24:MI')
 $$;
+-- The Sunday after the last Friday X's Shabbat times reach (its city's or Tel
+-- Aviv's, as private.shabbat_span looks them up): that week's Friday and
+-- Saturday have none, whenever the table is extended.
+create function pg_temp.past_table() returns date language sql as $$
+  select max(s.friday) + 2
+  from private.shabbat_times s
+  join public.businesses b on b.id = 'dc000000-0000-4000-b000-000000000001'
+  where s.city = b.shabbat_city or s.city = 'telAviv'
+$$;
 -- A person's ranges in a business, as "day start-end" lines, earliest first.
 create function pg_temp.ranges_of(person uuid) returns text language sql as $$
   select coalesce(string_agg(
@@ -190,8 +203,7 @@ where w.id = (select i.id from ids i where i.name = 'p-week');
 
 insert into counts
 select 'log', count(*) from public.audit_log
-union all select 'lines', count(*) from public.notifications
-union all select 'pushes', count(*) from public.push_deliveries;
+union all select 'lines', count(*) from public.notifications;
 
 ------------------------------------------------------------------------------
 -- Who may call it
@@ -334,6 +346,12 @@ select is(
 ------------------------------------------------------------------------------
 -- Again
 
+-- Meanwhile the worker sends hours of their own over the sample, with a note.
+select public.submit_availability('dc000000-0000-4000-a000-000000000003',
+  (select i.id from ids i where i.name = 'x-week'),
+  jsonb_build_array(jsonb_build_object('day', pg_temp.x_day(2)::text, 'start', '11:00', 'end', '15:00')),
+  'my own hours');
+
 insert into counts
 select 'answers', count(*) from public.availability_submissions s
 where s.business_id in ('dc000000-0000-4000-b000-000000000001', 'dc000000-0000-4000-b000-000000000002')
@@ -362,6 +380,13 @@ select is(
    where s.business_id in ('dc000000-0000-4000-b000-000000000001', 'dc000000-0000-4000-b000-000000000002')),
   (select n from counts where name = 'ranges'),
   'nor any range'
+);
+select is(
+  pg_temp.ranges_of('dc000000-0000-4000-a000-000000000003')
+    || ' / ' || (select s.note from public.availability_submissions s
+      where s.user_id = 'dc000000-0000-4000-a000-000000000003'),
+  pg_temp.x_day(2)::text || ' 11:00-15:00 / my own hours',
+  'an answer sent over the sample stays as it was sent'
 );
 
 ------------------------------------------------------------------------------
@@ -398,20 +423,23 @@ where d.business_id = 'dc000000-0000-4000-b000-000000000001';
 -- The ranges themselves
 
 select is(
-  private.demo_sample_ranges('dc000000-0000-4000-b000-000000000001', '2032-01-04', $json$
+  private.demo_sample_ranges('dc000000-0000-4000-b000-000000000001', pg_temp.past_table(), $json$
     [{ "weekday": 5, "start": "08:00", "end": "12:00" },
      { "weekday": 6, "start": "20:00", "end": "23:00" },
      { "weekday": 7, "start": "09:00", "end": "17:00" },
      { "weekday": 0, "start": "09:00", "end": "17:00" }]
   $json$),
-  '[{"day": "2032-01-04", "start": "09:00", "end": "17:00"}]'::jsonb,
+  jsonb_build_array(jsonb_build_object(
+    'day', pg_temp.past_table()::text, 'start', '09:00', 'end', '17:00')),
   'past the last Shabbat it knows, Friday and Saturday are left out, and so is a day that isn''t one'
 );
+-- O's week from the Monday after, its Saturday past the table too.
 select is(
-  private.demo_sample_ranges('dc000000-0000-4000-b000-000000000002', '2032-01-05', $json$
+  private.demo_sample_ranges('dc000000-0000-4000-b000-000000000002', pg_temp.past_table() + 1, $json$
     [{ "weekday": 6, "start": "20:00", "end": "23:00" }]
   $json$),
-  '[{"day": "2032-01-10", "start": "20:00", "end": "23:00"}]'::jsonb,
+  jsonb_build_array(jsonb_build_object(
+    'day', (pg_temp.past_table() + 6)::text, 'start', '20:00', 'end', '23:00')),
   'open on Shabbat, it needs no Shabbat times'
 );
 select is(
@@ -450,15 +478,12 @@ select is(
   (select n from counts where name = 'log'),
   'no row of the log'
 );
+-- A push goes out only for a line (public.claim_due_pushes reads them), so
+-- no line is no push either.
 select is(
   (select count(*) from public.notifications),
   (select n from counts where name = 'lines'),
-  'no notification'
-);
-select is(
-  (select count(*) from public.push_deliveries),
-  (select n from counts where name = 'pushes'),
-  'and no push'
+  'no notification, with notifications on'
 );
 
 select * from finish();

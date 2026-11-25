@@ -27,10 +27,11 @@
 --                private.availability_due_at) and sends their ranges through
 --                public.submit_availability with no note, so every rule of a
 --                sent answer holds. An answer someone sent, an empty one too,
---                is never touched: the person's row is claimed first (`on
---                conflict do nothing`), so an answer sent at the same moment
---                either stops the sample or replaces it afterwards. Returns
---                how many answers it wrote, 0 when called again.
+--                is never touched: every named person's row is claimed first,
+--                in one statement (`on conflict do nothing`), and only the
+--                rows it claimed are sent, so an answer sent at the same
+--                moment either stops the sample or replaces it afterwards.
+--                Returns how many answers it wrote, 0 when called again.
 --   Shabbat      for a business closed on Shabbat (private.closes_on_shabbat),
 --                each range is cut as the form's suggestion is
 --                (@domain/availability-form's suggestedDay): on Friday it
@@ -52,8 +53,16 @@
 --   locks        the business (`for key share`, so a demo reset under way
 --                finishes first; a business it made again meanwhile waits for
 --                the next call), then next week's row (`for share`, as a
---                write of the week next door takes it), then each person's
---                answer.
+--                write of the week next door takes it), then every person's
+--                answer, in one statement in order of id, and only once that
+--                statement is done the week's reminders lock
+--                (private.lock_availability_week, an advisory lock that the
+--                trigger on a new answer holds to the end of the
+--                transaction). So it never holds that lock while it waits on
+--                an answer the form is sending, whose own trigger may be
+--                waiting for it. Claimed one at a time, the first claim's
+--                trigger would take it, and a later claim waiting on such an
+--                answer would deadlock with it.
 
 ------------------------------------------------------------------------------
 -- 1. A person's sample ranges, as they are sent
@@ -155,8 +164,9 @@ declare
   tz text;
   week_start date;
   week uuid;
-  person record;
-  claimed uuid;
+  named jsonb;
+  claimed uuid[];
+  person uuid;
   written integer := 0;
 begin
   for demo in
@@ -177,42 +187,50 @@ begin
     select r.first_day, r.tz_name into first_day, tz
     from private.availability_rules(demo.business_id) r;
     week_start := private.week_start_after(now(), tz, first_day);
-    week := null;
 
-    for person in
+    -- Each named person on the staff who owes availability, by id, with
+    -- their ranges for that week; nobody with none left.
+    select jsonb_object_agg(p.user_id, p.ranges) into named
+    from (
       select s.user_id,
         private.demo_sample_ranges(demo.business_id, week_start, s.ranges) as ranges
       from jsonb_to_recordset(demo.sample) as s (user_id uuid, ranges jsonb)
       join public.memberships m
         on m.business_id = demo.business_id and m.user_id = s.user_id
       where m.active and m.role in ('manager', 'worker')
-      order by s.user_id
-    loop
-      continue when jsonb_array_length(person.ranges) = 0;
+    ) p
+    where jsonb_array_length(p.ranges) > 0;
+    continue when named is null;
 
-      if week is null then
-        week := public.open_schedule_week(
-          demo.business_id, week_start,
-          private.availability_due_at(demo.business_id, week_start)
-        );
-        -- Under the week's lock, as a write of it takes it: a published week
-        -- gets nothing.
-        perform 1 from public.schedule_weeks w
-        where w.id = week and w.schedule_published_at is null
-        for share;
-        exit when not found;
-      end if;
+    week := public.open_schedule_week(
+      demo.business_id, week_start,
+      private.availability_due_at(demo.business_id, week_start)
+    );
+    -- Under the week's lock, as a write of it takes it: a published week
+    -- gets nothing.
+    perform 1 from public.schedule_weeks w
+    where w.id = week and w.schedule_published_at is null
+    for share;
+    continue when not found;
 
-      -- The person's answer, claimed: one already sent, or sent meanwhile,
-      -- stays theirs.
-      claimed := null;
+    -- Every answer claimed in one statement, in order of id: one already
+    -- sent, or sent meanwhile, stays theirs. The new rows' trigger takes the
+    -- week's reminders lock only at the statement's end, after every wait on
+    -- an answer being sent at that moment, whose own trigger may be waiting
+    -- for that lock (the header's locks).
+    with claim as (
       insert into public.availability_submissions (business_id, week_id, user_id)
-      values (demo.business_id, week, person.user_id)
+      select demo.business_id, week, k.id::uuid
+      from jsonb_object_keys(named) as k (id)
+      order by k.id::uuid
       on conflict (week_id, user_id) do nothing
-      returning id into claimed;
-      continue when claimed is null;
+      returning user_id
+    )
+    select coalesce(array_agg(c.user_id order by c.user_id), '{}') into claimed
+    from claim c;
 
-      perform public.submit_availability(person.user_id, week, person.ranges, null);
+    foreach person in array claimed loop
+      perform public.submit_availability(person, week, named -> person::text, null);
       written := written + 1;
     end loop;
   end loop;
