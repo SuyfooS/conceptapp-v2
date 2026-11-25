@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { type AwaySpan, awayOn } from "./absences";
+import { type AwaySpan, awayOn, daysApart } from "./absences";
 import {
   type AvailabilityRange,
   instantIn,
@@ -57,13 +57,17 @@ export const scheduledShift = z
 
 export type ScheduledShift = z.infer<typeof scheduledShift>;
 
-/** Minutes from the week's first midnight to a shift's start and end. */
-function span(
+/**
+ * Minutes from the week's first midnight to a shift's start and end. A shift
+ * of another week has its own place in time: last week's Saturday is day -1
+ * (its 22:00 at -120), next week's Sunday day 7, so a night that runs into
+ * this week, or one of this week that runs into the next, reads as it falls.
+ */
+export function shiftSpan(
   weekStart: string,
   shift: Pick<ScheduledShift, "day" | "start" | "end">,
 ): [number, number] {
-  const from =
-    weekDates(weekStart).indexOf(shift.day) * 1440 + minutesOf(shift.start);
+  const from = daysApart(weekStart, shift.day) * 1440 + minutesOf(shift.start);
   return [from, from + rangeMinutes(shift.start, shift.end)];
 }
 
@@ -105,7 +109,7 @@ export function weekSchedule(
           });
           return;
         }
-        const at = span(weekStart, shift);
+        const at = shiftSpan(weekStart, shift);
         const seen = new Set<string>();
         shift.assignees.forEach((person, j) => {
           if (seen.has(person.user)) {
@@ -528,13 +532,13 @@ export function overlappingShift<
 ): S | null {
   const shift = shifts[index];
   if (!shift) return null;
-  const at = span(weekStart, shift);
+  const at = shiftSpan(weekStart, shift);
   return (
     shifts.find((other, i) => {
       if (i === index || !other.assignees.some((a) => a.user === userId)) {
         return false;
       }
-      const taken = span(weekStart, other);
+      const taken = shiftSpan(weekStart, other);
       return taken[0] < at[1] && at[0] < taken[1];
     }) ?? null
   );
@@ -593,7 +597,7 @@ export function doubleBooked(
     "day" | "start" | "end" | "assignees"
   >[],
 ): Set<string> {
-  const spans = shifts.map((shift) => span(weekStart, shift));
+  const spans = shifts.map((shift) => shiftSpan(weekStart, shift));
   const clashes = new Set<string>();
   shifts.forEach((shift, i) => {
     for (const { user } of shift.assignees) {

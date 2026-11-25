@@ -148,4 +148,30 @@ rules numbered), and whether the week was saved since the screen copied
 into it (`copiedOver`). It changes the screen only; the week's own write
 checks everything again when it is saved.
 
+`fill-week.ts` is "מילוי מהזמינות", the builder's fill of the week's open
+places from the staff's availability (`fillFromAvailability`, its rules
+numbered). It only appends people to shifts still to start that need more:
+never moving, removing or re-positioning anyone, never changing a shift. It
+places only staff who sent an answer whose ranges cover the whole shift, and
+only while every `FillRule` holds, checked in this order: not away during it
+(`awayDuring` in `absences.ts`: its day, and the next day for a night past
+midnight), a minor only within 08:00–20:00 (`FILL_MINOR_HOURS`, payroll's
+stricter reading) and for at most 8 hours (7 on a Friday), never two shifts
+at once, one shift a day, 8 hours between shifts (`LIMITS.restBetween`), at
+most `FILL_MAX_DAYS` (6) days, and at most the week's hours (`weekHours`, 42
+by default, `FILL_WEEK_HOURS`, up to `FILL_WEEK_HOURS_MAX`, 58; a minor 40).
+Last week, when it is the week just before, and next week's first days count
+as spans only, placed in time by `shiftSpan` in `schedule.ts` (minutes from
+the week's first midnight on `daysApart`, so last Saturday is day -1 and next
+Sunday day 7; the copy reads it too). The scarcest place goes first; the
+person with the fewest hours this week takes it, then the fewest of that kind
+of shift, the fewest shifts, the fewest hours last week, then a rotation that
+changes every week, never the team's order or the alphabet, so the same
+screen always gives the same fill. Each goes on in the position they held
+most last week on that kind of shift. Every place left open says why
+(`FillWhy`: Shabbat with its time, nobody covers it, or each one who does with
+the first rule that stopped them). `weekMinors` is who counts as a minor all
+week, ids only. The database checks only that nobody works two shifts at
+once, never these rules: they are the fill's own.
+
 Import as `@domain/<file>`.

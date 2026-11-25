@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { addDays } from "./availability";
+import { minutesOf, rangeMinutes } from "./hours";
 import type { Viewer } from "./modules";
 import { editsClock } from "./time-clock";
 import { lastDayOf } from "./wages";
@@ -179,6 +180,22 @@ export function awayOn(
   return spans.some(
     (span) => span.userId === userId && span.from <= date && date <= span.to,
   );
+}
+
+/**
+ * Whether `userId` is away during a shift: on its day, and for a shift that
+ * ends after midnight on the day after too, since that night's hours fall on
+ * it. One that ends at 00:00 exactly (the restaurant's מוצ״ש) is its own
+ * day's only.
+ */
+export function awayDuring(
+  spans: readonly AwaySpan[],
+  userId: string,
+  shift: { day: string; start: string; end: string },
+): boolean {
+  if (awayOn(spans, userId, shift.day)) return true;
+  const ends = minutesOf(shift.start) + rangeMinutes(shift.start, shift.end);
+  return ends > 1440 && awayOn(spans, userId, addDays(shift.day, 1));
 }
 
 /** Who is away on each of `dates`, in the order the spans come. */
