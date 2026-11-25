@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { arrowAfter, type MoveWords, moveSaid } from "./row-moves";
+import { arrowAfter, arrowRefs, type MoveWords, moveSaid } from "./row-moves";
 
 /*
  * Which arrow of a moved category or place has the focus once the move is
  * drawn (accessibility, part 9): the one pressed while the row can go on
  * that way, the other one once it reached that end. Then what is said once
  * the list's save answered: where the row is in the list as drawn then,
- * moved there or back there, or nothing once it is gone.
+ * moved there or back there, or nothing once it is gone. And the arrows'
+ * refs, the same on every drawing, so React never takes a moved row's
+ * arrow off the list while it gives the arrow its focus back.
  */
 
 describe("arrowAfter", () => {
@@ -68,5 +70,34 @@ describe("moveSaid", () => {
     expect(
       moveSaid({ key: "4", words, saved: true }, ["1", "2", "3"], key),
     ).toBeNull();
+  });
+});
+
+describe("arrowRefs", () => {
+  type Node = { name: string };
+
+  it("gives each arrow the same ref on every drawing, and each arrow its own", () => {
+    const { refOf } = arrowRefs<Node>();
+    // Two drawings of the same row: React sees one ref, and leaves it on.
+    expect(refOf("4", 1)).toBe(refOf("4", 1));
+    expect(refOf("4", 1)).not.toBe(refOf("4", -1));
+    expect(refOf("4", 1)).not.toBe(refOf("5", 1));
+  });
+
+  it("knows an arrow while it is drawn, and its cleanup forgets only that one", () => {
+    const { arrows, refOf } = arrowRefs<Node>();
+    const ref = refOf("4", 1);
+    const first: Node = { name: "first" };
+    const gone = ref(first);
+    expect([...arrows.values()]).toEqual([first]);
+    // Drawn again in a new button (Next showing the screen again) before
+    // the old one's cleanup ran: the new one stays.
+    const second: Node = { name: "second" };
+    const goneToo = ref(second);
+    gone?.();
+    expect([...arrows.values()]).toEqual([second]);
+    goneToo?.();
+    expect(arrows.size).toBe(0);
+    expect(ref(null)).toBeUndefined();
   });
 });

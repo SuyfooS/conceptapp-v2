@@ -49,7 +49,11 @@ async function open(page: Page, path: string) {
 // took the focus from its arrow: the same arrow has it again once the move
 // is drawn, and where it went is said after it. Moved up to the top, its
 // "הזזה למעלה" can't be pressed again, so "הזזה למטה" has the focus. A
-// mouse's press is the same.
+// mouse's press is the same. Table 1 moved down short of the end is the
+// case CI's first run caught: React gives the arrow it moved its focus back
+// itself, in the middle of drawing the move, and the arrows' refs, new on
+// each drawing, were off the list then, so that focus read as one put
+// elsewhere and the move was forgotten, never said (`arrowRefs`).
 test("the places twin keeps the focus on a moved table's arrow and says where it went", async ({
   page,
 }) => {
@@ -126,7 +130,13 @@ test("the places twin moves a table once for Enter held down on its arrow at the
 // On a phone the tab bar floats over the page's bottom. A table moved down
 // from just above it would take its arrow, focused again, under the bar,
 // in the viewport, so the focus alone wouldn't move the page: the arrow is
-// brought up clear of the bar (its scroll margin, the bar's band).
+// brought up clear of the bar (its scroll margin, the bar's band). A table
+// that stays short of the end is the one to move: its "הזזה למטה" keeps
+// the focus because React gives it back itself as it draws the move, and
+// puts the page back where it was, so nothing the screen does with the
+// focus brings it up; only the press's own drawing does. (Table 11, moved
+// to the end, has its "הזזה למעלה" focused by the screen, which always
+// brought it into view.)
 test("the places twin keeps a table's arrow clear of the tab bar as it moves down", async ({
   page,
 }, testInfo) => {
@@ -141,9 +151,10 @@ test("the places twin keeps a table's arrow clear of the tab bar as it moves dow
     Number.parseFloat(getComputedStyle(button).scrollMarginBottom),
   );
   expect(band).toBeGreaterThan(0);
-  // A table's arrow just above the band, the page scrolled to put it there.
+  // A table's arrow just above the band, the page scrolled to put it there,
+  // none that would reach the end.
   let moving: string | null = null;
-  for (const name of ["11", "10", "9", "8", "7", "6", "5"]) {
+  for (const name of ["10", "9", "8", "7", "6", "5"]) {
     const placed = await downOf(name).evaluate((button, band) => {
       const target = window.innerHeight - band - 4;
       const y = window.scrollY + button.getBoundingClientRect().bottom - target;
@@ -159,27 +170,20 @@ test("the places twin keeps a table's arrow clear of the tab bar as it moves dow
   }
   expect(moving).not.toBeNull();
   const down = downOf(moving ?? "");
-  const up = arrow(page, rt(`${p}.upFor`, { name: moving ?? "" }));
   await down.focus();
   await page.keyboard.press("Enter");
-  // Its "הזזה למטה", or "הזזה למעלה" once it reached the end.
+  // Its "הזזה למטה", one row down, clear of the bar.
+  await expect(down).toBeFocused();
   await expect
     .poll(() =>
-      page.evaluate((band) => {
-        const focused = document.activeElement;
-        return (
-          focused instanceof HTMLElement &&
-          focused.tagName === "BUTTON" &&
-          window.innerHeight - focused.getBoundingClientRect().bottom >=
-            band - 1
-        );
-      }, band),
+      down.evaluate(
+        (button, band) =>
+          window.innerHeight - button.getBoundingClientRect().bottom >=
+          band - 1,
+        band,
+      ),
     )
     .toBe(true);
-  expect(
-    (await down.evaluate((button) => button === document.activeElement)) ||
-      (await up.evaluate((button) => button === document.activeElement)),
-  ).toBe(true);
 });
 
 // The last place removed: the list goes, and the quick start takes its
@@ -252,7 +256,10 @@ test("the places twin, left by Back and opened again, puts the focus on no moved
 });
 
 // The same for the menu's categories: down to the end, "הזזה למעלה" has the
-// focus; down from the top by a mouse's press, its own arrow keeps it.
+// focus; down from the top by a mouse's press, its own arrow keeps it. The
+// mouse's move, short of the end, is the one CI's first run caught, as
+// table 1's above: its arrow keeps the focus because React gives it back,
+// and that once made the move forgotten and never said.
 test("the categories twin keeps the focus on a moved category's arrow and says where it went", async ({
   page,
 }) => {

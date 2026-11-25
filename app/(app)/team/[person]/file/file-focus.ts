@@ -26,6 +26,65 @@ export function focusIfLost(
   return true;
 }
 
+/** What the page's next drawings are waited on with: its window, or a stand-in. */
+export type Drawings = {
+  requestAnimationFrame(run: () => void): number;
+  cancelAnimationFrame(frame: number): void;
+  setTimeout(run: () => void, ms: number): number;
+  clearTimeout(timer: number | undefined): void;
+};
+
+/** The longest `focusWhenDrawn` waits for the page's drawings (a page no longer drawn). */
+export const DRAWN_WITHIN_MS = 1_000;
+
+/**
+ * Puts the focus on `target` as the hiring file shows again (`focusIfLost`),
+ * and once the page is drawn, two frames on (at most `DRAWN_WITHIN_MS`),
+ * puts it there again if it is lost then. The file was held inert and
+ * hidden until the very drawing that shows it again, and on that drawing
+ * its title may not take the focus yet, or lose it at the browser's next
+ * look: CI's first run of file-a11y.spec.ts drew "פרטים מזהים" again
+ * without the focus, while every title never held took it at once. Focus
+ * the person put elsewhere meanwhile stays there. `done`
+ * settles once that is over, so what is said after the focus landed waits
+ * for it; `stop` ends it early, settled (the file held again, or gone).
+ */
+export function focusWhenDrawn(
+  target: Focusable,
+  page: FocusedPage,
+  win: Drawings,
+): { done: Promise<void>; stop: () => void } {
+  focusIfLost(target, page);
+  let settle: () => void = () => {};
+  const done = new Promise<void>((resolve) => {
+    settle = resolve;
+  });
+  let over = false;
+  let frame: number | undefined;
+  let late: number | undefined;
+  const end = () => {
+    over = true;
+    if (frame !== undefined) win.cancelAnimationFrame(frame);
+    win.clearTimeout(late);
+    settle();
+  };
+  const again = () => {
+    if (over) return;
+    focusIfLost(target, page);
+    end();
+  };
+  late = win.setTimeout(again, DRAWN_WITHIN_MS);
+  frame = win.requestAnimationFrame(() => {
+    frame = win.requestAnimationFrame(again);
+  });
+  return {
+    done,
+    stop: () => {
+      if (!over) end();
+    },
+  };
+}
+
 /** A heading of the file, or what the focus came from: where it sits on the page. */
 export type Placed = { compareDocumentPosition(other: Placed): number };
 

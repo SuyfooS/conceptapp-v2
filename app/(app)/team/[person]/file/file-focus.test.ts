@@ -1,11 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
-import { focusIfLost, type Placed, titleAbove } from "./file-focus";
+import {
+  DRAWN_WITHIN_MS,
+  focusIfLost,
+  focusWhenDrawn,
+  type Placed,
+  titleAbove,
+} from "./file-focus";
 
 /*
  * Where the keyboard's focus goes on a hiring file's screen (profile H6a):
  * to "התיק נעול" when the file locks here and to the file's first heading
  * after a right code, each only when what held the focus went with the part
- * of the screen it was in, never away from where the person put it.
+ * of the screen it was in, never away from where the person put it; and
+ * back to a title of the file as it shows again after a hold, once more
+ * when the page is drawn if it is lost then.
  */
 
 const body = { isConnected: true };
@@ -37,6 +45,109 @@ describe("focusIfLost", () => {
   it("moves nothing without a place to put it", () => {
     expect(focusIfLost(null, { activeElement: body, body })).toBe(false);
     expect(focusIfLost(undefined, { activeElement: null, body })).toBe(false);
+  });
+});
+
+/** A window standing in for the page's: its frames and timers, run by hand. */
+function drawings() {
+  const frames = new Map<number, () => void>();
+  const timers = new Map<number, () => void>();
+  let next = 1;
+  const runAll = (waiting: Map<number, () => void>) => {
+    const now = [...waiting.values()];
+    waiting.clear();
+    for (const run of now) run();
+  };
+  return {
+    win: {
+      requestAnimationFrame(run: () => void) {
+        frames.set(next, run);
+        return next++;
+      },
+      cancelAnimationFrame(frame: number) {
+        frames.delete(frame);
+      },
+      setTimeout(run: () => void, ms: number) {
+        expect(ms).toBe(DRAWN_WITHIN_MS);
+        timers.set(next, run);
+        return next++;
+      },
+      clearTimeout(timer: number | undefined) {
+        if (timer !== undefined) timers.delete(timer);
+      },
+    },
+    /** The page drawn once: what waited for the frame runs. */
+    frame: () => runAll(frames),
+    /** The longest wait over. */
+    late: () => runAll(timers),
+    waiting: () => frames.size + timers.size,
+  };
+}
+
+describe("focusWhenDrawn", () => {
+  it("puts the focus on the title at once, and again once the page is drawn if it is lost then", async () => {
+    const page = { activeElement: body as { isConnected: boolean }, body };
+    // A title that doesn't take the focus on the drawing that shows it.
+    const title = { focus: vi.fn() };
+    const { win, frame, waiting } = drawings();
+    const { done } = focusWhenDrawn(title, page, win);
+    expect(title.focus).toHaveBeenCalledTimes(1);
+    frame();
+    expect(title.focus).toHaveBeenCalledTimes(1);
+    frame();
+    expect(title.focus).toHaveBeenCalledTimes(2);
+    expect(waiting()).toBe(0);
+    await done;
+  });
+
+  it("leaves a focus that landed, or one the person put elsewhere meanwhile", async () => {
+    const page = { activeElement: body as { isConnected: boolean }, body };
+    const title = {
+      isConnected: true,
+      focus: vi.fn(() => {
+        page.activeElement = title;
+      }),
+    };
+    const landed = drawings();
+    const first = focusWhenDrawn(title, page, landed.win);
+    landed.frame();
+    landed.frame();
+    await first.done;
+    expect(title.focus).toHaveBeenCalledTimes(1);
+
+    // Put on the tab bar before the page was drawn: it stays there.
+    page.activeElement = { isConnected: true };
+    const other = { focus: vi.fn() };
+    const moved = drawings();
+    const second = focusWhenDrawn(other, page, moved.win);
+    moved.frame();
+    moved.frame();
+    await second.done;
+    expect(other.focus).not.toHaveBeenCalled();
+  });
+
+  it("stops waiting for drawings after DRAWN_WITHIN_MS, a page no longer drawn", async () => {
+    const page = { activeElement: body as { isConnected: boolean }, body };
+    const title = { focus: vi.fn() };
+    const { win, late, waiting } = drawings();
+    const { done } = focusWhenDrawn(title, page, win);
+    late();
+    expect(title.focus).toHaveBeenCalledTimes(2);
+    expect(waiting()).toBe(0);
+    await done;
+  });
+
+  it("ends settled when stopped, putting nothing more", async () => {
+    const page = { activeElement: body as { isConnected: boolean }, body };
+    const title = { focus: vi.fn() };
+    const { win, frame, waiting } = drawings();
+    const { done, stop } = focusWhenDrawn(title, page, win);
+    stop();
+    expect(waiting()).toBe(0);
+    frame();
+    frame();
+    expect(title.focus).toHaveBeenCalledTimes(1);
+    await done;
   });
 });
 

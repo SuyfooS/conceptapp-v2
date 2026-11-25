@@ -25,7 +25,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { focusIfLost, titleAbove } from "./file-focus";
+import { focusIfLost, focusWhenDrawn, titleAbove } from "./file-focus";
 import {
   deviceFileTabs,
   FILE_TABS_CHANNEL,
@@ -201,23 +201,37 @@ export function FileOpenWatch({
     if (warningShown) warningSeen.current = true;
   }, [warningShown]);
 
+  // The focus on its way back into the file shown again, until the page is
+  // drawn (`focusWhenDrawn`).
+  const landing = useRef<Promise<void> | null>(null);
+
   // Kept open after a warning that was on screen: said once, after the
   // focus its "להשאיר פתוח" held has gone back into the file (not again
-  // when the screen is shown again).
+  // when the screen is shown again), the file shown again included.
   const keptSaid = useRef(0);
   useEffect(() => {
     if (kept === keptSaid.current) return;
     keptSaid.current = kept;
-    announce(t("idle.kept"), { lang: locale });
+    const say = () => announce(t("idle.kept"), { lang: locale });
+    const putting = landing.current;
+    if (putting) void putting.then(say);
+    else say();
   }, [kept, t, locale]);
 
   // Shown again: the focus the hiding took goes back, unless the person
-  // put it somewhere else meanwhile.
+  // put it somewhere else meanwhile, and once more once the page is drawn
+  // if it is lost then (the title was inert and hidden until this drawing).
   useLayoutEffect(() => {
     if (held) return;
     const back = heldFocus.current;
     heldFocus.current = null;
-    if (back?.isConnected) focusIfLost(back, document);
+    if (!back?.isConnected) return;
+    const putting = focusWhenDrawn(back, document, window);
+    landing.current = putting.done;
+    void putting.done.then(() => {
+      if (landing.current === putting.done) landing.current = null;
+    });
+    return putting.stop;
   }, [held]);
 
   useLayoutEffect(() => {
