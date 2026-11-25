@@ -5,6 +5,11 @@ what is next, defaults applied.
 
 Older entries are in [`log/`](log/): [1–19 November 2026](log/2026-11-01-to-19.md) and [October 2026](log/2026-10.md).
 
+## 2026-11-25 · chat · reduced motion turns transitions off
+
+- `app/globals.css`: under `prefers-reduced-motion: reduce`, every element's transitions are now `0s` (and no delay) instead of `0.01ms`. A transition of 0.01ms is still one of every property, `visibility` included, so an element shown by the same drawing that put the focus on it stayed hidden for a frame or two and refused that focus. #253 found it in the hiring file shown again after its check (in CI, where Playwright asks for reduced motion) and works around it there; this removes the cause for everyone who asks for less motion. Animations keep their `0.01ms` and one iteration, since Radix's sheets wait for `animationend`; nothing in the app or its packages waits for a `transitionend`.
+- Tests: `tooling/reduced-motion.test.ts` (the block's selector, transitions at 0s with no delay, animations still ending). Checked here: `pnpm check` (two repo-wide tooling tests timed out at 5s under load and pass on their own). Not run here: Playwright, which runs every spec with reduced motion, so CI shows whether any spec leaned on the old 0.01ms.
+- Defaults applied, to ask Orel: none.
 ## 2026-11-25 · chat · filling the schedule from availability, part 1: the rule
 
 - On chat/fill-rule from origin/main 257809c (#254). The first of the plan's PRs for "מילוי אוטומטי מהזמינות" (ROADMAP "אחר כך", approved 22.11 as part of daily-use readiness): `@domain` only. No screen, no words, no migration, no new package; ROADMAP and `docs/AGENT.md` stay as they are until the builder's pill (PR 4).
