@@ -199,13 +199,36 @@ export function awayDuring(
 }
 
 /**
- * The days the builder reads days away over for the week starting on
- * `weekStart`: the week and the day after it, since a night on its last day
- * runs past midnight into that day (`awayDuring`). Eight days, well within
- * the 62 that `public.team_away` reads at most.
+ * Those on a shift who are away during it (`awayDuring`), by id, in the
+ * shift's order: what the shift's card says, in the builder and on the
+ * schedule tab, as its sheet does (known issue 107).
  */
-export function awayWindow(weekStart: string): { from: string; to: string } {
-  return { from: weekStart, to: addDays(weekStart, 7) };
+export function assigneesAway(
+  spans: readonly AwaySpan[],
+  shift: {
+    day: string;
+    start: string;
+    end: string;
+    assignees: readonly { user: string }[];
+  },
+): string[] {
+  return shift.assignees
+    .filter((a) => awayDuring(spans, a.user, shift))
+    .map((a) => a.user);
+}
+
+/**
+ * The days that days away are read over for `weeks` weeks from `weekStart`
+ * (one by default): those weeks and the day after the last, since a night on
+ * its last day runs past midnight into that day (`awayDuring`). The builder
+ * reads its week (eight days), the schedule tab this week and next (fifteen),
+ * well within the 62 that `public.team_away` reads at most.
+ */
+export function awayWindow(
+  weekStart: string,
+  weeks = 1,
+): { from: string; to: string } {
+  return { from: weekStart, to: addDays(weekStart, 7 * weeks) };
 }
 
 /** Who is away on each of `dates`, in the order the spans come. */

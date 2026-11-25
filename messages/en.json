@@ -1957,7 +1957,7 @@
         "removed": "Removed <ltr>{from}–{to}</ltr>."
       },
       "addRange": "Add hours",
-      "removeRange": "Remove {from}–{to}",
+      "removeRange": "Remove <ltr>{from}–{to}</ltr>",
       "start": "From",
       "end": "Until",
       "candleLighting": "Shabbat starts at <ltr>{time}</ltr>. You can mark hours until then.",
@@ -2096,7 +2096,7 @@
       "busyOnDay": "On the {name} shift on {day}, <ltr>{start}–{end}</ltr>",
       "alsoOn": "Also on the {name} shift",
       "clashOnShift": "{names}: also on another shift at the same time",
-      "awayOnShift": "{names} away that day",
+      "awayOnShift": "{names}: away during the shift",
       "remove": "Remove {name} from the shift",
       "added": "{form, select, other {{name} was added to the shift, {assigned} of {needed}}}",
       "removed": "{form, select, other {{name} was removed from the shift, {assigned} of {needed}}}",

@@ -5,6 +5,7 @@ import {
   absenceDaysByKind,
   absenceFailureOf,
   absenceStartFor,
+  assigneesAway,
   awayByDay,
   awayDuring,
   awayOn,
@@ -246,6 +247,92 @@ describe("who is away", () => {
       from: "2026-11-30",
       to: "2026-12-07",
     });
+  });
+
+  it("is read for the schedule tab over this week, next week and the day after them", () => {
+    // Sunday 22 November to Saturday 5 December, then Sunday 6.
+    const window = awayWindow("2026-11-22", 2);
+    expect(window).toEqual({ from: "2026-11-22", to: "2026-12-06" });
+    // As the tab read them before (known issue 107): next Saturday's night
+    // into Sunday 6 December saw nothing of a day away on that Sunday.
+    const after = [{ userId: "noa", from: "2026-12-06", to: "2026-12-08" }];
+    const touching = (to: string) =>
+      after.filter((span) => span.from <= to && span.to >= window.from);
+    expect(touching("2026-12-05")).toEqual([]);
+    const read = touching(window.to);
+    const saturday = (start: string, end: string) => ({
+      day: "2026-12-05",
+      start,
+      end,
+    });
+    expect(awayDuring(read, "noa", saturday("20:00", "02:00"))).toBe(true);
+    expect(awayDuring(read, "noa", saturday("19:30", "00:00"))).toBe(false);
+    // One week is the builder's, as with no count; a year's end inside two.
+    expect(awayWindow("2026-11-22", 1)).toEqual(awayWindow("2026-11-22"));
+    expect(awayWindow("2026-12-27", 2)).toEqual({
+      from: "2026-12-27",
+      to: "2027-01-10",
+    });
+  });
+});
+
+// What a shift's card says, in the builder and on the schedule tab (known
+// issue 107): the same people its sheet lists as away during it.
+describe("who on a shift is away during it", () => {
+  const spans = [
+    { userId: "noa", from: "2026-12-06", to: "2026-12-06" },
+    { userId: "yoav", from: "2026-12-05", to: "2026-12-05" },
+    { userId: "dana", from: "2026-12-07", to: "2026-12-09" },
+  ];
+  const shift = (
+    day: string,
+    start: string,
+    end: string,
+    users: string[] = ["noa", "omer", "yoav", "dana"],
+  ) => ({
+    day,
+    start,
+    end,
+    assignees: users.map((user) => ({ user, position: null })),
+  });
+  const away = (on: ReturnType<typeof shift>) => assigneesAway(spans, on);
+
+  it("names whoever is away on a day shift's own day", () => {
+    expect(away(shift("2026-12-05", "09:00", "16:00"))).toEqual(["yoav"]);
+    expect(away(shift("2026-12-06", "09:00", "16:00"))).toEqual(["noa"]);
+  });
+
+  it("names whoever is away the day after a night past midnight, beside its own day's", () => {
+    // Saturday's night into Sunday: Yoav away on Saturday, Noa on Sunday.
+    expect(away(shift("2026-12-05", "20:00", "02:00"))).toEqual([
+      "noa",
+      "yoav",
+    ]);
+    // Sunday's night into Monday: Noa on Sunday, Dana from Monday.
+    expect(away(shift("2026-12-06", "22:00", "06:00"))).toEqual([
+      "noa",
+      "dana",
+    ]);
+  });
+
+  it("leaves the day after alone for a shift that ends at 00:00 exactly, or by day", () => {
+    // The restaurant's מוצ״ש is its own day's only.
+    expect(away(shift("2026-12-05", "19:30", "00:00"))).toEqual(["yoav"]);
+    expect(away(shift("2026-12-04", "16:00", "23:30"))).toEqual([]);
+    // The last day away still counts for its own night, the day after not.
+    expect(away(shift("2026-12-09", "22:00", "06:00"))).toEqual(["dana"]);
+    expect(away(shift("2026-12-10", "22:00", "06:00"))).toEqual([]);
+  });
+
+  it("keeps the shift's order, and names only those on it", () => {
+    const night = shift("2026-12-06", "22:00", "06:00", [
+      "dana",
+      "omer",
+      "noa",
+    ]);
+    expect(away(night)).toEqual(["dana", "noa"]);
+    expect(away(shift("2026-12-06", "22:00", "06:00", []))).toEqual([]);
+    expect(assigneesAway([], night)).toEqual([]);
   });
 });
 

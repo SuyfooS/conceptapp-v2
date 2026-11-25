@@ -1,6 +1,6 @@
 "use client";
 
-import { type AwaySpan, awayByDay, awayOn } from "@domain/absences";
+import { type AwaySpan, assigneesAway, awayByDay } from "@domain/absences";
 import {
   type AvailabilityRange,
   addDays,
@@ -1555,9 +1555,10 @@ function WeekBuilder({
           clashing={row.shift.assignees
             .filter((a) => clashes.has(`${rows.indexOf(row)}:${a.user}`))
             .map((a) => nameOf.get(a.user) ?? t("app.shifts.former"))}
-          away={row.shift.assignees
-            .filter((a) => awayOn(away, a.user, row.shift.day))
-            .map((a) => nameOf.get(a.user) ?? t("app.shifts.former"))}
+          // During its hours, a night's day after included, as its sheet.
+          away={assigneesAway(away, row.shift).map(
+            (user) => nameOf.get(user) ?? t("app.shifts.former"),
+          )}
           meanwhile={row.shift.id !== undefined && marked.has(row.shift.id)}
           positions={positions}
           density={density}

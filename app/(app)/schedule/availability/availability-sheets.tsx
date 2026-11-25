@@ -22,6 +22,7 @@ import { UndoRow } from "@ui/undo-row";
 import { Plus, X } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
+import { isolate, rangeWords } from "./range-words";
 
 export type Row = { id: number; start: string; end: string };
 
@@ -39,13 +40,6 @@ export const newRow = ({
 });
 
 export const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
-
-/**
- * Hours inside words that are plain text (an UndoRow's message, a list of the
- * day's shifts): held left to right in Unicode isolates, as `<ltr>` holds them
- * on screen.
- */
-const isolate = (chunks: string) => `⁦${chunks}⁩`;
 
 /** The first hour of a range, where the focus goes once it is back. */
 const rangeStart = (id: number) => `[data-range="${id}"] input`;
@@ -212,11 +206,7 @@ export function DaySheet({
       {removed ? (
         <UndoRow
           key={removed.row.id}
-          message={t.markup("sheet.removed", {
-            from: removed.row.start,
-            to: removed.row.end,
-            ltr: isolate,
-          })}
+          message={t.markup("sheet.removed", rangeWords(removed.row))}
           onUndo={() =>
             onChange({
               rows: rows.toSpliced(removed.index, 0, removed.row),
@@ -268,7 +258,9 @@ function RangeEditor({
           describedBy={problem ? errorId : undefined}
         />
         <IconButton
-          label={t("removeRange", { from: row.start, to: row.end })}
+          // Its name and its tooltip, plain text: the hours in isolates, so
+          // the tooltip reads them in order inside the Hebrew.
+          label={t.markup("removeRange", rangeWords(row))}
           icon={<X />}
           onClick={onRemove}
           className="-me-1.5 mb-0.5"

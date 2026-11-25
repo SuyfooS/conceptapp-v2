@@ -559,8 +559,10 @@ export type PublishedSchedule = {
    */
   endedSwaps: EndedSwap[];
   /**
-   * Who is away over the two weeks, and when (known issue 19), for whoever
-   * builds the schedule: never why. Null for everyone else.
+   * Who is away over the two weeks and the day after them (`awayWindow`: a
+   * night on next week's last day runs into that day; known issue 107), and
+   * when (known issue 19), for whoever builds the schedule: never why. Null
+   * for everyone else.
    */
   away: AwaySpan[] | null;
 };
@@ -614,6 +616,8 @@ export const currentPublishedSchedule = cache(
       };
     };
     const yesterday = overnightDay(today, thisStart);
+    // To the day after next week: a night on its last day runs into it.
+    const awayDays = awayWindow(thisStart, 2);
     const [thisWeek, nextWeek, overnight, swaps, endedSwaps, people, away] =
       await Promise.all([
         published(thisStart),
@@ -627,12 +631,7 @@ export const currentPublishedSchedule = cache(
         getEndedSwaps(businessId, today),
         getColleagues(businessId),
         buildsSchedule(membership)
-          ? teamAwayFor(
-              membership,
-              businessId,
-              thisStart,
-              addDays(thisStart, 13),
-            )
+          ? teamAwayFor(membership, businessId, awayDays.from, awayDays.to)
           : null,
       ]);
     return {

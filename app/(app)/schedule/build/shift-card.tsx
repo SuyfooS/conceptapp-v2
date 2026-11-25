@@ -84,7 +84,10 @@ export function ShiftCard({
   people: (AvatarPerson & { former?: boolean })[];
   /** Those of them who are on another shift at the same time. */
   clashing: string[];
-  /** Those of them recorded as away that day (known issue 19): never why. */
+  /**
+   * Those of them recorded as away during it (known issue 19): its day, and
+   * the day after for a night past midnight (`assigneesAway`). Never why.
+   */
   away?: string[];
   /**
    * Put back as it is now, after a write refused because it changed

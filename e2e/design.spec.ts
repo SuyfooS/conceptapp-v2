@@ -59,7 +59,7 @@ const PAGES = [
   "/design/shell/today/station",
   "/design/shell/today/station?state=worker",
   "/design/shell/schedule",
-  // A builder's board says who on a shift is away that day.
+  // A builder's board says who on a shift is away during it.
   "/design/shell/schedule?away=1",
   // Next week, as the link in a shared schedule opens it.
   "/design/shell/schedule?week=2026-11-08",

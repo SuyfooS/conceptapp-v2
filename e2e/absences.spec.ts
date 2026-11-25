@@ -3,6 +3,7 @@ import he from "../messages/he.json" with { type: "json" };
 import { focusWhenSaid, noteFocusWhenSaid } from "./announcer";
 import { buildScreen, onDate } from "./build-screen";
 import {
+  buildDemoNextWeek,
   buildDemoThisWeek,
   clearAvailability,
   clearDemoAbsences,
@@ -26,8 +27,9 @@ import { readWorkbook, sheetCells, unzip } from "./unzip";
 // record her own; then changes it to reserve duty, removes it, brings it
 // back with the toast's "ביטול", and removes it again. Today shows whoever
 // builds the schedule who is away, never why, and Noa reads her own day away
-// on her hours. The builder says it on the day, in a shift's people, in
-// the copy from last week and in the fill from availability, and her page
+// on her hours. The builder says it on the day, on a shift's card and in its
+// people, in the copy from last week and in the fill from availability, the
+// schedule tab says it on a shift's card, and her page
 // leads to the week of a shift still on a day away. The owner's hours for
 // payroll count the days by kind, list each date, and the file has them.
 // Every test starts and ends with no days away at the restaurant, and one
@@ -43,6 +45,8 @@ const MANAGER = {
 const NOA = {
   id: "00000000-0000-4000-a000-000000000003",
   name: "נועה כהן",
+  /** As a shift's card in the builder names her (`shortNames`). */
+  first: "נועה",
   local: "050-000-0003",
   e164: "+972500000003",
 };
@@ -693,6 +697,122 @@ test("a night into a day away the day after the week: the copy leaves her off, a
     await expect(onIt).toContainText(NOA.name);
     await expect(onIt).toContainText(tb.notes.away);
     await screen.closeSheet();
+    // And so does the night's card, in the same words (known issue 107).
+    await expect(night).toContainText(
+      heT("app.build.awayOnShift", { names: NOA.first }),
+    );
+  } finally {
+    await clearSchedule();
+  }
+});
+
+// Known issue 107: a shift's card says who on it is away during it as its
+// sheet does (`assigneesAway`), in the sheet's words, in the builder and on
+// the schedule tab. Next week as a draft: Sunday's morning on a day Noa is
+// away, and Saturday's night, which runs into the Sunday after next week:
+// the day after the last day the tab shows, which it now reads too.
+test("a shift's card and the schedule tab say who is away during it, a night into the day after next week included", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(90_000);
+  await skipNearTheWeekTurn();
+  const tb = he.app.build;
+  const { sunday } = days();
+  const saturday = daysAfter(sunday, 6);
+  const after = daysAfter(sunday, 7);
+  const desktop = testInfo.project.name === "desktop";
+  await clearSchedule();
+  try {
+    await buildDemoNextWeek(
+      [
+        {
+          offset: 0,
+          name: "בוקר",
+          start: "09:00",
+          end: "16:00",
+          needed: 2,
+          pattern: "morning",
+          people: [[NOA.e164, null]],
+        },
+        {
+          offset: 6,
+          name: "לילה",
+          start: "20:00",
+          end: "02:00",
+          needed: 1,
+          pattern: null,
+          people: [[NOA.e164, null]],
+        },
+      ],
+      false,
+    );
+    await recordDemoAbsence(NOA.id, "vacation", sunday, sunday);
+    await recordDemoAbsence(NOA.id, "vacation", after, after);
+    await signIn(page, MANAGER);
+
+    // The builder: each card says it, with her first name as the card has.
+    await page.goto(`/schedule/build?week=${sunday}`);
+    await expect(
+      page.getByRole("heading", { level: 1, name: tb.title }),
+    ).toBeVisible();
+    const screen = buildScreen(page);
+    const onCard = heT("app.build.awayOnShift", { names: NOA.first });
+    await expect(screen.card("בוקר")).toContainText(onCard);
+    if (testInfo.project.name === "phone") {
+      await page
+        .getByRole("group", { name: tb.days, exact: true })
+        .filter({ visible: true })
+        .getByRole("button")
+        .nth(6)
+        .click();
+      // Saturday alone on the screen: the day itself isn't hers away.
+      await expect(
+        shown(page, heT("app.build.awayDay", { names: NOA.name })),
+      ).toHaveCount(0);
+    }
+    await expect(screen.card("לילה", onDate(saturday))).toContainText(onCard);
+    await expectCleanPage(page);
+    await page.screenshot({
+      path: testInfo.outputPath("away-on-the-builder-card.png"),
+      fullPage: true,
+    });
+
+    // The schedule tab, on next week's draft: the same words, with her
+    // name as the tab writes it.
+    await page.goto(`/schedule?week=${sunday}`);
+    await expect(
+      page.getByRole("button", { name: he.app.shifts.week.next, exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
+    const onTab = heT("app.build.awayOnShift", { names: NOA.name });
+    const tabShift = (name: string, date: string) => {
+      const on = onDate(date);
+      return page
+        .getByRole("region", {
+          name: heT("app.shifts.shift", {
+            name,
+            day: on.day ?? "",
+            date: on.date ?? "",
+          }),
+        })
+        .filter({ visible: true });
+    };
+    // Below a desktop's width the tab shows one day at a time.
+    const pickDay = (index: number) =>
+      page
+        .getByRole("group", { name: he.app.shifts.board.pickDay, exact: true })
+        .filter({ visible: true })
+        .getByRole("button")
+        .nth(index)
+        .click();
+    if (!desktop) await pickDay(0);
+    await expect(tabShift("בוקר", sunday)).toContainText(onTab);
+    if (!desktop) await pickDay(6);
+    await expect(tabShift("לילה", saturday)).toContainText(onTab);
+    await expectCleanPage(page);
+    await page.screenshot({
+      path: testInfo.outputPath("away-on-the-schedule-tab.png"),
+      fullPage: true,
+    });
   } finally {
     await clearSchedule();
   }
