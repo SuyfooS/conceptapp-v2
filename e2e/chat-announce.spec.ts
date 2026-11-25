@@ -1,17 +1,22 @@
 import AxeBuilder from "@axe-core/playwright";
 import he from "../messages/he.json" with { type: "json" };
+import { noteIfSaid, wasSaid } from "./announcer";
 import {
   clearDemoChat,
+  databaseNow,
   demoActivityActions,
+  demoChatKind,
   demoChatLines,
   demoChatLogBy,
   demoChatMembers,
+  demoChatMessagesSince,
   demoChatMuted,
   demoChatPushStates,
   demoChatRead,
   demoConversation,
   endViewSessions,
   seeDemoChatNotice,
+  setDemoManagersAnnounce,
 } from "./db";
 import { secondPage, signIn } from "./session";
 import { heT, needsActionCount } from "./t";
@@ -703,4 +708,59 @@ test("a group's details open on the phone with its people, and muting it shows o
   // Kept after a reload: it is the database's.
   await page.reload();
   await expect(teamRow()).toContainText(c.list.muted);
+});
+
+// Accessibility, part 7, after its third check. "הודעה מההנהלה" is taken
+// from the managers' role as Shiran publishes one in the kitchen: the server
+// refuses it as no longer hers ("noAccess"), and the kitchen is drawn again
+// still open to her, only without the switch. Nothing on screen says why, so
+// the conversation does, once that drawing came; the message stays, no
+// longer an announcement, and its retry sends it as a message. Her role gets
+// it back after (`setDemoManagersAnnounce`).
+test("an announcement refused as no longer the writer's says why, and goes as a message when tried again", async ({
+  page,
+}) => {
+  const words = "e2e: an announcement after the role lost it";
+  const kitchen =
+    (await demoConversation({ kind: "department", name: KITCHEN })) ?? "";
+  expect(kitchen).not.toBe("");
+  await enterAs(page, "manager");
+  await page.goto(`/chat/${kitchen}?announce=1`);
+  const asAnnouncement = page
+    .getByRole("switch", { name: c.announcement.switch })
+    .filter({ visible: true });
+  await expect(asAnnouncement).toBeChecked();
+  await noteIfSaid(page, c.conversation.notSentAnnouncement);
+  await noteIfSaid(page, c.conversation.notSent);
+  const since = await databaseNow();
+  await setDemoManagersAnnounce(false);
+  try {
+    await composer(page).fill(words);
+    await button(page, c.announcement.send).click();
+    const mine = log(page).locator("[data-bubble]").filter({ hasText: words });
+    const again = mine.getByRole("button", { name: c.conversation.failed });
+    await expect(again).toBeVisible();
+    // Drawn again still open, without the switch: said once that came, and
+    // the message is no longer an announcement.
+    await expect(asAnnouncement).toHaveCount(0);
+    await expect(composer(page)).toBeVisible();
+    await expect
+      .poll(() => wasSaid(page, c.conversation.notSentAnnouncement))
+      .toBe(true);
+    await expect(
+      mine.getByText(c.announcement.label, { exact: true }),
+    ).toHaveCount(0);
+    await expect(again).toBeVisible();
+    expect(await wasSaid(page, c.conversation.notSent)).toBe(false);
+    expect(await demoChatMessagesSince(kitchen, since)).toBe(0);
+
+    // Tried again: it goes, as a message.
+    await again.click();
+    await expect(again).toHaveCount(0);
+    await expect(log(page).getByText(c.conversation.sending)).toHaveCount(0);
+    await expect.poll(() => demoChatMessagesSince(kitchen, since)).toBe(1);
+    expect(await demoChatKind(kitchen, words)).toBe("text");
+  } finally {
+    await setDemoManagersAnnounce(true);
+  }
 });

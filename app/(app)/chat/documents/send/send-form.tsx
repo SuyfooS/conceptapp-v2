@@ -532,7 +532,19 @@ export function SendDocumentForm({
             </section>
           ) : null}
 
-          <ChoiceList legend={t("send.category")}>
+          <ChoiceList
+            legend={t("send.category")}
+            // What a sick note sends, and only it: the list's live note, so
+            // it is said as "אישור מחלה" is chosen and read with the list,
+            // in its own weight as before.
+            note={
+              category === "sick_note" ? (
+                <span className="font-medium text-md text-ink">
+                  {t("sickNoteHint")}
+                </span>
+              ) : null
+            }
+          >
             {categories.map((key) => (
               <ChoiceRow
                 key={key}
@@ -548,11 +560,6 @@ export function SendDocumentForm({
               />
             ))}
           </ChoiceList>
-          {category === "sick_note" ? (
-            <p className="-mt-5 px-1 font-medium text-ink">
-              {t("sickNoteHint")}
-            </p>
-          ) : null}
 
           {typed ? (
             <div className="flex flex-col gap-4">
@@ -657,9 +664,16 @@ export function SendDocumentForm({
               <FieldRow
                 label={t("askConfirm")}
                 hint={t("askConfirmHint")}
+                hintId={`${id}-asks-hint`}
                 htmlFor={`${id}-asks`}
               >
-                <Switch id={`${id}-asks`} checked={asks} onChange={setAsks} />
+                {/* What asking does, read with the switch. */}
+                <Switch
+                  id={`${id}-asks`}
+                  aria-describedby={`${id}-asks-hint`}
+                  checked={asks}
+                  onChange={setAsks}
+                />
               </FieldRow>
             </FieldGroup>
           ) : null}

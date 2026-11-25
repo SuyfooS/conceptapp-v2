@@ -1,16 +1,23 @@
 import AxeBuilder from "@axe-core/playwright";
 import he from "../messages/he.json" with { type: "json" };
+import { dateIn } from "../packages/domain/availability";
+import { chatDay, chatShortDate } from "../packages/domain/chat-days";
+import { noteIfSaid, pastDrawing, wasSaid } from "./announcer";
 import {
   clearDemoChat,
+  closeDemoDepartment,
+  databaseNow,
   demoChatLines,
+  demoChatMessagesSince,
   demoConversation,
   demoOldTeamMessage,
   endViewSessions,
   seeDemoChatNotice,
 } from "./db";
+import { cameraPhoto } from "./photo";
 import { secondPage, signIn } from "./session";
-import { countedTabName, needsActionCount } from "./t";
-import { expect, type Page, test } from "./test";
+import { countedTabName, heT, needsActionCount } from "./t";
+import { expect, type Locator, type Page, test } from "./test";
 
 // Chat on screen (C2 of the chat plan). The demo restaurant's reset writes
 // its conversations (private.seed_demo_chat): Uri's thanks and Shiran's two
@@ -35,6 +42,12 @@ const SHIRAN = { local: "050-000-0002", e164: "+972500000002" };
 const URI = { local: "050-000-0001", e164: "+972500000001" };
 const ADMIN = { local: "050-000-0005", e164: "+972500000005" };
 const KITCHEN = "מטבח";
+/** Shiran, the manager, as the demo restaurant names her. */
+const SHIRAN_NAME = "שירן הדגמה";
+/** A time in a button's name, as the app writes it: in Unicode isolates. */
+const isolate = (chunks: string) => `⁦${chunks}⁩`;
+/** The demo restaurant's clock. */
+const TZ = "Asia/Jerusalem";
 
 const c = he.app.chat;
 const e = he.auth.enter;
@@ -103,6 +116,15 @@ const log = (page: Page) =>
   page.getByRole("log", { name: c.conversation.log }).filter({ visible: true });
 const notFoundTitle = (page: Page) =>
   page.getByRole("heading", { level: 1, name: he.app.notFound.title });
+/** What has the keyboard's focus now, and its words. */
+const focused = (page: Page) =>
+  page.evaluate(() => {
+    const active = document.activeElement;
+    return {
+      tag: active?.tagName.toLowerCase() ?? null,
+      words: active?.textContent?.trim() ?? "",
+    };
+  });
 
 async function send(page: Page, words: string) {
   await composer(page).fill(words);
@@ -495,4 +517,473 @@ test("viewing as a manager shows only that chats aren't shown", async ({
   await page.goto(`/chat/${kitchen}`);
   await expect(page.getByText(c.viewing)).toBeVisible();
   await expect(page.getByRole("log")).toHaveCount(0);
+});
+
+// Accessibility, part 7. A text message whose sending is dropped on its way
+// (nothing reaches the server, so nothing is written) is said where the
+// field keeps the focus, with its way to try again under it; and each
+// message's actions button says whose message it opens, when (with its day
+// when not today's: the demo's morning is yesterday's before 09:00) and how
+// it starts, after the tooltip's word, so each reads apart in a list of the
+// page's buttons. Its tooltip says the same, so it adds no description.
+test("a message that didn't go is said, and each message's actions say whose and when", async ({
+  page,
+}) => {
+  const words = "e2e: this one never leaves the phone";
+  const kitchen = await demoConversation({ kind: "department", name: KITCHEN });
+  expect(kitchen).not.toBeNull();
+  await enterAs(page, "worker");
+  await page.goto(`/chat/${kitchen}`);
+  await expect(
+    page.getByRole("heading", { level: 1, name: KITCHEN }),
+  ).toBeVisible();
+
+  // The kitchen's two from the demo: Noa's own, and Shiran's answer.
+  const bubble = (text: string) =>
+    log(page).locator("[data-bubble]").filter({ hasText: text });
+  /** What the button says of a message after whose: when, and its words. */
+  const sentAs = async (one: Locator, said: string) => {
+    const time = one.locator("time");
+    const day = dateIn(
+      new Date((await time.getAttribute("datetime")) ?? ""),
+      TZ,
+    );
+    const today = dateIn(new Date(), TZ);
+    const which = chatDay(day, today);
+    return {
+      when: which.kind,
+      date: which.kind === "date" ? chatShortDate(day, today) : "",
+      time: (await time.textContent()) ?? "",
+      words: said,
+      ltr: isolate,
+    };
+  };
+  const shiransWords = "תודה, ההזמנה יוצאת היום";
+  const ownWords = "סיימנו לסדר להיום. חסרים חומרי ניקוי";
+  const shirans = bubble(shiransWords);
+  const own = bubble(ownWords);
+  const shiransName = heT.markup("app.chat.messageActions.openFor", {
+    name: SHIRAN_NAME,
+    ...(await sentAs(shirans, shiransWords)),
+  });
+  await expect(shirans.locator("[data-message-actions]")).toHaveAttribute(
+    "aria-label",
+    shiransName,
+  );
+  await expect(shirans.locator("[data-message-actions]")).toHaveAttribute(
+    "title",
+    shiransName,
+  );
+  await expect(
+    shirans.locator("[data-message-actions]"),
+  ).not.toHaveAccessibleDescription(c.messageActions.open);
+  await expect(own.locator("[data-message-actions]")).toHaveAttribute(
+    "aria-label",
+    heT.markup(
+      "app.chat.messageActions.openForOwn",
+      await sentAs(own, ownWords),
+    ),
+  );
+
+  // Its sending dropped on the way: the server never has it.
+  let dropped = 0;
+  await page.route(
+    (url) => url.pathname === `/chat/${kitchen}`,
+    async (route) => {
+      const request = route.request();
+      if (
+        request.method() === "POST" &&
+        request.headers()["next-action"] !== undefined &&
+        (request.postData() ?? "").includes(words)
+      ) {
+        dropped += 1;
+        await route.abort();
+        return;
+      }
+      await route.fallback();
+    },
+  );
+  await noteIfSaid(page, c.conversation.notSent);
+  await send(page, words);
+  await expect(
+    log(page).getByRole("button", { name: c.conversation.failed }),
+  ).toBeVisible();
+  await expect.poll(() => wasSaid(page, c.conversation.notSent)).toBe(true);
+  expect(dropped).toBe(1);
+  // The field keeps the focus, for the next message or the way back.
+  await expect(composer(page)).toBeFocused();
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+// Accessibility, part 7. The kitchen removed while Shiran writes there: she
+// runs the chat, so she still reads it, closed. Her message doesn't go
+// ("closed"), the screen is drawn again with the reason, and that line
+// takes the focus the field had; nothing says "אפשר לנסות שוב", nor the
+// reason a second time. Tried again from its bubble while the chat is
+// closed, nothing on screen changes, so the conversation says it didn't go
+// and why. After the third check, a picture too: one whose sending was
+// dropped on its way while the kitchen was open (nothing reached the
+// server), tried again there, is refused the same way and said so, as no
+// notice over the field is drawn while nobody writes. Nothing is written;
+// the kitchen comes back after.
+test("a message sent as its chat closes says only why, and trying it or a picture again there says it didn't go", async ({
+  page,
+}) => {
+  // A picture made ready on the page, and the line's seconds waited out.
+  test.slow();
+  const words = "e2e: written as the kitchen closed";
+  const caption = "e2e: a picture dropped on its way";
+  const kitchen = await demoConversation({ kind: "department", name: KITCHEN });
+  expect(kitchen).not.toBeNull();
+  const bubble = (text: string) =>
+    log(page).locator("[data-bubble]").filter({ hasText: text });
+  await enterAs(page, "manager");
+  await page.goto(`/chat/${kitchen}`);
+  await expect(
+    page.getByRole("heading", { level: 1, name: KITCHEN }),
+  ).toBeVisible();
+  const since = await databaseNow();
+
+  // The picture first, with its words, its sending dropped on the way: the
+  // one action sent with files (a form, so multipart), never a text's.
+  let dropped = 0;
+  await page.route(
+    (url) => url.pathname === `/chat/${kitchen}`,
+    async (route) => {
+      const request = route.request();
+      const type = request.headers()["content-type"] ?? "";
+      const body = request.postDataBuffer();
+      if (
+        request.method() === "POST" &&
+        request.headers()["next-action"] !== undefined &&
+        (type.startsWith("multipart/form-data") ||
+          (body?.includes(caption) ?? false))
+      ) {
+        dropped += 1;
+        await route.abort();
+        return;
+      }
+      await route.fallback();
+    },
+  );
+  await page
+    .getByRole("button", { name: c.conversation.attach, exact: true })
+    .filter({ visible: true })
+    .click();
+  const sheet = page.getByRole("dialog", { name: c.attach.title });
+  await expect(sheet).toBeVisible();
+  const chooser = page.waitForEvent("filechooser");
+  await sheet
+    .getByRole("button", { name: new RegExp(`^${literal(c.attach.photo)}`) })
+    .click();
+  await (await chooser).setFiles({
+    name: "photo.jpg",
+    mimeType: "image/jpeg",
+    buffer: await cameraPhoto(page),
+  });
+  await expect(
+    page.getByRole("img", { name: c.image.chosen }).filter({ visible: true }),
+  ).toBeVisible();
+  await send(page, caption);
+  const pictureAgain = bubble(caption).getByRole("button", {
+    name: c.conversation.failed,
+  });
+  await expect(pictureAgain).toBeVisible();
+  expect(dropped).toBe(1);
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+
+  // Then a message, sent as the kitchen is removed.
+  await composer(page).fill(words);
+  await noteIfSaid(page, c.conversation.notSent);
+  await noteIfSaid(page, c.conversation.closed);
+  const reopen = await closeDemoDepartment(KITCHEN);
+  try {
+    await sendButton(page).click();
+    await expect(composer(page)).toHaveCount(0);
+    await expect
+      .poll(() => focused(page))
+      .toEqual({ tag: "p", words: c.conversation.closed });
+    const again = bubble(words).getByRole("button", {
+      name: c.conversation.failed,
+    });
+    await expect(again).toBeVisible();
+    await pastDrawing(page);
+    expect(await wasSaid(page, c.conversation.notSent)).toBe(false);
+    expect(await wasSaid(page, c.conversation.closed)).toBe(false);
+
+    // Tried again from the keyboard: refused again, and said so.
+    await noteIfSaid(page, c.conversation.notSentBlocked);
+    await again.focus();
+    await page.keyboard.press("Enter");
+    await expect
+      .poll(() => wasSaid(page, c.conversation.notSentBlocked))
+      .toBe(true);
+    await expect(again).toBeVisible();
+
+    // The picture tried again there, once the line went quiet: refused the
+    // same way ("closed", before anything is stored), and said so too.
+    await expect(
+      page
+        .locator(
+          '[role="status"]:not([aria-live="off"]), [aria-live]:not([aria-live="off"])',
+        )
+        .filter({ hasText: c.conversation.notSentBlocked }),
+    ).toHaveCount(0, { timeout: 15_000 });
+    await noteIfSaid(page, c.conversation.notSentBlocked);
+    await pictureAgain.focus();
+    await page.keyboard.press("Enter");
+    await expect
+      .poll(() => wasSaid(page, c.conversation.notSentBlocked))
+      .toBe(true);
+    await expect(pictureAgain).toBeVisible();
+    expect(await wasSaid(page, c.conversation.notSent)).toBe(false);
+    expect(await demoChatMessagesSince(kitchen ?? "", since)).toBe(0);
+  } finally {
+    await reopen();
+  }
+});
+
+// The kitchen removed while Noa, who is in it, writes there: she no longer
+// reads it, so her message doesn't go ("noAccess") and the chat's
+// not-found screen takes its place, with no composer to say why: its title
+// takes the focus that went with the field. Nothing is written.
+test("a message sent as its chat goes from the reader gives the not-found title the focus", async ({
+  page,
+}) => {
+  const words = "e2e: written as the kitchen went";
+  const kitchen = await demoConversation({ kind: "department", name: KITCHEN });
+  expect(kitchen).not.toBeNull();
+  await enterAs(page, "worker");
+  await page.goto(`/chat/${kitchen}`);
+  await expect(
+    page.getByRole("heading", { level: 1, name: KITCHEN }),
+  ).toBeVisible();
+  await composer(page).fill(words);
+  const since = await databaseNow();
+  const reopen = await closeDemoDepartment(KITCHEN);
+  try {
+    await sendButton(page).click();
+    await expect(notFoundTitle(page).filter({ visible: true })).toBeFocused();
+    expect(await demoChatMessagesSince(kitchen ?? "", since)).toBe(0);
+  } finally {
+    await reopen();
+  }
+});
+
+// Accessibility, part 7, after its third check, in the tablet's shape (one
+// run, on the phone's device, as the rest of this file). The kitchen removed
+// while Noa's list beside the screen still shows it (its syncs answered with
+// nothing new meanwhile): its row pressed from the keyboard opens the chat's
+// not-found screen beside the list, and its title takes the focus from the
+// row, now marked as the chat open, as a chat's title would. Every chat has
+// the same page title, so nothing else says the screen beside changed.
+test("beside the list, a chat no longer the reader's opened from its row gives the not-found title the focus", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 820, height: 1180 });
+  const kitchen = await demoConversation({ kind: "department", name: KITCHEN });
+  expect(kitchen).not.toBeNull();
+  const kitchenRow = page
+    .locator("[data-chat-list]")
+    .filter({ visible: true })
+    .locator(`a[href="/chat/${kitchen}"]`)
+    .first();
+  await enterAs(page, "worker");
+  await page.goto("/chat");
+  await expect(kitchenRow).toBeVisible();
+  await page.route(
+    (url) => url.pathname === "/chat-sync",
+    (route) => route.fulfill({ status: 204 }),
+  );
+  const reopen = await closeDemoDepartment(KITCHEN);
+  try {
+    await kitchenRow.focus();
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(new RegExp(`/chat/${kitchen}$`));
+    await expect(notFoundTitle(page).filter({ visible: true })).toBeFocused();
+  } finally {
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+    await reopen();
+  }
+});
+
+// The kitchen removed while Shiran's screen of it is kept hidden for going
+// back, left with the focus in its field: opened again from the list, it is
+// drawn so from the start. Its title takes the focus, as a conversation
+// opened from the list does on a phone, never the line that says why
+// nobody writes there, and that line isn't said.
+test("a chat that closed while kept for going back opens with its title focused, and says nothing", async ({
+  page,
+}) => {
+  const kitchen = await demoConversation({ kind: "department", name: KITCHEN });
+  expect(kitchen).not.toBeNull();
+  await enterAs(page, "manager");
+  await chatTab(page).click();
+  await expect(page).toHaveURL(/\/chat$/);
+  const kitchenRow = page
+    .locator(`a[href="/chat/${kitchen}"]`)
+    .filter({ visible: true })
+    .first();
+  await kitchenRow.click();
+  await expect(page).toHaveURL(new RegExp(`/chat/${kitchen}$`));
+  await composer(page).click();
+  await expect(composer(page)).toBeFocused();
+  const reopen = await closeDemoDepartment(KITCHEN);
+  try {
+    await page.goBack();
+    await expect(page).toHaveURL(/\/chat$/);
+    await noteIfSaid(page, c.conversation.closed);
+    await kitchenRow.click();
+    await expect(page).toHaveURL(new RegExp(`/chat/${kitchen}$`));
+    await expect(
+      page.getByText(c.conversation.closed).filter({ visible: true }).first(),
+    ).toBeVisible();
+    await expect(
+      page
+        .getByRole("heading", { level: 1, name: KITCHEN })
+        .filter({ visible: true }),
+    ).toBeFocused();
+    await pastDrawing(page);
+    expect(await wasSaid(page, c.conversation.closed)).toBe(false);
+  } finally {
+    await reopen();
+  }
+});
+
+/**
+ * Holds a chat screen on its way, as a slow phone network does: the answer
+ * to its navigation waits until `release`. Never a prefetch, so what Next
+ * draws at once (the screen's skeleton) still comes. `held` says how many
+ * were held, so a test knows the hold was in the way.
+ */
+async function holdScreen(page: Page, path: string) {
+  let release = () => {};
+  const released = new Promise<void>((go) => {
+    release = go;
+  });
+  let held = 0;
+  await page.route(
+    (url) => url.pathname === path,
+    async (route) => {
+      const headers = route.request().headers();
+      if (
+        headers.rsc === "1" &&
+        headers["next-router-prefetch"] === undefined &&
+        headers["next-router-segment-prefetch"] === undefined
+      ) {
+        held += 1;
+        await released;
+      }
+      await route.fallback();
+    },
+  );
+  return { held: () => held, release };
+}
+
+// Accessibility, part 7, in the tablet's shape (the list beside the
+// conversation; one run, on the phone's device, as the rest of this file).
+// A chat opened from the list, by the keyboard, whose focus stays on the
+// row pressed, gives its title the focus: every chat has the same page
+// title, so nothing else says it opened; the announcements' title too. A
+// focus moved on while a screen loads stays where it was put, on another
+// row of the list too. A chat
+// chosen in "שליחת הודעה" beside it takes the focus to its title: while it
+// is on its way the sheet's button holds it, never the chat being left or
+// a skeleton; the chat on screen chosen again, at once. Closed with no one
+// chosen, the sheet gives the focus back to its button. Opening chats marks
+// them read: clearDemoChat puts that back.
+test("beside the list, a chat opened from it or chosen in a new message takes the focus to its title", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 820, height: 1180 });
+  const kitchen = await demoConversation({ kind: "department", name: KITCHEN });
+  const team = await demoConversation({ kind: "team" });
+  const title = (name: string) =>
+    page.getByRole("heading", { level: 1, name }).filter({ visible: true });
+  // A row of the list beside the screen (InboxPane).
+  const row = (href: string) =>
+    page
+      .locator("[data-chat-list]")
+      .filter({ visible: true })
+      .locator(`a[href="${href}"]`)
+      .first();
+  await enterAs(page, "worker");
+  await page.goto(`/chat/${kitchen}`);
+  // Opened with the focus nowhere: the kitchen's title takes it, once the
+  // page has hydrated and its effect has run.
+  await expect(title(KITCHEN)).toBeFocused();
+
+  // The list beside it, its team row pressed from the keyboard.
+  const teamRow = row(`/chat/${team}`);
+  await expect(teamRow).toBeVisible();
+  await teamRow.focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(new RegExp(`/chat/${team}$`));
+  await expect(title(c.list.team)).toBeFocused();
+
+  // The announcements' row pressed, and the kitchen's row moved to while
+  // they load: the focus stays there.
+  const kitchenRow = row(`/chat/${kitchen}`);
+  const announcements = await holdScreen(page, "/chat/announcements");
+  await row("/chat/announcements").focus();
+  await page.keyboard.press("Enter");
+  await expect.poll(() => announcements.held()).toBeGreaterThan(0);
+  await kitchenRow.focus();
+  announcements.release();
+  await expect(page).toHaveURL(/\/chat\/announcements$/);
+  await expect(title(c.announcement.page.title)).toBeVisible();
+  await pastDrawing(page);
+  await expect(kitchenRow).toBeFocused();
+
+  // That row pressed: the kitchen, kept for going back, gives its title the
+  // focus again. Then the announcements' row, nothing held: their title
+  // takes the focus from it, as a conversation's does (ChatPageHeader).
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(new RegExp(`/chat/${kitchen}$`));
+  await expect(title(KITCHEN)).toBeFocused();
+  await row("/chat/announcements").focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/chat\/announcements$/);
+  await expect(title(c.announcement.page.title)).toBeFocused();
+
+  const newMessage = page
+    .getByRole("button", { name: c.list.newMessage, exact: true })
+    .filter({ visible: true });
+  const sheet = page.getByRole("dialog", { name: c.list.newMessage });
+
+  // Yoav chosen, his new chat still on its way: the button holds the focus,
+  // and his chat's title takes it as it opens.
+  await newMessage.click();
+  await sheet.getByLabel(c.newMessage.search).fill("יואב");
+  const yoav = sheet.getByRole("link", { name: /יואב לוי/ });
+  const yoavPath = (await yoav.getAttribute("href")) ?? "";
+  expect(yoavPath).toMatch(/^\/chat\/with\/[0-9a-f-]{36}$/);
+  const yoavScreen = await holdScreen(page, yoavPath);
+  await yoav.click();
+  await expect(sheet).toHaveCount(0);
+  await expect.poll(() => yoavScreen.held()).toBeGreaterThan(0);
+  await expect(newMessage).toBeFocused();
+  yoavScreen.release();
+  await expect(page).toHaveURL(new RegExp(`${yoavPath}$`));
+  await expect(title("יואב לוי")).toBeFocused();
+
+  // Shiran chosen: her chat's title.
+  await newMessage.click();
+  await sheet.getByLabel(c.newMessage.search).fill("שירן");
+  await sheet.getByRole("link", { name: new RegExp(SHIRAN_NAME) }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(title(SHIRAN_NAME)).toBeFocused();
+
+  // Chosen again, the chat on screen: its title, with no address to change.
+  await newMessage.click();
+  await sheet.getByLabel(c.newMessage.search).fill("שירן");
+  await sheet.getByRole("link", { name: new RegExp(SHIRAN_NAME) }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(title(SHIRAN_NAME)).toBeFocused();
+
+  await newMessage.click();
+  await expect(sheet).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(sheet).toHaveCount(0);
+  await expect(newMessage).toBeFocused();
 });
