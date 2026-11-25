@@ -2142,6 +2142,56 @@ removed", which the page counts as brought back), and, as a cancel's,
 them. Covered by `@domain/time-clock`'s tests, `time-clock.test.ts` and
 `e2e/clock-team.spec.ts`.
 
+### Sample availability in the hosted demo
+
+Filling the schedule from availability, part 6
+(`20261128000100_demo_sample_availability.sql`; Orel's yes of 25 November 2026
+to the plan's question 3). A demo definition may name `sampleAvailability`:
+`[{user_id, ranges: [{weekday, start, end}]}]`, weekday 0 = Sunday, an end at
+or before the start on the next day. Only `supabase/hosted-demo.sql`'s
+restaurant does (its manager and two workers, on each day they can work the
+hours the form suggests from the restaurant's shifts); `supabase/seed.sql`
+names none, so the local browser tests send their own.
+`public.renew_demo_availability()`, service_role only, for each demo business
+whose definition has the key, with scheduling on: next week by its settings
+and clock (`private.availability_rules`, `private.week_start_after`), unless
+that week is published (checked under the week's `for share` lock). For each
+named person active on its staff as a manager or a worker (never an owner,
+an accountant or someone who left) who sent nothing for that week, it opens
+the week (`public.open_schedule_week`, due by `private.availability_due_at`)
+and sends their ranges through `public.submit_availability` with no note, so
+that function's rules hold (a sample it refuses fails the whole call, as it
+would refuse a worker's). Every named person's answer is claimed first, in
+one statement (`on conflict do nothing`), and only the rows it claimed are
+sent, so an answer someone sent, an empty one too, or sends at the same
+moment, is never replaced. For a business closed on Shabbat
+(`private.closes_on_shabbat`) `private.demo_sample_ranges` cuts each range as
+the form's suggestion is cut: Friday ending by candle lighting, Saturday
+starting from havdalah (`private.shabbat_span`); a range left with nothing,
+or on a Friday or Saturday past the Shabbat table's last week, is left out,
+and a person with nothing left gets no answer. Returns how many answers it
+wrote, 0 when called again. No row of the log, no notification and no push:
+the answer's one trigger (`availability_submissions_resolve`) only settles
+reminders, which demo businesses never get. Locks: the business (`for key
+share`, a demo reset first), then the week, then every answer in that one
+statement, and only once it is done the week's reminders lock
+(`private.lock_availability_week`, the advisory lock that trigger holds to
+the end of the transaction), so it never holds that lock while it waits on
+an answer the form is sending, whose trigger may be waiting for it.
+`reset_demo_business` is unchanged: a reset takes the week, and the next entry
+or Today writes the sample again. The wrapper, `renewDemoAvailability()` in
+`@db/demo`, answers 0 before the migration reaches the project
+(`isMissingFunction`), and is called by the door's `enterAs` after sign-in
+and by Today's `renewDemoWeek` (`app/(app)/demo.ts`) in either demo business,
+for whoever stayed signed in past the week's turn, each behind
+`demoDoorOpen()` and in its own try/catch (`tooling/demo-door.test.ts`).
+Covered by `demo_availability.test.sql`, `demo.test.ts`,
+`demo-availability.db.test.ts` (beside an answer the form sends at the same
+moment, each in a session of its own), `tooling/demo-availability.test.ts`
+(the hosted sample against the restaurant's shifts and the fill) and
+`tooling/running-week-edge.test.ts` (its lock on the week, and its answers
+claimed in one statement).
+
 ### Days away
 
 Vacation, sick leave, reserve duty and another absence (known issue 19,

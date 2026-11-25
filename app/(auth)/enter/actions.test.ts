@@ -8,7 +8,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // setting that is neither refuses everything, naming it. Where the door is
 // open, a demo person comes in to the business offered and the reset runs,
 // landing on the page a link kept for after sign-in (known issue 21), taken
-// only once they are in, else on Today.
+// only once they are in, else on Today. Each entry sends next week's sample
+// availability (`renewDemoAvailability`, the database deciding for whom),
+// after the shop's week where it renews, and a sample that fails keeps
+// nobody out.
 
 vi.mock("server-only", () => ({}));
 
@@ -17,6 +20,7 @@ const SHOP = "11111111-1111-4111-a111-111111111111";
 const mocks = vi.hoisted(() => ({
   resetDemoBusinesses: vi.fn(),
   renewDemoSchedules: vi.fn(),
+  renewDemoAvailability: vi.fn(),
   generateLink: vi.fn(),
   verifyOtp: vi.fn(),
   slug: vi.fn(),
@@ -41,6 +45,7 @@ vi.mock("next/headers", () => ({
 vi.mock("@db/demo", () => ({
   resetDemoBusinesses: mocks.resetDemoBusinesses,
   renewDemoSchedules: mocks.renewDemoSchedules,
+  renewDemoAvailability: mocks.renewDemoAvailability,
 }));
 vi.mock("@db/supabase/admin", () => ({
   createAdminClient: () => ({
@@ -75,6 +80,7 @@ function nothingCalled() {
   expect(mocks.rememberBusiness).not.toHaveBeenCalled();
   expect(mocks.resetDemoBusinesses).not.toHaveBeenCalled();
   expect(mocks.renewDemoSchedules).not.toHaveBeenCalled();
+  expect(mocks.renewDemoAvailability).not.toHaveBeenCalled();
   expect(mocks.cookieRead).not.toHaveBeenCalled();
   expect(mocks.cookieDeleted).not.toHaveBeenCalled();
 }
@@ -89,6 +95,7 @@ beforeEach(() => {
   mocks.verifyOtp.mockResolvedValue({ error: null });
   mocks.resetDemoBusinesses.mockResolvedValue(2);
   mocks.renewDemoSchedules.mockResolvedValue(1);
+  mocks.renewDemoAvailability.mockResolvedValue(3);
 });
 
 afterEach(() => {
@@ -188,6 +195,60 @@ describe("the demo door open (the demo's site)", () => {
     expect(mocks.cookieDeleted).not.toHaveBeenCalled();
     expect(jar.get(AFTER_SIGN_IN_COOKIE)).toBe("/lists");
     expect(JSON.stringify(logged.mock.calls)).not.toContain("/lists");
+    logged.mockRestore();
+  });
+
+  it("sends next week's sample availability at each entry, into either business", async () => {
+    for (const [person, business] of [
+      ["worker", "restaurant"],
+      ["shopWorker", "shop"],
+    ] as const) {
+      mocks.renewDemoAvailability.mockClear();
+      await expect(enterAs(person, business), business).rejects.toMatchObject({
+        digest: expect.stringContaining(";/home;"),
+      });
+      expect(mocks.renewDemoAvailability, business).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("sends it after the shop's week, which it waits for", async () => {
+    const order: string[] = [];
+    mocks.renewDemoSchedules.mockImplementation(async () => {
+      order.push("week");
+      return 1;
+    });
+    mocks.renewDemoAvailability.mockImplementation(async () => {
+      order.push("sample");
+      return 0;
+    });
+    await expect(enterAs("shopWorker", "shop")).rejects.toMatchObject({
+      digest: expect.stringContaining(";/home;"),
+    });
+    expect(order).toEqual(["week", "sample"]);
+  });
+
+  it("sends none where the door fails", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.verifyOtp.mockResolvedValueOnce({ error: new Error("expired") });
+    expect(await enterAs("worker", "restaurant")).toEqual({ failed: true });
+    expect(mocks.renewDemoAvailability).not.toHaveBeenCalled();
+    logged.mockRestore();
+  });
+
+  it("lets the person in when the sample fails, logging its message only", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.renewDemoAvailability.mockRejectedValue(
+      Object.assign(new Error("sample down"), { details: "a row's words" }),
+    );
+    await expect(enterAs("worker", "restaurant")).rejects.toMatchObject({
+      digest: expect.stringContaining(";/home;"),
+    });
+    expect(logged).toHaveBeenCalledTimes(1);
+    expect(logged).toHaveBeenCalledWith(
+      "demo availability renewal failed",
+      "sample down",
+    );
+    expect(JSON.stringify(logged.mock.calls)).not.toContain("a row's words");
     logged.mockRestore();
   });
 
