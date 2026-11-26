@@ -150,8 +150,8 @@ declare
   p_role public.member_role;
   p_named uuid;
   from_line boolean;
-  seen text[] := '{}';
-  far integer[] := '{}';
+  seen text[] := '{}'::text[];
+  far integer[] := '{}'::integer[];
   existing public.invites%rowtype;
   invite_id uuid;
   st text;
