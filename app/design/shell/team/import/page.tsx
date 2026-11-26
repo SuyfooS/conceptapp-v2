@@ -66,14 +66,16 @@ async function Demo({ searchParams }: Props) {
     named: [namedRoleShown(demoNamedRole)],
     labels,
   });
-  // The twin's invites have had their links made, as the Team twin shows them.
+  // The twin's invites as the Team twin shows them: Dana's and Ron's with
+  // their links made, Ido's and Lior's with none yet (#266), which wait
+  // whatever their date.
   const invites: KnownInvite[] = teamInvites.map((invite) => ({
     id: invite.id,
     phone: invite.phone,
     name: invite.name,
     role: invite.role,
     namedRole: invite.namedRole?.id ?? null,
-    linkPending: false,
+    linkPending: invite.linkPending ?? false,
     expired: Date.parse(invite.expiresAt) <= teamToday.getTime(),
     touchable: invite.role === "manager" || invite.role === "worker",
   }));
