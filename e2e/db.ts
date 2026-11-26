@@ -38,9 +38,14 @@ export async function invitesBySlug(slug: string): Promise<OpenInvite[]> {
 const DEMO_RESTAURANT = "00000000-0000-4000-b000-000000000001";
 
 /**
- * An open invite to the demo restaurant, as the wizard leaves one. Clears
- * an earlier run's invite and membership for the number first, so the
- * spec can run again on the same local database.
+ * An open invite to the demo restaurant whose link nobody holds: written
+ * straight into the table, so it reads as one that got a link
+ * (`link_pending` false), open or, with `expiresInDays` below 0, run out.
+ * The wizard's own invites, which no link was made for, are pending since
+ * 20261128000200_invite_links_pending.sql: team-pending-links.spec.ts makes
+ * those through `public.create_business`. Clears an earlier run's invite
+ * and membership for the number first, so the spec can run again on the
+ * same local database.
  */
 export async function inviteToDemo(invite: {
   name: string;
@@ -6342,4 +6347,179 @@ export async function demoAbsences(personId: string): Promise<
     from public.absences a
     where a.business_id = ${DEMO_RESTAURANT} and a.user_id = ${personId}::uuid
     order by a.recorded_at, a.id`;
+}
+
+/**
+ * "עוד לא קיבלו קישור" (inviting from a list, part 2): a real business the
+ * console's wizard opens for each screen size, through the function it calls
+ * (`public.create_business`, as the seeded platform admin), with its owner
+ * and three of the staff, every invite saved with no link. The owner's link
+ * is then made as the console's "יצירת קישור" makes one
+ * (`public.issue_invite_link`), for the owner to join through. Fictional
+ * numbers of their own block (050-000-744x to 746x), in no other spec.
+ */
+export const PENDING_LINKS = {
+  phone: {
+    slug: "pending-links-e2e-phone",
+    name: "עסק בלי קישורים טלפון",
+    owner: { name: "שני בעלים", local: "050-000-7440", e164: "+972500007440" },
+    staff: [
+      {
+        name: "אביב ממתין",
+        local: "050-000-7441",
+        e164: "+972500007441",
+        role: "worker",
+      },
+      {
+        name: "בר ממתינה",
+        local: "050-000-7442",
+        e164: "+972500007442",
+        role: "manager",
+      },
+      {
+        name: "גיל ממתין",
+        local: "050-000-7443",
+        e164: "+972500007443",
+        role: "worker",
+      },
+    ],
+  },
+  tablet: {
+    slug: "pending-links-e2e-tablet",
+    name: "עסק בלי קישורים טאבלט",
+    owner: { name: "שני בעלים", local: "050-000-7450", e164: "+972500007450" },
+    staff: [
+      {
+        name: "אביב ממתין",
+        local: "050-000-7451",
+        e164: "+972500007451",
+        role: "worker",
+      },
+      {
+        name: "בר ממתינה",
+        local: "050-000-7452",
+        e164: "+972500007452",
+        role: "manager",
+      },
+      {
+        name: "גיל ממתין",
+        local: "050-000-7453",
+        e164: "+972500007453",
+        role: "worker",
+      },
+    ],
+  },
+  desktop: {
+    slug: "pending-links-e2e-desktop",
+    name: "עסק בלי קישורים מחשב",
+    owner: { name: "שני בעלים", local: "050-000-7460", e164: "+972500007460" },
+    staff: [
+      {
+        name: "אביב ממתין",
+        local: "050-000-7461",
+        e164: "+972500007461",
+        role: "worker",
+      },
+      {
+        name: "בר ממתינה",
+        local: "050-000-7462",
+        e164: "+972500007462",
+        role: "manager",
+      },
+      {
+        name: "גיל ממתין",
+        local: "050-000-7463",
+        e164: "+972500007463",
+        role: "worker",
+      },
+    ],
+  },
+} as const;
+
+export type PendingLinksBusiness =
+  (typeof PENDING_LINKS)[keyof typeof PENDING_LINKS];
+
+/** The seeded platform admin (supabase/seed.sql), who opens businesses. */
+const SEEDED_PLATFORM_ADMIN = "00000000-0000-4000-a000-000000000005";
+
+/** The business's id, or null when it isn't there. */
+async function businessIdBySlug(slug: string): Promise<string | null> {
+  const [row] = await sql<{ id: string }[]>`
+    select id from public.businesses where slug = ${slug}`;
+  return row?.id ?? null;
+}
+
+/**
+ * The business opened afresh by the wizard's function, an earlier run's gone
+ * first with its records, and the owner's link made by the console's. Returns
+ * the owner's token, as /join/<token> takes it.
+ */
+export async function openPendingLinksBusiness(
+  business: PendingLinksBusiness,
+): Promise<string> {
+  await closePendingLinksBusiness(business);
+  const staff = [
+    { name: business.owner.name, phone: business.owner.e164, role: "owner" },
+    ...business.staff.map((p) => ({
+      name: p.name,
+      phone: p.e164,
+      role: p.role,
+    })),
+  ];
+  await sql`select public.create_business(${SEEDED_PLATFORM_ADMIN}::uuid,
+    ${business.name}, ${business.slug}, null, '#0f766e', 'general',
+    ${sql.json(staff)}::jsonb)`;
+  const token = randomBytes(32).toString("base64url");
+  await sql`select public.issue_invite_link(${SEEDED_PLATFORM_ADMIN}::uuid,
+    (select i.id from public.invites i join public.businesses b
+      on b.id = i.business_id
+      where b.slug = ${business.slug} and i.phone = ${business.owner.e164}
+        and i.claimed_at is null),
+    ${createHash("sha256").update(token, "utf8").digest("hex")})`;
+  return token;
+}
+
+/** The business gone with its records, when the test is done. */
+export async function closePendingLinksBusiness(
+  business: PendingLinksBusiness,
+): Promise<void> {
+  const id = await businessIdBySlug(business.slug);
+  if (id) await deleteRealBusiness(id);
+}
+
+/** Its invites by number: whether each has no link yet, and is still open. */
+export async function pendingLinkStates(
+  business: PendingLinksBusiness,
+): Promise<Record<string, { pending: boolean; open: boolean }>> {
+  const rows = await sql<{ phone: string; pending: boolean; open: boolean }[]>`
+    select i.phone, i.link_pending as pending, i.claimed_at is null as open
+    from public.invites i join public.businesses b on b.id = i.business_id
+    where b.slug = ${business.slug}`;
+  return Object.fromEntries(
+    rows.map((row) => [row.phone, { pending: row.pending, open: row.open }]),
+  );
+}
+
+/** The person's role in the business, or null when not an active member. */
+export async function roleIn(
+  business: PendingLinksBusiness,
+  phone: string,
+): Promise<string | null> {
+  const [row] = await sql<{ role: string }[]>`
+    select m.role::text as role from public.memberships m
+    join public.businesses b on b.id = m.business_id
+    join public.profiles p on p.id = m.user_id
+    where b.slug = ${business.slug} and p.phone = ${phone} and m.active`;
+  return row?.role ?? null;
+}
+
+/** How many notifications anyone in the business has. */
+export async function notificationsIn(
+  business: PendingLinksBusiness,
+): Promise<number> {
+  const [row] = await sql<{ count: number }[]>`
+    select count(*)::int as count from public.notifications n
+    join public.businesses b on b.id = n.business_id
+    where b.slug = ${business.slug}`;
+  return row?.count ?? 0;
 }

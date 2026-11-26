@@ -11,11 +11,13 @@ import {
   firstStepsHidden,
   firstStepsHideRefusal,
   isOptionalStep,
+  NO_TEAM_PROGRESS,
   nextStep,
   stepsCounted,
   stepsDone,
   stepsLeft,
   teamProgress,
+  teamStepWords,
   withFirstStepsHidden,
 } from "./first-steps";
 import type { Role } from "./modules";
@@ -26,7 +28,7 @@ const NOW = new Date("2026-11-18T09:00:00.000Z");
 
 /** A business of any kind on its first day: the owner alone, nothing set. */
 const dayOne: FirstStepsFacts = {
-  team: { joined: 0, invited: 0, expired: 0 },
+  team: { joined: 0, invited: 0, expired: 0, pending: 0 },
   details: { address: null, cityMissing: true },
   scheduling: { positions: 0, patterns: 0, published: false },
   lists: { departments: 0, empty: 0 },
@@ -118,14 +120,14 @@ describe("firstSteps", () => {
     const invited = team([owner], [invite("noa", "worker", true)]);
     expect(invited).toMatchObject({
       done: false,
-      progress: { joined: 0, invited: 1, expired: 0 },
+      progress: { joined: 0, invited: 1, expired: 0, pending: 0 },
       href: "/team",
     });
 
     const expired = team([owner], [invite("noa", "worker", false)]);
     expect(expired).toMatchObject({
       done: false,
-      progress: { joined: 0, invited: 0, expired: 1 },
+      progress: { joined: 0, invited: 0, expired: 1, pending: 0 },
       href: "/team",
     });
 
@@ -135,7 +137,7 @@ describe("firstSteps", () => {
     );
     expect(joined).toMatchObject({
       done: true,
-      progress: { joined: 1, invited: 1, expired: 0 },
+      progress: { joined: 1, invited: 1, expired: 0, pending: 0 },
       href: "/team",
     });
 
@@ -146,9 +148,110 @@ describe("firstSteps", () => {
     );
     expect(outside).toMatchObject({
       done: false,
-      progress: { joined: 0, invited: 0, expired: 0 },
+      progress: { joined: 0, invited: 0, expired: 0, pending: 0 },
       href: "/team/invite",
     });
+
+    // The wizard's invites, which nobody got a link for (inviting from a
+    // list, part 2): waiting for a link, never "invited", however old, and
+    // the step leads to the Team screen, where each one's link is made.
+    const noLink = (id: string, role: Role, open: boolean): TeamInvite => ({
+      ...invite(id, role, open),
+      linkPending: true,
+    });
+    const wizard = team(
+      [owner],
+      [
+        noLink("shai", "manager", true),
+        noLink("tamar", "worker", false),
+        noLink("ronit", "owner", true),
+        invite("dan", "worker", true),
+      ],
+    );
+    expect(wizard).toMatchObject({
+      done: false,
+      // Waiting for a link whatever the role, a second owner's too, as the
+      // Team screen counts them; the one sent a link is staff, as ever.
+      progress: { joined: 0, invited: 1, expired: 0, pending: 3 },
+      href: "/team",
+    });
+    expect(team([owner], [noLink("shai", "manager", true)]).href).toBe("/team");
+    // Only a second owner waits for a link: the Team screen, where it is sent.
+    expect(team([owner], [noLink("ronit", "owner", true)])).toMatchObject({
+      done: false,
+      progress: { joined: 0, invited: 0, expired: 0, pending: 1 },
+      href: "/team",
+    });
+  });
+
+  // The review: Today's first step and its team row, and /team, said one
+  // number in the same words only while the list had staff alone.
+  it("counts everyone waiting for a link as the Team screen does, a partner and a bookkeeper too", () => {
+    const noLink = (id: string, role: Role): TeamInvite => ({
+      ...invite(id, role, true),
+      linkPending: true,
+    });
+    const built = buildTeam(
+      [member("owner", "owner")],
+      [
+        noLink("partner", "owner"),
+        noLink("books", "accountant"),
+        noLink("shai", "manager"),
+        noLink("tamar", "worker"),
+      ],
+      NOW,
+    );
+    const progress = teamProgress(built);
+    expect(progress).toEqual({ joined: 0, invited: 0, expired: 0, pending: 4 });
+    expect(progress.pending).toBe(built.counts.pending);
+    expect(teamStepWords(progress)).toBe("pending");
+    // Joined is still the staff alone: a partner who joined is no step done.
+    const joined = teamProgress(
+      buildTeam(
+        [member("owner", "owner"), member("partner", "owner")],
+        [noLink("books", "accountant")],
+        NOW,
+      ),
+    );
+    expect(joined).toEqual({ joined: 0, invited: 0, expired: 0, pending: 1 });
+  });
+
+  it("says who is still waiting for a link while any are, after who joined once one of the staff did", () => {
+    const words = (progress: Partial<FirstStepsFacts["team"]>) =>
+      teamStepWords({ ...dayOne.team, ...progress });
+    expect(words({})).toBe("none");
+    expect(words({ expired: 1 })).toBe("expired");
+    expect(words({ invited: 2, expired: 1 })).toBe("waiting");
+    expect(words({ pending: 3, invited: 2, expired: 1 })).toBe("pending");
+    // Once someone joined the step is done, and says who joined; while
+    // anyone still waits for a link, those too (plan 3.1), before anyone
+    // sent one, as sending is the owner's to do.
+    expect(words({ joined: 1, pending: 2 })).toBe("donePending");
+    expect(words({ joined: 1, invited: 1, pending: 2 })).toBe("donePending");
+    expect(words({ joined: 1, invited: 1, expired: 1 })).toBe("doneWaiting");
+    expect(words({ joined: 2, expired: 1 })).toBe("done");
+    expect(NO_TEAM_PROGRESS).toEqual(dayOne.team);
+  });
+
+  // The plan's demo: the wizard's three staff, the owner sends one link and
+  // that worker joins; two still have no link, and the step says so.
+  it("still says who has no link once one of the wizard's staff joined", () => {
+    const noLink = (id: string, role: Role): TeamInvite => ({
+      ...invite(id, role, true),
+      linkPending: true,
+    });
+    const progress = teamProgress(
+      buildTeam(
+        [member("owner", "owner"), member("first", "worker")],
+        [noLink("second", "worker"), noLink("third", "manager")],
+        NOW,
+      ),
+    );
+    expect(progress).toEqual({ joined: 1, invited: 0, expired: 0, pending: 2 });
+    expect(teamStepWords(progress)).toBe("donePending");
+    expect(
+      step(firstSteps({ ...dayOne, team: progress }), "team"),
+    ).toMatchObject({ done: true });
   });
 
   it("asks for job roles and regular shifts both", () => {
@@ -232,7 +335,7 @@ describe("firstSteps", () => {
 
   it("never counts the clock's code, done or not", () => {
     const everything: FirstStepsFacts = {
-      team: { joined: 2, invited: 0, expired: 0 },
+      team: { joined: 2, invited: 0, expired: 0, pending: 0 },
       details: { address: "הרצל 1", cityMissing: false },
       scheduling: { positions: 2, patterns: 1, published: true },
       lists: { departments: 2, empty: 0 },
@@ -265,7 +368,7 @@ describe("firstSteps", () => {
   it("leads each step to the screen that does it", () => {
     const steps = firstSteps({
       ...dayOne,
-      team: { joined: 1, invited: 0, expired: 0 },
+      team: { joined: 1, invited: 0, expired: 0, pending: 0 },
       lists: { departments: 1, empty: 1 },
     });
     expect(keys(steps)).toEqual([...FIRST_STEP_KEYS]);

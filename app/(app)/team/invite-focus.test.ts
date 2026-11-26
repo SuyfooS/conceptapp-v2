@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  cancelSaid,
   INVITE_CANCEL,
   inviteCancelTarget,
   invitesLeft,
@@ -63,5 +64,50 @@ describe("invitesLeft", () => {
   it("not once every one of them went, or with none", () => {
     expect(invitesLeft(["dana", "ron"], new Set(["dana", "ron"]))).toBe(false);
     expect(invitesLeft([], new Set())).toBe(false);
+  });
+});
+
+// Who says what became of a deleted invite, in each shape: the desktop's
+// table any; a phone's and a tablet's two lists each its own; and the line
+// above them a refusal neither list has any more.
+describe("cancelSaid", () => {
+  /**
+   * Which places of the screen say it, with Ido waiting for a link and
+   * `listed` the open invites the screen read.
+   */
+  const saidBy = (
+    id: string,
+    what: "held" | "refusal",
+    listed: readonly string[] = ["dana", "ron"],
+  ) =>
+    (
+      [
+        ["table", {}],
+        ["pending", { ids: ["ido"] }],
+        ["listed", { ids: listed }],
+        ["strays", { strays: ["ido", ...listed] }],
+      ] as const
+    )
+      .filter(([, where]) => cancelSaid(id, what, where))
+      .map(([name]) => name);
+
+  it("says a held invite's undo in its own list, and in the table", () => {
+    expect(saidBy("ido", "held")).toEqual(["table", "pending"]);
+    expect(saidBy("dana", "held")).toEqual(["table", "listed"]);
+  });
+
+  it("says why one still listed couldn't be deleted under its own list", () => {
+    expect(saidBy("ron", "refusal")).toEqual(["table", "listed"]);
+    expect(saidBy("ido", "refusal")).toEqual(["table", "pending"]);
+  });
+
+  // The review: Dana joined while her deletion waited, the write answered
+  // "gone", and the screen, read again, lists her invite no more, so neither
+  // list of a phone or a tablet has it: the line above them says it, once.
+  it("says a 'gone' refusal whose invite is no longer read above the lists", () => {
+    expect(saidBy("dana", "refusal", ["ron"])).toEqual(["table", "strays"]);
+    // Never an undo there: one waiting is still listed where it was.
+    expect(saidBy("dana", "held", ["ron"])).toEqual(["table"]);
+    expect(saidBy("ron", "refusal", ["ron"])).toEqual(["table", "listed"]);
   });
 });

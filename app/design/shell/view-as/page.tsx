@@ -54,6 +54,7 @@ async function Demo({ searchParams }: Props) {
         inviteHref="/design/shell/team/invite"
         peopleHref="/design/shell/team"
         resend={demoResendAction}
+        businessName={business.name}
         wording={baseWording}
       />
     </>

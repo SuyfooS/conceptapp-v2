@@ -511,14 +511,20 @@ export async function TodayView({
                   href={path("/team")}
                   leading={<Users />}
                   title={t("team.title")}
+                  // What waits on the viewer first: links to make, then
+                  // invites sent and not yet taken.
                   subtitle={
-                    data.team.counts.open > 0
-                      ? t("team.invites.open", {
-                          count: data.team.counts.open,
+                    data.team.counts.pending > 0
+                      ? t("team.pending.count", {
+                          count: data.team.counts.pending,
                         })
-                      : t("team.members.count", {
-                          count: data.team.counts.members,
-                        })
+                      : data.team.counts.open > 0
+                        ? t("team.invites.open", {
+                            count: data.team.counts.open,
+                          })
+                        : t("team.members.count", {
+                            count: data.team.counts.members,
+                          })
                   }
                 />
               ) : null}

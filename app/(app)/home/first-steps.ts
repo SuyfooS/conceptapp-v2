@@ -8,6 +8,7 @@ import {
   type FirstStepsFacts,
   firstSteps,
   firstStepsHidden,
+  NO_TEAM_PROGRESS,
   stepsLeft,
   teamProgress,
 } from "@domain/first-steps";
@@ -98,7 +99,7 @@ async function factsOf(business: MemberBusiness): Promise<FirstStepsFacts> {
   ]);
   return {
     // An owner always sees the team; none would read as nobody joined.
-    team: team ? teamProgress(team) : { joined: 0, invited: 0, expired: 0 },
+    team: team ? teamProgress(team) : NO_TEAM_PROGRESS,
     details: {
       address: business.address,
       // As /manage asks for it: only where the schedule closes on Shabbat.

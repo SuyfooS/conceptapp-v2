@@ -73,16 +73,36 @@ export type TeamInvite = {
   namedRole?: (NamedRole & { archived?: boolean }) | null;
   /** ISO timestamp. */
   expiresAt: string;
+  /**
+   * No link was ever made for it (`invites.link_pending`): the console's
+   * wizard saves its invites so, and nobody holds a token to them until
+   * someone makes each one's link on the Team screen. Missing or false for
+   * one that got a link, and for every invite before the column reached the
+   * project.
+   */
+  linkPending?: boolean;
 };
 
-export type InviteState = "open" | "expired";
+/**
+ * Where an invite nobody claimed stands: no link made yet (`pending`,
+ * whatever its date, since no link of it ever ran out), or a link that is
+ * still good (`open`) or ran out (`expired`).
+ */
+export type InviteState = "pending" | "open" | "expired";
 
 export type Team = {
   /** Owners, then managers, workers and accountants; by name within a role. */
   members: TeamMember[];
-  /** Open invites first, then expired ones; by role and name within each. */
+  /**
+   * The invites with no link yet first, by name; then open ones, then
+   * expired ones, by role and name within each.
+   */
   invites: (TeamInvite & { state: InviteState })[];
-  counts: { members: number; open: number; expired: number };
+  /**
+   * `open` and `expired` count only invites that got a link, so "# הזמנות
+   * ממתינות" says what someone was sent; `pending` the ones nobody got yet.
+   */
+  counts: { members: number; open: number; expired: number; pending: number };
 };
 
 const ROLE_ORDER: Record<Role, number> = {
@@ -101,6 +121,36 @@ const byRoleThenName = (
   (a.name === null ? 1 : 0) - (b.name === null ? 1 : 0) ||
   (a.name ?? "").localeCompare(b.name ?? "", "he");
 
+/**
+ * By name, unnamed last, then by id, so two of one name keep their places:
+ * the order "עוד לא קיבלו קישור" lists its people in.
+ */
+export const byNameThenId = (
+  a: { id: string; name: string | null },
+  b: { id: string; name: string | null },
+) =>
+  (a.name === null ? 1 : 0) - (b.name === null ? 1 : 0) ||
+  (a.name ?? "").localeCompare(b.name ?? "", "he") ||
+  (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+
+const STATE_ORDER: Record<InviteState, number> = {
+  pending: 0,
+  open: 1,
+  expired: 2,
+};
+
+/**
+ * Where an invite stands at `now` (`InviteState`): with no link made yet it
+ * is pending however old, so the wizard's invites never read "פג תוקף".
+ */
+export function inviteState(
+  invite: Pick<TeamInvite, "expiresAt" | "linkPending">,
+  now: Date,
+): InviteState {
+  if (invite.linkPending === true) return "pending";
+  return Date.parse(invite.expiresAt) > now.getTime() ? "open" : "expired";
+}
+
 /** Group and count a business's people as of `now`. */
 export function buildTeam(
   members: readonly TeamMember[],
@@ -109,23 +159,23 @@ export function buildTeam(
 ): Team {
   const withState = invites.map((invite) => ({
     ...invite,
-    state: (Date.parse(invite.expiresAt) > now.getTime()
-      ? "open"
-      : "expired") as InviteState,
+    state: inviteState(invite, now),
   }));
   withState.sort(
     (a, b) =>
-      (a.state === "open" ? 0 : 1) - (b.state === "open" ? 0 : 1) ||
-      byRoleThenName(a, b),
+      STATE_ORDER[a.state] - STATE_ORDER[b.state] ||
+      (a.state === "pending" ? byNameThenId(a, b) : byRoleThenName(a, b)),
   );
-  const open = withState.filter((i) => i.state === "open").length;
+  const counted = (state: InviteState) =>
+    withState.filter((i) => i.state === state).length;
   return {
     members: [...members].sort(byRoleThenName),
     invites: withState,
     counts: {
       members: members.length,
-      open,
-      expired: withState.length - open,
+      open: counted("open"),
+      expired: counted("expired"),
+      pending: counted("pending"),
     },
   };
 }

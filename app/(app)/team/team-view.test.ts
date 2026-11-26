@@ -34,6 +34,7 @@ const {
   teamToday,
 } = await import("../../design/shell/data");
 const { baseWording } = await import("../wording");
+const { PENDING_LIST } = await import("./pending-links");
 const he = (await import("@/messages/he.json")).default;
 
 const heT = createTranslator({ locale: "he", messages: he });
@@ -56,10 +57,15 @@ const resend = async () => ({}) as never;
 
 function draw(
   shown: TeamFiles | null,
-  viewer: { role: "owner" | "manager" | "accountant"; perms: string[] },
+  viewer: {
+    role: "owner" | "manager" | "worker" | "accountant";
+    perms: string[];
+  },
   fileHref?: (userId: string) => string,
   staff = teamMembers,
   fileFilter: FileFilter = "all",
+  /** Anything else the screen is drawn with: `ownerOnly`, `inviteHref`. */
+  extra: Record<string, unknown> = {},
 ): string {
   const missing: string[] = [];
   const provider = {
@@ -90,7 +96,9 @@ function draw(
         resend,
         files: shown,
         fileFilter,
+        businessName: "מסעדת הדגמה",
         wording: baseWording,
+        ...extra,
       }),
     ),
   );
@@ -391,4 +399,129 @@ describe("the team's files after H6b", () => {
       expect(all).not.toContain(filter.emptyMissing);
     }
   });
+});
+
+// Inviting from a list, part 2: the invites nobody got a link for yet (the
+// twin's Ido and Lior, whom the console's wizard saved), first, under "עוד
+// לא קיבלו קישור", in every shape; each one's link made there, at the moment
+// of sending. Nothing is made here: a link waits for its press.
+describe("the invites with no link yet", () => {
+  const owner = { role: "owner" as const, perms: [] };
+  const tp = he.app.team.pending;
+  const createFor = (name: string) =>
+    `aria-label="${heT("app.team.pending.createFor", { name })}"`;
+  const pendingList = `aria-label="${tp.title}"`;
+  /** The phone's and the tablet's lists, before the desktop's table. */
+  const lists = (html: string) => html.slice(0, html.indexOf("<table"));
+  /** One list of the lists, by its name. */
+  const list = (html: string, label: string) => {
+    const at = html.indexOf(`aria-label="${label}"`);
+    return at < 0 ? "" : html.slice(at, html.indexOf("</ul>", at));
+  };
+  const order = (page: string, names: readonly string[]) =>
+    [...names].sort((a, b) => page.indexOf(a) - page.indexOf(b));
+
+  it("lists them first, by name, with how many and how to send, in every shape", () => {
+    const html = draw(null, owner);
+    const page = text(html);
+    expect(page).toContain(tp.title);
+    expect(page).toContain(heT("app.team.pending.count", { count: 2 }));
+    expect(page).toContain(tp.hint);
+    // The phone's and the tablet's own list, above the open and expired.
+    const pending = text(list(lists(html), tp.title));
+    expect(order(pending, ["ליאור גבאי", "עידו ברק"])).toEqual([
+      "ליאור גבאי",
+      "עידו ברק",
+    ]);
+    expect(pending).not.toContain("דנה אברהם");
+    const sent = text(list(lists(html), he.app.team.invites.title));
+    expect(sent).toContain("דנה אברהם");
+    expect(sent).toContain("רון שפירא");
+    expect(sent).not.toContain("עידו ברק");
+    expect(lists(html).indexOf(pendingList)).toBeLessThan(
+      lists(html).indexOf(`aria-label="${he.app.team.invites.title}"`),
+    );
+    // The desktop's table: theirs are its first rows, then the rest.
+    const desktop = text(table(html));
+    expect(
+      order(desktop, ["ליאור גבאי", "עידו ברק", "דנה אברהם", "רון שפירא"]),
+    ).toEqual(["ליאור גבאי", "עידו ברק", "דנה אברהם", "רון שפירא"]);
+    expect(desktop).toContain(he.app.team.state.pending);
+    // Each row's "יצירת קישור", named by whose, in each shape.
+    for (const name of ["עידו ברק", "ליאור גבאי"]) {
+      expect(count(html, createFor(name)), name).toBe(2);
+    }
+    expect(count(html, 'data-pending-create="ido"')).toBe(2);
+    expect(count(html, `${PENDING_LIST}=""`)).toBe(2);
+    // Their numbers read left to right, as every number here.
+    expect(html).toContain('<span dir="ltr">055-123-4567</span>');
+  });
+
+  it("never reads one past its date as expired, and counts apart what was sent", () => {
+    const page = text(draw(null, owner));
+    // Lior's date is behind it; only Ron's link ran out.
+    expect(page).toContain(heT("app.team.invites.expiredHint", { count: 1 }));
+    expect(page).toContain(
+      heT("app.team.subtitle", { members: teamMembers.length, open: 1 }),
+    );
+    // Ron's badge alone, once in each shape.
+    expect(count(page, he.app.team.state.expired)).toBe(2);
+  });
+
+  it("says who sends a link the viewer can't make, and gives them deleting it", () => {
+    // A manager, for whom a manager's role holds pay: an owner's to give.
+    const manager = {
+      role: "manager" as const,
+      perms: ["team.view", "team.edit"],
+    };
+    const html = draw(null, manager, undefined, teamMembers, "all", {
+      ownerOnly: ["manager"],
+      cancel: async () => ({ ok: true }),
+    });
+    const page = text(html);
+    expect(count(html, createFor("עידו ברק"))).toBe(0);
+    expect(count(html, createFor("ליאור גבאי"))).toBe(2);
+    expect(count(page, tp.ownerSends)).toBe(2);
+    expect(
+      count(
+        html,
+        `aria-label="${heT("app.team.cancel.label", { name: "עידו ברק" })}"`,
+      ),
+    ).toBe(2);
+  });
+
+  it("gives someone who only reads the team the rows alone", () => {
+    const viewer = { role: "worker" as const, perms: ["team.view"] };
+    const html = draw(null, viewer);
+    const page = text(html);
+    expect(page).toContain(heT("app.team.pending.count", { count: 2 }));
+    expect(page).toContain("עידו ברק");
+    expect(html).not.toContain("data-pending-create");
+    expect(page).not.toContain(tp.hint);
+    expect(page).not.toContain(tp.ownerSends);
+  });
+
+  it("makes no link in a business closed to invites", () => {
+    const html = draw(null, owner, undefined, teamMembers, "all", {
+      inviteHref: undefined,
+    });
+    expect(text(html)).toContain("ליאור גבאי");
+    expect(html).not.toContain("data-pending-create");
+    expect(text(html)).not.toContain(tp.hint);
+  });
+
+  it("draws none of it with nobody waiting for a link", () => {
+    const html = renderedWithout();
+    expect(text(html)).not.toContain(tp.title);
+    expect(html).not.toContain(pendingList);
+    expect(html).not.toContain("data-pending-create");
+  });
+
+  /** The screen with the twin's invites that got a link alone. */
+  function renderedWithout(): string {
+    const sentOnly = teamInvites.filter((i) => i.linkPending !== true);
+    return draw(null, owner, undefined, teamMembers, "all", {
+      team: buildTeam(teamMembers, sentOnly, teamToday),
+    });
+  }
 });

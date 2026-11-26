@@ -57,6 +57,23 @@ export function whatsappHref(text: string): string {
 }
 
 /**
+ * WhatsApp with the text written, in a chat to one number: an invite's own
+ * link sent to the number it was made for (inviting from a list, part 2;
+ * the plan's 3.6), so nobody searches their contacts for each person. `phone`
+ * is E.164 ("+972501234567"); wa.me takes its digits alone. The person
+ * still presses send in WhatsApp, which shows the chat first; the app sends
+ * nothing. The text names nobody: the business, the sentence and the link.
+ * Only behind the database, never on a twin, where a made-up number may be
+ * someone's.
+ */
+export function whatsappToHref(phone: string, text: string): string {
+  if (!/^\+[1-9]\d{7,14}$/.test(phone)) {
+    throw new Error("WhatsApp takes a number in E.164");
+  }
+  return `https://wa.me/${phone.slice(1)}?text=${encodeURIComponent(text)}`;
+}
+
+/**
  * A week's dates in words, as the schedule tab names its weeks: "22–28
  * בנובמבר", or "29 בנובמבר–5 בדצמבר" across two months. The days of one
  * month read left to right (`daysLeftToRight`), on the tab and in the

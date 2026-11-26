@@ -7,7 +7,12 @@ import { Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { createContext, type ReactNode, use, useRef, useState } from "react";
 import { useHeldWrite } from "../use-held-write";
-import { inviteCancelTarget, invitesLeft, sectionTitle } from "./invite-focus";
+import {
+  cancelSaid,
+  inviteCancelTarget,
+  invitesLeft,
+  sectionTitle,
+} from "./invite-focus";
 import type {
   CancelInvite,
   InviteCancelResult,
@@ -19,7 +24,8 @@ type Cancels = {
   gone: ReadonlySet<string>;
   /** The one waiting for its undo, with what its row says. */
   held: { id: string; message: string } | null;
-  failure: TeamChangeActionFailure | null;
+  /** Why the last one couldn't be deleted, and which it was. */
+  failure: { id: string; failure: TeamChangeActionFailure } | null;
   start: (id: string, message: string) => void;
   undo: () => void;
   /**
@@ -72,7 +78,7 @@ function CancelsState({
   const [shown, setShown] = useState<{ id: string; message: string } | null>(
     null,
   );
-  const [failure, setFailure] = useState<TeamChangeActionFailure | null>(null);
+  const [failure, setFailure] = useState<Cancels["failure"]>(null);
   const without = (id: string) =>
     setGone((all) => new Set([...all].filter((one) => one !== id)));
 
@@ -81,7 +87,7 @@ function CancelsState({
     const result = await settle(cancel(id));
     if (!result.ok) {
       without(id);
-      setFailure(result.failure);
+      setFailure({ id, failure: result.failure });
     }
   });
 
@@ -120,6 +126,17 @@ function CancelsState({
     </CancelsContext>
   );
 }
+
+/**
+ * The invites deleted on screen, held for their undo or written: for a list
+ * that counts what is left (`SendLinkRow`'s "עוד לא קיבלו קישור"). None
+ * while nothing can be deleted.
+ */
+export function useGoneInvites(): ReadonlySet<string> {
+  return use(CancelsContext)?.gone ?? NONE_GONE;
+}
+
+const NONE_GONE: ReadonlySet<string> = new Set();
 
 /** An invite's row, until it is deleted on screen. */
 export function UnlessCancelled({
@@ -181,9 +198,16 @@ export function CancelInviteButton({
  * While it is being reached the write waits. Undone, the focus goes back to
  * the row's "מחיקת ההזמנה", brought into view; its time up, to the title of
  * this section, which stays where it is (`invitesLeft`), else the page's.
+ * A section that lists some of the invites (`ids`: a phone's and a
+ * tablet's "עוד לא קיבלו קישור" and the invites under it) says only its
+ * own, so one deleted there has one "ביטול", where its row was. A refusal of
+ * one neither list has any more (claimed or deleted meanwhile, "gone", and
+ * the screen read again) is said above them (`strays`), so it is never lost
+ * with its row (`cancelSaid`).
  */
 export function InviteCancelUndo({
   ids,
+  strays,
 }: {
   /**
    * The invites its section lists, which is drawn anew once none is left (a
@@ -191,13 +215,28 @@ export function InviteCancelUndo({
    * section stays (the desktop's table, which lists the team too).
    */
   ids?: readonly string[];
+  /**
+   * In place of `ids`, for the line above a phone's and a tablet's lists:
+   * every invite the screen read, whose lists say their own refusals. Only a
+   * refusal of another is said here, and no "ביטול".
+   */
+  strays?: readonly string[];
 }) {
   const cancels = use(CancelsContext);
   const t = useTranslations("app.team");
   // Where this shape's section is, for its title.
   const anchor = useRef<HTMLSpanElement>(null);
   if (!cancels) return null;
-  const { held, failure, gone } = cancels;
+  const { gone } = cancels;
+  const where = { ids, strays };
+  const held =
+    cancels.held && cancelSaid(cancels.held.id, "held", where)
+      ? cancels.held
+      : null;
+  const failure =
+    cancels.failure && cancelSaid(cancels.failure.id, "refusal", where)
+      ? cancels.failure.failure
+      : null;
   const stays = ids === undefined || invitesLeft(ids, gone);
   return (
     <>
