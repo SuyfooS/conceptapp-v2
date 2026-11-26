@@ -1139,12 +1139,18 @@ export function PeopleImportView({
 
 /**
  * What taking the import back does now (`takeBackOf`): the links made on
- * this screen (`InviteLinks`, under `DoneLinks`; none in the console) and the
- * team as the page last read it.
+ * this screen (`InviteLinks`, under `DoneLinks`; none in the console), the
+ * team as the page last read it, and the numbers the import invited, so one
+ * who joined meanwhile counts as neither cancelled nor kept.
  */
 function useTakeBack(done: Done, known: KnownTeam) {
   const links = useInviteLinks();
-  return takeBackOf(done.invites, known, (id) => links?.links.has(id) === true);
+  return takeBackOf(
+    done.invites,
+    known,
+    (id) => links?.links.has(id) === true,
+    done.people.map((person) => person.phone),
+  );
 }
 
 /**

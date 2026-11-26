@@ -85,6 +85,8 @@ describe("withoutTakenBack", () => {
 
 describe("takeBackOf", () => {
   const ids = made.map((one) => one.id);
+  /** The numbers the import invited. */
+  const phones = made.map((one) => one.phone);
   const none = () => false;
 
   it("cancels every invite the import made while none has a link, whichever reading the page has", () => {
@@ -136,6 +138,60 @@ describe("takeBackOf", () => {
     // The accountant's invite, waiting with no link, was never the import's.
     expect(takeBackOf(["a"], afterImport, none)).toEqual({
       cancels: ["a"],
+      kept: 0,
+    });
+  });
+
+  it("counts an invite a reading from after the import no longer holds as neither cancelled nor kept", () => {
+    // The page reads a and c, so the reading is from after the import: b
+    // is gone (claimed, or deleted on the Team screen), and the undo
+    // cancels nothing of it.
+    const known = knownTeamOf(
+      [owner],
+      [accountant, ...made.filter((one) => one.id !== "b")],
+    );
+    expect(takeBackOf(ids, known, none)).toEqual({
+      cancels: ["a", "c"],
+      kept: 0,
+    });
+  });
+
+  it("says what the undo does when one joined elsewhere and one got its link here", () => {
+    // Another manager made a's link on their own phone and a joined; b's
+    // link was made on this screen and the page read the team again: the
+    // undo cancels c alone and keeps b, never "2 הזמנות נמחקו".
+    const known = knownTeamOf(
+      [owner, { phone: "+972500007802", name: "מוזמן a" }],
+      [
+        accountant,
+        ...made
+          .filter((one) => one.id !== "a")
+          .map((one) =>
+            one.id === "b" ? { ...one, linkPending: false } : one,
+          ),
+      ],
+    );
+    const here = new Set(["b"]);
+    expect(takeBackOf(ids, known, (id) => here.has(id), phones)).toEqual({
+      cancels: ["c"],
+      kept: 1,
+    });
+  });
+
+  it("offers nothing to take back once everyone it invited has joined", () => {
+    // None of its invites is read any more, as before the import, but its
+    // numbers are on the team now: the reading is from after it.
+    const known = knownTeamOf(
+      [owner, ...made.map((one) => ({ phone: one.phone, name: one.name }))],
+      [accountant],
+    );
+    expect(takeBackOf(ids, known, none, phones)).toEqual({
+      cancels: [],
+      kept: 0,
+    });
+    // The reading from before the import, with the same numbers: each waits.
+    expect(takeBackOf(ids, before, none, phones)).toEqual({
+      cancels: ["a", "b", "c"],
       kept: 0,
     });
   });
