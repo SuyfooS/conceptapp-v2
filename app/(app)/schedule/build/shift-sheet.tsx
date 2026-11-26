@@ -16,7 +16,7 @@ import {
   shiftDetailsProblem,
   shiftStarted,
 } from "@domain/schedule";
-import type { Position } from "@domain/staffing";
+import { MAX_PEOPLE_ON_A_SHIFT, type Position } from "@domain/staffing";
 import type { TeamMember } from "@domain/team";
 import { announce } from "@ui/announcer";
 import { Avatar } from "@ui/avatar";
@@ -869,7 +869,7 @@ function ShiftFields({
             value={draft.needed}
             onValueChange={(needed) => onChange({ ...draft, needed })}
             min={1}
-            max={50}
+            max={MAX_PEOPLE_ON_A_SHIFT}
             decreaseLabel={t("fewer")}
             increaseLabel={t("more")}
             invalid={problem === "needed"}

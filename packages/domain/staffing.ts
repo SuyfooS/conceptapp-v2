@@ -18,6 +18,14 @@ const name = z.string().trim().min(1).max(40);
 /** A week holds at most this many shifts; `save_week_schedule` says the same. */
 export const MAX_SHIFTS_IN_A_WEEK = 200;
 
+/**
+ * A shift holds at most this many people, and needs at most as many: the
+ * shift pattern, the builder and its action read it, and the database says
+ * the same on every path that puts people on a shift
+ * (`private.refuse_crowded_shifts`, 20261128000500_shift_cap.sql).
+ */
+export const MAX_PEOPLE_ON_A_SHIFT = 50;
+
 export const position = z.object({ key, name });
 
 export type Position = z.infer<typeof position>;
@@ -47,7 +55,7 @@ export const shiftPattern = z
     /** At or before `start` means the shift ends after midnight. */
     end: timeOfDay,
     /** People the shift needs. */
-    needed: z.int().min(1).max(50),
+    needed: z.int().min(1).max(MAX_PEOPLE_ON_A_SHIFT),
   })
   .refine((shift) => shift.start !== shift.end, {
     message: "Start and end must differ",

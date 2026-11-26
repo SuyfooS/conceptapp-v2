@@ -1,3 +1,4 @@
+import { MAX_PEOPLE_ON_A_SHIFT } from "@domain/staffing";
 import { createTranslator } from "next-intl";
 import { describe, expect, it } from "vitest";
 import en from "../messages/en.json";
@@ -52,5 +53,26 @@ describe("the availability's line for hours to fix", () => {
     }
     expect(he.app.availability.fix).not.toMatch(/אדום/);
     expect(en.app.availability.fix).not.toMatch(/red/i);
+  });
+});
+
+describe("the builder's words for a shift past the people it holds", () => {
+  const values = {
+    max: MAX_PEOPLE_ON_A_SHIFT,
+    ltr: (chunks: string) => `[${chunks}]`,
+  };
+
+  it("name the cap the app and the database hold, its number kept left to right", () => {
+    expect(heT.markup("app.build.errors.shiftFull", values)).toMatch(
+      /^במשמרת יכולים להיות עד \[50\] אנשים, ולכן הסידור לא נשמר\./,
+    );
+    expect(enT.markup("app.build.errors.shiftFull", values)).toMatch(
+      /^A shift can have at most \[50\] people, so the schedule was not saved\./,
+    );
+  });
+
+  it("say what to do when the screen shows no such shift, as when people were added meanwhile", () => {
+    expect(he.app.build.errors.shiftFull).toContain("רעננו את המסך");
+    expect(en.app.build.errors.shiftFull).toContain("refresh the screen");
   });
 });
