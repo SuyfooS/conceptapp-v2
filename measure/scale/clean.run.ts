@@ -1,7 +1,6 @@
 import { test } from "@playwright/test";
-import postgres from "postgres";
 import { removeScaleBusiness } from "./clean";
-import { databaseUrl, refuseUnlessLocal } from "./guard";
+import { localDatabase } from "./guard";
 
 /**
  * `pnpm measure:clean`: takes the test business and its people off the local
@@ -11,9 +10,7 @@ import { databaseUrl, refuseUnlessLocal } from "./guard";
 
 test("the test business, taken off the local stack", async () => {
   test.setTimeout(10 * 60_000);
-  const url = databaseUrl(process.env);
-  refuseUnlessLocal(url, process.env);
-  const sql = postgres(url, { max: 1, onnotice: () => {} });
+  const sql = localDatabase(process.env);
   try {
     await sql.begin((tx) => removeScaleBusiness(tx));
   } finally {

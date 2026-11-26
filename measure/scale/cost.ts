@@ -2,7 +2,7 @@ import { addDays, instantIn } from "@domain/availability";
 import type postgres from "postgres";
 import { ZONE } from "./ids";
 import type { SeedReport } from "./seed";
-import { type Shape, seedReads, thisWeekLines } from "./shape";
+import { appHolds, type Shape, thisWeekLines } from "./shape";
 
 /**
  * The cost of a business per month (the plan's 2.5): arithmetic from the
@@ -131,17 +131,14 @@ export function spansOf(s: Shape): Record<GrowingTable, Span> {
 /**
  * The seed's lines the app would still hold at the anchor, the backlog of
  * hours waiting left out: private.clean_notifications deletes a line after
- * 180 days, and a read one after 90.
+ * 180 days, and a read one after 90 (appHolds). The shape writes no other,
+ * so this is every line but the backlog.
  */
 export function linesHeld(s: Shape): number {
   const b = s.scale;
   const anchor = Date.parse(s.anchor);
-  const kept = (user: string, at: string) => {
-    const age = anchor - Date.parse(at);
-    return (
-      age < 180 * DAY && !(age >= 90 * DAY && seedReads(user, at, s.weekStart))
-    );
-  };
+  const kept = (user: string, at: string) =>
+    appHolds(user, at, anchor, s.weekStart);
   let held = thisWeekLines(b, s.anchor);
   for (const line of b.joined)
     for (const user of line.recipients) if (kept(user, line.at)) held += 1;

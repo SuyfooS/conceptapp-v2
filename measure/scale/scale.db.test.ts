@@ -1,9 +1,9 @@
 import { appendFileSync } from "node:fs";
-import postgres from "postgres";
+import type postgres from "postgres";
 import { afterAll, describe, expect, it } from "vitest";
 import { BUDGET, budgetOf } from "./budget";
 import { removeScaleBusiness } from "./clean";
-import { databaseUrl, refuseUnlessLocal } from "./guard";
+import { localDatabase } from "./guard";
 import { choice, FICTIONAL_NUMBER, importNumber } from "./ids";
 import { type SeedReport, seedScaleBusiness } from "./seed";
 import { type Shape, type ShapeOptions, shape } from "./shape";
@@ -21,9 +21,7 @@ import { type Shape, type ShapeOptions, shape } from "./shape";
  * local database (`pnpm db:start`); run with `pnpm test:db`.
  */
 
-const url = databaseUrl(process.env);
-refuseUnlessLocal(url, process.env);
-const sql = postgres(url, { max: 1, onnotice: () => {} });
+const sql = localDatabase(process.env);
 
 afterAll(() => sql.end());
 

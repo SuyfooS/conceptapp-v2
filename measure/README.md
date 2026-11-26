@@ -11,7 +11,9 @@ the next parts.
 ## The rules
 
 - **Local only.** `scale/guard.ts` refuses any database but the local stack's
-  (loopback, port 54322) and any run with `VERCEL` set; `scale/sql/00-guard.sql`
+  (loopback, port 54322), on the address as the URL standard reads it and on
+  the hosts and ports postgres.js reads from it (`localDatabase`, before it
+  connects), and any run with `VERCEL` set; `scale/sql/00-guard.sql`
   then asks the database itself (dev.send_sms there, an empty Vault, every cron
   job off) before the seed writes and again after.
 - **Nothing can be sent.** No phone in `auth.users`, logins at

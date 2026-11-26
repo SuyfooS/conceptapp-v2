@@ -2,13 +2,15 @@
 -- well formed and push_state is whatever the app would give it: with no
 -- device anywhere private.push_plan is null, so 'none'.
 --
--- Who joined, to those who see the team (team.view), as a claim tells them;
--- and each of the last 25 weeks of history published, to the staff of the
--- time (the accountant is never told of the schedule, and private.notify
--- leaves out whoever acted). Then seven in ten of the lines made before
--- this week are read: by the seed's md5 choice of the person and the day,
--- computed here in SQL as shape.ts computes it, so the count read is known
--- before it is written.
+-- Who joined, to the owner and managers there by then (team.view), as a
+-- claim tells them; and each of the last 25 weeks of history published, to
+-- the staff of the time (the accountant is never told of the schedule, and
+-- private.notify leaves out whoever acted). Only the lines the app would
+-- still hold (shape.ts's appHolds): none older than 180 days, none read and
+-- older than 90. Then seven in ten of the lines made before this week are
+-- read: by the seed's md5 choice of the person and the day, computed here
+-- in SQL as shape.ts computes it, so the count read is known before it is
+-- written.
 
 -- step: joined
 select private.notify(

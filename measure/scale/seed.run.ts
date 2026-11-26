@@ -1,9 +1,8 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "@playwright/test";
-import postgres from "postgres";
 import { costOf, databaseBytesOf, sizesOf } from "./cost";
-import { databaseUrl, refuseUnlessLocal } from "./guard";
+import { localDatabase } from "./guard";
 import { seedScaleBusiness } from "./seed";
 import { SIZES, type Size, shape } from "./shape";
 
@@ -26,11 +25,9 @@ function sizeOf(value: string | undefined): Size {
 
 test("the test business, made on the local stack", async () => {
   test.setTimeout(60 * 60_000);
-  const url = databaseUrl(process.env);
-  refuseUnlessLocal(url, process.env);
   const people = sizeOf(process.env.MEASURE_PEOPLE);
   const months = Number(process.env.MEASURE_MONTHS ?? 13);
-  const sql = postgres(url, { max: 1, onnotice: () => {} });
+  const sql = localDatabase(process.env);
   try {
     // The database's size before the seed, and after it below (the plan's 1.5 and 2.5).
     const before = await databaseBytesOf(sql);

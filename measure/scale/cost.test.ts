@@ -111,13 +111,14 @@ describe("the cost of a business a month", () => {
     for (const t of cost.tables)
       expect(cost.label).toContain(`${t.table} over ${t.months} months`);
 
-    // The lines: the waiting hours' backlog left out, and what the app
-    // would have cleaned (who joined years ago) with it.
+    // The lines: the waiting hours' backlog left out. The seed writes no
+    // line the app would have cleaned (shape.test.ts), so the rest are all
+    // held.
     const n = cost.notifications;
     expect(n.backlogRows).toBe(confirmLines(full.scale));
     expect(n.heldRows).toBe(linesHeld(full));
     expect(n.heldRows).toBeGreaterThan(0);
-    expect(n.heldRows).toBeLessThan(n.businessRows - n.backlogRows);
+    expect(n.heldRows).toBe(n.businessRows - n.backlogRows);
     expect(n.heldMb).toBeCloseTo(n.heldRows, 1);
   });
 });

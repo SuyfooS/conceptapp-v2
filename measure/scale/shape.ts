@@ -879,11 +879,16 @@ function build(spec: Spec, context: Context): BusinessShape {
       ? documentsOf(spec, context, people, owner)
       : [];
 
-  // Lines: who joined, to those who see the team; and the published weeks,
-  // the last 25 of history, to everyone on the staff at the time.
+  // Lines: who joined, to the owner and managers there by then (as a claim
+  // tells them); and the published weeks, the last 25 of history, to
+  // everyone on the staff at the time. Only those the app would still hold
+  // at the anchor (appHolds): no line older than 180 days, none read and
+  // older than 90.
   const joined: JoinedLine[] = [];
   const published: PublishedLine[] = [];
   if (context.history) {
+    const holds = (user: string, when: string) =>
+      appHolds(user, when, anchor, weekStart);
     const teamViewers = staff.filter(
       (p) => p.role === "owner" || p.role === "manager",
     );
@@ -891,7 +896,12 @@ function build(spec: Spec, context: Context): BusinessShape {
       if (person.kind !== "staff" && person.kind !== "accountant") continue;
       if (person.role === "owner") continue;
       const recipients = teamViewers
-        .filter((v) => v.id !== person.id)
+        .filter(
+          (v) =>
+            v.id !== person.id &&
+            v.joinedAt <= person.joinedAt &&
+            holds(v.id, person.joinedAt),
+        )
         .map((v) => v.id);
       if (recipients.length > 0) {
         joined.push({ person: person.id, at: person.joinedAt, recipients });
@@ -906,7 +916,11 @@ function build(spec: Spec, context: Context): BusinessShape {
           mine.set(a.user, (mine.get(a.user) ?? 0) + 1);
       }
       for (const person of staff) {
-        if (person.id === scheduler || person.joinedAt > week.publishedAt)
+        if (
+          person.id === scheduler ||
+          person.joinedAt > week.publishedAt ||
+          !holds(person.id, week.publishedAt)
+        )
           continue;
         published.push({
           user: person.id,
@@ -2192,6 +2206,23 @@ export function seedReads(
   return (
     ms(when) < at(weekStart, "00:00") &&
     choice("read", user, israelDate(when)) < 0.7
+  );
+}
+
+/**
+ * Whether the app would still hold, at the anchor, a line the seed writes
+ * for `user` at `when`: private.clean_notifications deletes a line after 180
+ * days, and a read one (seedReads) after 90.
+ */
+export function appHolds(
+  user: string,
+  when: string,
+  anchor: number,
+  weekStart: string,
+): boolean {
+  const age = anchor - ms(when);
+  return (
+    age < 180 * DAY && !(age >= 90 * DAY && seedReads(user, when, weekStart))
   );
 }
 

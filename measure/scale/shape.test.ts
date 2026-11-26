@@ -20,6 +20,7 @@ import {
 } from "./ids";
 import {
   anchorRefusal,
+  appHolds,
   type BusinessShape,
   CAPS,
   clockEditors,
@@ -29,6 +30,7 @@ import {
   SCALE,
   type Shape,
   SIZES,
+  seedReads,
   shape,
   shapeHash,
   TEAMS,
@@ -39,6 +41,7 @@ import {
 const ANCHOR = new Date("2026-11-17T09:20:00Z");
 
 const HOUR = 3_600_000;
+const DAY = 86_400_000;
 const ms = (instant: string) => Date.parse(instant);
 
 /** Built once each: the 300 with its whole history is the slow one. */
@@ -494,6 +497,58 @@ describe("people's shifts and hours", () => {
     checkPlacements(s.scale);
     checkEntries(s, s.scale);
   });
+});
+
+describe("the bell's history", () => {
+  it("who joined goes to the owner and managers there by then, and every line is one the app would still hold", () => {
+    const ci = shape({
+      people: 30,
+      depth: "history",
+      months: 2,
+      chat: "ci",
+      anchor: ANCHOR,
+    });
+    for (const s of [ci, of(300, "history")]) {
+      const b = s.scale;
+      const anchor = ms(s.anchor);
+      const joinedAt = new Map(b.people.map((p) => [p.id, p.joinedAt]));
+      const viewers = new Set(
+        staffOf(b)
+          .filter((p) => p.role === "owner" || p.role === "manager")
+          .map((p) => p.id),
+      );
+      expect(b.joined.length).toBeGreaterThan(0);
+      for (const line of b.joined) {
+        expect(line.recipients.length).toBeGreaterThan(0);
+        for (const user of line.recipients) {
+          expect(viewers.has(user)).toBe(true);
+          expect(user).not.toBe(line.person);
+          expect((joinedAt.get(user) ?? "") <= line.at).toBe(true);
+        }
+      }
+      // private.clean_notifications keeps nothing past 180 days, and no
+      // read line past 90: the seed writes neither.
+      const lines = [
+        ...b.joined.flatMap((l) =>
+          l.recipients.map((user) => ({ user, at: l.at })),
+        ),
+        ...b.published.map((l) => ({ user: l.user, at: l.at })),
+      ];
+      expect(b.published.length).toBeGreaterThan(0);
+      for (const { user, at } of lines) {
+        const age = anchor - ms(at);
+        expect(age).toBeLessThan(180 * DAY);
+        if (age >= 90 * DAY)
+          expect(seedReads(user, at, s.weekStart)).toBe(false);
+        expect(appHolds(user, at, anchor, s.weekStart)).toBe(true);
+      }
+    }
+    // At 300 some lines are past 90 days, the unread ones.
+    const full = of(300, "history");
+    expect(
+      full.scale.published.some((l) => ms(full.anchor) - ms(l.at) >= 90 * DAY),
+    ).toBe(true);
+  }, 60_000);
 });
 
 describe("the anchor and determinism", () => {
