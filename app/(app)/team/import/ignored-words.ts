@@ -1,6 +1,6 @@
+import { isolate } from "@domain/bidi";
 import type { IgnoredColumn } from "@domain/people-import";
 import type { useTranslations } from "next-intl";
-import { isolate } from "../../schedule/availability/range-words";
 
 /** The import's words, as `useTranslations("app.team.import")` gives them. */
 export type ImportT = ReturnType<typeof useTranslations<"app.team.import">>;

@@ -1,5 +1,6 @@
 "use client";
 
+import { isolate } from "@domain/bidi";
 import {
   againstTeam,
   type ImportRoleChoice,
@@ -36,7 +37,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { isolate } from "../../schedule/availability/range-words";
 import { HOLD_MS, useHeldWrite } from "../../use-held-write";
 import { ignoredWords } from "./ignored-words";
 import {
