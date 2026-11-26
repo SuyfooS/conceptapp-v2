@@ -1,8 +1,9 @@
 -- 50-hours: the hours, by the rules of shape.ts, so the exclusion
 -- constraints always hold.
 --
--- One entry per placed shift that has ended, never two on a day, and at
--- least 12 hours between two of a person's (time_entries_no_overlap treats
+-- One entry per placed shift that has ended, never two on a day, and two
+-- of a person's shifts never under 8 hours apart, so the jitter can't make
+-- their entries overlap (shape.test.ts holds both; time_entries_no_overlap treats
 -- an open entry as running to infinity, so only those on the clock now are
 -- open, in a shift still running: two hours more or longer when enough
 -- shifts have that, else the most time left). A missed punch is

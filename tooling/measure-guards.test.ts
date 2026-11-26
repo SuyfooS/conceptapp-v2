@@ -39,23 +39,63 @@ function files(dir: string): string[] {
   );
 }
 
+/**
+ * The root's own code and config (next.config.ts, proxy.ts,
+ * playwright.config.ts, package.json, vercel.json…), but the docs that may
+ * describe the test business and the lockfile pnpm writes.
+ */
+const NOT_CODE = new Set([
+  "README.md",
+  "CLAUDE.md",
+  "AGENTS.md",
+  "pnpm-lock.yaml",
+]);
+const rootFiles = readdirSync(root, { withFileTypes: true })
+  .filter(
+    (entry) =>
+      entry.isFile() &&
+      (TEXT.test(entry.name) || entry.name === ".env.example") &&
+      !NOT_CODE.has(entry.name),
+  )
+  .map((entry) => entry.name);
+
 /** Everything but measure/ itself, the docs that describe it, and this file. */
 const elsewhere = [
-  "app",
-  "packages",
-  "modules",
-  "e2e",
-  "supabase",
-  "tooling",
-  ".github",
-  "public",
-  "i18n",
-  "messages",
-]
-  .flatMap(files)
-  .filter((file) => file !== "tooling/measure-guards.test.ts");
+  ...rootFiles,
+  ...[
+    "app",
+    "packages",
+    "modules",
+    "e2e",
+    "supabase",
+    "tooling",
+    ".github",
+    "public",
+    "i18n",
+    "messages",
+  ].flatMap(files),
+].filter((file) => file !== "tooling/measure-guards.test.ts");
 
 describe("the test business stays in measure/", () => {
+  it("reads the root's code and config with the folders, the docs aside", () => {
+    expect(elsewhere).toEqual(
+      expect.arrayContaining([
+        "playwright.config.ts",
+        "next.config.ts",
+        "proxy.ts",
+        "package.json",
+        "vercel.json",
+        "biome.json",
+        "tsconfig.json",
+        "vitest.config.mts",
+        "vitest.db.config.mts",
+        ".env.example",
+        "app/layout.tsx",
+      ]),
+    );
+    for (const doc of NOT_CODE) expect(elsewhere).not.toContain(doc);
+  });
+
   it("its ids and numbers appear nowhere else", () => {
     const found = elsewhere.flatMap((file) => {
       const text = readFileSync(join(root, file), "utf8");

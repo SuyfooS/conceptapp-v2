@@ -1,6 +1,7 @@
 import { appendFileSync } from "node:fs";
 import postgres from "postgres";
 import { afterAll, describe, expect, it } from "vitest";
+import { BUDGET, budgetOf } from "./budget";
 import { removeScaleBusiness } from "./clean";
 import { databaseUrl, refuseUnlessLocal } from "./guard";
 import { choice, FICTIONAL_NUMBER, importNumber } from "./ids";
@@ -30,9 +31,8 @@ class Rollback extends Error {}
 class Tried extends Error {}
 type Tx = postgres.TransactionSql;
 
-/** The plan's target is 15 seconds a size; past 30 a warning, past 60 a failure. */
-const WARN_MS = 30_000;
-const FAIL_MS = 60_000;
+/** Each size's time, for the budget, which is the file's: both sizes together (budget.ts). */
+const took: { label: string; ms: number }[] = [];
 
 const summary: string[] = [];
 function note(line: string) {
@@ -105,17 +105,12 @@ async function asPerson<T>(
   return result;
 }
 
+const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`;
+
+/** One size's time, printed; the budget is read on their sum, in the last test. */
 function time(label: string, ms: number) {
-  note(`- ${label}: ${(ms / 1000).toFixed(1)} s`);
-  if (ms > WARN_MS && ms <= FAIL_MS) {
-    console.warn(
-      `::warning::${label} took ${(ms / 1000).toFixed(1)} s, past the 30 s the database job allows it`,
-    );
-  }
-  expect(
-    ms,
-    `${label} took past 60 s: the database job waits on it, and all six e2e shards on that`,
-  ).toBeLessThanOrEqual(FAIL_MS);
+  took.push({ label, ms });
+  note(`- ${label}: ${seconds(ms)}`);
 }
 
 function printCounts(label: string, report: SeedReport) {
@@ -570,4 +565,20 @@ describe("the test business, made in the database", () => {
     if (report) printCounts("300 people, the team and next week", report);
     time("300 people: seeded, checked, written and removed", ms);
   }, 120_000);
+
+  it("both sizes together stay inside the time the database job allows the file", () => {
+    const { ms, verdict } = budgetOf(took);
+    note(
+      `- both sizes together: ${seconds(ms)} (${took.map((t) => seconds(t.ms)).join(" + ")}), against a target of ${seconds(BUDGET.targetMs)}`,
+    );
+    if (verdict === "warn") {
+      console.warn(
+        `::warning::The test business took ${seconds(ms)} with both sizes, past the ${seconds(BUDGET.warnMs)} the database job allows it`,
+      );
+    }
+    expect(
+      ms,
+      `The test business took ${seconds(ms)} with both sizes, past ${seconds(BUDGET.failMs)}: the database job waits on it, and all six e2e shards on that`,
+    ).toBeLessThanOrEqual(BUDGET.failMs);
+  });
 });

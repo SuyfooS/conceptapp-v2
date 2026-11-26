@@ -1278,8 +1278,10 @@ const worksAWeek = (rank: number) => (rank % 3 === 0 ? 5 : 4);
  * laid end to end around the pattern's days (`tile` is where this person's
  * start), so each day has about as many off as any other, and they move by
  * a day each week. One pattern a person, at most one shift a day, so two of
- * anyone's shifts are always a day apart: at least 12 hours between them,
- * the jitter included.
+ * anyone's shifts are always a day apart: never under 8 hours between them
+ * (shape.test.ts holds it; the 12-hour long day leaves less than 12, an
+ * hour less over the spring's change of clocks), so the punches' jitter
+ * can't make two of their entries overlap.
  */
 export function workDays(
   pattern: Pattern,

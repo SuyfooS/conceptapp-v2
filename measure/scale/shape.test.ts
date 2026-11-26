@@ -545,8 +545,10 @@ describe("the anchor and determinism", () => {
   });
 
   it("a choice is md5's first 8 hex digits over 2³²", () => {
-    // md5("1:test:x:2026-11-17") = 2a1a2a7d… (worked out by hand once, kept)
+    // md5("1:test:x:2026-11-17") = ed0c04c4bf25ce62fdc142ebdf638a00
+    // (node:crypto and md5sum agree): its first 8 hex digits over 2³².
     const u = choice("test", "x", "2026-11-17");
+    expect(u).toBe(0xed0c04c4 / 2 ** 32);
     expect(u).toBeGreaterThanOrEqual(0);
     expect(u).toBeLessThan(1);
     expect(choice("test", "x", "2026-11-17")).toBe(u);

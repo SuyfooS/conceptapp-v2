@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "@playwright/test";
 import postgres from "postgres";
-import { costOf, sizesOf } from "./cost";
+import { costOf, databaseBytesOf, sizesOf } from "./cost";
 import { databaseUrl, refuseUnlessLocal } from "./guard";
 import { seedScaleBusiness } from "./seed";
 import { SIZES, type Size, shape } from "./shape";
@@ -12,7 +12,8 @@ import { SIZES, type Size, shape } from "./shape";
  * it, for the measuring run (docs/measure.md). No browser: Playwright only
  * runs this file, as it runs TypeScript with the repo's aliases. Sizes from
  * MEASURE_PEOPLE (30, 100, 300 or 600; 300 by default) and MEASURE_MONTHS (13).
- * Its counts, time and cost a month go to measure/out/seed-<people>.json.
+ * Its counts, time, cost a month and the database's size before and after
+ * go to measure/out/seed-<people>.json.
  */
 
 function sizeOf(value: string | undefined): Size {
@@ -31,6 +32,8 @@ test("the test business, made on the local stack", async () => {
   const months = Number(process.env.MEASURE_MONTHS ?? 13);
   const sql = postgres(url, { max: 1, onnotice: () => {} });
   try {
+    // The database's size before the seed, and after it below (the plan's 1.5 and 2.5).
+    const before = await databaseBytesOf(sql);
     const { s, report } = await sql.begin(async (tx) => {
       const [now] = await tx<{ now: Date }[]>`select now() as now`;
       if (!now) throw new Error("No time from the database");
@@ -38,7 +41,8 @@ test("the test business, made on the local stack", async () => {
       const report = await seedScaleBusiness(tx, s, { analyze: true });
       return { s, report };
     });
-    const { sizes, databaseBytes } = await sizesOf(sql);
+    const sizes = await sizesOf(sql);
+    const databaseBytes = { before, after: await databaseBytesOf(sql) };
     const cost = costOf(s, report, sizes, databaseBytes);
     const out = join(__dirname, "..", "out");
     mkdirSync(out, { recursive: true });

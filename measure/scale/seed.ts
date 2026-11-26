@@ -520,11 +520,49 @@ export function expectations(
       const waiting = b.entries.filter(waits);
       const confirm = confirmLines(b);
       const notWaiting = b.entries.filter((e) => !waits(e));
+      // Until 80-lines writes the bell, no part tells anyone, so a stray
+      // line fails in the part that wrote it.
+      const quiet = { lines: 0, lines_pushing: 0 };
+      // The log as a whole, so a row of an action the shape doesn't plan
+      // fails in its part: the named role's two (role.create and
+      // role.permission, 20-business), then the history's (90-log), the
+      // publishing (92-weeks), the days away (93-absences) and the waiting
+      // entries' arrivals and departures (95-waiting).
+      const roleLog = b.people.some((p) => p.lead) ? 2 : 0;
+      const history = {
+        log_clock_in: notWaiting.length,
+        log_clock_out: notWaiting.filter(
+          (e) => e.clockOut !== null && e.kind !== "missed",
+        ).length,
+        log_clock_confirm: b.entries.filter((e) => e.confirmedAt !== null)
+          .length,
+        log_clock_correct: b.entries.filter((e) => e.fromIn !== null).length,
+        log_break_start: b.breaks.length,
+        log_break_end: b.breaks.length,
+        log_payroll_view:
+          b.payrollViews.holders.length *
+          payrollViewDays(b.payrollViews.from, b.payrollViews.to),
+      };
+      const historyLog =
+        roleLog + Object.values(history).reduce((sum, n) => sum + n, 0);
+      const publishes = b.weeks.filter((w) => w.via === "publish").length;
+      const weeksLog = historyLog + publishes;
+      const absencesLog = weeksLog + b.absences.length;
+      const waitingLog =
+        absencesLog +
+        waiting.length +
+        waiting.filter(
+          (e) =>
+            e.clockOut !== null &&
+            (e.outProof === "none" || e.outProof === "self"),
+        ).length;
       const counts: Record<string, Record<string, number>> = {
         "20-business": {
           departments: b.departments.length,
           named_roles: b.people.some((p) => p.lead) ? 1 : 0,
           conversations: 1 + b.departments.length,
+          log: roleLog,
+          ...quiet,
         },
         "30-team": {
           memberships: b.people.length,
@@ -546,6 +584,8 @@ export function expectations(
           invites_waiting: b.invites.filter(
             (i) => Date.parse(i.expiresAt) > Date.parse(s.anchor),
           ).length,
+          log: roleLog,
+          ...quiet,
         },
         "50-hours": {
           entries: b.entries.length,
@@ -555,12 +595,16 @@ export function expectations(
           entries_waiting_self: waiting.filter((e) => e.inProof === "self")
             .length,
           breaks: b.breaks.length,
+          log: roleLog,
+          ...quiet,
         },
         "60-chat": {
           conversations: 1 + b.departments.length + b.chat.directs.length,
           messages: b.chat.messages.length,
           acks: b.chat.acks.length,
           reads: b.chat.reads.length,
+          log: roleLog,
+          ...quiet,
         },
         "70-documents": {
           documents: b.documents.length,
@@ -570,6 +614,8 @@ export function expectations(
           ),
           uploads: b.documents.length,
           objects: b.documents.length,
+          log: roleLog,
+          ...quiet,
         },
         "80-lines": {
           lines_joined: joined,
@@ -577,20 +623,11 @@ export function expectations(
           lines_read: readLines(b, s.weekStart),
           lines_pushing: 0,
           lines: published + joined,
+          log: roleLog,
         },
         "90-log": {
-          log_clock_in: notWaiting.length,
-          log_clock_out: notWaiting.filter(
-            (e) => e.clockOut !== null && e.kind !== "missed",
-          ).length,
-          log_clock_confirm: b.entries.filter((e) => e.confirmedAt !== null)
-            .length,
-          log_clock_correct: b.entries.filter((e) => e.fromIn !== null).length,
-          log_break_start: b.breaks.length,
-          log_break_end: b.breaks.length,
-          log_payroll_view:
-            b.payrollViews.holders.length *
-            payrollViewDays(b.payrollViews.from, b.payrollViews.to),
+          ...history,
+          log: historyLog,
           // The history's log told nobody.
           lines: published + joined,
           lines_read: readLines(b, s.weekStart),
@@ -603,16 +640,18 @@ export function expectations(
           ranges: b.availability.reduce((sum, a) => sum + a.ranges.length, 0),
           swaps: b.swaps.length,
           swaps_open: b.swaps.filter((w) => w.status === "open").length,
-          log_schedule_publish: b.weeks.filter((w) => w.via === "publish")
-            .length,
+          log_schedule_publish: publishes,
+          log: weeksLog,
           lines_published: thisWeek + published,
           lines: thisWeek + published + joined,
         },
         "93-absences": {
           absences: b.absences.length,
           log_absence_add: b.absences.length,
+          log: absencesLog,
         },
         "95-waiting": {
+          log: waitingLog,
           lines_confirm: confirm,
           lines: thisWeek + published + joined + confirm,
           lines_pushing: 0,

@@ -36,10 +36,11 @@ the next parts.
 | `scale/parts.ts` | Reads `scale/sql/*.sql` into steps and runs them: one statement after each `-- step: <name>` line, its rows in `$1` as a typed JSON parameter (`tx.json`, 2,000 at a time; a JSON string would be encoded twice), the run's settings from `current_setting('scale.…')`. A failure names the part, the step and the line; a step returning a `problem` column fails with each one. |
 | `scale/sql/` | The parts, in order: guard, people, business, team, hours, chat, documents, lines, the history's log, weeks, days away, the waiting entries' log, counts. The weeks the app publishes and the days away it records come after the history's log, so their rows, the anchor's, are the newest by id, as the activity feed reads them. No dollar quotes and no DO blocks. |
 | `scale/clean.ts` | `removeScaleBusiness(tx)`: Storage's rows, the purge, the businesses, the logins; then checks nothing of the prefix is left. |
-| `scale/cost.ts` | The cost a month, as arithmetic from the counts and the tables' sizes: each table over the months its rows cover in the shape (`spansOf`), the bell's lines as held under the app's cleaning (`linesHeld`). |
+| `scale/cost.ts` | The cost a month, as arithmetic from the counts and the tables' sizes: each table over the months its rows cover in the shape (`spansOf`), the bell's lines as held under the app's cleaning (`linesHeld`), and the database's size before the seed and after (`databaseBytesOf`). |
+| `scale/budget.ts` | The time the database job allows the test business: one budget for the file, both sizes added up (a target of 15 s, a warning past 30, a failure past 60). |
 | `scale/seed.run.ts`, `scale/clean.run.ts`, `seed.config.ts` | `pnpm measure:seed` and `pnpm measure:clean`, through Playwright (no browser, no web server), which runs TypeScript with the repo's aliases. |
 | `scale/*.test.ts` | Unit tests, in `pnpm check`. |
-| `scale/scale.db.test.ts` | The database job's test (`pnpm test:db`): 30 people with two months, then 300 with their team and next week, each in a transaction rolled back. |
+| `scale/scale.db.test.ts` | The database job's test (`pnpm test:db`): 30 people with two months, then 300 with their team and next week, each in a transaction rolled back, then their two times added up against `scale/budget.ts`. |
 
 ### Adding to the seed
 
@@ -53,3 +54,5 @@ the next parts.
    `expectations` and `sql/99-counts.sql`.
 4. An action written to `audit_log` must be one whose triggers tell nobody for
    the rows written, or the lines it writes must be counted in `expectations`.
+   Every part is checked on the log's total (`log`) and, until 80-lines, on no
+   line at all, so add its rows to the total from that part on.

@@ -38,6 +38,8 @@ export type TableSize = { table: string; rows: number; bytes: number };
 
 export type Span = { months: number; over: string };
 
+export type DatabaseBytes = { before: number; after: number };
+
 export type Cost = {
   /** Megabytes a month: each growing table's share by the business's rows, over its span. */
   databaseMbAMonth: number;
@@ -59,7 +61,10 @@ export type Cost = {
     heldMb: number;
     over: string;
   };
-  databaseBytes: number;
+  /** pg_database_size before the seed's transaction began and after it committed. */
+  databaseBytes: DatabaseBytes;
+  /** What the seed's run added to the database, in MB (less on a run after another, which can reuse the space its clean left). */
+  databaseGrownMb: number;
   payslipKb: number;
   storageMbAMonth: number;
   monthsUntilFull: { mb50: number; mb200: number };
@@ -148,7 +153,7 @@ export function costOf(
   s: Shape,
   report: SeedReport,
   sizes: TableSize[],
-  databaseBytes: number,
+  databaseBytes: DatabaseBytes,
 ): Cost {
   const share = (table: string, rows: number) => {
     const size = sizes.find((t) => t.table === table);
@@ -193,6 +198,7 @@ export function costOf(
     tables,
     notifications,
     databaseBytes,
+    databaseGrownMb: round((databaseBytes.after - databaseBytes.before) / MB),
     payslipKb,
     storageMbAMonth: round(storageMbAMonth),
     monthsUntilFull: {
@@ -211,10 +217,19 @@ export function costOf(
   };
 }
 
-/** Each growing table's rows and size on disk, the bell's, and the database's. */
+/** The whole database's size on disk, read before the seed and after it. */
+export async function databaseBytesOf(
+  tx: postgres.TransactionSql | postgres.Sql,
+): Promise<number> {
+  const [database] = await tx<{ bytes: string }[]>`
+    select pg_database_size(current_database())::text as bytes`;
+  return Number(database?.bytes ?? 0);
+}
+
+/** Each growing table's rows and size on disk, and the bell's. */
 export async function sizesOf(
   tx: postgres.TransactionSql | postgres.Sql,
-): Promise<{ sizes: TableSize[]; databaseBytes: number }> {
+): Promise<TableSize[]> {
   const sizes: TableSize[] = [];
   for (const table of SIZED) {
     const [row] = await tx.unsafe<{ rows: string; bytes: string }[]>(
@@ -227,7 +242,5 @@ export async function sizesOf(
       bytes: Number(row?.bytes ?? 0),
     });
   }
-  const [database] = await tx<{ bytes: string }[]>`
-    select pg_database_size(current_database())::text as bytes`;
-  return { sizes, databaseBytes: Number(database?.bytes ?? 0) };
+  return sizes;
 }

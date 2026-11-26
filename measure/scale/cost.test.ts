@@ -84,7 +84,13 @@ describe("the cost of a business a month", () => {
 
   it("gives each table's divisor, and the bell's lines as held, not a month", () => {
     const report = reportOf(full);
-    const cost = costOf(full, report, sizesFor(report), 0);
+    const cost = costOf(full, report, sizesFor(report), {
+      before: 40 * MB,
+      after: 52.5 * MB,
+    });
+    // The database before the seed and after, both kept, and what it grew by.
+    expect(cost.databaseBytes).toEqual({ before: 40 * MB, after: 52.5 * MB });
+    expect(cost.databaseGrownMb).toBe(12.5);
     const of = (table: string) => cost.tables.find((t) => t.table === table);
     const messages = full.scale.chat.messages.length;
     // At a megabyte a row: the messages over about 3 months, not 13.
