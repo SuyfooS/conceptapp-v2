@@ -4459,6 +4459,23 @@ test("the activity demo says whose name was fixed", async ({ page }) => {
   ).toBeVisible();
 });
 
+// The activity demo says a list invited in one go, and one taken back, by
+// their counts alone (inviting from a list, part 3): never who.
+test("the activity demo says a list's invites and their undo", async ({
+  page,
+}) => {
+  await page.goto("/design/shell/manage/activity");
+  for (const line of [
+    heT("app.manage.activity.actions.invite.import", { made: 4, updated: 1 }),
+    heT("app.manage.activity.actions.invite.importUndo", { count: 3 }),
+    heT("app.manage.activity.actions.invite.import", { made: 3, updated: 0 }),
+  ]) {
+    await expect(
+      page.getByText(line).filter({ visible: true }).first(),
+    ).toBeVisible();
+  }
+});
+
 // The activity demo names the hiring file's parts that changed and why a view
 // was refused (profile H4), never a value: the line holds no digit.
 test("the activity demo names the file's fields, never a value", async ({

@@ -763,6 +763,16 @@ export function ActivityView({
               })
             : t("actions.invite.claimPlain"),
         );
+      // A pasted list invited in one go, and taken back: counts, never who.
+      case "invite.import":
+        return plain(
+          t("actions.invite.import", {
+            made: line.made,
+            updated: line.updated,
+          }),
+        );
+      case "invite.import_undo":
+        return plain(t("actions.invite.importUndo", { count: line.cancelled }));
       // A team change (Orel, 14 November 2026). Someone taken off the team is
       // nameless to the log by then, so their role says who they were; the
       // shifts that came off them, and the swaps cancelled or open again, are

@@ -1248,6 +1248,7 @@ export type Database = {
           expires_at: string;
           full_name: string | null;
           id: string;
+          import_id: string | null;
           invited_by: string | null;
           link_pending: boolean;
           named_role: string | null;
@@ -1265,6 +1266,7 @@ export type Database = {
           expires_at?: string;
           full_name?: string | null;
           id?: string;
+          import_id?: string | null;
           invited_by?: string | null;
           link_pending?: boolean;
           named_role?: string | null;
@@ -1281,6 +1283,7 @@ export type Database = {
           expires_at?: string;
           full_name?: string | null;
           id?: string;
+          import_id?: string | null;
           invited_by?: string | null;
           link_pending?: boolean;
           named_role?: string | null;
@@ -4110,6 +4113,14 @@ export type Database = {
           template_key: string;
         }[];
       };
+      admin_import_people: {
+        Args: { actor: string; business: string; people: Json };
+        Returns: Json;
+      };
+      admin_import_undo: {
+        Args: { actor: string; batch: string; business: string };
+        Returns: Json;
+      };
       admin_invite: {
         Args: {
           actor: string;
@@ -5422,6 +5433,14 @@ export type Database = {
           user_id: string;
           wrapped_dek: string;
         }[];
+      };
+      team_import_people: {
+        Args: { actor: string; business: string; people: Json };
+        Returns: Json;
+      };
+      team_import_undo: {
+        Args: { actor: string; batch: string; business: string };
+        Returns: Json;
       };
       team_invite: {
         Args: {

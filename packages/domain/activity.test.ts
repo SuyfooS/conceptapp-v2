@@ -897,6 +897,67 @@ describe("buildActivity: each action", () => {
     ).toEqual({ action: "invite.claim", role: "worker" });
   });
 
+  it("reads a list invited in one go and one taken back, by their counts alone", () => {
+    // As private.import_invites and private.undo_import write them
+    // (20261128000300_people_import.sql).
+    const IMPORT = "77777777-7777-4777-8777-777777777777";
+    expect(
+      lineOf(
+        row("invite.import", {
+          import: IMPORT,
+          created: 12,
+          updated: 2,
+          same: 1,
+          member: 1,
+          invited: 0,
+          expired: 0,
+          kept: 1,
+          roles: { worker: 13, manager: 1 },
+          by: "team",
+        }),
+      ),
+    ).toEqual({ action: "invite.import", made: 12, updated: 2 });
+    // The console's, and one that only updated invites waiting for a link.
+    expect(
+      lineOf(
+        row("invite.import", {
+          import: IMPORT,
+          created: 0,
+          updated: 3,
+          by: "console",
+        }),
+      ),
+    ).toEqual({ action: "invite.import", made: 0, updated: 3 });
+    expect(
+      lineOf(
+        row("invite.import_undo", { import: IMPORT, cancelled: 11, kept: 1 }),
+      ),
+    ).toEqual({ action: "invite.import_undo", cancelled: 11 });
+    // A row that says nothing was done, or isn't as the database writes it,
+    // is a plain line.
+    for (const [action, details] of [
+      ["invite.import", { import: IMPORT, created: 0, updated: 0 }],
+      ["invite.import", { import: IMPORT, created: -1, updated: 2 }],
+      ["invite.import", { created: 2, updated: 0 }],
+      ["invite.import", { import: IMPORT, created: "2", updated: 0 }],
+      ["invite.import_undo", { import: IMPORT, cancelled: 0, kept: 2 }],
+      ["invite.import_undo", { cancelled: 2 }],
+    ] as const) {
+      expect(lineOf(row(action, details)), action).toEqual({ action: "other" });
+    }
+  });
+
+  it("never names anyone on a list's lines, though the row names its import", () => {
+    const refs = activityRefs([
+      row("invite.import", {
+        import: INVITE,
+        created: 1,
+        updated: 0,
+      }),
+    ]);
+    expect(refs.invites).toEqual([]);
+  });
+
   it("reads a role the business named by its name then, on invites, role changes and removals (R11b)", () => {
     const named = { named_role: INVITE, role_name: "אחראי משמרת" };
     expect(

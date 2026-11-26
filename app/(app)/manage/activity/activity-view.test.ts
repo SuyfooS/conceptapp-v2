@@ -150,3 +150,68 @@ describe("the activity log's refused views", () => {
     ).toBe("A view of Noa's file was refused: without a valid SMS code");
   });
 });
+
+// A pasted list invited in one go, and taken back (inviting from a list,
+// 20261128000300_people_import.sql): by its counts alone, never who.
+describe("the activity log's lists of people", () => {
+  it("says what a list made and updated, and what its undo deleted", () => {
+    const at = (id: number) => `2026-11-22T1${id}:00:00Z`;
+    const shown = draw([
+      {
+        id: 7,
+        at: at(7),
+        actor: GALIT,
+        line: { action: "invite.import", made: 12, updated: 2 },
+      },
+      {
+        id: 6,
+        at: at(6),
+        actor: GALIT,
+        line: { action: "invite.import", made: 1, updated: 0 },
+      },
+      {
+        id: 5,
+        at: at(5),
+        actor: GALIT,
+        line: { action: "invite.import", made: 0, updated: 3 },
+      },
+      {
+        id: 4,
+        at: at(4),
+        actor: GALIT,
+        line: { action: "invite.import_undo", cancelled: 1 },
+      },
+      {
+        id: 3,
+        at: at(3),
+        actor: GALIT,
+        line: { action: "invite.import_undo", cancelled: 11 },
+      },
+    ]);
+    for (const line of [
+      "הזמנה מרשימה: 12 הזמנות חדשות, ועוד 2 הזמנות עודכנו",
+      "הזמנה מרשימה: הזמנה חדשה אחת",
+      "הזמנה מרשימה: 3 הזמנות עודכנו",
+      "מחיקת הזמנה אחת מרשימה",
+      "מחיקת 11 הזמנות מרשימה",
+    ]) {
+      expect(shown).toContain(line);
+    }
+    expect(shown).not.toContain("הזמנה מרשימה: הזמנה חדשה אחת,");
+    expect(
+      enT("app.manage.activity.actions.invite.import", {
+        made: 1,
+        updated: 1,
+      }),
+    ).toBe("Invited from a list: one new invite, and one invite updated");
+    expect(
+      enT("app.manage.activity.actions.invite.import", {
+        made: 0,
+        updated: 2,
+      }),
+    ).toBe("Invited from a list: 2 invites updated");
+    expect(
+      enT("app.manage.activity.actions.invite.importUndo", { count: 4 }),
+    ).toBe("Deleted 4 invites from a list");
+  });
+});
