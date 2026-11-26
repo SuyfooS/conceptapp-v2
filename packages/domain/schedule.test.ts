@@ -228,9 +228,15 @@ describe("crowdedShiftIn", () => {
   });
 
   it("knows it beside another problem, and only for the people on a shift", () => {
+    // Another shift's own problem: the week's checks (outside the week, twice,
+    // at the same time) don't run once a shift fails, so none of them is here.
     const both = refusal([
-      { ...morning, day: "2026-11-08" },
+      { ...morning, name: "" },
       { ...morning, assignees: people(MAX_PEOPLE_ON_A_SHIFT + 1) },
+    ]);
+    expect(both?.issues.map((issue) => issue.path)).toEqual([
+      [0, "name"],
+      [1, "assignees"],
     ]);
     expect(both && crowdedShiftIn(both)).toBe(true);
     for (const other of [
