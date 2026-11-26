@@ -159,7 +159,11 @@ jobs:
       - name: RLS and isolation tests (pgTAP)
         run: pnpm db:test
 
-      - name: Templates against the manifests
+      # Every *.db.test.ts: the templates against the manifests, the database
+      # against the screens' rules, and the test business of a few hundred
+      # people made and rolled back (its target 15 seconds, a warning past 30,
+      # a failure only past 60).
+      - name: Database tests (vitest)
         run: pnpm test:db
 
       - name: Database lint

@@ -17,7 +17,9 @@
     "db:reset": "supabase db reset",
     "db:test": "supabase test db",
     "db:types": "supabase gen types typescript --local --schema public > packages/db/database.types.ts && biome format --write packages/db/database.types.ts",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "measure:seed": "playwright test --config measure/seed.config.ts --project seed",
+    "measure:clean": "playwright test --config measure/seed.config.ts --project clean"
   },
   "dependencies": {
     "@fontsource-variable/heebo": "^5.3.0",

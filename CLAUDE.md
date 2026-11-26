@@ -58,6 +58,8 @@ messages/           he.json + en.json: every user-facing string (next-intl)
 i18n/               locale config and the next-intl request config
 supabase/           CLI config, edge functions, seed data
 tooling/            repo checks (layer boundaries, Hebrew literals, message parity) with their tests
+measure/            measuring at a few hundred people: the test business, made on the local
+                    stack only (`pnpm measure:seed`, `pnpm measure:clean`, docs/measure.md)
 ```
 
 Layer rules, enforced by Biome `noRestrictedImports` (per-folder overrides in
@@ -65,7 +67,8 @@ Layer rules, enforced by Biome `noRestrictedImports` (per-folder overrides in
 `packages/domain` imports no other layer and no framework; `packages/ui` and
 `packages/db` import only `@domain`; `modules/<key>` reaches another module
 only through `@modules/<other>/manifest` and its own files by relative path.
-Only `app/` imports app code (`@/…`).
+Only `app/` imports app code (`@/…`). `measure/` imports only `@domain` and
+`@modules/<key>/manifest`, and nothing imports `measure/`.
 
 ## UI rules
 
@@ -235,4 +238,6 @@ pnpm db:test      # pgTAP: RLS and tenant isolation
 pnpm db:types     # regenerate packages/db/database.types.ts
 pnpm exec supabase start   # full local stack incl. auth (needed for sign-in)
 pnpm e2e          # Playwright at 390/820/1440 against `pnpm build` + local Supabase
+pnpm measure:seed # the test business of 300 on the local stack, kept (docs/measure.md)
+pnpm measure:clean # takes it off again: run before db:test or e2e on that database
 ```

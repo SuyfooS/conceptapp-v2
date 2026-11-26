@@ -44,3 +44,5 @@ next-env.d.ts
 # playwright
 /test-results/
 /playwright-report/
+# the test business's counts and the measuring run's results (docs/measure.md)
+/measure/out/

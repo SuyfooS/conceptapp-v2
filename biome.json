@@ -186,6 +186,37 @@
           }
         }
       }
+    },
+    {
+      "includes": ["measure/**"],
+      "linter": {
+        "domains": {
+          "playwright": "recommended"
+        },
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@/**"],
+                    "message": "The measuring run uses the app through its screens and the database, never its code."
+                  },
+                  {
+                    "group": ["@ui/**", "@db/**"],
+                    "message": "measure/ imports only @domain and the modules' manifests: it writes the database by SQL and reads the app through its screens."
+                  },
+                  {
+                    "group": ["@modules/**", "!@modules/*/manifest"],
+                    "message": "measure/ reads a module only through its manifest."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
     }
   ]
 }
