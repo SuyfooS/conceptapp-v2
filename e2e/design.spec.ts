@@ -10222,9 +10222,11 @@ test("the people import's twin stops at too many people and at two phone columns
   ).toBeVisible();
 
   await page.goto(importTwin);
+  // Waiting: Dana's open invite, and Ido's and Lior's with no link yet,
+  // Lior's past its date too; Ron's ran out.
   await expect(
     page.getByText(
-      heT("app.team.import.existing", { members: 8, invites: 1 }),
+      heT("app.team.import.existing", { members: 8, invites: 3 }),
       { exact: true },
     ),
   ).toBeVisible();
