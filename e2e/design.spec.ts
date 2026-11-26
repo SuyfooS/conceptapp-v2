@@ -5,6 +5,10 @@ import { FILE_TABS_TWIN_CHANNEL } from "../app/(app)/team/[person]/file/file-tab
 import { restaurantWording } from "../app/design/order-taking/data";
 import en from "../messages/en.json" with { type: "json" };
 import he from "../messages/he.json" with { type: "json" };
+import {
+  FILE_STEPS,
+  type FileStep,
+} from "../packages/domain/employee-file-steps";
 import { daysLeftToRight } from "../packages/domain/share";
 import { type MessageTree, mergeWording } from "../packages/domain/wording";
 import {
@@ -8517,6 +8521,148 @@ test("the file demo in English keeps its dock beside the shrunk tab bar", async 
       return apart ? "beside" : "over";
     })
     .toBe("beside");
+});
+
+/** A step's floating dock on the file demo: its notice and its buttons. */
+const stepDock = (page: Page, step: FileStep) =>
+  page.locator(`#file-${step} [data-step-dock] > :last-child`);
+
+/**
+ * How far above the top of a step's dock the bottom of its last controls
+ * sits, in px ("אמשיך אחר כך", then "למה מבקשים את זה"): below 0, under it.
+ * Null while one of them is not on screen.
+ */
+async function lastControlsOverDock(page: Page, step: FileStep) {
+  const f = he.app.file;
+  const section = page.locator(`#file-${step}`);
+  const [later, why, dock] = await Promise.all([
+    section
+      .getByRole("link", { name: f.actions.later, exact: true })
+      .last()
+      .boundingBox(),
+    section
+      .getByRole("button", { name: f.why, exact: true })
+      .last()
+      .boundingBox(),
+    stepDock(page, step).boundingBox(),
+  ]);
+  if (!later || !why || !dock) return null;
+  return Math.round(
+    dock.y - Math.max(later.y + later.height, why.y + why.height),
+  );
+}
+
+// At the end of each step on a phone and a tablet, its last controls sit
+// above its dock, with the tab bar shrunk by the scroll down and with it
+// full: the room the dock keeps comes after them (CI at 390 px, before:
+// "למה מבקשים את זה" under the dock's notice while the bar was full). The
+// bar's mark alone moves the dock (`FloatingDock`), so taking it off puts
+// the dock where the full bar does, as a climb of 140px opens the bar, at
+// the same end of the page.
+test("the file demo keeps each step's last controls above its dock", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name === "desktop",
+    "A desktop's dock is in its corner, beside the steps.",
+  );
+  const width = page.viewportSize()?.width ?? 390;
+  await page.setViewportSize({ width, height: 600 });
+  const shrunk = page.locator("nav[data-tab-compact]");
+  for (const step of FILE_STEPS) {
+    await openFileDemo(page, `/design/shell/me/file?step=${step}`);
+    await expect(stepDock(page, step)).toBeVisible();
+    await page.evaluate(() =>
+      window.scrollTo(0, document.documentElement.scrollHeight),
+    );
+    const scrolled = await page.evaluate(() => window.scrollY);
+    // Past its first 40px the bar shrinks; short of them it stays full.
+    await expect(shrunk).toHaveCount(scrolled > 40 ? 1 : 0);
+    await expect
+      .poll(() => lastControlsOverDock(page, step), {
+        message: `${step}: the bar as the scroll left it`,
+      })
+      .toBeGreaterThanOrEqual(0);
+    await page.evaluate(() =>
+      document
+        .querySelector("nav[data-tab-compact]")
+        ?.removeAttribute("data-tab-compact"),
+    );
+    await expect(shrunk).toHaveCount(0);
+    await expect
+      .poll(() => lastControlsOverDock(page, step), {
+        message: `${step}: the bar full`,
+      })
+      .toBeGreaterThanOrEqual(0);
+  }
+});
+
+/**
+ * What holds the focus on a step of the file demo, and how far above the
+ * top of the step's dock its bottom sits, in px (below 0, under it). Null
+ * once the focus is past the step's own controls: in its dock, or out of
+ * the step.
+ */
+async function focusOverDock(page: Page, step: FileStep) {
+  return await page.evaluate((id) => {
+    const section = document.getElementById(id);
+    const active = document.activeElement;
+    if (
+      !section ||
+      !(active instanceof HTMLElement) ||
+      !section.contains(active) ||
+      active.closest("[data-step-dock]")
+    ) {
+      return null;
+    }
+    const dock = section.querySelector("[data-step-dock] > :last-child");
+    if (!dock) return null;
+    const words = active.getAttribute("aria-label") ?? active.textContent;
+    return {
+      what: `${active.tagName.toLowerCase()}#${active.id} ${words?.trim() ?? ""}`,
+      over: Math.round(
+        dock.getBoundingClientRect().top -
+          active.getBoundingClientRect().bottom,
+      ),
+    };
+  }, `file-${step}`);
+}
+
+// Tab through each step on a phone and a tablet, from its title: every
+// control it reaches comes into view clear of the dock and the tab bar,
+// the page scrolling up to it while it would sit under them (WCAG 2.4.11).
+// The browser counts nothing fixed over the page, so before, a control
+// already on screen under the dock stayed there, at 820 px the why button
+// and "אמשיך אחר כך" wholly.
+test("the file demo brings each control Tab reaches clear of its dock", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name === "desktop",
+    "A desktop's dock is in its corner, beside the steps.",
+  );
+  const width = page.viewportSize()?.width ?? 390;
+  await page.setViewportSize({ width, height: 600 });
+  for (const step of FILE_STEPS) {
+    await openFileDemo(page, `/design/shell/me/file?step=${step}`);
+    await expect(stepDock(page, step)).toBeVisible();
+    await page.locator(`#file-${step} h2`).first().focus();
+    let reached = 0;
+    for (let press = 0; press < 80; press += 1) {
+      await page.keyboard.press("Tab");
+      const focus = await focusOverDock(page, step);
+      if (!focus) break;
+      reached += 1;
+      await expect
+        .poll(async () => (await focusOverDock(page, step))?.over, {
+          message: `${step}: ${focus.what}`,
+        })
+        .toBeGreaterThanOrEqual(0);
+    }
+    expect(reached, `${step}: no control of its own reached`).toBeGreaterThan(
+      0,
+    );
+  }
 });
 
 // A laptop leaves less than the screen's 900px: the summary's action stays
