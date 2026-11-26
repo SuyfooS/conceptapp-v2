@@ -73,6 +73,8 @@ describe("UndoRow", () => {
       const root = html.match(/^<div[^>]*>/)?.[0] ?? "";
       expect(root).toContain('role="status"');
       expect(root).toContain('aria-live="off"');
+      // Read whole when its words change: its button is "ביטול" alone.
+      expect(root).not.toContain("aria-atomic");
       const words = html.match(
         /<span id="([^"]+)"[^>]*>Noa Cohen was removed from the team<\/span>/,
       );
@@ -113,7 +115,11 @@ describe("UndoRow", () => {
         );
         // Not also its description: a screen reader would say them twice.
         expect(button).not.toContain("aria-describedby=");
-        // Still a status with its words in sight.
+        // Still a status with its words in sight, whose change reads the
+        // words alone, never again with the button's name that holds them.
+        const root = html.match(/^<div[^>]*>/)?.[0] ?? "";
+        expect(root).toContain('role="status"');
+        expect(root).toContain('aria-atomic="false"');
         expect(html).toContain(">Noa Cohen was removed from the team</span>");
       }
     });
