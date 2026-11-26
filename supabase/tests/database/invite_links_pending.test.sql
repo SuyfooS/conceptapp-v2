@@ -4,11 +4,12 @@
 -- (public.create_business), and cleared by whichever function next makes the
 -- invite a link, by a trigger, never by a cancel. Read under the invites'
 -- policy as before. The Team screen's first link
--- (public.team_invite_first_link) is refused once one was made, and the
+-- (public.team_invite_first_link) is refused once one was made, and as no
+-- open invite for one closed or unknown, and the
 -- console says these wait for a link, never 'expired' (public.admin_business,
 -- with link_pending and its three statuses; public.admin_businesses).
 begin;
-select plan(45);
+select plan(47);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -203,7 +204,7 @@ select is(
   pg_temp.first_link_refusal('c5000000-0000-4000-a000-00000000000c',
     pg_temp.inv('+972500007611')),
   '42501',
-  'a pending invite''s first link takes every check of team_invite_link'
+  'a pending invite''s first link goes through team_invite_link, whose own checks refuse a worker'
 );
 
 -- The invite form, to a number with an invite open: refreshed with a link.
@@ -271,6 +272,21 @@ select ok(
 set local role service_role;
 select is(public.invite_by_token((select h.hash from hashes h)), null,
   'nothing reads the deleted invite by its old hash');
+-- An invite no longer open, or none at all, is team_invite_link's to refuse:
+-- P0002 with no hint, which the screen reads as no longer open (its row
+-- goes), never 'linked' (its row stays), and never 42501 to an owner.
+select is(
+  pg_temp.first_link_refusal('c5000000-0000-4000-a000-00000000000b',
+    pg_temp.inv('+972500007616')),
+  'P0002',
+  'a first link for the deleted invite is refused as no open invite, with no hint'
+);
+select is(
+  pg_temp.first_link_refusal('c5000000-0000-4000-a000-00000000000b',
+    gen_random_uuid()),
+  'P0002',
+  'and so is one for an invite that never was'
+);
 reset role;
 
 -- The owner's own invite, untouched: still pending. A change of anything but

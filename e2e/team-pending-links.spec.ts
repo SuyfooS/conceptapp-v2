@@ -121,6 +121,16 @@ test("the wizard's invites wait on /team for a link, made and sent one person at
       heT("app.home.firstSteps.steps.team.pending", { count: 3 }),
     );
     await expect(teamStep).toHaveAttribute("href", "/team");
+    // Today's team row says them first too, before the invites waiting and
+    // the team's size.
+    const teamRow = page
+      .getByRole("main")
+      .getByRole("link", { name: new RegExp(`^${literal(tt.title)}`) })
+      .filter({ visible: true });
+    await expect(teamRow).toHaveAttribute("href", "/team");
+    await expect(teamRow).toContainText(
+      heT("app.team.pending.count", { count: 3 }),
+    );
     await teamStep.click();
     await expect(page).toHaveURL(/\/team$/);
     await expect(
@@ -260,6 +270,11 @@ test("the wizard's invites wait on /team for a link, made and sent one person at
       }),
     );
     await expect(teamStep).toHaveAttribute("href", "/team");
+    // And its team row the two still waiting for theirs, not the team's
+    // size, now that one of the staff joined.
+    await expect(teamRow).toContainText(
+      heT("app.team.pending.count", { count: 2 }),
+    );
   } finally {
     await closePendingLinksBusiness(business);
   }

@@ -204,7 +204,7 @@ export async function resendInviteAction(
   _prev: ResendState,
   _form: FormData,
 ): Promise<ResendState> {
-  return await issueLink(inviteId, issueTeamInviteLink);
+  return await issueLink(inviteId, issueTeamInviteLink, "issueTeamInviteLink");
 }
 
 /**
@@ -220,13 +220,25 @@ export async function firstLinkAction(
   _prev: ResendState,
   _form: FormData,
 ): Promise<ResendState> {
-  return await issueLink(inviteId, issueFirstInviteLink);
+  return await issueLink(
+    inviteId,
+    issueFirstInviteLink,
+    "issueFirstInviteLink",
+  );
 }
 
+/**
+ * The invite's link by `issue`. Its id comes from the browser (the row binds
+ * it there), so anything but a uuid (`isUuid`, any the database writes) is
+ * refused here, as no open invite, before the database is asked or anything
+ * is logged; `label` names the write in the log.
+ */
 async function issueLink(
   inviteId: string,
   issue: typeof issueFirstInviteLink,
+  label: string,
 ): Promise<ResendState> {
+  if (!isUuid(inviteId)) return { failure: "notOpen" };
   const actor = await inviter();
   if ("failure" in actor) return { failure: actor.failure };
   try {
@@ -242,7 +254,10 @@ async function issueLink(
     refresh();
     return { link };
   } catch (error) {
-    console.error("issueTeamInviteLink failed", (error as Error).message);
+    console.error(
+      `${label} failed`,
+      error instanceof Error ? error.message : "unknown",
+    );
     return { failure: "failed" };
   }
 }
