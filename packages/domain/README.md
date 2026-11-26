@@ -130,21 +130,25 @@ phone, role and name columns by most of their cells (a sheet's single row by
 its cells; a line with no delimiter, or typed by hand with its mobile in
 another place, as free text); two columns of mobiles are never guessed
 between (`phoneColumns`, with the headers that named them, and a typed list's
-second column of mobiles beside the first on a line), and a word in a role
-column that names no role is left out, the line given the list's role. A
-name's header word exactly comes before one in other words, and "שם הסניף",
-"שם מנהל", "שם האב" or "Username" is never the person's. "שם" beside "שם
-משפחה" is the first name, and the two are joined; a second column of single
-words joins the name only when it varies, holds no digits and isn't past the
-phone. In free text a mobile must start
-with 0, 972, +972 or 00972 (Excel's dropped zero only from a sheet's cell's
-first group, so a 9-digit ID starting with 5 is never a phone, and no number
-of another country is read as one), every other number, Excel's "5.01E+08"
-and a number's label (`ת.ז`, `שכר`, `דרכון`) leave the name (`dropped`), but
-one or two digits right after its words ("דנה כהן 2"); a role is read at the
-line's end or start as a field of its own, or after a name of two words, so a
-role named like a first name or a surname ("בר") is never read off "בר כהן",
-and a name line followed by its number line is one person. Names go through `parseTeamName`, phones
+second column of mobiles beside the first on a line, when a line has it with
+no mobile of its own; else it is left out), and a word in a role column that
+names no role is left out, the line given the list's role. A name's header
+word exactly comes before one in other words, and "שם הסניף", "שם מנהל",
+"שם האב" or "Username" is never the person's, nor "שם תפקיד" (the role's),
+while "שם / תפקיד" is; first and last names come before a name's header in
+other words only together. "שם" beside "שם משפחה" is the first name, and the
+two are joined; a second column of single words joins the name only when it
+varies, holds no digits and isn't past the phone. In free text a mobile must
+start with 0, 972, +972 or 00972 (Excel's dropped zero only from a sheet's
+cell's first group, so a 9-digit ID starting with 5 is never a phone, and no
+number of another country is read as one, while "+054…" and "001 050-…" are
+no country's), every other number, Excel's "5.01E+08" and a number's label
+(`ת.ז`, `מס' עובד`, `שכר:`, `דרכון`) leave the name (`dropped`), but one or
+two digits right after its words ("דנה כהן 2"); a role is read at the line's
+end or start, a named role of one word only as a field of its own or after a
+name of two words, so a role named like a first name or a surname ("בר") is
+never read off "בר כהן", and a name line followed by its number line is one
+person. Names go through `parseTeamName`, phones
 through `normalizeIsraeliMobile`; owners and accountants are one by one,
 roles above the viewer's rank, with pay or held are refused with the invite
 form's reasons, and past `PEOPLE_IMPORT_MAX` (300) no line is drawn. The

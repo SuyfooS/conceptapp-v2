@@ -41,8 +41,9 @@ import { searchable } from "./wording";
  *                 free text.
  *   free text     the mobile among the runs of digits, which must start with
  *                 0, 972, +972 or 00972 (never read from the end of another
- *                 country's number); a role at the line's end or start, a
- *                 field of its own or after a name of two words; the rest
+ *                 country's number); a role at the line's end or start (a
+ *                 named role of one word, which may be a name, only as a
+ *                 field of its own or after a name of two words); the rest
  *                 the name. Every other number is dropped, but one or two
  *                 digits right after the name's words ("דנה כהן 2"). A name
  *                 line followed by its number line, as contacts copy, is
@@ -285,6 +286,11 @@ type RoleMatch =
 
 type RoleMatcher = {
   match: (text: string) => RoleMatch | null;
+  /**
+   * A named role's one word that no built-in role is called ("בר", "טבח",
+   * "מארחת"): it may be a first name or a surname too.
+   */
+  nameLike: (text: string) => boolean;
   /** The most words of any role's name: how far into a line's ends to look. */
   maxWords: number;
 };
@@ -293,29 +299,43 @@ function roleMatcher(roles: ImportRoles): RoleMatcher {
   const choices = new Map<string, ImportRoleChoice>();
   const oneByOne = new Map<string, string>();
   const above = new Map<string, string>();
+  /** The named roles' names, and the business's words for the built-in roles. */
+  const named = new Set<string>();
+  const builtInNames = new Set<string>();
   let maxWords = 2;
-  const note = (name: string) => {
+  const note = (name: string, namedRole: boolean) => {
     maxWords = Math.max(maxWords, name.trim().split(/\s+/).length);
-    return keyOf(name);
+    const key = keyOf(name);
+    if (key) (namedRole ? named : builtInNames).add(key);
+    return key;
   };
   for (const choice of roles.choices) {
     for (const name of choice.names) {
-      const key = note(name);
+      const key = note(name, choice.namedRole !== null);
       if (key && !choices.has(key)) choices.set(key, choice);
     }
   }
   for (const role of roles.oneByOne) {
     for (const name of role.names) {
-      const key = note(name);
+      const key = note(name, false);
       if (key && !oneByOne.has(key)) oneByOne.set(key, role.label);
     }
   }
   for (const role of roles.aboveRank) {
     for (const name of role.names) {
-      const key = note(name);
+      const key = note(name, role.namedRole !== null);
       if (key && !above.has(key)) above.set(key, role.label);
     }
   }
+  const nameLike = (text: string) => {
+    const key = keyOf(text);
+    return (
+      !key.includes(" ") &&
+      named.has(key) &&
+      !builtInNames.has(key) &&
+      builtInRoleWord(text) === null
+    );
+  };
   const builtIn = (role: StaffRole) =>
     roles.choices.find(
       (choice) => choice.role === role && choice.namedRole === null,
@@ -346,7 +366,7 @@ function roleMatcher(roles: ImportRoles): RoleMatcher {
     if (higher) return { kind: "notAllowed", label: higher };
     return null;
   };
-  return { match, maxWords };
+  return { match, nameLike, maxWords };
 }
 
 type RoleRead =
@@ -380,10 +400,12 @@ function roleRead(
  * A role at a line's end, else at its start, and the words left; null when
  * neither end names one. A role is a field of its own, parted from the name
  * by a separator, a colon or the number ("דנה כהן 050-… ניהול", "מנהלת: דנה
- * כהן"), or the last words of a name that keeps two words at least ("דנה
- * כהן ניהול 050-…"): a role named like a first name or a surname ("בר",
- * "ברמן", "טבח") is never read off "בר כהן" or "דנה ברמן". A line that is a
- * role's name and nothing else has no name.
+ * כהן"), else the longest run of a name's words at its end, then at its
+ * start, that is a role's name ("דנה ניהול 050-…", "מנהלת דנה כהן 050-…").
+ * A named role of one word, which may be a first name or a surname ("בר",
+ * "ברמן", "טבח"), is read off a name only at its end, with two words left
+ * ("דנה כהן בר 050-…"), so never off "בר כהן" or "דנה ברמן". A line that is
+ * a role's name and nothing else has no name.
  */
 function roleAtEnds(
   text: string,
@@ -405,10 +427,20 @@ function roleAtEnds(
     const atStart = roles.match(first);
     if (atStart) return { match: atStart, words: wordsOf(fields.slice(1)) };
   }
-  const most = Math.min(roles.maxWords, words.length - 2);
+  const most = Math.min(roles.maxWords, words.length - 1);
   for (let count = most; count >= 1; count--) {
-    const match = roles.match(words.slice(-count).join(" "));
-    if (match) return { match, words: words.slice(0, -count) };
+    const end = words.slice(-count).join(" ");
+    const match = roles.match(end);
+    if (match && (words.length - count >= 2 || !roles.nameLike(end))) {
+      return { match, words: words.slice(0, -count) };
+    }
+  }
+  for (let count = most; count >= 1; count--) {
+    const start = words.slice(0, count).join(" ");
+    const match = roles.match(start);
+    if (match && !roles.nameLike(start)) {
+      return { match, words: words.slice(count) };
+    }
   }
   return null;
 }
@@ -422,11 +454,13 @@ const DIGITS = /\d/g;
 /**
  * A word that says what the number after it is ("ת.ז 123456782", "נייד:
  * 050…", "סלולרי: 050…", "מס' טלפון 050…", "Cell: 050…", "טל' 03…", "מס'
- * עובד 12", "שכר 45"): it leaves the name with its number. "טל" alone is a
- * name, so only with its dot or geresh.
+ * עובד 12", "שכר: 45", "שכר לשעה 45"): it leaves the name with its number.
+ * "טל" alone is a name, so only with its dot or geresh; "עובד" alone is a
+ * role ("דנה כהן עובד 050-…"), so only after "מס'"; and "שכר" alone is a
+ * surname ("דוד שכר 050-…"), so only with a colon or "לשעה".
  */
 const NUMBER_LABEL =
-  /(?<![\p{L}\d])(?:ת[."״]?ז\.?|תעודת זהות|מספר זהות|טל[.'׳]|(?:(?:מספר|מס[.'׳]?)\s?)?(?:טלפון|נייד|פלאפון|סלולרי|סלולארי|עובד)|שכר(?: לשעה)?|id|tel|phone|mobile|cell|wage|salary)(?!\p{L})\s?[:.]?\s?(?=\+?\d)/giu;
+  /(?<![\p{L}\d])(?:ת[."״]?ז\.?|תעודת זהות|מספר זהות|טל[.'׳]|(?:(?:מספר|מס[.'׳]?)\s?)?(?:טלפון|נייד|פלאפון|סלולרי|סלולארי)|(?:מספר|מס[.'׳]?)\s?עובד|שכר(?: לשעה|(?=\s?:))|id|tel|phone|mobile|cell|wage|salary)(?!\p{L})\s?[:.]?\s?(?=\+?\d)/giu;
 /** A passport's label, with the letters its number starts with ("דרכון PA1234567"). */
 const PASSPORT_LABEL =
   /(?<![\p{L}\d])(?:(?:מספר|מס[.'׳]?)\s?)?(?:דרכון|passport)(?!\p{L})\s?[:.]?\s?[a-z]{0,2}(?=\d)/giu;
@@ -512,12 +546,16 @@ function findPhones(text: string, sheet: boolean): PhonesFound {
     const parts = run.trim().split(/\s+/);
     const digits = run.replace(/\D/g, "");
     const lead = (parts[0] ?? "").replace(/\D/g, "");
+    // No country's code starts with 0, so "+054-…" is a stray plus; and
+    // after a code of one digit (1, 7) no number starts with 0, so "001
+    // 050-…" is a number before the mobile, an employee's, which goes.
     if (
-      (run.startsWith("+") && !digits.startsWith("972")) ||
+      (run.startsWith("+") && !/^(?:972|0)/.test(digits)) ||
       (parts.length > 1 &&
         lead.length <= 5 &&
         lead.startsWith("00") &&
-        !digits.startsWith("00972"))
+        !digits.startsWith("00972") &&
+        !(lead.length <= 3 && (parts[1] ?? "").startsWith("0")))
     ) {
       if (digits.length >= 7) other = true;
       dropped.push(run.trim());
@@ -769,8 +807,8 @@ const HEADER_WORDS: ReadonlyMap<string, HeaderKind> = new Map(
           "employee name",
         ],
       ],
-      ["first", ["שם פרטי", "פרטי", "first name"]],
-      ["last", ["שם משפחה", "משפחה", "last name", "surname"]],
+      ["first", ["שם פרטי", "השם הפרטי", "פרטי", "first name"]],
+      ["last", ["שם משפחה", "שם המשפחה", "משפחה", "last name", "surname"]],
       [
         "phone",
         [
@@ -835,11 +873,18 @@ const LOOSE_HEADERS: readonly (readonly [HeaderKind, RegExp])[] = [
 
 /**
  * A name in other words that is someone else's or something else's: a
- * branch's, a department's, a manager's, a parent's, a user name, a role's
- * ("שם הסניף", "שם מנהל", "שם האב", "Username", "שם תפקיד").
+ * branch's, a department's, a manager's, a parent's, a user name ("שם
+ * הסניף", "שם מנהל", "שם האב", "Username").
  */
 const NOT_THE_PERSON =
-  /(?:^|\s)ה?(?:סניף|מחלקה|מנהל|מנהלת|אחראי|אחראית|אב|אם|הורה|משתמש|חברה|עסק|חנות|תפקיד)(?:\s|$)|user|branch|compan|department|manager|supervisor|father|mother|parent|business|store|shop|role/u;
+  /(?:^|\s)ה?(?:סניף|מחלקה|מנהל|מנהלת|אחראי|אחראית|אב|אם|הורה|משתמש|חברה|עסק|חנות)(?:\s|$)|user|branch|compan|department|manager|supervisor|father|mother|parent|business|store|shop/u;
+/**
+ * A role's name ("שם תפקיד", "שם התפקיד", "Role name"): the role's column.
+ * Read with the header's marks, since a name and a role together ("שם /
+ * תפקיד", "Name (Role)") is the name's column, its key the same.
+ */
+const ROLES_NAME =
+  /(?:^|\s)ה?שם ה?תפקיד(?:\s|$)|(?:^|\s)role name(?:\s|$)|name of (?:the )?role/u;
 
 /** What a header's cell names exactly, as the header words are written. */
 function exactHeaderKind(cell: string): HeaderKind | null {
@@ -849,11 +894,13 @@ function exactHeaderKind(cell: string): HeaderKind | null {
 /** What a header's cell names, or null for a column nobody asked for. */
 function headerKindOf(cell: string): HeaderKind | null {
   const key = keyOf(cell);
+  const notTheName =
+    NOT_THE_PERSON.test(key) ||
+    ROLES_NAME.test(wordKey(cell).replace(/\s+/g, " ").trim());
   return (
     HEADER_WORDS.get(key) ??
     LOOSE_HEADERS.find(
-      ([kind, test]) =>
-        test.test(key) && !(kind === "name" && NOT_THE_PERSON.test(key)),
+      ([kind, test]) => test.test(key) && !(kind === "name" && notTheName),
     )?.[0] ??
     null
   );
@@ -972,22 +1019,28 @@ function columnsOf(
   if (typed && phoneHeaded.length === 0 && phones.length > 1) {
     // Typed by hand, a number in another place on a line or two is no
     // column: the phone's column is filled on most lines. One with a
-    // mobile beside the phone's on the same line is a column all the same
-    // (a parent's, filled on some lines), and is never guessed between.
+    // mobile beside the phone's on a line is a second phone (a parent's,
+    // filled on some lines): never guessed between when a line has it with
+    // no mobile of its own in the phone's column, and otherwise left out.
     const full = phones.filter(
       (column) => filledIn(rows, column).length * 2 > rows.length,
     );
     const mobileAt = (row: Row, column: number) =>
       isPhoneCell(row.cells[column] ?? "");
-    const beside = phones.some(
-      (column) =>
-        !full.includes(column) &&
-        rows.some(
-          (row) =>
-            mobileAt(row, column) && full.some((one) => mobileAt(row, one)),
-        ),
+    const second = phones.filter((column) => !full.includes(column));
+    const beside = second.some((column) =>
+      rows.some(
+        (row) =>
+          mobileAt(row, column) && full.some((one) => mobileAt(row, one)),
+      ),
     );
-    if (full.length > 0 && !beside) phones = full;
+    const instead = second.some((column) =>
+      rows.some(
+        (row) =>
+          mobileAt(row, column) && !full.some((one) => mobileAt(row, one)),
+      ),
+    );
+    if (full.length > 0 && !(beside && instead)) phones = full;
   }
   if (phones.length > 1) {
     return {
@@ -1049,13 +1102,17 @@ function columnsOf(
   const firstHeaded = all.filter((column) => kindAt(column) === "first");
   const lastHeaded = all.filter((column) => kindAt(column) === "last");
   // A name's header word exactly ("שם העובד", "Employee name") before one
-  // in other words, wherever each sits; and a first name's column before a
-  // name's header in other words.
+  // in other words, wherever each sits; and a first name's column with a
+  // last name's before a name's header in other words ("Nickname"), which
+  // beside a first name alone is the full name ("שם העובד המלא").
   const exactName = nameHeaded.filter(
     (column) => exactHeaderKind(header?.cells[column] ?? "") === "name",
   );
   const nameColumn =
-    exactName[0] ?? (firstHeaded.length > 0 ? undefined : nameHeaded[0]);
+    exactName[0] ??
+    (firstHeaded.length > 0 && lastHeaded.length > 0
+      ? undefined
+      : nameHeaded[0]);
   const [lastColumn] = lastHeaded;
   let name: number[];
   if (nameColumn !== undefined) {

@@ -9727,6 +9727,19 @@ test("the people import's twin holds the lines to fix, and fixes and removes the
   await expect(removeFive).toBeFocused();
   await expect(removeFive).toBeInViewport();
 
+  // Enter held down on "ביטול" takes the line back and no more: its
+  // "הסרת השורה", back with the focus, takes no key repeating.
+  await removeFive.click();
+  await expect(field).not.toHaveValue(/יוסף אלמו/);
+  await expect(undoFive).toBeFocused();
+  await page.keyboard.down("Enter");
+  await expect(removeFive).toBeFocused();
+  await page.keyboard.down("Enter");
+  await page.keyboard.up("Enter");
+  await page.waitForTimeout(500);
+  await expect(field).toHaveValue(/יוסף אלמו/);
+  await expect(removeFive).toBeFocused();
+
   // A keystroke since takes its "ביטול" away, so it never undoes what was typed.
   await removeFive.click();
   await expect(field).not.toHaveValue(/יוסף אלמו/);

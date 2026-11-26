@@ -335,6 +335,9 @@ describe("parsePeopleList: phones as typed", () => {
       "+994 50 123 45 67",
       "+33 5 12 34 56 78",
       "00380 50 123 4567",
+      "0038 050 123 45 67",
+      "00 38 050 123 45 67",
+      "00380 (0)50 123 45 67",
     ]) {
       // In a sheet's phone column, where Excel's dropped zero is read.
       const sheet = parse(`שם\tנייד\nОлена Петренко\t${number}`);
@@ -358,6 +361,30 @@ describe("parsePeopleList: phones as typed", () => {
     expect(
       only(parse("שם\tנייד\nדנה כהן\t+972 50 123 4567")).person.phone,
     ).toBe("+972501234567");
+  });
+
+  it("reads a mobile after an employee's number with zeros first, and with a stray plus", () => {
+    // No country's code of one digit (1, 7) comes before a number with 0
+    // first: "001" is the employee's, and goes.
+    for (const [text, number] of [
+      ["דנה כהן 001 050-1234567", "001"],
+      ["דנה כהן 007 050-1234567", "007"],
+      ["דנה כהן מס' עובד 001 050-1234567", "001"],
+      ["דנה כהן, 001, 050-1234567", "001"],
+    ] as const) {
+      const line = only(parse(text));
+      expect([line.person.name, line.person.phone, line.dropped], text).toEqual(
+        ["דנה כהן", "+972501234567", [number]],
+      );
+    }
+    // And no country's code starts with 0.
+    for (const [text, phone] of [
+      ["דנה כהן +054-1234567", "+972541234567"],
+      ["דנה כהן +0527654321", "+972527654321"],
+      ["שם\tנייד\nדנה כהן\t+0547102201", "+972547102201"],
+    ] as const) {
+      expect(only(parse(text)).person.phone, text).toBe(phone);
+    }
   });
 
   it("reads a mobile written with any dash, and keeps a name's own", () => {
@@ -785,6 +812,63 @@ describe("parsePeopleList: a sheet", () => {
       ["יוסי לוי", "manager", []],
     ]);
     expect(role.ignored).toEqual([]);
+    // "Role name" too, while a name and a role together is the name's.
+    const roleName = sheet(
+      ["Name", "Role name", "Phone"],
+      ["דנה כהן", "ניהול", "050-123-4567"],
+    );
+    expect(
+      people(roleName).map((line) => [line.person.name, line.person.role]),
+    ).toEqual([["דנה כהן", "manager"]]);
+    for (const together of [
+      "שם / תפקיד",
+      "Name / Role",
+      "Name (Role)",
+      "שם + תפקיד",
+    ]) {
+      const parsed = sheet(
+        [together, "נייד"],
+        ["דנה כהן", "050-123-4567"],
+        ["יוסי לוי", "052-765-4321"],
+      );
+      expect(names(parsed), together).toEqual(["דנה כהן", "יוסי לוי"]);
+      expect(parsed.error, together).toBeNull();
+    }
+  });
+
+  it("keeps a full name in other words beside a first name alone, and joins first and last beside it", () => {
+    const sheet = (...rows: string[][]) =>
+      parse(rows.map((cells) => cells.join("\t")).join("\n"));
+    const names = (parsed: ParsedPeople) =>
+      persons(parsed).map((person) => person.name);
+    for (const [full, first] of [
+      ["שם העובד המלא", "שם פרטי"],
+      ["Employee full name", "First name"],
+    ] as const) {
+      // Before the first name's column and after it.
+      for (const parsed of [
+        sheet([full, first, "נייד"], ["דנה כהן", "דנה", "050-123-4567"]),
+        sheet([first, full, "נייד"], ["דנה", "דנה כהן", "050-123-4567"]),
+      ]) {
+        expect(names(parsed), full).toEqual(["דנה כהן"]);
+        expect(parsed.ignored, full).toEqual([{ header: first }]);
+      }
+    }
+    // With a last name's column too, the two are the name.
+    const nickname = sheet(
+      ["Nickname", "First name", "Last name", "Phone"],
+      ["DD", "Dana", "Cohen", "050-123-4567"],
+    );
+    expect(names(nickname)).toEqual(["Dana Cohen"]);
+    expect(nickname.ignored).toEqual([{ header: "Nickname" }]);
+    // "שם המשפחה" and "השם הפרטי" are the last and the first name.
+    for (const parsed of [
+      sheet(["שם המשפחה", "שם פרטי", "נייד"], ["כהן", "דנה", "050-123-4567"]),
+      sheet(["השם הפרטי", "שם המשפחה", "נייד"], ["דנה", "כהן", "050-123-4567"]),
+    ]) {
+      expect(names(parsed)).toEqual(["דנה כהן"]);
+      expect(parsed.ignored).toEqual([]);
+    }
   });
 
   it("never joins a column of sums to first names", () => {
@@ -957,6 +1041,28 @@ describe("parsePeopleList: CSV", () => {
     );
     expect(parsed.error).toBe("phoneColumns");
     expect(parsed.lines).toEqual([]);
+    // With every line's own mobile in its place, the second one is left
+    // out and nothing blocks.
+    const beside = parse(
+      [
+        "דנה כהן, 050-1111111, 052-9999991",
+        "יוסי לוי, 050-2222222",
+        "מיכל אברהם, 050-3333333",
+        "רון גל, 050-4444444",
+        "שירה בר, 050-5555555",
+      ].join("\n"),
+    );
+    expect(beside.error).toBeNull();
+    expect(beside.ignored).toEqual([{ column: 3 }]);
+    expect(
+      persons(beside).map((person) => [person.name, person.phone]),
+    ).toEqual([
+      ["דנה כהן", "+972501111111"],
+      ["יוסי לוי", "+972502222222"],
+      ["מיכל אברהם", "+972503333333"],
+      ["רון גל", "+972504444444"],
+      ["שירה בר", "+972505555555"],
+    ]);
   });
 
   it("chooses ; over , when more lines hold it", () => {
@@ -1044,6 +1150,9 @@ describe("parsePeopleList: free text", () => {
       "Dana Levi",
       "מיכל אברהם",
     ]);
+    // "שכר" alone is a surname: a wage's label only with a colon or "לשעה".
+    const surname = only(parse("דוד שכר 050-1234567"));
+    expect([surname.person.name, surname.dropped]).toEqual(["דוד שכר", []]);
   });
 
   it("takes a list's number off the name, with a space or a spaced dash", () => {
@@ -1076,7 +1185,8 @@ describe("parsePeopleList: free text", () => {
       ["דנה כהן 050-1234567 2", "דנה כהן", ["2"]],
       ["דנה כהן 054-1112233 38.5", "דנה כהן", ["38.5"]],
       ["דנה כהן 052-7654321 ₪7.200", "דנה כהן", ["₪7.200"]],
-      ["דנה כהן 0501234567 שכר 45", "דנה כהן", ["45"]],
+      ["דנה כהן 0501234567 שכר: 45", "דנה כהן", ["45"]],
+      ["דנה כהן 0501234567 שכר לשעה 45", "דנה כהן", ["45"]],
       ["דנה כהן 1990 050-1234567", "דנה כהן", ["1990"]],
       ["דנה כהן מס' עובד 12 050-1234567", "דנה כהן", ["12"]],
       ["דנה כהן (17) 050-1234567", "דנה כהן", ["17)"]],
@@ -1318,6 +1428,7 @@ describe("parsePeopleList: roles", () => {
       ["יוסי טבח 054-710-2201", "יוסי טבח"],
       ["יוסי טבח, 054-710-2201", "יוסי טבח"],
       ["שירה בר, 054-710-2201", "שירה בר"],
+      ["ברמן דנה כהן 054-710-2201", "ברמן דנה כהן"],
     ] as const) {
       const line = only(parse(text, roles));
       expect([line.person.name, line.person.roleFromLine], text).toEqual([
@@ -1338,8 +1449,56 @@ describe("parsePeopleList: roles", () => {
         text,
       ).toEqual(["manager", true, []]);
     }
+    // A built-in role's word beside them is no name, and still read.
+    const manager = only(parse("דנה מנהלת 054-710-2201", roles));
+    expect([manager.person.name, manager.person.role]).toEqual([
+      "דנה",
+      "manager",
+    ]);
     // A role's name and a number, and nothing else, is no name.
     expect(problems(parse("ניהול 050-123-4567"))).toEqual([[1, "noName"]]);
+  });
+
+  it("reads a built-in role's word and a role of two words at either end of a name, one word long too", () => {
+    for (const [text, name, label] of [
+      ["דנה ניהול 050-1234567", "דנה", "ניהול"],
+      ["ניהול דנה כהן 050-1234567", "דנה כהן", "ניהול"],
+      ["מנהלת דנה כהן 050-1234567", "דנה כהן", "ניהול"],
+      ["דנה מנהלת 050-1234567", "דנה", "ניהול"],
+      ["050-1234567 דנה ניהול", "דנה", "ניהול"],
+      ["דנה אחראי משמרת 050-1234567", "דנה", "אחראי משמרת"],
+      ["אחראי משמרת דנה כהן 050-1234567", "דנה כהן", "אחראי משמרת"],
+    ] as const) {
+      const line = only(parse(text));
+      expect(
+        [line.person.name, line.roleLabel, line.person.roleFromLine],
+        text,
+      ).toEqual([name, label, true]);
+    }
+    for (const text of ["דנה בעלים 050-1234567", "בעלים דנה כהן 050-1234567"]) {
+      expect(problems(parse(text)), text).toEqual([[1, "oneByOne"]]);
+    }
+    // A worker's word on a list given managers: the line's role, and its
+    // "עובד" before the number is no number's label.
+    const manager = OWNER.choices.find(
+      (choice) => choice.role === "manager" && choice.namedRole === null,
+    );
+    if (!manager) throw new Error("No manager");
+    for (const [text, name] of [
+      ["דנה כהן עובד 050-1234567", "דנה כהן"],
+      ["דנה כהן, עובד, 050-1234567", "דנה כהן"],
+      ["דנה עובדת 050-1234567", "דנה"],
+      ["צוות דנה כהן 050-1234567", "דנה כהן"],
+    ] as const) {
+      const line = parsePeopleList(text, OWNER, manager).lines[0];
+      expect(line?.kind === "person" && line.person, text).toEqual({
+        name,
+        phone: "+972501234567",
+        role: "worker",
+        namedRole: null,
+        roleFromLine: true,
+      });
+    }
   });
 
   it("gives a line with no role the list's role, not from the line", () => {

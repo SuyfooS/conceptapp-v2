@@ -14,6 +14,7 @@ import { Button } from "@ui/button";
 import { Card } from "@ui/card";
 import { cn } from "@ui/cn";
 import { DataTable } from "@ui/data-table";
+import { ignoreHeldEnter } from "@ui/focus-after";
 import { PageSection } from "@ui/page";
 import { PersonList, PersonRow } from "@ui/person-row";
 import { Segmented } from "@ui/segmented";
@@ -243,8 +244,10 @@ function FixButtons({
       <Button
         variant="ghost"
         aria-label={t("removeLineFor", { line: name })}
-        // Found again by its line once a removal is taken back.
+        // Found again by its line once a removal is taken back, with the
+        // focus: Enter held on "ביטול" presses it no more.
         data-remove-line={span.line}
+        onKeyDown={ignoreHeldEnter}
         onClick={() => actions.remove(span)}
       >
         {t("removeLine")}
@@ -371,6 +374,8 @@ function RemoveNoPhone({
       variant="secondary"
       className="self-start"
       data-remove-no-phone=""
+      // Given the focus back by "ביטול", as the line's "הסרת השורה".
+      onKeyDown={ignoreHeldEnter}
       onClick={() =>
         remove(noPhone.map((line) => ({ line: line.line, last: line.last })))
       }
