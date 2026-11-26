@@ -390,6 +390,22 @@ export type ActivityLine =
     }
   | {
       /**
+       * A pasted list invited in one go ("הזמנה מרשימה",
+       * 20261128000300_people_import.sql), from the Team screen or the
+       * console: its new invites, and the invites with no link yet it
+       * updated. Never who: the row holds counts alone.
+       */
+      action: "invite.import";
+      made: number;
+      updated: number;
+    }
+  | {
+      /** An import taken back: its invites still with no link, deleted. */
+      action: "invite.import_undo";
+      cancelled: number;
+    }
+  | {
+      /**
        * An owner or manager took someone off the team (Orel, 14 November
        * 2026). They are almost always former by the time it is read.
        */
@@ -1102,6 +1118,17 @@ const schemas = {
     role: z.unknown().optional(),
     role_name: z.string().optional().catch(undefined),
   }),
+  // The people import (20261128000300_people_import.sql): the import's id and
+  // counts, never a name or a number.
+  "invite.import": z.object({
+    import: id,
+    created: z.int().min(0),
+    updated: z.int().min(0),
+  }),
+  "invite.import_undo": z.object({
+    import: id,
+    cancelled: z.int().min(1),
+  }),
   // A team change (20261114000100_team_changes.sql): the published shifts
   // that came off the person, the swaps cancelled and those open again are
   // arrays, counted here.
@@ -1738,6 +1765,22 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
       const details = read(schemas["member.name"]);
       return details
         ? { action: row.action, person: personOf(details.person, lookups) }
+        : other;
+    }
+    case "invite.import": {
+      const details = read(schemas["invite.import"]);
+      return details && details.created + details.updated > 0
+        ? {
+            action: row.action,
+            made: details.created,
+            updated: details.updated,
+          }
+        : other;
+    }
+    case "invite.import_undo": {
+      const details = read(schemas["invite.import_undo"]);
+      return details
+        ? { action: row.action, cancelled: details.cancelled }
         : other;
     }
     case "invite.claim": {

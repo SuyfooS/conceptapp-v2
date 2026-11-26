@@ -261,7 +261,7 @@ select ok(
 );
 select results_eq(
   $$select w.what, private.log_perm(w.what)
-    from unnest('{clock.in,clock.correct,schedule.publish,swap.approve,availability.missing,lists.send,invite.create,member.role,team.joined,profile.bio_cleared,chat.remove,chat.restore,menu.item.save,order.line.cancel,module.settings,business.details,departments.change,wording.change,role.permission,permission.grant,view_as.start}'::text[])
+    from unnest('{clock.in,clock.correct,schedule.publish,swap.approve,availability.missing,lists.send,invite.create,invite.import,invite.import_undo,member.role,team.joined,profile.bio_cleared,chat.remove,chat.restore,menu.item.save,order.line.cancel,module.settings,business.details,departments.change,wording.change,role.permission,permission.grant,view_as.start}'::text[])
       with ordinality as w (what, n)
     order by w.n$$,
   $$values
@@ -269,7 +269,8 @@ select results_eq(
     ('schedule.publish', 'schedule.edit'), ('swap.approve', 'schedule.edit'),
     ('availability.missing', 'schedule.edit'),
     ('lists.send', 'lists.manage'),
-    ('invite.create', 'team.view'), ('member.role', 'team.view'),
+    ('invite.create', 'team.view'), ('invite.import', 'team.view'),
+    ('invite.import_undo', 'team.view'), ('member.role', 'team.view'),
     ('team.joined', 'team.view'), ('profile.bio_cleared', 'team.view'),
     ('chat.remove', 'chat.moderate'), ('chat.restore', 'chat.moderate'),
     ('menu.item.save', 'order_taking.edit'), ('order.line.cancel', 'order_taking.edit'),

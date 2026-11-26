@@ -886,6 +886,38 @@ export const demoActivityRows: ActivityRow[] = [
     from: { availabilityDueTime: "16:00" },
     to: { availabilityDueTime: "17:00" },
   }),
+  // A list invited in one go (inviting from a list,
+  // 20261128000300_people_import.sql), after a wrong one taken back: ids and
+  // counts only, never who.
+  demoRow(155, "2026-11-04T08:35:00+02:00", "shiran", "invite.import", {
+    import: "import-staff",
+    created: 4,
+    updated: 1,
+    same: 0,
+    member: 1,
+    invited: 0,
+    expired: 0,
+    kept: 0,
+    roles: { worker: 4, manager: 1 },
+    by: "team",
+  }),
+  demoRow(154, "2026-11-04T08:22:00+02:00", "shiran", "invite.import_undo", {
+    import: "import-wrong",
+    cancelled: 3,
+    kept: 0,
+  }),
+  demoRow(153, "2026-11-04T08:20:00+02:00", "shiran", "invite.import", {
+    import: "import-wrong",
+    created: 3,
+    updated: 0,
+    same: 0,
+    member: 0,
+    invited: 0,
+    expired: 0,
+    kept: 0,
+    roles: { worker: 3 },
+    by: "team",
+  }),
   demoRow(112, "2026-11-03T18:10:00+02:00", "shiran", "schedule.publish", {
     week: "week-8",
     starts_on: "2026-11-08",

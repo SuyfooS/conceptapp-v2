@@ -4047,7 +4047,9 @@
             "claimPlain": "Joined the team",
             "cancel": "Deleted the invite of {name}, {role}",
             "cancelNoName": "Deleted an invite to the team as {role}",
-            "cancelPlain": "Deleted a team invite"
+            "cancelPlain": "Deleted a team invite",
+            "import": "Invited from a list: {made, plural, =0 {{updated, plural, one {one invite updated} other {# invites updated}}} one {one new invite{updated, plural, =0 {} one {, and one invite updated} other {, and # invites updated}}} other {# new invites{updated, plural, =0 {} one {, and one invite updated} other {, and # invites updated}}}}",
+            "importUndo": "{count, plural, one {Deleted one invite from a list} other {Deleted # invites from a list}}"
           },
           "member": {
             "remove": "Removed from the team: {person}, {role}",

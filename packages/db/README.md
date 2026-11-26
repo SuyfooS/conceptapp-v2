@@ -231,6 +231,74 @@ order; `getBusinessSetup` reads an invited one with `link_pending` as
 `pending`), and `public.admin_businesses` counts it among the open invites,
 never the expired. `invite_links_pending.test.sql` covers it.
 
+Inviting from a list (`20261128000300_people_import.sql`; "הזמנה מרשימה",
+part 3; Orel, 25 November 2026: the console first, then /team; each link made
+at the moment of sending; the app sends nothing): a pasted list, read on the
+device by `@domain/people-import`, becomes many invites at once, all or none,
+each saved as the wizard saves its invites (`link_pending`, a hash of no
+token), so /team lists them under "עוד לא קיבלו קישור". Four doors, the
+secret key's alone: `public.team_import_people(actor, business, people)` for
+an active member on the staff who holds team.edit, giving by their own role,
+as `public.team_invite` asks; `public.admin_import_people` for the ConceptApp
+team (`platform_staff`), giving as an owner, as `public.admin_invite` does;
+and their undos, `public.team_import_undo` and `public.admin_import_undo`
+(`actor, business, batch`). Both workers, `private.import_invites` and
+`private.undo_import`, are revoked from everyone. The import locks the
+business's row (`for no key update`, so two imports into one business go in
+turn), is refused in a demo closed to invites (55000), and checks every row
+before reading the team: {name, phone, role, named_role, role_from_line} and
+nothing else, manager or worker only (22023, hint `role`), an Israeli mobile
+(`phone`), a name as `private.team_name` keeps it (`name`), each number once
+(`duplicate`), 1 to 300 rows (22023 for none, 54000 `limit` past 300); a
+refusal names rows by their place (detail), never by a name or a number.
+Then, per row under the invite's lock: a member's number is `member`
+whatever the line says; an owner's or an
+accountant's invite is `kept`; one whose link was made is `invited` (or
+`expired`) and never touched; one with no link the giver may not change (by
+rank, pay, what it holds beyond them, or a named role archived since) is
+`invited`; one they may change keeps its role unless the line named one
+(`role_from_line`) and is `same` or `updated` (name, role, giver, 14 days;
+its hash untouched); any other number is `created`, with `invites.import_id`,
+or `invited` when a single invite to it came first (`on conflict` with
+`invites_open_phone_key`). Only what is written is held to the giver's rules
+(the rank rule, a live named role on its base, and for anyone but an owner no
+pay, 42501 `pay`, and nothing held beyond them, 42501 `held`). From the
+console a number written that is on another business's staff (not as its
+accountant) refuses it all (23505, hint `elsewhere`, the rows' places in the
+detail); the Team screen never asks (#80). Past 500 invites waiting in the
+business: 54000, hint `open`, how many wait in the detail. One
+`invite.import` row when anything was written, ids and counts only (created,
+updated, same, member, invited, expired, kept, by role, team or console); no
+trigger notifies for it. The answer is `{import, rows: [{i, status,
+invite}]}`, no token and no link. The undo, under the business's lock too,
+cancels the import's invites still unclaimed and with no link as
+`public.team_invite_cancel` cancels one (the rows kept), refused (42501) when
+the giver doesn't give one of their roles by rank, and keeps those that got a
+link and are still open (`kept`, which /team can still delete) and those
+claimed (`joined`, counted apart: on the team now, with no invite to delete);
+one `invite.import_undo` row when it cancelled any; a second run, or another
+business's import id, cancels none. An invite an import only updated keeps
+the import that made it, or none, so an undo never takes it back. The
+migration also has `public.archive_business_role` count an invite with no
+link yet as holding its named role whatever its date (55000 `held`), as
+everything else counts it waiting, and `readRoleInvites` in `@db/roles`
+counts the same for the roles screen: an import is the first writer of such
+an invite to a named role, and past its 14 days the archive would otherwise
+leave it with no way to its link. `@db/people-import`: `importPeopleToTeam` and
+`importPeopleFromConsole` (the rows parsed again with `peopleImportRows`,
+`named_role` sent only when set, the answer parsed and held to one row each
+in order), `undoTeamImport` and `undoConsoleImport`, `peopleImportError`
+(the refusals as the screens say them: `notAllowed`, `givesPay`, `demo`,
+`tooMany`, `tooManyOpen` with `open`, `roleGone`, `changed`, `elsewhere` with
+`rows`; `failed` before the migration, `isMissingFunction`), and
+`consoleKnownTeam` (the console's `KnownTeam`: members' numbers by the names
+the business shows, invites nobody claimed, `touchable` for a manager's or a
+worker's but one whose named role was archived). `people_import.test.sql`
+covers the rules, `people-import.test.ts` the calls, and
+`people-import.db.test.ts` the parity with `againstTeam` for an owner, a
+manager and the console, and two sessions at once (a single invite made
+meanwhile, two imports, an undo while a link is made).
+
 A week is written shift by shift (`20261115000100_week_in_place.sql`; Orel's
 answers of 15 November 2026). `public.week_shifts(week)` reads a week's shifts
 under the reader's policies, each with what was seen of it (`seen`, from
@@ -1241,8 +1309,9 @@ own for them, unless it is their own or they join as an owner);
 names (`named_role`, `role_name`, `role_name_en`, only for an invite that
 names one, so any other reads as before) for the join screen.
 `public.archive_business_role` counts open invites to the role (unclaimed,
-unexpired) with the people holding it (55000, hint `held`, both in the
-detail). An expired invite to a role archived since is closed
+unexpired, or since `20261128000300_people_import.sql` with no link yet
+whatever their date) with the people holding it (55000, hint `held`, both in
+the detail). An expired invite to a role archived since is closed
 (`private.invite_closed(business, role, inviter, named)`): the join screen
 reads it as expired, claiming it is P0002, and a fresh link for it, the
 team's (`public.issue_invite_link`) or the business's, is 22023 hint

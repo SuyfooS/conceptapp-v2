@@ -4047,7 +4047,9 @@
             "claimPlain": "הצטרפות לצוות",
             "cancel": "מחיקת ההזמנה של {name}, {role}",
             "cancelNoName": "מחיקת הזמנה לצוות בתור {role}",
-            "cancelPlain": "מחיקת הזמנה לצוות"
+            "cancelPlain": "מחיקת הזמנה לצוות",
+            "import": "הזמנה מרשימה: {made, plural, =0 {{updated, plural, one {הזמנה אחת עודכנה} other {# הזמנות עודכנו}}} one {הזמנה חדשה אחת{updated, plural, =0 {} one {, ועוד הזמנה אחת עודכנה} other {, ועוד # הזמנות עודכנו}}} other {# הזמנות חדשות{updated, plural, =0 {} one {, ועוד הזמנה אחת עודכנה} other {, ועוד # הזמנות עודכנו}}}}",
+            "importUndo": "{count, plural, one {מחיקת הזמנה אחת מרשימה} other {מחיקת # הזמנות מרשימה}}"
           },
           "member": {
             "remove": "הסרה מהצוות: {person}, {role}",
