@@ -201,11 +201,17 @@ async function parityTeam(tx: Tx) {
   });
   await invite(n(73), "Archived", "worker", {
     named: old?.id,
+    pending: false,
     expires: "-1 day",
   });
   await invite(n(74), "Mgr Two", "manager");
-  // After its invite's date, so the archive goes ahead.
+  // The archive waits for an invite with no link whatever its date, so none
+  // is left to an archived role by the app: this one's link ran out first,
+  // and it is then marked as never linked, by hand.
   await tx`select public.archive_business_role(${P.owner}::uuid, ${old?.id ?? null}::uuid)`;
+  await tx`
+    update public.invites set link_pending = true
+    where business_id = ${P_BUSINESS} and phone = ${n(73)} and claimed_at is null`;
 }
 
 /** What the person holds in the business, as the database answers it. */
@@ -667,12 +673,13 @@ describe("an import beside another write at the same moment", () => {
         select public.team_invite_first_link(${OWNER}::uuid, ${invite?.id ?? null}::uuid,
           md5('race link') || md5('race link b'))`,
     );
-    let undone: Promise<{ cancelled: number; kept: number }> | null = null;
+    type Undone = { cancelled: number; kept: number; joined: number };
+    let undone: Promise<Undone> | null = null;
     try {
       undone = underWay(
         second.begin(async (tx) => {
           const [row] = await tx<
-            { result: { cancelled: number; kept: number } }[]
+            { result: Undone }[]
           >`select public.team_import_undo(${OWNER}::uuid, ${RACE}::uuid, ${batch}::uuid) as result`;
           if (!row) throw new Error("No answer");
           return row.result;
@@ -684,7 +691,7 @@ describe("an import beside another write at the same moment", () => {
     }
     // The link made is kept, and works; the other goes.
     if (!undone) throw new Error("The undo never ran");
-    expect(await undone).toEqual({ cancelled: 1, kept: 1 });
+    expect(await undone).toEqual({ cancelled: 1, kept: 1, joined: 0 });
     expect(await openTo([linked, left])).toEqual([
       { phone: linked, full_name: "Link Being Made", link_pending: false },
     ]);

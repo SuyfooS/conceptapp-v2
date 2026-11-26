@@ -74,11 +74,21 @@
 --               are cancelled as public.team_invite_cancel cancels one (the
 --               rows kept for the log: claimed_at, cancelled_at, a hash of no
 --               token). One that got a link meanwhile (it may have been sent)
---               or was claimed stays, and is counted ('kept'). One
---               invite.import_undo row with the id and the counts, when it
---               cancelled any. A second run cancels none; another business's
---               import id cancels none. No demo check: deleting invites never
---               needed one (public.team_invite_cancel has none).
+--               stays, still open, and is counted ('kept': /team can delete
+--               it); one claimed stays too, counted apart ('joined': that
+--               person is on the team now, with no invite left to delete).
+--               One invite.import_undo row with the id and the counts, when
+--               it cancelled any. A second run cancels none; another
+--               business's import id cancels none. No demo check: deleting
+--               invites never needed one (public.team_invite_cancel has none).
+--   archiving   public.archive_business_role counts as holding a named role
+--               an invite with no link yet whatever its date, as everything
+--               else counts it waiting (public.admin_business, the cap
+--               above), and an open link as before: an import is the first
+--               writer of such an invite to a named role, and past its 14
+--               days the archive would otherwise go ahead and leave the
+--               invite with no way to its link (public.team_invite_link
+--               refuses an archived role).
 --   who         public.team_import_people and public.team_import_undo: an
 --               active member on the staff who edits the team (team.edit),
 --               giving by their own role, as public.team_invite asks;
@@ -92,6 +102,12 @@
 -- select policy and its table grant cover the new column. Nothing is sent:
 -- there is no SMS, push or message anywhere in this path. @db/people-import
 -- calls the four public functions.
+--
+-- Replaced, from its latest version and only with what is said above:
+-- public.archive_business_role (20261115001900_named_roles_lists.sql). The
+-- same signature, so its grants stay; nothing in the database calls it, and
+-- the app calls it with the secret key (archiveBusinessRole in @db/roles,
+-- whose readRoleInvites counts the same invites for the roles screen).
 
 ------------------------------------------------------------------------------
 -- 1. Which import made an invite
@@ -408,8 +424,8 @@ $$;
 -- public.team_invite_cancel cancels one, the rows kept for the log. Refused
 -- (42501) when `giver` doesn't give, by rank, a role among them. A claim
 -- under way holds its invite's row, so the update waits for it and then
--- leaves it, claimed. Returns {cancelled, kept}: kept, the import's invites
--- not cancelled that were claimed or got a link.
+-- leaves it, claimed. Returns {cancelled, kept, joined}: kept, the import's
+-- invites still open with the link made for them; joined, those claimed.
 create function private.undo_import(
   business uuid,
   actor uuid,
@@ -424,6 +440,7 @@ as $$
 declare
   cancelled integer;
   left_in integer;
+  joined integer;
 begin
   perform 1 from public.businesses b where b.id = business for no key update;
   if not found then
@@ -449,21 +466,30 @@ begin
     and i.claimed_at is null and i.link_pending;
   get diagnostics cancelled = row_count;
 
-  select count(*)::integer into left_in
+  -- What stays, in two counts the screen words apart: open with its link
+  -- (on /team, where it can still be deleted), and claimed (on the team
+  -- now: nothing to delete). By claimed_at, which a claim sets and a
+  -- deleted profile never clears (claimed_by goes null with it).
+  select
+    (count(*) filter (where i.claimed_at is null))::integer,
+    (count(*) filter (where i.claimed_at is not null))::integer
+  into left_in, joined
   from public.invites i
   where i.business_id = business and i.import_id = batch
     and i.cancelled_at is null
-    and (i.claimed_by is not null or not i.link_pending);
+    and (i.claimed_at is not null or not i.link_pending);
 
   if cancelled > 0 then
     insert into public.audit_log (business_id, actor_id, action, details)
     values (
       business, actor, 'invite.import_undo',
-      jsonb_build_object('import', batch, 'cancelled', cancelled, 'kept', left_in)
+      jsonb_build_object(
+        'import', batch, 'cancelled', cancelled, 'kept', left_in, 'joined', joined
+      )
     );
   end if;
 
-  return jsonb_build_object('cancelled', cancelled, 'kept', left_in);
+  return jsonb_build_object('cancelled', cancelled, 'kept', left_in, 'joined', joined);
 end;
 $$;
 
@@ -561,6 +587,90 @@ begin
   end if;
 
   return private.undo_import(business, actor, 'owner'::public.member_role, batch);
+end;
+$$;
+
+------------------------------------------------------------------------------
+-- 5. Archiving a role an invite with no link yet gives
+
+-- 20261115001900_named_roles_lists.sql's, with only this: an invite nobody
+-- claimed holds the role while its link is open, as before, or while no link
+-- was made for it yet (link_pending), whatever its date, as an invite with
+-- no link waits everywhere else. No caller in the database; the app calls it
+-- with the secret key (archiveBusinessRole in @db/roles).
+create or replace function public.archive_business_role(actor uuid, role_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  target public.business_roles%rowtype;
+  holders integer;
+  sending integer;
+begin
+  select * into target from public.business_roles br where br.id = role_id;
+  if not found then
+    raise exception 'No such role' using errcode = 'P0002';
+  end if;
+
+  perform private.check_role_changer(actor, target.business_id);
+
+  perform 1 from public.businesses b where b.id = target.business_id for no key update;
+  select * into target from public.business_roles br where br.id = role_id for update;
+  if target.archived_at is not null then
+    return;
+  end if;
+
+  select count(*)::integer into holders
+  from public.memberships m
+  where m.named_role = role_id
+    and m.active;
+  holders := holders + (
+    select count(*)::integer
+    from public.invites i
+    where i.named_role = role_id
+      and i.claimed_at is null
+      and (i.link_pending or i.expires_at > now())
+  );
+  if holders > 0 then
+    raise exception 'People hold the role' using errcode = '55000', hint = 'held', detail = holders::text;
+  end if;
+
+  -- A live template that goes to the role when nobody chooses, and a time of
+  -- a live template that sends to it, on or paused: refused too (55000, hint
+  -- 'lists', the count of both as its detail), until each goes to someone
+  -- else, so no list of a template is left for nobody, or for the whole base
+  -- in its place. A list already sent to it stays as it was.
+  select count(*)::integer into sending
+  from public.list_templates t
+  where t.recipient_named_role = role_id
+    and t.archived_at is null;
+  sending := sending + (
+    select count(*)::integer
+    from public.list_schedules ls
+    join public.list_templates t
+      on t.id = ls.template_id and t.business_id = ls.business_id
+    where ls.recipient_named_role = role_id
+      and t.archived_at is null
+  );
+  if sending > 0 then
+    raise exception 'Lists go to the role' using errcode = '55000', hint = 'lists', detail = sending::text;
+  end if;
+
+  update public.memberships m
+  set named_role = null
+  where m.named_role = role_id;
+
+  update public.business_roles br
+  set archived_at = now()
+  where br.id = role_id;
+
+  insert into public.audit_log (business_id, actor_id, action, details)
+  values (
+    target.business_id, actor, 'role.archive',
+    jsonb_build_object('named_role', role_id, 'name', target.name, 'base', target.base)
+  );
 end;
 $$;
 

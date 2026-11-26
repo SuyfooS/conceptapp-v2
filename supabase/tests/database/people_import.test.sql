@@ -12,12 +12,14 @@
 -- of the import. One invite.import row, ids and counts only; nobody told.
 -- From the console a number on another business's staff refuses it all.
 -- The cap of 500 waiting. A full join through an imported invite. The undo:
--- only the import's invites still with no link, the rows kept, by rank, once.
+-- only the import's invites still with no link, the rows kept, by rank, once,
+-- the linked and the joined counted apart. A role an imported invite waits
+-- for its link with isn't archived, even past the invite's date.
 -- Two connections at once are people-import.db.test.ts's. Fixed ids (d7…),
 -- numbers of its own (050-000-77xx; the cap's 050-009-xxxx) and slugs
 -- (pim-…), so nothing here meets the seed or another test.
 begin;
-select plan(59);
+select plan(64);
 
 create temporary table ids (name text primary key, id uuid) on commit drop;
 
@@ -149,8 +151,11 @@ select public.set_role_permission(pg_temp.p(1), pg_temp.a(), 'worker', 'lists.ma
 select public.set_role_permission(pg_temp.p(1), pg_temp.a(), 'manager', 'lists.manage', false);
 
 -- A's other invites: one sent and open, one sent and run out, one deleted,
--- one with no link to the role archived since (after its date, so the
--- archive went ahead), and one with no link to the bar lead.
+-- one with no link to the role archived since, and one with no link to the
+-- bar lead. The archive waits for an invite with no link whatever its date
+-- (section 10), so nothing the app does leaves one to an archived role: it
+-- is made by hand, its link run out when the archive went ahead, then marked
+-- as never linked, to show a list leaves it as it is.
 insert into public.invites (
   business_id, phone, role, named_role, full_name, token_hash, invited_by,
   expires_at, claimed_at, cancelled_at, link_pending
@@ -163,10 +168,12 @@ values
   (pg_temp.a(), pg_temp.ph(29), 'worker', null, 'Cancelled',
    md5('pim 29') || md5('pim 29 b'), pg_temp.p(1), now() + interval '10 days', now(), now(), false),
   (pg_temp.a(), pg_temp.ph(30), 'worker', pg_temp.id('old'), 'Archived Role',
-   md5('pim 30') || md5('pim 30 b'), pg_temp.p(1), now() - interval '1 day', null, null, true),
+   md5('pim 30') || md5('pim 30 b'), pg_temp.p(1), now() - interval '1 day', null, null, false),
   (pg_temp.a(), pg_temp.ph(33), 'worker', pg_temp.id('bar'), 'Bar Person',
    md5('pim 33') || md5('pim 33 b'), pg_temp.p(1), now() + interval '10 days', null, null, true);
 select public.archive_business_role(pg_temp.p(1), pg_temp.id('old'));
+update public.invites i set link_pending = true
+where i.business_id = pg_temp.a() and i.phone = pg_temp.ph(30) and i.claimed_at is null;
 
 -- A's open invites as they were before any import.
 create temporary table before on commit drop as
@@ -275,11 +282,31 @@ select is(
   '42501 @1',
   'a worker who edits the team invites no manager: the rank rule'
 );
+-- 21: the wizard's worker, still with no link, which each may change as it is.
+select is(
+  pg_temp.team(4, pg_temp.a(), jsonb_build_array(pg_temp.person(21, 'Same Name', 'manager', true))),
+  '42501 @1',
+  'nor makes a worker''s invite with no link yet a manager''s by naming the role on its line'
+);
 select is(
   pg_temp.team(2, pg_temp.a(), jsonb_build_array(
     pg_temp.person(45, 'Fine'), pg_temp.person(46, 'Bar New', 'worker', true, pg_temp.id('bar')))),
   '42501 held @2',
   'a manager invites to no role that holds what they don''t'
+);
+select is(
+  pg_temp.team(2, pg_temp.a(), jsonb_build_array(
+    pg_temp.person(21, 'Same Name', 'worker', true, pg_temp.id('bar')))),
+  '42501 held @1',
+  'nor gives it to a worker''s invite with no link yet by naming it on the line'
+);
+select is_empty(
+  $$select 1 from before b join public.invites i on i.id = b.id
+    where b.phone = pg_temp.ph(21)
+      and (i.full_name, i.role, i.named_role, i.invited_by, i.expires_at, i.token_hash, i.link_pending)
+        is distinct from
+        (b.full_name, b.role, b.named_role, b.invited_by, b.expires_at, b.token_hash, b.link_pending)$$,
+  'and that invite is as it was'
 );
 
 -- Managers see pay in A, as an owner may set it.
@@ -455,12 +482,24 @@ select ok(
     from public.invites i
     where i.import_id = (select (g.answer ->> 'import')::uuid from got g)
   )
-  and public.invite_by_token(encode(sha256(convert_to('', 'UTF8')), 'hex')) is null
+  and not exists (
+    select 1 from public.invites i
+    where i.import_id = (select (g.answer ->> 'import')::uuid from got g)
+      and i.token_hash in (
+        select encode(sha256(convert_to(said.v, 'UTF8')), 'hex')
+        from (
+          select g.answer ->> 'import' as v from got g
+          union all
+          select r ->> 'invite' from got g, jsonb_array_elements(g.answer -> 'rows') r
+          where r ->> 'invite' is not null
+        ) said
+      )
+  )
   and not exists (
     select 1 from public.invites i join before b on b.token_hash = i.token_hash
     where i.import_id is not null
   ),
-  'each a hash of no token anyone holds, as the wizard saves them: no link leads to it'
+  'each a hash of no token anyone holds, as the wizard saves them: none the hash of an id the answer gave, or a link from before'
 );
 select results_eq(
   $$select i.phone, i.full_name, i.role::text, i.link_pending, i.token_hash = b.token_hash,
@@ -664,7 +703,7 @@ select is(
 );
 select is(
   public.team_import_undo(pg_temp.p(6), pg_temp.b(2), pg_temp.batch()),
-  '{"cancelled": 0, "kept": 0}'::jsonb,
+  '{"cancelled": 0, "kept": 0, "joined": 0}'::jsonb,
   'another business''s import id deletes nothing in one''s own'
 );
 select is(
@@ -674,8 +713,8 @@ select is(
 );
 select is(
   public.team_import_undo(pg_temp.p(1), pg_temp.a(), pg_temp.batch()),
-  '{"cancelled": 2, "kept": 2}'::jsonb,
-  'the owner takes it back: the invites still with no link go, one that got a link and one claimed stay'
+  '{"cancelled": 2, "kept": 1, "joined": 1}'::jsonb,
+  'the owner takes it back: the invites still with no link go; one that got a link stays, and one claimed is counted apart, as someone on the team now'
 );
 select results_eq(
   $$select i.phone, i.claimed_at is not null, i.cancelled_at is not null, i.claimed_by is null,
@@ -691,12 +730,13 @@ select results_eq(
 select results_eq(
   $$select a.actor_id, a.details from public.audit_log a
     where a.business_id = pg_temp.a() and a.action = 'invite.import_undo'$$,
-  $$values (pg_temp.p(1), jsonb_build_object('import', pg_temp.batch(), 'cancelled', 2, 'kept', 2))$$,
+  $$values (pg_temp.p(1),
+    jsonb_build_object('import', pg_temp.batch(), 'cancelled', 2, 'kept', 1, 'joined', 1))$$,
   'one invite.import_undo row: the import and its counts, nobody named'
 );
 select is(
   public.team_import_undo(pg_temp.p(1), pg_temp.a(), pg_temp.batch()),
-  '{"cancelled": 0, "kept": 2}'::jsonb,
+  '{"cancelled": 0, "kept": 1, "joined": 1}'::jsonb,
   'taken back again, it deletes nothing more'
 );
 select is(
@@ -714,12 +754,12 @@ select is(
   public.admin_import_undo(pg_temp.p(5), pg_temp.a(), (
     public.admin_import_people(pg_temp.p(5), pg_temp.a(),
       jsonb_build_array(pg_temp.person(63, 'Console Undo'))) ->> 'import')::uuid),
-  '{"cancelled": 1, "kept": 0}'::jsonb,
+  '{"cancelled": 1, "kept": 0, "joined": 0}'::jsonb,
   'which takes back its own import'
 );
 select is(
   public.team_import_undo(pg_temp.p(1), pg_temp.a(), (select (g.answer ->> 'import')::uuid from got g)),
-  '{"cancelled": 5, "kept": 0}'::jsonb,
+  '{"cancelled": 5, "kept": 0, "joined": 0}'::jsonb,
   'the owner''s first list taken back deletes the five it made'
 );
 select is_empty(
@@ -732,7 +772,28 @@ select is(
   (select count(*) from public.notifications x
     where x.business_id = pg_temp.a() and x.kind <> 'team.joined'),
   (select n from told),
-  'nobody is told of an undo either; only the two who joined are announced, as ever'
+  'nobody is told of an undo either: nothing new but the joins'
+);
+select results_eq(
+  $$select distinct x.dedupe_key from public.notifications x
+    where x.business_id = pg_temp.a() and x.kind = 'team.joined' order by 1$$,
+  $$values ('team.joined:' || pg_temp.p(13)), ('team.joined:' || pg_temp.p(14))$$,
+  'and only the two who joined are announced, as ever'
+);
+
+-- An imported invite to a named role, past its 14 days with no link yet: it
+-- still waits for its link, so it holds the role as before its date.
+create temporary table lead_wait on commit drop as
+  select public.team_import_people(pg_temp.p(1), pg_temp.a(), jsonb_build_array(
+    pg_temp.person(64, 'Lead Waiting', 'worker', true, pg_temp.id('lead')))) as answer;
+update public.invites i set expires_at = now() - interval '1 day'
+where i.id = (select (w.answer -> 'rows' -> 0 ->> 'invite')::uuid from lead_wait w);
+
+select is(
+  pg_temp.said_by(format('select public.archive_business_role(%L::uuid, %L::uuid)',
+    pg_temp.p(1), pg_temp.id('lead'))),
+  '55000 held @1',
+  'a role is not archived while an imported invite to it waits for its link, even past its date'
 );
 
 ------------------------------------------------------------------------------

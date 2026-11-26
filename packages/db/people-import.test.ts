@@ -341,16 +341,20 @@ describe("importPeopleFromConsole", () => {
 
 describe("taking an import back", () => {
   it("calls each door's undo with the import's id, and reads what it did", async () => {
-    db.answer = { data: { cancelled: 11, kept: 1 }, error: null };
+    db.answer = { data: { cancelled: 11, kept: 1, joined: 2 }, error: null };
+    // Linked and joined apart: the screen tells the manager to delete only
+    // the first on /team.
     expect(await undoTeamImport(ACTOR, BUSINESS, IMPORT)).toEqual({
       ok: true,
       cancelled: 11,
       kept: 1,
+      joined: 2,
     });
     expect(await undoConsoleImport(ACTOR, BUSINESS, IMPORT)).toEqual({
       ok: true,
       cancelled: 11,
       kept: 1,
+      joined: 2,
     });
     expect(db.calls).toEqual([
       {

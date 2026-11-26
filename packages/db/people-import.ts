@@ -79,8 +79,16 @@ export type PeopleUndoDbResult =
       ok: true;
       /** The import's invites cancelled: those still with no link. */
       cancelled: number;
-      /** Those kept: a link was made for them, or they were claimed. */
+      /**
+       * Those kept, still open: a link was made for them (it may have been
+       * sent), so each can still be deleted on /team.
+       */
       kept: number;
+      /**
+       * Those claimed: the person is on the team now, with no invite left to
+       * delete; taking them off is the person's own page.
+       */
+      joined: number;
     }
   | { ok: false; failure: "notAllowed" | "changed" | "failed" };
 
@@ -152,6 +160,7 @@ const ImportAnswer = z.object({
 const UndoAnswer = z.object({
   cancelled: z.int().min(0),
   kept: z.int().min(0),
+  joined: z.int().min(0),
 });
 
 /** The rows as the database takes them: `named_role` only when there is one. */
@@ -246,14 +255,20 @@ async function undoImport(
     throw new Error(`Could not take the import back: ${error.message}`);
   }
   const answer = UndoAnswer.parse(data);
-  return { ok: true, cancelled: answer.cancelled, kept: answer.kept };
+  return {
+    ok: true,
+    cancelled: answer.cancelled,
+    kept: answer.kept,
+    joined: answer.joined,
+  };
 }
 
 /**
  * Takes back an import from the Team screen (`public.team_import_undo`): its
  * invites still with no link are cancelled, kept as rows for the log, and any
- * that got a link or were claimed stay. `notAllowed` when one of them is to
- * a role the actor doesn't give by rank. A second call cancels none.
+ * that got a link (`kept`) or were claimed (`joined`) stay. `notAllowed` when
+ * one of them is to a role the actor doesn't give by rank. A second call
+ * cancels none.
  */
 export function undoTeamImport(
   actorId: string,

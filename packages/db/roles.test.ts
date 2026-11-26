@@ -40,6 +40,8 @@ const db = vi.hoisted(() => ({
   noNamedColumn: false,
   /** The invites have no `named_role` column yet (before R11b's migration). */
   noInviteNamedColumn: false,
+  /** The invites have no `link_pending` yet (before 20261128000200). */
+  noLinkPending: false,
   /** How many times the invites were asked whether they name roles. */
   inviteProbes: 0,
   /** The open invites each read of `public.invites` gets, by their named role. */
@@ -173,7 +175,11 @@ function invitesQuery(key: "publishable" | "secret") {
   };
   const answer = () => {
     db.inviteReads.push(read);
-    return db.noInviteNamedColumn ? missing : { data: db.invites, error: null };
+    const anyOf = String(read.filters.or ?? "");
+    return db.noInviteNamedColumn ||
+      (db.noLinkPending && anyOf.includes("link_pending"))
+      ? missing
+      : { data: db.invites, error: null };
   };
   const narrow =
     (name: string) =>
@@ -191,6 +197,10 @@ function invitesQuery(key: "publishable" | "secret") {
     is: narrow("is"),
     gt: narrow(">"),
     not: narrow("not"),
+    or: (filters: string) => {
+      read.filters.or = filters;
+      return query;
+    },
     order: () => query,
     range: () => query,
     // biome-ignore lint/suspicious/noThenProperty: a stand-in for the query builder, which is awaited.
@@ -354,6 +364,7 @@ beforeEach(() => {
   db.people = [];
   db.noNamedColumn = false;
   db.noInviteNamedColumn = false;
+  db.noLinkPending = false;
   db.inviteProbes = 0;
   db.invites = [];
   db.inviteReads = [];
@@ -907,7 +918,7 @@ describe("open invites to each named role (R11b)", () => {
   const BAR = "93000000-0000-4000-a000-0000000000c2";
   const now = new Date("2026-11-16T10:00:00Z");
 
-  it("are counted by role for the owner under RLS, open ones only", async () => {
+  it("are counted by role for the owner under RLS: a link still open, or none made yet whatever its date", async () => {
     db.invites = [
       { named_role: LEAD },
       { named_role: BAR },
@@ -924,9 +935,31 @@ describe("open invites to each named role (R11b)", () => {
         filters: {
           "business_id =": BUSINESS,
           "claimed_at is": null,
-          "expires_at >": now.toISOString(),
+          // As public.archive_business_role counts them (20261128000300).
+          or: `link_pending.is.true,expires_at.gt.${now.toISOString()}`,
           "named_role not": ["is", null],
         },
+      },
+    ]);
+  });
+
+  it("are the open links alone before link_pending reaches the project", async () => {
+    db.noLinkPending = true;
+    db.invites = [{ named_role: LEAD }];
+    const counts = await getRoleInvitesForOwner(BUSINESS, now);
+    expect(counts.get(LEAD)).toBe(1);
+    expect(db.inviteReads.map((one) => one.filters)).toEqual([
+      {
+        "business_id =": BUSINESS,
+        "claimed_at is": null,
+        or: `link_pending.is.true,expires_at.gt.${now.toISOString()}`,
+        "named_role not": ["is", null],
+      },
+      {
+        "business_id =": BUSINESS,
+        "claimed_at is": null,
+        "expires_at >": now.toISOString(),
+        "named_role not": ["is", null],
       },
     ]);
   });

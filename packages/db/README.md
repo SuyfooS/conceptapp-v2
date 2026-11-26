@@ -249,9 +249,10 @@ turn), is refused in a demo closed to invites (55000), and checks every row
 before reading the team: {name, phone, role, named_role, role_from_line} and
 nothing else, manager or worker only (22023, hint `role`), an Israeli mobile
 (`phone`), a name as `private.team_name` keeps it (`name`), each number once
-(`duplicate`), 1 to 300 rows (54000, `limit`); a refusal names rows by their
-place (detail), never by a name or a number. Then, per row under the invite's
-lock: a member's number is `member` whatever the line says; an owner's or an
+(`duplicate`), 1 to 300 rows (22023 for none, 54000 `limit` past 300); a
+refusal names rows by their place (detail), never by a name or a number.
+Then, per row under the invite's lock: a member's number is `member`
+whatever the line says; an owner's or an
 accountant's invite is `kept`; one whose link was made is `invited` (or
 `expired`) and never touched; one with no link the giver may not change (by
 rank, pay, what it holds beyond them, or a named role archived since) is
@@ -273,10 +274,17 @@ invite}]}`, no token and no link. The undo, under the business's lock too,
 cancels the import's invites still unclaimed and with no link as
 `public.team_invite_cancel` cancels one (the rows kept), refused (42501) when
 the giver doesn't give one of their roles by rank, and keeps those that got a
-link or were claimed (`kept`); one `invite.import_undo` row when it
-cancelled any; a second run, or another business's import id, cancels none.
-An invite an import only updated keeps the import that made it, or none, so
-an undo never takes it back. `@db/people-import`: `importPeopleToTeam` and
+link and are still open (`kept`, which /team can still delete) and those
+claimed (`joined`, counted apart: on the team now, with no invite to delete);
+one `invite.import_undo` row when it cancelled any; a second run, or another
+business's import id, cancels none. An invite an import only updated keeps
+the import that made it, or none, so an undo never takes it back. The
+migration also has `public.archive_business_role` count an invite with no
+link yet as holding its named role whatever its date (55000 `held`), as
+everything else counts it waiting, and `readRoleInvites` in `@db/roles`
+counts the same for the roles screen: an import is the first writer of such
+an invite to a named role, and past its 14 days the archive would otherwise
+leave it with no way to its link. `@db/people-import`: `importPeopleToTeam` and
 `importPeopleFromConsole` (the rows parsed again with `peopleImportRows`,
 `named_role` sent only when set, the answer parsed and held to one row each
 in order), `undoTeamImport` and `undoConsoleImport`, `peopleImportError`
@@ -1301,8 +1309,9 @@ own for them, unless it is their own or they join as an owner);
 names (`named_role`, `role_name`, `role_name_en`, only for an invite that
 names one, so any other reads as before) for the join screen.
 `public.archive_business_role` counts open invites to the role (unclaimed,
-unexpired) with the people holding it (55000, hint `held`, both in the
-detail). An expired invite to a role archived since is closed
+unexpired, or since `20261128000300_people_import.sql` with no link yet
+whatever their date) with the people holding it (55000, hint `held`, both in
+the detail). An expired invite to a role archived since is closed
 (`private.invite_closed(business, role, inviter, named)`): the join screen
 reads it as expired, claiming it is P0002, and a fresh link for it, the
 team's (`public.issue_invite_link`) or the business's, is 22023 hint

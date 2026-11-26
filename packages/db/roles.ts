@@ -311,29 +311,49 @@ export async function getRolePeopleForTeam(
 export type RoleInvites = ReadonlyMap<string, number>;
 
 /**
- * How many invites nobody claimed, and that haven't expired, name each of
- * the business's named roles (the roles plan's R11b), read with `supabase`:
- * an open invite holds a role as a person does, so it can't be archived
+ * How many invites nobody claimed, and that still wait, name each of the
+ * business's named roles (the roles plan's R11b), read with `supabase`: an
+ * open invite holds a role as a person does, so it can't be archived
  * (`public.archive_business_role`, 55000 `held`), and the screen says so
- * before it is tried. None before 20261115001600_named_roles_give.sql
- * reaches a project, when no invite names one.
+ * before it is tried. One waits while its link is open, or, with no link made
+ * yet (`link_pending`, a list's or the wizard's), whatever its date, as the
+ * archive counts it since 20261128000300_people_import.sql. Before
+ * 20261128000200_invite_links_pending.sql reaches a project there is no
+ * `link_pending`, and the open links alone are counted; none before
+ * 20261115001600_named_roles_give.sql, when no invite names one.
  */
 async function readRoleInvites(
   supabase: SupabaseClient<Database>,
   businessId: string,
   now: Date,
 ): Promise<RoleInvites> {
-  const { data, error } = await readAllPages((first, last) =>
+  const at = now.toISOString();
+  let read = await readAllPages((first, last) =>
     supabase
       .from("invites")
       .select("named_role")
       .eq("business_id", businessId)
       .is("claimed_at", null)
-      .gt("expires_at", now.toISOString())
+      .or(`link_pending.is.true,expires_at.gt.${at}`)
       .not("named_role", "is", null)
       .order("id")
       .range(first, last),
   );
+  if (isMissingColumn(read.error)) {
+    // Before link_pending: every invite got its link, so its date says.
+    read = await readAllPages((first, last) =>
+      supabase
+        .from("invites")
+        .select("named_role")
+        .eq("business_id", businessId)
+        .is("claimed_at", null)
+        .gt("expires_at", at)
+        .not("named_role", "is", null)
+        .order("id")
+        .range(first, last),
+    );
+  }
+  const { data, error } = read;
   if (isMissingColumn(error)) return new Map();
   if (error) throw error;
   const counts = new Map<string, number>();

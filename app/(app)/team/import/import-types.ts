@@ -53,7 +53,11 @@ export type PeopleUndoResult =
       ok: true;
       /** The import's invites cancelled: those still with no link. */
       cancelled: number;
-      /** Those kept: a link was made for them, or they were claimed. */
+      /**
+       * Those kept, still open: a link was made for them, so each can be
+       * deleted on /team ("done.removedKept"). The database counts those
+       * claimed apart (`joined` in @db/people-import), never as these.
+       */
       kept: number;
     }
   | { ok: false; failure: PeopleImportFailure };
