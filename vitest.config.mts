@@ -11,6 +11,8 @@ export default defineConfig({
       // Server code of the app with tests beside it (the file for payroll's
       // XLSX and ZIP writers).
       "app/**/*.test.ts",
+      // The test business's plan and its guards (docs/measure.md).
+      "measure/**/*.test.ts",
     ],
     // Database tests run on their own: `pnpm test:db`.
     exclude: ["**/*.db.test.ts", "node_modules/**"],

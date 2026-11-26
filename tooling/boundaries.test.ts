@@ -16,6 +16,7 @@ import {
   crossModuleImports,
   crossModuleViolations,
   importSpecifiers,
+  sourceFiles,
 } from "./boundaries";
 
 const root = join(__dirname, "..");
@@ -76,6 +77,25 @@ describe("crossModuleImports", () => {
 
   it("finds no violations in the repository", () => {
     expect(crossModuleViolations(root)).toEqual([]);
+  });
+});
+
+// The measuring tools (measure/) read the app through its screens and the
+// database; nothing the app ships may lean on them in turn.
+describe("measure/", () => {
+  it("is imported by nothing in app/, packages/ or modules/", () => {
+    const leaning = ["app", "packages", "modules"].flatMap((dir) =>
+      sourceFiles(dir, root).flatMap((file) =>
+        importSpecifiers(readFileSync(join(root, file), "utf8"))
+          .filter(
+            (specifier) =>
+              /(^|\/)measure(\/|$)/.test(specifier) &&
+              (specifier.startsWith(".") || specifier.startsWith("@/")),
+          )
+          .map((specifier) => `${file}: ${specifier}`),
+      ),
+    );
+    expect(leaning).toEqual([]);
   });
 });
 
@@ -315,6 +335,20 @@ const cases: { path: string; from: string; blocked: boolean }[] = [
   { path: "modules/probe", from: "@/app/layout", blocked: true },
   { path: "modules/probe", from: "@modules/other/manifest", blocked: false },
   { path: "modules/probe", from: "@domain/phone", blocked: false },
+  { path: "measure/probe", from: "@/app/layout", blocked: true },
+  { path: "measure/probe", from: "@db/client", blocked: true },
+  { path: "measure/probe", from: "@ui/button", blocked: true },
+  {
+    path: "measure/probe",
+    from: "@modules/scheduling/settings",
+    blocked: true,
+  },
+  {
+    path: "measure/probe",
+    from: "@modules/scheduling/manifest",
+    blocked: false,
+  },
+  { path: "measure/probe", from: "@domain/phone", blocked: false },
 ];
 
 /** Biome configurations below `dir`, which the probes' copy would leave out. */
@@ -336,9 +370,11 @@ describe("Biome layer rules", () => {
   });
 
   it("come from biome.json alone, so a copy of it is the whole picture", () => {
-    expect([...nestedConfigs("packages"), ...nestedConfigs("modules")]).toEqual(
-      [],
-    );
+    expect([
+      ...nestedConfigs("packages"),
+      ...nestedConfigs("modules"),
+      ...nestedConfigs("measure"),
+    ]).toEqual([]);
   });
 
   it("blocks every forbidden import and allows the permitted ones", () => {
