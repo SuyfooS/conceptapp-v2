@@ -13,6 +13,7 @@ import {
   suggestedRange,
   WEEKDAY_KEYS,
 } from "@domain/availability-form";
+import { isolate } from "@domain/bidi";
 import { cn } from "@ui/cn";
 import { IconButton } from "@ui/icon-button";
 import { ListGroup } from "@ui/list-row";
@@ -22,7 +23,7 @@ import { UndoRow } from "@ui/undo-row";
 import { Plus, X } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
-import { isolate, rangeWords } from "./range-words";
+import { rangeWords } from "./range-words";
 
 export type Row = { id: number; start: string; end: string };
 
