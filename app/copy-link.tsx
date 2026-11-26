@@ -26,6 +26,7 @@ export function CopyLink({
   failed: failedLabel,
   main = false,
   buttonRef,
+  onCopied,
 }: {
   link: string;
   label: string;
@@ -38,12 +39,18 @@ export function CopyLink({
   main?: boolean;
   /** The copy button, for a screen that brings the focus there. */
   buttonRef?: Ref<HTMLButtonElement>;
+  /**
+   * A copy went, after it was said: for a list that moves on to the next
+   * person ("עוד לא קיבלו קישור"). Given the copy button. Never for one the
+   * browser refused, whose field takes the focus instead.
+   */
+  onCopied?: (button: HTMLButtonElement) => void;
 }) {
   const [copied, setCopied] = useState<"copied" | "failed" | null>(null);
   const labelId = useId();
   const field = useRef<HTMLInputElement>(null);
 
-  const onCopy = async () => {
+  const onCopy = async (button: HTMLButtonElement) => {
     try {
       await navigator.clipboard.writeText(link);
     } catch {
@@ -56,6 +63,7 @@ export function CopyLink({
     }
     setCopied("copied");
     announce(copiedLabel);
+    onCopied?.(button);
   };
 
   return (
@@ -77,7 +85,7 @@ export function CopyLink({
         type="button"
         variant={main ? "primary" : "secondary"}
         size={main ? "lg" : "md"}
-        onClick={onCopy}
+        onClick={(event) => onCopy(event.currentTarget)}
         aria-describedby={labelId}
         className="w-full md:w-auto md:self-start"
       >

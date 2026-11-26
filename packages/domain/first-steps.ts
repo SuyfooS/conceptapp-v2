@@ -51,13 +51,23 @@ export const FIRST_STEP_MODULE: Record<FirstStepKey, ModuleKey | null> = {
  */
 export const OPTIONAL_STEPS: readonly FirstStepKey[] = ["clockCode"];
 
-/** The staff (`isSetupStaff`): joined, and invited with no one joined yet. */
+/**
+ * The staff (`isSetupStaff`): joined, and invited with no one joined yet;
+ * and everyone still waiting for a link, whatever their role.
+ */
 export type TeamProgress = {
   joined: number;
-  /** Open invites. */
+  /** Open invites: a link was made, and is still good. */
   invited: number;
   /** Invites that ran out before anyone joined through them. */
   expired: number;
+  /**
+   * Invites nobody got a link for yet (the console's wizard saves its staff
+   * so): "# אנשים עוד לא קיבלו קישור", not "הוזמנו". Every one of them, a
+   * second owner's and an accountant's too, as the Team screen and Today's
+   * team row count them, so the three say one number.
+   */
+  pending: number;
 };
 
 export type FirstStepsFacts = {
@@ -106,6 +116,9 @@ export type FirstStepsData = {
  * Where the team stands, counted as the console's checklist counts its staff
  * (`isSetupStaff`: managers and workers; a named role by the role it is
  * built on). Another owner and an accountant, joined or invited, never count.
+ * Those still waiting for a link are counted whatever their role, as the
+ * Team screen and Today's team row count them: the step's words say how many
+ * links the owner has left to send, and the step stays on the staff.
  */
 export function teamProgress(
   team: Pick<Team, "members" | "invites">,
@@ -115,8 +128,47 @@ export function teamProgress(
     joined: team.members.filter((member) => isSetupStaff(member.role)).length,
     invited: invites.filter((invite) => invite.state === "open").length,
     expired: invites.filter((invite) => invite.state === "expired").length,
+    pending: team.invites.filter((invite) => invite.state === "pending").length,
   };
 }
+
+/**
+ * Which words the team's step says (`app.home.firstSteps.steps.team.*`).
+ * How many are still waiting for a link, while any are, since sending them
+ * is the owner's to do (plan 3.1): after how many joined once one of the
+ * staff did (`donePending`), else alone. With none waiting, once one joined,
+ * how many did and how many more were sent a link; before that, how many
+ * were sent one, then how many ran out. An invite nobody got a link for is
+ * never "הוזמנו".
+ */
+export function teamStepWords(
+  progress: TeamProgress,
+):
+  | "donePending"
+  | "doneWaiting"
+  | "done"
+  | "pending"
+  | "waiting"
+  | "expired"
+  | "none" {
+  const { joined, invited, expired, pending } = progress;
+  if (joined > 0) {
+    if (pending > 0) return "donePending";
+    return invited > 0 ? "doneWaiting" : "done";
+  }
+  if (pending > 0) return "pending";
+  if (invited > 0) return "waiting";
+  if (expired > 0) return "expired";
+  return "none";
+}
+
+/** Nobody of the staff joined, was invited or is waiting for a link yet. */
+export const NO_TEAM_PROGRESS: TeamProgress = {
+  joined: 0,
+  invited: 0,
+  expired: 0,
+  pending: 0,
+};
 
 const hasText = (value: string | null) =>
   value !== null && value.trim().length > 0;
@@ -190,13 +242,16 @@ export function nextStep(steps: readonly FirstStep[]): FirstStep | null {
 
 /**
  * The screen that does the step, done or not, so a done one can be checked.
- * The team's is its invite while nobody joined or was invited yet.
+ * The team's is its invite while nobody joined or was invited yet; with
+ * anyone waiting for a link, the Team screen, where each one's is made.
  */
 export function firstStepHref(step: FirstStep): `/${string}` {
   switch (step.key) {
     case "team": {
-      const { joined, invited, expired } = step.progress;
-      return joined + invited + expired === 0 ? "/team/invite" : "/team";
+      const { joined, invited, expired, pending } = step.progress;
+      return joined + invited + expired + pending === 0
+        ? "/team/invite"
+        : "/team";
     }
     case "shifts":
       return "/manage/scheduling";

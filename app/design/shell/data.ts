@@ -305,6 +305,12 @@ export const teamSwapsLeft: Record<
 export const swapsLeftOf = (person: string) =>
   teamSwapsLeft[person] ?? { swaps: 0, reopened: 0 };
 
+/**
+ * The demo's invites nobody claimed: Dana's open, Ron's expired, and two the
+ * console's wizard saved with no link yet (inviting from a list, part 2),
+ * Lior's past its date, which a pending invite never reads as, so both show
+ * under "עוד לא קיבלו קישור" on /design/shell/team.
+ */
 export const teamInvites: TeamInvite[] = [
   {
     id: "dana",
@@ -320,6 +326,22 @@ export const teamInvites: TeamInvite[] = [
     phone: "+972581234567",
     role: "worker",
     expiresAt: "2026-10-18T09:00:00+03:00",
+  },
+  {
+    id: "ido",
+    name: "עידו ברק",
+    phone: "+972551234567",
+    role: "manager",
+    expiresAt: "2026-11-05T09:00:00+02:00",
+    linkPending: true,
+  },
+  {
+    id: "lior",
+    name: "ליאור גבאי",
+    phone: "+972521234568",
+    role: "worker",
+    expiresAt: "2026-10-20T09:00:00+03:00",
+    linkPending: true,
   },
 ];
 

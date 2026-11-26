@@ -1249,6 +1249,7 @@ export type Database = {
           full_name: string | null;
           id: string;
           invited_by: string | null;
+          link_pending: boolean;
           named_role: string | null;
           phone: string;
           role: Database["public"]["Enums"]["member_role"];
@@ -1265,6 +1266,7 @@ export type Database = {
           full_name?: string | null;
           id?: string;
           invited_by?: string | null;
+          link_pending?: boolean;
           named_role?: string | null;
           phone: string;
           role?: Database["public"]["Enums"]["member_role"];
@@ -1280,6 +1282,7 @@ export type Database = {
           full_name?: string | null;
           id?: string;
           invited_by?: string | null;
+          link_pending?: boolean;
           named_role?: string | null;
           phone?: string;
           role?: Database["public"]["Enums"]["member_role"];
@@ -5435,6 +5438,10 @@ export type Database = {
       team_invite_cancel: {
         Args: { actor: string; at_time?: string; invite: string };
         Returns: undefined;
+      };
+      team_invite_first_link: {
+        Args: { actor: string; invite: string; new_token_hash: string };
+        Returns: string;
       };
       team_invite_link: {
         Args: { actor: string; invite: string; new_token_hash: string };

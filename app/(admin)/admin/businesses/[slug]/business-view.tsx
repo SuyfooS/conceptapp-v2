@@ -92,7 +92,9 @@ export async function BusinessView({
   const tAccess = await getTranslations("app.manage.access");
   const tRoles = await getTranslations("app.manage.roles");
   const template = templateName(t, business.templateKey);
-  // Someone whose invite ran out can't join through it, so they don't count.
+  // Someone whose invite ran out can't join through it, so they don't count;
+  // one waiting for the owners to send their first link does, whatever its
+  // date (`pending` is never expired).
   const count = (r: Role) =>
     business.people.filter((p) => p.role === r && p.status !== "expired")
       .length;
@@ -426,11 +428,15 @@ function People({
   const name = (n: string) => n || t("setup.people.noName");
   const phone = (p: string | null) =>
     p ? <span dir="ltr">{displayIsraeliMobile(p)}</span> : null;
+  // One nobody got a link for yet (the wizard's) says so, as the owners'
+  // Team screen does: never "הוזמן", nor "ההזמנה פגה" once its date passed.
   const status = (s: SetupPerson["status"]) =>
     s === "expired" ? (
       <Badge tone="danger">{t("setup.people.expired")}</Badge>
     ) : s === "invited" ? (
       <Badge tone="warning">{t("setup.people.invited")}</Badge>
+    ) : s === "pending" ? (
+      <Badge tone="accent">{t("setup.people.pending")}</Badge>
     ) : (
       <span className="text-ink-2">{t("setup.people.member")}</span>
     );
@@ -438,6 +444,28 @@ function People({
   // the page reads again and the row moves up.
   const key = (p: SetupPerson) =>
     p.inviteId ?? `member-${p.phone ?? ""}-${p.name}`;
+  // An invite's link, and for one waiting for its first who sends it.
+  const invite = (p: SetupPerson) => {
+    if (!p.inviteId) return null;
+    const link = (
+      <InviteLink
+        inviteId={p.inviteId}
+        name={name(p.name)}
+        renew={p.status === "expired"}
+        issue={issue}
+      />
+    );
+    return p.status === "pending" ? (
+      <div className="flex flex-col gap-2">
+        <p className="text-pretty text-ink-2 text-sm">
+          {t("setup.people.pendingHint")}
+        </p>
+        {link}
+      </div>
+    ) : (
+      link
+    );
+  };
 
   return (
     <PageSection
@@ -473,16 +501,7 @@ function People({
                 trailing={
                   person.status === "member" ? null : status(person.status)
                 }
-                below={
-                  person.inviteId ? (
-                    <InviteLink
-                      inviteId={person.inviteId}
-                      name={name(person.name)}
-                      renew={person.status === "expired"}
-                      issue={issue}
-                    />
-                  ) : null
-                }
+                below={invite(person)}
               />
             ))}
           </PersonList>
@@ -527,16 +546,7 @@ function People({
                     </td>
                     <td className={td}>{t(`memberRoles.${person.role}`)}</td>
                     <td className={td}>{status(person.status)}</td>
-                    <td className={cn(td, "w-2/5")}>
-                      {person.inviteId ? (
-                        <InviteLink
-                          inviteId={person.inviteId}
-                          name={name(person.name)}
-                          renew={person.status === "expired"}
-                          issue={issue}
-                        />
-                      ) : null}
-                    </td>
+                    <td className={cn(td, "w-2/5")}>{invite(person)}</td>
                   </tr>
                 ))}
               </tbody>

@@ -45,6 +45,15 @@ export function InviteLinks({ children }: { children: ReactNode }) {
 }
 
 /**
+ * The links made on screen (`InviteLinks`), for the other row that makes
+ * them: "עוד לא קיבלו קישור"'s (`SendLinkRow`), so a link made there is the
+ * one every shape shows too. Null outside one.
+ */
+export function useInviteLinks(): Links | null {
+  return use(LinksContext);
+}
+
+/**
  * "New link" for one invite nobody claimed: issues a fresh link (the old
  * one stops working), then shows it with a copy button to send on, in
  * every shape of the screen (`InviteLinks`). The press went as the link

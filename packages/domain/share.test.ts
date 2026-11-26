@@ -10,6 +10,7 @@ import {
   shareText,
   weekRange,
   whatsappHref,
+  whatsappToHref,
 } from "./share";
 
 // Sunday 22 November 2026 is next week; this week began on the 15th.
@@ -36,6 +37,55 @@ describe("whatsappHref", () => {
     expect(href).toContain("%0A");
     expect(href).not.toContain("+");
     expect(href).not.toContain("#");
+  });
+});
+
+// Inviting from a list, part 2: each person's link, in a chat to their
+// number (the plan's 3.6). The person still presses send in WhatsApp.
+describe("whatsappToHref", () => {
+  const link = "https://example.test/join/AbC-12_xyz";
+  const text = shareText(
+    "הוזמנת להצטרף לצוות של קפה & בר #1 באפליקציה. נכנסים מהקישור, עם המספר הזה:",
+    link,
+  );
+
+  it("opens a chat to the number's digits alone, the text written", () => {
+    const href = whatsappToHref("+972501234567", text);
+    expect(href.startsWith("https://wa.me/972501234567?text=")).toBe(true);
+    const url = new URL(href);
+    expect(url.pathname).toBe("/972501234567");
+    expect([...url.searchParams.keys()]).toEqual(["text"]);
+    expect(textOf(href)).toBe(text);
+    // The link on its own line, and nothing a link would cut.
+    expect(textOf(href)?.split("\n")).toEqual([
+      "הוזמנת להצטרף לצוות של קפה & בר #1 באפליקציה. נכנסים מהקישור, עם המספר הזה:",
+      link,
+    ]);
+    expect(href).toContain("%0A");
+    expect(href).not.toContain("+");
+    expect(href).not.toContain("#");
+    expect(href).not.toContain(" ");
+  });
+
+  it("takes only a number in E.164, never one as typed", () => {
+    for (const phone of [
+      "050-123-4567",
+      "0501234567",
+      "972501234567",
+      "+972 50 123 4567",
+      "+0501234567",
+      "",
+      "+97250123456789012",
+    ]) {
+      expect(() => whatsappToHref(phone, text), phone).toThrow();
+    }
+  });
+
+  it("names nobody to send it to only without a number (`whatsappHref`)", () => {
+    expect(new URL(whatsappHref(text)).pathname).toBe("/");
+    expect(new URL(whatsappToHref("+972521234567", text)).pathname).toBe(
+      "/972521234567",
+    );
   });
 });
 

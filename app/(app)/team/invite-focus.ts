@@ -41,3 +41,23 @@ export function invitesLeft(
 ): boolean {
   return ids.some((id) => !gone.has(id));
 }
+
+/**
+ * Whether a section says what became of deleted invite `id`
+ * (`InviteCancelUndo`): its "ביטול" while it waits (`held`), or why it
+ * couldn't be deleted (`refusal`). One that lists every invite (no `ids`:
+ * the desktop's table) says it of any; one that lists some (`ids`: a phone's
+ * and a tablet's "עוד לא קיבלו קישור" and the invites under it) of its own.
+ * The line above a phone's and a tablet's lists (`strays`: every invite the
+ * screen read) says only a refusal of one it reads no more, claimed or
+ * deleted meanwhile ("gone"), which neither list says, so each shape says
+ * every refusal once.
+ */
+export function cancelSaid(
+  id: string,
+  what: "held" | "refusal",
+  where: { ids?: readonly string[]; strays?: readonly string[] },
+): boolean {
+  if (where.strays) return what === "refusal" && !where.strays.includes(id);
+  return where.ids === undefined || where.ids.includes(id);
+}

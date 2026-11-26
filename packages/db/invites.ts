@@ -275,6 +275,38 @@ export async function issueTeamInviteLink(
 }
 
 /**
+ * The first link of an invite nobody got one for yet (`link_pending`: the
+ * console's wizard saved it so), as `issueTeamInviteLink`, through
+ * `public.team_invite_first_link`: `linked` once any link was made for it
+ * meanwhile (another screen, someone else, the console), and then none is
+ * made, so the link already sent keeps working. Only someone who may send
+ * the invite's links learns that; anyone else is refused as ever.
+ */
+export async function issueFirstInviteLink(
+  actorId: string,
+  inviteId: string,
+): Promise<TeamInviteResult | { ok: false; error: "linked" }> {
+  const token = newInviteToken();
+  const { data, error } = await createAdminClient().rpc(
+    "team_invite_first_link",
+    {
+      actor: actorId,
+      invite: inviteId,
+      new_token_hash: hashInviteToken(token),
+    },
+  );
+  if (error) {
+    if (error.code === "P0002" && error.hint === "linked") {
+      return { ok: false, error: "linked" };
+    }
+    const known = teamInviteError(error.code, error.hint);
+    if (known) return { ok: false, error: known };
+    throw new Error(`Could not issue a first invite link: ${error.message}`);
+  }
+  return { ok: true, token, phone: z.string().parse(data) };
+}
+
+/**
  * Someone on the ConceptApp team invites a number to a business from the
  * console, in any role (`public.admin_invite`): a new invite, or a fresh
  * name, role and link for the invite the number already has, open or

@@ -14,7 +14,11 @@ import {
   currentTeam,
 } from "../team";
 import { baseWording, translator } from "../wording";
-import { cancelInviteAction, resendInviteAction } from "./actions";
+import {
+  cancelInviteAction,
+  firstLinkAction,
+  resendInviteAction,
+} from "./actions";
 import { currentTeamFiles } from "./file-status";
 import { TeamFreshness } from "./team-freshness";
 import { TeamView } from "./team-view";
@@ -39,6 +43,11 @@ export async function generateMetadata(): Promise<Metadata> {
 // complete their file is, in a holder's words or as a count; someone who
 // holds the files without seeing the team (the accountant) gets the files
 // alone, each row leading to the file, with no numbers and no invites.
+// The invites nobody got a link for yet (the console's wizard saves its
+// staff so) come first, under "עוד לא קיבלו קישור": each one's link is made
+// there, then sent on WhatsApp to that number or copied (inviting from a
+// list, part 2), and refused once a link was made meanwhile elsewhere, so
+// the link already sent keeps working. The app sends nothing.
 export default async function TeamPage() {
   const [member, enabled] = await Promise.all([
     currentMember(),
@@ -61,11 +70,17 @@ export default async function TeamPage() {
       {/* Read again when shown after someone was taken off the team. */}
       <TeamFreshness />
       <TeamView
+        // One person's screen of one business: when someone else signs in on
+        // this browser, or the business changes, it starts afresh
+        // (cacheComponents keeps React state across navigations, sign-in
+        // too), so no row held, link made or deletion waiting outlives them.
+        key={`${member.userId.toLowerCase()}:${membership.business.id.toLowerCase()}`}
         team={team}
         viewer={membership}
         inviteHref={open ? "/team/invite" : undefined}
         peopleHref="/team"
         resend={resendInviteAction}
+        firstLink={firstLinkAction}
         cancel={
           seesTeam && canWrite(member.viewing) && canEditTeam(membership)
             ? cancelInviteAction.bind(null, membership.business.id)
@@ -75,6 +90,9 @@ export default async function TeamPage() {
         named={named}
         files={files}
         filesOnly={!seesTeam}
+        businessName={membership.business.name}
+        // Each link to the number it was made for: the real screen alone.
+        whatsappToNumber
         wording={await currentWording()}
       />
     </>

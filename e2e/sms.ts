@@ -88,3 +88,18 @@ export async function setDemoModule(
     where business_id = '00000000-0000-4000-b000-000000000001'
       and module_key = ${key}`;
 }
+
+/**
+ * How many login codes the dev SMS hook stored for `phone` (E.164) after the
+ * one with id `after` (`lastCodeId`), at once: for a test that shows nothing
+ * sent a number a code, as `codeAfter` would wait a second to show.
+ */
+export async function codesSince(
+  phone: string,
+  after: number,
+): Promise<number> {
+  const rows = await sql<{ count: number }[]>`
+    select count(*)::int as count from dev.sms_codes
+    where phone = ${phone} and id > ${after}`;
+  return rows[0]?.count ?? 0;
+}

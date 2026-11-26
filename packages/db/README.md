@@ -193,6 +193,44 @@ business's row, even one equal to their own name, which stays when they
 rename themselves, and the row says it beside their own where it differs
 (`keptNameOf` in @domain/profile). `invite_names.test.sql` covers it.
 
+Invites nobody got a link for yet (`20261128000200_invite_links_pending.sql`;
+inviting from a list, part 2; Orel, 25 November 2026: each person's link is
+made at the moment of sending): `invites.link_pending` is true while no link
+was ever made for an invite. `public.create_business`, the console's wizard,
+now saves its staff so (its hash is of no token anyone holds, as before);
+every other writer of a new invite returns its link and keeps the default
+false. The invites saved before were marked once from the audit log
+(`private.mark_links_pending`: an open invite with no `invite.create` or
+`invite.send` of its own business naming it; every function that ever made a
+link logs one), and the trigger `invites_link_given`
+(`private.invite_link_given`) clears the flag whenever an open invite gets a
+new `token_hash`, so `public.team_invite_link`, `public.team_invite`'s
+refresh, `public.issue_invite_link` and `public.admin_invite`'s renewal all
+clear it and none of them was redefined; `public.team_invite_cancel` writes a
+hash of no token but closes the row in the same update, and leaves it.
+Nothing sets it back. Both private functions are revoked from public, anon
+and authenticated. Read under the invites' policy as before: `@db/team`'s
+`openInvites` reads it (a step more of `isMissingColumn`, false before the
+migration), `TeamInvite.linkPending`, and `buildTeam` gives such an invite
+the state `pending` whatever its date, first by name, counted apart
+(`counts.pending`; `open` and `expired` count only invites with a link). The
+Team screen lists them under "עוד לא קיבלו קישור", where each one's link is
+made with `public.team_invite_first_link` (`issueFirstInviteLink`,
+`firstLinkAction`): `team_invite_link` with every check it makes, but only
+while the invite is still pending, its row locked first; once a link was
+made meanwhile elsewhere it is refused (P0002, hint `linked`, told only to
+someone who edits that team), so a screen not read again never replaces a
+link already sent ("קישור חדש" still calls `team_invite_link`, which
+replaces one on purpose; service_role only). The link is then sent on
+WhatsApp to that number (`whatsappToHref` in @domain/share) or copied; the
+app sends nothing. The console says so too: `public.admin_business` gives
+each person `link_pending` and such an invite the status `invited` whatever
+its date, listed with the open ones (its statuses stay the three the code
+before reads, so the migration and the code may reach a project in either
+order; `getBusinessSetup` reads an invited one with `link_pending` as
+`pending`), and `public.admin_businesses` counts it among the open invites,
+never the expired. `invite_links_pending.test.sql` covers it.
+
 A week is written shift by shift (`20261115000100_week_in_place.sql`; Orel's
 answers of 15 November 2026). `public.week_shifts(week)` reads a week's shifts
 under the reader's policies, each with what was seen of it (`seen`, from

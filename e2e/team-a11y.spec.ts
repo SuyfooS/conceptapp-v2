@@ -22,6 +22,9 @@ const tl = tt.link;
 // The twin's two invites (app/design/shell/data.ts): one open, one expired.
 const DANA = "דנה אברהם";
 const RON = "רון שפירא";
+// And two the console's wizard saved with no link yet, by name.
+const LIOR = "ליאור גבאי";
+const IDO = "עידו ברק";
 
 /** Where the invite test keeps what the role's alert said before, on the page's window. */
 type RoleWords = { roleWords?: Node[] };
@@ -290,6 +293,103 @@ test("the team twin's new link stays when the screen crosses from the table to t
   await page.setViewportSize({ width: 1024, height: 900 });
   await expect(field).toHaveValue(link);
   await expect(newLinkFor(page, RON)).toHaveCount(0);
+});
+
+// "עוד לא קיבלו קישור" (inviting from a list, part 2), on the twin's two
+// invites the wizard saved with no link: each one's link made at the moment
+// of sending, WhatsApp taking the focus; after WhatsApp or a copy the row
+// says so, and the focus goes on to the next person's "יצירת קישור", whose
+// name the announcer says. A twin's WhatsApp names no number (a made-up one
+// may be someone's), and the test keeps it from opening.
+test("the team twin's links for those with none go one person at a time, the focus on to the next", async ({
+  page,
+}) => {
+  const tp = tt.pending;
+  const main = page.getByRole("main");
+  const polite = announcer(page, "polite");
+  const create = (name: string) =>
+    page
+      .getByRole("button", {
+        name: heT("app.team.pending.createFor", { name }),
+      })
+      .filter({ visible: true });
+  const whatsappFor = (name: string) =>
+    page
+      .getByRole("link", {
+        name: heT("app.team.pending.whatsappFor", { name }),
+      })
+      .filter({ visible: true });
+  const said = (words: string) =>
+    main.getByText(words, { exact: true }).filter({ visible: true });
+
+  await page.goto("/design/shell/team");
+  await expect(create(LIOR)).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  await expect(said(heT("app.team.pending.count", { count: 2 }))).toHaveCount(
+    1,
+  );
+  // WhatsApp is a link the press itself opens: kept from opening here.
+  await page.evaluate(() =>
+    document.addEventListener(
+      "click",
+      (event) => {
+        if ((event.target as Element).closest('a[href^="https://wa.me/"]')) {
+          event.preventDefault();
+        }
+      },
+      true,
+    ),
+  );
+
+  await create(LIOR).focus();
+  await page.keyboard.press("Enter");
+  await expect(whatsappFor(LIOR)).toBeFocused();
+  const href = new URL((await whatsappFor(LIOR).getAttribute("href")) ?? "");
+  expect(href.pathname).toBe("/");
+  expect(href.searchParams.get("text")).toContain(
+    heT("app.team.pending.message", { business: "מסעדת הדגמה" }),
+  );
+  // No chat to any number anywhere on the twin.
+  expect(
+    await page
+      .locator('a[href^="https://wa.me/"]')
+      .evaluateAll((links) =>
+        links
+          .map((a) => a.getAttribute("href") ?? "")
+          .filter((h) => /^https:\/\/wa\.me\/\d/.test(h)),
+      ),
+  ).toEqual([]);
+  await expect(said(heT("app.team.pending.count", { count: 1 }))).toHaveCount(
+    1,
+  );
+
+  await heardSoFar(polite);
+  await page.keyboard.press("Enter");
+  await expect(said(tp.opened)).toHaveCount(1);
+  await expect(create(IDO)).toBeFocused();
+  await expect(
+    saidSince(polite, heT("app.team.pending.next", { name: IDO })),
+  ).toHaveCount(1);
+  // Lior's row stays where it was, with its link.
+  await expect(whatsappFor(LIOR)).toBeVisible();
+
+  // The last one, copied: nobody is left to go to, and the list says so.
+  await clipboardTakes(page, true);
+  await page.keyboard.press("Enter");
+  await expect(whatsappFor(IDO)).toBeFocused();
+  const copy = page
+    .getByRole("button", { name: tl.copy })
+    .filter({ visible: true })
+    .last();
+  await copy.focus();
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByRole("button", { name: tl.copied }).filter({ visible: true }),
+  ).toBeFocused();
+  await expect(said(heT("app.team.pending.left", { count: 0 }))).toHaveCount(1);
+  await expect(main.getByText(tp.hint).filter({ visible: true })).toHaveCount(
+    0,
+  );
 });
 
 // The invite form's answers, each heard once (as sign-in's number is): the

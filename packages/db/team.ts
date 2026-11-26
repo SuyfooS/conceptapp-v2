@@ -118,18 +118,38 @@ type InviteRow = {
   /** Missing before 20261115001600_named_roles_give.sql reaches a project. */
   named_role?: string | null;
   expires_at: string;
+  /**
+   * No link was ever made for it. Missing before
+   * 20261128000200_invite_links_pending.sql reaches a project, read as false.
+   */
+  link_pending?: boolean;
 };
 
 /**
- * The business's invites nobody claimed (open or expired), with the role
- * the business named that each gives (the roles plan's R11b); before its
- * migration none gives one. Page by page: expired ones are kept, and pile up
- * over the years.
+ * The business's invites nobody claimed (no link yet, open or expired),
+ * with the role the business named that each gives (the roles plan's R11b)
+ * and whether a link was ever made (inviting from a list, part 2). Before
+ * each migration reaches a project its column is missing, and the invites
+ * are read as before: none gives a named role, and each got a link. Page by
+ * page: expired ones are kept, and pile up over the years.
  */
 async function openInvites(
   supabase: Client,
   businessId: string,
 ): Promise<InviteRow[]> {
+  const pending = await readAllPages((first, last) =>
+    supabase
+      .from("invites")
+      .select(
+        "id, full_name, phone, role, named_role, expires_at, link_pending",
+      )
+      .eq("business_id", businessId)
+      .is("claimed_at", null)
+      .order("id")
+      .range(first, last),
+  );
+  if (!pending.error) return pending.data;
+  if (!isMissingColumn(pending.error)) throw pending.error;
   const named = await readAllPages((first, last) =>
     supabase
       .from("invites")
@@ -238,8 +258,9 @@ function namedOf(
 
 /**
  * The people of a business for its Team screen: active members with their
- * profile, and invites nobody has claimed yet (open or expired), each with
- * the role the business named that they hold or it gives (R11b). Read as
+ * profile, and invites nobody has claimed yet (no link yet, open or
+ * expired), each with the role the business named that they hold or it
+ * gives (R11b). Read as
  * the signed-in person under RLS, so only someone who sees the team
  * (team.view, the roles plan's R6) gets the invites and the numbers
  * (`public.team_phones`; members read each other's names only); callers
@@ -274,6 +295,7 @@ export async function getTeam(
       role: row.role,
       namedRole: namedOf(roles, row.named_role),
       expiresAt: row.expires_at,
+      linkPending: row.link_pending === true,
     })),
   };
 }
