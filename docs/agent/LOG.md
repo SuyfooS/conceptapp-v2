@@ -5,6 +5,12 @@ what is next, defaults applied.
 
 Older entries are in [`log/`](log/): [1–19 November 2026](log/2026-11-01-to-19.md) and [October 2026](log/2026-10.md).
 
+## 2026-11-26 · chat · the import twin counts the Team twin's invites with no link yet
+
+- Main went red after #268 merged on #266 (run 45745517859): `design.spec.ts` "the people import's twin stops at too many people and at two phone columns" failed at 390, 820 and 1440 on "בצוות כבר 8 אנשים, ועוד הזמנה אחת ממתינה". #266 gave the Team twin (`app/design/shell/data.ts`) two invites with no link yet, Ido's and Lior's, and the import twin, built beside it on #268, read every invite of that list as one whose link was made (`linkPending: false`): it counted Ido's as waiting by its date, and Lior's, past its date, as run out. The two PRs had no file in common but the log, the ROADMAP and the messages, so #268 was merged on its own green run, with no run on the two together: the shared mock data is where they met.
+- The twin now passes each invite's `linkPending` (`app/design/shell/team/import/page.tsx`), so it counts three waiting, as the import does in the app: Dana's open one, and Ido's and Lior's with no link, whatever their date. The test expects three. The app doesn't change.
+- Checked here: `pnpm check`. The other shard that failed on main (desktop 2/2, `employee-file-holders.spec.ts:317`) is a matter of its own, looked into apart.
+
 ## 2026-11-26 · chat · inviting from a list (הזמנה מרשימה), part 1: the reader and the screen, on /design
 
 - On chat/import-reader from origin/main 0578e09e (#265). The plan's PR 1 (section 7), in its smaller form after Orel's decisions of 25.11.2026 (both doors before the pilot, the console first; each person's own link at the moment of sending; the app sends nothing to anyone): the reader, the words the team mode draws, the shared view and its twin. No migration, no SQL, no server action, no route under `app/(app)` (the view lives in `app/(app)/team/import/` without a `page.tsx`), no new package, no new `packages/ui` component (so no /design gallery entry). `SendLinkRow`, `whatsappToHref`, the /team twin's pending rows, the send list's twin state, the console twin and its `admin.peopleImport.*` words are PR 2's and PR 4's, as the plan's "Smaller than before" says.
