@@ -9860,13 +9860,17 @@ test("the people import's twin reads a sheet by its header, and a second paste o
     shown(heT("app.team.import.outcome.updateRole", { role: "צוות" })),
   ).toBeVisible();
   if (testInfo.project.name !== "desktop") {
-    // A phone and a tablet fold what is left out into one row.
+    // A phone and a tablet fold what is left out into one row. Its words
+    // change with it ("הצגת השורות", then "הסתרת השורות"), so it is found
+    // by either.
     const fold = page.getByRole("button", {
-      name: new RegExp(asIs(i.groups.show)),
+      name: new RegExp(`${asIs(i.groups.show)}|${asIs(i.groups.hide)}`),
     });
     await expect(fold).toHaveAttribute("aria-expanded", "false");
+    await expect(fold).toHaveAccessibleName(new RegExp(asIs(i.groups.show)));
     await fold.click();
     await expect(fold).toHaveAttribute("aria-expanded", "true");
+    await expect(fold).toHaveAccessibleName(new RegExp(asIs(i.groups.hide)));
   }
   for (const outcome of [
     i.outcome.same,

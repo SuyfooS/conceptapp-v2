@@ -300,7 +300,7 @@ const InviteRow = memo(function InviteRow({
       name={line.person.name}
       title={line.person.name}
       subtitle={
-        <span dir="ltr" className="tabular-nums">
+        <span dir="ltr" className="whitespace-nowrap tabular-nums">
           {displayIsraeliMobile(line.person.phone)}
         </span>
       }
@@ -518,7 +518,8 @@ export function LinesTable({
           </span>
         ),
         phone: person ? (
-          <span dir="ltr" className="tabular-nums">
+          // A number in one piece: the table's column is narrow.
+          <span dir="ltr" className="whitespace-nowrap tabular-nums">
             {displayIsraeliMobile(person.person.phone)}
           </span>
         ) : null,
