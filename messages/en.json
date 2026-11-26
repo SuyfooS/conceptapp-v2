@@ -8257,7 +8257,7 @@
         "removedKept": "{count, plural, one {One invite already got a link, so it stays. The owners can delete it on the Team screen.} other {# invites already got a link, so they stay. The owners can delete them on the Team screen.}}"
       },
       "closed": {
-        "title": "This business takes no invites from a list"
+        "title": "This business takes no invites"
       },
       "status": {
         "tooManyOpen": "The business already has <ltr>{open}</ltr> invites waiting, and the most is <ltr>{max}</ltr>. Invite fewer, or ask the owners to delete old invites on the Team screen."

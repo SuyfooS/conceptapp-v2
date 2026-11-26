@@ -370,6 +370,10 @@ test("the console pastes a business's list: to fix, left out, refused for anothe
       page.getByText(i.done.removedBack, { exact: true }),
     ).toBeVisible();
     await expect(submit(5)).toBeEnabled();
+    // The way back above the editor, clean while it holds (HOLD_MS, 8
+    // seconds; axe takes far less, and moves neither the focus nor the
+    // mouse, so the hold runs on as it would).
+    await expectCleanPage(page);
     // Its time up, the five are cancelled, kept as rows for the log.
     await expect(
       page.getByRole("status").filter({ hasText: removed }),
@@ -410,6 +414,8 @@ test("the console pastes a business's list: to fix, left out, refused for anothe
     await expect(
       page.getByText(i.outcome.same, { exact: true }).filter({ visible: true }),
     ).toHaveCount(5);
+    // Nothing new, with what stays as it is shown: clean too.
+    await expectCleanPage(page);
     const open = (await invitesIn(business)).filter(
       (invite) => invite.open && invite.role !== "accountant",
     );
