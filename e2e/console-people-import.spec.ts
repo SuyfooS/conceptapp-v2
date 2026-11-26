@@ -1,16 +1,19 @@
 import AxeBuilder from "@axe-core/playwright";
 import he from "../messages/he.json" with { type: "json" };
+import { noteIfSaid, wasSaid } from "./announcer";
 import { HOLD_MS } from "./build-screen";
 import { CAPTCHA_FRAME } from "./captcha";
 import {
   CONSOLE_IMPORT,
   type ConsoleImportBusiness,
   closeConsoleImportBusiness,
+  closeConsoleImportToInvites,
   consoleImportRole,
   importLog,
   invitesIn,
   notificationsIn,
   openConsoleImportBusiness,
+  reopenConsoleImportToInvites,
 } from "./db";
 import { secondPage, signIn } from "./session";
 import { codesSince, lastCodeId } from "./sms";
@@ -18,8 +21,9 @@ import { heT } from "./t";
 import { expect, type Page, test } from "./test";
 
 // "הוספת אנשים מרשימה" (inviting from a list, part 4; Orel, 25 November
-// 2026: the ConceptApp team pastes first, in the console, at setup). The
-// seeded platform admin pastes a business's sheet: a line to fix holds it,
+// 2026: the ConceptApp team pastes first, in the console, at setup). Closed
+// to invites, as a hosted demo is, the business shows a card and no form.
+// Open, the seeded platform admin pastes its sheet: a line to fix holds it,
 // the owner's own line and the accountant's waiting invite are left out, a
 // number on the demo restaurant's staff refuses the list until its line
 // goes, and then the five are saved at once with no link, nobody told. The
@@ -108,11 +112,40 @@ test("the console pastes a business's list: to fix, left out, refused for anothe
   await openConsoleImportBusiness(business);
   try {
     await signIn(page, PLATFORM_ADMIN, /\/admin$/);
-    await page.goto(`/admin/businesses/${business.slug}`);
+    const businessHref = `/admin/businesses/${business.slug}`;
+    const importHref = `${businessHref}/people/import`;
+
+    // Closed to invites, as a hosted demo is (`invitesOpen`): the page's
+    // card says so, with the way back and no field to paste in.
+    await closeConsoleImportToInvites(business);
+    await page.goto(importHref);
+    await expect(
+      page.getByRole("heading", { level: 1, name: a.peopleImport.title }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", {
+        level: 2,
+        name: a.peopleImport.closed.title,
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(a.setup.invite.errors.demo, { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByRole("textbox")).toHaveCount(0);
+    await expect(
+      page.getByRole("link", {
+        name: heT("admin.peopleImport.done.toBusiness", {
+          name: business.name,
+        }),
+        exact: true,
+      }),
+    ).toHaveAttribute("href", businessHref);
+    await reopenConsoleImportToInvites(business);
+
+    await page.goto(businessHref);
     await expect(
       page.getByRole("heading", { level: 1, name: business.name }),
     ).toBeVisible();
-    const importHref = `/admin/businesses/${business.slug}/people/import`;
     // The checklist's staff item leads to the list; the owner's is done.
     await expect(
       page
@@ -202,7 +235,11 @@ test("the console pastes a business's list: to fix, left out, refused for anothe
       fullPage: true,
     });
 
-    // "תיקון השורה" puts the caret at the line's end in the field.
+    // "תיקון השורה" puts the caret at the line's end in the field: from
+    // the field's start, since the last line's end is where `fill` left it.
+    await field.evaluate((area: HTMLTextAreaElement) =>
+      area.setSelectionRange(0, 0),
+    );
     await page
       .getByRole("button", {
         name: heT("app.team.import.fixLineFor", { line: "10" }),
@@ -242,7 +279,13 @@ test("the console pastes a business's list: to fix, left out, refused for anothe
     await expect(invitesIn(business)).resolves.toHaveLength(1);
 
     // On the demo restaurant's staff: the list is refused whole, the line
-    // marked, and its removal has the focus. Nothing was written.
+    // marked, and its removal has the focus. Nothing was written. The
+    // counts it leads to are the alert's to say: not said again after it.
+    const afterRefusal = [
+      heT("app.team.import.summary.ready", { count: 5 }),
+      blocked,
+    ].join(". ");
+    await noteIfSaid(page, afterRefusal);
     await submit(6).click();
     await expect(
       page.getByRole("alert").filter({
@@ -252,11 +295,10 @@ test("the console pastes a business's list: to fix, left out, refused for anothe
         }),
       }),
     ).toBeVisible();
-    await expect(
-      page
-        .getByText(a.peopleImport.problem.elsewhere, { exact: true })
-        .filter({ visible: true }),
-    ).toHaveCount(1);
+    const marked = page
+      .getByText(a.peopleImport.problem.elsewhere, { exact: true })
+      .filter({ visible: true });
+    await expect(marked).toHaveCount(1);
     await expect(removeLine(9)).toBeFocused();
     await expect(submit(5)).toBeDisabled();
     expect(await invitesIn(business)).toHaveLength(1);
@@ -266,6 +308,34 @@ test("the console pastes a business's list: to fix, left out, refused for anothe
       path: testInfo.outputPath("console-import-3-elsewhere.png"),
       fullPage: true,
     });
+    // Past the moment the counts wait for once typing pauses (600 ms).
+    await page.waitForTimeout(1_000);
+    expect(await wasSaid(page, afterRefusal)).toBe(false);
+
+    // Marked by its number, whatever is edited around it: a line above it
+    // taken out of the field, it is line 8, and still holds the press; put
+    // back, line 9 again.
+    const pasted = await field.inputValue();
+    const pastedLines = pasted.split("\n");
+    await field.fill(
+      [...pastedLines.slice(0, 3), ...pastedLines.slice(4)].join("\n"),
+    );
+    await expect(removeLine(8)).toBeVisible();
+    await expect(marked).toHaveCount(1);
+    await expect(submit(4)).toBeDisabled();
+    await field.fill(pasted);
+    await expect(removeLine(9)).toBeVisible();
+    await expect(marked).toHaveCount(1);
+    await expect(submit(5)).toBeDisabled();
+    // Its removal taken back with the toast's "ביטול": back, still marked.
+    await removeLine(9).click();
+    await expect(marked).toHaveCount(0);
+    await expect(submit(5)).toBeEnabled();
+    await expect(undo).toBeFocused();
+    await undo.click();
+    await expect(removeLine(9)).toBeFocused();
+    await expect(marked).toHaveCount(1);
+    await expect(submit(5)).toBeDisabled();
 
     // Its line gone, the five go at once, and the done card says who.
     await removeLine(9).click();
@@ -290,6 +360,24 @@ test("the console pastes a business's list: to fix, left out, refused for anothe
         page.getByText(person.name, { exact: true }).filter({ visible: true }),
       ).toHaveCount(1);
     }
+    // Each with their number, and the role the database wrote: the
+    // manager's apart from the workers'. A phone's and a tablet's list, a
+    // computer's table.
+    const onComputer = testInfo.project.name === "desktop";
+    const donePeople = page.getByRole(onComputer ? "table" : "list", {
+      name: a.peopleImport.done.people,
+    });
+    const doneRow = (name: string) =>
+      donePeople
+        .getByRole(onComputer ? "row" : "listitem")
+        .filter({ hasText: name });
+    const [manager, worker] = business.people;
+    await expect(doneRow(manager.name)).toContainText(manager.local);
+    await expect(doneRow(manager.name)).toContainText(he.app.roles.manager);
+    await expect(doneRow(manager.name)).not.toContainText(he.app.roles.worker);
+    await expect(doneRow(worker.name)).toContainText(worker.local);
+    await expect(doneRow(worker.name)).toContainText(he.app.roles.worker);
+    await expect(doneRow(worker.name)).not.toContainText(he.app.roles.manager);
     // No link is made here: the owners send each one from /team.
     await expect(page.locator('a[href*="wa.me"]')).toHaveCount(0);
     await expect(page.getByText(/\/join\//)).toHaveCount(0);
@@ -359,6 +447,16 @@ test("the console pastes a business's list: to fix, left out, refused for anothe
     await sentNothing(listed);
 
     // Taken back, held for its "ביטול": the paste reads as new at once.
+    // The undo's own answer comes once the hold runs out.
+    const undone = page.waitForResponse((response) => {
+      const request = response.request();
+      return (
+        request.method() === "POST" &&
+        request.headers()["next-action"] !== undefined &&
+        new URL(response.url()).pathname === importHref &&
+        (request.postData() ?? "").includes(String(first))
+      );
+    });
     await page
       .getByRole("button", { name: i.done.remove, exact: true })
       .click();
@@ -389,7 +487,14 @@ test("the console pastes a business's list: to fix, left out, refused for anothe
       action: "invite.import_undo",
       details: { import: first, cancelled: 5, kept: 0, joined: 0 },
     });
-    // Read again with the undo done, the paste still reads as new.
+    // The undo's answer reads the page again (`refresh()`): the team it
+    // carries has the accountant's invite and none of the five. Drawn, the
+    // paste still reads as new.
+    const answer = await (await undone).text();
+    expect(answer).toContain(business.accountant.e164);
+    for (const person of business.people) {
+      expect(answer).not.toContain(person.e164);
+    }
     await expect(submit(5)).toBeEnabled();
 
     // Invited again from the same paste, then the same list once more: it is
@@ -401,6 +506,12 @@ test("the console pastes a business's list: to fix, left out, refused for anothe
       .click();
     await expect(field).toBeFocused();
     await expect(field).toHaveValue("");
+    // Its list's delete together went with its card, as the card's words
+    // said beside it: on this same screen, after "הזמנה מרשימה נוספת".
+    expect(a.peopleImport.done.removeHere).toContain(`„${i.done.another}”`);
+    await expect(
+      page.getByRole("button", { name: i.done.remove, exact: true }),
+    ).toHaveCount(0);
     await field.fill(sheetOf(business, false));
     await expect(
       page.getByText(i.status.nothingNew, { exact: true }),

@@ -10415,6 +10415,35 @@ test("the console's import twin says owners and accountants are added one at a t
   ).toHaveCount(0);
 });
 
+/**
+ * Notes, from now on, what the page brings into view with `scrollIntoView`,
+ * by its role (else its tag): a refusal (`alert`), or not. Returns what was
+ * so far.
+ */
+async function noteScrolledIntoView(
+  page: Page,
+): Promise<() => Promise<string[]>> {
+  await page.evaluate(() => {
+    const seen: string[] = [];
+    (window as unknown as { scrolledIntoView?: string[] }).scrolledIntoView =
+      seen;
+    const own = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (
+      this: Element,
+      options?: boolean | ScrollIntoViewOptions,
+    ) {
+      seen.push(this.getAttribute("role") ?? this.localName);
+      own.call(this, options);
+    };
+  });
+  return () =>
+    page.evaluate(
+      () =>
+        (window as unknown as { scrolledIntoView?: string[] })
+          .scrolledIntoView ?? [],
+    );
+}
+
 test("the console's import twin refuses a number on another business's staff, and invites the rest once its line goes", async ({
   page,
 }) => {
@@ -10427,6 +10456,7 @@ test("the console's import twin refuses a number on another business's staff, an
     });
   // The screen can't know another business's staff: all four read as new.
   await expect(submit(4)).toBeEnabled();
+  const scrolled = await noteScrolledIntoView(page);
   await submit(4).click();
   await expect(
     page.getByRole("alert").filter({
@@ -10449,6 +10479,9 @@ test("the console's import twin refuses a number on another business's staff, an
     })
     .filter({ visible: true });
   await expect(remove).toBeFocused();
+  // The page moved once, to that line: never to the refusal, under every
+  // line, which would take the line out of view on a phone.
+  expect(await scrolled()).not.toContain("alert");
   await expect(submit(3)).toBeDisabled();
   await expect(submit(3)).toHaveAccessibleDescription(
     heT("app.team.import.status.blocked", { count: 1 }),
@@ -10524,12 +10557,12 @@ test("the console's import twin says, in its own words, that the owners delete o
   page,
 }) => {
   await page.goto(`${consoleImportTwin}?state=elsewhere&fail=open`);
-  await page
-    .getByRole("button", {
-      name: heT("app.team.import.submit", { count: 4 }),
-      exact: true,
-    })
-    .click();
+  const submit = page.getByRole("button", {
+    name: heT("app.team.import.submit", { count: 4 }),
+    exact: true,
+  });
+  const scrolled = await noteScrolledIntoView(page);
+  await submit.click();
   await expect(
     page.getByRole("alert").filter({
       hasText: importWords("admin.peopleImport.errors.tooManyOpen", {
@@ -10538,6 +10571,10 @@ test("the console's import twin says, in its own words, that the owners delete o
       }),
     }),
   ).toBeVisible();
+  // No line marked: the press takes the focus back, and the refusal above
+  // it is brought into view.
+  await expect(submit).toBeFocused();
+  expect(await scrolled()).toContain("alert");
   await expect(
     page.getByText(
       importWords("app.team.import.errors.tooManyOpen", {

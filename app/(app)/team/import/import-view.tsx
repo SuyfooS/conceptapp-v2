@@ -6,7 +6,6 @@ import {
   type ImportRoleChoice,
   type ImportRoles,
   type KnownTeam,
-  knownTeamOf,
   listRoleOf,
   type ParsedPeople,
   PEOPLE_IMPORT_MAX,
@@ -60,6 +59,7 @@ import type {
   UndoPeopleImport,
 } from "./import-types";
 import { type LineSpan, lineRange, withoutLines } from "./paste-edit";
+import { withoutTakenBack } from "./taken-back";
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 
@@ -215,21 +215,14 @@ export function PeopleImportView({
   const read = useDeferredValue(paste);
   const parsed = listRole ? parsePeopleList(read, roles, listRole) : NOTHING;
   /**
-   * An import taken back, by its invites: left out of the team the page
-   * read, for as long as that is the team it read, so its lines read as new
-   * again at once. The page reads the team again once the undo is done.
+   * An import taken back, by its invites: those still with no link are left
+   * out of whichever team the page read (the import's own reading can come
+   * after the press), so its lines read as new again at once. Until it
+   * comes back (kept, or its undo failed), or the next list starts or is
+   * invited.
    */
-  const [hidden, setHidden] = useState<{
-    ids: ReadonlySet<string>;
-    of: KnownTeam;
-  } | null>(null);
-  const team =
-    hidden && hidden.of === known
-      ? knownTeamOf(
-          known.members,
-          known.invites.filter((invite) => !hidden.ids.has(invite.id)),
-        )
-      : known;
+  const [hidden, setHidden] = useState<ReadonlySet<string> | null>(null);
+  const team = withoutTakenBack(known, hidden);
   /** The numbers the console was told are on another business's staff. */
   const [elsewhere, setElsewhere] = useState<ReadonlySet<string>>(NOBODY);
   const check = againstTeam(parsed, team, elsewhere);
@@ -435,7 +428,7 @@ export function PeopleImportView({
     if (!done?.importId) return;
     setRemoved({ done, kept: null });
     // Its invites read as gone at once, as the undo will leave them.
-    setHidden({ ids: new Set(done.invites), of: known });
+    setHidden(new Set(done.invites));
     setDone(null);
     setToast(null);
     held.hold({ importId: done.importId, done });
@@ -481,23 +474,24 @@ export function PeopleImportView({
   // press floats, and the page stays where it was). Only as it arrives: a
   // screen shown again from its <Activity> runs this again with the same.
   // Numbers on another business's staff hold the press until their lines
-  // go: the first one's "הסרת השורה" takes the focus instead. With neither
-  // (the press held, the line not drawn), the refusal itself has it, never
-  // the page's body.
+  // go: the first one's "הסרת השורה" takes the focus instead, and the page
+  // moves once, to that line, its reason beside it (the refusal is under
+  // every line: brought into view too, it would take the line out of view
+  // on a phone). With neither (the press held, the line not drawn), the
+  // refusal itself has it, never the page's body.
   const seenFailure = useRef<typeof failure>(null);
   useLayoutEffect(() => {
     if (!arrived(seenFailure, failure)) return;
-    refusal.current?.scrollIntoView({ block: "center" });
-    focusFirst(
-      [
-        failure?.line !== undefined
-          ? `[data-remove-line="${failure.line}"]`
-          : null,
-        submit.current,
-        refusal.current,
-      ],
-      { title: false },
-    );
+    const line =
+      failure?.line !== undefined
+        ? `[data-remove-line="${failure.line}"]`
+        : null;
+    const to = focusFirst([line, submit.current, refusal.current], {
+      title: false,
+    });
+    if (!line || !to?.matches(line)) {
+      refusal.current?.scrollIntoView({ block: "center" });
+    }
   }, [failure]);
 
   // A removal taken back: the button that took the lines out has the focus
@@ -529,7 +523,7 @@ export function PeopleImportView({
       );
       if (startAt === "removed" && finished.importId) {
         setRemoved({ done: finished, kept: null });
-        setHidden({ ids: new Set(finished.invites), of: known });
+        setHidden(new Set(finished.invites));
         held.hold({ importId: finished.importId, done: finished });
       } else {
         doneFocus.current = "title";
@@ -635,6 +629,16 @@ export function PeopleImportView({
     ? t("summary.update", { count: check.send.length })
     : t("summary.ready", { count: check.send.length });
   const summary = [readyWords, status].filter(Boolean).join(". ");
+  // A refusal for numbers on another business's staff changes the counts
+  // with nothing edited, and its alert says what changed: those counts are
+  // taken as said, as it arrives (before the effect below reads them), and
+  // said again only after the next edit or removal.
+  const hushedFailure = useRef<typeof failure>(null);
+  useLayoutEffect(() => {
+    if (arrived(hushedFailure, failure) && failure?.failure === "elsewhere") {
+      said.current = summary;
+    }
+  }, [failure, summary]);
   // Said only when it changed since it was last said: never again for an
   // import taken back, or a screen shown again from its <Activity>, with
   // the same counts.
@@ -792,7 +796,8 @@ export function PeopleImportView({
             )}
             {inConsole && removable ? (
               // The console deletes no invite one at a time: once this card
-              // goes, only the owners can, on their Team screen.
+              // goes ("הזמנה מרשימה נוספת" too, or leaving the screen),
+              // only the owners can, on their Team screen. Its words say so.
               <p id={removeHereId}>{ta("done.removeHere")}</p>
             ) : null}
             <div className="mt-1 flex flex-col gap-2 md:flex-row md:flex-wrap">

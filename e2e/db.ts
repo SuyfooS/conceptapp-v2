@@ -6703,12 +6703,38 @@ export async function openConsoleImportBusiness(
     from public.businesses b where b.slug = ${business.slug}`;
 }
 
-/** The business gone with its records, when the test is done. */
+/**
+ * The business gone with its records, when the test is done, and no longer
+ * a demo: `private.demo_businesses` has no foreign key.
+ */
 export async function closeConsoleImportBusiness(
   business: ConsoleImportBusiness,
 ): Promise<void> {
   const id = await businessIdBySlug(business.slug);
-  if (id) await deleteRealBusiness(id);
+  if (!id) return;
+  await sql`delete from private.demo_businesses where business_id = ${id}`;
+  await deleteRealBusiness(id);
+}
+
+/**
+ * The business closed to invites, as a hosted demo is
+ * (`private.closed_to_invites`): a demo with no definition, which takes
+ * none. It keeps its people (`reopenConsoleImportToInvites` undoes it).
+ */
+export async function closeConsoleImportToInvites(
+  business: ConsoleImportBusiness,
+): Promise<void> {
+  await sql`insert into private.demo_businesses (business_id, definition)
+    select b.id, '{}' from public.businesses b where b.slug = ${business.slug}`;
+}
+
+/** The business takes invites again: no longer a demo. */
+export async function reopenConsoleImportToInvites(
+  business: ConsoleImportBusiness,
+): Promise<void> {
+  await sql`delete from private.demo_businesses d
+    using public.businesses b
+    where d.business_id = b.id and b.slug = ${business.slug}`;
 }
 
 export type ImportedInvite = {

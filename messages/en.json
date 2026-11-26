@@ -8253,7 +8253,7 @@
         "console": "Nobody got a message. The invites wait on the business's Team screen, under “No link yet”, where the owners and whoever runs the team send each person their own link.",
         "people": "This list's invites",
         "toBusiness": "Back to {name}",
-        "removeHere": "This list's invites can be deleted all at once only here. Once you leave this screen, the owners delete them one at a time on the Team screen.",
+        "removeHere": "This list's invites can be deleted all at once only here, before “Invite from another list” and before you leave this screen. After that, the owners delete them one at a time on the Team screen.",
         "removedKept": "{count, plural, one {One invite already got a link, so it stays. The owners can delete it on the Team screen.} other {# invites already got a link, so they stay. The owners can delete them on the Team screen.}}"
       },
       "closed": {
