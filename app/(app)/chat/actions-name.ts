@@ -1,14 +1,9 @@
+import { isolate } from "@domain/bidi";
 import { chatPreview } from "@domain/chat";
 import { chatDay, chatShortDate } from "@domain/chat-days";
 
 /** How much of a message its actions button's name says: its first words. */
 export const ACTIONS_NAME_WORDS = 40;
-
-/**
- * A day or a time in words that aren't drawn (a button's name): in Unicode
- * isolates, as `<ltr>` holds them on screen.
- */
-const isolate = (chunks: string) => `⁦${chunks}⁩`;
 
 /**
  * What a message's actions button says of it after whose it is

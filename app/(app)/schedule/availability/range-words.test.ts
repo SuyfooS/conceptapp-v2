@@ -2,7 +2,7 @@ import { createTranslator } from "next-intl";
 import { describe, expect, it } from "vitest";
 import en from "@/messages/en.json";
 import he from "@/messages/he.json";
-import { isolate, rangeWords } from "./range-words";
+import { rangeWords } from "./range-words";
 
 /*
  * The hours of a range in the availability form's plain-text words: the
@@ -60,10 +60,5 @@ describe("a range's hours in plain words", () => {
     expect(tEn.markup("sheet.removed", rangeWords(day))).toBe(
       `Removed ${LRI}09:00–17:00${PDI}.`,
     );
-  });
-
-  it("isolates what it is given as it is", () => {
-    expect(isolate("16:00–23:30")).toBe(`${LRI}16:00–23:30${PDI}`);
-    expect(isolate("")).toBe(`${LRI}${PDI}`);
   });
 });
