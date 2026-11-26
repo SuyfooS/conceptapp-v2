@@ -207,6 +207,17 @@ const PAGES = [
   "/design/shell/team/import?state=problems",
   "/design/shell/team/import?state=again",
   "/design/shell/team/import?state=tooMany",
+  // The console's people import (inviting from a list, part 4): the same
+  // states in the console's words, a list holding a number on another
+  // business's staff, and the card of a business that takes no invites.
+  "/design/console/businesses/demo-restaurant/people/import",
+  "/design/console/businesses/demo-restaurant/people/import?state=whatsapp",
+  "/design/console/businesses/demo-restaurant/people/import?state=sheet",
+  "/design/console/businesses/demo-restaurant/people/import?state=problems",
+  "/design/console/businesses/demo-restaurant/people/import?state=again",
+  "/design/console/businesses/demo-restaurant/people/import?state=tooMany",
+  "/design/console/businesses/demo-restaurant/people/import?state=elsewhere",
+  "/design/console/businesses/demo-restaurant/people/import?state=closed",
   // The hiring file's lines and card for a holder, a manager and the
   // accountant (files only), and a holder's file in each state (H6a).
   "/design/shell/team?file=holder",
@@ -10137,4 +10148,205 @@ test("the people import's twin stops at too many people and at two phone columns
       { exact: true },
     ),
   ).toBeVisible();
+});
+
+// Inviting from a list, part 4: the console's twin, the same screen in the
+// console's words, on the console twin's restaurant. Its done card lists the
+// invites saved and makes no link; a number on another of the twin's
+// businesses' staff refuses the list, and its line waits to be removed.
+const consoleImportTwin =
+  "/design/console/businesses/demo-restaurant/people/import";
+
+for (const colorScheme of ["light", "dark"] as const) {
+  test.describe(colorScheme, () => {
+    test.use({ colorScheme });
+
+    test("the console's import twin after an import, and taken back, is clean", async ({
+      page,
+    }) => {
+      const a = he.admin.peopleImport;
+      await page.goto(`${consoleImportTwin}?state=done`);
+      await expect(
+        page.getByRole("heading", {
+          level: 2,
+          name: heT("app.team.import.done.title", { count: 7 }),
+        }),
+      ).toBeVisible();
+      await expect(
+        page.getByText(a.done.console, { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText(he.app.team.import.done.team, { exact: true }),
+      ).toHaveCount(0);
+      await expect(
+        page.getByRole("heading", { level: 2, name: a.done.people }),
+      ).toBeVisible();
+      await expect(
+        page
+          .getByText("ד״ר מיכל רוזן", { exact: true })
+          .filter({ visible: true }),
+      ).toHaveCount(1);
+      // No link is made here: the owners send them from the Team screen.
+      await expect(page.locator('a[href*="wa.me"]')).toHaveCount(0);
+      await expect(
+        page.getByRole("button", { name: he.app.team.pending.create }),
+      ).toHaveCount(0);
+      await expect(
+        page.getByRole("link", {
+          name: heT("admin.peopleImport.done.toBusiness", {
+            name: "מסעדת הדגמה",
+          }),
+        }),
+      ).toHaveAttribute("href", "/design/console/businesses/demo-restaurant");
+      await expectCleanPage(page);
+
+      await page.goto(`${consoleImportTwin}?state=removed`);
+      await expect(
+        page.getByRole("status").filter({
+          hasText: heT("app.team.import.done.removed", { count: 7 }),
+        }),
+      ).toBeVisible();
+      await expectCleanPage(page);
+    });
+  });
+}
+
+test("the console's import twin says owners and accountants are added one at a time, from its own form", async ({
+  page,
+}) => {
+  await page.goto(`${consoleImportTwin}?state=problems`);
+  await expect(
+    page.getByText(
+      heT("admin.peopleImport.role.oneByOne", {
+        owner: "בעלים",
+        accountant: "הנהלת חשבונות",
+      }),
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByText(
+        heT("admin.peopleImport.problem.oneByOne", { role: "הנהלת חשבונות" }),
+        { exact: true },
+      )
+      .filter({ visible: true }),
+  ).toHaveCount(1);
+  await expect(
+    page.getByText(
+      heT("app.team.import.problem.oneByOne", { role: "הנהלת חשבונות" }),
+      { exact: true },
+    ),
+  ).toHaveCount(0);
+  // The restaurant's owner is on its team: his own line is left out.
+  await expect(
+    page.getByRole("button", {
+      name: heT("app.team.import.fixLineFor", { line: "2" }),
+      exact: true,
+    }),
+  ).toHaveCount(0);
+});
+
+test("the console's import twin refuses a number on another business's staff, and invites the rest once its line goes", async ({
+  page,
+}) => {
+  const i = he.app.team.import;
+  await page.goto(`${consoleImportTwin}?state=elsewhere`);
+  const submit = (count: number) =>
+    page.getByRole("button", {
+      name: heT("app.team.import.submit", { count }),
+      exact: true,
+    });
+  // The screen can't know another business's staff: all four read as new.
+  await expect(submit(4)).toBeEnabled();
+  await submit(4).click();
+  await expect(
+    page.getByRole("alert").filter({
+      hasText: heT("admin.peopleImport.errors.elsewhere", {
+        count: 1,
+        accountant: "הנהלת חשבונות",
+      }),
+    }),
+  ).toBeVisible();
+  // Its line is to fix now, and its removal has the focus.
+  await expect(
+    page
+      .getByText(he.admin.peopleImport.problem.elsewhere, { exact: true })
+      .filter({ visible: true }),
+  ).toHaveCount(1);
+  const remove = page
+    .getByRole("button", {
+      name: heT("app.team.import.removeLineFor", { line: "3" }),
+      exact: true,
+    })
+    .filter({ visible: true });
+  await expect(remove).toBeFocused();
+  await expect(submit(3)).toBeDisabled();
+  await expect(submit(3)).toHaveAccessibleDescription(
+    heT("app.team.import.status.blocked", { count: 1 }),
+  );
+  await expectCleanPage(page);
+
+  await remove.click();
+  await expect(submit(3)).toBeEnabled();
+  await submit(3).click();
+  await expect(
+    page.getByRole("heading", {
+      level: 2,
+      name: heT("app.team.import.done.title", { count: 3 }),
+    }),
+  ).toBeFocused();
+  await expect(
+    page.getByText("אלון מור", { exact: true }).filter({ visible: true }),
+  ).toHaveCount(1);
+  await expect(
+    page.getByText("מאיה פרץ", { exact: true }).filter({ visible: true }),
+  ).toHaveCount(0);
+  await expect(page.getByText(i.done.another, { exact: true })).toBeVisible();
+});
+
+test("the console's import twin for a demo business says it takes no invites, with no form", async ({
+  page,
+}) => {
+  await page.goto(`${consoleImportTwin}?state=closed`);
+  await expect(
+    page.getByRole("heading", {
+      level: 2,
+      name: he.admin.peopleImport.closed.title,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(he.admin.setup.invite.errors.demo, { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("textbox")).toHaveCount(0);
+  await expect(
+    page.getByRole("link", {
+      name: heT("admin.peopleImport.done.toBusiness", { name: "מסעדת הדגמה" }),
+    }),
+  ).toHaveAttribute("href", "/design/console/businesses/demo-restaurant");
+});
+
+test("the console twin's business page leads its staff to the list import", async ({
+  page,
+}) => {
+  // A business just opened: the checklist's staff item and the people's link.
+  await page.goto("/design/console/businesses/cafe-noa");
+  const href = "/design/console/businesses/cafe-noa/people/import";
+  await expect(
+    page.getByRole("link", { name: he.admin.setup.people.import }),
+  ).toHaveAttribute("href", href);
+  await expect(
+    page.getByRole("link", {
+      name: new RegExp(asIs(he.admin.setup.checklist.items.staff.title)),
+    }),
+  ).toHaveAttribute("href", href);
+  // The owner still from "הוספת אדם", as an owner.
+  await expect(
+    page.getByRole("link", {
+      name: new RegExp(asIs(he.admin.setup.checklist.items.owner.title)),
+    }),
+  ).toHaveAttribute(
+    "href",
+    "/design/console/businesses/cafe-noa/people/new?role=owner",
+  );
 });

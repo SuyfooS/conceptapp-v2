@@ -1966,6 +1966,103 @@ describe("againstTeam", () => {
   });
 });
 
+describe("againstTeam: numbers on another business's staff (the console)", () => {
+  const text = [
+    "דנה כהן 050-123-4567",
+    "יוסי לוי 052-765-4321 ניהול",
+    "מיכל אברהם 054-111-2233",
+  ].join("\n");
+
+  it("holds a line that would be written with such a number to fix, with its name and role", () => {
+    const check = againstTeam(parse(text), team(), new Set(["+972527654321"]));
+    expect(check.lines[1]).toEqual({
+      line: 2,
+      text: "יוסי לוי 052-765-4321 ניהול",
+      dropped: [],
+      kind: "problem",
+      problem: "elsewhere",
+      phone: "+972527654321",
+      name: "יוסי לוי",
+      roleLabel: "ניהול",
+    });
+    expect(check.lines.map(groupOf)).toEqual(["invite", "fix", "invite"]);
+    expect(check.counts.problems).toBe(1);
+    expect(check.counts.byRole).toEqual({ worker: 2 });
+    expect(check.send.map((person) => person.line)).toEqual([1, 3]);
+    expect(check.blocked).toBe("invalid");
+    // Removed from the paste, nothing holds the rest.
+    const rest = againstTeam(
+      parse([text.split("\n")[0], text.split("\n")[2]].join("\n")),
+      team(),
+      new Set(["+972527654321"]),
+    );
+    expect(rest.blocked).toBeNull();
+    expect(rest.send).toHaveLength(2);
+  });
+
+  it("holds an update to an invite with no link yet too, as the database writes it", () => {
+    const check = againstTeam(
+      parse("דנה כהן 050-123-4567"),
+      team([invite({ phone: "+972501234567", name: "דנה" })]),
+      new Set(["+972501234567"]),
+    );
+    expect(check.lines[0]).toMatchObject({
+      kind: "problem",
+      problem: "elsewhere",
+      name: "דנה כהן",
+    });
+    expect(check.lines[0]?.outcome).toBeUndefined();
+    expect(check.counts.updateName).toBe(0);
+    expect(check.send).toEqual([]);
+  });
+
+  it("never marks a line left out: a member's, the same invite, one with a link", () => {
+    const numbers = new Set([
+      "+972501234567",
+      "+972527654321",
+      "+972541112233",
+    ]);
+    const check = againstTeam(
+      parse(text),
+      team(
+        [
+          invite({ phone: "+972527654321", name: "יוסי לוי", role: "manager" }),
+          invite({ phone: "+972541112233", linkPending: false }),
+        ],
+        [{ phone: "+972501234567", name: "דנה כהן" }],
+      ),
+      numbers,
+    );
+    expect(check.lines.map((line) => line.outcome)).toEqual([
+      "member",
+      "same",
+      "invited",
+    ]);
+    expect(check.counts.problems).toBe(0);
+    expect(check.blocked).toBe("nothingNew");
+  });
+
+  it("keeps a pair's both lines on the line it marks", () => {
+    const check = againstTeam(
+      parse(["דנה כהן", "050-123-4567", "יוסי לוי", "052-765-4321"].join("\n")),
+      team(),
+      new Set(["+972501234567"]),
+    );
+    expect(check.lines[0]).toMatchObject({
+      line: 1,
+      last: 2,
+      problem: "elsewhere",
+    });
+    expect(check.lines[1]).toMatchObject({ line: 3, last: 4, kind: "person" });
+  });
+
+  it("reads as before with no such numbers", () => {
+    expect(againstTeam(parse(text), team(), new Set())).toEqual(
+      againstTeam(parse(text), team()),
+    );
+  });
+});
+
 describe("peopleImportRows", () => {
   const row = {
     name: "דנה כהן",

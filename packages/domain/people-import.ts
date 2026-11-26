@@ -184,7 +184,12 @@ export type PeopleProblem =
   | "oneByOne"
   | "notAllowed"
   | "givesPay"
-  | "held";
+  | "held"
+  /**
+   * The console's only: the database found the number on another
+   * business's staff when the list was sent (`againstTeam`'s `elsewhere`).
+   */
+  | "elsewhere";
 
 /** Worth a look, never a block. */
 export type PeopleNote =
@@ -1822,8 +1827,18 @@ const WRITTEN = new Set<ImportOutcome>([
  * with that outcome, whatever its name or role says: so the owner's own
  * line, an accountant on the team and a second paste of the same sheet never
  * block. Only a line that would be written is held to its problem.
+ * `elsewhere` holds the numbers the database found on another business's
+ * staff when the console sent the list (its 23505 `elsewhere`, by the rows'
+ * places, which the screen maps to their numbers): a line that would be
+ * written with one of them is to fix (`problem: "elsewhere"`), so the list
+ * waits until it is removed. A line left out is never one, as the database
+ * asks only what it writes.
  */
-export function againstTeam(parsed: ParsedPeople, known: KnownTeam): TeamCheck {
+export function againstTeam(
+  parsed: ParsedPeople,
+  known: KnownTeam,
+  elsewhere: ReadonlySet<string> = new Set(),
+): TeamCheck {
   const members = new Map(known.members.map((m) => [m.phone, m]));
   const invites = new Map(known.invites.map((i) => [i.phone, i]));
   const teamNames = new Map<string, string>();
@@ -1831,7 +1846,7 @@ export function againstTeam(parsed: ParsedPeople, known: KnownTeam): TeamCheck {
     if (member.name) teamNames.set(nameKey(member.name), member.name);
   }
 
-  const lines = parsed.lines.map((line): CheckedLine => {
+  const checkedLine = (line: PeopleLine): CheckedLine => {
     const phone =
       line.kind === "person"
         ? line.person.phone
@@ -1877,6 +1892,31 @@ export function againstTeam(parsed: ParsedPeople, known: KnownTeam): TeamCheck {
           notes: [...line.notes, { kind: "sameNameTeam", name: namesake }],
         }
       : { ...line, outcome: "new" };
+  };
+
+  const lines = parsed.lines.map((line): CheckedLine => {
+    const checked = checkedLine(line);
+    if (
+      checked.kind !== "person" ||
+      !checked.outcome ||
+      !WRITTEN.has(checked.outcome) ||
+      !elsewhere.has(checked.person.phone)
+    ) {
+      return checked;
+    }
+    // On another business's staff: never written, until the line goes.
+    const { line: at, last, text, dropped, person, roleLabel } = checked;
+    return {
+      line: at,
+      ...(last !== undefined ? { last } : {}),
+      text,
+      dropped,
+      kind: "problem",
+      problem: "elsewhere",
+      phone: person.phone,
+      name: person.name,
+      roleLabel,
+    };
   });
 
   const counts: TeamCheck["counts"] = {

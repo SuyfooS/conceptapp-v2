@@ -65,6 +65,11 @@ export default async function BusinessSetupPage({
           ? `/admin/businesses/${business.slug}/people/new`
           : null
       }
+      importHref={
+        platformCan(role, "staff.invite")
+          ? `/admin/businesses/${business.slug}/people/import`
+          : null
+      }
       rolesHref={
         consoleRolesAccess(role) !== null
           ? `/admin/businesses/${business.slug}/roles`

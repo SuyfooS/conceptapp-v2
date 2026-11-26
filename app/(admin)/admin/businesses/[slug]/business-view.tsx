@@ -21,6 +21,7 @@ import {
   ChevronRight,
   Eye,
   KeyRound,
+  ListPlus,
   MessageSquareText,
   ShieldCheck,
   SlidersHorizontal,
@@ -50,7 +51,9 @@ function templateName(t: T, key: string | null) {
  * the role it is built on (the roles plan's R11c).
  * Invites that ran out stay on the page, with a way to renew them, so a
  * business whose owner never joined is not stuck. Under the people, roles and
- * permissions and who sees pay, each on its own page.
+ * permissions and who sees pay, each on its own page. The staff are added
+ * from a pasted list ("הוספה מרשימה": the checklist's staff item, and a link
+ * beside the people's count), the owners one at a time.
  */
 export async function BusinessView({
   business,
@@ -60,6 +63,7 @@ export async function BusinessView({
   settingsHref,
   wordingHref,
   addHref,
+  importHref,
   rolesHref,
   accessHref,
   viewAs,
@@ -77,6 +81,8 @@ export async function BusinessView({
   wordingHref: string | null;
   /** Where to add a person, when the person may invite staff. */
   addHref: string | null;
+  /** Where to add people from a pasted list, when the person may invite staff. */
+  importHref: string | null;
   /** What each role sees and does, when the person reads it. */
   rolesHref: string | null;
   /** Who sees pay, where it opens something and the person reads it. */
@@ -158,7 +164,11 @@ export async function BusinessView({
             items={items}
             business={business}
             template={template}
-            hrefs={{ people: addHref, settings: settingsHref }}
+            hrefs={{
+              people: addHref,
+              staff: importHref,
+              settings: settingsHref,
+            }}
           />
           {settingsHref || wordingHref ? (
             <ListGroup>
@@ -189,6 +199,7 @@ export async function BusinessView({
             t={t}
             business={business}
             issue={issue}
+            importHref={importHref}
             roles={
               rolesHref
                 ? {
@@ -238,8 +249,15 @@ function Checklist({
   items: SetupItem[];
   business: BusinessSetup;
   template: string;
-  /** Where a missing item is fixed, when the person may fix it. */
-  hrefs: { people: string | null; settings: string | null };
+  /**
+   * Where a missing item is fixed, when the person may fix it: the owners
+   * one at a time, the staff from a list.
+   */
+  hrefs: {
+    people: string | null;
+    staff: string | null;
+    settings: string | null;
+  };
 }) {
   const remaining = setupRemaining(items);
   const people = (roles: Role[]) =>
@@ -257,7 +275,7 @@ function Checklist({
       if (!hrefs.people) return null;
       return ownerExpired ? "#people" : `${hrefs.people}?role=owner`;
     }
-    if (item.key === "staff") return hrefs.people;
+    if (item.key === "staff") return hrefs.staff;
     if (item.key === "address") return hrefs.settings;
     return null;
   };
@@ -413,12 +431,15 @@ function People({
   t,
   business,
   issue,
+  importHref,
   roles,
   access,
 }: {
   t: T;
   business: BusinessSetup;
   issue: Issue;
+  /** "הוספה מרשימה", beside the count: never a second accent button. */
+  importHref: string | null;
   /** Roles and permissions, its row as the owner's /manage names it. */
   roles: PageLink | null;
   /** Who sees pay, its row as the owner's /manage names it. */
@@ -471,8 +492,18 @@ function People({
     <PageSection
       title={t("setup.people.title")}
       action={
-        <span className="text-ink-2 text-sm">
-          {t("setup.people.count", { count: people.length })}
+        <span className="flex flex-wrap items-center justify-end gap-x-3">
+          <span className="text-ink-2 text-sm">
+            {t("setup.people.count", { count: people.length })}
+          </span>
+          {importHref ? (
+            <Button asChild variant="ghost" className="-me-2 px-3">
+              <Link href={importHref}>
+                <ListPlus aria-hidden="true" />
+                {t("setup.people.import")}
+              </Link>
+            </Button>
+          ) : null}
         </span>
       }
     >

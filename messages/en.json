@@ -8170,6 +8170,7 @@
         "invited": "Invited",
         "invite": "Invite",
         "add": "Add a person",
+        "import": "Add from a list",
         "expired": "Invite expired",
         "pending": "No link yet",
         "pendingHint": "The owners send the link from the Team screen."
@@ -8234,6 +8235,33 @@
       "title": "Add a person to the business",
       "subtitle": "A name, a mobile and a role at {name}, and you get a link to send in a message.",
       "back": "Back to {name}"
+    },
+    "peopleImport": {
+      "title": "Add people from a list",
+      "subtitle": "Paste the business's list. The invites are saved without a link, and nobody gets a message. The owners send the links from the Team screen.",
+      "role": {
+        "oneByOne": "{owner} and {accountant} are invited one at a time, from “Add a person”."
+      },
+      "outcome": {
+        "expired": "The earlier invite to this number ran out. “Renew the invite” in the business's people opens it again"
+      },
+      "problem": {
+        "oneByOne": "{role}: invited one at a time, from “Add a person”",
+        "elsewhere": "The number is already on another business's staff"
+      },
+      "done": {
+        "console": "Nobody got a message. The invites wait on the business's Team screen, under “No link yet”, where the owners and whoever runs the team send each person their own link.",
+        "people": "This list's invites",
+        "toBusiness": "Back to {name}",
+        "removedKept": "{count, plural, one {One invite already got a link, so it stays. The owners can delete it on the Team screen.} other {# invites already got a link, so they stay. The owners can delete them on the Team screen.}}"
+      },
+      "closed": {
+        "title": "This business takes no invites from a list"
+      },
+      "errors": {
+        "elsewhere": "{count, plural, one {One number on the list is already on another business's staff} other {# numbers on the list are already on other businesses' staff}}, and a person can be on one business's staff only, so nobody was invited. {count, plural, one {Its line is marked to fix: remove it and invite again.} other {Their lines are marked to fix: remove them and invite again.}} Anyone joining as {accountant} is invited from “Add a person”.",
+        "removeFailed": "We couldn't delete this list's invites, and they're still there. Try again in a moment."
+      }
     },
     "access": {
       "nobody": "Everyone in the business already sees the hours and pay.",
