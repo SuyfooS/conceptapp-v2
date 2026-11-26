@@ -29,7 +29,7 @@ import { pageGlowClass } from "@ui/page-glow";
 import { PersonList, PersonRow } from "@ui/person-row";
 import { StatusToast } from "@ui/status-toast";
 import { TextArea } from "@ui/text-field";
-import { UndoRow } from "@ui/undo-row";
+import { UndoRow, type UndoRowProps } from "@ui/undo-row";
 import { Check, ShieldCheck, Trash2, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
@@ -43,6 +43,15 @@ import {
   useState,
 } from "react";
 import { HOLD_MS, useHeldWrite } from "../../use-held-write";
+import type { PendingRow } from "../pending-links";
+import { useInviteLinks } from "../resend-link";
+import { doneLinksOf, type ExpiredRow } from "./done-links";
+import {
+  DoneExpired,
+  DoneLinks,
+  DoneSendList,
+  type SendLinks,
+} from "./done-send";
 import { ignoredWords } from "./ignored-words";
 import {
   type ImportMode,
@@ -59,7 +68,7 @@ import type {
   UndoPeopleImport,
 } from "./import-types";
 import { type LineSpan, lineRange, withoutLines } from "./paste-edit";
-import { withoutTakenBack } from "./taken-back";
+import { takeBackOf, withoutTakenBack } from "./taken-back";
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 
@@ -116,6 +125,12 @@ type Done = {
   invites: readonly string[];
   /** Everyone it made or updated, in the order of the lines. */
   people: readonly DonePerson[];
+  /**
+   * The Team screen's: everyone on the list whose invite has no link yet,
+   * theirs to make here (`doneLinksOf`), and those whose link ran out.
+   */
+  links: readonly PendingRow[];
+  expired: readonly ExpiredRow[];
 };
 
 /** A refusal, said under the press, drawn anew for each answer. */
@@ -130,6 +145,7 @@ type Refusal = {
 };
 
 const NOBODY: ReadonlySet<string> = new Set();
+const NO_LINKS: readonly PendingRow[] = [];
 
 export type PeopleImportViewProps = {
   /**
@@ -153,6 +169,12 @@ export type PeopleImportViewProps = {
     /** Where the done card goes back to. */
     done: { href: string; label: string };
   };
+  /**
+   * The Team screen's send list after an import (team mode only): each
+   * person's link made at the moment of sending, then WhatsApp or a copy,
+   * with the actions that make them; none, and the done card alone, without.
+   */
+  send?: SendLinks;
   /** What the field starts with: the twin's pastes. */
   initialPaste?: string;
   /**
@@ -173,7 +195,14 @@ export type PeopleImportViewProps = {
  * same view for every route, each with its own actions, and for the twins
  * on /design with stand-ins that write nothing. From the console, a number
  * the database finds on another business's staff refuses the list, and
- * its line is marked to fix until it is removed.
+ * its line is marked to fix until it is removed. On the Team screen the done
+ * screen lists everyone on the list with no link yet (`send`), each one's
+ * link made there, one person at a time, and "קישור חדש" for those whose
+ * link ran out: the done card at the start of a tablet's columns, the list
+ * at their end; on a computer the card above, the list a table under it.
+ * Its ways on (deleting the list's invites, back to the team, another list)
+ * come after the list on a phone and a computer, under the card on a
+ * tablet, so the first "יצירת קישור" follows the card's words.
  */
 export function PeopleImportView({
   mode = "team",
@@ -182,6 +211,7 @@ export function PeopleImportView({
   importPeople,
   undoImport,
   paths,
+  send: sendLinks,
   initialPaste = "",
   startAt,
 }: PeopleImportViewProps) {
@@ -189,11 +219,13 @@ export function PeopleImportView({
   const ta = useTranslations("admin.peopleImport");
   const ti = useTranslations("app.team.invite");
   const tc = useTranslations("app.team.changes");
+  const tt = useTranslations("app.team");
   const locale = useLocale();
   const inConsole = mode === "console";
+  // The console makes no link: the owners send them from /team.
+  const send = inConsole ? undefined : sendLinks;
   const words = useLineWords(roles, mode);
   const statusId = useId();
-  const removeHereId = useId();
   /** Owners and accountants, as the business words them: invited one at a time. */
   const oneByOne = (role: "owner" | "accountant") =>
     roles.oneByOne.find((one) => one.role === role)?.label ?? "";
@@ -258,14 +290,23 @@ export function PeopleImportView({
    */
   const restored = useRef<FocusCandidate>(null);
   /**
-   * Edits typed into the field since the list was last started: each one
-   * waits for typing to pause, then says the counts unless they were said
-   * already. A state, not a ref, so an edit that leaves the counts as they
-   * were still says them the first time.
+   * Edits typed into the field since the list was last started or invited:
+   * each one waits for typing to pause, then says the counts unless they
+   * were said already. A state, not a ref, so an edit that leaves the counts
+   * as they were still says them the first time. None after an import, so
+   * counts that change with nothing edited (an import taken back, whose
+   * lines with a link made now read as invited) wait for the next edit,
+   * never said over "ביטול"'s words.
    */
   const [edits, setEdits] = useState(0);
   /** The counts as last said (`summary`), so the same are never said again. */
   const said = useRef<string | null>(null);
+  /**
+   * How many of a taken-back import's invites its "ביטול" says stay, as its
+   * words last changed (`TakenBackUndo`): the database's count is said after
+   * the hold only when it differs, never the same sentence twice.
+   */
+  const keptSaid = useRef(0);
 
   /** Those the undo left, since a link was made for them meanwhile. */
   const keptWords = (count: number) =>
@@ -293,8 +334,10 @@ export function PeopleImportView({
         return false;
       }
       setRemoved({ done: was, kept: result.kept });
-      // Drawn under the field, where nothing reads it out: said once.
-      if (result.kept > 0) {
+      // Drawn under the field, where nothing reads it out: said, unless
+      // "ביטול" said the same count as it held (its name, read as it took
+      // the focus, or its words as they changed).
+      if (result.kept > 0 && result.kept !== keptSaid.current) {
         announce(keptWords(result.kept), { lang: locale });
       }
       return true;
@@ -359,6 +402,8 @@ export function PeopleImportView({
     setRemoved(null);
     setHidden(null);
     setUndoFailed(0);
+    // The counts are said again only after the next edit (`edits`).
+    setEdits(0);
     // A line's removal is no longer to take back: its "ביטול" goes with it.
     setToast(null);
     doneFocus.current = "title";
@@ -379,7 +424,8 @@ export function PeopleImportView({
 
   /**
    * What an import did, from the database's answer for each row sent (never
-   * the preview's): `left` the lines the screen left out itself.
+   * the preview's): `left` the lines the screen left out itself. Its send
+   * list (the Team screen's) reads the team as it was at the press.
    */
   function doneOf(
     importId: string | null,
@@ -411,6 +457,14 @@ export function PeopleImportView({
         },
       ];
     });
+    const { links, expired } = doneLinksOf({
+      rows,
+      sent,
+      lines: check.lines,
+      team,
+      labelOf: words.labelOf,
+      noName: tt("noName"),
+    });
     return {
       importId,
       made: of(["created"]).length,
@@ -421,14 +475,21 @@ export function PeopleImportView({
         row.invite ? [row.invite] : [],
       ),
       people,
+      links,
+      expired,
     };
   }
 
-  function takeBack() {
+  /**
+   * Takes the import back: `cancels` its invites the undo cancels, those
+   * still with no link (`takeBackOf`).
+   */
+  function takeBack(cancels: readonly string[]) {
     if (!done?.importId) return;
     setRemoved({ done, kept: null });
-    // Its invites read as gone at once, as the undo will leave them.
-    setHidden(new Set(done.invites));
+    // Those invites read as gone at once, as the undo will leave them; one
+    // whose link was made here stays, before the page reads the team again.
+    setHidden(new Set(cancels));
     setDone(null);
     setToast(null);
     held.hold({ importId: done.importId, done });
@@ -700,365 +761,535 @@ export function PeopleImportView({
   const tooManyOpen = { open: team.waiting, max: WAITING_INVITES_MAX, ltr };
   /** The console's list of whom the import saved, beside its done card. */
   const saved = inConsole && done ? done.people : [];
-  const removable = Boolean(done?.importId) && (done?.made ?? 0) > 0;
+  /** The Team screen's send list beside its done card, while anyone is on it. */
+  const sending =
+    send !== undefined &&
+    done !== null &&
+    done.links.length + done.expired.length > 0;
+  /**
+   * Its undo failed, the done card back: drawn anew for each failure, so
+   * the same again is heard.
+   */
+  const removeFailed = (className?: string) =>
+    undoFailed > 0 ? (
+      <p
+        key={undoFailed}
+        role="alert"
+        className={cn("px-1 text-danger", className)}
+      >
+        {inConsole ? ta("errors.removeFailed") : t("errors.removeFailed")}
+      </p>
+    ) : null;
+  /**
+   * The done card's ways on, as each shape places them (`DoneActions`).
+   * With a send list, a failed undo is said among them, beside the delete
+   * that takes the focus back, after the list (above the card, it would be
+   * out of view as the page brings that button into view).
+   */
+  const doneActions = (className: string) =>
+    done ? (
+      <DoneActions
+        done={done}
+        known={known}
+        inConsole={inConsole}
+        back={paths.done}
+        onRemove={takeBack}
+        onAnother={another}
+        alert={sending ? removeFailed("md:basis-full") : null}
+        className={className}
+      />
+    ) : null;
 
   return (
-    <PageBody className={pageGlowClass}>
-      <StatusToast
-        message={toast?.text ?? null}
-        stamp={toast ? String(toast.stamp) : undefined}
-        // As long as a deleted invite's way back is offered.
-        duration={HOLD_MS}
-        action={
-          toast
-            ? {
-                label: t("undoRemove"),
-                onClick: () => {
-                  // Where the person was: the line's "הסרת השורה", or
-                  // "הסרת # השורות בלי מספר נייד", drawn again (above).
-                  const [one] = toast.spans;
-                  restored.current =
-                    toast.spans.length > 1
-                      ? "[data-remove-no-phone]"
-                      : `[data-remove-line="${one?.line ?? 0}"]`;
-                  setPaste(toast.before);
-                  setToast(null);
-                },
-              }
-            : null
-        }
-        focusAction
-        onFocusLeave={() => {
-          // Taken back: its lines' own button takes the focus (above).
-          if (restored.current) return;
-          // Its time up: the line now in the removed one's place, else the
-          // preview's title, or the done card's once an import is done.
-          const at = toast?.spans[0]?.line;
-          focusFirst([
-            at !== undefined ? `[data-remove-line="${at}"]` : null,
-            previewHeading.current,
-            doneHeading.current,
-          ]);
-        }}
-      />
-      <PageHeader
-        back={paths.back}
-        title={inConsole ? ta("title") : t("title")}
-        subtitle={inConsole ? ta("subtitle") : t("subtitle")}
-      />
-      {done && undoFailed > 0 ? (
-        <p key={undoFailed} role="alert" className="px-1 text-danger">
-          {inConsole ? ta("errors.removeFailed") : t("errors.removeFailed")}
-        </p>
-      ) : null}
-      {done ? (
-        <div
-          className={
-            saved.length > 0
-              ? // Beside the people it saved, in the editor's columns: one
-                // under the other on a phone, the card at the start of a
-                // tablet's and a computer's, the people at their end.
-                "grid gap-6 md:grid-cols-2 md:items-start md:gap-8 xl:grid-cols-[24rem_minmax(0,1fr)]"
-              : "contents"
+    <DoneLinks
+      send={send}
+      // Its links kept while it is taken back, for its "ביטול".
+      rows={(done ?? removed?.done)?.links ?? NO_LINKS}
+    >
+      <PageBody className={pageGlowClass}>
+        <StatusToast
+          message={toast?.text ?? null}
+          stamp={toast ? String(toast.stamp) : undefined}
+          // As long as a deleted invite's way back is offered.
+          duration={HOLD_MS}
+          action={
+            toast
+              ? {
+                  label: t("undoRemove"),
+                  onClick: () => {
+                    // Where the person was: the line's "הסרת השורה", or
+                    // "הסרת # השורות בלי מספר נייד", drawn again (above).
+                    const [one] = toast.spans;
+                    restored.current =
+                      toast.spans.length > 1
+                        ? "[data-remove-no-phone]"
+                        : `[data-remove-line="${one?.line ?? 0}"]`;
+                    setPaste(toast.before);
+                    setToast(null);
+                  },
+                }
+              : null
           }
-        >
-          <Card
-            tone="accent"
-            padding="lg"
-            className={cn(
-              "flex flex-col gap-3",
-              saved.length === 0 && "md:max-w-2xl",
-            )}
+          focusAction
+          onFocusLeave={() => {
+            // Taken back: its lines' own button takes the focus (above).
+            if (restored.current) return;
+            // Its time up: the line now in the removed one's place, else the
+            // preview's title, or the done card's once an import is done.
+            const at = toast?.spans[0]?.line;
+            focusFirst([
+              at !== undefined ? `[data-remove-line="${at}"]` : null,
+              previewHeading.current,
+              doneHeading.current,
+            ]);
+          }}
+        />
+        <PageHeader
+          back={paths.back}
+          title={inConsole ? ta("title") : t("title")}
+          subtitle={inConsole ? ta("subtitle") : t("subtitle")}
+        />
+        {/* Above the card, which holds its delete; with a send list, among
+            the ways on after the list (`doneActions`). */}
+        {done && !sending ? removeFailed() : null}
+        {done ? (
+          <div
+            className={
+              sending
+                ? // Beside the people to send links to: one under the other on
+                  // a phone, the card, the list, then the ways on; the card
+                  // and the ways on at the start of a tablet's columns, the
+                  // list at their end; on a computer the card above, the list
+                  // a table across under it, then the ways on.
+                  "grid gap-6 md:grid-cols-2 md:grid-rows-[auto_1fr] md:items-start md:gap-8 xl:grid-cols-1 xl:grid-rows-none"
+                : saved.length > 0
+                  ? // Beside the people it saved, in the editor's columns: one
+                    // under the other on a phone, the card at the start of a
+                    // tablet's and a computer's, the people at their end.
+                    "grid gap-6 md:grid-cols-2 md:items-start md:gap-8 xl:grid-cols-[24rem_minmax(0,1fr)]"
+                  : "contents"
+            }
           >
-            <h2
-              ref={doneHeading}
-              tabIndex={-1}
-              className="flex items-start gap-2 text-balance font-bold text-xl outline-none"
+            <Card
+              tone="accent"
+              padding="lg"
+              className={cn(
+                "flex flex-col gap-3",
+                saved.length === 0 && "md:max-w-2xl",
+              )}
             >
-              <Check aria-hidden="true" className="mt-1 size-6 shrink-0" />
-              {t("done.title", { count: done.made })}
-            </h2>
-            {done.updated + done.skipped > 0 ? (
-              <p>
-                {t("done.more", {
-                  updated: done.updated,
-                  skipped: done.skipped,
+              <h2
+                ref={doneHeading}
+                tabIndex={-1}
+                className="flex items-start gap-2 text-balance font-bold text-xl outline-none"
+              >
+                <Check aria-hidden="true" className="mt-1 size-6 shrink-0" />
+                {t("done.title", { count: done.made })}
+              </h2>
+              {done.updated + done.skipped > 0 ? (
+                <p>
+                  {t("done.more", {
+                    updated: done.updated,
+                    skipped: done.skipped,
+                  })}
+                </p>
+              ) : null}
+              {inConsole ? (
+                <p>{ta("done.console")}</p>
+              ) : (
+                <>
+                  <p>{t("done.team")}</p>
+                  <p>{t("done.later")}</p>
+                </>
+              )}
+              {/* With a send list, after it (below), so on a phone the first
+                  "יצירת קישור" follows these words, never the ways out. */}
+              {sending ? null : doneActions("mt-1")}
+            </Card>
+            {saved.length > 0 ? <DonePeople people={saved} /> : null}
+            {sending && send ? (
+              <>
+                <div className="flex min-w-0 flex-col gap-6 md:col-start-2 md:row-span-2 md:row-start-1 xl:col-start-1 xl:row-span-1 xl:row-start-2">
+                  <DoneSendList count={done.links.length} />
+                  <DoneExpired rows={done.expired} renew={send.renew} />
+                </div>
+                {doneActions("md:col-start-1 md:row-start-2 xl:row-start-3")}
+              </>
+            ) : null}
+          </div>
+        ) : (
+          <>
+            {held.held && removed ? (
+              // Each import taken back is a row of its own, said afresh.
+              <TakenBackUndo
+                key={held.held.importId}
+                done={removed.done}
+                known={known}
+                keptWords={keptWords}
+                onKept={(kept) => {
+                  keptSaid.current = kept;
+                }}
+                onUndo={keepImport}
+                autoFocus
+                onWaitingChange={(waiting) =>
+                  waiting ? held.pause() : held.resume()
+                }
+                focusAfter={() => ["[data-import-remove]", field.current]}
+                className="md:max-w-2xl"
+              />
+            ) : null}
+            {removed ? (
+              <p className="px-1 text-ink-2 md:max-w-2xl">
+                {t("done.removedBack")}
+                {removed.kept ? ` ${keptWords(removed.kept)}` : ""}
+              </p>
+            ) : (
+              <p className="-mt-2 px-1 text-ink-2 md:-mt-4 md:max-w-2xl">
+                {t("existing", {
+                  members: team.members.length,
+                  invites: team.waiting,
                 })}
               </p>
-            ) : null}
-            {inConsole ? (
-              <p>{ta("done.console")}</p>
-            ) : (
-              <>
-                <p>{t("done.team")}</p>
-                <p>{t("done.later")}</p>
-              </>
             )}
-            {inConsole && removable ? (
-              // The console deletes no invite one at a time: once this card
-              // goes ("הזמנה מרשימה נוספת" too, or leaving the screen),
-              // only the owners can, on their Team screen. Its words say so.
-              <p id={removeHereId}>{ta("done.removeHere")}</p>
-            ) : null}
-            <div className="mt-1 flex flex-col gap-2 md:flex-row md:flex-wrap">
-              {removable ? (
-                <Button
-                  variant="secondary"
-                  data-import-remove=""
-                  aria-describedby={inConsole ? removeHereId : undefined}
-                  onClick={takeBack}
-                >
-                  <Trash2 aria-hidden="true" />
-                  {t("done.remove")}
-                </Button>
-              ) : null}
-              <Button asChild variant="secondary">
-                <Link href={paths.done.href}>{paths.done.label}</Link>
-              </Button>
-              <Button variant="ghost" onClick={another}>
-                {t("done.another")}
-              </Button>
-            </div>
-          </Card>
-          {saved.length > 0 ? <DonePeople people={saved} /> : null}
-        </div>
-      ) : (
-        <>
-          {held.held && removed ? (
-            // Each import taken back is a row of its own, said afresh.
-            <UndoRow
-              key={held.held.importId}
-              message={t("done.removed", { count: removed.done.made })}
-              onUndo={keepImport}
-              autoFocus
-              onWaitingChange={(waiting) =>
-                waiting ? held.pause() : held.resume()
-              }
-              focusAfter={() => ["[data-import-remove]", field.current]}
-              className="md:max-w-2xl"
-            />
-          ) : null}
-          {removed ? (
-            <p className="px-1 text-ink-2 md:max-w-2xl">
-              {t("done.removedBack")}
-              {removed.kept ? ` ${keptWords(removed.kept)}` : ""}
-            </p>
-          ) : (
-            <p className="-mt-2 px-1 text-ink-2 md:-mt-4 md:max-w-2xl">
-              {t("existing", {
-                members: team.members.length,
-                invites: team.waiting,
-              })}
-            </p>
-          )}
-          <div className="grid gap-6 md:grid-cols-2 md:items-start md:gap-8 xl:grid-cols-[24rem_minmax(0,1fr)]">
-            <div
-              // Stuck beside the lines, it scrolls on its own when taller
-              // than the screen, so the field it focuses comes into view.
-              className="flex min-w-0 flex-col gap-6 md:sticky md:top-20 md:-mx-1 md:max-h-[calc(100dvh-env(safe-area-inset-bottom)-13.5rem)] md:overflow-y-auto md:px-1 md:pb-4 xl:top-8 xl:max-h-[calc(100dvh-4rem)]"
-            >
-              <div className="flex flex-col gap-2">
-                <ChoiceList legend={t("role.label")}>
-                  {roles.choices.map((choice) => {
-                    const key = roleChoiceKey(choice);
-                    const base = words.labelOf({
-                      role: choice.role,
-                      namedRole: null,
-                    });
-                    return (
-                      <ChoiceRow
-                        key={key}
-                        name="import-role"
-                        value={key}
-                        checked={!choice.blocked && key === roleKey}
-                        disabled={Boolean(choice.blocked)}
-                        onChange={() => setRoleKey(key)}
-                        title={choice.label}
-                        hint={
-                          choice.blocked === "pay"
-                            ? tc("payHint")
-                            : choice.blocked === "held"
-                              ? tc("heldHint")
-                              : choice.namedRole
-                                ? ti("namedHint", { role: base })
-                                : ti(`roleHint.${choice.role}`)
-                        }
-                      />
-                    );
-                  })}
-                </ChoiceList>
-                <p className="px-1 text-ink-2 text-sm">{t("role.hint")}</p>
-                <p className="px-1 text-ink-2 text-sm">
-                  {inConsole
-                    ? ta("role.oneByOne", oneByOneRoles)
-                    : t("role.oneByOne", oneByOneRoles)}
-                </p>
-              </div>
-              <div className="flex flex-col gap-2">
-                <TextArea
-                  ref={field}
-                  label={t("paste.label")}
-                  hint={t("paste.hint")}
-                  placeholder={t("paste.placeholder")}
-                  rows={8}
-                  dir="auto"
-                  spellCheck={false}
-                  autoComplete="off"
-                  value={paste}
-                  onChange={(event) => {
-                    setEdits((count) => count + 1);
-                    setPaste(event.target.value);
-                    setFailure(null);
-                    // A removal's "ביטול" brings back the text as it was
-                    // then, so it goes once the text changes since.
-                    setToast(null);
-                  }}
-                />
-                <p className="flex items-start gap-1.5 px-1 text-ink-2 text-sm">
-                  <ShieldCheck
-                    aria-hidden="true"
-                    className="mt-0.5 size-4 shrink-0"
+            <div className="grid gap-6 md:grid-cols-2 md:items-start md:gap-8 xl:grid-cols-[24rem_minmax(0,1fr)]">
+              <div
+                // Stuck beside the lines, it scrolls on its own when taller
+                // than the screen, so the field it focuses comes into view.
+                className="flex min-w-0 flex-col gap-6 md:sticky md:top-20 md:-mx-1 md:max-h-[calc(100dvh-env(safe-area-inset-bottom)-13.5rem)] md:overflow-y-auto md:px-1 md:pb-4 xl:top-8 xl:max-h-[calc(100dvh-4rem)]"
+              >
+                <div className="flex flex-col gap-2">
+                  <ChoiceList legend={t("role.label")}>
+                    {roles.choices.map((choice) => {
+                      const key = roleChoiceKey(choice);
+                      const base = words.labelOf({
+                        role: choice.role,
+                        namedRole: null,
+                      });
+                      return (
+                        <ChoiceRow
+                          key={key}
+                          name="import-role"
+                          value={key}
+                          checked={!choice.blocked && key === roleKey}
+                          disabled={Boolean(choice.blocked)}
+                          onChange={() => setRoleKey(key)}
+                          title={choice.label}
+                          hint={
+                            choice.blocked === "pay"
+                              ? tc("payHint")
+                              : choice.blocked === "held"
+                                ? tc("heldHint")
+                                : choice.namedRole
+                                  ? ti("namedHint", { role: base })
+                                  : ti(`roleHint.${choice.role}`)
+                          }
+                        />
+                      );
+                    })}
+                  </ChoiceList>
+                  <p className="px-1 text-ink-2 text-sm">{t("role.hint")}</p>
+                  <p className="px-1 text-ink-2 text-sm">
+                    {inConsole
+                      ? ta("role.oneByOne", oneByOneRoles)
+                      : t(
+                          words.givesOneByOne
+                            ? "role.oneByOne"
+                            : "role.oneByOneOwners",
+                          oneByOneRoles,
+                        )}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <TextArea
+                    ref={field}
+                    label={t("paste.label")}
+                    hint={t("paste.hint")}
+                    placeholder={t("paste.placeholder")}
+                    rows={8}
+                    dir="auto"
+                    spellCheck={false}
+                    autoComplete="off"
+                    value={paste}
+                    onChange={(event) => {
+                      setEdits((count) => count + 1);
+                      setPaste(event.target.value);
+                      setFailure(null);
+                      // A removal's "ביטול" brings back the text as it was
+                      // then, so it goes once the text changes since.
+                      setToast(null);
+                    }}
                   />
-                  <span>{t("paste.kept")}</span>
-                </p>
-                {ignored.length > 0 ? (
-                  <p className="px-1 text-ink-2 text-sm">{ignored.join(" ")}</p>
+                  <p className="flex items-start gap-1.5 px-1 text-ink-2 text-sm">
+                    <ShieldCheck
+                      aria-hidden="true"
+                      className="mt-0.5 size-4 shrink-0"
+                    />
+                    <span>{t("paste.kept")}</span>
+                  </p>
+                  {ignored.length > 0 ? (
+                    <p className="px-1 text-ink-2 text-sm">
+                      {ignored.join(" ")}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+              <div className="flex min-w-0 flex-col gap-4">
+                <PageSection
+                  title={t("preview.title")}
+                  headingRef={previewHeading}
+                >
+                  {empty ? (
+                    <p className="rounded-card bg-surface px-4 py-3.5 text-ink-2 shadow-card">
+                      {t("preview.empty")}
+                    </p>
+                  ) : (
+                    <div className="flex flex-col gap-6">
+                      {parsed.lines.length > 0 ? (
+                        <Card
+                          tone="accent"
+                          padding="lg"
+                          className="flex flex-col gap-1"
+                        >
+                          <p className="font-semibold text-md">{readyWords}</p>
+                          {byRole.length > 0 ? (
+                            <p>
+                              {byRole.map(([key, count], index) => (
+                                <span key={key}>
+                                  {index > 0 ? " · " : null}
+                                  {t.rich("summary.byRole", {
+                                    role: words.labelOfKey(key),
+                                    count,
+                                    ltr,
+                                  })}
+                                </span>
+                              ))}
+                            </p>
+                          ) : null}
+                          {problems > 0 ? (
+                            <p>{t("summary.fix", { count: problems })}</p>
+                          ) : null}
+                          {teamLeftOut > 0 ? (
+                            <p>
+                              {t("summary.leftOut", { count: teamLeftOut })}
+                            </p>
+                          ) : null}
+                          {headerLine !== undefined ? (
+                            <p>
+                              {t.rich("summary.header", {
+                                line: headerLine,
+                                ltr,
+                              })}
+                            </p>
+                          ) : null}
+                        </Card>
+                      ) : null}
+                      {parsed.lines.length > 0 ? (
+                        <>
+                          <div className="xl:hidden">
+                            <LineGroups
+                              lines={check.lines}
+                              words={words}
+                              actions={actions}
+                              removeNoPhone={(spans) => removeLines(spans)}
+                            />
+                          </div>
+                          <div className="hidden xl:block">
+                            <LinesTable
+                              // Drawn anew, its filter back to all, by each
+                              // number found on another business's staff (the
+                              // set only grows): the line marked is on screen
+                              // as its removal takes the focus (below).
+                              key={elsewhere.size}
+                              lines={check.lines}
+                              words={words}
+                              actions={actions}
+                              removeNoPhone={(spans) => removeLines(spans)}
+                            />
+                          </div>
+                        </>
+                      ) : null}
+                    </div>
+                  )}
+                </PageSection>
+                {failure ? (
+                  // Beside the press it answers, drawn anew for each answer,
+                  // so the same refusal again is heard.
+                  <p
+                    key={failure.answer}
+                    ref={refusal}
+                    role="alert"
+                    className="px-1 text-danger"
+                  >
+                    {failureWords()}
+                  </p>
+                ) : null}
+                {status ? (
+                  <p id={statusId} className="px-1 font-medium">
+                    {blocked === "tooMany"
+                      ? t.rich("status.tooMany", {
+                          max: PEOPLE_IMPORT_MAX,
+                          count: parsed.people,
+                          ltr,
+                        })
+                      : blocked === "tooManyOpen"
+                        ? inConsole
+                          ? ta.rich("status.tooManyOpen", tooManyOpen)
+                          : t.rich("status.tooManyOpen", tooManyOpen)
+                        : status}
+                  </p>
+                ) : null}
+                {!empty ? (
+                  <>
+                    <p className="px-1 text-ink-2 text-sm">
+                      {t("status.notSent")}
+                    </p>
+                    <FloatingAction>
+                      <Button
+                        ref={submit}
+                        size="lg"
+                        loading={importing}
+                        disabled={!ready}
+                        aria-describedby={status ? statusId : undefined}
+                        className={cn(
+                          "w-full md:w-auto md:shadow-none",
+                          floatingButtonClass,
+                        )}
+                        onClick={() => void importNow()}
+                      >
+                        <UserPlus aria-hidden="true" />
+                        {label}
+                      </Button>
+                    </FloatingAction>
+                  </>
                 ) : null}
               </div>
             </div>
-            <div className="flex min-w-0 flex-col gap-4">
-              <PageSection
-                title={t("preview.title")}
-                headingRef={previewHeading}
-              >
-                {empty ? (
-                  <p className="rounded-card bg-surface px-4 py-3.5 text-ink-2 shadow-card">
-                    {t("preview.empty")}
-                  </p>
-                ) : (
-                  <div className="flex flex-col gap-6">
-                    {parsed.lines.length > 0 ? (
-                      <Card
-                        tone="accent"
-                        padding="lg"
-                        className="flex flex-col gap-1"
-                      >
-                        <p className="font-semibold text-md">{readyWords}</p>
-                        {byRole.length > 0 ? (
-                          <p>
-                            {byRole.map(([key, count], index) => (
-                              <span key={key}>
-                                {index > 0 ? " · " : null}
-                                {t.rich("summary.byRole", {
-                                  role: words.labelOfKey(key),
-                                  count,
-                                  ltr,
-                                })}
-                              </span>
-                            ))}
-                          </p>
-                        ) : null}
-                        {problems > 0 ? (
-                          <p>{t("summary.fix", { count: problems })}</p>
-                        ) : null}
-                        {teamLeftOut > 0 ? (
-                          <p>{t("summary.leftOut", { count: teamLeftOut })}</p>
-                        ) : null}
-                        {headerLine !== undefined ? (
-                          <p>
-                            {t.rich("summary.header", {
-                              line: headerLine,
-                              ltr,
-                            })}
-                          </p>
-                        ) : null}
-                      </Card>
-                    ) : null}
-                    {parsed.lines.length > 0 ? (
-                      <>
-                        <div className="xl:hidden">
-                          <LineGroups
-                            lines={check.lines}
-                            words={words}
-                            actions={actions}
-                            removeNoPhone={(spans) => removeLines(spans)}
-                          />
-                        </div>
-                        <div className="hidden xl:block">
-                          <LinesTable
-                            // Drawn anew, its filter back to all, by each
-                            // number found on another business's staff (the
-                            // set only grows): the line marked is on screen
-                            // as its removal takes the focus (below).
-                            key={elsewhere.size}
-                            lines={check.lines}
-                            words={words}
-                            actions={actions}
-                            removeNoPhone={(spans) => removeLines(spans)}
-                          />
-                        </div>
-                      </>
-                    ) : null}
-                  </div>
-                )}
-              </PageSection>
-              {failure ? (
-                // Beside the press it answers, drawn anew for each answer,
-                // so the same refusal again is heard.
-                <p
-                  key={failure.answer}
-                  ref={refusal}
-                  role="alert"
-                  className="px-1 text-danger"
-                >
-                  {failureWords()}
-                </p>
-              ) : null}
-              {status ? (
-                <p id={statusId} className="px-1 font-medium">
-                  {blocked === "tooMany"
-                    ? t.rich("status.tooMany", {
-                        max: PEOPLE_IMPORT_MAX,
-                        count: parsed.people,
-                        ltr,
-                      })
-                    : blocked === "tooManyOpen"
-                      ? inConsole
-                        ? ta.rich("status.tooManyOpen", tooManyOpen)
-                        : t.rich("status.tooManyOpen", tooManyOpen)
-                      : status}
-                </p>
-              ) : null}
-              {!empty ? (
-                <>
-                  <p className="px-1 text-ink-2 text-sm">
-                    {t("status.notSent")}
-                  </p>
-                  <FloatingAction>
-                    <Button
-                      ref={submit}
-                      size="lg"
-                      loading={importing}
-                      disabled={!ready}
-                      aria-describedby={status ? statusId : undefined}
-                      className={cn(
-                        "w-full md:w-auto md:shadow-none",
-                        floatingButtonClass,
-                      )}
-                      onClick={() => void importNow()}
-                    >
-                      <UserPlus aria-hidden="true" />
-                      {label}
-                    </Button>
-                  </FloatingAction>
-                </>
-              ) : null}
-            </div>
-          </div>
-        </>
-      )}
-    </PageBody>
+          </>
+        )}
+      </PageBody>
+    </DoneLinks>
   );
+}
+
+/**
+ * What taking the import back does now (`takeBackOf`): the links made on
+ * this screen (`InviteLinks`, under `DoneLinks`; none in the console), the
+ * team as the page last read it, and the numbers the import invited, so one
+ * who joined meanwhile counts as neither cancelled nor kept.
+ */
+function useTakeBack(done: Done, known: KnownTeam) {
+  const links = useInviteLinks();
+  return takeBackOf(
+    done.invites,
+    known,
+    (id) => links?.links.has(id) === true,
+    done.people.map((person) => person.phone),
+  );
+}
+
+/**
+ * The done card's ways on: "מחיקת ההזמנות מהרשימה" while its undo would
+ * cancel any of the import's invites (one whose link was made since stays
+ * either way, so with every link made it is not offered), back to the team,
+ * and another list. The console says first that only here are they deleted
+ * together. `className` places the row in the shape it is drawn in; `alert`
+ * (a failed undo) comes first in it, beside the delete.
+ */
+function DoneActions({
+  done,
+  known,
+  inConsole,
+  back,
+  onRemove,
+  onAnother,
+  alert,
+  className,
+}: {
+  done: Done;
+  known: KnownTeam;
+  inConsole: boolean;
+  back: { href: string; label: string };
+  /** Takes the import back, with the invites its undo cancels, to hide. */
+  onRemove: (cancels: readonly string[]) => void;
+  onAnother: () => void;
+  alert: ReactNode;
+  className: string;
+}) {
+  const t = useTranslations("app.team.import");
+  const ta = useTranslations("admin.peopleImport");
+  const removeHereId = useId();
+  const { cancels } = useTakeBack(done, known);
+  const removable = done.importId !== null && cancels.length > 0;
+  return (
+    <>
+      {inConsole && removable ? (
+        // The console deletes no invite one at a time: once this card goes
+        // ("הזמנה מרשימה נוספת" too, or leaving the screen), only the owners
+        // can, on their Team screen. Its words say so.
+        <p id={removeHereId}>{ta("done.removeHere")}</p>
+      ) : null}
+      <div
+        className={cn(
+          "flex flex-col gap-2 md:flex-row md:flex-wrap",
+          className,
+        )}
+      >
+        {alert}
+        {removable ? (
+          <Button
+            variant="secondary"
+            data-import-remove=""
+            aria-describedby={inConsole ? removeHereId : undefined}
+            onClick={() => onRemove(cancels)}
+          >
+            <Trash2 aria-hidden="true" />
+            {t("done.remove")}
+          </Button>
+        ) : null}
+        <Button asChild variant="secondary">
+          <Link href={back.href}>{back.label}</Link>
+        </Button>
+        <Button variant="ghost" onClick={onAnother}>
+          {t("done.another")}
+        </Button>
+      </div>
+    </>
+  );
+}
+
+/**
+ * "ביטול" for an import taken back, while it holds: how many of its invites
+ * go, and, said at once, how many stay since a link was made for them
+ * meanwhile (the undo cancels only those with none). A link that arrives
+ * while it holds changes its words. The database's own count is drawn
+ * after, under the field, and said only when it differs from the one these
+ * words last said (`onKept`).
+ */
+function TakenBackUndo({
+  done,
+  known,
+  keptWords,
+  onKept,
+  ...row
+}: Omit<UndoRowProps, "message"> & {
+  done: Done;
+  known: KnownTeam;
+  keptWords: (count: number) => string;
+  /** Hears how many its words say stay, as they appear and change. */
+  onKept: (kept: number) => void;
+}) {
+  const t = useTranslations("app.team.import");
+  const { cancels, kept } = useTakeBack(done, known);
+  useLayoutEffect(() => {
+    onKept(kept);
+  }, [kept, onKept]);
+  const message = [
+    cancels.length > 0 ? t("done.removed", { count: cancels.length }) : null,
+    kept > 0 ? keptWords(kept) : null,
+  ]
+    .filter(Boolean)
+    .join(". ");
+  return <UndoRow {...row} message={message} />;
 }
 
 /**

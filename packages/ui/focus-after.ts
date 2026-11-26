@@ -175,6 +175,27 @@ export function focusFirst(
 }
 
 /**
+ * Focuses what an answer brought (a new link's "וואטסאפ" or its copy button,
+ * in place of the press), as `focusFirst` does, never the page's title in
+ * its place; when none can take it, `say`s what arrived instead. That is a
+ * focus put elsewhere meanwhile, which stays there, or what arrived drawn
+ * in a shape of the screen that isn't on screen now (a tablet turned, a
+ * window made wider while the press was on its way): the focus is lost
+ * then, and lands on the page's title after the words. What it focused, or
+ * null.
+ */
+export function focusOrSay(
+  candidates: readonly FocusCandidate[],
+  say: () => void,
+  { doc = thePage() }: { doc?: DocLike } = {},
+): HTMLElement | null {
+  const to = focusFirst(candidates, { doc, title: false });
+  if (to) return to;
+  say();
+  return focusFirst([], { doc });
+}
+
+/**
  * Enter held down presses nothing more, for a button's `onKeyDown`: with the
  * focus moved on to what took the pressed button's place (a break's start
  * to "יציאה מהמשמרת", a stop to the toast's "ביטול", a removed row to its

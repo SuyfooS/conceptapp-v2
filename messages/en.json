@@ -1622,12 +1622,15 @@
       "import": {
         "title": "Invite from a list",
         "subtitle": "Paste a name and a mobile number for each person, and see what each line becomes. The invites are saved, and the links are sent afterwards, one by one.",
+        "entry": "Invite from a list",
+        "entryHint": "Have a list? Several people at once",
         "back": "Back to the team",
         "existing": "{members, plural, =0 {Nobody is on the team yet} one {One person is on the team already} other {# people are on the team already}}, {invites, plural, =0 {and no invites are waiting} one {and one invite is waiting} other {and # invites are waiting}}. Nobody already there is invited again.",
         "role": {
           "label": "Role for the list",
           "hint": "Everyone on the list gets this role, except a line that names another one.",
-          "oneByOne": "{owner} and {accountant} are invited one at a time, from “Invite to the team”."
+          "oneByOne": "{owner} and {accountant} are invited one at a time, from “Invite to the team”.",
+          "oneByOneOwners": "{owner} and {accountant} are invited one at a time, and only owners invite them."
         },
         "paste": {
           "label": "The list",
@@ -1710,7 +1713,8 @@
           "excelNumber": "The number came from Excel shortened, like <ltr>5.01E+08</ltr>. Widen the column in Excel, or format it as text, and copy again",
           "duplicate": "The number is already on line <ltr>{line}</ltr>, with another name or role",
           "oneByOne": "{role}: invited one at a time, from “Invite to the team”",
-          "notAllowed": "You can't invite to {role} from here",
+          "oneByOneOwners": "{role}: only owners invite to this role, one at a time",
+          "notAllowed": "Only someone above your level invites to {role}",
           "givesPay": "{role} sees pay, so only owners invite to it",
           "held": "{role} holds permissions you don't, so only owners invite to it"
         },
@@ -1741,7 +1745,11 @@
           "remove": "Delete this list's invites",
           "removed": "{count, plural, one {The invite was deleted} other {# invites were deleted}}",
           "removedKept": "{count, plural, one {One invite already got a link, so it stays. You can delete it on the Team screen.} other {# invites already got a link, so they stay. You can delete them on the Team screen.}}",
-          "removedBack": "The list is still here, to fix and invite again."
+          "removedBack": "The list is still here, to fix and invite again.",
+          "expired": {
+            "title": "Their earlier link ran out",
+            "count": "{count, plural, one {One person on the list} other {# people on the list}}"
+          }
         },
         "errors": {
           "businessChanged": "You switched to another business meanwhile, so nobody was invited. Go back to the team of the business you meant.",

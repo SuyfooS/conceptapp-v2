@@ -1,6 +1,7 @@
 import { invitesOpen } from "@db/invites";
 import { seesFiles } from "@domain/file-holders";
-import { canEditTeam, canSeeTeam } from "@domain/team";
+import { importsPeople } from "@domain/people-import";
+import { canEditTeam, canSeeTeam, inviteChoices } from "@domain/team";
 import { canWrite } from "@domain/view-as";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
@@ -47,7 +48,9 @@ export async function generateMetadata(): Promise<Metadata> {
 // staff so) come first, under "עוד לא קיבלו קישור": each one's link is made
 // there, then sent on WhatsApp to that number or copied (inviting from a
 // list, part 2), and refused once a link was made meanwhile elsewhere, so
-// the link already sent keeps working. The app sends nothing.
+// the link already sent keeps working. The app sends nothing. Whoever may
+// invite from a list (`importsPeople`: a staff role theirs to give) finds
+// "הזמנה מרשימה" at the foot of the invites (part 5).
 export default async function TeamPage() {
   const [member, enabled] = await Promise.all([
     currentMember(),
@@ -78,6 +81,11 @@ export default async function TeamPage() {
         team={team}
         viewer={membership}
         inviteHref={open ? "/team/invite" : undefined}
+        importHref={
+          open && importsPeople(inviteChoices(membership, named, ownerOnly))
+            ? "/team/import"
+            : undefined
+        }
         peopleHref="/team"
         resend={resendInviteAction}
         firstLink={firstLinkAction}

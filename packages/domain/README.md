@@ -163,15 +163,23 @@ same number twice is one person (`sameLine`) by the same name and the same
 role, written on the line or the list's (the first line sent, as naming it
 when either does), else a conflict (`duplicate`).
 `importRolesOf` builds the roles from `inviteChoices` and the business's
-words, `againstTeam` checks the paste against the team the page loaded (a
-member, or an invite with a link, an owner's or an accountant's, or one the
-viewer may not change, is left out whatever its line says; an invite with no
+words (owners and accountants one at a time, `given` when the viewer
+invites them on the invite form, an owner alone), `againstTeam` checks the
+paste against the team the page loaded (a member, or an invite with a link,
+an owner's or an accountant's, or one the viewer may not change, is left
+out whatever its line says; an invite with no
 link yet is updated, its role kept when the line names none; from the
 console, a line it would write whose number the database found on another
 business's staff, its third argument, is to fix, `elsewhere`, until it is
 removed), `writtenRoleOf` is the role an invite ends with by the database's
 answer for its row (null for one made meanwhile, whose role the screen never
-read), and `peopleImportRows` is what the server takes again. `pasted-text.ts` holds
+read), and `peopleImportRows` is what the server takes again. On the Team
+screen (`/team/import`, part 5) `teamKnownOf` is the `KnownTeam` from the
+team that screen reads (`buildTeam`): an invite is `touchable` only when the
+viewer would make its link now (`canResendInvite`, and a role that sees pay
+only for an owner), and `importsPeople` says whether a viewer imports at
+all (a staff role among the invite form's choices that isn't an owner's
+alone), so the import and the rows leading to it open only then. `pasted-text.ts` holds
 what it shares with the menu's reader (`clean`, the marks, `readsBackwards`)
 and `westernDigits` for Arabic-Indic digits; `staff-list.ts` exports
 `wordKey` and `builtInRoleWord` ("מנהל/ת", "עובד/ת", "employee").

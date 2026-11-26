@@ -18,6 +18,7 @@ import {
   noteFocusWhenSaid,
   noteIfSaid,
   noteStatusWords,
+  pastDrawing,
   saidSince,
   wasSaid,
 } from "./announcer";
@@ -28,7 +29,7 @@ import { minimalPdf } from "./pdf";
 import { cameraPhoto } from "./photo";
 import { stubAudio } from "./station-audio";
 import { enT, heT, undoNamed } from "./t";
-import { expect, type Locator, type Page, test } from "./test";
+import { expect, type Locator, type Page, type Route, test } from "./test";
 import { readWorkbook, unzip } from "./unzip";
 
 // The design system in both appearances, on the demos: no data, no sign-in.
@@ -10141,11 +10142,16 @@ test("the people import's twin says a refusal beside its press, and a failed tak
     }),
   ).toBeFocused();
   await submit.click();
-  await expect(
-    page.getByRole("alert").filter({ hasText: i.errors.removeFailed }),
-  ).toBeVisible();
+  const removeFailed = page
+    .getByRole("alert")
+    .filter({ hasText: i.errors.removeFailed });
+  await expect(removeFailed).toBeVisible();
   await expect(title).toBeVisible();
   await expect(remove).toBeFocused();
+  // Said beside the press that has the focus back, after the send list:
+  // both in view in every shape, never the alert left above the card.
+  await expect(remove).toBeInViewport();
+  await expect(removeFailed).toBeInViewport();
   await expect(
     page.getByRole("heading", {
       level: 2,
@@ -10293,6 +10299,277 @@ test("the people import's twin stops at too many people and at two phone columns
       }),
       { exact: true },
     ),
+  ).toBeVisible();
+});
+
+// Inviting from a list, part 5: the Team twin's import sends each one's
+// link from its done screen, as /team/import does, with the Team twin's
+// stand-in; WhatsApp there asks whom to send to, never a number's chat, as
+// a list pasted on the twin may be real. The Team twin and its invite form
+// lead to it by a quiet row.
+test("the people import's twin sends each one's link from its done screen, to no number's chat", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(90_000);
+  const tp = he.app.team.pending;
+  const td = he.app.team.import.done;
+  const removed = (count: number) =>
+    heT("app.team.import.done.removed", { count });
+  const removedKept = (count: number) =>
+    heT("app.team.import.done.removedKept", { count });
+  // What the focus goes on to is kept clear of the tab bar floating over a
+  // phone's and a tablet's bottom (its band); a computer has none.
+  const clearOfTabBar = async (what: Locator) =>
+    (await what.evaluate((element) =>
+      Number.parseFloat(getComputedStyle(element).scrollMarginBottom),
+    )) > 0;
+  const tabBar = testInfo.project.name !== "desktop";
+  // Nothing pasted leaves the browser, links made included.
+  const sent: string[] = [];
+  page.on("request", (request) => {
+    sent.push(`${request.url()} ${request.postData() ?? ""}`);
+  });
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto(`${importTwin}?state=done`);
+  await expect(
+    page.getByRole("heading", {
+      level: 2,
+      name: heT("app.team.import.done.title", { count: 7 }),
+    }),
+  ).toBeVisible();
+  const main = page.getByRole("main");
+  const left = (count: number) =>
+    main
+      .getByText(heT("app.team.pending.count", { count }), { exact: true })
+      .filter({ visible: true });
+  await expect(left(7)).toHaveCount(1);
+  await expect(main.getByText(tp.hint).filter({ visible: true })).toHaveCount(
+    1,
+  );
+  const list = page.locator("[data-pending-links]").filter({ visible: true });
+  const creates = list.locator("[data-pending-create]");
+  await expect(creates).toHaveCount(7);
+  // Each "יצירת קישור" says whose link it makes.
+  await expect(creates.first()).toHaveAccessibleName(
+    new RegExp(`^${asIs(heT("app.team.pending.createFor", { name: "" }))}`),
+  );
+  expect(await clearOfTabBar(creates.first())).toBe(tabBar);
+  await expect(page.locator('a[href*="wa.me"]')).toHaveCount(0);
+
+  await creates.first().click();
+  // A real link, opened by the press itself: read here, never opened.
+  const whatsapp = list.locator('a[href*="wa.me"]');
+  await expect(whatsapp).toHaveCount(1);
+  await expect(whatsapp).toBeFocused();
+  expect(await clearOfTabBar(whatsapp)).toBe(tabBar);
+  const href = new URL((await whatsapp.getAttribute("href")) ?? "");
+  // To nobody: WhatsApp asks whom to send it to.
+  expect(`${href.origin}${href.pathname}`).toBe("https://wa.me/");
+  expect(href.searchParams.get("text")).toContain("/join/");
+  expect(href.searchParams.get("text")).toContain(
+    heT("app.team.pending.message", { business: "מסעדת הדגמה" }),
+  );
+  await expect(left(6)).toHaveCount(1);
+
+  // Copied, and on to the next person, whose "יצירת קישור" has the focus.
+  await list.getByRole("button", { name: he.app.team.link.copy }).click();
+  await expect(
+    list.getByRole("button", { name: he.app.team.link.copied }),
+  ).toBeVisible();
+  await expect(creates).toHaveCount(6);
+  await expect(creates.first()).toBeFocused();
+  await expectCleanPage(page);
+
+  // Taken back, the one whose link was made stays, and "ביטול" says so at
+  // once; kept, the done screen still shows that link.
+  const remove = page.getByRole("button", { name: td.remove, exact: true });
+  await remove.click();
+  /** The taken-back list's "ביטול", by what it says goes and stays. */
+  const takenBack = (cancelled: number, kept: number) =>
+    page.getByRole("status").filter({
+      hasText: [removed(cancelled), removedKept(kept)].join(". "),
+    });
+  const keptBack = takenBack(6, 1);
+  await expect(keptBack).toBeVisible();
+  await keptBack.getByRole("button").click();
+  await expect(remove).toBeFocused();
+  await expect(whatsapp).toHaveCount(1);
+  await expect(creates).toHaveCount(6);
+  // No chat to any number, anywhere on the twin.
+  for (const link of await page.locator('a[href*="wa.me"]').all()) {
+    expect(await link.getAttribute("href")).toMatch(
+      /^https:\/\/wa\.me\/\?text=/,
+    );
+  }
+
+  // A press still on its way as the list is taken back: its link is kept
+  // as it arrives, though its row is gone (`keptAsMade`), so "ביטול"'s
+  // words change to say it stays too, and the card it brings back shows
+  // that link, never "יצירת קישור" again.
+  const twinPage = (url: URL) => url.pathname === importTwin;
+  const heldPresses: Route[] = [];
+  await page.route(twinPage, async (route) => {
+    if (route.request().method() === "POST") heldPresses.push(route);
+    else await route.fallback();
+  });
+  const pressed = await creates.first().getAttribute("data-pending-create");
+  try {
+    await creates.first().click();
+    await expect.poll(() => heldPresses.length).toBe(1);
+    await remove.click();
+    await expect(takenBack(6, 1)).toBeVisible();
+    for (const press of heldPresses.splice(0)) await press.continue();
+    const linkedMeanwhile = takenBack(5, 2);
+    await expect(linkedMeanwhile).toBeVisible();
+    await linkedMeanwhile.getByRole("button").click();
+  } finally {
+    for (const press of heldPresses.splice(0)) await press.continue();
+    await page.unroute(twinPage);
+  }
+  await expect(remove).toBeFocused();
+  await expect(whatsapp).toHaveCount(2);
+  await expect(creates).toHaveCount(5);
+  await expect(
+    list.locator(`[data-pending-create="${pressed ?? ""}"]`),
+  ).toHaveCount(0);
+
+  // Taken back again, its "ביטול" left to run out: the five with no link
+  // go, the two with theirs stay, as the line under the field says. That
+  // count was said by "ביטול" as it took the focus: never again after.
+  const polite = announcer(page, "polite");
+  await remove.click();
+  await expect(takenBack(5, 2)).toBeVisible();
+  await heardSoFar(polite);
+  await expect(takenBack(5, 2)).toHaveCount(0, { timeout: HOLD_MS + 5_000 });
+  await expect(
+    page.getByText(`${td.removedBack} ${removedKept(2)}`, { exact: true }),
+  ).toBeVisible();
+  await pastDrawing(page);
+  await expect(saidSince(polite, removedKept(2))).toHaveCount(0);
+
+  const decoded = (line: string) => {
+    try {
+      return decodeURIComponent(line);
+    } catch {
+      return line;
+    }
+  };
+  expect(
+    sent.filter((line) => /54\D{0,3}710\D{0,3}22\d\d/.test(decoded(line))),
+  ).toEqual([]);
+});
+
+// Once every one of the list's invites has its link, the done card offers
+// no delete (its undo would cancel none); a second list's people are its
+// own, each invite with an id of its own, their links still to make, never
+// the first list's links shown for them.
+test("the people import's twin offers no delete once each link is made, and a second list's links are its own", async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  const i = he.app.team.import;
+  await page.goto(`${importTwin}?state=done`);
+  await expect(
+    page.getByRole("heading", {
+      level: 2,
+      name: heT("app.team.import.done.title", { count: 7 }),
+    }),
+  ).toBeVisible();
+  const list = page.locator("[data-pending-links]").filter({ visible: true });
+  const creates = list.locator("[data-pending-create]");
+  const whatsapp = list.locator('a[href*="wa.me"]');
+  await expect(creates).toHaveCount(7);
+  const firstList = await creates.evaluateAll((all) =>
+    all.map((create) => create.getAttribute("data-pending-create")),
+  );
+  const remove = page.getByRole("button", { name: i.done.remove, exact: true });
+  await expect(remove).toHaveCount(1);
+  for (let left = 7; left > 0; left -= 1) {
+    await creates.first().click();
+    await expect(creates).toHaveCount(left - 1);
+  }
+  await expect(whatsapp).toHaveCount(7);
+  const another = page.getByRole("button", {
+    name: i.done.another,
+    exact: true,
+  });
+  await expect(another).toBeVisible();
+  const waysOn = another.locator("..");
+  await expect(
+    waysOn.getByRole("link", { name: i.done.toTeam, exact: true }),
+  ).toBeVisible();
+  await expect(remove).toHaveCount(0);
+
+  await another.click();
+  const field = page.getByRole("textbox", { name: i.paste.label, exact: true });
+  await expect(field).toBeFocused();
+  await expect(field).toHaveValue("");
+  await field.fill("שירה טל 054-710-2310");
+  await page
+    .getByRole("button", {
+      name: heT("app.team.import.submit", { count: 1 }),
+      exact: true,
+    })
+    .click();
+  await expect(
+    page.getByRole("heading", {
+      level: 2,
+      name: heT("app.team.import.done.title", { count: 1 }),
+    }),
+  ).toBeFocused();
+  await expect(creates).toHaveCount(1);
+  await expect(creates).toHaveAccessibleName(
+    heT("app.team.pending.createFor", { name: "שירה טל" }),
+  );
+  expect(firstList).not.toContain(
+    await creates.getAttribute("data-pending-create"),
+  );
+  await expect(whatsapp).toHaveCount(0);
+  await expect(remove).toHaveCount(1);
+});
+
+test("the Team twin and its invite form lead to the import by a quiet row, for whoever may invite from a list", async ({
+  page,
+}) => {
+  const i = he.app.team.import;
+  const entry = page
+    .getByRole("link", { name: new RegExp(`^${asIs(i.entry)}`) })
+    .filter({ visible: true });
+  await page.goto("/design/shell/team");
+  await expect(
+    page.getByRole("heading", { level: 1, name: he.app.team.title }),
+  ).toBeVisible();
+  await expect(entry).toHaveCount(1);
+  await expect(entry).toHaveAttribute("href", importTwin);
+  await expect(entry).toContainText(i.entryHint);
+  // Not in a demo business, which takes no invites, nor for a reader.
+  for (const state of ["demo", "view"]) {
+    await page.goto(`/design/shell/team?state=${state}`);
+    await expect(
+      page.getByRole("heading", { level: 1, name: he.app.team.title }),
+    ).toBeVisible();
+    await expect(entry).toHaveCount(0);
+  }
+  // The invite form: above it, for an owner and for a worker who edits the
+  // team; none where no role is left to give.
+  for (const as of ["", "?as=editor"]) {
+    await page.goto(`/design/shell/team/invite${as}`);
+    await expect(
+      page.getByRole("heading", { level: 1, name: he.app.team.invite.title }),
+    ).toBeVisible();
+    await expect(entry).toHaveAttribute("href", importTwin);
+  }
+  await page.goto("/design/shell/team/invite?as=paid");
+  await expect(
+    page.getByRole("heading", { level: 1, name: he.app.team.invite.title }),
+  ).toBeVisible();
+  await expect(entry).toHaveCount(0);
+  await page.goto("/design/shell/team/invite");
+  await expect(entry).toBeVisible();
+  await entry.click();
+  await expect(page).toHaveURL(new RegExp(`${asIs(importTwin)}$`));
+  await expect(
+    page.getByRole("heading", { level: 1, name: i.title }),
   ).toBeVisible();
 });
 

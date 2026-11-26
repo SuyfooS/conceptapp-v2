@@ -1,14 +1,17 @@
 import { z } from "zod";
-import type { Role } from "./modules";
+import type { Role, Viewer } from "./modules";
 import { BULLET, clean, readsBackwards, westernDigits } from "./pasted-text";
 import { normalizeIsraeliMobile } from "./phone";
 import type { NamedRole } from "./role-access";
 import { builtInRoleWord, PHONE_RUN, wordKey } from "./staff-list";
 import {
+  canResendInvite,
+  type GivableNamedRole,
   type InviteChoice,
   parseTeamName,
   type RoleChoice,
   roleChoiceKey,
+  type Team,
 } from "./team";
 import { searchable } from "./wording";
 
@@ -88,6 +91,12 @@ export type ImportRoles = {
     role: "owner" | "accountant";
     label: string;
     names: readonly string[];
+    /**
+     * The viewer invites to it themselves, one at a time ("הזמנה לצוות"):
+     * among their `inviteChoices`, so an owner. Anyone else is told only the
+     * owners do.
+     */
+    given: boolean;
   }[];
   /** Staff roles above the viewer's rank (a worker who edits the team: managers). */
   aboveRank: readonly {
@@ -141,6 +150,7 @@ export function importRolesOf({
       role,
       label: labels[role],
       names: [labels[role]],
+      given: choices.some((choice) => choice.role === role),
     })),
     aboveRank: STAFF.filter((role) => !given.has(role)).flatMap((role) => [
       { role, namedRole: null, label: labels[role], names: [labels[role]] },
@@ -1761,6 +1771,55 @@ export function knownTeamOf(
     waiting: invites.filter((invite) => invite.linkPending || !invite.expired)
       .length,
   };
+}
+
+/**
+ * Whether a viewer imports a list at all: a staff role (a manager's or a
+ * worker's, or a named role on one) among the invite form's choices for
+ * them (`inviteChoices`) that isn't an owner's alone. The Team screen's
+ * import opens only then, and its entry rows are drawn only then, so none
+ * leads to a page not found.
+ */
+export function importsPeople(choices: readonly InviteChoice[]): boolean {
+  return choices.some((choice) => isStaffRole(choice.role) && !choice.blocked);
+}
+
+/**
+ * The team a paste is checked against on the Team screen (`/team/import`),
+ * from the team that screen reads (`buildTeam`, under RLS): its members'
+ * numbers and the names the business shows them by, and every invite nobody
+ * claimed. The viewer may update one (`touchable`) only when it is a
+ * manager's or a worker's whose link they would make now, as the Team screen
+ * offers it: a role they give (`canResendInvite`, so a named role among
+ * `named`, live, that holds nothing they don't), and one that holds pay only
+ * for an owner (`ownerOnly`; a named role never does). The database decides
+ * the same again (`private.import_invites`).
+ */
+export function teamKnownOf(
+  team: Pick<Team, "members" | "invites">,
+  viewer: Viewer,
+  named: readonly GivableNamedRole[],
+  ownerOnly: readonly Role[],
+): KnownTeam {
+  return knownTeamOf(
+    team.members.map((member) => ({ phone: member.phone, name: member.name })),
+    team.invites.map((invite): KnownInvite => {
+      const namedRole = invite.namedRole?.id ?? null;
+      return {
+        id: invite.id,
+        phone: invite.phone,
+        name: invite.name,
+        role: invite.role,
+        namedRole,
+        linkPending: invite.state === "pending",
+        expired: invite.state === "expired",
+        touchable:
+          isStaffRole(invite.role) &&
+          canResendInvite(viewer, { role: invite.role, namedRole }, named) &&
+          (namedRole !== null || !ownerOnly.includes(invite.role)),
+      };
+    }),
+  );
 }
 
 /** What happens to a line of people, against the team. */

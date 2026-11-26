@@ -7,7 +7,14 @@ import {
 import { inviteChoices, namedRoleShown } from "@domain/team";
 import { Suspense } from "react";
 import { baseWording, translator } from "../../../../(app)/wording";
-import { demoNamedRole, teamInvites, teamMembers, teamToday } from "../../data";
+import {
+  business,
+  demoNamedRole,
+  teamInvites,
+  teamMembers,
+  teamToday,
+} from "../../data";
+import { demoResendAction } from "../actions";
 import { againInvites, againMembers, importPastes } from "./data";
 import { ImportTwin } from "./import-twin";
 
@@ -35,7 +42,9 @@ type State = (typeof STATES)[number];
 // and wage; ?state=problems lines to fix, with two headings, the owner's
 // own line left out and a heading block to remove at once; ?state=again the
 // sheet a second time, its invites waiting, sent or joined since;
-// ?state=tooMany 320 people; ?state=done the WhatsApp list imported;
+// ?state=tooMany 320 people; ?state=done the WhatsApp list imported, with
+// the send list (inviting from a list, part 5): each one's link made with
+// the stand-in, WhatsApp to nobody (it asks whom to), or copied;
 // ?state=removed and taken back, "ביטול" still offered. &fail=import makes
 // the import refuse, &fail=undo its taking back. Everything is read on the
 // device, and the stand-ins write nothing anywhere (./import-twin).
@@ -103,6 +112,14 @@ async function Demo({ searchParams }: Props) {
       initialPaste={paste}
       startAt={state === "done" || state === "removed" ? state : undefined}
       fail={fail}
+      // Each link the Team twin's stand-in, and WhatsApp asks whom to send
+      // it to: a list pasted here may be real, its numbers someone's.
+      send={{
+        firstLink: demoResendAction,
+        renew: demoResendAction,
+        business: business.name,
+        toNumber: false,
+      }}
     />
   );
 }

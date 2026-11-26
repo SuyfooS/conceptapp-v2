@@ -5,6 +5,7 @@ import {
   groupOf,
   type ImportRoles,
   importRolesOf,
+  importsPeople,
   type KnownInvite,
   type KnownTeam,
   knownTeamOf,
@@ -16,11 +17,17 @@ import {
   parsePeopleList,
   peopleImportRows,
   tableOrder,
+  teamKnownOf,
   WAITING_INVITES_MAX,
   writtenRoleOf,
 } from "./people-import";
 import type { NamedRole } from "./role-access";
-import { type GivableNamedRole, inviteChoices, ownerOnlyRoles } from "./team";
+import {
+  buildTeam,
+  type GivableNamedRole,
+  inviteChoices,
+  ownerOnlyRoles,
+} from "./team";
 
 const LRM = String.fromCodePoint(0x200e);
 const RLM = String.fromCodePoint(0x200f);
@@ -140,6 +147,21 @@ describe("importRolesOf", () => {
       ["מארחת", null],
     ]);
     expect(EDITOR.aboveRank.map((role) => role.label)).toEqual(["ניהול"]);
+  });
+
+  it("says whether the viewer invites owners and accountants one at a time: an owner alone", () => {
+    const given = (roles: ImportRoles) =>
+      roles.oneByOne.map((role) => [role.role, role.given]);
+    expect(given(OWNER)).toEqual([
+      ["owner", true],
+      ["accountant", true],
+    ]);
+    for (const roles of [MANAGER, EDITOR]) {
+      expect(given(roles)).toEqual([
+        ["owner", false],
+        ["accountant", false],
+      ]);
+    }
   });
 
   it("starts the list on workers, else the first role the viewer gives", () => {
@@ -2118,6 +2140,223 @@ describe("writtenRoleOf: the role the database's answer says an invite ends with
       role: "worker",
       namedRole: null,
     });
+  });
+});
+
+describe("importsPeople: whether the Team screen's import opens for a viewer", () => {
+  const choices = (viewer: Viewer, pay: Role[] = [], named = NAMED) =>
+    inviteChoices(viewer, named, ownerOnlyRoles(viewer, pay));
+  const manager: Viewer = {
+    role: "manager",
+    perms: ["team.view", "team.edit"],
+  };
+  const editor: Viewer = { role: "worker", perms: ["team.view", "team.edit"] };
+
+  it("opens for an owner, a manager and a worker who edits the team", () => {
+    expect(importsPeople(choices({ role: "owner", perms: [] }))).toBe(true);
+    expect(importsPeople(choices(manager))).toBe(true);
+    expect(importsPeople(choices(editor))).toBe(true);
+  });
+
+  it("opens for a manager while one staff role is left them", () => {
+    expect(importsPeople(choices(manager, ["manager"]))).toBe(true);
+    expect(importsPeople(choices(manager, ["worker"]))).toBe(true);
+  });
+
+  it("stays shut when every staff role is an owner's alone, named ones too", () => {
+    expect(importsPeople(choices(manager, ["manager", "worker"], []))).toBe(
+      false,
+    );
+    // Workers see pay: the host, a named role on them that holds nothing,
+    // is still the editor's to give (a named role never holds pay); the
+    // shift lead holds the schedule, which the editor doesn't.
+    expect(importsPeople(choices(editor, ["worker"]))).toBe(true);
+    expect(importsPeople(choices(editor, ["worker"], [SHIFT_LEAD]))).toBe(
+      false,
+    );
+  });
+
+  it("stays shut for someone who doesn't edit the team", () => {
+    expect(
+      importsPeople(choices({ role: "manager", perms: ["team.view"] })),
+    ).toBe(false);
+    expect(importsPeople(choices({ role: "worker", perms: [] }))).toBe(false);
+  });
+
+  it("is never opened by an owner's or an accountant's choice alone", () => {
+    expect(
+      importsPeople([
+        { role: "owner", namedRole: null, blocked: null },
+        { role: "accountant", namedRole: null, blocked: null },
+      ]),
+    ).toBe(false);
+  });
+});
+
+describe("teamKnownOf: the Team screen's team, as a paste is checked against it", () => {
+  const today = new Date("2026-11-26T09:00:00Z");
+  const owner: Viewer = { role: "owner", perms: [] };
+  const manager: Viewer = {
+    role: "manager",
+    perms: ["team.view", "team.edit"],
+  };
+  const read = buildTeam(
+    [
+      {
+        userId: "u1",
+        name: "משה לוי",
+        phone: "+972501110001",
+        role: "owner",
+        photo: null,
+        addressForm: null,
+      },
+      // A number the database didn't give this viewer is no member to match.
+      {
+        userId: "u2",
+        name: "רונית",
+        phone: null,
+        role: "worker",
+        photo: null,
+        addressForm: null,
+      },
+    ],
+    [
+      {
+        id: "pending-worker",
+        name: "דנה כהן",
+        phone: "+972501110002",
+        role: "worker",
+        expiresAt: "2026-11-01T00:00:00Z",
+        linkPending: true,
+      },
+      {
+        id: "open-manager",
+        name: "יוסי",
+        phone: "+972501110003",
+        role: "manager",
+        expiresAt: "2026-12-01T00:00:00Z",
+      },
+      {
+        id: "expired-worker",
+        name: null,
+        phone: "+972501110004",
+        role: "worker",
+        expiresAt: "2026-11-20T00:00:00Z",
+      },
+      {
+        id: "pending-lead",
+        name: "אור",
+        phone: "+972501110005",
+        role: "worker",
+        namedRole: {
+          id: SHIFT_LEAD_ID,
+          name: "אחראי משמרת",
+          nameEn: null,
+          base: "worker",
+        },
+        expiresAt: "2026-11-01T00:00:00Z",
+        linkPending: true,
+      },
+      {
+        id: "pending-gone",
+        name: "גל",
+        phone: "+972501110006",
+        role: "worker",
+        namedRole: {
+          id: HOST_ID,
+          name: "מארחת",
+          nameEn: null,
+          base: "worker",
+          archived: true,
+        },
+        expiresAt: "2026-11-01T00:00:00Z",
+        linkPending: true,
+      },
+      {
+        id: "pending-accountant",
+        name: "עמוס",
+        phone: "+972501110007",
+        role: "accountant",
+        expiresAt: "2026-11-01T00:00:00Z",
+        linkPending: true,
+      },
+    ],
+    today,
+  );
+  const byId = (known: KnownTeam) =>
+    Object.fromEntries(known.invites.map((i) => [i.id, i]));
+
+  it("keeps the members with a number, and each invite's state as the screen reads it", () => {
+    const known = teamKnownOf(read, owner, [SHIFT_LEAD], []);
+    expect(known.members).toEqual([
+      { phone: "+972501110001", name: "משה לוי" },
+    ]);
+    const invites = byId(known);
+    expect(invites["pending-worker"]).toMatchObject({
+      phone: "+972501110002",
+      name: "דנה כהן",
+      role: "worker",
+      namedRole: null,
+      linkPending: true,
+      // Past its date, but no link of it ever ran out.
+      expired: false,
+    });
+    expect(invites["open-manager"]).toMatchObject({
+      linkPending: false,
+      expired: false,
+    });
+    expect(invites["expired-worker"]).toMatchObject({
+      name: null,
+      linkPending: false,
+      expired: true,
+    });
+    expect(invites["pending-lead"]?.namedRole).toBe(SHIFT_LEAD_ID);
+    // Waiting: the four with no link, and the open one; not the expired one.
+    expect(known.waiting).toBe(5);
+  });
+
+  it("lets an owner update every staff invite but one to a role removed since, and never an accountant's", () => {
+    const invites = byId(teamKnownOf(read, owner, [SHIFT_LEAD], []));
+    expect(invites["pending-worker"]?.touchable).toBe(true);
+    expect(invites["open-manager"]?.touchable).toBe(true);
+    expect(invites["pending-lead"]?.touchable).toBe(true);
+    expect(invites["pending-gone"]?.touchable).toBe(false);
+    expect(invites["pending-accountant"]?.touchable).toBe(false);
+  });
+
+  it("holds a manager to the roles they give: none that sees pay, none that holds what they don't", () => {
+    const free = byId(teamKnownOf(read, manager, [SHIFT_LEAD], []));
+    expect(free["pending-worker"]?.touchable).toBe(true);
+    expect(free["open-manager"]?.touchable).toBe(true);
+    // The shift lead holds the schedule, which this manager doesn't.
+    expect(free["pending-lead"]?.touchable).toBe(false);
+    const paid = byId(teamKnownOf(read, manager, [SHIFT_LEAD], ["worker"]));
+    expect(paid["pending-worker"]?.touchable).toBe(false);
+    expect(paid["expired-worker"]?.touchable).toBe(false);
+    expect(paid["open-manager"]?.touchable).toBe(true);
+  });
+
+  it("reads a paste as the import does: an invite the viewer may not change is left as it is", () => {
+    const viewer = manager;
+    const check = againstTeam(
+      parse(
+        [
+          "דנה כהן 050-111-0002 ניהול",
+          "אור 050-111-0005 ניהול",
+          "משה לוי 050-111-0001",
+          "חדשה מהרשימה 050-111-0008 ניהול",
+        ].join("\n"),
+        rolesFor(viewer, { pay: ["worker"], named: [SHIFT_LEAD] }),
+      ),
+      teamKnownOf(read, viewer, [SHIFT_LEAD], ["worker"]),
+    );
+    expect(check.lines.map((line) => line.outcome)).toEqual([
+      "locked",
+      "locked",
+      "member",
+      "new",
+    ]);
+    expect(check.send.map((person) => person.phone)).toEqual(["+972501110008"]);
   });
 });
 

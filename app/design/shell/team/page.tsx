@@ -38,8 +38,9 @@ type Props = {
 // shown by its name with its base (the roles plan's R11b). Inviting and
 // new links use the demo's stand-in actions (./actions), and so does
 // deleting an invite, held for its undo. ?state=demo is a
-// demo business, closed to invites (#80): no invite, no new links, and the
-// line that says why. ?state=view is a worker raised to see the team without
+// demo business, closed to invites (#80): no invite, no import, no new
+// links, and the line that says why. "הזמנה מרשימה" at the foot of the
+// invites leads to the import's twin (inviting from a list, part 5). ?state=view is a worker raised to see the team without
 // editing it (the roles plan's R6): everything read, no invite, no new
 // links, no deleting, and the line under the title that says so. The hiring
 // file's lines (profile H6a): ?file=holder as the owner, who reads what each
@@ -116,6 +117,9 @@ async function Demo({ searchParams }: Props) {
       team={buildTeam(teamMembers, demo ? [] : teamInvites, teamToday)}
       viewer={viewer}
       inviteHref={demo ? undefined : "/design/shell/team/invite"}
+      // The import's twin is the owner's: a manager of the twin gives the
+      // same staff roles, none an owner's alone here.
+      importHref={demo ? undefined : "/design/shell/team/import"}
       peopleHref="/design/shell/team"
       resend={resend === "refused" ? demoRefusedResendAction : demoResendAction}
       cancel={demoCancelInviteAction}

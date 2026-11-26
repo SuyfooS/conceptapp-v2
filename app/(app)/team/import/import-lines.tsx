@@ -51,6 +51,12 @@ export function useLineWords(roles: ImportRoles, mode: ImportMode = "team") {
   const t = useTranslations("app.team.import");
   const ta = useTranslations("admin.peopleImport");
   const inConsole = mode === "console";
+  /**
+   * The viewer invites owners and accountants themselves, one at a time, on
+   * "הזמנה לצוות" (an owner): the words lead there. Anyone else is told only
+   * the owners invite them, since that form offers neither.
+   */
+  const givesOneByOne = roles.oneByOne.every((one) => one.given);
 
   /** A role as the business words it, by its choice. */
   const labelOf = (choice: RoleChoice): string => {
@@ -96,7 +102,9 @@ export function useLineWords(roles: ImportRoles, mode: ImportMode = "team") {
       case "oneByOne":
         return inConsole
           ? ta("problem.oneByOne", { role: line.roleLabel ?? "" })
-          : t("problem.oneByOne", { role: line.roleLabel ?? "" });
+          : t(givesOneByOne ? "problem.oneByOne" : "problem.oneByOneOwners", {
+              role: line.roleLabel ?? "",
+            });
       case "elsewhere":
         return ta("problem.elsewhere");
       case "notAllowed":
@@ -188,6 +196,7 @@ export function useLineWords(roles: ImportRoles, mode: ImportMode = "team") {
       : null;
 
   return {
+    givesOneByOne,
     labelOf,
     labelOfKey,
     lineLabel,

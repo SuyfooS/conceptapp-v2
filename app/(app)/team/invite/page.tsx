@@ -1,4 +1,5 @@
 import { invitesOpen } from "@db/invites";
+import { importsPeople } from "@domain/people-import";
 import { invitableRoles, inviteChoices, namedRoleShown } from "@domain/team";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
@@ -23,7 +24,9 @@ export async function generateMetadata(): Promise<Metadata> {
 // nothing they don't, and none holds pay). Those only an owner gives are
 // shown, not offered, with why, as the role sheet shows them (Orel, 16
 // November 2026, #1). Not found for anyone else, and in a business closed
-// to invites (a demo one, #80), as the Team screen offers none there.
+// to invites (a demo one, #80), as the Team screen offers none there. Above
+// the form, "הזמנה מרשימה" for whoever may invite from a list
+// (`importsPeople`: a staff role theirs to give; inviting from a list, part 5).
 export default async function TeamInvitePage() {
   const membership = (await currentMember())?.membership;
   if (!membership || invitableRoles(membership).length === 0) notFound();
@@ -32,9 +35,11 @@ export default async function TeamInvitePage() {
     currentOwnerOnlyRoles(),
     currentGivableNamedRoles(),
   ]);
+  const roles = inviteChoices(membership, named, ownerOnly);
   return (
     <TeamInviteView
-      roles={inviteChoices(membership, named, ownerOnly)}
+      roles={roles}
+      importHref={importsPeople(roles) ? "/team/import" : undefined}
       // Their names only: what each holds stays here, for the giver's rule.
       namedRoles={named.map(namedRoleShown)}
       teamHref="/team"

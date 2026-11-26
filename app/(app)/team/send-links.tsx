@@ -6,7 +6,7 @@ import { announce } from "@ui/announcer";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { cn } from "@ui/cn";
-import { arrived, focusFirst } from "@ui/focus-after";
+import { arrived, focusFirst, focusOrSay } from "@ui/focus-after";
 import { PageSection } from "@ui/page";
 import { PersonAvatar, PersonList, PersonRow } from "@ui/person-row";
 import { Link2, MessageCircle } from "lucide-react";
@@ -90,6 +90,16 @@ const initial: ResendState = {};
 
 /** Outside `PendingLinks`, where no screen draws it: nothing is made. */
 const noResend: Resend = async (_inviteId, prev) => prev;
+
+/**
+ * What the focus goes on to (the next person's "יצירת קישור", then their
+ * "וואטסאפ") comes into view clear of the tab bar floating over the page's
+ * bottom on phones and tablets (`AppShell`, its band and its fade): the
+ * browser counts nothing fixed over the page, so a row on screen under the
+ * bar would take the focus there (WCAG 2.4.11). A computer has no bar.
+ */
+const clearOfTabBar =
+  "max-xl:scroll-mb-[calc(env(safe-area-inset-bottom)+6rem)]";
 
 /**
  * The invites with no link yet, for every shape at once: a row whose link was
@@ -264,7 +274,9 @@ export function PendingList() {
                 subtitle={
                   <>
                     {row.role}
-                    {" · "}
+                    {/* A role the import's done screen can't know (an
+                        invite made meanwhile elsewhere) says none. */}
+                    {row.role ? " · " : null}
                     <Phone phone={row.phone} />
                   </>
                 }
@@ -445,9 +457,11 @@ export function SendLinkRow({ row }: { row: PendingRow }) {
       return;
     }
     links?.keep(row.id, state.link);
-    if (!focusFirst([whatsapp.current])) {
-      announce(t("pending.ready", { name: row.shown }));
-    }
+    // Never the page's title in its place (the other shape on screen now):
+    // the link ready is said, then the title.
+    focusOrSay([whatsapp.current], () =>
+      announce(t("pending.ready", { name: row.shown })),
+    );
   }, [state, links, pending, row.id, row.shown, t]);
 
   /** On to the next person with no link, in the shape `from` is in. */
@@ -482,7 +496,7 @@ export function SendLinkRow({ row }: { row: PendingRow }) {
         <Button
           asChild
           variant="secondary"
-          className="w-full md:w-auto md:self-start"
+          className={cn("w-full md:w-auto md:self-start", clearOfTabBar)}
         >
           <a
             ref={whatsapp}
@@ -539,6 +553,7 @@ export function SendLinkRow({ row }: { row: PendingRow }) {
         type="submit"
         variant="secondary"
         loading={busy}
+        className={clearOfTabBar}
         // The word it shows, then whose link it makes.
         aria-label={t("pending.createFor", { name: row.shown })}
         // Found by its invite once the person before is done (`PENDING_CREATE`).

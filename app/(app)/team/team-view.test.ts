@@ -525,3 +525,54 @@ describe("the invites with no link yet", () => {
     });
   }
 });
+
+describe("inviting from a list: the quiet row to it", () => {
+  const owner = { role: "owner" as const, perms: [] };
+  const ti = he.app.team.import;
+  const entry = 'href="/team/import"';
+
+  it("is at the foot of the invites in every shape, never a second main action", () => {
+    const html = draw(null, owner, undefined, teamMembers, "all", {
+      importHref: "/team/import",
+    });
+    const page = text(html);
+    expect(page).toContain(ti.entry);
+    expect(page).toContain(ti.entryHint);
+    // Once in the phone's and the tablet's invites, once under the table.
+    expect(count(html, entry)).toBe(2);
+    expect(html.indexOf(entry)).toBeGreaterThan(
+      html.indexOf(`aria-label="${he.app.team.invites.title}"`),
+    );
+    expect(html.lastIndexOf(entry)).toBeGreaterThan(html.indexOf("</table>"));
+    // The screen's one main action is still the invite.
+    expect(count(html, 'href="/team/invite"')).toBe(1);
+  });
+
+  it("isn't drawn without the import, for a reader, or where nobody is invited", () => {
+    const reader = { role: "worker" as const, perms: ["team.view"] };
+    const drawn = [
+      draw(null, owner),
+      draw(null, reader, undefined, teamMembers, "all", {
+        importHref: "/team/import",
+      }),
+      draw(null, owner, undefined, teamMembers, "all", {
+        importHref: "/team/import",
+        inviteHref: undefined,
+      }),
+      draw(
+        files("holder", { filesOnly: true }),
+        accountant,
+        undefined,
+        teamMembers,
+        "all",
+        {
+          importHref: "/team/import",
+        },
+      ),
+    ];
+    for (const html of drawn) {
+      expect(html).not.toContain(entry);
+      expect(text(html)).not.toContain(ti.entryHint);
+    }
+  });
+});
