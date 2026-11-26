@@ -19,7 +19,7 @@
 -- numbers of its own (050-000-77xx; the cap's 050-009-xxxx) and slugs
 -- (pim-…), so nothing here meets the seed or another test.
 begin;
-select plan(64);
+select plan(65);
 
 create temporary table ids (name text primary key, id uuid) on commit drop;
 
@@ -657,14 +657,20 @@ select is(
   false,
   'which it has now'
 );
+-- Two statements: one statement reads the database as it stood when it
+-- began, so a membership the claim writes can't be seen by the same one.
+select is(
+  public.claim_invite(md5('pim join') || md5('pim join b'), pg_temp.p(13)),
+  pg_temp.a(),
+  'and the person joins by it'
+);
 select ok(
-  public.claim_invite(md5('pim join') || md5('pim join b'), pg_temp.p(13)) = pg_temp.a()
-  and exists (
+  exists (
     select 1 from public.memberships m
     where m.business_id = pg_temp.a() and m.user_id = pg_temp.p(13)
       and m.active and m.role = 'worker'
   ),
-  'and the person joins by it'
+  'as a worker of the business'
 );
 
 ------------------------------------------------------------------------------
