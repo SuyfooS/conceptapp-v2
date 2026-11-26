@@ -199,7 +199,13 @@ export type PeopleProblem =
    * The console's only: the database found the number on another
    * business's staff when the list was sent (`againstTeam`'s `elsewhere`).
    */
-  | "elsewhere";
+  | "elsewhere"
+  /**
+   * The new-business wizard's only (`parseStaffList` in @domain/business):
+   * a line above the header row with a mobile in it, never read, as a
+   * person typed above a pasted sheet would be.
+   */
+  | "beforeHeader";
 
 /** Worth a look, never a block. */
 export type PeopleNote =
@@ -239,7 +245,16 @@ export type PeopleLine = {
 } & (
   | { kind: "header" }
   /** Before the header row: a sheet's name, a list's heading. */
-  | { kind: "title" }
+  | {
+      kind: "title";
+      /**
+       * A mobile in it, in one cell of a sheet's paste: a contact's
+       * ("איש קשר: 050-…"), or a person typed above the sheet, whom the
+       * console's new-business wizard won't leave out unsaid
+       * (`beforeHeader` in `parseStaffList`, @domain/business).
+       */
+      mobile?: true;
+    }
   | {
       kind: "person";
       person: ImportPerson;
@@ -263,6 +278,12 @@ export type PeopleLine = {
       first?: number;
       /** The role a line named, as the business words it. */
       roleLabel?: string;
+      /**
+       * With `oneByOne`: which of the two the line named, for the console's
+       * new-business wizard, which invites owners and accountants from its
+       * list (`parseStaffList` in @domain/business).
+       */
+      role?: "owner" | "accountant";
     }
 );
 
@@ -296,7 +317,7 @@ const keyOf = (text: string) => searchable(wordKey(text));
 
 type RoleMatch =
   | { kind: "choice"; choice: ImportRoleChoice }
-  | { kind: "oneByOne"; label: string }
+  | { kind: "oneByOne"; label: string; role: "owner" | "accountant" }
   | { kind: "notAllowed"; label: string };
 
 type RoleMatcher = {
@@ -312,7 +333,10 @@ type RoleMatcher = {
 
 function roleMatcher(roles: ImportRoles): RoleMatcher {
   const choices = new Map<string, ImportRoleChoice>();
-  const oneByOne = new Map<string, string>();
+  const oneByOne = new Map<
+    string,
+    { label: string; role: "owner" | "accountant" }
+  >();
   const above = new Map<string, string>();
   /** The named roles' names, and the business's words for the built-in roles. */
   const named = new Set<string>();
@@ -333,7 +357,9 @@ function roleMatcher(roles: ImportRoles): RoleMatcher {
   for (const role of roles.oneByOne) {
     for (const name of role.names) {
       const key = note(name, false);
-      if (key && !oneByOne.has(key)) oneByOne.set(key, role.label);
+      if (key && !oneByOne.has(key)) {
+        oneByOne.set(key, { label: role.label, role: role.role });
+      }
     }
   }
   for (const role of roles.aboveRank) {
@@ -365,6 +391,11 @@ function roleMatcher(roles: ImportRoles): RoleMatcher {
     if (!key) return null;
     const choice = choices.get(key);
     if (choice) return { kind: "choice", choice };
+    const higher = above.get(key);
+    // A role the business named, above the viewer's rank, before the
+    // built-in words: its "אחראי משמרת" is that role, not the built-in
+    // shift lead.
+    if (higher && named.has(key)) return { kind: "notAllowed", label: higher };
     const word = builtInRoleWord(text);
     if (word === "manager" || word === "worker") {
       const given = builtIn(word);
@@ -373,11 +404,10 @@ function roleMatcher(roles: ImportRoles): RoleMatcher {
         : { kind: "notAllowed", label: labelOf(word) };
     }
     if (word === "owner" || word === "accountant") {
-      return { kind: "oneByOne", label: labelOf(word) };
+      return { kind: "oneByOne", label: labelOf(word), role: word };
     }
     const own = oneByOne.get(key);
-    if (own) return { kind: "oneByOne", label: own };
-    const higher = above.get(key);
+    if (own) return { kind: "oneByOne", label: own.label, role: own.role };
     if (higher) return { kind: "notAllowed", label: higher };
     return null;
   };
@@ -386,7 +416,13 @@ function roleMatcher(roles: ImportRoles): RoleMatcher {
 
 type RoleRead =
   | { ok: true; choice: ImportRoleChoice; fromLine: boolean }
-  | { ok: false; problem: PeopleProblem; roleLabel: string };
+  | {
+      ok: false;
+      problem: PeopleProblem;
+      roleLabel: string;
+      /** With `oneByOne`: the role named. */
+      oneByOne?: "owner" | "accountant";
+    };
 
 /** What a matched role gives the line, or why it can't. */
 function roleRead(
@@ -395,7 +431,12 @@ function roleRead(
 ): RoleRead {
   if (match === null) return { ok: true, choice: fallback, fromLine: false };
   if (match.kind === "oneByOne") {
-    return { ok: false, problem: "oneByOne", roleLabel: match.label };
+    return {
+      ok: false,
+      problem: "oneByOne",
+      roleLabel: match.label,
+      oneByOne: match.role,
+    };
   }
   if (match.kind === "notAllowed") {
     return { ok: false, problem: "notAllowed", roleLabel: match.label };
@@ -1342,7 +1383,11 @@ function lineOf(
   };
   const problem = (
     problem: PeopleProblem,
-    more: { roleLabel?: string; name?: string } = {},
+    more: {
+      roleLabel?: string;
+      name?: string;
+      role?: "owner" | "accountant";
+    } = {},
   ): Read => ({
     ...base,
     kind: "problem",
@@ -1360,6 +1405,7 @@ function lineOf(
     return problem(reading.role.problem, {
       roleLabel: reading.role.roleLabel,
       name: name.name,
+      ...(reading.role.oneByOne ? { role: reading.role.oneByOne } : {}),
     });
   }
   const { choice, fromLine } = reading.role;
@@ -1523,6 +1569,7 @@ export function parsePeopleList(
       text: row.text,
       dropped: [],
       kind: "title",
+      ...(holdsMobile(row) ? { mobile: true as const } : {}),
     }),
   );
   const headerLine: PeopleLine[] = header

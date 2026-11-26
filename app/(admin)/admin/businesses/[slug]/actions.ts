@@ -131,7 +131,12 @@ export async function addPersonAction(
 
   try {
     if (
-      await activeElsewhere(parsed.value.phone, business.id, parsed.value.role)
+      await activeElsewhere(
+        staff.userId,
+        parsed.value.phone,
+        business.id,
+        parsed.value.role,
+      )
     ) {
       return { failure: "elsewhere", values };
     }

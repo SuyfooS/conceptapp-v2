@@ -182,7 +182,32 @@ all (a staff role among the invite form's choices that isn't an owner's
 alone), so the import and the rows leading to it open only then. `pasted-text.ts` holds
 what it shares with the menu's reader (`clean`, the marks, `readsBackwards`)
 and `westernDigits` for Arabic-Indic digits; `staff-list.ts` exports
-`wordKey` and `builtInRoleWord` ("מנהל/ת", "עובד/ת", "employee").
+`wordKey` and `builtInRoleWord` ("מנהל/ת", "עובד/ת", "employee", and two
+words read whole: "מנהלת חשבונות", "בעלת העסק", "אחראי משמרת", a shift
+lead a manager as אחמ"ש is, though a business's own role of that name comes
+first), and the wizard's `STAFF_LIST_MAX` (60) and `StaffEntry`. Since part 6 the console's
+new-business wizard reads its staff list with the same reader
+(`parseStaffList` in `business.ts`, which `parseNewBusiness` runs): a header
+row, an ID column, direction marks, Excel's dropped zero, names through
+`parseTeamName` and each problem as the import has it, against
+`staffRolesOf` (every role, none blocked: a line naming an owner or an
+accountant, which the import holds for one by one, carries the role it
+named, `role` on the problem, and the wizard invites them), the app's words
+for the roles (`labels`, from `app.roles` in the viewer's language, so
+"ניהול" and "צוות" read too) and the numbers the database found on another
+staff (`elsewhere`, whose staff lines are to fix until they go). The same
+number twice is one person by the same name and role, an owner's line
+included, else a `duplicate` naming the first line with it; the same name
+with another number is a `sameNameList` note on both, an owner's and an
+accountant's lines among them. A line above the header row with a mobile
+in it (the import marks such a title `mobile`, and leaves it out) is to fix
+in the wizard, `beforeHeader`, so a person typed above a pasted sheet is
+never left out unsaid. An `elsewhere` line carries its number (`phone`):
+`elsewhereOf` gives those still on the list, the ones the field names, and
+`staffErrorAfterEdit` the field's error as its text changes (none until one
+was shown, the server's `elsewhere` while a line still holds one of its
+numbers, else the list's own, gone once the list is fine), so the field
+never names a number that has left the list.
 
 `setup.ts` is the console's checklist of a business just opened (opened,
 owner, staff, address), each item from the business as stored, and the rule

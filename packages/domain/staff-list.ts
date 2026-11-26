@@ -1,18 +1,17 @@
 import type { Role } from "./modules";
-import { normalizeIsraeliMobile } from "./phone";
 import { searchable } from "./wording";
 
 /**
- * The staff list the new-business wizard takes as pasted text: one person
- * per line, a name and an Israeli mobile number in any order, and an
- * optional role word ("מנהלת", "בעלים", "owner", "מנהלת חשבונות"). Lines
- * come from WhatsApp, a spreadsheet or a note, so commas, tabs and dashes all
- * separate fields.
- * Each person becomes an open invite when the business is opened.
+ * The staff list's words: the built-in roles' own words (owner,
+ * manager, worker and accountant, in Hebrew and English), and the run of
+ * digits a phone number is written in, which the list of people reads
+ * (@domain/people-import), and with it the new-business wizard's staff
+ * list (`parseStaffList` in @domain/business). A staff list's person is
+ * a `StaffEntry`: each becomes an open invite when the business is opened.
  */
 
+/** People the wizard invites with the business it opens. */
 export const STAFF_LIST_MAX = 60;
-export const STAFF_NAME_MAX = 80;
 
 export type StaffEntry = {
   name: string;
@@ -21,30 +20,11 @@ export type StaffEntry = {
   role: Role;
 };
 
-export type StaffLineError =
-  | "noPhone"
-  | "invalidPhone"
-  | "noName"
-  | "nameTooLong"
-  | "duplicate";
-
-export type StaffLine = { line: number; text: string } & (
-  | { ok: true; entry: StaffEntry }
-  | { ok: false; error: StaffLineError }
-);
-
-export type StaffList = {
-  /** Every non-empty line, numbered from 1 as pasted. */
-  lines: StaffLine[];
-  entries: StaffEntry[];
-  /** "invalid": a line has a problem. "tooMany": over `STAFF_LIST_MAX`. */
-  error: "invalid" | "tooMany" | null;
-};
-
 // Role words, compared without quotes or gershayim (אחמ"ש → אחמש).
 const ROLE_WORDS: Record<string, Exclude<Role, "worker">> = {
   owner: "owner",
   בעלים: "owner",
+  הבעלים: "owner",
   בעלת: "owner",
   manager: "manager",
   מנהל: "manager",
@@ -65,12 +45,27 @@ const ACCOUNTANT_PHRASES = new Set([
   "רואה חשבון",
   "רואת חשבון",
 ]);
+// Two words that name an owner or a shift lead, read before the words
+// alone, so neither stays in a name: "בעלת העסק" is the owner, not a worker
+// called "רונית כהן בעלת העסק", and "אחראי משמרת" or "מנהלת משמרת" a
+// manager, as their אחמ"ש is. A business's own role of that name comes
+// first (@domain/people-import). "בעל/ת העסק" reads as "בעלת העסק".
+const ROLE_PHRASES: Record<string, Exclude<Role, "worker">> = {
+  "בעל העסק": "owner",
+  "בעלת העסק": "owner",
+  "בעלי העסק": "owner",
+  "business owner": "owner",
+  "אחראי משמרת": "manager",
+  "אחראית משמרת": "manager",
+  "מנהל משמרת": "manager",
+  "מנהלת משמרת": "manager",
+  "shift manager": "manager",
+  "shift lead": "manager",
+};
 
 // A run of digits with the separators people put in phone numbers.
 export const PHONE_RUN = /\+?\d[\d\s\-().]*\d/g;
-const SEPARATORS = /[,;|\t]+|\s[-–]\s/g;
 const QUOTES = /["'״׳]/g;
-const LIST_MARKER = /^\s*(?:\d{1,3}[.)]\s+|[-*•]\s*)/;
 
 /**
  * A word as role words and a sheet's headers are compared: without quotes
@@ -92,14 +87,18 @@ const roleWordKey = (text: string) => searchable(wordKey(text));
 
 /**
  * The built-in roles' own words, for the list of people
- * (@domain/people-import): the accountant's phrases first, then the role
- * words and the worker's, with "employee" among them. The wizard's reader
- * (`parseStaffList`) keeps its own lists until it reads with that one.
+ * (@domain/people-import): the accountant's phrases first, then the
+ * owner's and the shift lead's, the role words and the worker's, with
+ * "employee" among them.
  */
 const BUILT_IN_ROLE_WORDS: ReadonlyMap<string, Role> = new Map<string, Role>([
   ...[...ACCOUNTANT_PHRASES].map((phrase): [string, Role] => [
     roleWordKey(phrase),
     "accountant",
+  ]),
+  ...Object.entries(ROLE_PHRASES).map(([phrase, role]): [string, Role] => [
+    roleWordKey(phrase),
+    role,
   ]),
   ...Object.entries(ROLE_WORDS).map(([word, role]): [string, Role] => [
     roleWordKey(word),
@@ -113,76 +112,12 @@ const BUILT_IN_ROLE_WORDS: ReadonlyMap<string, Role> = new Map<string, Role>([
 
 /**
  * The built-in role a word or a phrase names, whatever the business calls
- * it ("מנהלת", "מנהל/ת", "owner", "מנהלת חשבונות", "עובד/ת", "employee"),
- * compared by `wordKey` and `searchable`; null for anything else.
+ * it ("מנהלת", "מנהל/ת", "owner", "בעלת העסק", "אחראי משמרת", "מנהלת
+ * חשבונות", "עובד/ת", "employee"), compared by `wordKey` and `searchable`;
+ * null for anything else.
  */
 export function builtInRoleWord(text: string): Role | null {
   const key = roleWordKey(text);
   if (!key) return null;
   return BUILT_IN_ROLE_WORDS.get(key) ?? null;
-}
-
-function parseLine(
-  text: string,
-): { ok: true; entry: StaffEntry } | { ok: false; error: StaffLineError } {
-  const body = text.replace(LIST_MARKER, "");
-  // The phone is the first run with enough digits to be a number.
-  const phoneRun = [...body.matchAll(PHONE_RUN)].find(
-    (m) => m[0].replace(/\D/g, "").length >= 7,
-  );
-  if (!phoneRun) return { ok: false, error: "noPhone" };
-  const phone = normalizeIsraeliMobile(phoneRun[0]);
-  if (!phone) return { ok: false, error: "invalidPhone" };
-
-  const rest = body.replace(phoneRun[0], " ").replace(SEPARATORS, " ");
-  let role: Role = "worker";
-  const nameWords: string[] = [];
-  const words = rest.split(/\s+/).filter(Boolean);
-  let phraseEnds = -1;
-  for (const [index, word] of words.entries()) {
-    if (index <= phraseEnds) continue;
-    const key = wordKey(word);
-    if (!key) continue;
-    const next = words[index + 1];
-    if (
-      next !== undefined &&
-      ACCOUNTANT_PHRASES.has(`${key} ${wordKey(next)}`)
-    ) {
-      role = "accountant";
-      phraseEnds = index + 1;
-      continue;
-    }
-    const roleWord = ROLE_WORDS[key];
-    if (roleWord) role = roleWord;
-    else if (!WORKER_WORDS.has(key)) nameWords.push(word);
-  }
-  const name = nameWords.join(" ").replace(/^[(:.]+|[):.]+$/g, "");
-  if (!name) return { ok: false, error: "noName" };
-  if (name.length > STAFF_NAME_MAX) return { ok: false, error: "nameTooLong" };
-  return { ok: true, entry: { name, phone, role } };
-}
-
-/** Reads a pasted staff list. Empty input is a valid, empty list. */
-export function parseStaffList(input: string): StaffList {
-  const lines: StaffLine[] = [];
-  const seen = new Set<string>();
-  input.split(/\r?\n/).forEach((raw, index) => {
-    const text = raw.trim();
-    if (!text) return;
-    const parsed = parseLine(text);
-    if (parsed.ok && seen.has(parsed.entry.phone)) {
-      lines.push({ line: index + 1, text, ok: false, error: "duplicate" });
-      return;
-    }
-    if (parsed.ok) seen.add(parsed.entry.phone);
-    lines.push({ line: index + 1, text, ...parsed });
-  });
-
-  const entries = lines.flatMap((l) => (l.ok ? [l.entry] : []));
-  const error = lines.some((l) => !l.ok)
-    ? "invalid"
-    : entries.length > STAFF_LIST_MAX
-      ? "tooMany"
-      : null;
-  return { lines, entries, error };
 }

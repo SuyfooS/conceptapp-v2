@@ -1,15 +1,24 @@
 "use client";
 
 import {
+  elsewhereOf,
   firstStepWithError,
+  NEW_BUSINESS_FIELDS,
   NEW_BUSINESS_STEPS,
   type NewBusinessErrors,
   normalizeSlug,
   parseNewBusiness,
+  parseStaffList,
+  roleWordsOf,
+  type StaffLine,
+  type StaffList,
+  type StaffReading,
+  staffErrorAfterEdit,
+  staffRolesOf,
 } from "@domain/business";
 import { ACCENT_PRESETS } from "@domain/color";
+import type { ImportRoles } from "@domain/people-import";
 import { displayIsraeliMobile } from "@domain/phone";
-import { parseStaffList, type StaffList } from "@domain/staff-list";
 import { TEMPLATE_KEYS, type TemplateKey } from "@domain/templates";
 import { AccentPicker, AccentPreview } from "@ui/accent-picker";
 import { Badge } from "@ui/badge";
@@ -20,16 +29,25 @@ import { FieldGroup, GroupedField, GroupedTextArea } from "@ui/field-group";
 import { FloatingAction, floatingButtonClass } from "@ui/floating-action";
 import { PersonList, PersonRow } from "@ui/person-row";
 import { ltrInputClass } from "@ui/text-field";
-import { Briefcase, Coffee, ShoppingBag, UtensilsCrossed } from "lucide-react";
-import { useTranslations } from "next-intl";
+import {
+  Briefcase,
+  Coffee,
+  ShoppingBag,
+  TriangleAlert,
+  UtensilsCrossed,
+} from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
 import {
   type FormEvent,
   type ReactNode,
   startTransition,
   useActionState,
+  useMemo,
   useRef,
   useState,
 } from "react";
+import { ignoredWords } from "@/app/(app)/team/import/ignored-words";
+import { useLineWords } from "@/app/(app)/team/import/import-lines";
 import { BusinessMark } from "../../business-mark";
 import type { NewBusinessState } from "./actions";
 
@@ -104,10 +122,23 @@ export function NewBusinessForm({
   const set = (field: keyof Values) => (value: string) =>
     setValues((v) => ({ ...v, [field]: value }));
 
+  // The staff list is read as the import reads a list, with the app's words
+  // for the roles, as the action reads it again; a number the server found
+  // on another staff holds its line until the line goes.
+  const roleWords = useTranslations("app.roles");
+  const labels = roleWordsOf((role) => roleWords(role));
+  const found = state.elsewhere;
+  const elsewhere = useMemo(() => new Set(found ?? []), [found]);
+  const reading: StaffReading = { labels, elsewhere };
+
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (step < LAST_STEP) {
-      const result = parseNewBusiness(values, NEW_BUSINESS_STEPS[step]);
+      const result = parseNewBusiness(
+        values,
+        NEW_BUSINESS_STEPS[step],
+        reading,
+      );
       if (!result.ok) {
         setErrors(result.errors);
         return;
@@ -116,7 +147,7 @@ export function NewBusinessForm({
       goTo(step + 1);
       return;
     }
-    const result = parseNewBusiness(values);
+    const result = parseNewBusiness(values, NEW_BUSINESS_FIELDS, reading);
     if (!result.ok) {
       setErrors(result.errors);
       goTo(firstStepWithError(result.errors));
@@ -127,7 +158,12 @@ export function NewBusinessForm({
     startTransition(() => formAction(data));
   }
 
-  const staff = parseStaffList(values.staff);
+  const staff = parseStaffList(values.staff, reading);
+  // The numbers the field names: those still on a line, else (the list
+  // edited while it was sent) the server's.
+  const onAnother = elsewhereOf(staff);
+  const named = onAnother.length > 0 ? onAnother : (found ?? []);
+  const phoneColumns = usePhoneColumnsWords(staff);
   const summary = <Summary values={values} staff={staff} />;
 
   return (
@@ -258,29 +294,35 @@ export function NewBusinessForm({
                 errors.staff === "elsewhere"
                   ? // From the server: the numbers on another staff, named.
                     t.rich("errors.staff.elsewhere", {
-                      count: state.elsewhere?.length ?? 0,
-                      numbers: (state.elsewhere ?? [])
-                        .map(displayIsraeliMobile)
-                        .join(", "),
+                      count: named.length,
+                      numbers: named.map(displayIsraeliMobile).join(", "),
                       ltr: (chunks) => <span dir="ltr">{chunks}</span>,
                     })
-                  : errors.staff && t(`errors.staff.${errors.staff}`)
+                  : errors.staff === "phoneColumns"
+                    ? phoneColumns
+                    : errors.staff && t(`errors.staff.${errors.staff}`)
               }
               placeholder={t("staff.placeholder")}
               value={values.staff}
               onChange={(e) => {
                 set("staff")(e.target.value);
-                // The preview shows each problem live; drop the error once
-                // the list is fine again.
-                if (!parseStaffList(e.target.value).error) {
-                  setErrors(({ staff: _, ...rest }) => rest);
-                }
+                // The preview shows each problem live; an error shown
+                // follows the list, and goes once it is fine again.
+                const edited = parseStaffList(e.target.value, reading);
+                setErrors(({ staff: shown, ...rest }) => {
+                  const next = staffErrorAfterEdit(shown, edited);
+                  return next ? { ...rest, staff: next } : rest;
+                });
               }}
               rows={5}
               spellCheck={false}
             />
           </FieldGroup>
-          <StaffPreview staff={staff} />
+          <StaffPreview
+            staff={staff}
+            roles={staffRolesOf(labels)}
+            phoneColumns={phoneColumns}
+          />
           <p className="px-1 text-ink-2 text-sm">{t("staff.notSent")}</p>
           <div className="md:hidden">{summary}</div>
         </Step>
@@ -345,52 +387,160 @@ function Step({
   );
 }
 
+const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
+
 /**
- * The pasted list as it will be invited, with each line that needs fixing
- * named by its number.
+ * Two columns of mobiles, in the import's words: by the headers that named
+ * them, since adding a header is then no fix.
  */
-function StaffPreview({ staff }: { staff: StaffList }) {
+function usePhoneColumnsWords(staff: StaffList): string {
+  const t = useTranslations("app.team.import");
+  const locale = useLocale();
+  return staff.phoneHeaders
+    ? t("status.phoneColumnsHeaded", {
+        names: new Intl.ListFormat(locale, { type: "conjunction" }).format(
+          staff.phoneHeaders,
+        ),
+      })
+    : t("status.phoneColumns");
+}
+
+type ProblemLine = Extract<StaffLine, { kind: "problem" }>;
+type PersonLine = Extract<StaffLine, { kind: "person" }>;
+type LeftOutLine = Extract<StaffLine, { kind: "title" | "sameLine" }>;
+
+/**
+ * The pasted list as it will be invited, in the import's words (inviting
+ * from a list, part 6): how many, or how many lines to fix, said as it
+ * changes; the header row read and the columns left out; each line to fix by
+ * its number, with what is wrong; who will be invited, with any note and
+ * what of their line wasn't read; and the lines left out, with why.
+ */
+function StaffPreview({
+  staff,
+  roles,
+  phoneColumns,
+}: {
+  staff: StaffList;
+  /** The roles the list was read against (`staffRolesOf`). */
+  roles: ImportRoles;
+  /** `usePhoneColumnsWords` for this list. */
+  phoneColumns: string;
+}) {
   const t = useTranslations("admin");
-  const problems = staff.lines.flatMap((line) => (line.ok ? [] : [line]));
+  const ti = useTranslations("app.team.import");
+  const locale = useLocale();
+  const words = useLineWords(roles, "console");
+  const problems = staff.lines.filter(
+    (line): line is ProblemLine => line.kind === "problem",
+  );
+  const persons = staff.lines.filter(
+    (line): line is PersonLine => line.kind === "person",
+  );
+  // The header row is said above, and only once.
+  const leftOut = staff.lines.filter(
+    (line): line is LeftOutLine =>
+      line.kind === "title" || line.kind === "sameLine",
+  );
+  const headerLine = staff.lines.find((line) => line.kind === "header")?.line;
+  const ignored = ignoredWords(staff.ignored, ti, locale);
+  const status =
+    problems.length > 0
+      ? t("newBusiness.staff.problems", { count: problems.length })
+      : staff.error === "tooMany"
+        ? t("newBusiness.errors.staff.tooMany")
+        : staff.error === "phoneColumns"
+          ? phoneColumns
+          : t("newBusiness.staff.count", { count: staff.entries.length });
   return (
     <div className="flex flex-col gap-3">
       <p className="px-1 font-semibold" aria-live="polite">
-        {problems.length > 0
-          ? t("newBusiness.staff.problems", { count: problems.length })
-          : t("newBusiness.staff.count", { count: staff.entries.length })}
+        {status}
       </p>
+      {headerLine !== undefined || ignored.length > 0 ? (
+        <div className="flex flex-col gap-0.5 px-1 text-ink-2 text-sm">
+          {headerLine !== undefined ? (
+            <p>{ti.rich("summary.header", { line: headerLine, ltr })}</p>
+          ) : null}
+          {ignored.map((sentence) => (
+            <p key={sentence}>{sentence}</p>
+          ))}
+        </div>
+      ) : null}
       {problems.length > 0 ? (
-        <ul className="flex flex-col gap-1 px-1 text-sm">
+        <ul className="flex flex-col gap-2 px-1 text-sm">
           {problems.map((line) => (
-            <li key={line.line} className="flex flex-col">
-              <span className="text-danger">
-                {t("newBusiness.staff.line", { line: line.line })}
-                {" · "}
-                {t(`newBusiness.staff.lineErrors.${line.error}`)}
+            <li key={`${line.line}:${line.text}`} className="flex flex-col">
+              <span className="flex items-start gap-1.5 text-danger">
+                <TriangleAlert
+                  aria-hidden="true"
+                  className="mt-0.5 size-4 shrink-0"
+                />
+                <span>
+                  {words.lineLabel(line)}
+                  {" · "}
+                  {words.problemOf(line)}
+                </span>
               </span>
-              <span className="break-words text-ink-2">{line.text}</span>
+              <span dir="auto" className="break-words text-ink-2">
+                {line.text}
+              </span>
             </li>
           ))}
         </ul>
       ) : null}
-      {staff.entries.length > 0 ? (
+      {persons.length > 0 ? (
         <PersonList aria-label={t("newBusiness.staff.listLabel")}>
-          {staff.entries.map((entry) => (
+          {persons.map((line) => (
             <PersonRow
-              key={entry.phone}
-              name={entry.name}
-              title={entry.name}
+              key={line.entry.phone}
+              name={line.entry.name}
+              title={line.entry.name}
               subtitle={
-                <span dir="ltr">{displayIsraeliMobile(entry.phone)}</span>
+                <span dir="ltr">{displayIsraeliMobile(line.entry.phone)}</span>
               }
               trailing={
-                <Badge tone={entry.role === "worker" ? "neutral" : "accent"}>
-                  {t(`memberRoles.${entry.role}`)}
+                <Badge
+                  tone={line.entry.role === "worker" ? "neutral" : "accent"}
+                >
+                  {t(`memberRoles.${line.entry.role}`)}
                 </Badge>
+              }
+              below={
+                line.notes.length > 0 || line.dropped.length > 0 ? (
+                  <span className="flex flex-col gap-0.5">
+                    {line.notes.map((note) => (
+                      <span
+                        key={JSON.stringify(note)}
+                        className="block font-medium text-sm text-warning"
+                      >
+                        {words.noteOf(note)}
+                      </span>
+                    ))}
+                    {line.dropped.length > 0 ? (
+                      <span className="block break-words text-ink-2 text-sm">
+                        {ti("outcome.dropped", {
+                          text: line.dropped.join(", "),
+                        })}
+                      </span>
+                    ) : null}
+                  </span>
+                ) : undefined
               }
             />
           ))}
         </PersonList>
+      ) : null}
+      {leftOut.length > 0 ? (
+        <ul className="flex flex-col gap-0.5 px-1 text-ink-2 text-sm">
+          {leftOut.map((line) => (
+            <li key={`${line.line}:${line.text}`}>
+              {words.lineLabel(line)}
+              {" · "}
+              {words.outcomeOf(line)}
+            </li>
+          ))}
+        </ul>
       ) : null}
     </div>
   );

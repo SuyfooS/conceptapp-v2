@@ -6,15 +6,17 @@ import {
   NEW_BUSINESS_FIELDS,
   type NewBusinessErrors,
   parseNewBusiness,
+  roleWordsOf,
 } from "@domain/business";
 import { platformCan } from "@domain/platform";
 import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 
 export type NewBusinessState = {
   errors?: NewBusinessErrors;
   /**
    * With `errors.staff` "elsewhere": the staff list's numbers already on
-   * another business's staff (E.164), to name them.
+   * another business's staff (E.164), to name them and mark their lines.
    */
   elsewhere?: string[];
   /** A problem that is not about one field. */
@@ -24,12 +26,15 @@ export type NewBusinessState = {
 /**
  * The wizard's last step: check who is asking and what they typed, then
  * open the business and invite its staff with the secret key
- * (`createBusiness`). A number on the list that is on another business's
- * staff can't be on this one's too (one place on a staff per login, payroll
- * P3b): the list goes back with those numbers named, before anything is
- * written, as the Team screen and the business's page in the console say it
- * for one person. On success the business's checklist opens; otherwise the
- * form goes back to the step with the first error.
+ * (`createBusiness`). The staff list is read again here as the form read it
+ * (`parseStaffList`, as the import reads a list, with the app's words for
+ * the roles in the same language). A number on the list that is on another
+ * business's staff can't be on this one's too (one place on a staff per
+ * login, payroll P3b): the list goes back with those numbers named, before
+ * anything is written, as the Team screen and the business's page in the
+ * console say it for one person; the numbers are asked in the call's body
+ * (`onAnotherStaff`), and never logged. On success the business's checklist
+ * opens; otherwise the form goes back to the step with the first error.
  */
 export async function createBusinessAction(
   _prev: NewBusinessState,
@@ -40,14 +45,17 @@ export async function createBusinessAction(
     return { failure: "noPermission" };
   }
 
+  const roles = await getTranslations("app.roles");
   const parsed = parseNewBusiness(
     Object.fromEntries(NEW_BUSINESS_FIELDS.map((f) => [f, form.get(f)])),
+    NEW_BUSINESS_FIELDS,
+    { labels: roleWordsOf((role) => roles(role)) },
   );
   if (!parsed.ok) return { errors: parsed.errors };
 
   let result: Awaited<ReturnType<typeof createBusiness>>;
   try {
-    const elsewhere = await onAnotherStaff(parsed.value.staff);
+    const elsewhere = await onAnotherStaff(staff.userId, parsed.value.staff);
     if (elsewhere.length > 0) {
       return { errors: { staff: "elsewhere" }, elsewhere };
     }

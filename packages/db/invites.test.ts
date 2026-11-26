@@ -10,20 +10,37 @@ vi.mock("server-only", () => ({}));
 type Failure = { code?: string; hint?: string | null; message: string };
 const db = vi.hoisted(() => ({
   answer: { data: null as unknown, error: null as Failure | null },
-  calls: [] as { fn: string; args: Record<string, unknown> }[],
+  calls: [] as {
+    fn: string;
+    args: Record<string, unknown>;
+    options?: unknown;
+  }[],
 }));
 vi.mock("./supabase/admin", () => ({
   createAdminClient: () => ({
-    rpc: async (fn: string, args: Record<string, unknown>) => {
-      db.calls.push({ fn, args });
+    // Options (a GET, say) are kept too, when a call passes any.
+    rpc: async (
+      fn: string,
+      args: Record<string, unknown>,
+      options?: unknown,
+    ) => {
+      db.calls.push({
+        fn,
+        args,
+        ...(options === undefined ? {} : { options }),
+      });
       return db.answer;
     },
   }),
 }));
 
-const { hashInviteToken, issueFirstInviteLink, newInviteToken } = await import(
-  "./invites"
-);
+const {
+  activeElsewhere,
+  hashInviteToken,
+  issueFirstInviteLink,
+  newInviteToken,
+  onAnotherStaff,
+} = await import("./invites");
 
 const ACTOR = "c5000000-0000-4000-a000-00000000000b";
 const INVITE = "c5000000-0000-4000-8000-000000000018";
@@ -131,5 +148,173 @@ describe("issueFirstInviteLink", () => {
     ).rejects.toThrow(
       "Could not issue a first invite link: connection failure",
     );
+  });
+});
+
+/**
+ * The new-business wizard asks which of its list's numbers are on a staff
+ * already (`public.admin_staff_elsewhere`, inviting from a list, part 6):
+ * the numbers in the call's body, never in a GET's address, and only those
+ * in a staff role, each once.
+ */
+describe("onAnotherStaff", () => {
+  const OWNER = "+972500006501";
+  const WORKER = "+972500006502";
+  const BOOKS = "+972500006503";
+  const entries = [
+    { phone: OWNER, role: "owner" as const },
+    { phone: WORKER, role: "worker" as const },
+    { phone: BOOKS, role: "accountant" as const },
+    { phone: OWNER, role: "owner" as const },
+  ];
+
+  it("sends the staff roles' numbers, each once, in the body of one call", async () => {
+    db.answer = { data: [WORKER], error: null };
+    await expect(onAnotherStaff(ACTOR, entries)).resolves.toEqual([WORKER]);
+    // No options: supabase-js sends an rpc as a POST, its arguments the body.
+    expect(db.calls).toEqual([
+      {
+        fn: "admin_staff_elsewhere",
+        args: { actor: ACTOR, phones: [OWNER, WORKER] },
+      },
+    ]);
+  });
+
+  it("answers in the list's order, whatever order the database gives", async () => {
+    db.answer = { data: [WORKER, OWNER], error: null };
+    await expect(onAnotherStaff(ACTOR, entries)).resolves.toEqual([
+      OWNER,
+      WORKER,
+    ]);
+  });
+
+  it("asks nothing for a list with no one in a staff role", async () => {
+    await expect(
+      onAnotherStaff(ACTOR, [{ phone: BOOKS, role: "accountant" }]),
+    ).resolves.toEqual([]);
+    await expect(onAnotherStaff(ACTOR, [])).resolves.toEqual([]);
+    expect(db.calls).toEqual([]);
+  });
+
+  it("finds none before the function reaches a project, and asks no other way", async () => {
+    for (const code of ["PGRST202", "42883"]) {
+      db.answer = { data: null, error: { code, message: "missing" } };
+      await expect(onAnotherStaff(ACTOR, entries)).resolves.toEqual([]);
+    }
+    expect(db.calls.map((call) => call.fn)).toEqual([
+      "admin_staff_elsewhere",
+      "admin_staff_elsewhere",
+    ]);
+  });
+
+  it("throws on a refusal, with no number in its words", async () => {
+    db.answer = {
+      data: null,
+      error: { code: "42501", message: "Platform staff only" },
+    };
+    const thrown = await onAnotherStaff(ACTOR, entries).catch(
+      (error: unknown) => error,
+    );
+    expect(thrown).toBeInstanceOf(Error);
+    const { message } = thrown as Error;
+    expect(message).toBe(
+      "Could not ask about other staffs: Platform staff only",
+    );
+    expect(message).not.toMatch(/\d{7}/);
+  });
+
+  it("refuses an answer that isn't a list of numbers", async () => {
+    db.answer = { data: [{ phone: WORKER }], error: null };
+    await expect(onAnotherStaff(ACTOR, entries)).rejects.toThrow();
+  });
+});
+
+/**
+ * The console's "הוספת אדם" asks whether the number is on another business's
+ * staff (known issue 109): the same function, the one number in the call's
+ * body and the business it adds to left out, never in a GET's address. An
+ * accountant's invite asks nothing (any number of businesses' books), and an
+ * accountant's place elsewhere is the database's to leave out.
+ */
+describe("activeElsewhere", () => {
+  const BUSINESS = "c5000000-0000-4000-b000-000000000001";
+
+  it("sends the number in the body of one call, this business left out", async () => {
+    db.answer = { data: [PHONE], error: null };
+    await expect(
+      activeElsewhere(ACTOR, PHONE, BUSINESS, "worker"),
+    ).resolves.toBe(true);
+    // No options: supabase-js sends an rpc as a POST, its arguments the body.
+    expect(db.calls).toEqual([
+      {
+        fn: "admin_staff_elsewhere",
+        args: { actor: ACTOR, phones: [PHONE], except_business: BUSINESS },
+      },
+    ]);
+  });
+
+  it("asks for every staff role, and is false when the number is on no other staff", async () => {
+    for (const role of ["owner", "manager", "worker"] as const) {
+      db.answer = { data: [], error: null };
+      await expect(activeElsewhere(ACTOR, PHONE, BUSINESS, role)).resolves.toBe(
+        false,
+      );
+      db.answer = { data: [PHONE], error: null };
+      await expect(activeElsewhere(ACTOR, PHONE, BUSINESS, role)).resolves.toBe(
+        true,
+      );
+    }
+    expect(db.calls).toHaveLength(6);
+  });
+
+  it("asks nothing for an accountant's invite, which may keep any business's books", async () => {
+    db.answer = { data: [PHONE], error: null };
+    await expect(
+      activeElsewhere(ACTOR, PHONE, BUSINESS, "accountant"),
+    ).resolves.toBe(false);
+    expect(db.calls).toEqual([]);
+  });
+
+  it("answers for its own number only", async () => {
+    db.answer = { data: ["+972500007619"], error: null };
+    await expect(
+      activeElsewhere(ACTOR, PHONE, BUSINESS, "worker"),
+    ).resolves.toBe(false);
+  });
+
+  it("finds none before the function reaches a project, and asks no other way", async () => {
+    for (const code of ["PGRST202", "42883"]) {
+      db.answer = { data: null, error: { code, message: "missing" } };
+      await expect(
+        activeElsewhere(ACTOR, PHONE, BUSINESS, "manager"),
+      ).resolves.toBe(false);
+    }
+    expect(db.calls.map((call) => call.fn)).toEqual([
+      "admin_staff_elsewhere",
+      "admin_staff_elsewhere",
+    ]);
+  });
+
+  it("throws on a refusal, with no number in its words", async () => {
+    db.answer = {
+      data: null,
+      error: { code: "42501", message: "Platform staff only" },
+    };
+    const thrown = await activeElsewhere(ACTOR, PHONE, BUSINESS, "owner").catch(
+      (error: unknown) => error,
+    );
+    expect(thrown).toBeInstanceOf(Error);
+    const { message } = thrown as Error;
+    expect(message).toBe(
+      "Could not ask about other staffs: Platform staff only",
+    );
+    expect(message).not.toMatch(/\d{7}/);
+  });
+
+  it("refuses an answer that isn't a list of numbers", async () => {
+    db.answer = { data: [{ phone: PHONE }], error: null };
+    await expect(
+      activeElsewhere(ACTOR, PHONE, BUSINESS, "worker"),
+    ).rejects.toThrow();
   });
 });
