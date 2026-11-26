@@ -166,8 +166,12 @@ when either does), else a conflict (`duplicate`).
 words, `againstTeam` checks the paste against the team the page loaded (a
 member, or an invite with a link, an owner's or an accountant's, or one the
 viewer may not change, is left out whatever its line says; an invite with no
-link yet is updated, its role kept when the line names none), and
-`peopleImportRows` is what the server takes again. `pasted-text.ts` holds
+link yet is updated, its role kept when the line names none; from the
+console, a line it would write whose number the database found on another
+business's staff, its third argument, is to fix, `elsewhere`, until it is
+removed), `writtenRoleOf` is the role an invite ends with by the database's
+answer for its row (null for one made meanwhile, whose role the screen never
+read), and `peopleImportRows` is what the server takes again. `pasted-text.ts` holds
 what it shares with the menu's reader (`clean`, the marks, `readsBackwards`)
 and `westernDigits` for Arabic-Indic digits; `staff-list.ts` exports
 `wordKey` and `builtInRoleWord` ("מנהל/ת", "עובד/ת", "employee").

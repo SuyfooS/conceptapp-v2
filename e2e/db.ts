@@ -6514,12 +6514,281 @@ export async function roleIn(
 }
 
 /** How many notifications anyone in the business has. */
-export async function notificationsIn(
-  business: PendingLinksBusiness,
-): Promise<number> {
+export async function notificationsIn(business: {
+  slug: string;
+}): Promise<number> {
   const [row] = await sql<{ count: number }[]>`
     select count(*)::int as count from public.notifications n
     join public.businesses b on b.id = n.business_id
     where b.slug = ${business.slug}`;
   return row?.count ?? 0;
+}
+
+/**
+ * The console's people import (inviting from a list, part 4): one real
+ * business per screen size, opened by the wizard's own function, so it takes
+ * invites as a demo never does here. Its owner is on its team already (a
+ * login of their own), the wizard saved its accountant's invite with no
+ * link, and the list holds five people (050-000-78xx, apart from every
+ * other spec's). Nobody here is ever sent anything.
+ */
+export const CONSOLE_IMPORT = {
+  phone: {
+    slug: "console-import-e2e-phone",
+    name: "חנות מרשימה טלפון",
+    owner: {
+      id: "00000000-0000-4000-a000-000000007800",
+      name: "נגה בעלים",
+      local: "050-000-7800",
+      e164: "+972500007800",
+    },
+    accountant: {
+      name: "עמוס חשבונות",
+      local: "050-000-7801",
+      e164: "+972500007801",
+    },
+    people: [
+      {
+        name: "אלה מנהלת",
+        local: "050-000-7802",
+        e164: "+972500007802",
+        role: "manager",
+      },
+      {
+        name: "בני מהרשימה",
+        local: "050-000-7803",
+        e164: "+972500007803",
+        role: "worker",
+      },
+      {
+        name: "גלית מהרשימה",
+        local: "050-000-7804",
+        e164: "+972500007804",
+        role: "worker",
+      },
+      {
+        name: "דור מהרשימה",
+        local: "050-000-7805",
+        e164: "+972500007805",
+        role: "worker",
+      },
+      {
+        name: "הילה מהרשימה",
+        local: "050-000-7806",
+        e164: "+972500007806",
+        role: "worker",
+      },
+    ],
+  },
+  tablet: {
+    slug: "console-import-e2e-tablet",
+    name: "חנות מרשימה טאבלט",
+    owner: {
+      id: "00000000-0000-4000-a000-000000007810",
+      name: "נגה בעלים",
+      local: "050-000-7810",
+      e164: "+972500007810",
+    },
+    accountant: {
+      name: "עמוס חשבונות",
+      local: "050-000-7811",
+      e164: "+972500007811",
+    },
+    people: [
+      {
+        name: "אלה מנהלת",
+        local: "050-000-7812",
+        e164: "+972500007812",
+        role: "manager",
+      },
+      {
+        name: "בני מהרשימה",
+        local: "050-000-7813",
+        e164: "+972500007813",
+        role: "worker",
+      },
+      {
+        name: "גלית מהרשימה",
+        local: "050-000-7814",
+        e164: "+972500007814",
+        role: "worker",
+      },
+      {
+        name: "דור מהרשימה",
+        local: "050-000-7815",
+        e164: "+972500007815",
+        role: "worker",
+      },
+      {
+        name: "הילה מהרשימה",
+        local: "050-000-7816",
+        e164: "+972500007816",
+        role: "worker",
+      },
+    ],
+  },
+  desktop: {
+    slug: "console-import-e2e-desktop",
+    name: "חנות מרשימה מחשב",
+    owner: {
+      id: "00000000-0000-4000-a000-000000007820",
+      name: "נגה בעלים",
+      local: "050-000-7820",
+      e164: "+972500007820",
+    },
+    accountant: {
+      name: "עמוס חשבונות",
+      local: "050-000-7821",
+      e164: "+972500007821",
+    },
+    people: [
+      {
+        name: "אלה מנהלת",
+        local: "050-000-7822",
+        e164: "+972500007822",
+        role: "manager",
+      },
+      {
+        name: "בני מהרשימה",
+        local: "050-000-7823",
+        e164: "+972500007823",
+        role: "worker",
+      },
+      {
+        name: "גלית מהרשימה",
+        local: "050-000-7824",
+        e164: "+972500007824",
+        role: "worker",
+      },
+      {
+        name: "דור מהרשימה",
+        local: "050-000-7825",
+        e164: "+972500007825",
+        role: "worker",
+      },
+      {
+        name: "הילה מהרשימה",
+        local: "050-000-7826",
+        e164: "+972500007826",
+        role: "worker",
+      },
+    ],
+  },
+} as const;
+
+export type ConsoleImportBusiness =
+  (typeof CONSOLE_IMPORT)[keyof typeof CONSOLE_IMPORT];
+
+/**
+ * The business opened afresh by the wizard's function, an earlier run's gone
+ * first with its records: the accountant's invite saved with no link, and
+ * the owner's login made when missing and on its team.
+ */
+export async function openConsoleImportBusiness(
+  business: ConsoleImportBusiness,
+): Promise<void> {
+  await closeConsoleImportBusiness(business);
+  await ensureLogins([business.owner]);
+  await sql`select public.create_business(${SEEDED_PLATFORM_ADMIN}::uuid,
+    ${business.name}, ${business.slug}, null, '#7c3aed', 'retail',
+    ${sql.json([
+      {
+        name: business.accountant.name,
+        phone: business.accountant.e164,
+        role: "accountant",
+      },
+    ])}::jsonb)`;
+  await sql`insert into public.memberships (business_id, user_id, role)
+    select b.id, ${business.owner.id}, 'owner'
+    from public.businesses b where b.slug = ${business.slug}`;
+}
+
+/**
+ * The business gone with its records, when the test is done, and no longer
+ * a demo: `private.demo_businesses` has no foreign key.
+ */
+export async function closeConsoleImportBusiness(
+  business: ConsoleImportBusiness,
+): Promise<void> {
+  const id = await businessIdBySlug(business.slug);
+  if (!id) return;
+  await sql`delete from private.demo_businesses where business_id = ${id}`;
+  await deleteRealBusiness(id);
+}
+
+/**
+ * The business closed to invites, as a hosted demo is
+ * (`private.closed_to_invites`): a demo with no definition, which takes
+ * none. It keeps its people (`reopenConsoleImportToInvites` undoes it).
+ */
+export async function closeConsoleImportToInvites(
+  business: ConsoleImportBusiness,
+): Promise<void> {
+  await sql`insert into private.demo_businesses (business_id, definition)
+    select b.id, '{}' from public.businesses b where b.slug = ${business.slug}`;
+}
+
+/** The business takes invites again: no longer a demo. */
+export async function reopenConsoleImportToInvites(
+  business: ConsoleImportBusiness,
+): Promise<void> {
+  await sql`delete from private.demo_businesses d
+    using public.businesses b
+    where d.business_id = b.id and b.slug = ${business.slug}`;
+}
+
+export type ImportedInvite = {
+  phone: string;
+  name: string | null;
+  role: string;
+  /** No link was ever made for it. */
+  pending: boolean;
+  /** Not claimed, nor cancelled. */
+  open: boolean;
+  cancelled: boolean;
+  /** The import that made it, or null. */
+  importId: string | null;
+  /** Someone on the ConceptApp team saved it. */
+  byTeam: boolean;
+};
+
+/** Every invite the business has, cancelled ones too, oldest first. */
+export async function invitesIn(
+  business: ConsoleImportBusiness,
+): Promise<ImportedInvite[]> {
+  return await sql<ImportedInvite[]>`
+    select i.phone, i.full_name as name, i.role::text as role,
+      i.link_pending as pending, i.claimed_at is null as open,
+      i.cancelled_at is not null as cancelled,
+      i.import_id::text as "importId",
+      exists (select 1 from public.platform_staff s
+        where s.user_id = i.invited_by) as "byTeam"
+    from public.invites i join public.businesses b on b.id = i.business_id
+    where b.slug = ${business.slug}
+    order by i.created_at, i.phone`;
+}
+
+/** The business's log rows of imports and their undos, oldest first. */
+export async function importLog(
+  business: ConsoleImportBusiness,
+): Promise<{ action: string; details: Record<string, unknown> }[]> {
+  return await sql<{ action: string; details: Record<string, unknown> }[]>`
+    select a.action, a.details from public.audit_log a
+    join public.businesses b on b.id = a.business_id
+    where b.slug = ${business.slug}
+      and a.action in ('invite.import', 'invite.import_undo')
+    order by a.created_at, a.id`;
+}
+
+/** The person's role in the business, or null when not an active member. */
+export async function consoleImportRole(
+  business: ConsoleImportBusiness,
+  phone: string,
+): Promise<string | null> {
+  const [row] = await sql<{ role: string }[]>`
+    select m.role::text as role from public.memberships m
+    join public.businesses b on b.id = m.business_id
+    join public.profiles p on p.id = m.user_id
+    where b.slug = ${business.slug} and p.phone = ${phone} and m.active`;
+  return row?.role ?? null;
 }

@@ -211,6 +211,17 @@ const PAGES = [
   "/design/shell/team/import?state=problems",
   "/design/shell/team/import?state=again",
   "/design/shell/team/import?state=tooMany",
+  // The console's people import (inviting from a list, part 4): the same
+  // states in the console's words, a list holding a number on another
+  // business's staff, and the card of a business that takes no invites.
+  "/design/console/businesses/demo-restaurant/people/import",
+  "/design/console/businesses/demo-restaurant/people/import?state=whatsapp",
+  "/design/console/businesses/demo-restaurant/people/import?state=sheet",
+  "/design/console/businesses/demo-restaurant/people/import?state=problems",
+  "/design/console/businesses/demo-restaurant/people/import?state=again",
+  "/design/console/businesses/demo-restaurant/people/import?state=tooMany",
+  "/design/console/businesses/demo-restaurant/people/import?state=elsewhere",
+  "/design/console/businesses/demo-restaurant/people/import?state=closed",
   // The hiring file's lines and card for a holder, a manager and the
   // accountant (files only), and a holder's file in each state (H6a).
   "/design/shell/team?file=holder",
@@ -10283,4 +10294,339 @@ test("the people import's twin stops at too many people and at two phone columns
       { exact: true },
     ),
   ).toBeVisible();
+});
+
+// Inviting from a list, part 4: the console's twin, the same screen in the
+// console's words, on the console twin's restaurant. Its done card lists the
+// invites saved and makes no link; a number on another of the twin's
+// businesses' staff refuses the list, and its line waits to be removed.
+const consoleImportTwin =
+  "/design/console/businesses/demo-restaurant/people/import";
+
+for (const colorScheme of ["light", "dark"] as const) {
+  test.describe(colorScheme, () => {
+    test.use({ colorScheme });
+
+    test("the console's import twin after an import, and taken back, is clean", async ({
+      page,
+    }, testInfo) => {
+      const a = he.admin.peopleImport;
+      await page.goto(`${consoleImportTwin}?state=done`);
+      const doneTitle = page.getByRole("heading", {
+        level: 2,
+        name: heT("app.team.import.done.title", { count: 7 }),
+      });
+      await expect(doneTitle).toBeVisible();
+      await expect(
+        page.getByText(a.done.console, { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText(he.app.team.import.done.team, { exact: true }),
+      ).toHaveCount(0);
+      // The list goes all at once only from here, and the press says so.
+      await expect(
+        page.getByText(a.done.removeHere, { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("button", {
+          name: he.app.team.import.done.remove,
+          exact: true,
+        }),
+      ).toHaveAccessibleDescription(a.done.removeHere);
+      const peopleTitle = page.getByRole("heading", {
+        level: 2,
+        name: a.done.people,
+      });
+      await expect(peopleTitle).toBeVisible();
+      // A phone's people under the card; a tablet's and a computer's beside
+      // it, at the end of the row (on the left, in Hebrew).
+      const card = await doneTitle.boundingBox();
+      const people = await peopleTitle.boundingBox();
+      if (!card || !people) throw new Error("the done card and its people");
+      if (testInfo.project.name === "phone") {
+        expect(people.y).toBeGreaterThan(card.y + card.height);
+      } else {
+        expect(people.x + people.width).toBeLessThanOrEqual(card.x);
+        expect(people.y).toBeLessThan(card.y + card.height);
+      }
+      await expect(
+        page
+          .getByText("ד״ר מיכל רוזן", { exact: true })
+          .filter({ visible: true }),
+      ).toHaveCount(1);
+      // No link is made here: the owners send them from the Team screen.
+      await expect(page.locator('a[href*="wa.me"]')).toHaveCount(0);
+      await expect(
+        page.getByRole("button", { name: he.app.team.pending.create }),
+      ).toHaveCount(0);
+      await expect(
+        page.getByRole("link", {
+          name: heT("admin.peopleImport.done.toBusiness", {
+            name: "מסעדת הדגמה",
+          }),
+        }),
+      ).toHaveAttribute("href", "/design/console/businesses/demo-restaurant");
+      await expectCleanPage(page);
+
+      await page.goto(`${consoleImportTwin}?state=removed`);
+      await expect(
+        page.getByRole("status").filter({
+          hasText: heT("app.team.import.done.removed", { count: 7 }),
+        }),
+      ).toBeVisible();
+      await expectCleanPage(page);
+    });
+  });
+}
+
+test("the console's import twin says owners and accountants are added one at a time, from its own form", async ({
+  page,
+}) => {
+  await page.goto(`${consoleImportTwin}?state=problems`);
+  await expect(
+    page.getByText(
+      heT("admin.peopleImport.role.oneByOne", {
+        owner: "בעלים",
+        accountant: "הנהלת חשבונות",
+      }),
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByText(
+        heT("admin.peopleImport.problem.oneByOne", { role: "הנהלת חשבונות" }),
+        { exact: true },
+      )
+      .filter({ visible: true }),
+  ).toHaveCount(1);
+  await expect(
+    page.getByText(
+      heT("app.team.import.problem.oneByOne", { role: "הנהלת חשבונות" }),
+      { exact: true },
+    ),
+  ).toHaveCount(0);
+  // The restaurant's owner is on its team: his own line is left out.
+  await expect(
+    page.getByRole("button", {
+      name: heT("app.team.import.fixLineFor", { line: "2" }),
+      exact: true,
+    }),
+  ).toHaveCount(0);
+});
+
+/**
+ * Notes, from now on, what the page brings into view with `scrollIntoView`,
+ * by its role (else its tag): a refusal (`alert`), or not. Returns what was
+ * so far.
+ */
+async function noteScrolledIntoView(
+  page: Page,
+): Promise<() => Promise<string[]>> {
+  await page.evaluate(() => {
+    const seen: string[] = [];
+    (window as unknown as { scrolledIntoView?: string[] }).scrolledIntoView =
+      seen;
+    const own = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (
+      this: Element,
+      options?: boolean | ScrollIntoViewOptions,
+    ) {
+      seen.push(this.getAttribute("role") ?? this.localName);
+      own.call(this, options);
+    };
+  });
+  return () =>
+    page.evaluate(
+      () =>
+        (window as unknown as { scrolledIntoView?: string[] })
+          .scrolledIntoView ?? [],
+    );
+}
+
+test("the console's import twin refuses a number on another business's staff, and invites the rest once its line goes", async ({
+  page,
+}) => {
+  const i = he.app.team.import;
+  await page.goto(`${consoleImportTwin}?state=elsewhere`);
+  const submit = (count: number) =>
+    page.getByRole("button", {
+      name: heT("app.team.import.submit", { count }),
+      exact: true,
+    });
+  // The screen can't know another business's staff: all four read as new.
+  await expect(submit(4)).toBeEnabled();
+  const scrolled = await noteScrolledIntoView(page);
+  await submit(4).click();
+  await expect(
+    page.getByRole("alert").filter({
+      hasText: heT("admin.peopleImport.errors.elsewhere", {
+        count: 1,
+        accountant: "הנהלת חשבונות",
+      }),
+    }),
+  ).toBeVisible();
+  // Its line is to fix now, and its removal has the focus.
+  await expect(
+    page
+      .getByText(he.admin.peopleImport.problem.elsewhere, { exact: true })
+      .filter({ visible: true }),
+  ).toHaveCount(1);
+  const remove = page
+    .getByRole("button", {
+      name: heT("app.team.import.removeLineFor", { line: "3" }),
+      exact: true,
+    })
+    .filter({ visible: true });
+  await expect(remove).toBeFocused();
+  // The page moved once, to that line: never to the refusal, under every
+  // line, which would take the line out of view on a phone.
+  expect(await scrolled()).not.toContain("alert");
+  await expect(submit(3)).toBeDisabled();
+  await expect(submit(3)).toHaveAccessibleDescription(
+    heT("app.team.import.status.blocked", { count: 1 }),
+  );
+  await expectCleanPage(page);
+
+  await remove.click();
+  await expect(submit(3)).toBeEnabled();
+  await submit(3).click();
+  await expect(
+    page.getByRole("heading", {
+      level: 2,
+      name: heT("app.team.import.done.title", { count: 3 }),
+    }),
+  ).toBeFocused();
+  await expect(
+    page.getByText("אלון מור", { exact: true }).filter({ visible: true }),
+  ).toHaveCount(1);
+  await expect(
+    page.getByText("מאיה פרץ", { exact: true }).filter({ visible: true }),
+  ).toHaveCount(0);
+  await expect(page.getByText(i.done.another, { exact: true })).toBeVisible();
+});
+
+test("the console's import twin on a computer shows the refused line whatever the table's filter, its removal focused", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "a computer's table");
+  const i = he.app.team.import;
+  await page.goto(`${consoleImportTwin}?state=elsewhere`);
+  const filter = page.getByRole("group", { name: i.filter.label });
+  // Only those to invite, then the press: the line refused is one to fix.
+  await filter
+    .getByRole("button", {
+      name: heT("app.team.import.filter.invite", { count: 4 }),
+      exact: true,
+    })
+    .click();
+  await page
+    .getByRole("button", {
+      name: heT("app.team.import.submit", { count: 4 }),
+      exact: true,
+    })
+    .click();
+  await expect(
+    page.getByRole("alert").filter({
+      hasText: heT("admin.peopleImport.errors.elsewhere", {
+        count: 1,
+        accountant: "הנהלת חשבונות",
+      }),
+    }),
+  ).toBeVisible();
+  // The table shows every line again, the marked one among them.
+  await expect(
+    filter.getByRole("button", { name: i.filter.all, exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    page
+      .getByText(he.admin.peopleImport.problem.elsewhere, { exact: true })
+      .filter({ visible: true }),
+  ).toHaveCount(1);
+  await expect(
+    page
+      .getByRole("button", {
+        name: heT("app.team.import.removeLineFor", { line: "3" }),
+        exact: true,
+      })
+      .filter({ visible: true }),
+  ).toBeFocused();
+});
+
+test("the console's import twin says, in its own words, that the owners delete old invites", async ({
+  page,
+}) => {
+  await page.goto(`${consoleImportTwin}?state=elsewhere&fail=open`);
+  const submit = page.getByRole("button", {
+    name: heT("app.team.import.submit", { count: 4 }),
+    exact: true,
+  });
+  const scrolled = await noteScrolledIntoView(page);
+  await submit.click();
+  await expect(
+    page.getByRole("alert").filter({
+      hasText: importWords("admin.peopleImport.errors.tooManyOpen", {
+        open: 500,
+        max: 500,
+      }),
+    }),
+  ).toBeVisible();
+  // No line marked: the press takes the focus back, and the refusal above
+  // it is brought into view.
+  await expect(submit).toBeFocused();
+  expect(await scrolled()).toContain("alert");
+  await expect(
+    page.getByText(
+      importWords("app.team.import.errors.tooManyOpen", {
+        open: 500,
+        max: 500,
+      }),
+    ),
+  ).toHaveCount(0);
+});
+
+test("the console's import twin for a demo business says it takes no invites, with no form", async ({
+  page,
+}) => {
+  await page.goto(`${consoleImportTwin}?state=closed`);
+  await expect(
+    page.getByRole("heading", {
+      level: 2,
+      name: he.admin.peopleImport.closed.title,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(he.admin.setup.invite.errors.demo, { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("textbox")).toHaveCount(0);
+  await expect(
+    page.getByRole("link", {
+      name: heT("admin.peopleImport.done.toBusiness", { name: "מסעדת הדגמה" }),
+    }),
+  ).toHaveAttribute("href", "/design/console/businesses/demo-restaurant");
+});
+
+test("the console twin's business page leads its staff to the list import", async ({
+  page,
+}) => {
+  // A business just opened: the checklist's staff item and the people's link.
+  await page.goto("/design/console/businesses/cafe-noa");
+  const href = "/design/console/businesses/cafe-noa/people/import";
+  await expect(
+    page.getByRole("link", { name: he.admin.setup.people.import }),
+  ).toHaveAttribute("href", href);
+  await expect(
+    page.getByRole("link", {
+      name: new RegExp(asIs(he.admin.setup.checklist.items.staff.title)),
+    }),
+  ).toHaveAttribute("href", href);
+  // The owner still from "הוספת אדם", as an owner.
+  await expect(
+    page.getByRole("link", {
+      name: new RegExp(asIs(he.admin.setup.checklist.items.owner.title)),
+    }),
+  ).toHaveAttribute(
+    "href",
+    "/design/console/businesses/cafe-noa/people/new?role=owner",
+  );
 });

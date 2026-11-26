@@ -17,7 +17,10 @@ export type PeopleImportStatus =
   /** An owner's or an accountant's invite, never changed by a list. */
   | "kept";
 
-/** Why nothing was written: each refusal writes nothing at all. */
+/**
+ * Why nothing was written: each refusal writes nothing at all. The console's
+ * `elsewhere`, with its rows, is a result of its own (`PeopleImportResult`).
+ */
 export type PeopleImportFailure =
   // The invite form's own words (`app.team.invite.errors`).
   | "noPermission"
@@ -46,6 +49,17 @@ export type PeopleImportResult =
       failure: PeopleImportFailure;
       /** With `tooManyOpen`: the invites the business has waiting. */
       open?: number;
+    }
+  | {
+      ok: false;
+      /**
+       * The console's only: numbers on another business's staff, so nothing
+       * was written. The Team screen never says where else a number works
+       * (#80).
+       */
+      failure: "elsewhere";
+      /** Their rows' places among those sent, from 1. */
+      rows: number[];
     };
 
 export type PeopleUndoResult =

@@ -40,6 +40,7 @@ async function Demo({ params, searchParams }: Props) {
       settingsHref={`/design/console/businesses/${slug}/settings`}
       wordingHref={`/design/console/businesses/${slug}/wording`}
       addHref={`/design/console/businesses/${slug}/people/new`}
+      importHref={`/design/console/businesses/${slug}/people/import`}
       rolesHref={`/design/console/businesses/${slug}/roles`}
       accessHref={`/design/console/businesses/${slug}/access`}
       viewAs={demoViewAs}

@@ -34,12 +34,23 @@ export type LineActions = {
 type Person = Extract<CheckedLine, { kind: "person" }>;
 
 /**
+ * Who imports: someone who edits the team, on its Team screen, or the
+ * ConceptApp team, in the console. Only the words that name a place differ
+ * (one by one from “הוספת אדם”, an expired invite renewed in the business's
+ * people), and the console's own words are never the business's to rewrite
+ * (`admin.peopleImport`, outside the "team" wording group).
+ */
+export type ImportMode = "team" | "console";
+
+/**
  * The words of the import's lines, in the business's words for its roles:
  * a line's number, its problem, what happens to it, its notes and what of
  * it wasn't read. The same in every shape.
  */
-export function useLineWords(roles: ImportRoles) {
+export function useLineWords(roles: ImportRoles, mode: ImportMode = "team") {
   const t = useTranslations("app.team.import");
+  const ta = useTranslations("admin.peopleImport");
+  const inConsole = mode === "console";
 
   /** A role as the business words it, by its choice. */
   const labelOf = (choice: RoleChoice): string => {
@@ -83,6 +94,11 @@ export function useLineWords(roles: ImportRoles) {
       case "duplicate":
         return t.rich("problem.duplicate", { line: line.first ?? 0, ltr });
       case "oneByOne":
+        return inConsole
+          ? ta("problem.oneByOne", { role: line.roleLabel ?? "" })
+          : t("problem.oneByOne", { role: line.roleLabel ?? "" });
+      case "elsewhere":
+        return ta("problem.elsewhere");
       case "notAllowed":
       case "givesPay":
       case "held":
@@ -135,7 +151,7 @@ export function useLineWords(roles: ImportRoles) {
       case "locked":
         return t("outcome.locked");
       case "expired":
-        return t("outcome.expired");
+        return inConsole ? ta("outcome.expired") : t("outcome.expired");
       case "otherRole":
         return t("outcome.otherRole", {
           role: line.invite ? labelOf(line.invite) : "",

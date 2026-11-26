@@ -297,7 +297,10 @@ worker's but one whose named role was archived). `people_import.test.sql`
 covers the rules, `people-import.test.ts` the calls, and
 `people-import.db.test.ts` the parity with `againstTeam` for an owner, a
 manager and the console, and two sessions at once (a single invite made
-meanwhile, two imports, an undo while a link is made).
+meanwhile, two imports, an undo while a link is made). The console's screen
+(`/admin/businesses/<slug>/people/import`) is the first caller: its actions
+check `staff.invite` and read the rows again as "הוספת אדם" would take them
+before `importPeopleFromConsole` is asked.
 
 A week is written shift by shift (`20261115000100_week_in_place.sql`; Orel's
 answers of 15 November 2026). `public.week_shifts(week)` reads a week's shifts

@@ -11,17 +11,22 @@ import {
   PEOPLE_IMPORT_MAX,
   parsePeopleList,
   WAITING_INVITES_MAX,
+  writtenRoleOf,
 } from "@domain/people-import";
+import { displayIsraeliMobile } from "@domain/phone";
 import { roleChoiceKey } from "@domain/team";
 import { announce } from "@ui/announcer";
+import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { Card } from "@ui/card";
 import { ChoiceList, ChoiceRow } from "@ui/choice-row";
 import { cn } from "@ui/cn";
+import { DataTable } from "@ui/data-table";
 import { FloatingAction, floatingButtonClass } from "@ui/floating-action";
 import { arrived, type FocusCandidate, focusFirst } from "@ui/focus-after";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
+import { PersonList, PersonRow } from "@ui/person-row";
 import { StatusToast } from "@ui/status-toast";
 import { TextArea } from "@ui/text-field";
 import { UndoRow } from "@ui/undo-row";
@@ -40,6 +45,7 @@ import {
 import { HOLD_MS, useHeldWrite } from "../../use-held-write";
 import { ignoredWords } from "./ignored-words";
 import {
+  type ImportMode,
   type LineActions,
   LineGroups,
   LinesTable,
@@ -53,6 +59,7 @@ import type {
   UndoPeopleImport,
 } from "./import-types";
 import { type LineSpan, lineRange, withoutLines } from "./paste-edit";
+import { withoutTakenBack } from "./taken-back";
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 
@@ -70,7 +77,7 @@ const INVITE_FAILURES = [
 ] as const;
 
 const inInviteWords = (
-  failure: PeopleImportFailure,
+  failure: PeopleImportFailure | "elsewhere",
 ): failure is (typeof INVITE_FAILURES)[number] =>
   (INVITE_FAILURES as readonly string[]).includes(failure);
 
@@ -83,6 +90,21 @@ const NOTHING: ParsedPeople = {
   error: null,
 };
 
+/** Someone an import wrote, as the console's done card lists them. */
+type DonePerson = {
+  /** The line, numbered as pasted: a row's key. */
+  line: number;
+  name: string;
+  phone: string;
+  /**
+   * The role they end with, as the business words it; null when the screen
+   * can't know it (`writtenRoleOf`), and no badge is drawn.
+   */
+  role: string | null;
+  /** Above a worker: its badge stands out, so a wrong "manager" is seen. */
+  above: boolean;
+};
+
 /** What an import did, as its done card says it. */
 type Done = {
   importId: string | null;
@@ -90,12 +112,39 @@ type Done = {
   updated: number;
   /** Already on the team or among the invites, on the screen or in the database. */
   skipped: number;
+  /** The invites it made, by id: the screen reads the team without them while they are taken back. */
+  invites: readonly string[];
+  /** Everyone it made or updated, in the order of the lines. */
+  people: readonly DonePerson[];
 };
 
+/** A refusal, said under the press, drawn anew for each answer. */
+type Refusal = {
+  failure: PeopleImportFailure | "elsewhere";
+  /** With `tooManyOpen`: the invites the business has waiting. */
+  open?: number;
+  /** With `elsewhere`: how many numbers, and the first of their lines. */
+  count?: number;
+  line?: number;
+  answer: number;
+};
+
+const NOBODY: ReadonlySet<string> = new Set();
+
 export type PeopleImportViewProps = {
+  /**
+   * Who imports: someone who edits the team, on its Team screen (the
+   * default), or the ConceptApp team in the console, whose done card lists
+   * the invites saved and says the owners send their links.
+   */
+  mode?: ImportMode;
   /** The roles the viewer gives, as the business words them (`importRolesOf`). */
   roles: ImportRoles;
-  /** The business's own team, as its Team screen reads it. */
+  /**
+   * The business's own team, as its Team screen reads it. The page reads it
+   * again after each import and each undo, so a second list is read against
+   * the invites the first one made.
+   */
   known: KnownTeam;
   importPeople: ImportPeople;
   undoImport: UndoPeopleImport;
@@ -121,10 +170,13 @@ export type PeopleImportViewProps = {
  * and nobody gets a message: the links are sent afterwards, one by one.
  * Phone: one thing under another. Tablet: the role and the paste beside
  * the lines. Computer: a wider column for the lines, in one table. The
- * same view for every route, each with its own actions, and for the twin
- * on /design with stand-ins that write nothing.
+ * same view for every route, each with its own actions, and for the twins
+ * on /design with stand-ins that write nothing. From the console, a number
+ * the database finds on another business's staff refuses the list, and
+ * its line is marked to fix until it is removed.
  */
 export function PeopleImportView({
+  mode = "team",
   roles,
   known,
   importPeople,
@@ -134,11 +186,21 @@ export function PeopleImportView({
   startAt,
 }: PeopleImportViewProps) {
   const t = useTranslations("app.team.import");
+  const ta = useTranslations("admin.peopleImport");
   const ti = useTranslations("app.team.invite");
   const tc = useTranslations("app.team.changes");
   const locale = useLocale();
-  const words = useLineWords(roles);
+  const inConsole = mode === "console";
+  const words = useLineWords(roles, mode);
   const statusId = useId();
+  const removeHereId = useId();
+  /** Owners and accountants, as the business words them: invited one at a time. */
+  const oneByOne = (role: "owner" | "accountant") =>
+    roles.oneByOne.find((one) => one.role === role)?.label ?? "";
+  const oneByOneRoles = {
+    owner: oneByOne("owner"),
+    accountant: oneByOne("accountant"),
+  };
 
   const firstRole = listRoleOf(roles);
   const [roleKey, setRoleKey] = useState(
@@ -152,7 +214,18 @@ export function PeopleImportView({
   const [paste, setPaste] = useState(initialPaste);
   const read = useDeferredValue(paste);
   const parsed = listRole ? parsePeopleList(read, roles, listRole) : NOTHING;
-  const check = againstTeam(parsed, known);
+  /**
+   * An import taken back, by its invites: those still with no link are left
+   * out of whichever team the page read (the import's own reading can come
+   * after the press), so its lines read as new again at once. Until it
+   * comes back (kept, or its undo failed), or the next list starts or is
+   * invited.
+   */
+  const [hidden, setHidden] = useState<ReadonlySet<string> | null>(null);
+  const team = withoutTakenBack(known, hidden);
+  /** The numbers the console was told are on another business's staff. */
+  const [elsewhere, setElsewhere] = useState<ReadonlySet<string>>(NOBODY);
+  const check = againstTeam(parsed, team, elsewhere);
   // A keystroke not read yet: the press waits for it.
   const stale = read !== paste;
 
@@ -162,11 +235,7 @@ export function PeopleImportView({
     kept: number | null;
   } | null>(null);
   const [importing, setImporting] = useState(false);
-  const [failure, setFailure] = useState<{
-    failure: PeopleImportFailure;
-    open?: number;
-    answer: number;
-  } | null>(null);
+  const [failure, setFailure] = useState<Refusal | null>(null);
   const [undoFailed, setUndoFailed] = useState(0);
   const [toast, setToast] = useState<{
     text: string;
@@ -198,6 +267,12 @@ export function PeopleImportView({
   /** The counts as last said (`summary`), so the same are never said again. */
   const said = useRef<string | null>(null);
 
+  /** Those the undo left, since a link was made for them meanwhile. */
+  const keptWords = (count: number) =>
+    inConsole
+      ? ta("done.removedKept", { count })
+      : t("done.removedKept", { count });
+
   // The import taken back, held for "ביטול" as a deleted invite is. Only
   // its invites with no link yet go; failing, the done card comes back. It
   // answers whether they went, for an import that waits for it.
@@ -211,6 +286,7 @@ export function PeopleImportView({
       }
       if (!result.ok) {
         setRemoved(null);
+        setHidden(null);
         doneFocus.current = "remove";
         setDone(was);
         setUndoFailed((count) => count + 1);
@@ -219,9 +295,7 @@ export function PeopleImportView({
       setRemoved({ done: was, kept: result.kept });
       // Drawn under the field, where nothing reads it out: said once.
       if (result.kept > 0) {
-        announce(t("done.removedKept", { count: result.kept }), {
-          lang: locale,
-        });
+        announce(keptWords(result.kept), { lang: locale });
       }
       return true;
     },
@@ -254,6 +328,24 @@ export function PeopleImportView({
     }
     setImporting(false);
     if (!result.ok) {
+      if (result.failure === "elsewhere") {
+        // The rows' places among those sent, back to their numbers: each
+        // line with one is marked to fix, whatever is edited around it.
+        const far = result.rows.flatMap((place) => {
+          const person = sent[place - 1];
+          return person ? [person] : [];
+        });
+        setElsewhere(
+          (now) => new Set([...now, ...far.map((person) => person.phone)]),
+        );
+        setFailure((now) => ({
+          failure: "elsewhere",
+          count: far.length,
+          ...(far[0] ? { line: far[0].line } : {}),
+          answer: (now?.answer ?? 0) + 1,
+        }));
+        return;
+      }
       const { failure: why, open } = result;
       setFailure((now) => ({
         failure: why,
@@ -262,35 +354,81 @@ export function PeopleImportView({
       }));
       return;
     }
-    const of = (statuses: readonly string[]) =>
-      result.ok
-        ? result.rows.filter((row) => statuses.includes(row.status)).length
-        : 0;
     const { counts } = check;
     setFailure(null);
     setRemoved(null);
+    setHidden(null);
     setUndoFailed(0);
     // A line's removal is no longer to take back: its "ביטול" goes with it.
     setToast(null);
     doneFocus.current = "title";
-    setDone({
-      importId: result.importId,
-      made: of(["created"]),
-      updated: of(["updated"]),
-      skipped:
+    setDone(
+      doneOf(
+        result.importId,
+        result.rows,
+        sent,
         counts.member +
-        counts.same +
-        counts.invited +
-        counts.locked +
-        counts.expired +
-        counts.otherRole +
-        of(["same", "member", "invited", "expired", "kept"]),
+          counts.same +
+          counts.invited +
+          counts.locked +
+          counts.expired +
+          counts.otherRole,
+      ),
+    );
+  }
+
+  /**
+   * What an import did, from the database's answer for each row sent (never
+   * the preview's): `left` the lines the screen left out itself.
+   */
+  function doneOf(
+    importId: string | null,
+    rows: Extract<PeopleImportResult, { ok: true }>["rows"],
+    sent: typeof check.send,
+    left: number,
+  ): Done {
+    const of = (statuses: readonly string[]) =>
+      rows.filter((row) => statuses.includes(row.status));
+    const people = rows.flatMap((row): DonePerson[] => {
+      const person = sent[row.i - 1];
+      if (!person || (row.status !== "created" && row.status !== "updated")) {
+        return [];
+      }
+      // The role by the database's answer, not the preview's: an invite
+      // made meanwhile, elsewhere, kept a role the screen never read.
+      const role = writtenRoleOf(
+        row.status,
+        person,
+        check.lines.find((one) => one.line === person.line),
+      );
+      return [
+        {
+          line: person.line,
+          name: person.name,
+          phone: person.phone,
+          role: role ? words.labelOf(role) : null,
+          above: role?.role === "manager",
+        },
+      ];
     });
+    return {
+      importId,
+      made: of(["created"]).length,
+      updated: of(["updated"]).length,
+      skipped:
+        left + of(["same", "member", "invited", "expired", "kept"]).length,
+      invites: of(["created"]).flatMap((row) =>
+        row.invite ? [row.invite] : [],
+      ),
+      people,
+    };
   }
 
   function takeBack() {
     if (!done?.importId) return;
     setRemoved({ done, kept: null });
+    // Its invites read as gone at once, as the undo will leave them.
+    setHidden(new Set(done.invites));
     setDone(null);
     setToast(null);
     held.hold({ importId: done.importId, done });
@@ -300,6 +438,7 @@ export function PeopleImportView({
     const value = held.release();
     if (!value) return;
     setRemoved(null);
+    setHidden(null);
     doneFocus.current = "remove";
     setDone(value.done);
   }
@@ -307,6 +446,8 @@ export function PeopleImportView({
   function another() {
     setDone(null);
     setRemoved(null);
+    setHidden(null);
+    setElsewhere(NOBODY);
     setPaste("");
     setToast(null);
     setEdits(0);
@@ -332,11 +473,25 @@ export function PeopleImportView({
   // where the refusal is read above it, brought into view (on a phone the
   // press floats, and the page stays where it was). Only as it arrives: a
   // screen shown again from its <Activity> runs this again with the same.
+  // Numbers on another business's staff hold the press until their lines
+  // go: the first one's "הסרת השורה" takes the focus instead, and the page
+  // moves once, to that line, its reason beside it (the refusal is under
+  // every line: brought into view too, it would take the line out of view
+  // on a phone). With neither (the press held, the line not drawn), the
+  // refusal itself has it, never the page's body.
   const seenFailure = useRef<typeof failure>(null);
   useLayoutEffect(() => {
     if (!arrived(seenFailure, failure)) return;
-    refusal.current?.scrollIntoView({ block: "center" });
-    focusFirst([submit.current], { title: false });
+    const line =
+      failure?.line !== undefined
+        ? `[data-remove-line="${failure.line}"]`
+        : null;
+    const to = focusFirst([line, submit.current, refusal.current], {
+      title: false,
+    });
+    if (!line || !to?.matches(line)) {
+      refusal.current?.scrollIntoView({ block: "center" });
+    }
   }, [failure]);
 
   // A removal taken back: the button that took the lines out has the focus
@@ -355,18 +510,20 @@ export function PeopleImportView({
     if (!startAt || started.current) return;
     started.current = true;
     void (async () => {
-      const rows = check.send.map(({ line: _line, ...person }) => person);
-      const result = await importPeople(rows);
+      const sent = check.send;
+      const result = await importPeople(
+        sent.map(({ line: _line, ...person }) => person),
+      );
       if (!result.ok) return;
-      const made = result.rows.filter((row) => row.status === "created").length;
-      const finished: Done = {
-        importId: result.importId,
-        made,
-        updated: result.rows.filter((row) => row.status === "updated").length,
-        skipped: check.counts.member + check.counts.same,
-      };
+      const finished = doneOf(
+        result.importId,
+        result.rows,
+        sent,
+        check.counts.member + check.counts.same,
+      );
       if (startAt === "removed" && finished.importId) {
         setRemoved({ done: finished, kept: null });
+        setHidden(new Set(finished.invites));
         held.hold({ importId: finished.importId, done: finished });
       } else {
         doneFocus.current = "title";
@@ -439,12 +596,17 @@ export function PeopleImportView({
         });
       case "tooLong":
         return t("status.tooLong");
-      case "tooManyOpen":
-        return t.markup("status.tooManyOpen", {
-          open: known.waiting,
+      case "tooManyOpen": {
+        // The console deletes no invite: its words ask the owners to.
+        const values = {
+          open: team.waiting,
           max: WAITING_INVITES_MAX,
           ltr: isolate,
-        });
+        };
+        return inConsole
+          ? ta.markup("status.tooManyOpen", values)
+          : t.markup("status.tooManyOpen", values);
+      }
       case "phoneColumns":
         // A header named them: so do the words, and adding it is no fix.
         return parsed.phoneHeaders
@@ -467,6 +629,16 @@ export function PeopleImportView({
     ? t("summary.update", { count: check.send.length })
     : t("summary.ready", { count: check.send.length });
   const summary = [readyWords, status].filter(Boolean).join(". ");
+  // A refusal for numbers on another business's staff changes the counts
+  // with nothing edited, and its alert says what changed: those counts are
+  // taken as said, as it arrives (before the effect below reads them), and
+  // said again only after the next edit or removal.
+  const hushedFailure = useRef<typeof failure>(null);
+  useLayoutEffect(() => {
+    if (arrived(hushedFailure, failure) && failure?.failure === "elsewhere") {
+      said.current = summary;
+    }
+  }, [failure, summary]);
   // Said only when it changed since it was last said: never again for an
   // import taken back, or a screen shown again from its <Activity>, with
   // the same counts.
@@ -490,12 +662,21 @@ export function PeopleImportView({
         ltr,
       });
     }
+    if (why === "elsewhere") {
+      return ta("errors.elsewhere", {
+        count: failure.count ?? 0,
+        accountant: oneByOne("accountant"),
+      });
+    }
     if (why === "tooManyOpen") {
-      return t.rich("errors.tooManyOpen", {
-        open: failure.open ?? known.waiting,
+      const values = {
+        open: failure.open ?? team.waiting,
         max: WAITING_INVITES_MAX,
         ltr,
-      });
+      };
+      return inConsole
+        ? ta.rich("errors.tooManyOpen", values)
+        : t.rich("errors.tooManyOpen", values);
     }
     return why === "businessChanged" || why === "changed"
       ? t(`errors.${why}`)
@@ -513,11 +694,13 @@ export function PeopleImportView({
   const byRole = Object.entries(check.counts.byRole);
   const headerLine = parsed.lines.find((line) => line.kind === "header")?.line;
   const empty = parsed.lines.length === 0 && !blocked && parsed.people === 0;
-  const oneByOne = (role: "owner" | "accountant") =>
-    roles.oneByOne.find((one) => one.role === role)?.label ?? "";
   const label = onlyUpdates
     ? t("submitUpdate", { count: check.send.length })
     : t("submit", { count: check.send.length });
+  const tooManyOpen = { open: team.waiting, max: WAITING_INVITES_MAX, ltr };
+  /** The console's list of whom the import saved, beside its done card. */
+  const saved = inConsole && done ? done.people : [];
+  const removable = Boolean(done?.importId) && (done?.made ?? 0) > 0;
 
   return (
     <PageBody className={pageGlowClass}>
@@ -560,57 +743,85 @@ export function PeopleImportView({
       />
       <PageHeader
         back={paths.back}
-        title={t("title")}
-        subtitle={t("subtitle")}
+        title={inConsole ? ta("title") : t("title")}
+        subtitle={inConsole ? ta("subtitle") : t("subtitle")}
       />
       {done && undoFailed > 0 ? (
         <p key={undoFailed} role="alert" className="px-1 text-danger">
-          {t("errors.removeFailed")}
+          {inConsole ? ta("errors.removeFailed") : t("errors.removeFailed")}
         </p>
       ) : null}
       {done ? (
-        <Card
-          tone="accent"
-          padding="lg"
-          className="flex flex-col gap-3 md:max-w-2xl"
+        <div
+          className={
+            saved.length > 0
+              ? // Beside the people it saved, in the editor's columns: one
+                // under the other on a phone, the card at the start of a
+                // tablet's and a computer's, the people at their end.
+                "grid gap-6 md:grid-cols-2 md:items-start md:gap-8 xl:grid-cols-[24rem_minmax(0,1fr)]"
+              : "contents"
+          }
         >
-          <h2
-            ref={doneHeading}
-            tabIndex={-1}
-            className="flex items-start gap-2 text-balance font-bold text-xl outline-none"
+          <Card
+            tone="accent"
+            padding="lg"
+            className={cn(
+              "flex flex-col gap-3",
+              saved.length === 0 && "md:max-w-2xl",
+            )}
           >
-            <Check aria-hidden="true" className="mt-1 size-6 shrink-0" />
-            {t("done.title", { count: done.made })}
-          </h2>
-          {done.updated + done.skipped > 0 ? (
-            <p>
-              {t("done.more", {
-                updated: done.updated,
-                skipped: done.skipped,
-              })}
-            </p>
-          ) : null}
-          <p>{t("done.team")}</p>
-          <p>{t("done.later")}</p>
-          <div className="mt-1 flex flex-col gap-2 md:flex-row md:flex-wrap">
-            {done.importId && done.made > 0 ? (
-              <Button
-                variant="secondary"
-                data-import-remove=""
-                onClick={takeBack}
-              >
-                <Trash2 aria-hidden="true" />
-                {t("done.remove")}
-              </Button>
+            <h2
+              ref={doneHeading}
+              tabIndex={-1}
+              className="flex items-start gap-2 text-balance font-bold text-xl outline-none"
+            >
+              <Check aria-hidden="true" className="mt-1 size-6 shrink-0" />
+              {t("done.title", { count: done.made })}
+            </h2>
+            {done.updated + done.skipped > 0 ? (
+              <p>
+                {t("done.more", {
+                  updated: done.updated,
+                  skipped: done.skipped,
+                })}
+              </p>
             ) : null}
-            <Button asChild variant="secondary">
-              <Link href={paths.done.href}>{paths.done.label}</Link>
-            </Button>
-            <Button variant="ghost" onClick={another}>
-              {t("done.another")}
-            </Button>
-          </div>
-        </Card>
+            {inConsole ? (
+              <p>{ta("done.console")}</p>
+            ) : (
+              <>
+                <p>{t("done.team")}</p>
+                <p>{t("done.later")}</p>
+              </>
+            )}
+            {inConsole && removable ? (
+              // The console deletes no invite one at a time: once this card
+              // goes ("הזמנה מרשימה נוספת" too, or leaving the screen),
+              // only the owners can, on their Team screen. Its words say so.
+              <p id={removeHereId}>{ta("done.removeHere")}</p>
+            ) : null}
+            <div className="mt-1 flex flex-col gap-2 md:flex-row md:flex-wrap">
+              {removable ? (
+                <Button
+                  variant="secondary"
+                  data-import-remove=""
+                  aria-describedby={inConsole ? removeHereId : undefined}
+                  onClick={takeBack}
+                >
+                  <Trash2 aria-hidden="true" />
+                  {t("done.remove")}
+                </Button>
+              ) : null}
+              <Button asChild variant="secondary">
+                <Link href={paths.done.href}>{paths.done.label}</Link>
+              </Button>
+              <Button variant="ghost" onClick={another}>
+                {t("done.another")}
+              </Button>
+            </div>
+          </Card>
+          {saved.length > 0 ? <DonePeople people={saved} /> : null}
+        </div>
       ) : (
         <>
           {held.held && removed ? (
@@ -630,15 +841,13 @@ export function PeopleImportView({
           {removed ? (
             <p className="px-1 text-ink-2 md:max-w-2xl">
               {t("done.removedBack")}
-              {removed.kept
-                ? ` ${t("done.removedKept", { count: removed.kept })}`
-                : ""}
+              {removed.kept ? ` ${keptWords(removed.kept)}` : ""}
             </p>
           ) : (
             <p className="-mt-2 px-1 text-ink-2 md:-mt-4 md:max-w-2xl">
               {t("existing", {
-                members: known.members.length,
-                invites: known.waiting,
+                members: team.members.length,
+                invites: team.waiting,
               })}
             </p>
           )}
@@ -680,10 +889,9 @@ export function PeopleImportView({
                 </ChoiceList>
                 <p className="px-1 text-ink-2 text-sm">{t("role.hint")}</p>
                 <p className="px-1 text-ink-2 text-sm">
-                  {t("role.oneByOne", {
-                    owner: oneByOne("owner"),
-                    accountant: oneByOne("accountant"),
-                  })}
+                  {inConsole
+                    ? ta("role.oneByOne", oneByOneRoles)
+                    : t("role.oneByOne", oneByOneRoles)}
                 </p>
               </div>
               <div className="flex flex-col gap-2">
@@ -778,6 +986,11 @@ export function PeopleImportView({
                         </div>
                         <div className="hidden xl:block">
                           <LinesTable
+                            // Drawn anew, its filter back to all, by each
+                            // number found on another business's staff (the
+                            // set only grows): the line marked is on screen
+                            // as its removal takes the focus (below).
+                            key={elsewhere.size}
                             lines={check.lines}
                             words={words}
                             actions={actions}
@@ -810,11 +1023,9 @@ export function PeopleImportView({
                         ltr,
                       })
                     : blocked === "tooManyOpen"
-                      ? t.rich("status.tooManyOpen", {
-                          open: known.waiting,
-                          max: WAITING_INVITES_MAX,
-                          ltr,
-                        })
+                      ? inConsole
+                        ? ta.rich("status.tooManyOpen", tooManyOpen)
+                        : t.rich("status.tooManyOpen", tooManyOpen)
                       : status}
                 </p>
               ) : null}
@@ -847,5 +1058,58 @@ export function PeopleImportView({
         </>
       )}
     </PageBody>
+  );
+}
+
+/**
+ * The console's list of the invites an import saved, with no link to make:
+ * the owners send those from the Team screen. A phone's rows under the done
+ * card, a tablet's beside it, a computer's table beside it.
+ */
+function DonePeople({ people }: { people: readonly DonePerson[] }) {
+  const t = useTranslations("app.team.import");
+  const ta = useTranslations("admin.peopleImport");
+  const number = (phone: string) => (
+    // A number in one piece: never broken at its dashes.
+    <span dir="ltr" className="whitespace-nowrap tabular-nums">
+      {displayIsraeliMobile(phone)}
+    </span>
+  );
+  const role = (person: DonePerson) =>
+    person.role ? (
+      <Badge tone={person.above ? "accent" : "neutral"}>{person.role}</Badge>
+    ) : null;
+  return (
+    <PageSection title={ta("done.people")}>
+      <PersonList aria-label={ta("done.people")} className="xl:hidden">
+        {people.map((person) => (
+          <PersonRow
+            key={person.line}
+            name={person.name}
+            title={person.name}
+            subtitle={number(person.phone)}
+            trailing={role(person)}
+          />
+        ))}
+      </PersonList>
+      <Card padding="none" className="hidden overflow-hidden xl:block">
+        <DataTable
+          caption={ta("done.people")}
+          columns={[
+            { key: "name", label: t("columns.name") },
+            { key: "phone", label: t("columns.phone") },
+            { key: "role", label: t("columns.role") },
+          ]}
+          rows={people.map((person) => ({
+            key: String(person.line),
+            cells: {
+              name: <span className="font-medium">{person.name}</span>,
+              phone: number(person.phone),
+              role: role(person),
+            },
+          }))}
+        />
+      </Card>
+    </PageSection>
   );
 }
