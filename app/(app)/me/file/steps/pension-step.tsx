@@ -116,7 +116,26 @@ export function PensionStep({ kit, active }: { kit: Kit; active: boolean }) {
   const shown = choiceShown(options, fund ?? "", t("pension.pick"));
 
   return (
-    <FileSection step="pension" active={active} kit={kit}>
+    <FileSection
+      step="pension"
+      active={active}
+      kit={kit}
+      dock={
+        active ? (
+          <StepDock
+            kit={kit}
+            step="pension"
+            main={{
+              label: t("actions.next"),
+              form: formId,
+              disabled: empty > 0,
+              pending,
+            }}
+            notice={empty > 0 ? t("missingRequired", { count: empty }) : null}
+          />
+        ) : null
+      }
+    >
       <form
         id={formId}
         onSubmit={save}
@@ -196,19 +215,6 @@ export function PensionStep({ kit, active }: { kit: Kit; active: boolean }) {
         </div>
       </form>
       <LaterLink kit={kit} />
-      {active ? (
-        <StepDock
-          kit={kit}
-          step="pension"
-          main={{
-            label: t("actions.next"),
-            form: formId,
-            disabled: empty > 0,
-            pending,
-          }}
-          notice={empty > 0 ? t("missingRequired", { count: empty }) : null}
-        />
-      ) : null}
     </FileSection>
   );
 }

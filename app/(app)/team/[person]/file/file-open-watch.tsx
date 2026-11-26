@@ -227,10 +227,10 @@ export function FileOpenWatch({
   }, [kept, t, locale]);
 
   // Shown again: the focus the hiding took goes back, unless the person
-  // put it somewhere else meanwhile, and again on each drawing while it is
-  // still lost: the title was inert and invisible until this drawing, and
-  // with less motion asked for its `visibility` is a transition, hidden
-  // until a drawing moves it on (`focusWhenDrawn`).
+  // put it somewhere else meanwhile. Refused (the title was inert and
+  // invisible until this drawing, and a `visibility` transition keeps it
+  // hidden until a drawing moves it on), again on each drawing while it is
+  // still lost; once it landed, never again (`focusWhenDrawn`).
   useLayoutEffect(() => {
     if (held) return;
     const back = heldFocus.current;

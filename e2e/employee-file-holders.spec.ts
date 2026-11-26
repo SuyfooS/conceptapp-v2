@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import he from "../messages/he.json" with { type: "json" };
+import { pastDrawing } from "./announcer";
 import { captchaSettled } from "./captcha";
 import {
   bumpDemoBankChange,
@@ -31,7 +32,7 @@ import { enterAs, expectCleanPage } from "./orders-parts";
 import { SMS_COOLDOWN_MS, secondPage } from "./session";
 import { latestCode, setDemoModule } from "./sms";
 import { heT } from "./t";
-import { expect, type Page, type TestInfo, test } from "./test";
+import { expect, type Page, type Request, type TestInfo, test } from "./test";
 
 // The owner's and the accountant's view of the hiring file (profile H6a), at
 // each width. The local demo restaurant's module is off, so each test
@@ -337,21 +338,46 @@ test("a locked file asks for a code again, and the duties only once", async ({
   );
   await page.clock.fastForward("15:01");
   await asked;
-  await expect(
-    main(page).getByRole("heading", { name: f.sections.identity }),
-  ).toBeVisible();
+  const identity = main(page).getByRole("heading", {
+    name: f.sections.identity,
+  });
+  await expect(identity).toBeVisible();
+  // The focus the look took went back to the title it was on.
+  await expect(identity).toBeFocused();
   await expect(main(page).getByText(f.locked.title)).toHaveCount(0);
   expect(await stepUp()).toBe(true);
 
   // A minute before those end, the warning; a focus put on "להשאיר פתוח"
-  // from nowhere (a desktop screen reader's first move) is no activity.
+  // from nowhere (a desktop screen reader's first move) is no activity,
+  // and the server isn't asked. Taken from the title it went back to, the
+  // focus stays on nothing: the page puts back no focus that landed
+  // (`focusWhenDrawn`). Put back, the focus on "להשאיר פתוח" would be a
+  // move from the title, activity, which slides the step-up and sets its
+  // cookie again, so the file stays open below (CI now and then, after
+  // #266).
   await page.evaluate(() => {
     (document.activeElement as HTMLElement | null)?.blur();
   });
   await page.clock.fastForward("14:01");
   const keep = visible(page, "button", f.idle.keepOpen);
   await expect(keep).toBeVisible();
+  expect(
+    await page.evaluate(() => document.activeElement === document.body),
+  ).toBe(true);
+  let asks = 0;
+  const counting = (request: Request) => {
+    if (
+      request.method() === "POST" &&
+      request.headers()["next-action"] !== undefined
+    ) {
+      asks += 1;
+    }
+  };
+  page.on("request", counting);
   await keep.focus();
+  await pastDrawing(page);
+  page.off("request", counting);
+  expect(asks).toBe(0);
 
   // The server's 15 minutes pass too (its cookie gone by itself): the next
   // look finds the file closed. The focus the warning's button had went

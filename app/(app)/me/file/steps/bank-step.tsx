@@ -536,7 +536,38 @@ export function BankStep({
   ) : null;
 
   return (
-    <FileSection step="bank" active={active} kit={kit}>
+    <FileSection
+      step="bank"
+      active={active}
+      kit={kit}
+      dock={
+        active ? (
+          <StepDock
+            kit={kit}
+            step="bank"
+            main={
+              phase === "saved"
+                ? {
+                    label: t("actions.continue"),
+                    onClick: () => kit.go(kit.next("bank")),
+                  }
+                : editing
+                  ? {
+                      label: t("bank.confirm"),
+                      form: formId,
+                      // Something missing, or the week after a phone change,
+                      // is said above it; anything else, once pressed.
+                      disabled:
+                        block === "missing" || block === "other" || held,
+                      pending: sending || box.waiting,
+                    }
+                  : undefined
+            }
+            notice={editing ? (holdWords ?? blockWords) : null}
+          />
+        ) : null
+      }
+    >
       {/* Held from before, no longer asked: it stays, and can change. */}
       {data.asks.bank ? null : (
         <p className="px-1 text-base text-ink-2">
@@ -772,30 +803,6 @@ export function BankStep({
         </form>
       )}
       <LaterLink kit={kit} />
-      {active ? (
-        <StepDock
-          kit={kit}
-          step="bank"
-          main={
-            phase === "saved"
-              ? {
-                  label: t("actions.continue"),
-                  onClick: () => kit.go(kit.next("bank")),
-                }
-              : editing
-                ? {
-                    label: t("bank.confirm"),
-                    form: formId,
-                    // Something missing, or the week after a phone change,
-                    // is said above it; anything else, once pressed.
-                    disabled: block === "missing" || block === "other" || held,
-                    pending: sending || box.waiting,
-                  }
-                : undefined
-          }
-          notice={editing ? (holdWords ?? blockWords) : null}
-        />
-      ) : null}
     </FileSection>
   );
 }

@@ -77,7 +77,26 @@ export function StartStep({ kit, active }: { kit: Kit; active: boolean }) {
   const missing = tried && !form;
 
   return (
-    <FileSection step="start" active={active} kit={kit}>
+    <FileSection
+      step="start"
+      active={active}
+      kit={kit}
+      dock={
+        active ? (
+          <StepDock
+            kit={kit}
+            step="start"
+            main={{
+              label: t("actions.next"),
+              form: formId,
+              disabled: !form,
+              pending,
+            }}
+            notice={form ? null : t("missingRequired", { count: 1 })}
+          />
+        ) : null
+      }
+    >
       <form
         id={formId}
         onSubmit={save}
@@ -131,19 +150,6 @@ export function StartStep({ kit, active }: { kit: Kit; active: boolean }) {
         </div>
       </form>
       <LaterLink kit={kit} />
-      {active ? (
-        <StepDock
-          kit={kit}
-          step="start"
-          main={{
-            label: t("actions.next"),
-            form: formId,
-            disabled: !form,
-            pending,
-          }}
-          notice={form ? null : t("missingRequired", { count: 1 })}
-        />
-      ) : null}
     </FileSection>
   );
 }
