@@ -1,14 +1,17 @@
 -- Inviting from a list, part 6 (20261128000400_staff_elsewhere.sql): the
 -- console's new-business wizard asks which of its list's numbers are on a
--- business's staff already, the numbers in the call's body. Who may ask (the
--- ConceptApp team, with the secret key), what it answers (of the numbers
--- given, those an active member holds on a staff, an accountant's place
--- aside, each once, in the order given; none for an empty list or none at
--- all), a demo's staff counted as any other's while the demo stays as it
--- was, nothing written, and the cap. Fixed ids (d8…) and numbers of its own
+-- business's staff already, the numbers in the call's body, and its "הוספת
+-- אדם" asks the same of one number with its business left out (known issue
+-- 109). Who may ask (the ConceptApp team, with the secret key), what it
+-- answers (of the numbers given, those an active member holds on a staff,
+-- an accountant's place aside, each once, in the order given; none for an
+-- empty list or none at all), a business left out (its staff out, another's
+-- still in, an accountant's place still none, null as no business), a
+-- demo's staff counted as any other's while the demo stays as it was,
+-- nothing written, and the cap. Fixed ids (d8…) and numbers of its own
 -- (050-000-65xx), so nothing here meets the seed or another test.
 begin;
-select plan(18);
+select plan(24);
 
 create function pg_temp.p(n integer) returns uuid language sql as $$
   select ('d8000000-0000-4000-a000-' || lpad(n::text, 12, '0'))::uuid
@@ -77,8 +80,8 @@ create temporary table before on commit drop as
 ------------------------------------------------------------------------------
 -- 1. The function, and who may call it
 
-select has_function('public', 'admin_staff_elsewhere', array['uuid', 'text[]'],
-  'the wizard asks which of its numbers are on a staff already');
+select has_function('public', 'admin_staff_elsewhere', array['uuid', 'text[]', 'uuid'],
+  'the console asks which of its numbers are on a staff already, a business left out or none');
 select is(
   (select pg_catalog.format_type(p.prorettype, null)
    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
@@ -103,12 +106,12 @@ select ok(
   'and only reads'
 );
 select ok(
-  not has_function_privilege('anon', 'public.admin_staff_elsewhere(uuid, text[])', 'execute')
-  and not has_function_privilege('authenticated', 'public.admin_staff_elsewhere(uuid, text[])', 'execute'),
+  not has_function_privilege('anon', 'public.admin_staff_elsewhere(uuid, text[], uuid)', 'execute')
+  and not has_function_privilege('authenticated', 'public.admin_staff_elsewhere(uuid, text[], uuid)', 'execute'),
   'no browser role asks where else a number works'
 );
 select ok(
-  has_function_privilege('service_role', 'public.admin_staff_elsewhere(uuid, text[])', 'execute'),
+  has_function_privilege('service_role', 'public.admin_staff_elsewhere(uuid, text[], uuid)', 'execute'),
   'the secret key does'
 );
 select is(pg_temp.said(pg_temp.p(2), array[pg_temp.ph(3)]), '42501',
@@ -133,7 +136,48 @@ select is(
   array['+972500006503', '+972500006502', '+972500006507', '+972500006506'],
   'only the numbers on a staff, an accountant''s place aside, each once in the order given'
 );
+-- As "הוספת אדם" asks on A's page, with A left out: A's worker and owner
+-- are on A's own staff, B's owner and the one who manages B (and keeps A's
+-- books) on another's.
+select is(
+  public.admin_staff_elsewhere('d8000000-0000-4000-a000-000000000001',
+    array['+972500006503', '+972500006502', '+972500006510', '+972500006507'],
+    'd8000000-0000-4000-b000-000000000001'),
+  array['+972500006510', '+972500006507'],
+  'the business left out has its own staff left out, and another''s still answered'
+);
 reset role;
+
+select is(
+  public.admin_staff_elsewhere(pg_temp.p(1),
+    array[pg_temp.ph(3), pg_temp.ph(2), pg_temp.ph(10), pg_temp.ph(7), pg_temp.ph(4)],
+    pg_temp.b(2)),
+  array[pg_temp.ph(3), pg_temp.ph(2)],
+  'with B left out its manager is out too: his other place is A''s accountant''s, which is no staff place'
+);
+select is(
+  public.admin_staff_elsewhere(pg_temp.p(1),
+    array[pg_temp.ph(3), pg_temp.ph(2), pg_temp.ph(10), pg_temp.ph(7), pg_temp.ph(4), pg_temp.ph(6)],
+    null),
+  array[pg_temp.ph(3), pg_temp.ph(2), pg_temp.ph(10), pg_temp.ph(7), pg_temp.ph(6)],
+  'no business left out (null) answers as the wizard''s call, every staff counted'
+);
+select is(
+  public.admin_staff_elsewhere(pg_temp.p(1), array[pg_temp.ph(7)], pg_temp.b(1)),
+  array[pg_temp.ph(7)],
+  'one number, as "הוספת אדם" asks: A''s accountant who manages B is on another staff for A'
+);
+select is(
+  public.admin_staff_elsewhere(pg_temp.p(1), array[pg_temp.ph(3)], pg_temp.b(1))
+    || public.admin_staff_elsewhere(pg_temp.p(1), array[pg_temp.ph(4)], pg_temp.b(2)),
+  '{}'::text[],
+  'and A''s own worker for A, or A''s accountant alone for B, is on none'
+);
+select is(
+  public.admin_staff_elsewhere(pg_temp.p(1), array[pg_temp.ph(6), pg_temp.ph(3)], pg_temp.b(99)),
+  array[pg_temp.ph(6), pg_temp.ph(3)],
+  'a business nobody is in leaves nobody out'
+);
 
 select is(
   public.admin_staff_elsewhere(pg_temp.p(1), array[pg_temp.ph(6)]),

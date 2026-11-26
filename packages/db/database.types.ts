@@ -4133,7 +4133,7 @@ export type Database = {
         Returns: string;
       };
       admin_staff_elsewhere: {
-        Args: { actor: string; phones: string[] };
+        Args: { actor: string; except_business?: string; phones: string[] };
         Returns: string[];
       };
       admin_storage: { Args: Record<PropertyKey, never>; Returns: Json };

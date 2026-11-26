@@ -309,12 +309,15 @@ number works.
 
 The new-business wizard asks where else its numbers work in the request's
 body (`20261128000400_staff_elsewhere.sql`; inviting from a list, part 6).
-`public.admin_staff_elsewhere(actor, phones)` answers, of the numbers given,
-those an active member holds on a business's staff, an accountant's place
-aside (`private.is_staff_role`: one place on a staff a login), each once in
-the order given, and an empty array for none, an empty list or no list; a
-demo business's staff count as any other's, since their memberships hold the
-same index. The ConceptApp team only (`platform_staff`, 42501, as every
+`public.admin_staff_elsewhere(actor, phones, except_business)` answers, of
+the numbers given, those an active member holds on a business's staff, an
+accountant's place aside (`private.is_staff_role`: one place on a staff a
+login), each once in the order given, and an empty array for none, an empty
+list or no list; a demo business's staff count as any other's, since their
+memberships hold the same index. `except_business` (null by default, as the
+wizard asks, whose business doesn't exist yet) leaves that business's staff
+out: the console's "הוספת אדם" passes the business it adds to
+(`activeElsewhere`, known issue 109). The ConceptApp team only (`platform_staff`, 42501, as every
 `admin_` function asks), at most 300 numbers (54000, hint `limit`), the
 secret key's alone (service_role). It only reads: no invite, no audit row,
 no notification, and no refusal's message holds a number.
@@ -324,8 +327,12 @@ PostgREST for the memberships with the numbers in a GET's query string,
 which a request log keeps), and gives them back in the list's order; before
 the function reaches a project it finds none, and asks no other way
 (`claim_invite` still refuses a second place on a staff, 23505).
-`staff_elsewhere.test.sql` covers who may call it, what it answers, a demo's
-staff and the cap; `invites.test.ts` the call.
+`activeElsewhere(actorId, phone, business, role)` calls it the same way with
+one number and the business left out, for a staff role only, and answers
+what its GET answered (an active place on another business's staff, an
+accountant's aside); before the function reaches a project it is false.
+`staff_elsewhere.test.sql` covers who may call it, what it answers, a
+business left out, a demo's staff and the cap; `invites.test.ts` both calls.
 
 A week is written shift by shift (`20261115000100_week_in_place.sql`; Orel's
 answers of 15 November 2026). `public.week_shifts(week)` reads a week's shifts
@@ -2064,18 +2071,18 @@ break it and stops with how many, deactivating nobody. `claim_invite` refuses
 a staff invite to someone on another business's staff in words (23505,
 "Already in another business's team"), before anything is written, and turns
 a race the index catches into the same; `@db/invites` reads it as `elsewhere`,
-and `activeElsewhere(phone, business, role)` says it before a link goes out
-(false for an accountant's invite, and when every other place is an
+and `activeElsewhere(actorId, phone, business, role)` says it before a link
+goes out (false for an accountant's invite, and when every other place is an
 accountant's). `admin_invite`, `team_invite` and `create_business` write
 invites only, so the index never meets them. The console asks before its
-two: `activeElsewhere` on the business page (still a PostgREST read with the
-one number in a GET's query string, which a request log keeps; moving it to
-`admin_staff_elsewhere`, with the business to leave out, is a follow-up),
-and `onAnotherStaff(actorId,
-entries)` (the staff list's numbers in a staff role already on a staff, in
-one call with the numbers in its body, `public.admin_staff_elsewhere` since
-part 6 of inviting from a list) in the new-business wizard, which sends the
-list back with them named, their lines to fix, before anything is written. The Team screen doesn't ask (#80): an owner or manager
+two, both through `public.admin_staff_elsewhere` with the numbers in the
+request's body, never in an address a request log keeps:
+`activeElsewhere` on the business page ("הוספת אדם", its one number with
+that business left out, `except_business`; known issue 109, a GET's query
+string before), and `onAnotherStaff(actorId, entries)` (the staff list's
+numbers in a staff role already on a staff, in one call, since part 6 of
+inviting from a list) in the new-business wizard, which sends the list back
+with them named, their lines to fix, before anything is written. The Team screen doesn't ask (#80): an owner or manager
 gets the same link for any number and never learns where else it works;
 /join tells the person themselves. It asks `invitesOpen(business)` instead
 (`public.closed_to_invites`, `20261110001200_invites_open.sql`; true before

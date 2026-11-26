@@ -5,19 +5,29 @@
 -- request's body. Before this, @db/invites asked PostgREST for the list's
 -- numbers in a GET's query string (memberships joined to profiles, the
 -- numbers in an `in (…)`), which a request log keeps with the address; now
--- they go in the body of one call, and nothing here writes them down.
+-- they go in the body of one call, and nothing here writes them down. The
+-- console's "הוספת אדם" on a business's page asked the same way for its one
+-- number (activeElsewhere, known issue 109), and now asks this call too,
+-- with that business left out.
 --
---   the call    public.admin_staff_elsewhere(actor, phones): of `phones`,
---               those that are an active member's on a business's staff, in
---               any role but an accountant's (private.is_staff_role), since a
---               login holds one place on a staff (memberships_one_staff_idx,
+--   the call    public.admin_staff_elsewhere(actor, phones, except_business):
+--               of `phones`, those that are an active member's on a
+--               business's staff, in any role but an accountant's
+--               (private.is_staff_role), since a login holds one place on a
+--               staff (memberships_one_staff_idx,
 --               20261110000900_several_businesses.sql) and claiming a second
 --               would fail; each once, in the order given. An empty array for
 --               none, for an empty list and for no list at all. A demo
 --               business's staff count as any other's: their memberships hold
 --               the same index, so a demo person can't join a real business's
---               staff either. The business the wizard opens doesn't exist yet,
---               so there is none to leave out.
+--               staff either.
+--   left out    `except_business` (null by default, as the wizard asks): that
+--               business's staff don't count, since a place on its own staff
+--               is no second one. "הוספת אדם" passes the business it adds to.
+--               An accountant's place elsewhere still doesn't count, so one
+--               who only keeps another business's books answers none. The
+--               business the wizard opens doesn't exist yet, so it passes none
+--               and every staff counts.
 --   who         only the ConceptApp team (public.platform_staff; 42501), as
 --               every admin_ function asks; the wizard's own check
 --               (businesses.create) is the app's. The secret key's alone
@@ -30,11 +40,16 @@
 --               a refusal holds a number. Nothing is sent to anyone.
 --
 -- No table, no policy and no grant on a table changes. @db/invites calls it
--- (onAnotherStaff); before it reaches a project that call finds no number
--- elsewhere and asks no other way: public.claim_invite still refuses a second
--- place on a staff, in words (23505).
+-- (onAnotherStaff for the wizard, activeElsewhere for "הוספת אדם"); before
+-- it reaches a project those calls find no number elsewhere and ask no other
+-- way: public.claim_invite still refuses a second place on a staff, in words
+-- (23505).
 
-create function public.admin_staff_elsewhere(actor uuid, phones text[])
+create function public.admin_staff_elsewhere(
+  actor uuid,
+  phones text[],
+  except_business uuid default null
+)
 returns text[]
 language plpgsql
 stable
@@ -69,6 +84,7 @@ begin
         join public.profiles p on p.id = m.user_id
         where m.active
           and private.is_staff_role(m.role)
+          and m.business_id is distinct from except_business
           and p.phone = asked.phone
       )
     ),
@@ -77,10 +93,10 @@ begin
 end;
 $$;
 
-comment on function public.admin_staff_elsewhere(uuid, text[]) is
-  'Of the numbers given (E.164), those an active member holds on a business''s staff, an accountant''s place aside: one place on a staff a login (memberships_one_staff_idx). Each once, in the order given; empty for none. The console''s new-business wizard asks it before the business is opened, the numbers in the request''s body (onAnotherStaff in @db/invites). Platform staff only (42501), at most 300 numbers (54000, hint limit). Reads only.';
+comment on function public.admin_staff_elsewhere(uuid, text[], uuid) is
+  'Of the numbers given (E.164), those an active member holds on a business''s staff, an accountant''s place aside: one place on a staff a login (memberships_one_staff_idx). The staff of except_business, when given, don''t count. Each once, in the order given; empty for none. The console''s new-business wizard asks it before the business is opened (onAnotherStaff in @db/invites), and its "add a person" with that business left out (activeElsewhere), the numbers in the request''s body. Platform staff only (42501), at most 300 numbers (54000, hint limit). Reads only.';
 
 -- With the secret key only.
-revoke execute on function public.admin_staff_elsewhere(uuid, text[])
+revoke execute on function public.admin_staff_elsewhere(uuid, text[], uuid)
   from public, anon, authenticated;
-grant execute on function public.admin_staff_elsewhere(uuid, text[]) to service_role;
+grant execute on function public.admin_staff_elsewhere(uuid, text[], uuid) to service_role;

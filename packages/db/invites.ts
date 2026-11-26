@@ -342,28 +342,33 @@ export async function inviteFromConsole(
  * any number as an accountant. False for an accountant's invite, and false
  * when every other business has them as its accountant. The database refuses
  * the claim anyway (`memberships_one_staff_idx`); this says it before the
- * link goes out, in the console only. The Team screen never asks (#80): an
- * owner or manager doesn't learn where else a number works, and /join tells
- * the person themselves. It still filters by the number in a GET's query
- * string, which a request log keeps: a follow-up asks
- * `public.admin_staff_elsewhere` instead, with the business to leave out.
+ * link goes out, in the console only ("הוספת אדם" on a business's page). The
+ * Team screen never asks (#80): an owner or manager doesn't learn where else
+ * a number works, and /join tells the person themselves. It asks
+ * `public.admin_staff_elsewhere`, which checks that `actorId` is on the
+ * ConceptApp team, with the number in the request's body and this business
+ * left out (`except_business`), never in an address a request log keeps
+ * (known issue 109; the read before put it in a GET's query string). Before
+ * the function reaches a project it finds no other staff, as
+ * `onAnotherStaff` does, and asks no other way.
  */
 export async function activeElsewhere(
+  actorId: string,
   phone: string,
   businessId: string,
   role: Role,
 ): Promise<boolean> {
   if (!isStaff(role)) return false;
-  const { data, error } = await createAdminClient()
-    .from("memberships")
-    .select("business_id, profiles!inner(phone)")
-    .eq("active", true)
-    .eq("profiles.phone", phone)
-    .neq("business_id", businessId)
-    .neq("role", "accountant")
-    .limit(1);
-  if (error) throw error;
-  return data.length > 0;
+  const { data, error } = await createAdminClient().rpc(
+    "admin_staff_elsewhere",
+    { actor: actorId, phones: [phone], except_business: businessId },
+  );
+  if (error) {
+    if (isMissingFunction(error)) return false;
+    // The function's refusals hold no number, nor does this.
+    throw new Error(`Could not ask about other staffs: ${error.message}`);
+  }
+  return z.array(z.string()).parse(data).includes(phone);
 }
 
 /**
