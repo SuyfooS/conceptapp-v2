@@ -219,7 +219,9 @@ export function DoneExpired({
             {rows.map((row) => (
               <PersonRow
                 key={row.id}
-                name={row.shown}
+                // The face for an invite with no name, as /team draws it,
+                // never the initials of "בלי שם".
+                name={row.name}
                 title={row.shown}
                 subtitle={
                   <>

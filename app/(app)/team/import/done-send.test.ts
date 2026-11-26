@@ -106,6 +106,7 @@ describe("the done screen's send list", () => {
         rows: [
           {
             id: "ran-out",
+            name: "גלעד ותיק",
             shown: "גלעד ותיק",
             phone: "+972500007913",
             role: "צוות",

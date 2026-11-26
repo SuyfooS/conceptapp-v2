@@ -22,7 +22,9 @@ import type { PeopleImportResult } from "./import-types";
 /** Someone on the list whose earlier link ran out: "קישור חדש" opens it again. */
 export type ExpiredRow = {
   id: string;
-  /** The invite's name as the Team screen shows it ("בלי שם" for none). */
+  /** The invite's own name; null for none, whose avatar is a face, as on /team. */
+  name: string | null;
+  /** That name as the Team screen shows it ("בלי שם" for none). */
   shown: string;
   /** E.164, as the invite keeps it. */
   phone: string;
@@ -132,6 +134,7 @@ export function doneLinksOf({
     if (expired.has(invite.id)) continue;
     expired.set(invite.id, {
       id: invite.id,
+      name: invite.name,
       shown: invite.name ?? noName,
       phone: invite.phone,
       role: label(roleOfInvite(invite)),

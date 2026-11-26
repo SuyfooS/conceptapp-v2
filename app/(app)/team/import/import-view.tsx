@@ -290,14 +290,23 @@ export function PeopleImportView({
    */
   const restored = useRef<FocusCandidate>(null);
   /**
-   * Edits typed into the field since the list was last started: each one
-   * waits for typing to pause, then says the counts unless they were said
-   * already. A state, not a ref, so an edit that leaves the counts as they
-   * were still says them the first time.
+   * Edits typed into the field since the list was last started or invited:
+   * each one waits for typing to pause, then says the counts unless they
+   * were said already. A state, not a ref, so an edit that leaves the counts
+   * as they were still says them the first time. None after an import, so
+   * counts that change with nothing edited (an import taken back, whose
+   * lines with a link made now read as invited) wait for the next edit,
+   * never said over "ביטול"'s words.
    */
   const [edits, setEdits] = useState(0);
   /** The counts as last said (`summary`), so the same are never said again. */
   const said = useRef<string | null>(null);
+  /**
+   * How many of a taken-back import's invites its "ביטול" says stay, as its
+   * words last changed (`TakenBackUndo`): the database's count is said after
+   * the hold only when it differs, never the same sentence twice.
+   */
+  const keptSaid = useRef(0);
 
   /** Those the undo left, since a link was made for them meanwhile. */
   const keptWords = (count: number) =>
@@ -325,8 +334,10 @@ export function PeopleImportView({
         return false;
       }
       setRemoved({ done: was, kept: result.kept });
-      // Drawn under the field, where nothing reads it out: said once.
-      if (result.kept > 0) {
+      // Drawn under the field, where nothing reads it out: said, unless
+      // "ביטול" said the same count as it held (its name, read as it took
+      // the focus, or its words as they changed).
+      if (result.kept > 0 && result.kept !== keptSaid.current) {
         announce(keptWords(result.kept), { lang: locale });
       }
       return true;
@@ -391,6 +402,8 @@ export function PeopleImportView({
     setRemoved(null);
     setHidden(null);
     setUndoFailed(0);
+    // The counts are said again only after the next edit (`edits`).
+    setEdits(0);
     // A line's removal is no longer to take back: its "ביטול" goes with it.
     setToast(null);
     doneFocus.current = "title";
@@ -753,7 +766,26 @@ export function PeopleImportView({
     send !== undefined &&
     done !== null &&
     done.links.length + done.expired.length > 0;
-  /** The done card's ways on, as each shape places them (`DoneActions`). */
+  /**
+   * Its undo failed, the done card back: drawn anew for each failure, so
+   * the same again is heard.
+   */
+  const removeFailed = (className?: string) =>
+    undoFailed > 0 ? (
+      <p
+        key={undoFailed}
+        role="alert"
+        className={cn("px-1 text-danger", className)}
+      >
+        {inConsole ? ta("errors.removeFailed") : t("errors.removeFailed")}
+      </p>
+    ) : null;
+  /**
+   * The done card's ways on, as each shape places them (`DoneActions`).
+   * With a send list, a failed undo is said among them, beside the delete
+   * that takes the focus back, after the list (above the card, it would be
+   * out of view as the page brings that button into view).
+   */
   const doneActions = (className: string) =>
     done ? (
       <DoneActions
@@ -763,6 +795,7 @@ export function PeopleImportView({
         back={paths.done}
         onRemove={takeBack}
         onAnother={another}
+        alert={sending ? removeFailed("md:basis-full") : null}
         className={className}
       />
     ) : null;
@@ -816,11 +849,9 @@ export function PeopleImportView({
           title={inConsole ? ta("title") : t("title")}
           subtitle={inConsole ? ta("subtitle") : t("subtitle")}
         />
-        {done && undoFailed > 0 ? (
-          <p key={undoFailed} role="alert" className="px-1 text-danger">
-            {inConsole ? ta("errors.removeFailed") : t("errors.removeFailed")}
-          </p>
-        ) : null}
+        {/* Above the card, which holds its delete; with a send list, among
+            the ways on after the list (`doneActions`). */}
+        {done && !sending ? removeFailed() : null}
         {done ? (
           <div
             className={
@@ -895,6 +926,9 @@ export function PeopleImportView({
                 done={removed.done}
                 known={known}
                 keptWords={keptWords}
+                onKept={(kept) => {
+                  keptSaid.current = kept;
+                }}
                 onUndo={keepImport}
                 autoFocus
                 onWaitingChange={(waiting) =>
@@ -1158,7 +1192,8 @@ function useTakeBack(done: Done, known: KnownTeam) {
  * cancel any of the import's invites (one whose link was made since stays
  * either way, so with every link made it is not offered), back to the team,
  * and another list. The console says first that only here are they deleted
- * together. `className` places the row in the shape it is drawn in.
+ * together. `className` places the row in the shape it is drawn in; `alert`
+ * (a failed undo) comes first in it, beside the delete.
  */
 function DoneActions({
   done,
@@ -1167,6 +1202,7 @@ function DoneActions({
   back,
   onRemove,
   onAnother,
+  alert,
   className,
 }: {
   done: Done;
@@ -1176,6 +1212,7 @@ function DoneActions({
   /** Takes the import back, with the invites its undo cancels, to hide. */
   onRemove: (cancels: readonly string[]) => void;
   onAnother: () => void;
+  alert: ReactNode;
   className: string;
 }) {
   const t = useTranslations("app.team.import");
@@ -1197,6 +1234,7 @@ function DoneActions({
           className,
         )}
       >
+        {alert}
         {removable ? (
           <Button
             variant="secondary"
@@ -1223,21 +1261,28 @@ function DoneActions({
  * "ביטול" for an import taken back, while it holds: how many of its invites
  * go, and, said at once, how many stay since a link was made for them
  * meanwhile (the undo cancels only those with none). A link that arrives
- * while it holds changes its words. The database's own count is said after,
- * under the field.
+ * while it holds changes its words. The database's own count is drawn
+ * after, under the field, and said only when it differs from the one these
+ * words last said (`onKept`).
  */
 function TakenBackUndo({
   done,
   known,
   keptWords,
+  onKept,
   ...row
 }: Omit<UndoRowProps, "message"> & {
   done: Done;
   known: KnownTeam;
   keptWords: (count: number) => string;
+  /** Hears how many its words say stay, as they appear and change. */
+  onKept: (kept: number) => void;
 }) {
   const t = useTranslations("app.team.import");
   const { cancels, kept } = useTakeBack(done, known);
+  useLayoutEffect(() => {
+    onKept(kept);
+  }, [kept, onKept]);
   const message = [
     cancels.length > 0 ? t("done.removed", { count: cancels.length }) : null,
     kept > 0 ? keptWords(kept) : null,

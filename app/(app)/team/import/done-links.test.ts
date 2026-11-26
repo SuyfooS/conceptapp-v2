@@ -268,15 +268,19 @@ describe("doneLinksOf", () => {
       noName: "בלי שם",
     });
     expect(links).toEqual([]);
+    // The invite's own name kept beside the words it is shown by: one with
+    // none has the neutral face, as on /team, never the initials of "בלי שם".
     expect(expired).toEqual([
       {
         id: "ran-out",
+        name: "אביגיל כהן",
         shown: "אביגיל כהן",
         phone: "+972500007911",
         role: "ניהול",
       },
       {
         id: "nameless",
+        name: null,
         shown: "בלי שם",
         phone: "+972500007912",
         role: "צוות",

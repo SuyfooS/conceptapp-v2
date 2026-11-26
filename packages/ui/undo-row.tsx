@@ -90,9 +90,10 @@ export function namedByWords({
  * of what it undoes), not new words. Its button is described by its words
  * ("ביטול, נועה כהן הוסרה מהצוות"), or, where its focus says them
  * (`namedByWords`), named with them after its word ("ביטול: נועה כהן הוסרה
- * מהצוות"), so speech input still finds it; its way back waits while it is
- * being reached, and when it goes holding the focus the focus goes where
- * the screen says (`focusAfter`), else to the page's title.
+ * מהצוות"), so speech input still finds it, and a change of its words then
+ * reads them alone, never the button's name with them; its way back waits
+ * while it is being reached, and when it goes holding the focus the focus
+ * goes where the screen says (`focusAfter`), else to the page's title.
  */
 export function UndoRow({
   message,
@@ -141,6 +142,10 @@ export function UndoRow({
       // aria-live of its own, a sheet opened over it hides it with the rest
       // of the page (Radix spares what has one).
       aria-live={live ? undefined : "off"}
+      // Named with its words, a change of them is read once, the words
+      // alone: a status is read whole by default, and its button's name
+      // holds the same words, so the whole sentence would come twice.
+      aria-atomic={named ? false : undefined}
       {...handlers}
       className={cn(
         "flex min-h-[3.25rem] items-center justify-between gap-3 rounded-card bg-surface-2 ps-4 pe-1.5",

@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import he from "../messages/he.json" with { type: "json" };
 import { shareText } from "../packages/domain/share";
+import { announcer, heardSoFar, saidSince } from "./announcer";
 import { HOLD_MS } from "./build-screen";
 import { CAPTCHA_FRAME } from "./captcha";
 import {
@@ -443,6 +444,11 @@ test("the Team screen's import: a sheet saved at once with no link, each link se
     // Taken back now, the undo would cancel only the one still with no
     // link: its "ביטול" says so at once, never "3 הזמנות נמחקו", and brings
     // the done screen back with the links made, never "יצירת קישור" again.
+    // The lines whose link was made read as invited now, so the preview's
+    // counts differ from those said before the import ("אדם אחד יוזמן"):
+    // with nothing edited they are never said over "ביטול"'s words.
+    const polite = announcer(page, "polite");
+    await heardSoFar(polite);
     await remove.click();
     const keptBack = page.getByRole("status").filter({
       hasText: [
@@ -451,6 +457,11 @@ test("the Team screen's import: a sheet saved at once with no link, each link se
       ].join(". "),
     });
     await expect(keptBack).toBeVisible();
+    // Longer than the screen waits after typing to say its counts.
+    await page.waitForTimeout(1_500);
+    await expect(
+      saidSince(polite, heT("app.team.import.summary.ready", { count: 1 })),
+    ).toHaveCount(0);
     await keptBack.getByRole("button").click();
     await expect(screen.done(3)).toBeVisible();
     await expect(remove).toBeFocused();

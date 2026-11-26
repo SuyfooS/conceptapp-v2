@@ -2,7 +2,7 @@
 
 import { announce } from "@ui/announcer";
 import { Button } from "@ui/button";
-import { arrived, focusFirst } from "@ui/focus-after";
+import { arrived, focusFirst, focusOrSay } from "@ui/focus-after";
 import { Link2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import {
@@ -96,7 +96,9 @@ export function ResendLink({
       return;
     }
     shared?.keep(inviteId, state.link);
-    if (!focusFirst([copy.current])) announce(t("ready", { name }));
+    // Never the page's title in its place (the other shape on screen now):
+    // the link ready is said, then the title.
+    focusOrSay([copy.current], () => announce(t("ready", { name })));
   }, [state, shared, inviteId, name, t]);
 
   // Made here, or in the screen's other shape.

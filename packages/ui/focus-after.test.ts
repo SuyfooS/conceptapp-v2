@@ -8,6 +8,7 @@ import {
   firstOnScreen,
   focusFirst,
   focusLost,
+  focusOrSay,
   focusWhenGone,
   ignoreHeldEnter,
   inClosingSheet,
@@ -275,6 +276,52 @@ describe("focusFirst", () => {
     expect(focusFirst(["[data-file-remove]"], { doc: at, root: field })).toBe(
       remove,
     );
+  });
+});
+
+// A new link arrives in place of its press: its "וואטסאפ" takes the focus,
+// or, when it can't, the link ready is said, never the page's title alone.
+describe("focusOrSay", () => {
+  it("focuses what arrived, brought into view, and says nothing", () => {
+    const { at, spot } = page();
+    const whatsapp = spot("a");
+    const said: string[] = [];
+    expect(
+      focusOrSay([el(whatsapp)], () => said.push("ready"), { doc: at }),
+    ).toBe(whatsapp);
+    expect(whatsapp.focused).toEqual({ preventScroll: false });
+    expect(said).toEqual([]);
+  });
+
+  it("says it when what arrived is drawn in the shape not on screen, then lands the lost focus on the title", () => {
+    const { at, spot } = page();
+    const title = spot("h1");
+    at.found.set(PAGE_TITLE, [el(title)]);
+    // The table's "וואטסאפ", hidden once the window turned to the lists.
+    const hidden = spot("a");
+    hidden.rects = 0;
+    const order: string[] = [];
+    title.focus = (options?: FocusOptions) => {
+      order.push("title");
+      Spot.prototype.focus.call(title, options);
+    };
+    expect(
+      focusOrSay([el(hidden)], () => order.push("said"), { doc: at }),
+    ).toBe(title);
+    expect(order).toEqual(["said", "title"]);
+    expect(at.activeElement).toBe(title);
+  });
+
+  it("says it and leaves the focus where the person put it meanwhile", () => {
+    const { at, spot } = page();
+    const there = spot("button");
+    there.focus();
+    const said: string[] = [];
+    expect(
+      focusOrSay([el(spot("a"))], () => said.push("ready"), { doc: at }),
+    ).toBeNull();
+    expect(said).toEqual(["ready"]);
+    expect(at.activeElement).toBe(there);
   });
 });
 
