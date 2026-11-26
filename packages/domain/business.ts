@@ -292,7 +292,13 @@ export type StaffLine = StaffLineBase &
      * header row with a mobile in it); never one about a role, since the
      * wizard gives every role.
      */
-    | { kind: "problem"; problem: PeopleProblem; first?: number }
+    | {
+        kind: "problem";
+        problem: PeopleProblem;
+        first?: number;
+        /** With `elsewhere`: the number (E.164) on another staff. */
+        phone?: string;
+      }
   );
 
 export type StaffList = {
@@ -406,7 +412,12 @@ export function parseStaffList(
     }
     firsts.set(entry.phone, { line: base.line, entry });
     if (isStaff(entry.role) && elsewhere.has(entry.phone)) {
-      return { ...base, kind: "problem", problem: "elsewhere" };
+      return {
+        ...base,
+        kind: "problem",
+        problem: "elsewhere",
+        phone: entry.phone,
+      };
     }
     return { ...base, kind: "person", entry, notes };
   };
@@ -487,4 +498,32 @@ export function parseStaffList(
       ? "tooMany"
       : null;
   return { lines, entries, ignored: parsed.ignored, error };
+}
+
+/**
+ * The numbers found on another staff that are still on a line of the list
+ * (its `elsewhere` lines), in the list's order: the ones the field names.
+ */
+export function elsewhereOf(list: StaffList): string[] {
+  return list.lines.flatMap((line) =>
+    line.kind === "problem" && line.problem === "elsewhere" && line.phone
+      ? [line.phone]
+      : [],
+  );
+}
+
+/**
+ * The staff field's error once its text is edited, from the one it shows.
+ * None stays none, since the preview says each problem as it is typed. The
+ * server's "elsewhere" stays while a line still holds one of its numbers
+ * (`elsewhereOf`); otherwise the error is the list's own, and goes once the
+ * list is fine, so the field never names a number that has left the list.
+ */
+export function staffErrorAfterEdit(
+  shown: NewBusinessErrors["staff"],
+  list: StaffList,
+): NewBusinessErrors["staff"] {
+  if (!shown) return undefined;
+  if (shown === "elsewhere" && elsewhereOf(list).length > 0) return shown;
+  return list.error ?? undefined;
 }

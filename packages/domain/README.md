@@ -202,7 +202,12 @@ with another number is a `sameNameList` note on both, an owner's and an
 accountant's lines among them. A line above the header row with a mobile
 in it (the import marks such a title `mobile`, and leaves it out) is to fix
 in the wizard, `beforeHeader`, so a person typed above a pasted sheet is
-never left out unsaid.
+never left out unsaid. An `elsewhere` line carries its number (`phone`):
+`elsewhereOf` gives those still on the list, the ones the field names, and
+`staffErrorAfterEdit` the field's error as its text changes (none until one
+was shown, the server's `elsewhere` while a line still holds one of its
+numbers, else the list's own, gone once the list is fine), so the field
+never names a number that has left the list.
 
 `setup.ts` is the console's checklist of a business just opened (opened,
 owner, staff, address), each item from the business as stored, and the rule

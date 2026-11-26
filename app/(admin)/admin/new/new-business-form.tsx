@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  elsewhereOf,
   firstStepWithError,
   NEW_BUSINESS_FIELDS,
   NEW_BUSINESS_STEPS,
@@ -12,6 +13,7 @@ import {
   type StaffLine,
   type StaffList,
   type StaffReading,
+  staffErrorAfterEdit,
   staffRolesOf,
 } from "@domain/business";
 import { ACCENT_PRESETS } from "@domain/color";
@@ -157,6 +159,10 @@ export function NewBusinessForm({
   }
 
   const staff = parseStaffList(values.staff, reading);
+  // The numbers the field names: those still on a line, else (the list
+  // edited while it was sent) the server's.
+  const onAnother = elsewhereOf(staff);
+  const named = onAnother.length > 0 ? onAnother : (found ?? []);
   const phoneColumns = usePhoneColumnsWords(staff);
   const summary = <Summary values={values} staff={staff} />;
 
@@ -288,10 +294,8 @@ export function NewBusinessForm({
                 errors.staff === "elsewhere"
                   ? // From the server: the numbers on another staff, named.
                     t.rich("errors.staff.elsewhere", {
-                      count: state.elsewhere?.length ?? 0,
-                      numbers: (state.elsewhere ?? [])
-                        .map(displayIsraeliMobile)
-                        .join(", "),
+                      count: named.length,
+                      numbers: named.map(displayIsraeliMobile).join(", "),
                       ltr: (chunks) => <span dir="ltr">{chunks}</span>,
                     })
                   : errors.staff === "phoneColumns"
@@ -302,11 +306,13 @@ export function NewBusinessForm({
               value={values.staff}
               onChange={(e) => {
                 set("staff")(e.target.value);
-                // The preview shows each problem live; drop the error once
-                // the list is fine again.
-                if (!parseStaffList(e.target.value, reading).error) {
-                  setErrors(({ staff: _, ...rest }) => rest);
-                }
+                // The preview shows each problem live; an error shown
+                // follows the list, and goes once it is fine again.
+                const edited = parseStaffList(e.target.value, reading);
+                setErrors(({ staff: shown, ...rest }) => {
+                  const next = staffErrorAfterEdit(shown, edited);
+                  return next ? { ...rest, staff: next } : rest;
+                });
               }}
               rows={5}
               spellCheck={false}

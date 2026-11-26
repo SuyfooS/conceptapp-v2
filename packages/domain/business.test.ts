@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  elsewhereOf,
   firstStepWithError,
   NEW_BUSINESS_FIELDS,
   NEW_BUSINESS_STEPS,
@@ -8,6 +9,7 @@ import {
   parseStaffList,
   roleWordsOf,
   type StaffList,
+  staffErrorAfterEdit,
   staffRolesOf,
 } from "./business";
 import { ACCENT_PRESETS, accentTokens } from "./color";
@@ -610,7 +612,13 @@ describe("parseStaffList", () => {
       [3, "person"],
       [4, "person"],
     ]);
+    // The numbers the field names: those still on a line, in its order.
+    expect(elsewhereOf(list)).toEqual(["+972501111111", "+972502222222"]);
+    expect(elsewhereOf(read(text.slice(1).join("\n"), found))).toEqual([
+      "+972502222222",
+    ]);
     expect(read(text.slice(2).join("\n"), found).error).toBeNull();
+    expect(elsewhereOf(read(text.slice(2).join("\n"), found))).toEqual([]);
   });
 
   it("reads a name line followed by its number line as one person", () => {
@@ -658,6 +666,75 @@ describe("parseStaffList", () => {
     const far = read(lines.join("\n"));
     expect([far.error, far.lines, far.entries]).toEqual(["tooMany", [], []]);
     expect(read("א".repeat(PEOPLE_IMPORT_CHARS + 1)).error).toBe("tooMany");
+  });
+});
+
+describe("staffErrorAfterEdit", () => {
+  // A number on another staff, as the server named it.
+  const found = ["+972509999999"];
+  const owner = "רונית כהן 050-000-0701 בעלים";
+  const twoPhones = "שם\tנייד\tטלפון נייד\nדנה\t050-111-1111\t052-111-1111";
+  const many = Array.from(
+    { length: STAFF_LIST_MAX + 1 },
+    (_, i) => `${nameAt(i)} 050${String(i).padStart(7, "0")}`,
+  ).join("\n");
+
+  it("shows nothing before an error was shown, since the preview says it", () => {
+    expect(
+      staffErrorAfterEdit(undefined, read("תמר 03-1234567", found)),
+    ).toBeUndefined();
+    expect(
+      staffErrorAfterEdit(
+        undefined,
+        read(`${owner}\nרוני 050-999-9999`, found),
+      ),
+    ).toBeUndefined();
+  });
+
+  it("keeps the numbers on another staff while a line still holds one", () => {
+    const edited = read(`${owner}\nרוני 050-999-9999\nתמר 03-1234567`, found);
+    expect(staffErrorAfterEdit("elsewhere", edited)).toBe("elsewhere");
+    expect(elsewhereOf(edited)).toEqual(found);
+  });
+
+  it("says the list's own error once the numbers have left it", () => {
+    // The number taken out, and the owner left above a pasted sheet.
+    const aboveSheet = read(
+      [owner, "שם\tנייד", "שי לוי\t050-000-0702"].join("\n"),
+      found,
+    );
+    expect(elsewhereOf(aboveSheet)).toEqual([]);
+    expect(staffErrorAfterEdit("elsewhere", aboveSheet)).toBe("invalid");
+    expect(staffErrorAfterEdit("elsewhere", read(twoPhones, found))).toBe(
+      "phoneColumns",
+    );
+    expect(staffErrorAfterEdit("elsewhere", read(many, found))).toBe("tooMany");
+    // An accountant's line with the number is never held.
+    expect(
+      staffErrorAfterEdit(
+        "elsewhere",
+        read(`${owner}\nרוני 050-999-9999 מנהלת חשבונות`, found),
+      ),
+    ).toBeUndefined();
+  });
+
+  it("follows the list from any error shown, and goes once it is fine", () => {
+    expect(staffErrorAfterEdit("invalid", read(twoPhones))).toBe(
+      "phoneColumns",
+    );
+    expect(staffErrorAfterEdit("phoneColumns", read("תמר 03-1234567"))).toBe(
+      "invalid",
+    );
+    expect(staffErrorAfterEdit("invalid", read(many))).toBe("tooMany");
+    for (const shown of [
+      "invalid",
+      "tooMany",
+      "phoneColumns",
+      "elsewhere",
+    ] as const) {
+      expect(staffErrorAfterEdit(shown, read(owner, found))).toBeUndefined();
+      expect(staffErrorAfterEdit(shown, read("", found))).toBeUndefined();
+    }
   });
 });
 

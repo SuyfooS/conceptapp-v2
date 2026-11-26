@@ -229,15 +229,14 @@ test("a platform admin opens a restaurant and invites its staff", async ({
     ["רונית בדיקה 050-000-0701 בעלים", "רוני 050-000-0012"].join("\n"),
   );
   await page.getByRole("button", { name: w.actions.create }).click();
-  await expect(
-    page.getByText(
-      heT.markup("admin.newBusiness.errors.staff.elsewhere", {
-        count: 1,
-        numbers: "050-000-0012",
-        ltr: (chunks) => chunks,
-      }),
-    ),
-  ).toBeVisible();
+  const namedElsewhere = page.getByText(
+    heT.markup("admin.newBusiness.errors.staff.elsewhere", {
+      count: 1,
+      numbers: "050-000-0012",
+      ltr: (chunks) => chunks,
+    }),
+  );
+  await expect(namedElsewhere).toBeVisible();
   await expect(
     page.getByText(`שורה 2 · ${he.admin.peopleImport.problem.elsewhere}`),
   ).toBeVisible();
@@ -256,6 +255,10 @@ test("a platform admin opens a restaurant and invites its staff", async ({
   await expect(
     page.getByText(`שורה 1 · ${he.admin.peopleImport.problem.beforeHeader}`),
   ).toBeVisible();
+  // Roni's number has left the list, so the field names it no more: it
+  // says the list's own error.
+  await expect(namedElsewhere).toHaveCount(0);
+  await expect(page.getByText(w.errors.staff.invalid)).toBeVisible();
 
   // A sheet pasted with its header row: an ID column, a direction mark,
   // Excel's dropped zero and a role column, read as the import reads them.
@@ -268,6 +271,7 @@ test("a platform admin opens a restaurant and invites its staff", async ({
     ].join("\n"),
   );
   await expect(page.getByText("3 אנשים יוזמנו").first()).toBeVisible();
+  await expect(page.getByText(w.errors.staff.invalid)).toHaveCount(0);
   await expect(
     page.getByText(
       heT.markup("app.team.import.summary.header", {
