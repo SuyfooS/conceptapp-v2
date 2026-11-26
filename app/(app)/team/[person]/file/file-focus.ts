@@ -12,14 +12,17 @@ export type FocusedPage = {
  * fell to the page because what held it went with the part of the screen it
  * was in (a hiring file that locked under "נעילת התיק", the code's boxes
  * once the file opened), or it is on something no longer on the page. Focus
- * the person put somewhere else stays there. True when it moved.
+ * the person put somewhere else stays there. True when it moved. `options`
+ * go to `focus` as they are: without them the page scrolls to `target`
+ * when it is out of view.
  */
 export function focusIfLost(
   target: Focusable | null | undefined,
   page: FocusedPage,
+  options?: FocusOptions,
 ): boolean {
   if (!target || !focusLost(page)) return false;
-  target.focus();
+  target.focus(options);
   return true;
 }
 
@@ -62,14 +65,19 @@ export const DRAWN_WITHIN_MS = 1_000;
  * מזהים" again without the focus. `done` settles once that is over, true,
  * so what is said after the focus landed waits for it (at once when it
  * landed at once); `stop` ends it early (the file held again, or gone),
- * settled false, so nothing is said for a file no longer shown.
+ * settled false, so nothing is said for a file no longer shown. Every try
+ * leaves the page where it is (`preventScroll`, as `focusWhenGone` in
+ * `@ui/focus-after` does): the hold kept the file's layout, so the page is
+ * where the person left it, someone who scrolled on to the bank details
+ * before it stays there, and a screen reader follows the focus anyway.
  */
 export function focusWhenDrawn(
   target: Focusable,
   page: FocusedPage,
   win: Drawings,
 ): { done: Promise<boolean>; stop: () => void } {
-  focusIfLost(target, page);
+  const still: FocusOptions = { preventScroll: true };
+  focusIfLost(target, page, still);
   // On the title now, or where the person put it: over, nothing more put.
   if (!focusLost(page)) return { done: Promise.resolve(true), stop: () => {} };
   let settle: (landed: boolean) => void = () => {};
@@ -91,7 +99,7 @@ export function focusWhenDrawn(
     if (over) return;
     drawn += 1;
     if (drawn >= 2) {
-      focusIfLost(target, page);
+      focusIfLost(target, page, still);
       // On the title now, or where the person put it.
       if (!focusLost(page)) {
         end(true);
@@ -102,7 +110,7 @@ export function focusWhenDrawn(
   };
   late = win.setTimeout(() => {
     if (over) return;
-    focusIfLost(target, page);
+    focusIfLost(target, page, still);
     end(true);
   }, DRAWN_WITHIN_MS);
   frame = win.requestAnimationFrame(drawing);

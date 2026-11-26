@@ -142,6 +142,20 @@ export const titleId = (step: FileStep | "done") => `file-${step}-title`;
 export const formIdOf = (step: FileStep) => `file-${step}-form`;
 
 /**
+ * Below a desktop, what takes the focus in a step (Tab, or a field focused
+ * with the page scrolling to it) comes into view clear of the dock and the
+ * tab bar floating over the page's bottom. The browser counts nothing fixed
+ * over the page, so a control already on screen under them stayed there
+ * (WCAG 2.4.11). 15.75rem is where the room `StepDock` keeps leaves a step's
+ * last control at the end of the page (the shell's 6.5rem, `PageBody`'s
+ * 1.25rem, the room's 7rem and the gap's 1rem), above the dock's top: about
+ * 140 px up with the tab bar full, 185 to 230 px with a notice of one to
+ * three lines. The dock's own buttons, fixed, are left as they are.
+ */
+const clearOfDock =
+  "max-xl:[&_:is(a,button,input,select,textarea,[tabindex]):not([data-step-dock]_*)]:scroll-mb-[calc(env(safe-area-inset-bottom)+15.75rem)]";
+
+/**
  * One step of the file, drawn once: on a phone and a tablet only while it is
  * the step on screen, on a desktop always, one under the other. `?step=`
  * scrolls a desktop to it. Its title takes the focus when it opens, so a
@@ -150,7 +164,8 @@ export const formIdOf = (step: FileStep) => `file-${step}-form`;
  * way to the notice, beside every step. The step's `StepDock` comes last,
  * after "למה מבקשים את זה": the room it keeps under the page is then below
  * every control, so at the end of the page none of them sits under the dock
- * and its notice, whether the tab bar is full or shrunk.
+ * and its notice, whether the tab bar is full or shrunk. Higher up the page,
+ * what the focus reaches comes into view clear of them (`clearOfDock`).
  */
 export function FileSection({
   step,
@@ -173,6 +188,7 @@ export function FileSection({
       className={cn(
         "min-w-0 scroll-mt-8 flex-col gap-4",
         active ? "flex" : "hidden xl:flex",
+        clearOfDock,
       )}
     >
       <h2
@@ -269,7 +285,7 @@ export function StepDock({
 }) {
   const back = kit.previous(step);
   return (
-    <div className="xl:hidden">
+    <div data-step-dock className="xl:hidden">
       <div aria-hidden="true" className={notice ? "h-36" : "h-28"} />
       <FloatingDock
         notice={
