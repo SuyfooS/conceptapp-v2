@@ -188,7 +188,13 @@ export function PeopleImportView({
    * out takes the focus once their rows are drawn again.
    */
   const restored = useRef<FocusCandidate>(null);
-  const edited = useRef(false);
+  /**
+   * Edits typed into the field since the list was last started: each one
+   * waits for typing to pause, then says the counts unless they were said
+   * already. A state, not a ref, so an edit that leaves the counts as they
+   * were still says them the first time.
+   */
+  const [edits, setEdits] = useState(0);
   /** The counts as last said (`summary`), so the same are never said again. */
   const said = useRef<string | null>(null);
 
@@ -303,7 +309,7 @@ export function PeopleImportView({
     setRemoved(null);
     setPaste("");
     setToast(null);
-    edited.current = false;
+    setEdits(0);
     said.current = null;
     requestAnimationFrame(() => field.current?.focus());
   }
@@ -465,13 +471,13 @@ export function PeopleImportView({
   // import taken back, or a screen shown again from its <Activity>, with
   // the same counts.
   useEffect(() => {
-    if (!edited.current || done || said.current === summary) return;
+    if (edits === 0 || done || said.current === summary) return;
     const later = setTimeout(() => {
       said.current = summary;
       announce(summary, { lang: locale });
     }, SAY_AFTER_MS);
     return () => clearTimeout(later);
-  }, [summary, done, locale]);
+  }, [summary, done, locale, edits]);
 
   const failureWords = (): ReactNode => {
     if (!failure) return null;
@@ -692,7 +698,7 @@ export function PeopleImportView({
                   autoComplete="off"
                   value={paste}
                   onChange={(event) => {
-                    edited.current = true;
+                    setEdits((count) => count + 1);
                     setPaste(event.target.value);
                     setFailure(null);
                     // A removal's "ביטול" brings back the text as it was
