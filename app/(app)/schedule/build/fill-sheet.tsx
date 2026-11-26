@@ -2,6 +2,7 @@
 
 import { missingAvailability } from "@domain/availability";
 import { dayMonth } from "@domain/availability-form";
+import { isolate } from "@domain/bidi";
 import {
   FILL_MAX_DAYS,
   FILL_REST_HOURS,
@@ -43,13 +44,6 @@ function FillPart({ title, children }: { title: string; children: ReactNode }) {
     </section>
   );
 }
-
-/**
- * Hours and numbers inside a sentence put together as text (a person and the
- * rule that stopped them): held left to right in Unicode isolates, as
- * `<ltr>` holds them on screen.
- */
-const isolate = (chunks: string) => `⁦${chunks}⁩`;
 
 /** Before the sheet first opens: nothing worked out yet. */
 const NOTHING: WeekFill = {

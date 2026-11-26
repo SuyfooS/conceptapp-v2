@@ -5,6 +5,16 @@ what is next, defaults applied.
 
 Older entries are in [`log/`](log/): [1–19 November 2026](log/2026-11-01-to-19.md) and [October 2026](log/2026-10.md).
 
+## 2026-11-26 · nightly run · one `isolate` for words read as plain text (guessed)
+
+- Guessed: Orel left no issue, no question is open, no בטל. Of what merged since the last run (#250 to #265), #265's entry left four private copies of the same line, `const isolate = (chunks) => LRI + chunks + PDI`, in `chat/actions-name.ts`, `schedule/availability/range-words.ts`, `schedule/build/fill-sheet.tsx` and `push/words.ts`, so a fix to one would quietly miss the others. Orel's open #266 (team, invites, `share.ts`) touches none of them, so `share.ts`'s own LRI stays.
+- `packages/domain/bidi.ts` (new): `LRI`, `PDI` and `isolate`, as the invisible characters themselves (Biome's formatter writes `\u2066` and `\u2069` that way), so the test checks their code points; the four files import it and their copies go (`range-words.ts` no longer re-exports it; `availability-sheets.tsx` imports it from `@domain/bidi`). No words, screen or behaviour changed: every caller gets the same string.
+- Tests: unit `packages/domain/bidi.test.ts` (the two code points as numbers, what is given kept as it is, two characters added); the range-words test's own `isolate` case moved there. The callers' tests (range-words, the chat's actions name, push words) pass unchanged.
+- Docs: a paragraph in `packages/domain/README.md`.
+- Checked here: `pnpm lint:fix`, `pnpm check` (5117 tests), `pnpm build`. Not run here: Playwright, pgTAP (nothing they cover changed); CI runs them.
+- Restore point: branch `backup/before-night-2026-11-26` at `0578e09` (the tag push was cut off).
+- Next: #266 (who hasn't got a link yet) with Orel, then inviting from a list as he decided on 25.11. Defaults applied: none.
+
 ## 2026-11-25 · chat · the card and the tab say who is away during the shift (known issue 107), and the remove button's hours in order
 
 - On chat/away-card from origin/main 5fa9cfd (#263), and since the check merged with origin/main 3ad643db (#264, part 5 of the fill, as it was squash-merged), so it lands on main after #264. Two small display fixes in one PR: no migration, no SQL, no new package, no new `packages/ui` component (so no /design gallery entry), no new message key. Its edits sit next to #264's in `schedule-builder.tsx` and `week.ts`: this PR changes `schedule-builder.tsx` in its import line and the card's `away` prop alone, and `week.ts` in `currentPublishedSchedule` and `PublishedSchedule.away`'s doc alone, none of them near #264's lines (`fillWeekHours` in `ScheduleBuildWeek`, `currentScheduleBuild` and the builder's props); the fill's code is untouched.
