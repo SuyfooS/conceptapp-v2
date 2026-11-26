@@ -17,6 +17,7 @@ import {
   peopleImportRows,
   tableOrder,
   WAITING_INVITES_MAX,
+  writtenRoleOf,
 } from "./people-import";
 import type { NamedRole } from "./role-access";
 import { type GivableNamedRole, inviteChoices, ownerOnlyRoles } from "./team";
@@ -2060,6 +2061,63 @@ describe("againstTeam: numbers on another business's staff (the console)", () =>
     expect(againstTeam(parse(text), team(), new Set())).toEqual(
       againstTeam(parse(text), team()),
     );
+  });
+});
+
+describe("writtenRoleOf: the role the database's answer says an invite ends with", () => {
+  const manager = invite({
+    phone: "+972501234567",
+    name: "דנה",
+    role: "manager",
+  });
+  const sentOf = (text: string, known: KnownTeam) => {
+    const check = againstTeam(parse(text), known);
+    const [person] = check.send;
+    if (!person) throw new Error("nothing sent");
+    const line = check.lines.find((one) => one.line === person.line);
+    return { person, line };
+  };
+
+  it("a new invite has the role sent, whatever the preview read", () => {
+    const { person, line } = sentOf("דנה כהן 050-123-4567", team([manager]));
+    expect(line?.outcome).toBe("updateName");
+    // The invite read was cancelled meanwhile: the database made a new one.
+    expect(writtenRoleOf("created", person, line)).toEqual({
+      role: "worker",
+      namedRole: null,
+    });
+  });
+
+  it("an invite updated from a line that named no role keeps the one the screen read", () => {
+    const { person, line } = sentOf("דנה כהן 050-123-4567", team([manager]));
+    expect(writtenRoleOf("updated", person, line)).toEqual({
+      role: "manager",
+      namedRole: null,
+    });
+  });
+
+  it("an invite updated from a line that named its role has that role", () => {
+    const { person, line } = sentOf(
+      "דנה כהן 050-123-4567 צוות",
+      team([manager]),
+    );
+    expect(line?.outcome).toBe("update");
+    expect(writtenRoleOf("updated", person, line)).toEqual({
+      role: "worker",
+      namedRole: null,
+    });
+  });
+
+  it("names no role for an invite made meanwhile, which the preview read as new", () => {
+    // Read as new, but another tab invited the number as a manager since:
+    // the database kept that invite's role, which the screen never saw.
+    const { person, line } = sentOf("דנה כהן 050-123-4567", team());
+    expect(line?.outcome).toBe("new");
+    expect(writtenRoleOf("updated", person, line)).toBeNull();
+    expect(writtenRoleOf("created", person, line)).toEqual({
+      role: "worker",
+      namedRole: null,
+    });
   });
 });
 

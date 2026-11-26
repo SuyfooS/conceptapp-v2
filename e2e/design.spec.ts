@@ -10163,24 +10163,46 @@ for (const colorScheme of ["light", "dark"] as const) {
 
     test("the console's import twin after an import, and taken back, is clean", async ({
       page,
-    }) => {
+    }, testInfo) => {
       const a = he.admin.peopleImport;
       await page.goto(`${consoleImportTwin}?state=done`);
-      await expect(
-        page.getByRole("heading", {
-          level: 2,
-          name: heT("app.team.import.done.title", { count: 7 }),
-        }),
-      ).toBeVisible();
+      const doneTitle = page.getByRole("heading", {
+        level: 2,
+        name: heT("app.team.import.done.title", { count: 7 }),
+      });
+      await expect(doneTitle).toBeVisible();
       await expect(
         page.getByText(a.done.console, { exact: true }),
       ).toBeVisible();
       await expect(
         page.getByText(he.app.team.import.done.team, { exact: true }),
       ).toHaveCount(0);
+      // The list goes all at once only from here, and the press says so.
       await expect(
-        page.getByRole("heading", { level: 2, name: a.done.people }),
+        page.getByText(a.done.removeHere, { exact: true }),
       ).toBeVisible();
+      await expect(
+        page.getByRole("button", {
+          name: he.app.team.import.done.remove,
+          exact: true,
+        }),
+      ).toHaveAccessibleDescription(a.done.removeHere);
+      const peopleTitle = page.getByRole("heading", {
+        level: 2,
+        name: a.done.people,
+      });
+      await expect(peopleTitle).toBeVisible();
+      // A phone's people under the card; a tablet's and a computer's beside
+      // it, at the end of the row (on the left, in Hebrew).
+      const card = await doneTitle.boundingBox();
+      const people = await peopleTitle.boundingBox();
+      if (!card || !people) throw new Error("the done card and its people");
+      if (testInfo.project.name === "phone") {
+        expect(people.y).toBeGreaterThan(card.y + card.height);
+      } else {
+        expect(people.x + people.width).toBeLessThanOrEqual(card.x);
+        expect(people.y).toBeLessThan(card.y + card.height);
+      }
       await expect(
         page
           .getByText("ד״ר מיכל רוזן", { exact: true })
@@ -10303,6 +10325,81 @@ test("the console's import twin refuses a number on another business's staff, an
     page.getByText("מאיה פרץ", { exact: true }).filter({ visible: true }),
   ).toHaveCount(0);
   await expect(page.getByText(i.done.another, { exact: true })).toBeVisible();
+});
+
+test("the console's import twin on a computer shows the refused line whatever the table's filter, its removal focused", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "a computer's table");
+  const i = he.app.team.import;
+  await page.goto(`${consoleImportTwin}?state=elsewhere`);
+  const filter = page.getByRole("group", { name: i.filter.label });
+  // Only those to invite, then the press: the line refused is one to fix.
+  await filter
+    .getByRole("button", {
+      name: heT("app.team.import.filter.invite", { count: 4 }),
+      exact: true,
+    })
+    .click();
+  await page
+    .getByRole("button", {
+      name: heT("app.team.import.submit", { count: 4 }),
+      exact: true,
+    })
+    .click();
+  await expect(
+    page.getByRole("alert").filter({
+      hasText: heT("admin.peopleImport.errors.elsewhere", {
+        count: 1,
+        accountant: "הנהלת חשבונות",
+      }),
+    }),
+  ).toBeVisible();
+  // The table shows every line again, the marked one among them.
+  await expect(
+    filter.getByRole("button", { name: i.filter.all, exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    page
+      .getByText(he.admin.peopleImport.problem.elsewhere, { exact: true })
+      .filter({ visible: true }),
+  ).toHaveCount(1);
+  await expect(
+    page
+      .getByRole("button", {
+        name: heT("app.team.import.removeLineFor", { line: "3" }),
+        exact: true,
+      })
+      .filter({ visible: true }),
+  ).toBeFocused();
+});
+
+test("the console's import twin says, in its own words, that the owners delete old invites", async ({
+  page,
+}) => {
+  await page.goto(`${consoleImportTwin}?state=elsewhere&fail=open`);
+  await page
+    .getByRole("button", {
+      name: heT("app.team.import.submit", { count: 4 }),
+      exact: true,
+    })
+    .click();
+  await expect(
+    page.getByRole("alert").filter({
+      hasText: importWords("admin.peopleImport.errors.tooManyOpen", {
+        open: 500,
+        max: 500,
+      }),
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      importWords("app.team.import.errors.tooManyOpen", {
+        open: 500,
+        max: 500,
+      }),
+    ),
+  ).toHaveCount(0);
 });
 
 test("the console's import twin for a demo business says it takes no invites, with no form", async ({

@@ -8253,12 +8253,17 @@
         "console": "Nobody got a message. The invites wait on the business's Team screen, under “No link yet”, where the owners and whoever runs the team send each person their own link.",
         "people": "This list's invites",
         "toBusiness": "Back to {name}",
+        "removeHere": "This list's invites can be deleted all at once only here. Once you leave this screen, the owners delete them one at a time on the Team screen.",
         "removedKept": "{count, plural, one {One invite already got a link, so it stays. The owners can delete it on the Team screen.} other {# invites already got a link, so they stay. The owners can delete them on the Team screen.}}"
       },
       "closed": {
         "title": "This business takes no invites from a list"
       },
+      "status": {
+        "tooManyOpen": "The business already has <ltr>{open}</ltr> invites waiting, and the most is <ltr>{max}</ltr>. Invite fewer, or ask the owners to delete old invites on the Team screen."
+      },
       "errors": {
+        "tooManyOpen": "The business already has <ltr>{open}</ltr> invites waiting, and the most is <ltr>{max}</ltr>. Invite fewer, or ask the owners to delete old invites on the Team screen.",
         "elsewhere": "{count, plural, one {One number on the list is already on another business's staff} other {# numbers on the list are already on other businesses' staff}}, and a person can be on one business's staff only, so nobody was invited. {count, plural, one {Its line is marked to fix: remove it and invite again.} other {Their lines are marked to fix: remove them and invite again.}} Anyone joining as {accountant} is invited from “Add a person”.",
         "removeFailed": "We couldn't delete this list's invites, and they're still there. Try again in a moment."
       }

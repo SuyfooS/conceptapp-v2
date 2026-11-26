@@ -330,6 +330,9 @@ test("the console pastes a business's list: to fix, left out, refused for anothe
       "owner",
     );
     // One line in the log: counts and the import, never a name or a number.
+    // It counts only the rows the database was sent: the owner's line and
+    // the accountant's were left out on the device, and only the done
+    // card's "skipped" counts them.
     const log = await importLog(business);
     expect(log).toHaveLength(1);
     expect(log[0]).toMatchObject({
@@ -338,8 +341,11 @@ test("the console pastes a business's list: to fix, left out, refused for anothe
         import: first,
         created: 5,
         updated: 0,
-        member: 1,
-        kept: 1,
+        same: 0,
+        member: 0,
+        invited: 0,
+        expired: 0,
+        kept: 0,
         by: "console",
         roles: { manager: 1, worker: 4 },
       },

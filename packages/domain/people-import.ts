@@ -1964,6 +1964,26 @@ export function againstTeam(
   return { lines, send, counts, blocked };
 }
 
+/**
+ * The role an invite a list wrote ends with, by what the database answered
+ * for its row, never by the preview's outcome, which read the team as the
+ * page loaded it: a new invite, or one updated from a line that named its
+ * role, has the role sent; one updated from a line that named none keeps
+ * its own, which the screen knows only from the invite it read
+ * (`line.invite`). Null when it read none: an invite made meanwhile,
+ * elsewhere, whose role the screen never saw.
+ */
+export function writtenRoleOf(
+  status: "created" | "updated",
+  person: ImportPerson,
+  line: CheckedLine | undefined,
+): RoleChoice | null {
+  if (status === "created" || person.roleFromLine) {
+    return { role: person.role, namedRole: person.namedRole };
+  }
+  return line?.invite ?? null;
+}
+
 /** Where a checked line is shown: to fix, to invite, or left out. */
 export function groupOf(line: CheckedLine): "fix" | "invite" | "leftOut" {
   if (line.outcome) return WRITTEN.has(line.outcome) ? "invite" : "leftOut";

@@ -46,7 +46,8 @@ type State = (typeof STATES)[number];
 // ?state=elsewhere a shop's sheet with the owner of another of the twin's
 // businesses on it, which the stand-in refuses on pressing as the
 // console's database does; ?state=closed the card for a demo business,
-// which takes no invites. &fail=import or &fail=undo as the Team twin's.
+// which takes no invites. &fail=import or &fail=undo as the Team twin's;
+// &fail=open the refusal of a business with too many invites waiting.
 // The stand-ins write nothing anywhere, and nothing pasted leaves the
 // device.
 export default function ConsolePeopleImportDemo({
@@ -77,7 +78,10 @@ async function Demo({ params, searchParams }: Props) {
       <ConsoleImportClosed name={business.name} businessHref={businessHref} />
     );
   }
-  const fail = failing === "import" || failing === "undo" ? failing : undefined;
+  const fail =
+    failing === "import" || failing === "undo" || failing === "open"
+      ? failing
+      : undefined;
   const tr = translator(baseWording, "app.roles");
   const labels: Record<Role, string> = {
     owner: tr("owner"),

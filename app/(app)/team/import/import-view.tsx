@@ -12,6 +12,7 @@ import {
   PEOPLE_IMPORT_MAX,
   parsePeopleList,
   WAITING_INVITES_MAX,
+  writtenRoleOf,
 } from "@domain/people-import";
 import { displayIsraeliMobile } from "@domain/phone";
 import { roleChoiceKey } from "@domain/team";
@@ -95,8 +96,11 @@ type DonePerson = {
   line: number;
   name: string;
   phone: string;
-  /** The role they end with, as the business words it. */
-  role: string;
+  /**
+   * The role they end with, as the business words it; null when the screen
+   * can't know it (`writtenRoleOf`), and no badge is drawn.
+   */
+  role: string | null;
   /** Above a worker: its badge stands out, so a wrong "manager" is seen. */
   above: boolean;
 };
@@ -189,6 +193,7 @@ export function PeopleImportView({
   const inConsole = mode === "console";
   const words = useLineWords(roles, mode);
   const statusId = useId();
+  const removeHereId = useId();
   /** Owners and accountants, as the business words them: invited one at a time. */
   const oneByOne = (role: "owner" | "accountant") =>
     roles.oneByOne.find((one) => one.role === role)?.label ?? "";
@@ -396,20 +401,20 @@ export function PeopleImportView({
       if (!person || (row.status !== "created" && row.status !== "updated")) {
         return [];
       }
-      const line = check.lines.find(
-        (one) => one.line === person.line && one.kind === "person",
+      // The role by the database's answer, not the preview's: an invite
+      // made meanwhile, elsewhere, kept a role the screen never read.
+      const role = writtenRoleOf(
+        row.status,
+        person,
+        check.lines.find((one) => one.line === person.line),
       );
-      const role =
-        line?.kind === "person"
-          ? words.roleOf(line)
-          : { role: person.role, namedRole: person.namedRole };
       return [
         {
           line: person.line,
           name: person.name,
           phone: person.phone,
-          role: words.labelOf(role),
-          above: role.role === "manager",
+          role: role ? words.labelOf(role) : null,
+          above: role?.role === "manager",
         },
       ];
     });
@@ -476,7 +481,9 @@ export function PeopleImportView({
   // press floats, and the page stays where it was). Only as it arrives: a
   // screen shown again from its <Activity> runs this again with the same.
   // Numbers on another business's staff hold the press until their lines
-  // go: the first one's "הסרת השורה" takes the focus instead.
+  // go: the first one's "הסרת השורה" takes the focus instead. With neither
+  // (the press held, the line not drawn), the refusal itself has it, never
+  // the page's body.
   const seenFailure = useRef<typeof failure>(null);
   useLayoutEffect(() => {
     if (!arrived(seenFailure, failure)) return;
@@ -487,6 +494,7 @@ export function PeopleImportView({
           ? `[data-remove-line="${failure.line}"]`
           : null,
         submit.current,
+        refusal.current,
       ],
       { title: false },
     );
@@ -594,12 +602,17 @@ export function PeopleImportView({
         });
       case "tooLong":
         return t("status.tooLong");
-      case "tooManyOpen":
-        return t.markup("status.tooManyOpen", {
+      case "tooManyOpen": {
+        // The console deletes no invite: its words ask the owners to.
+        const values = {
           open: team.waiting,
           max: WAITING_INVITES_MAX,
           ltr: isolate,
-        });
+        };
+        return inConsole
+          ? ta.markup("status.tooManyOpen", values)
+          : t.markup("status.tooManyOpen", values);
+      }
       case "phoneColumns":
         // A header named them: so do the words, and adding it is no fix.
         return parsed.phoneHeaders
@@ -652,11 +665,14 @@ export function PeopleImportView({
       });
     }
     if (why === "tooManyOpen") {
-      return t.rich("errors.tooManyOpen", {
+      const values = {
         open: failure.open ?? team.waiting,
         max: WAITING_INVITES_MAX,
         ltr,
-      });
+      };
+      return inConsole
+        ? ta.rich("errors.tooManyOpen", values)
+        : t.rich("errors.tooManyOpen", values);
     }
     return why === "businessChanged" || why === "changed"
       ? t(`errors.${why}`)
@@ -677,6 +693,10 @@ export function PeopleImportView({
   const label = onlyUpdates
     ? t("submitUpdate", { count: check.send.length })
     : t("submit", { count: check.send.length });
+  const tooManyOpen = { open: team.waiting, max: WAITING_INVITES_MAX, ltr };
+  /** The console's list of whom the import saved, beside its done card. */
+  const saved = inConsole && done ? done.people : [];
+  const removable = Boolean(done?.importId) && (done?.made ?? 0) > 0;
 
   return (
     <PageBody className={pageGlowClass}>
@@ -728,11 +748,23 @@ export function PeopleImportView({
         </p>
       ) : null}
       {done ? (
-        <>
+        <div
+          className={
+            saved.length > 0
+              ? // Beside the people it saved, in the editor's columns: one
+                // under the other on a phone, the card at the start of a
+                // tablet's and a computer's, the people at their end.
+                "grid gap-6 md:grid-cols-2 md:items-start md:gap-8 xl:grid-cols-[24rem_minmax(0,1fr)]"
+              : "contents"
+          }
+        >
           <Card
             tone="accent"
             padding="lg"
-            className="flex flex-col gap-3 md:max-w-2xl"
+            className={cn(
+              "flex flex-col gap-3",
+              saved.length === 0 && "md:max-w-2xl",
+            )}
           >
             <h2
               ref={doneHeading}
@@ -758,11 +790,17 @@ export function PeopleImportView({
                 <p>{t("done.later")}</p>
               </>
             )}
+            {inConsole && removable ? (
+              // The console deletes no invite one at a time: once this card
+              // goes, only the owners can, on their Team screen.
+              <p id={removeHereId}>{ta("done.removeHere")}</p>
+            ) : null}
             <div className="mt-1 flex flex-col gap-2 md:flex-row md:flex-wrap">
-              {done.importId && done.made > 0 ? (
+              {removable ? (
                 <Button
                   variant="secondary"
                   data-import-remove=""
+                  aria-describedby={inConsole ? removeHereId : undefined}
                   onClick={takeBack}
                 >
                   <Trash2 aria-hidden="true" />
@@ -777,10 +815,8 @@ export function PeopleImportView({
               </Button>
             </div>
           </Card>
-          {inConsole && done.people.length > 0 ? (
-            <DonePeople people={done.people} />
-          ) : null}
-        </>
+          {saved.length > 0 ? <DonePeople people={saved} /> : null}
+        </div>
       ) : (
         <>
           {held.held && removed ? (
@@ -945,6 +981,11 @@ export function PeopleImportView({
                         </div>
                         <div className="hidden xl:block">
                           <LinesTable
+                            // Drawn anew, its filter back to all, by each
+                            // number found on another business's staff (the
+                            // set only grows): the line marked is on screen
+                            // as its removal takes the focus (below).
+                            key={elsewhere.size}
                             lines={check.lines}
                             words={words}
                             actions={actions}
@@ -977,11 +1018,9 @@ export function PeopleImportView({
                         ltr,
                       })
                     : blocked === "tooManyOpen"
-                      ? t.rich("status.tooManyOpen", {
-                          open: team.waiting,
-                          max: WAITING_INVITES_MAX,
-                          ltr,
-                        })
+                      ? inConsole
+                        ? ta.rich("status.tooManyOpen", tooManyOpen)
+                        : t.rich("status.tooManyOpen", tooManyOpen)
                       : status}
                 </p>
               ) : null}
@@ -1019,8 +1058,8 @@ export function PeopleImportView({
 
 /**
  * The console's list of the invites an import saved, with no link to make:
- * the owners send those from the Team screen. A phone's and a tablet's
- * rows; a computer's table.
+ * the owners send those from the Team screen. A phone's rows under the done
+ * card, a tablet's beside it, a computer's table beside it.
  */
 function DonePeople({ people }: { people: readonly DonePerson[] }) {
   const t = useTranslations("app.team.import");
@@ -1031,14 +1070,12 @@ function DonePeople({ people }: { people: readonly DonePerson[] }) {
       {displayIsraeliMobile(phone)}
     </span>
   );
-  const role = (person: DonePerson) => (
-    <Badge tone={person.above ? "accent" : "neutral"}>{person.role}</Badge>
-  );
+  const role = (person: DonePerson) =>
+    person.role ? (
+      <Badge tone={person.above ? "accent" : "neutral"}>{person.role}</Badge>
+    ) : null;
   return (
-    <PageSection
-      title={ta("done.people")}
-      className="md:max-w-2xl xl:max-w-4xl"
-    >
+    <PageSection title={ta("done.people")}>
       <PersonList aria-label={ta("done.people")} className="xl:hidden">
         {people.map((person) => (
           <PersonRow
