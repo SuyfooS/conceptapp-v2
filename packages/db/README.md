@@ -2068,7 +2068,10 @@ and `activeElsewhere(phone, business, role)` says it before a link goes out
 (false for an accountant's invite, and when every other place is an
 accountant's). `admin_invite`, `team_invite` and `create_business` write
 invites only, so the index never meets them. The console asks before its
-two: `activeElsewhere` on the business page, and `onAnotherStaff(actorId,
+two: `activeElsewhere` on the business page (still a PostgREST read with the
+one number in a GET's query string, which a request log keeps; moving it to
+`admin_staff_elsewhere`, with the business to leave out, is a follow-up),
+and `onAnotherStaff(actorId,
 entries)` (the staff list's numbers in a staff role already on a staff, in
 one call with the numbers in its body, `public.admin_staff_elsewhere` since
 part 6 of inviting from a list) in the new-business wizard, which sends the

@@ -106,7 +106,8 @@ export function useLineWords(roles: ImportRoles, mode: ImportMode = "team") {
               role: line.roleLabel ?? "",
             });
       case "elsewhere":
-        return ta("problem.elsewhere");
+      case "beforeHeader":
+        return ta(`problem.${line.problem}`);
       case "notAllowed":
       case "givesPay":
       case "held":

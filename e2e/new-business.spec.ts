@@ -244,6 +244,19 @@ test("a platform admin opens a restaurant and invites its staff", async ({
   await expect(page).toHaveURL(/\/admin\/new$/);
   expect(await businessBySlug(slug)).toBeNull();
 
+  // A person typed above a pasted sheet is a line to fix, never left out as
+  // the sheet's title.
+  await list.fill(
+    [
+      "רונית בדיקה 050-000-0701 בעלים",
+      "שם\tנייד",
+      "שי בדיקה\t050-000-0702",
+    ].join("\n"),
+  );
+  await expect(
+    page.getByText(`שורה 1 · ${he.admin.peopleImport.problem.beforeHeader}`),
+  ).toBeVisible();
+
   // A sheet pasted with its header row: an ID column, a direction mark,
   // Excel's dropped zero and a role column, read as the import reads them.
   await list.fill(

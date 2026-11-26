@@ -344,7 +344,9 @@ export async function inviteFromConsole(
  * the claim anyway (`memberships_one_staff_idx`); this says it before the
  * link goes out, in the console only. The Team screen never asks (#80): an
  * owner or manager doesn't learn where else a number works, and /join tells
- * the person themselves.
+ * the person themselves. It still filters by the number in a GET's query
+ * string, which a request log keeps: a follow-up asks
+ * `public.admin_staff_elsewhere` instead, with the business to leave out.
  */
 export async function activeElsewhere(
   phone: string,

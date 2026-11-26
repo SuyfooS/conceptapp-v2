@@ -280,7 +280,7 @@ export type StaffLine = StaffLineBase &
   /** The columns' headers. */
   (
     | { kind: "header" }
-    /** Before the header row: a sheet's name, a list's heading. */
+    /** Before the header row, with no mobile in it: a sheet's name, a list's heading. */
     | { kind: "title" }
     | { kind: "person"; entry: StaffEntry; notes: PeopleNote[] }
     /** The same person as an earlier line, by number, name and role: left out. */
@@ -288,8 +288,9 @@ export type StaffLine = StaffLineBase &
     /**
      * Why the line can't be invited as it is, in the import's own problems
      * (`duplicate` with the earlier line holding the number, `elsewhere`
-     * with the database's numbers); never one about a role, since the wizard
-     * gives every role.
+     * with the database's numbers, `beforeHeader` for a line above the
+     * header row with a mobile in it); never one about a role, since the
+     * wizard gives every role.
      */
     | { kind: "problem"; problem: PeopleProblem; first?: number }
   );
@@ -346,8 +347,11 @@ function entryOf(line: PeopleLine): StaffEntry | null {
  * Unlike the import, a line may name an owner or an accountant, whom the
  * wizard invites too, and at most `STAFF_LIST_MAX` people. The same number
  * twice is one person by the same name and role (`sameLine`, left out),
- * else a `duplicate` naming the first line with it. Empty input is a valid,
- * empty list.
+ * else a `duplicate` naming the first line with it; the same name with
+ * another number is a note (`sameNameList`), owners and accountants among
+ * them. A line above the header row with a mobile in it is to fix
+ * (`beforeHeader`), where the import leaves it out as a title. Empty input
+ * is a valid, empty list.
  */
 export function parseStaffList(
   input: string,
@@ -407,13 +411,18 @@ export function parseStaffList(
     return { ...base, kind: "person", entry, notes };
   };
 
-  const lines = parsed.lines.map((line): StaffLine => {
+  const mapped = parsed.lines.map((line): StaffLine => {
     const base: StaffLineBase = {
       line: line.line,
       ...(line.last !== undefined ? { last: line.last } : {}),
       text: line.text,
       dropped: line.dropped,
     };
+    // A line above the header row with a mobile in it was never read: a
+    // person typed above a pasted sheet is never left out unsaid.
+    if (line.kind === "title" && line.mobile) {
+      return { ...base, kind: "problem", problem: "beforeHeader" };
+    }
     if (line.kind === "header" || line.kind === "title") {
       return { ...base, kind: line.kind };
     }
@@ -442,6 +451,30 @@ export function parseStaffList(
       kind: "problem",
       problem: line.problem,
       ...(first !== undefined ? { first } : {}),
+    };
+  });
+
+  // The same name with another number, as the import notes it, now among
+  // every person the wizard invites: the import's own note leaves out the
+  // owners' and the accountants' lines, the owner pasted twice among them.
+  const byName = new Map<string, number[]>();
+  for (const line of mapped) {
+    if (line.kind !== "person") continue;
+    const key = nameKey(line.entry.name);
+    byName.set(key, [...(byName.get(key) ?? []), line.line]);
+  }
+  const lines = mapped.map((line): StaffLine => {
+    if (line.kind !== "person") return line;
+    const other = byName
+      .get(nameKey(line.entry.name))
+      ?.find((one) => one !== line.line);
+    const notes = line.notes.filter((note) => note.kind !== "sameNameList");
+    return {
+      ...line,
+      notes:
+        other === undefined
+          ? notes
+          : [{ kind: "sameNameList", line: other }, ...notes],
     };
   });
 

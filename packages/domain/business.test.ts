@@ -282,6 +282,49 @@ describe("parseStaffList", () => {
     ]);
   });
 
+  it("reads an owner's and a shift lead's two words whole, at either end and in a role column", () => {
+    const list = read(
+      [
+        "רונית כהן בעלת העסק 050-1111111",
+        "מיכל לוי 050-2222222 בעלת העסק",
+        "משה כהן, בעל העסק, 050-3333333",
+        "בעלת העסק: נועה פרץ 050-4444444",
+        "אבי 054-1112222 הבעלים",
+        "Dan Levi 050-5555555 business owner",
+        "דנה כהן 050-6666666 מנהל משמרת",
+        "אחראי משמרת: יוסי לוי 050-7777777",
+        "תמר 050-8888888 אחראית משמרת",
+      ].join("\n"),
+    );
+    expect(list.error).toBeNull();
+    expect(roles(list)).toEqual([
+      ["רונית כהן", "owner"],
+      ["מיכל לוי", "owner"],
+      ["משה כהן", "owner"],
+      ["נועה פרץ", "owner"],
+      ["אבי", "owner"],
+      ["Dan Levi", "owner"],
+      ["דנה כהן", "manager"],
+      ["יוסי לוי", "manager"],
+      ["תמר", "manager"],
+    ]);
+    const sheet = read(
+      [
+        "שם\tנייד\tתפקיד",
+        "רונית כהן\t050-1111111\tבעלת העסק",
+        "דנה\t050-2222222\tמנהלת משמרת",
+        "שי\t050-3333333\tבעל/ת העסק",
+      ].join("\n"),
+    );
+    expect(roles(sheet)).toEqual([
+      ["רונית כהן", "owner"],
+      ["דנה", "manager"],
+      ["שי", "owner"],
+    ]);
+    // Nothing of the role left out: it was read.
+    expect(sheet.lines.flatMap((line) => line.dropped)).toEqual([]);
+  });
+
   it("reads an accountant's two words before a manager's one", () => {
     const list = read(
       [
@@ -455,6 +498,100 @@ describe("parseStaffList", () => {
     );
     expect(again.error).toBeNull();
     expect(again.entries).toHaveLength(1);
+  });
+
+  it("notes the same name with another number, an owner's and an accountant's lines among them", () => {
+    const list = read(
+      [
+        "רונית כהן 050-111-1111 בעלים",
+        "רונית כהן 050-222-2222",
+        "גלית לוי 050-333-3333 מנהלת חשבונות",
+        "גלית לוי 050-444-4444",
+        "שי אברהם 050-555-5555",
+        "Shai Avraham 050-666-6666",
+      ].join("\n"),
+    );
+    expect(list.error).toBeNull();
+    expect(
+      list.lines.map((line) => [
+        line.line,
+        line.kind === "person" ? line.notes : null,
+      ]),
+    ).toEqual([
+      [1, [{ kind: "sameNameList", line: 2 }]],
+      [2, [{ kind: "sameNameList", line: 1 }]],
+      [3, [{ kind: "sameNameList", line: 4 }]],
+      [4, [{ kind: "sameNameList", line: 3 }]],
+      [5, []],
+      [6, []],
+    ]);
+    // Case aside, as the import compares names, and once a line.
+    const cased = read(
+      "Dana Cohen 050-111-1111 owner\ndana cohen 050-222-2222",
+    );
+    expect(
+      cased.lines.map((line) => (line.kind === "person" ? line.notes : null)),
+    ).toEqual([
+      [{ kind: "sameNameList", line: 2 }],
+      [{ kind: "sameNameList", line: 1 }],
+    ]);
+  });
+
+  it("holds a line above the header row with a mobile in it, and leaves a title of words out", () => {
+    // The field's placeholder line typed first, the owner's sheet pasted
+    // under it with its header row.
+    const sheet = [
+      "שם\tנייד",
+      "דנה כהן\t050-111-1111",
+      "יוסי לוי\t052-222-2222",
+    ];
+    const above = read(["רונית כהן 050-123-4567 בעלים", ...sheet].join("\n"));
+    expect(above.error).toBe("invalid");
+    expect(kinds(above)).toEqual([
+      [1, "beforeHeader"],
+      [2, "header"],
+      [3, "person"],
+      [4, "person"],
+    ]);
+    expect(kinds(read(["אבי חדש 050-999-8888", ...sheet].join("\n")))).toEqual([
+      [1, "beforeHeader"],
+      [2, "header"],
+      [3, "person"],
+      [4, "person"],
+    ]);
+    // Moved under the header, the line is read as typed: the owner.
+    const moved = read(
+      [sheet[0], "רונית כהן 050-123-4567 בעלים", ...sheet.slice(1)].join("\n"),
+    );
+    expect(moved.error).toBeNull();
+    expect(roles(moved)).toEqual([
+      ["רונית כהן", "owner"],
+      ["דנה כהן", "worker"],
+      ["יוסי לוי", "worker"],
+    ]);
+    // A title with no mobile in it, a company's number among its words, is
+    // left out as the import leaves it.
+    const titled = read(
+      ["סופר השכונה בעמ ח.פ. 514789632", ...sheet].join("\n"),
+    );
+    expect(titled.error).toBeNull();
+    expect(kinds(titled)).toEqual([
+      [1, "title"],
+      [2, "header"],
+      [3, "person"],
+      [4, "person"],
+    ]);
+    // Nothing opens until it is fixed.
+    expect(
+      parseNewBusiness(
+        {
+          ...valid,
+          staff: ["רונית כהן 050-123-4567 בעלים", ...sheet].join("\n"),
+        },
+        NEW_BUSINESS_FIELDS,
+        { labels: LABELS },
+      ),
+    ).toEqual({ ok: false, errors: { staff: "invalid" } });
   });
 
   it("holds a number found on another staff until its line goes, never an accountant's", () => {

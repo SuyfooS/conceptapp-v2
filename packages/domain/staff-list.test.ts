@@ -38,6 +38,43 @@ describe("builtInRoleWord", () => {
     ]);
   });
 
+  it("reads an owner's and a shift lead's two words as one", () => {
+    expect(
+      [
+        "בעל העסק",
+        "בעלת העסק",
+        "בעל/ת העסק",
+        "בעלי העסק",
+        "הבעלים",
+        "Business owner",
+        "אחראי משמרת",
+        "אחראית משמרת",
+        "אחראי/ת משמרת",
+        "מנהל משמרת",
+        "מנהלת משמרת",
+        "Shift manager",
+        "shift lead",
+      ].map(builtInRoleWord),
+    ).toEqual([
+      "owner",
+      "owner",
+      "owner",
+      "owner",
+      "owner",
+      "owner",
+      "manager",
+      "manager",
+      "manager",
+      "manager",
+      "manager",
+      "manager",
+      "manager",
+    ]);
+    // Their second word alone is no role.
+    expect(builtInRoleWord("העסק")).toBeNull();
+    expect(builtInRoleWord("משמרת")).toBeNull();
+  });
+
   it("is null for anything else", () => {
     expect(builtInRoleWord("ניהול")).toBeNull();
     expect(builtInRoleWord("חשבונות")).toBeNull();

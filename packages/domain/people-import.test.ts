@@ -781,6 +781,30 @@ describe("parsePeopleList: a sheet", () => {
     expect(rows.header).toBe(false);
   });
 
+  it("marks a title above the header that holds a mobile, and only that one", () => {
+    const sheet = ["שם\tנייד", "דנה כהן\t0501234567", "יוסי לוי\t0527654321"];
+    const first = (title: string) => {
+      const parsed = parse([title, ...sheet].join("\n"));
+      // The import still leaves it out: the wizard holds it.
+      expect(parsed.error).toBeNull();
+      return parsed.lines[0];
+    };
+    for (const title of [
+      "רונית כהן 050-123-4567 בעלים",
+      "רשימת עובדים - איש קשר: 050-9999999",
+    ]) {
+      expect(first(title), title).toMatchObject({
+        kind: "title",
+        mobile: true,
+      });
+    }
+    for (const title of ["צוות הסניף", "סופר השכונה בעמ ח.פ. 514789632"]) {
+      const line = first(title);
+      expect(line?.kind, title).toBe("title");
+      expect(line, title).not.toHaveProperty("mobile");
+    }
+  });
+
   it("takes the person's name column, never one that names a branch, a department, a manager, a father or a user", () => {
     const sheet = (...rows: string[][]) =>
       parse(rows.map((cells) => cells.join("\t")).join("\n"));
@@ -1386,6 +1410,39 @@ describe("parsePeopleList: roles", () => {
     expect(problems(parse("דנה כהן 050-123-4567 אחראי משמרת", EDITOR))).toEqual(
       [[1, "held"]],
     );
+  });
+
+  it("reads an owner's and a shift lead's two words, and a business's own role of that name first", () => {
+    const owner = parse("רונית כהן 050-123-4567 בעלת העסק");
+    expect(problems(owner)).toEqual([[1, "oneByOne"]]);
+    expect(problemAt(owner, 1)).toMatchObject({
+      name: "רונית כהן",
+      roleLabel: "בעלים",
+      role: "owner",
+    });
+    // Where the business names no such role, a shift lead is a manager, as
+    // אחמ"ש is.
+    const plain = rolesFor({ role: "owner", perms: [] }, { named: [] });
+    const lead = only(parse("דנה כהן 050-123-4567 מנהל משמרת", plain));
+    expect([lead.person.name, lead.person.role, lead.person.namedRole]).toEqual(
+      ["דנה כהן", "manager", null],
+    );
+    // A role the business named so, above the viewer's rank, is refused by
+    // its own name, not the built-in manager's.
+    const above: GivableNamedRole = {
+      id: "6a0e4f1c-6c51-4d8e-9a7b-2f0f6c1d3e03",
+      name: "מנהל משמרת",
+      nameEn: null,
+      base: "manager",
+      holds: [],
+    };
+    const editor = rolesFor(
+      { role: "worker", perms: ["team.view", "team.edit"] },
+      { named: [above] },
+    );
+    expect(
+      problemAt(parse("דנה כהן 050-123-4567 מנהל משמרת", editor), 1),
+    ).toMatchObject({ problem: "notAllowed", roleLabel: "מנהל משמרת" });
   });
 
   it("leaves a job title in a role column out, with the list's role, and keeps it in a free-text name", () => {

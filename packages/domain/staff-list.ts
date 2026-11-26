@@ -24,6 +24,7 @@ export type StaffEntry = {
 const ROLE_WORDS: Record<string, Exclude<Role, "worker">> = {
   owner: "owner",
   בעלים: "owner",
+  הבעלים: "owner",
   בעלת: "owner",
   manager: "manager",
   מנהל: "manager",
@@ -44,6 +45,23 @@ const ACCOUNTANT_PHRASES = new Set([
   "רואה חשבון",
   "רואת חשבון",
 ]);
+// Two words that name an owner or a shift lead, read before the words
+// alone, so neither stays in a name: "בעלת העסק" is the owner, not a worker
+// called "רונית כהן בעלת העסק", and "אחראי משמרת" or "מנהלת משמרת" a
+// manager, as their אחמ"ש is. A business's own role of that name comes
+// first (@domain/people-import). "בעל/ת העסק" reads as "בעלת העסק".
+const ROLE_PHRASES: Record<string, Exclude<Role, "worker">> = {
+  "בעל העסק": "owner",
+  "בעלת העסק": "owner",
+  "בעלי העסק": "owner",
+  "business owner": "owner",
+  "אחראי משמרת": "manager",
+  "אחראית משמרת": "manager",
+  "מנהל משמרת": "manager",
+  "מנהלת משמרת": "manager",
+  "shift manager": "manager",
+  "shift lead": "manager",
+};
 
 // A run of digits with the separators people put in phone numbers.
 export const PHONE_RUN = /\+?\d[\d\s\-().]*\d/g;
@@ -69,13 +87,18 @@ const roleWordKey = (text: string) => searchable(wordKey(text));
 
 /**
  * The built-in roles' own words, for the list of people
- * (@domain/people-import): the accountant's phrases first, then the role
- * words and the worker's, with "employee" among them.
+ * (@domain/people-import): the accountant's phrases first, then the
+ * owner's and the shift lead's, the role words and the worker's, with
+ * "employee" among them.
  */
 const BUILT_IN_ROLE_WORDS: ReadonlyMap<string, Role> = new Map<string, Role>([
   ...[...ACCOUNTANT_PHRASES].map((phrase): [string, Role] => [
     roleWordKey(phrase),
     "accountant",
+  ]),
+  ...Object.entries(ROLE_PHRASES).map(([phrase, role]): [string, Role] => [
+    roleWordKey(phrase),
+    role,
   ]),
   ...Object.entries(ROLE_WORDS).map(([word, role]): [string, Role] => [
     roleWordKey(word),
@@ -89,8 +112,9 @@ const BUILT_IN_ROLE_WORDS: ReadonlyMap<string, Role> = new Map<string, Role>([
 
 /**
  * The built-in role a word or a phrase names, whatever the business calls
- * it ("מנהלת", "מנהל/ת", "owner", "מנהלת חשבונות", "עובד/ת", "employee"),
- * compared by `wordKey` and `searchable`; null for anything else.
+ * it ("מנהלת", "מנהל/ת", "owner", "בעלת העסק", "אחראי משמרת", "מנהלת
+ * חשבונות", "עובד/ת", "employee"), compared by `wordKey` and `searchable`;
+ * null for anything else.
  */
 export function builtInRoleWord(text: string): Role | null {
   const key = roleWordKey(text);

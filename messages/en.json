@@ -8247,7 +8247,8 @@
       },
       "problem": {
         "oneByOne": "{role}: invited one at a time, from “Add a person”",
-        "elsewhere": "The number is already on another business's staff"
+        "elsewhere": "The number is already on another business's staff",
+        "beforeHeader": "This line has a mobile number, but it's above the header row, so it wasn't read. If it's a person, move it below the header row. If not, delete it"
       },
       "done": {
         "console": "Nobody got a message. The invites wait on the business's Team screen, under “No link yet”, where the owners and whoever runs the team send each person their own link.",

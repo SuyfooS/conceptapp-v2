@@ -199,7 +199,13 @@ export type PeopleProblem =
    * The console's only: the database found the number on another
    * business's staff when the list was sent (`againstTeam`'s `elsewhere`).
    */
-  | "elsewhere";
+  | "elsewhere"
+  /**
+   * The new-business wizard's only (`parseStaffList` in @domain/business):
+   * a line above the header row with a mobile in it, never read, as a
+   * person typed above a pasted sheet would be.
+   */
+  | "beforeHeader";
 
 /** Worth a look, never a block. */
 export type PeopleNote =
@@ -239,7 +245,16 @@ export type PeopleLine = {
 } & (
   | { kind: "header" }
   /** Before the header row: a sheet's name, a list's heading. */
-  | { kind: "title" }
+  | {
+      kind: "title";
+      /**
+       * A mobile in it, in one cell of a sheet's paste: a contact's
+       * ("איש קשר: 050-…"), or a person typed above the sheet, whom the
+       * console's new-business wizard won't leave out unsaid
+       * (`beforeHeader` in `parseStaffList`, @domain/business).
+       */
+      mobile?: true;
+    }
   | {
       kind: "person";
       person: ImportPerson;
@@ -376,6 +391,11 @@ function roleMatcher(roles: ImportRoles): RoleMatcher {
     if (!key) return null;
     const choice = choices.get(key);
     if (choice) return { kind: "choice", choice };
+    const higher = above.get(key);
+    // A role the business named, above the viewer's rank, before the
+    // built-in words: its "אחראי משמרת" is that role, not the built-in
+    // shift lead.
+    if (higher && named.has(key)) return { kind: "notAllowed", label: higher };
     const word = builtInRoleWord(text);
     if (word === "manager" || word === "worker") {
       const given = builtIn(word);
@@ -388,7 +408,6 @@ function roleMatcher(roles: ImportRoles): RoleMatcher {
     }
     const own = oneByOne.get(key);
     if (own) return { kind: "oneByOne", label: own.label, role: own.role };
-    const higher = above.get(key);
     if (higher) return { kind: "notAllowed", label: higher };
     return null;
   };
@@ -1550,6 +1569,7 @@ export function parsePeopleList(
       text: row.text,
       dropped: [],
       kind: "title",
+      ...(holdsMobile(row) ? { mobile: true as const } : {}),
     }),
   );
   const headerLine: PeopleLine[] = header

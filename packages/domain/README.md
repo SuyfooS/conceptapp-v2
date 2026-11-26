@@ -182,8 +182,10 @@ all (a staff role among the invite form's choices that isn't an owner's
 alone), so the import and the rows leading to it open only then. `pasted-text.ts` holds
 what it shares with the menu's reader (`clean`, the marks, `readsBackwards`)
 and `westernDigits` for Arabic-Indic digits; `staff-list.ts` exports
-`wordKey` and `builtInRoleWord` ("מנהל/ת", "עובד/ת", "employee"), and the
-wizard's `STAFF_LIST_MAX` (60) and `StaffEntry`. Since part 6 the console's
+`wordKey` and `builtInRoleWord` ("מנהל/ת", "עובד/ת", "employee", and two
+words read whole: "מנהלת חשבונות", "בעלת העסק", "אחראי משמרת", a shift
+lead a manager as אחמ"ש is, though a business's own role of that name comes
+first), and the wizard's `STAFF_LIST_MAX` (60) and `StaffEntry`. Since part 6 the console's
 new-business wizard reads its staff list with the same reader
 (`parseStaffList` in `business.ts`, which `parseNewBusiness` runs): a header
 row, an ID column, direction marks, Excel's dropped zero, names through
@@ -195,7 +197,12 @@ for the roles (`labels`, from `app.roles` in the viewer's language, so
 "ניהול" and "צוות" read too) and the numbers the database found on another
 staff (`elsewhere`, whose staff lines are to fix until they go). The same
 number twice is one person by the same name and role, an owner's line
-included, else a `duplicate` naming the first line with it.
+included, else a `duplicate` naming the first line with it; the same name
+with another number is a `sameNameList` note on both, an owner's and an
+accountant's lines among them. A line above the header row with a mobile
+in it (the import marks such a title `mobile`, and leaves it out) is to fix
+in the wizard, `beforeHeader`, so a person typed above a pasted sheet is
+never left out unsaid.
 
 `setup.ts` is the console's checklist of a business just opened (opened,
 owner, staff, address), each item from the business as stored, and the rule
