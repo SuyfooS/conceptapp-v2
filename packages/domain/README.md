@@ -139,7 +139,10 @@ the line's end or start, its longest name first, and a name line followed by
 its number line is one person. Names go through `parseTeamName`, phones
 through `normalizeIsraeliMobile`; owners and accountants are one by one,
 roles above the viewer's rank, with pay or held are refused with the invite
-form's reasons, and past `PEOPLE_IMPORT_MAX` (300) no line is drawn.
+form's reasons, and past `PEOPLE_IMPORT_MAX` (300) no line is drawn. The
+same number twice is one person (`sameLine`) by the same name and the same
+role, written on the line or the list's (the first line sent, as naming it
+when either does), else a conflict (`duplicate`).
 `importRolesOf` builds the roles from `inviteChoices` and the business's
 words, `againstTeam` checks the paste against the team the page loaded (a
 member, or an invite with a link, an owner's or an accountant's, or one the

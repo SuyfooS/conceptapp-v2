@@ -38,6 +38,7 @@ import {
 } from "react";
 import { isolate } from "../../schedule/availability/range-words";
 import { HOLD_MS, useHeldWrite } from "../../use-held-write";
+import { ignoredWords } from "./ignored-words";
 import {
   type LineActions,
   LineGroups,
@@ -181,7 +182,8 @@ export function PeopleImportView({
   const edited = useRef(false);
 
   // The import taken back, held for "ביטול" as a deleted invite is. Only
-  // its invites with no link yet go; failing, the done card comes back.
+  // its invites with no link yet go; failing, the done card comes back. It
+  // answers whether they went, for an import that waits for it.
   const held = useHeldWrite<{ importId: string; done: Done }>(
     async ({ importId, done: was }) => {
       let result: PeopleUndoResult;
@@ -195,9 +197,10 @@ export function PeopleImportView({
         doneFocus.current = "remove";
         setDone(was);
         setUndoFailed((count) => count + 1);
-        return;
+        return false;
       }
       setRemoved({ done: was, kept: result.kept });
+      return true;
     },
   );
 
@@ -209,6 +212,15 @@ export function PeopleImportView({
     if (!ready) return;
     const sent = check.send;
     setImporting(true);
+    // An import taken back and still held goes first, and is waited for:
+    // sent after this one, it would cancel the invites this one found
+    // waiting and left as they were. When it fails, its done card is back,
+    // and nothing more goes.
+    const takenBack = held.commit();
+    if (takenBack && (await takenBack) === false) {
+      setImporting(false);
+      return;
+    }
     let result: PeopleImportResult;
     try {
       result = await importPeople(
@@ -322,20 +334,28 @@ export function PeopleImportView({
     })();
   }, []);
 
-  /** A line's buttons: the same object at every keystroke, reading the paste now. */
+  /**
+   * A line's buttons: the same object at every keystroke, reading the paste
+   * now. Their line numbers are the rows', read from `read`: while a
+   * keystroke is not read yet, they would land on another line of the text
+   * now, so a press waits for the rows, as the import's does.
+   */
   const latest = useRef(paste);
+  const drawn = useRef(read);
   useLayoutEffect(() => {
     latest.current = paste;
+    drawn.current = read;
   });
   const [actions] = useState<LineActions>(() => ({
     fix: (span) => fixLine(span),
     remove: (span) => removeLines([span]),
   }));
+  const rowsAreNow = () => drawn.current === latest.current;
 
   function fixLine(span: LineSpan) {
     const area = field.current;
     const range = lineRange(latest.current, span);
-    if (!area || !range) return;
+    if (!area || !range || !rowsAreNow()) return;
     area.focus();
     // The caret at the line's end, never the line selected: on a phone the
     // first key typed would replace all of it.
@@ -349,7 +369,7 @@ export function PeopleImportView({
   function removeLines(spans: LineSpan[]) {
     const before = latest.current;
     const [one] = spans;
-    if (!one) return;
+    if (!one || !rowsAreNow()) return;
     const text =
       spans.length > 1
         ? t("removedNoPhone", { count: spans.length })
@@ -438,11 +458,7 @@ export function PeopleImportView({
       : t("errors.failed");
   };
 
-  const ignored = parsed.ignored.map((column) =>
-    "header" in column
-      ? column.header
-      : t.markup("paste.column", { n: column.column, ltr: isolate }),
-  );
+  const ignored = ignoredWords(parsed.ignored, t, locale);
   const teamLeftOut =
     check.counts.member +
     check.counts.same +
@@ -638,14 +654,7 @@ export function PeopleImportView({
                   <span>{t("paste.kept")}</span>
                 </p>
                 {ignored.length > 0 ? (
-                  <p className="px-1 text-ink-2 text-sm">
-                    {t("paste.ignored", {
-                      count: ignored.length,
-                      names: new Intl.ListFormat(locale, {
-                        type: "conjunction",
-                      }).format(ignored),
-                    })}
-                  </p>
+                  <p className="px-1 text-ink-2 text-sm">{ignored.join(" ")}</p>
                 ) : null}
               </div>
             </div>

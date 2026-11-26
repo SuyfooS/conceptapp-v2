@@ -1615,7 +1615,7 @@
           "placeholder": "Dana Cohen, 050-123-4567\nYossi Levi, 052-765-4321, manager",
           "kept": "Only the name, the number and the role are kept. Other columns, such as an ID number or a wage, never leave this device.",
           "ignored": "{count, plural, one {The column {names} is not read.} other {The columns {names} are not read.}}",
-          "column": "column <ltr>{n}</ltr>"
+          "ignoredAt": "{count, plural, one {Column {columns} is not read.} other {Columns {columns} are not read.}}"
         },
         "preview": {
           "title": "What the list becomes",

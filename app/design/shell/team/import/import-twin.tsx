@@ -2,7 +2,7 @@
 
 import type { ImportRoles, KnownTeam } from "@domain/people-import";
 import { useTranslations } from "next-intl";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import type {
   ImportPeople,
   UndoPeopleImport,
@@ -21,8 +21,9 @@ const wait = () => new Promise((done) => setTimeout(done, WAIT_MS));
  * only: nothing pasted leaves the browser, and nothing is written anywhere,
  * so whoever pastes a real list on the hosted demo sends nobody anything.
  * An import answers as the database would for the twin's team: a number
- * with an invite still unsent is updated, any other is made. Taking it back
- * cancels what it made.
+ * with an invite still unsent, the twin's or one an import made, is
+ * updated, any other is made. Taking it back cancels what it made, so an
+ * import that goes before the undo of the last finds those still waiting.
  */
 export function ImportTwin({
   roles,
@@ -36,32 +37,43 @@ export function ImportTwin({
   startAt?: PeopleImportViewProps["startAt"];
 }) {
   const t = useTranslations("app.team.import");
-  /** What the last import made, for its undo to cancel. */
-  const made = useRef(0);
+  /** The numbers whose invite waits with no link yet, kept as the database keeps them. */
+  const [unsent] = useState(
+    () =>
+      new Set(
+        known.invites
+          .filter((invite) => invite.linkPending)
+          .map((invite) => invite.phone),
+      ),
+  );
+  /** What each import made, by its id, for its undo to cancel. */
+  const [made] = useState(() => new Map<string, string[]>());
+  const imports = useRef(0);
   const importPeople: ImportPeople = async (people) => {
     await wait();
-    const waiting = new Set(
-      known.invites
-        .filter((invite) => invite.linkPending)
-        .map((invite) => invite.phone),
-    );
     const rows = people.map((person, index) => ({
       i: index + 1,
-      status: waiting.has(person.phone)
+      status: unsent.has(person.phone)
         ? ("updated" as const)
         : ("created" as const),
       invite: `twin-${index + 1}`,
     }));
-    made.current = rows.filter((row) => row.status === "created").length;
-    return {
-      ok: true,
-      importId: made.current > 0 ? "twin-import" : null,
-      rows,
-    };
+    const phones = people
+      .filter((person) => !unsent.has(person.phone))
+      .map((person) => person.phone);
+    if (phones.length === 0) return { ok: true, importId: null, rows };
+    for (const phone of phones) unsent.add(phone);
+    imports.current += 1;
+    const importId = `twin-import-${imports.current}`;
+    made.set(importId, phones);
+    return { ok: true, importId, rows };
   };
-  const undoImport: UndoPeopleImport = async () => {
+  const undoImport: UndoPeopleImport = async (importId) => {
     await wait();
-    return { ok: true, cancelled: made.current, kept: 0 };
+    const phones = made.get(importId) ?? [];
+    made.delete(importId);
+    for (const phone of phones) unsent.delete(phone);
+    return { ok: true, cancelled: phones.length, kept: 0 };
   };
   return (
     <PeopleImportView

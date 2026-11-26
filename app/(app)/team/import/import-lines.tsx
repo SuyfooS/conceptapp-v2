@@ -116,8 +116,16 @@ export function useLineWords(roles: ImportRoles) {
       case "same":
         return t("outcome.same");
       case "member": {
-        const own = line.kind === "person" ? line.person.name : null;
-        return line.memberName && line.memberName !== own
+        // "בשם …" only when the team knows them by another name than the
+        // line's: a line that read no name (its problem came first) says
+        // only that they are on the team.
+        const own =
+          line.kind === "person"
+            ? line.person.name
+            : line.kind === "problem"
+              ? line.name
+              : undefined;
+        return line.memberName && own !== undefined && line.memberName !== own
           ? t("outcome.memberAs", { name: line.memberName })
           : t("outcome.member");
       }

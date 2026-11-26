@@ -234,6 +234,11 @@ export type PeopleLine = {
       problem: PeopleProblem;
       /** The line's number when it was read, for `againstTeam`. */
       phone?: string;
+      /**
+       * The name, when it was read before the problem (a role it can't be
+       * given, `duplicate`): a member's line says "בשם …" only for another.
+       */
+      name?: string;
       /** The earlier line with the same number (`duplicate`). */
       first?: number;
       /** The role a line named, as the business words it. */
@@ -1131,7 +1136,7 @@ function lineOf(
   };
   const problem = (
     problem: PeopleProblem,
-    more: { roleLabel?: string } = {},
+    more: { roleLabel?: string; name?: string } = {},
   ): Read => ({
     ...base,
     kind: "problem",
@@ -1146,7 +1151,10 @@ function lineOf(
     return problem(name.error === "required" ? "noName" : "nameTooLong");
   }
   if (!reading.role.ok) {
-    return problem(reading.role.problem, { roleLabel: reading.role.roleLabel });
+    return problem(reading.role.problem, {
+      roleLabel: reading.role.roleLabel,
+      name: name.name,
+    });
   }
   const { choice, fromLine } = reading.role;
   return {
@@ -1229,8 +1237,6 @@ function rowsOf(input: string): { line: number; raw: string; text: string }[] {
   });
 }
 
-const personKey = (person: ImportPerson) =>
-  `${person.role}|${person.namedRole ?? ""}|${person.roleFromLine}`;
 /** Names compared case aside, the same on every device whatever its language. */
 const nameKey = (name: string) => name.toLowerCase();
 
@@ -1371,10 +1377,11 @@ export function parsePeopleList(
     read.push(lineOf(row, reading));
   }
 
-  // The same number twice: the same person once, or a conflict.
+  // The same number twice: the same person once, by the same name and the
+  // same role, written on the line or the list's; or a conflict.
   const firstOf = new Map<
     string,
-    { line: number; name: string; key: string }
+    { line: number; name: string; key: string; person: ImportPerson }
   >();
   const lines: Read[] = read.map((line): Read => {
     if (line.kind !== "person") return line;
@@ -1384,7 +1391,8 @@ export function parsePeopleList(
       firstOf.set(person.phone, {
         line: line.line,
         name: nameKey(person.name),
-        key: personKey(person),
+        key: roleChoiceKey(person),
+        person,
       });
       return line;
     }
@@ -1395,16 +1403,23 @@ export function parsePeopleList(
       dropped: line.dropped,
       free: line.free,
     };
-    return first.name === nameKey(person.name) &&
-      first.key === personKey(person)
-      ? { ...base, kind: "sameLine", first: first.line }
-      : {
-          ...base,
-          kind: "problem",
-          problem: "duplicate",
-          phone: person.phone,
-          first: first.line,
-        };
+    if (
+      first.name === nameKey(person.name) &&
+      first.key === roleChoiceKey(person)
+    ) {
+      // The first line is the one sent, as naming its role when either
+      // does: an invite waiting takes the role a line wrote.
+      if (person.roleFromLine) first.person.roleFromLine = true;
+      return { ...base, kind: "sameLine", first: first.line };
+    }
+    return {
+      ...base,
+      kind: "problem",
+      problem: "duplicate",
+      phone: person.phone,
+      name: person.name,
+      first: first.line,
+    };
   });
 
   const persons = lines.filter(

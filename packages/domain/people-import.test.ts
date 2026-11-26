@@ -1070,6 +1070,33 @@ describe("parsePeopleList: duplicates and notes", () => {
       phone: "+972501234567",
     });
     expect(parsed.lines[1]).toMatchObject({ kind: "sameLine", first: 1 });
+    expect(problemAt(parsed, 3).name).toBe("דנה לוי");
+  });
+
+  it("leaves out the same person twice when one line writes the list's role, and sends that role as written", () => {
+    // Two lists merged, one with a role column and one without.
+    for (const text of [
+      ["דנה כהן 050-123-4567", "דנה כהן 050-123-4567 צוות"],
+      ["דנה כהן 050-123-4567 צוות", "דנה כהן 050-123-4567"],
+    ]) {
+      const parsed = parse(text.join("\n"));
+      expect(parsed.lines.map((line) => line.kind)).toEqual([
+        "person",
+        "sameLine",
+      ]);
+      expect(parsed.error).toBeNull();
+      expect(only(parsed).person).toEqual({
+        ...worker("דנה כהן", "+972501234567"),
+        roleFromLine: true,
+      });
+      // An invite waiting as a manager takes the role a line wrote.
+      expect(
+        outcomes(
+          text.join("\n"),
+          team([invite({ phone: "+972501234567", role: "manager" })]),
+        ),
+      ).toEqual(["updateRole", undefined]);
+    }
   });
 
   it("compares names case aside the same in every device's language", () => {
@@ -1260,6 +1287,18 @@ describe("againstTeam", () => {
     expect(check.blocked).toBeNull();
     expect(check.send).toEqual([
       { ...worker("דנה כהן", "+972541112233"), line: 3 },
+    ]);
+    // Each line keeps the name it read, so the screen says "בשם …" only
+    // for a name the team knows them by and the line doesn't.
+    expect(
+      check.lines.map((line) => [
+        line.kind === "problem" ? line.name : null,
+        line.memberName,
+      ]),
+    ).toEqual([
+      ["משה לוי", "משה לוי"],
+      ["רינה כץ", "רינה כץ"],
+      [null, undefined],
     ]);
   });
 

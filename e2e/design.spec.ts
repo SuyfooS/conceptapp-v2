@@ -9613,7 +9613,7 @@ for (const colorScheme of ["light", "dark"] as const) {
 
 test("the people import's twin holds the lines to fix, and fixes and removes them", async ({
   page,
-}) => {
+}, testInfo) => {
   const i = he.app.team.import;
   await page.goto(`${importTwin}?state=problems`);
   const blocked = (count: number) =>
@@ -9635,6 +9635,23 @@ test("the people import's twin holds the lines to fix, and fixes and removes the
       name: heT("app.team.import.fixLineFor", { line: "2" }),
       exact: true,
     }),
+  ).toHaveCount(0);
+  // And said so plainly: the team knows him by the name his line has.
+  if (testInfo.project.name !== "desktop") {
+    await page
+      .getByRole("button", { name: new RegExp(asIs(i.groups.show)) })
+      .click();
+  }
+  await expect(
+    page
+      .getByText(i.outcome.member, { exact: true })
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      heT("app.team.import.outcome.memberAs", { name: "אורי בן דוד" }),
+    ),
   ).toHaveCount(0);
   await expect(page.locator('a[href*="wa.me"]')).toHaveCount(0);
 
@@ -9754,6 +9771,20 @@ test("the people import's twin invites a WhatsApp list, and takes it back with i
   await expect(title).toBeVisible();
   await expect(remove).toBeFocused();
 
+  // Taken back and invited again at once, while "ביטול" is still up: the
+  // way back is sent first and waited for. Sent after, the stand-in would
+  // find the 7 still waiting and update them, as the database would, and
+  // the late undo cancel them all. So the import makes the 7 anew, and its
+  // done card offers its own way back.
+  await remove.click();
+  await expect(undo).toBeFocused();
+  await submit.click();
+  await expect(title).toBeFocused();
+  await expect(
+    page.getByRole("status").filter({ hasText: removed }),
+  ).toHaveCount(0);
+  await expect(remove).toBeVisible();
+
   // Its time up, the list is back in the field, to fix and invite again.
   await remove.click();
   await expect(
@@ -9779,11 +9810,18 @@ test("the people import's twin reads a sheet by its header, and a second paste o
       exact: true,
     }),
   ).toBeVisible();
+  // The ID column and the wage, named by their headers under the field.
   await expect(
-    page
-      .getByText(/ת\.ז\./)
-      .filter({ visible: true })
-      .first(),
+    page.getByText(
+      heT("app.team.import.paste.ignored", {
+        count: 2,
+        names: new Intl.ListFormat("he", { type: "conjunction" }).format([
+          "ת.ז.",
+          "שכר לשעה",
+        ]),
+      }),
+      { exact: true },
+    ),
   ).toBeVisible();
   await expect(
     page.getByRole("button", {
