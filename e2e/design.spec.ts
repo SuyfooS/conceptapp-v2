@@ -8,10 +8,13 @@ import he from "../messages/he.json" with { type: "json" };
 import { daysLeftToRight } from "../packages/domain/share";
 import { type MessageTree, mergeWording } from "../packages/domain/wording";
 import {
+  announcer,
   focusWhenSaid,
+  heardSoFar,
   noteFocusWhenSaid,
   noteIfSaid,
   noteStatusWords,
+  saidSince,
   wasSaid,
 } from "./announcer";
 import { before, buildScreen, HOLD_MS } from "./build-screen";
@@ -9697,20 +9700,36 @@ test("the people import's twin holds the lines to fix, and fixes and removes the
   await undo.click();
   await expect(field).toHaveValue(/משמרת ערב/);
   await expect(blocked(8)).toBeVisible();
-
-  await page
-    .getByRole("button", {
-      name: heT("app.team.import.removeLineFor", { line: "5" }),
+  // Where the person was: the button that took them out, never the field.
+  await expect(
+    page.getByRole("button", {
+      name: heT("app.team.import.removeNoPhone", { count: 2 }),
       exact: true,
-    })
-    .click();
+    }),
+  ).toBeFocused();
+
+  const removeFive = page.getByRole("button", {
+    name: heT("app.team.import.removeLineFor", { line: "5" }),
+    exact: true,
+  });
+  await removeFive.click();
   await expect(field).not.toHaveValue(/יוסף אלמו/);
   await expect(blocked(7)).toBeVisible();
-  // A keystroke since takes its "ביטול" away, so it never undoes what was typed.
   const undoFive = page
     .getByRole("status")
     .filter({ hasText: /הוסרה מהרשימה/ })
     .getByRole("button", { name: i.undoRemove, exact: true });
+  await expect(undoFive).toBeFocused();
+  // Taken back, the line's own button has the focus again, in view, and
+  // the field far above it (a phone's keyboard with it) is left alone.
+  await undoFive.click();
+  await expect(field).toHaveValue(/יוסף אלמו/);
+  await expect(removeFive).toBeFocused();
+  await expect(removeFive).toBeInViewport();
+
+  // A keystroke since takes its "ביטול" away, so it never undoes what was typed.
+  await removeFive.click();
+  await expect(field).not.toHaveValue(/יוסף אלמו/);
   await expect(undoFive).toBeFocused();
   await field.focus();
   await expect(field).toBeFocused();
@@ -9724,6 +9743,13 @@ test("the people import's twin invites a WhatsApp list, and takes it back with i
   page,
 }) => {
   const i = he.app.team.import;
+  // Nothing pasted leaves the browser: no request the page makes, from
+  // its opening through the import and its taking back, carries a number
+  // of the list (054-710-22xx, written in every way the paste has).
+  const sent: string[] = [];
+  page.on("request", (request) => {
+    sent.push(`${request.url()} ${request.postData() ?? ""}`);
+  });
   await page.goto(`${importTwin}?state=whatsapp`);
   const submit = page.getByRole("button", {
     name: heT("app.team.import.submit", { count: 7 }),
@@ -9797,6 +9823,148 @@ test("the people import's twin invites a WhatsApp list, and takes it back with i
     page.getByRole("textbox", { name: i.paste.label, exact: true }),
   ).toHaveValue(/יעל ברק/);
   await expect(submit).toBeEnabled();
+  expect(sent.length).toBeGreaterThan(0);
+  const decoded = (line: string) => {
+    try {
+      return decodeURIComponent(line);
+    } catch {
+      return line;
+    }
+  };
+  expect(
+    sent.filter((line) => /54\D{0,3}710\D{0,3}22\d\d/.test(decoded(line))),
+  ).toEqual([]);
+});
+
+test("the people import's twin says its counts once, and a removal's way back goes with the import", async ({
+  page,
+}) => {
+  const i = he.app.team.import;
+  const said = announcer(page, "polite");
+  const ready = heT("app.team.import.summary.ready", { count: 7 });
+  await page.goto(`${importTwin}?state=whatsapp`);
+  const field = page.getByRole("textbox", { name: i.paste.label, exact: true });
+  const submit = page.getByRole("button", {
+    name: heT("app.team.import.submit", { count: 7 }),
+    exact: true,
+  });
+  await expect(submit).toBeEnabled();
+  // Typed in, the counts are said once typing pauses.
+  await field.focus();
+  await page.keyboard.press("Control+End");
+  await page.keyboard.type(" ");
+  await expect(said).toContainText(ready);
+  await submit.click();
+  const title = page.getByRole("heading", {
+    level: 2,
+    name: heT("app.team.import.done.title", { count: 7 }),
+  });
+  await expect(title).toBeFocused();
+  // Taken back, the same counts are not said again over "ביטול"'s words.
+  await heardSoFar(said);
+  await page.getByRole("button", { name: i.done.remove, exact: true }).click();
+  const removed = heT("app.team.import.done.removed", { count: 7 });
+  const keep = page.getByRole("button", { name: undoNamed(removed) });
+  await expect(keep).toBeFocused();
+  await page.waitForTimeout(1_500);
+  await expect(saidSince(said, ready)).toHaveCount(0);
+  await keep.click();
+  await expect(title).toBeVisible();
+
+  // A line removed, then the list invited at once: its "ביטול" goes with
+  // the import, never to bring the old list back behind the done card.
+  await page.getByRole("button", { name: i.done.another, exact: true }).click();
+  await expect(field).toHaveValue("");
+  await field.fill(["דנה כהן 054-710-5501", "יוסי לוי"].join("\n"));
+  await page
+    .getByRole("button", {
+      name: heT("app.team.import.removeLineFor", { line: "2" }),
+      exact: true,
+    })
+    .click();
+  const undoTwo = page
+    .getByRole("status")
+    .filter({ hasText: /הוסרה מהרשימה/ })
+    .getByRole("button", { name: i.undoRemove, exact: true });
+  await expect(undoTwo).toBeFocused();
+  await page
+    .getByRole("button", {
+      name: heT("app.team.import.submit", { count: 1 }),
+      exact: true,
+    })
+    .click();
+  await expect(
+    page.getByRole("heading", {
+      level: 2,
+      name: heT("app.team.import.done.title", { count: 1 }),
+    }),
+  ).toBeFocused();
+  await expect(undoTwo).toHaveCount(0);
+});
+
+test("the people import's twin says a refusal beside its press, and a failed taking back", async ({
+  page,
+}) => {
+  const i = he.app.team.import;
+  await page.goto(`${importTwin}?state=whatsapp&fail=import`);
+  const submit = page.getByRole("button", {
+    name: heT("app.team.import.submit", { count: 7 }),
+    exact: true,
+  });
+  await submit.click();
+  const refusal = page.getByRole("alert").filter({ hasText: i.errors.failed });
+  await expect(refusal).toBeVisible();
+  await expect(refusal).toBeInViewport();
+  await expect(submit).toBeFocused();
+  // Drawn after the lines, beside the press it answers, not under the title.
+  expect(
+    await refusal.evaluate((alert, title) => {
+      const preview = [...document.querySelectorAll("h2")].find(
+        (heading) => heading.textContent === title,
+      );
+      return Boolean(
+        preview &&
+          alert.compareDocumentPosition(preview) &
+            Node.DOCUMENT_POSITION_PRECEDING,
+      );
+    }, i.preview.title),
+  ).toBe(true);
+  // The same refusal again is a new alert, and the press has the focus back.
+  await refusal.evaluate((alert) => alert.setAttribute("data-first", ""));
+  await submit.click();
+  await expect(page.locator('[role="alert"][data-first]')).toHaveCount(0);
+  await expect(refusal).toHaveCount(1);
+  await expect(refusal).toBeInViewport();
+  await expect(submit).toBeFocused();
+
+  // Taken back and invited again while "ביטול" is up: the taking back goes
+  // first, and failing, its done card is back, and nothing more is invited.
+  await page.goto(`${importTwin}?state=whatsapp&fail=undo`);
+  await submit.click();
+  const title = page.getByRole("heading", {
+    level: 2,
+    name: heT("app.team.import.done.title", { count: 7 }),
+  });
+  await expect(title).toBeFocused();
+  const remove = page.getByRole("button", { name: i.done.remove, exact: true });
+  await remove.click();
+  await expect(
+    page.getByRole("button", {
+      name: undoNamed(heT("app.team.import.done.removed", { count: 7 })),
+    }),
+  ).toBeFocused();
+  await submit.click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: i.errors.removeFailed }),
+  ).toBeVisible();
+  await expect(title).toBeVisible();
+  await expect(remove).toBeFocused();
+  await expect(
+    page.getByRole("heading", {
+      level: 2,
+      name: heT("app.team.import.done.title", { count: 0 }),
+    }),
+  ).toHaveCount(0);
 });
 
 test("the people import's twin reads a sheet by its header, and a second paste of it", async ({

@@ -40,10 +40,14 @@ import { searchable } from "./wording";
  *                 typed by hand with its mobile in another place, is read as
  *                 free text.
  *   free text     the mobile among the runs of digits, which must start with
- *                 0, 972, +972 or 00972; a role at the line's end or start;
- *                 the rest the name. Every other run of 5 digits or more is
- *                 dropped. A name line followed by its number line, as
- *                 contacts copy, is one person.
+ *                 0, 972, +972 or 00972 (never read from the end of another
+ *                 country's number); a role at the line's end or start, a
+ *                 field of its own or after a name of two words; the rest
+ *                 the name. Every other number is dropped, but one or two
+ *                 digits right after the name's words ("דנה כהן 2"). A name
+ *                 line followed by its number line, as contacts copy, is
+ *                 one person. WhatsApp's time, date and sender before a
+ *                 message are no part of the list.
  *
  * Owners and accountants are invited one at a time, never from a list.
  * `againstTeam` then checks the paste against the team the page loaded: who
@@ -373,22 +377,38 @@ function roleRead(
 }
 
 /**
- * A role at the end of a line's words, else at its start ("מנהלת: דנה כהן"),
- * the longest run of words that is a role's name winning, and the words
- * left; null when neither end names one.
+ * A role at a line's end, else at its start, and the words left; null when
+ * neither end names one. A role is a field of its own, parted from the name
+ * by a separator, a colon or the number ("דנה כהן 050-… ניהול", "מנהלת: דנה
+ * כהן"), or the last words of a name that keeps two words at least ("דנה
+ * כהן ניהול 050-…"): a role named like a first name or a surname ("בר",
+ * "ברמן", "טבח") is never read off "בר כהן" or "דנה ברמן". A line that is a
+ * role's name and nothing else has no name.
  */
 function roleAtEnds(
-  words: readonly string[],
+  text: string,
   roles: RoleMatcher,
 ): { match: RoleMatch; words: string[] } | null {
-  const most = Math.min(roles.maxWords, words.length);
+  const fields = fieldsOf(text);
+  const wordsOf = (some: readonly string[]) =>
+    some.join(" ").split(" ").filter(Boolean);
+  const words = wordsOf(fields);
+  if (words.length <= roles.maxWords) {
+    const whole = roles.match(words.join(" "));
+    if (whole) return { match: whole, words: [] };
+  }
+  const first = fields[0];
+  const last = fields.at(-1);
+  if (fields.length > 1 && first !== undefined && last !== undefined) {
+    const atEnd = roles.match(last);
+    if (atEnd) return { match: atEnd, words: wordsOf(fields.slice(0, -1)) };
+    const atStart = roles.match(first);
+    if (atStart) return { match: atStart, words: wordsOf(fields.slice(1)) };
+  }
+  const most = Math.min(roles.maxWords, words.length - 2);
   for (let count = most; count >= 1; count--) {
     const match = roles.match(words.slice(-count).join(" "));
     if (match) return { match, words: words.slice(0, -count) };
-  }
-  for (let count = most; count >= 1; count--) {
-    const match = roles.match(words.slice(0, count).join(" "));
-    if (match) return { match, words: words.slice(count) };
   }
   return null;
 }
@@ -401,12 +421,30 @@ const EXCEL_NUMBER = /(?<![\p{L}\d.,])\d(?:[.,]\d+)?E\+\d+(?![\p{L}\d])/giu;
 const DIGITS = /\d/g;
 /**
  * A word that says what the number after it is ("ת.ז 123456782", "נייד:
- * 050…", "סלולרי: 050…", "מס' טלפון 050…", "Cell: 050…", "טל' 03…"): it
- * leaves the name with its number. "טל" alone is a name, so only with its
- * dot or geresh.
+ * 050…", "סלולרי: 050…", "מס' טלפון 050…", "Cell: 050…", "טל' 03…", "מס'
+ * עובד 12", "שכר 45"): it leaves the name with its number. "טל" alone is a
+ * name, so only with its dot or geresh.
  */
 const NUMBER_LABEL =
-  /(?<![\p{L}\d])(?:ת[."״]?ז\.?|תעודת זהות|מספר זהות|טל[.'׳]|(?:(?:מספר|מס[.'׳]?)\s?)?(?:טלפון|נייד|פלאפון|סלולרי|סלולארי)|id|tel|phone|mobile|cell)(?!\p{L})\s?[:.]?\s?(?=\+?\d)/giu;
+  /(?<![\p{L}\d])(?:ת[."״]?ז\.?|תעודת זהות|מספר זהות|טל[.'׳]|(?:(?:מספר|מס[.'׳]?)\s?)?(?:טלפון|נייד|פלאפון|סלולרי|סלולארי|עובד)|שכר(?: לשעה)?|id|tel|phone|mobile|cell|wage|salary)(?!\p{L})\s?[:.]?\s?(?=\+?\d)/giu;
+/** A passport's label, with the letters its number starts with ("דרכון PA1234567"). */
+const PASSPORT_LABEL =
+  /(?<![\p{L}\d])(?:(?:מספר|מס[.'׳]?)\s?)?(?:דרכון|passport)(?!\p{L})\s?[:.]?\s?[a-z]{0,2}(?=\d)/giu;
+/**
+ * A number outside a phone's run (`PHONE_RUN`): a digit alone, a sum
+ * ("8,500", "₪7,200"). Never one inside a word ("Anna2").
+ */
+const LONE_NUMBER = String.raw`(?<![\p{L}\d])[₪$€£]?\d+(?:[.,]\d+)*(?![\p{L}\d\-])`;
+const NUMBERS = new RegExp(`${PHONE_RUN.source}|${LONE_NUMBER}`, "gu");
+/**
+ * Where something was taken out of a text (a number, its label): a field of
+ * the line ends there, as at a separator (`fieldsOf`). Never typed.
+ */
+const TAKEN = "\u{E000}";
+/** The text without `TAKEN`'s marks. */
+const unmarked = (text: string) => text.replaceAll(TAKEN, " ");
+/** A word ends right before: a short number after it may be the name's ("דנה כהן 2"). */
+const AFTER_WORD = /[\p{L}\p{M}][.'"׳״]?[ ]{1,2}$/u;
 /** The most groups of digits a mobile is written in. */
 const MOBILE_PARTS = 6;
 const digitCount = (text: string) => text.match(DIGITS)?.length ?? 0;
@@ -433,7 +471,10 @@ type PhonesFound = {
   excel: boolean;
   /** A run of 7 digits or more that is no mobile: a landline, a foreign number, an ID. */
   other: boolean;
-  /** The text without the mobiles, Excel's numbers and every run of 5 digits or more. */
+  /**
+   * The text without the mobiles, Excel's numbers, the labels of numbers
+   * and every number that is not the name's, each marked `TAKEN`.
+   */
   rest: string;
   /** What was taken out, but the mobiles. */
   dropped: string[];
@@ -443,9 +484,15 @@ type PhonesFound = {
 
 /**
  * The mobiles in a text, and the text without them and without any other
- * run of 5 digits or more. A run that is no mobile as a whole is split on
+ * number but a name's own. A run that is no mobile as a whole is split on
  * its spaces, and the longest groups from its start are tried, so
- * "050-1234567 123456782" is a mobile and an ID beside it.
+ * "050-1234567 123456782" is a mobile and an ID beside it. A run that
+ * starts with another country's code ("+380 50 …", "+38 (050) …", "00380
+ * 50 …") is one foreign number, never an Israeli mobile read from its end,
+ * and Excel's dropped zero is read only from a cell's first group. A number
+ * of one or two digits right after the name's words, before the mobile,
+ * stays the name's ("דנה כהן 2"); any other, a wage, a year or an age in
+ * brackets, goes with the rest.
  */
 function findPhones(text: string, sheet: boolean): PhonesFound {
   const mobiles: string[] = [];
@@ -454,24 +501,56 @@ function findPhones(text: string, sheet: boolean): PhonesFound {
   let excel = false;
   let other = false;
   const withoutExcel = text
-    .replace(NUMBER_LABEL, " ")
+    .replace(NUMBER_LABEL, TAKEN)
+    .replace(PASSPORT_LABEL, TAKEN)
     .replace(EXCEL_NUMBER, (found) => {
       excel = true;
       dropped.push(found);
-      return " ";
+      return TAKEN;
     });
-  const rest = withoutExcel.replace(PHONE_RUN, (run) => {
-    if (digitCount(run) < 5) return run;
+  const rest = withoutExcel.replace(NUMBERS, (run: string, at: number) => {
     const parts = run.trim().split(/\s+/);
-    const kept: string[] = [];
+    const digits = run.replace(/\D/g, "");
+    const lead = (parts[0] ?? "").replace(/\D/g, "");
+    if (
+      (run.startsWith("+") && !digits.startsWith("972")) ||
+      (parts.length > 1 &&
+        lead.length <= 5 &&
+        lead.startsWith("00") &&
+        !digits.startsWith("00972"))
+    ) {
+      if (digits.length >= 7) other = true;
+      dropped.push(run.trim());
+      return ` ${TAKEN} `;
+    }
+    // Digits written into a word ("Anna2", "45ש״ח") stay with it.
+    const gluedBefore = LETTER.test(withoutExcel.charAt(at - 1));
+    const gluedAfter = LETTER.test(withoutExcel.charAt(at + run.length));
+    const afterWord = AFTER_WORD.test(
+      withoutExcel.slice(Math.max(0, at - 4), at),
+    );
+    const pieces: string[] = [];
     let loose: string[] = [];
-    const letGo = () => {
+    let looseFrom = 0;
+    const letGo = (end: number) => {
       if (loose.length === 0) return;
       const group = loose.join(" ");
       const count = digitCount(group);
       if (count >= 7) other = true;
-      if (count >= 5) dropped.push(group);
-      else kept.push(group);
+      const inWord =
+        (looseFrom === 0 && gluedBefore) ||
+        (end === parts.length && gluedAfter);
+      const names =
+        looseFrom === 0 &&
+        afterWord &&
+        mobiles.length === 0 &&
+        /^\d{1,2}$/.test(group);
+      if (count < 5 && (inWord || names)) {
+        pieces.push(group);
+      } else {
+        dropped.push(group);
+        pieces.push(TAKEN);
+      }
       loose = [];
     };
     let start = 0;
@@ -480,22 +559,29 @@ function findPhones(text: string, sheet: boolean): PhonesFound {
       // long run of digits costs no more than its length.
       let end = Math.min(parts.length, start + MOBILE_PARTS);
       let found: string | null = null;
-      for (; end > start; end--) {
-        found = mobileOf(parts.slice(start, end).join(" "), sheet);
-        if (found) break;
+      if (digits.length >= 9) {
+        for (; end > start; end--) {
+          found = mobileOf(
+            parts.slice(start, end).join(" "),
+            sheet && start === 0,
+          );
+          if (found) break;
+        }
       }
       if (found) {
-        letGo();
+        letGo(start);
         if (!mobiles.includes(found)) mobiles.push(found);
         written.push(parts.slice(start, end).join(" "));
+        pieces.push(TAKEN);
         start = end;
       } else {
+        if (loose.length === 0) looseFrom = start;
         loose.push(parts[start] ?? "");
         start++;
       }
     }
-    letGo();
-    return ` ${kept.join(" ")} `;
+    letGo(parts.length);
+    return ` ${pieces.join(" ")} `;
   });
   return { mobiles, excel, other, rest, dropped, written };
 }
@@ -747,6 +833,14 @@ const LOOSE_HEADERS: readonly (readonly [HeaderKind, RegExp])[] = [
   ["role", /תפקיד|role/u],
 ];
 
+/**
+ * A name in other words that is someone else's or something else's: a
+ * branch's, a department's, a manager's, a parent's, a user name, a role's
+ * ("שם הסניף", "שם מנהל", "שם האב", "Username", "שם תפקיד").
+ */
+const NOT_THE_PERSON =
+  /(?:^|\s)ה?(?:סניף|מחלקה|מנהל|מנהלת|אחראי|אחראית|אב|אם|הורה|משתמש|חברה|עסק|חנות|תפקיד)(?:\s|$)|user|branch|compan|department|manager|supervisor|father|mother|parent|business|store|shop|role/u;
+
 /** What a header's cell names exactly, as the header words are written. */
 function exactHeaderKind(cell: string): HeaderKind | null {
   return HEADER_WORDS.get(keyOf(cell)) ?? null;
@@ -757,7 +851,10 @@ function headerKindOf(cell: string): HeaderKind | null {
   const key = keyOf(cell);
   return (
     HEADER_WORDS.get(key) ??
-    LOOSE_HEADERS.find(([, test]) => test.test(key))?.[0] ??
+    LOOSE_HEADERS.find(
+      ([kind, test]) =>
+        test.test(key) && !(kind === "name" && NOT_THE_PERSON.test(key)),
+    )?.[0] ??
     null
   );
 }
@@ -874,11 +971,23 @@ function columnsOf(
         );
   if (typed && phoneHeaded.length === 0 && phones.length > 1) {
     // Typed by hand, a number in another place on a line or two is no
-    // column: the phone's column is filled on most lines.
+    // column: the phone's column is filled on most lines. One with a
+    // mobile beside the phone's on the same line is a column all the same
+    // (a parent's, filled on some lines), and is never guessed between.
     const full = phones.filter(
       (column) => filledIn(rows, column).length * 2 > rows.length,
     );
-    if (full.length > 0) phones = full;
+    const mobileAt = (row: Row, column: number) =>
+      isPhoneCell(row.cells[column] ?? "");
+    const beside = phones.some(
+      (column) =>
+        !full.includes(column) &&
+        rows.some(
+          (row) =>
+            mobileAt(row, column) && full.some((one) => mobileAt(row, one)),
+        ),
+    );
+    if (full.length > 0 && !beside) phones = full;
   }
   if (phones.length > 1) {
     return {
@@ -939,7 +1048,14 @@ function columnsOf(
   const nameHeaded = all.filter((column) => kindAt(column) === "name");
   const firstHeaded = all.filter((column) => kindAt(column) === "first");
   const lastHeaded = all.filter((column) => kindAt(column) === "last");
-  const [nameColumn] = nameHeaded;
+  // A name's header word exactly ("שם העובד", "Employee name") before one
+  // in other words, wherever each sits; and a first name's column before a
+  // name's header in other words.
+  const exactName = nameHeaded.filter(
+    (column) => exactHeaderKind(header?.cells[column] ?? "") === "name",
+  );
+  const nameColumn =
+    exactName[0] ?? (firstHeaded.length > 0 ? undefined : nameHeaded[0]);
   const [lastColumn] = lastHeaded;
   let name: number[];
   if (nameColumn !== undefined) {
@@ -979,7 +1095,8 @@ function columnsOf(
     };
     const [first, second] = text;
     // A second column of single words joins the name as its surname: one
-    // that varies, and sits before the phone's column if the first does.
+    // that varies, holds no digits ("45ש״ח"), and sits before the phone's
+    // column if the first does.
     name =
       first === undefined
         ? []
@@ -987,6 +1104,7 @@ function columnsOf(
             single(first) &&
             single(second) &&
             varied(second) &&
+            most(second, (cell) => !/\d/.test(cell)) &&
             !(first < phone && phone < second)
           ? [first, second]
           : [first];
@@ -1011,11 +1129,11 @@ function columnsOf(
 
 /**
  * The edges a name never keeps: separators, a list's marks, a colon, a
- * quote left by a cell that never closed it. A geresh at the end stays
- * ("ג׳ורג׳").
+ * quote left by a cell that never closed it, a slash or a currency's sign
+ * whose number went. A geresh at the end stays ("ג׳ורג׳").
  */
-const EDGE_START = /^[\s(:.,;|\-–—~*•·"״]+/u;
-const EDGE_END = /[\s(:,;|\-–—"]+$/u;
+const EDGE_START = /^[\s(:.,;|/\-–—~*•·"״₪$€£]+/u;
+const EDGE_END = /[\s(:,;|/\-–—"₪$€£]+$/u;
 
 /** A name without the punctuation at its edges; an initial keeps its dot ("שירן א."). */
 function trimName(text: string): string {
@@ -1046,17 +1164,33 @@ type Reading = {
   free: boolean;
 };
 
-/** A line read as free text: its cells, but those not read, joined. */
+/**
+ * A line's fields, as free text reads them: what a separator, a colon or
+ * something taken out (`TAKEN`) parts, each without its edges' marks.
+ */
+function fieldsOf(text: string): string[] {
+  return text
+    .replace(FREE_SEPARATORS, TAKEN)
+    .replace(/:/g, `:${TAKEN}`)
+    .split(TAKEN)
+    .map(trimName)
+    .filter(Boolean);
+}
+
+/**
+ * A line read as free text: its cells, but those not read, joined by a tab
+ * so a short number in a cell of its own is never the name's.
+ */
 function freeReading(
   text: string,
   roles: RoleMatcher,
   fallback: ImportRoleChoice,
 ): Reading {
   const found = findPhones(text, false);
-  const words = trimName(found.rest.replace(FREE_SEPARATORS, " "))
+  const words = trimName(unmarked(found.rest).replace(FREE_SEPARATORS, " "))
     .split(/\s+/)
     .filter(Boolean);
-  const atEnds = roleAtEnds(words, roles);
+  const atEnds = roleAtEnds(found.rest, roles);
   return {
     phone: phoneRead(found),
     nameText: trimName((atEnds?.words ?? words).join(" ")),
@@ -1085,7 +1219,7 @@ function columnReading(
   // is read from the phone's column only.
   const inName = findPhones(nameCells, false);
   const dropped = [...inName.written, ...inName.dropped];
-  const nameText = trimName(inName.rest);
+  const nameText = trimName(unmarked(inName.rest));
   if (columns.role !== null) {
     // A word that names no role of the business, as a job title in a
     // sheet's "תפקיד" ("קופאית"), is left out and said: the line gets the
@@ -1110,7 +1244,7 @@ function columnReading(
     };
   }
   const words = nameText.split(/\s+/).filter(Boolean);
-  const atEnds = roleAtEnds(words, roles);
+  const atEnds = roleAtEnds(inName.rest, roles);
   return {
     phone,
     nameText: trimName((atEnds?.words ?? words).join(" ")),
@@ -1228,12 +1362,38 @@ function pairs(
 // ---------------------------------------------------------------------------
 // The paste
 
-/** The non-empty lines, numbered from 1 as pasted, digits as 0–9. */
+/**
+ * A dash of another kind beside a digit, as a phone, WhatsApp or a word
+ * processor writes a number ("054‑710‑2201", "054–710–2201", "052−765"):
+ * read as "-". Only there, so a name's own dash stays.
+ */
+const DIGIT_DASH = /(?<=\d\s?)[\u{2010}-\u{2015}\u{2212}](?=\s?\d)/gu;
+const CLOCK = String.raw`\d{1,2}:\d{2}(?::\d{2})?(?:\s?[ap]\.?m\.?)?`;
+const DAY = String.raw`\d{1,4}[./-]\d{1,2}[./-]\d{1,4}`;
+/**
+ * What WhatsApp writes before each message when several are copied
+ * ("[10:15, 26.11.2026] אורי בן דוד: ") or a chat is exported
+ * ("26.11.2026, 10:15 - אורי בן דוד: "): the time, the date and who sent
+ * it, never a person of the list.
+ */
+const WHATSAPP_PREFIX = new RegExp(
+  String.raw`^(?:\[(?:${CLOCK},?\s${DAY}|${DAY},?\s${CLOCK})\]\s?|${DAY},?\s${CLOCK}\s[-–]\s)[^:]{1,80}?:\s`,
+  "iu",
+);
+
+/**
+ * The non-empty lines, numbered from 1 as pasted, digits as 0–9, every
+ * dash in a number "-", and WhatsApp's own words before a message gone.
+ */
 function rowsOf(input: string): { line: number; raw: string; text: string }[] {
-  return input.split(/\r?\n/).flatMap((raw, index) => {
-    const digits = westernDigits(raw);
-    const text = clean(digits);
-    return text ? [{ line: index + 1, raw: digits, text }] : [];
+  return input.split(/\r?\n/).flatMap((line, index) => {
+    const digits = westernDigits(line).replace(DIGIT_DASH, "-");
+    const cleaned = clean(digits);
+    // A message has no tab, so its line loses nothing to cleaning.
+    const prefix = digits.includes("\t") ? null : WHATSAPP_PREFIX.exec(cleaned);
+    const raw = prefix ? cleaned.slice(prefix[0].length) : digits;
+    const text = prefix ? clean(raw) : cleaned;
+    return text ? [{ line: index + 1, raw, text }] : [];
   });
 }
 
@@ -1268,11 +1428,15 @@ export function parsePeopleList(
     ...cellsOf(row.raw, delimiter),
   }));
 
-  // The header: a row naming its columns before any row with a mobile.
+  // The header: a row naming its columns before any row with a mobile. A
+  // sheet's title in its one cell may hold a contact's mobile ("איש קשר:
+  // 050-…"), and the search goes on past it.
   let headerAt = -1;
   if (delimiter !== "free") {
     for (const [index, row] of rows.entries()) {
-      if (holdsMobile(row)) break;
+      const title =
+        delimiter === "tab" && row.cells.filter(Boolean).length === 1;
+      if (holdsMobile(row) && !title) break;
       if (namesColumns(row)) {
         headerAt = index;
         break;
@@ -1326,7 +1490,7 @@ export function parsePeopleList(
               (_, column) =>
                 columns.kind !== "free" || !columns.skip.has(column),
             )
-            .join(" "),
+            .join("\t"),
           matcher,
           fallback,
         ),

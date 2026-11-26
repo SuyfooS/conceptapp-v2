@@ -11,7 +11,9 @@ import { demoNamedRole, teamInvites, teamMembers, teamToday } from "../../data";
 import { againInvites, againMembers, importPastes } from "./data";
 import { ImportTwin } from "./import-twin";
 
-type Props = { searchParams: Promise<{ state?: string }> };
+type Props = {
+  searchParams: Promise<{ state?: string; fail?: string }>;
+};
 
 const STATES = [
   "empty",
@@ -34,8 +36,9 @@ type State = (typeof STATES)[number];
 // own line left out and a heading block to remove at once; ?state=again the
 // sheet a second time, its invites waiting, sent or joined since;
 // ?state=tooMany 320 people; ?state=done the WhatsApp list imported;
-// ?state=removed and taken back, "ביטול" still offered. Everything is read
-// on the device, and the stand-ins write nothing anywhere (./import-twin).
+// ?state=removed and taken back, "ביטול" still offered. &fail=import makes
+// the import refuse, &fail=undo its taking back. Everything is read on the
+// device, and the stand-ins write nothing anywhere (./import-twin).
 export default function ShellTeamImport({ searchParams }: Props) {
   return (
     <Suspense>
@@ -45,7 +48,8 @@ export default function ShellTeamImport({ searchParams }: Props) {
 }
 
 async function Demo({ searchParams }: Props) {
-  const { state: asked } = await searchParams;
+  const { state: asked, fail: failing } = await searchParams;
+  const fail = failing === "import" || failing === "undo" ? failing : undefined;
   const state: State = STATES.includes(asked as State)
     ? (asked as State)
     : "empty";
@@ -91,11 +95,12 @@ async function Demo({ searchParams }: Props) {
   return (
     <ImportTwin
       // A state of its own each, so a link from one to another starts afresh.
-      key={state}
+      key={`${state}:${fail ?? ""}`}
       roles={roles}
       known={known}
       initialPaste={paste}
       startAt={state === "done" || state === "removed" ? state : undefined}
+      fail={fail}
     />
   );
 }

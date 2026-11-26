@@ -177,6 +177,41 @@ describe("parsePeopleList: a list from WhatsApp", () => {
     ]);
   });
 
+  it("leaves out WhatsApp's time, date and sender before each message copied or exported", () => {
+    for (const lines of [
+      [
+        "[10:15, 26.11.2026] אורי בן דוד: דנה כהן 054-710-2201",
+        "[10:16, 26.11.2026] אורי בן דוד: יוסי לוי 052-765-4321",
+      ],
+      [
+        "26.11.2026, 10:15 - אורי בן דוד: דנה כהן 054-710-2201",
+        "26.11.2026, 10:16 - אורי בן דוד: יוסי לוי 052-765-4321",
+      ],
+      [
+        "[26/11/2026, 10:15:32] Uri: דנה כהן 054-710-2201",
+        "11/26/26, 10:16 PM - Uri: יוסי לוי 052-765-4321",
+      ],
+      // A message of many lines carries it on its first line only.
+      [
+        "[10:15, 26.11.2026] אורי בן דוד: דנה כהן 054-710-2201",
+        "יוסי לוי 052-765-4321",
+      ],
+    ]) {
+      const parsed = parse(lines.join("\n"));
+      expect(parsed.error).toBeNull();
+      expect(
+        people(parsed).map((line) => [line.person.name, line.dropped]),
+      ).toEqual([
+        ["דנה כהן", []],
+        ["יוסי לוי", []],
+      ]);
+    }
+    // The sender's number is never the person's.
+    expect(
+      problems(parse("[10:15, 26/11/2026] +972 50-123-4567: דנה כהן")),
+    ).toEqual([[1, "noPhone"]]);
+  });
+
   it("chooses the cells from most lines, never from a title line first", () => {
     const parsed = parse(
       [
@@ -288,6 +323,78 @@ describe("parsePeopleList: phones as typed", () => {
     );
     expect(problems(parsed)).toEqual([[1, "twoPhones"]]);
     expect(persons(parsed)).toHaveLength(1);
+  });
+
+  it("never reads an Israeli mobile from the end of a foreign number", () => {
+    for (const number of [
+      "+380 50 123 4567",
+      "+38 (050) 123-45-67",
+      "+38 050 123 45 67",
+      "+380 (0)50 123 45 67",
+      "+995 555 12 34 56",
+      "+994 50 123 45 67",
+      "+33 5 12 34 56 78",
+      "00380 50 123 4567",
+    ]) {
+      // In a sheet's phone column, where Excel's dropped zero is read.
+      const sheet = parse(`שם\tנייד\nОлена Петренко\t${number}`);
+      expect(problems(sheet)).toEqual([[2, "invalidPhone"]]);
+      // Without a header, and in free text, where the name keeps nothing of it.
+      expect(problems(parse(`Олена Петренко\t${number}`))).toEqual([
+        [1, "invalidPhone"],
+      ]);
+      const free = parse(`Олена Петренко ${number}`);
+      expect(problems(free)).toEqual([[1, "invalidPhone"]]);
+      expect(free.lines[0]?.dropped).toEqual([number]);
+    }
+    // Excel's dropped zero only from a cell's first group.
+    expect(problems(parse("שם\tנייד\nדנה\t380 50 123 4567"))).toEqual([
+      [2, "invalidPhone"],
+    ]);
+    // Israel's own code, written either way, still reads.
+    expect(only(parse("דנה כהן 00 972 50 123 4567")).person.phone).toBe(
+      "+972501234567",
+    );
+    expect(
+      only(parse("שם\tנייד\nדנה כהן\t+972 50 123 4567")).person.phone,
+    ).toBe("+972501234567");
+  });
+
+  it("reads a mobile written with any dash, and keeps a name's own", () => {
+    const NB_HYPHEN = String.fromCodePoint(0x2011);
+    const LRE = String.fromCodePoint(0x202a);
+    const PDF = String.fromCodePoint(0x202c);
+    expect(
+      only(parse(`דנה כהן: ${LRE}+972 54${NB_HYPHEN}710${NB_HYPHEN}2201${PDF}`))
+        .person.phone,
+    ).toBe("+972547102201");
+    for (const dash of [0x2010, 0x2012, 0x2013, 0x2014, 0x2212]) {
+      const mark = String.fromCodePoint(dash);
+      expect(only(parse(`דנה כהן 054${mark}710${mark}2201`)).person.phone).toBe(
+        "+972547102201",
+      );
+      expect(only(parse(`דנה כהן 054 ${mark} 7102201`)).person.phone).toBe(
+        "+972547102201",
+      );
+    }
+    const contacts = parse(
+      [
+        "דנה כהן",
+        `054${NB_HYPHEN}710${NB_HYPHEN}2201`,
+        "יוסי לוי",
+        `052${NB_HYPHEN}765${NB_HYPHEN}4321`,
+      ].join("\n"),
+    );
+    expect(
+      persons(contacts).map((person) => [person.name, person.phone]),
+    ).toEqual([
+      ["דנה כהן", "+972547102201"],
+      ["יוסי לוי", "+972527654321"],
+    ]);
+    const EN_DASH = String.fromCodePoint(0x2013);
+    expect(only(parse(`Jean${EN_DASH}Pierre 050-123-4567`)).person.name).toBe(
+      `Jean${EN_DASH}Pierre`,
+    );
   });
 });
 
@@ -589,6 +696,108 @@ describe("parsePeopleList: a sheet", () => {
     ]);
   });
 
+  it("finds the header under a sheet's title holding a contact's mobile", () => {
+    for (const title of [
+      "רשימת עובדים - איש קשר: 050-9999999",
+      "סופר השכונה, איש קשר: אורי 052-1234567",
+    ]) {
+      const parsed = parse(
+        [
+          title,
+          "",
+          "שם\tנייד",
+          "דנה כהן\t0501234567",
+          "יוסי לוי\t0527654321",
+        ].join("\n"),
+      );
+      expect(parsed.error).toBeNull();
+      expect(parsed.lines.map((line) => [line.line, line.kind])).toEqual([
+        [1, "title"],
+        [3, "header"],
+        [4, "person"],
+        [5, "person"],
+      ]);
+      expect(persons(parsed).map((person) => person.phone)).toEqual([
+        "+972501234567",
+        "+972527654321",
+      ]);
+    }
+    // A row of cells with a mobile still ends the search: no header under it.
+    const rows = parse(
+      ["דנה כהן\t050-123-4567", "שם\tנייד", "יוסי לוי\t052-765-4321"].join(
+        "\n",
+      ),
+    );
+    expect(rows.header).toBe(false);
+  });
+
+  it("takes the person's name column, never one that names a branch, a department, a manager, a father or a user", () => {
+    const sheet = (...rows: string[][]) =>
+      parse(rows.map((cells) => cells.join("\t")).join("\n"));
+    const names = (parsed: ParsedPeople) =>
+      persons(parsed).map((person) => person.name);
+    for (const [other, name] of [
+      ["שם הסניף", "שם העובד"],
+      ["Branch name", "Employee name"],
+      ["שם מנהל", "שם עובד"],
+      ["שם מחלקה", "שם עובד"],
+      ["Username", "Name"],
+      ["שם הסניף", "שם העובד המלא"],
+    ] as const) {
+      // Before the person's name column and after it.
+      const before = sheet(
+        [other, name, "נייד"],
+        ["תל אביב", "דנה כהן", "050-123-4567"],
+        ["חיפה", "יוסי לוי", "052-765-4321"],
+      );
+      const after = sheet(
+        [name, other, "נייד"],
+        ["דנה כהן", "תל אביב", "050-123-4567"],
+        ["יוסי לוי", "חיפה", "052-765-4321"],
+      );
+      for (const parsed of [before, after]) {
+        expect(names(parsed)).toEqual(["דנה כהן", "יוסי לוי"]);
+        expect(parsed.ignored).toEqual([{ header: other }]);
+      }
+    }
+    // A father's name beside first and last names, which are joined.
+    const father = sheet(
+      ["שם פרטי", "שם משפחה", "שם האב", "נייד"],
+      ["דנה", "כהן", "משה", "050-123-4567"],
+      ["יוסי", "לוי", "דוד", "052-765-4321"],
+    );
+    expect(names(father)).toEqual(["דנה כהן", "יוסי לוי"]);
+    expect(father.ignored).toEqual([{ header: "שם האב" }]);
+    // A role's name is the role column: its job titles left out.
+    const role = sheet(
+      ["שם פרטי", "שם משפחה", "שם תפקיד", "נייד"],
+      ["דנה", "כהן", "קופאית", "050-123-4567"],
+      ["יוסי", "לוי", "ניהול", "052-765-4321"],
+    );
+    expect(
+      people(role).map((line) => [
+        line.person.name,
+        line.person.role,
+        line.dropped,
+      ]),
+    ).toEqual([
+      ["דנה כהן", "worker", ["קופאית"]],
+      ["יוסי לוי", "manager", []],
+    ]);
+    expect(role.ignored).toEqual([]);
+  });
+
+  it("never joins a column of sums to first names", () => {
+    const parsed = parse(
+      ['דנה\t45ש"ח\t050-123-4567', 'יוסי\t38ש"ח\t052-765-4321'].join("\n"),
+    );
+    expect(persons(parsed).map((person) => person.name)).toEqual([
+      "דנה",
+      "יוסי",
+    ]);
+    expect(parsed.ignored).toEqual([{ column: 2 }]);
+  });
+
   it("never takes a first line for the header for its name טל", () => {
     for (const lines of [
       ["טל, 03-1234567", "דנה כהן, 050-123-4567", "יוסי לוי, 052-765-4321"],
@@ -736,6 +945,20 @@ describe("parsePeopleList: CSV", () => {
     expect(problems(id)).toEqual([[3, "noPhone"]]);
   });
 
+  it("never takes a person's phone from a second column of mobiles filled on some lines", () => {
+    const parsed = parse(
+      [
+        "דנה כהן, 050-1111111, 052-9999991",
+        "יוסי לוי, 050-2222222,",
+        "מיכל אברהם, , 052-9999993",
+        "רון גל, 050-4444444,",
+        "שירה בר, 050-5555555,",
+      ].join("\n"),
+    );
+    expect(parsed.error).toBe("phoneColumns");
+    expect(parsed.lines).toEqual([]);
+  });
+
   it("chooses ; over , when more lines hold it", () => {
     const parsed = parse(
       [
@@ -845,6 +1068,45 @@ describe("parsePeopleList: free text", () => {
     const line = only(parse("דנה כהן 2 050-123-4567 1.1.2020 12345"));
     expect(line.person.name).toBe("דנה כהן 2");
     expect(line.dropped).toEqual(["1.1.2020 12345"]);
+  });
+
+  it("drops a wage, a year, an age and an ID's check digit, never keeping them in the name", () => {
+    for (const [text, name, dropped] of [
+      ["דנה כהן 050-1234567 45", "דנה כהן", ["45"]],
+      ["דנה כהן 050-1234567 2", "דנה כהן", ["2"]],
+      ["דנה כהן 054-1112233 38.5", "דנה כהן", ["38.5"]],
+      ["דנה כהן 052-7654321 ₪7.200", "דנה כהן", ["₪7.200"]],
+      ["דנה כהן 0501234567 שכר 45", "דנה כהן", ["45"]],
+      ["דנה כהן 1990 050-1234567", "דנה כהן", ["1990"]],
+      ["דנה כהן מס' עובד 12 050-1234567", "דנה כהן", ["12"]],
+      ["דנה כהן (17) 050-1234567", "דנה כהן", ["17)"]],
+      ["דנה כהן ת.ז 12345678/2 050-1234567", "דנה כהן", ["12345678", "2"]],
+      ["דנה כהן דרכון PA1234567 050-1234567", "דנה כהן", ["1234567"]],
+      ["Dana Cohen passport: X1234567 050-1234567", "Dana Cohen", ["1234567"]],
+    ] as const) {
+      const line = only(parse(text));
+      expect(line.person.name, text).toBe(name);
+      expect(line.dropped, text).toEqual(dropped);
+    }
+    // A line typed by hand, alone or among others read by their cells.
+    for (const text of [
+      "יוסי לוי, 123456782, 052-7654321, 38",
+      "יוסי לוי | 123456782 | 052-7654321 | 38",
+    ]) {
+      expect(only(parse(text)).person.name).toBe("יוסי לוי");
+    }
+    const typed = parse(
+      [
+        "דנה, 052-1111111, 40",
+        "יוסי לוי, 24, 052-2222222",
+        "מיכל, 052-3333333, 30",
+      ].join("\n"),
+    );
+    expect(persons(typed).map((person) => person.name)).toEqual([
+      "דנה",
+      "יוסי לוי",
+      "מיכל",
+    ]);
   });
 });
 
@@ -1029,6 +1291,55 @@ describe("parsePeopleList: roles", () => {
     expect(only(parse("דנה כהן קופאית 050-123-4567")).person.name).toBe(
       "דנה כהן קופאית",
     );
+  });
+
+  it("never reads a role named like a first name or a surname off a name", () => {
+    const named = (id: string, name: string, base: "manager" | "worker") => ({
+      id: `6a0e4f1c-6c51-4d8e-9a7b-2f0f6c1d3e${id}`,
+      name,
+      nameEn: null,
+      base,
+      holds: [],
+    });
+    const roles = rolesFor(
+      { role: "owner", perms: [] },
+      {
+        named: [
+          named("11", "בר", "manager"),
+          named("12", "ברמן", "worker"),
+          named("13", "טבח", "manager"),
+        ],
+      },
+    );
+    for (const [text, name] of [
+      ["בר כהן 054-710-2201", "בר כהן"],
+      ["בר כהן\t054-710-2201", "בר כהן"],
+      ["דנה ברמן 054-710-2201", "דנה ברמן"],
+      ["יוסי טבח 054-710-2201", "יוסי טבח"],
+      ["יוסי טבח, 054-710-2201", "יוסי טבח"],
+      ["שירה בר, 054-710-2201", "שירה בר"],
+    ] as const) {
+      const line = only(parse(text, roles));
+      expect([line.person.name, line.person.roleFromLine], text).toEqual([
+        name,
+        false,
+      ]);
+    }
+    // Parted from the name, or after a name of two words, it is the role.
+    for (const text of [
+      "דנה 054-710-2201 בר",
+      "בר: דנה כהן 054-710-2201",
+      "דנה כהן בר 054-710-2201",
+      "דנה כהן, 054-710-2201, טבח",
+    ]) {
+      const line = only(parse(text, roles));
+      expect(
+        [line.person.role, line.person.roleFromLine, line.notes],
+        text,
+      ).toEqual(["manager", true, []]);
+    }
+    // A role's name and a number, and nothing else, is no name.
+    expect(problems(parse("ניהול 050-123-4567"))).toEqual([[1, "noName"]]);
   });
 
   it("gives a line with no role the list's role, not from the line", () => {
@@ -1522,6 +1833,10 @@ describe("peopleImportRows", () => {
       [{ ...row, phone: "0501234567" }],
       [{ ...row, role: "owner" }],
       [{ ...row, namedRole: "shift-lead" }],
+      // Nothing more than the screen read leaves the device.
+      [{ ...row, text: "דנה כהן 050-123-4567 123456782" }],
+      [{ ...row, dropped: ["123456782"] }],
+      [{ ...row, line: 1 }],
       [row, { ...row, name: "יוסי לוי" }],
       [],
       Array.from({ length: PEOPLE_IMPORT_MAX + 1 }, (_, i) => ({

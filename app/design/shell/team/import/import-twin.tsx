@@ -24,17 +24,20 @@ const wait = () => new Promise((done) => setTimeout(done, WAIT_MS));
  * with an invite still unsent, the twin's or one an import made, is
  * updated, any other is made. Taking it back cancels what it made, so an
  * import that goes before the undo of the last finds those still waiting.
+ * `fail` makes the import, or its taking back, refuse as a real one may.
  */
 export function ImportTwin({
   roles,
   known,
   initialPaste,
   startAt,
+  fail,
 }: {
   roles: ImportRoles;
   known: KnownTeam;
   initialPaste: string;
   startAt?: PeopleImportViewProps["startAt"];
+  fail?: "import" | "undo";
 }) {
   const t = useTranslations("app.team.import");
   /** The numbers whose invite waits with no link yet, kept as the database keeps them. */
@@ -51,6 +54,7 @@ export function ImportTwin({
   const imports = useRef(0);
   const importPeople: ImportPeople = async (people) => {
     await wait();
+    if (fail === "import") return { ok: false, failure: "failed" };
     const rows = people.map((person, index) => ({
       i: index + 1,
       status: unsent.has(person.phone)
@@ -70,6 +74,7 @@ export function ImportTwin({
   };
   const undoImport: UndoPeopleImport = async (importId) => {
     await wait();
+    if (fail === "undo") return { ok: false, failure: "failed" };
     const phones = made.get(importId) ?? [];
     made.delete(importId);
     for (const phone of phones) unsent.delete(phone);

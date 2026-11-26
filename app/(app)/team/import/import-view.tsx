@@ -18,7 +18,7 @@ import { Card } from "@ui/card";
 import { ChoiceList, ChoiceRow } from "@ui/choice-row";
 import { cn } from "@ui/cn";
 import { FloatingAction, floatingButtonClass } from "@ui/floating-action";
-import { focusFirst } from "@ui/focus-after";
+import { arrived, type FocusCandidate, focusFirst } from "@ui/focus-after";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
 import { StatusToast } from "@ui/status-toast";
@@ -172,14 +172,25 @@ export function PeopleImportView({
     text: string;
     stamp: number;
     before: string;
+    /** The lines it took out, numbered as they were. */
+    spans: LineSpan[];
   } | null>(null);
 
   const field = useRef<HTMLTextAreaElement>(null);
   const submit = useRef<HTMLButtonElement>(null);
   const doneHeading = useRef<HTMLHeadingElement>(null);
+  const previewHeading = useRef<HTMLHeadingElement>(null);
+  const refusal = useRef<HTMLParagraphElement>(null);
   /** Where the focus goes as the done card shows: its title, or "מחיקת ההזמנות". */
   const doneFocus = useRef<"title" | "remove" | null>(null);
+  /**
+   * A removal's "ביטול" brought its lines back: the button that took them
+   * out takes the focus once their rows are drawn again.
+   */
+  const restored = useRef<FocusCandidate>(null);
   const edited = useRef(false);
+  /** The counts as last said (`summary`), so the same are never said again. */
+  const said = useRef<string | null>(null);
 
   // The import taken back, held for "ביטול" as a deleted invite is. Only
   // its invites with no link yet go; failing, the done card comes back. It
@@ -200,6 +211,12 @@ export function PeopleImportView({
         return false;
       }
       setRemoved({ done: was, kept: result.kept });
+      // Drawn under the field, where nothing reads it out: said once.
+      if (result.kept > 0) {
+        announce(t("done.removedKept", { count: result.kept }), {
+          lang: locale,
+        });
+      }
       return true;
     },
   );
@@ -247,6 +264,8 @@ export function PeopleImportView({
     setFailure(null);
     setRemoved(null);
     setUndoFailed(0);
+    // A line's removal is no longer to take back: its "ביטול" goes with it.
+    setToast(null);
     doneFocus.current = "title";
     setDone({
       importId: result.importId,
@@ -267,6 +286,7 @@ export function PeopleImportView({
     if (!done?.importId) return;
     setRemoved({ done, kept: null });
     setDone(null);
+    setToast(null);
     held.hold({ importId: done.importId, done });
   }
 
@@ -282,7 +302,9 @@ export function PeopleImportView({
     setDone(null);
     setRemoved(null);
     setPaste("");
+    setToast(null);
     edited.current = false;
+    said.current = null;
     requestAnimationFrame(() => field.current?.focus());
   }
 
@@ -301,11 +323,24 @@ export function PeopleImportView({
   }, [done]);
 
   // A refusal: the press lost the focus to its spinner, and takes it back,
-  // where the refusal is read above it.
-  const answer = failure?.answer ?? 0;
+  // where the refusal is read above it, brought into view (on a phone the
+  // press floats, and the page stays where it was). Only as it arrives: a
+  // screen shown again from its <Activity> runs this again with the same.
+  const seenFailure = useRef<typeof failure>(null);
   useLayoutEffect(() => {
-    if (answer > 0) focusFirst([submit.current], { title: false });
-  }, [answer]);
+    if (!arrived(seenFailure, failure)) return;
+    refusal.current?.scrollIntoView({ block: "center" });
+    focusFirst([submit.current], { title: false });
+  }, [failure]);
+
+  // A removal taken back: the button that took the lines out has the focus
+  // again, once their rows are drawn from the text as it is now.
+  useLayoutEffect(() => {
+    const to = restored.current;
+    if (!to || read !== paste) return;
+    restored.current = null;
+    focusFirst([to, previewHeading.current, field.current]);
+  }, [read, paste]);
 
   // The twin's states after an import, run once with its stand-ins.
   const started = useRef(false);
@@ -380,7 +415,7 @@ export function PeopleImportView({
               ltr: isolate,
             })
           : t.markup("removed", { line: one.line, ltr: isolate });
-    setToast({ text, stamp: Date.now(), before });
+    setToast({ text, stamp: Date.now(), before, spans });
     setPaste(withoutLines(before, spans));
     setFailure(null);
   }
@@ -426,12 +461,15 @@ export function PeopleImportView({
     ? t("summary.update", { count: check.send.length })
     : t("summary.ready", { count: check.send.length });
   const summary = [readyWords, status].filter(Boolean).join(". ");
+  // Said only when it changed since it was last said: never again for an
+  // import taken back, or a screen shown again from its <Activity>, with
+  // the same counts.
   useEffect(() => {
-    if (!edited.current || done) return;
-    const later = setTimeout(
-      () => announce(summary, { lang: locale }),
-      SAY_AFTER_MS,
-    );
+    if (!edited.current || done || said.current === summary) return;
+    const later = setTimeout(() => {
+      said.current = summary;
+      announce(summary, { lang: locale });
+    }, SAY_AFTER_MS);
     return () => clearTimeout(later);
   }, [summary, done, locale]);
 
@@ -487,6 +525,13 @@ export function PeopleImportView({
             ? {
                 label: t("undoRemove"),
                 onClick: () => {
+                  // Where the person was: the line's "הסרת השורה", or
+                  // "הסרת # השורות בלי מספר נייד", drawn again (above).
+                  const [one] = toast.spans;
+                  restored.current =
+                    toast.spans.length > 1
+                      ? "[data-remove-no-phone]"
+                      : `[data-remove-line="${one?.line ?? 0}"]`;
                   setPaste(toast.before);
                   setToast(null);
                 },
@@ -494,19 +539,24 @@ export function PeopleImportView({
             : null
         }
         focusAction
-        onFocusLeave={() => field.current?.focus({ preventScroll: true })}
+        onFocusLeave={() => {
+          // Taken back: its lines' own button takes the focus (above).
+          if (restored.current) return;
+          // Its time up: the line now in the removed one's place, else the
+          // preview's title, or the done card's once an import is done.
+          const at = toast?.spans[0]?.line;
+          focusFirst([
+            at !== undefined ? `[data-remove-line="${at}"]` : null,
+            previewHeading.current,
+            doneHeading.current,
+          ]);
+        }}
       />
       <PageHeader
         back={paths.back}
         title={t("title")}
         subtitle={t("subtitle")}
       />
-      {failure ? (
-        // Drawn anew for each answer, so the same refusal again is heard.
-        <p key={failure.answer} role="alert" className="px-1 text-danger">
-          {failureWords()}
-        </p>
-      ) : null}
       {done && undoFailed > 0 ? (
         <p key={undoFailed} role="alert" className="px-1 text-danger">
           {t("errors.removeFailed")}
@@ -587,7 +637,11 @@ export function PeopleImportView({
             </p>
           )}
           <div className="grid gap-6 md:grid-cols-2 md:items-start md:gap-8 xl:grid-cols-[24rem_minmax(0,1fr)]">
-            <div className="flex min-w-0 flex-col gap-6 md:sticky md:top-20 xl:top-8">
+            <div
+              // Stuck beside the lines, it scrolls on its own when taller
+              // than the screen, so the field it focuses comes into view.
+              className="flex min-w-0 flex-col gap-6 md:sticky md:top-20 md:-mx-1 md:max-h-[calc(100dvh-env(safe-area-inset-bottom)-13.5rem)] md:overflow-y-auto md:px-1 md:pb-4 xl:top-8 xl:max-h-[calc(100dvh-4rem)]"
+            >
               <div className="flex flex-col gap-2">
                 <ChoiceList legend={t("role.label")}>
                   {roles.choices.map((choice) => {
@@ -659,7 +713,10 @@ export function PeopleImportView({
               </div>
             </div>
             <div className="flex min-w-0 flex-col gap-4">
-              <PageSection title={t("preview.title")}>
+              <PageSection
+                title={t("preview.title")}
+                headingRef={previewHeading}
+              >
                 {empty ? (
                   <p className="rounded-card bg-surface px-4 py-3.5 text-ink-2 shadow-card">
                     {t("preview.empty")}
@@ -726,6 +783,18 @@ export function PeopleImportView({
                   </div>
                 )}
               </PageSection>
+              {failure ? (
+                // Beside the press it answers, drawn anew for each answer,
+                // so the same refusal again is heard.
+                <p
+                  key={failure.answer}
+                  ref={refusal}
+                  role="alert"
+                  className="px-1 text-danger"
+                >
+                  {failureWords()}
+                </p>
+              ) : null}
               {status ? (
                 <p id={statusId} className="px-1 font-medium">
                   {blocked === "tooMany"

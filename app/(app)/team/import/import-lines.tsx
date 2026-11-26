@@ -243,6 +243,8 @@ function FixButtons({
       <Button
         variant="ghost"
         aria-label={t("removeLineFor", { line: name })}
+        // Found again by its line once a removal is taken back.
+        data-remove-line={span.line}
         onClick={() => actions.remove(span)}
       >
         {t("removeLine")}
@@ -368,6 +370,7 @@ function RemoveNoPhone({
     <Button
       variant="secondary"
       className="self-start"
+      data-remove-no-phone=""
       onClick={() =>
         remove(noPhone.map((line) => ({ line: line.line, last: line.last })))
       }
