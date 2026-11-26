@@ -42,7 +42,12 @@ export type PeopleImportStatus = (typeof PEOPLE_IMPORT_STATUSES)[number];
 export type PeopleImportRow = {
   i: number;
   status: PeopleImportStatus;
-  /** The invite it is now, or was left as; null for a member's number. */
+  /**
+   * The invite it is now, or was left as. Null for a member's number, and
+   * for an `invited` row whose new invite met a single invite to the number
+   * made at the same moment (`on conflict … do nothing`): the import never
+   * reads that one's id, so find it by the number.
+   */
   invite: string | null;
 };
 
@@ -210,9 +215,12 @@ async function importPeople(
  * Someone who edits the team invites a list to their business from the Team
  * screen (`public.team_import_people`), giving by their own role: team.edit,
  * the rank rule, and for anyone but an owner no role that sees pay or holds
- * what they don't, as one invite asks. The rows are `againstTeam`'s `send`,
- * parsed again here (`peopleImportRows`). Never says where else a number
- * works (#80).
+ * what they don't, as one invite asks. The rows are what the screen sends:
+ * `againstTeam`'s `send` without each one's `line`
+ * (`send.map(({ line: _line, ...person }) => person)`), parsed again here
+ * (`peopleImportRows`, strict objects): a row with any other key, `line` too,
+ * is `changed`, and nothing is asked. Never says where else a number works
+ * (#80).
  */
 export function importPeopleToTeam(
   actorId: string,
@@ -226,7 +234,8 @@ export function importPeopleToTeam(
  * The ConceptApp team invites a list to a business from the console
  * (`public.admin_import_people`), giving as an owner, as one invite from the
  * console does; a number on another business's staff refuses it all
- * (`elsewhere`, with the rows).
+ * (`elsewhere`, with the rows). The rows as `importPeopleToTeam` takes them,
+ * with no `line`.
  */
 export function importPeopleFromConsole(
   actorId: string,

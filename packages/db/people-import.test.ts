@@ -23,20 +23,33 @@ const db = vi.hoisted(() => ({
   answer: { data: null as unknown, error: null as Failure | null },
   calls: [] as { fn: string; args: Record<string, unknown> }[],
   rows: {} as Record<string, Row[]>,
-  /** Each table read, with the columns it named. */
-  reads: [] as { table: string; columns: string }[],
+  /** Each table read, with the columns it named and how it was narrowed. */
+  reads: [] as {
+    table: string;
+    columns: string;
+    filters: Record<string, unknown>;
+  }[],
 }));
 
-/** A read of `table`, as PostgREST answers it: every row seeded, one page. */
+/**
+ * A read of `table`, as PostgREST answers it: every row seeded, one page,
+ * whatever it was narrowed by; each filter recorded as `column op`.
+ */
 function read(table: string) {
+  const asked = { table, columns: "", filters: {} as Record<string, unknown> };
+  const narrow = (op: string) => (column: string, value: unknown) => {
+    asked.filters[`${column} ${op}`] = value;
+    return builder;
+  };
   const builder = {
     select: (columns: string) => {
-      db.reads.push({ table, columns });
+      asked.columns = columns;
+      db.reads.push(asked);
       return builder;
     },
-    eq: () => builder,
-    is: () => builder,
-    in: () => builder,
+    eq: narrow("="),
+    is: narrow("is"),
+    in: narrow("in"),
     order: () => builder,
     range: () => builder,
     // biome-ignore lint/suspicious/noThenProperty: a stand-in for the query builder, which is awaited.
@@ -219,17 +232,17 @@ describe("importPeopleToTeam", () => {
   });
 
   it("reads an answer that made nothing, with no import to take back", async () => {
-    db.answer = {
-      data: {
-        import: null,
-        rows: [{ i: 1, status: "member", invite: null }],
-      },
-      error: null,
-    };
-    expect(await importPeopleToTeam(ACTOR, BUSINESS, [dana])).toEqual({
+    // A member's number, and one a single invite took at the same moment:
+    // `invited`, with no invite id, since the import never read that one's.
+    const rows = [
+      { i: 1, status: "member", invite: null },
+      { i: 2, status: "invited", invite: null },
+    ];
+    db.answer = { data: { import: null, rows }, error: null };
+    expect(await importPeopleToTeam(ACTOR, BUSINESS, [dana, yossi])).toEqual({
       ok: true,
       importId: null,
-      rows: [{ i: 1, status: "member", invite: null }],
+      rows,
     });
   });
 
@@ -240,6 +253,8 @@ describe("importPeopleToTeam", () => {
       [{ ...dana, phone: "+97231234567" }],
       [{ ...dana, role: "owner" }],
       [dana, { ...yossi, phone: dana.phone }],
+      // `againstTeam`'s `send` as it is: each row still has its `line`.
+      [{ ...dana, line: 1 }],
       Array.from({ length: 301 }, (_, n) => ({
         ...dana,
         phone: `+9725000${String(n).padStart(5, "0")}`,
@@ -458,11 +473,33 @@ describe("consoleKnownTeam", () => {
     ]);
     // Waiting: every invite with no link yet, and none expired with one.
     expect(known.waiting).toBe(5);
-    expect(db.reads.map((one) => one.table).sort()).toEqual([
-      "business_roles",
-      "invites",
-      "member_names",
-      "memberships",
+    // The stand-in answers every row seeded, so what decides `touchable` and
+    // who is a member is each read's own narrowing: this business only, its
+    // active members, its invites nobody claimed, its live roles.
+    expect(
+      [...db.reads].sort((a, b) => a.table.localeCompare(b.table)),
+    ).toEqual([
+      {
+        table: "business_roles",
+        columns: "id",
+        filters: { "business_id =": BUSINESS, "archived_at is": null },
+      },
+      {
+        table: "invites",
+        columns:
+          "id, full_name, phone, role, named_role, expires_at, link_pending",
+        filters: { "business_id =": BUSINESS, "claimed_at is": null },
+      },
+      {
+        table: "member_names",
+        columns: "user_id, name",
+        filters: { "business_id =": BUSINESS },
+      },
+      {
+        table: "memberships",
+        columns: "user_id, profiles (full_name, phone)",
+        filters: { "business_id =": BUSINESS, "active =": true },
+      },
     ]);
   });
 });
