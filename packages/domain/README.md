@@ -32,6 +32,13 @@ Authority's pension data names them, by report period) and `cities-data.ts`
 data.gov.il and never edited by hand), searched by `cities.ts` in either
 language with spellings that meet (קריית and קרית, Kiryat and Qiryat).
 
+Words read as plain text, not drawn (a button's name and tooltip, an
+UndoRow's message, a push line), hold their times and numbers left to right
+with `isolate` from `bidi.ts` (LRI … PDI), next-intl's `<ltr>` callback for
+`t.markup`. It is the one copy: the chat's actions, the availability sheets,
+the fill's sheet and the push lines all read it. (`share.ts` keeps its own
+LRI for the week range, around each pair of days in it.)
+
 Payroll keeps money in whole agorot (`money.ts`), and the minimum wage is a
 dated list too (`minimum-wage.ts`, every figure as published): each April's is
 a new entry, with its twin in `public.minimum_wages`. A minor's age is kept as

@@ -1,6 +1,7 @@
 import "server-only";
 import { dateIn, weekdayOf } from "@domain/availability";
 import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
+import { isolate } from "@domain/bidi";
 import { numberRange, signed } from "@domain/lists";
 import {
   LIST_TIME_WORDS,
@@ -30,8 +31,6 @@ import { defaultLocale, direction } from "@/i18n/config";
  * never its category, title or file. Someone who keeps details off the lock
  * screen gets the group's words alone (`hiddenWords`).
  */
-
-const isolate = (chunks: string) => `⁦${chunks}⁩`;
 
 const LANG = defaultLocale;
 const DIR = direction(defaultLocale);
