@@ -822,9 +822,15 @@ test("the owner sets Form 101's link, and the worker hands it in there", async (
   await expect
     .poll(async () => await demoTaxYear(NOA.id))
     .toEqual({ status: "handed_in", route: "link" });
+  // Its button goes once the file read again says the form is in.
+  await expect(
+    form.getByRole("button", { name: f.form101.handedIn }),
+  ).toHaveCount(0);
 
   // The notice names who prepares the payroll, the system and the phone.
-  // A desktop's is in the summary; a phone's and a tablet's in the step.
+  // A desktop's is in the summary; a phone's and a tablet's in the step,
+  // after its last control, clear of the dock whether the tab bar is full
+  // or shrunk (drawn under the dock's notice before, CI at 390 px once).
   await visible(page, "button", isDesktop(testInfo) ? f.notice.title : f.why)
     .first()
     .click();

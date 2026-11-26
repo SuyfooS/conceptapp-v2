@@ -296,7 +296,27 @@ export function AddressStep({ kit, active }: { kit: Kit; active: boolean }) {
   );
 
   return (
-    <FileSection step="address" active={active} kit={kit}>
+    <FileSection
+      step="address"
+      active={active}
+      kit={kit}
+      dock={
+        active ? (
+          <StepDock
+            kit={kit}
+            step="address"
+            main={{
+              label: t("actions.next"),
+              form: formId,
+              // Something missing is said above it; anything else, once pressed.
+              disabled: empty > 0,
+              pending,
+            }}
+            notice={empty > 0 ? t("missingRequired", { count: empty }) : null}
+          />
+        ) : null
+      }
+    >
       <form
         id={formId}
         onSubmit={save}
@@ -500,20 +520,6 @@ export function AddressStep({ kit, active }: { kit: Kit; active: boolean }) {
         </div>
       </form>
       <LaterLink kit={kit} />
-      {active ? (
-        <StepDock
-          kit={kit}
-          step="address"
-          main={{
-            label: t("actions.next"),
-            form: formId,
-            // Something missing is said above it; anything else, once pressed.
-            disabled: empty > 0,
-            pending,
-          }}
-          notice={empty > 0 ? t("missingRequired", { count: empty }) : null}
-        />
-      ) : null}
     </FileSection>
   );
 }

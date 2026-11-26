@@ -12,14 +12,17 @@ export type FocusedPage = {
  * fell to the page because what held it went with the part of the screen it
  * was in (a hiring file that locked under "נעילת התיק", the code's boxes
  * once the file opened), or it is on something no longer on the page. Focus
- * the person put somewhere else stays there. True when it moved.
+ * the person put somewhere else stays there. True when it moved. `options`
+ * go to `focus` as they are: without them the page scrolls to `target`
+ * when it is out of view.
  */
 export function focusIfLost(
   target: Focusable | null | undefined,
   page: FocusedPage,
+  options?: FocusOptions,
 ): boolean {
   if (!target || !focusLost(page)) return false;
-  target.focus();
+  target.focus(options);
   return true;
 }
 
@@ -41,32 +44,42 @@ export type Drawings = {
 export const DRAWN_WITHIN_MS = 1_000;
 
 /**
- * Puts the focus on `target` as the hiring file shows again (`focusIfLost`),
- * and from the page's second drawing on, puts it there again on each
- * drawing while it is still lost, until it lands or the person puts it
- * elsewhere (at most `DRAWN_WITHIN_MS`, a page no longer drawn, with one
- * last try then). The file was held inert and invisible until the very
- * drawing that shows it again, and with less motion asked for, the design
- * system's safety net (`globals.css`: every element's transitions 0.01 ms
- * long, and an element's transition is of every property unless it names
- * some) makes its `visibility` a transition too: the file and each of its
- * titles stay hidden, and refuse the focus, until a drawing of the page
- * has moved that transition on. So the focus put on that drawing is
- * always refused, and one two frames on was refused too when no drawing
- * of the page came in between (a busy page, or a test's clock, whose
- * frames are timers: CI's first run of file-a11y.spec.ts, and its third at
- * 820 px, drew "פרטים מזהים" again without the focus). Focus the person
- * put elsewhere meanwhile stays there. `done` settles once that is over,
- * true, so what is said after the focus landed waits for it; `stop` ends
- * it early (the file held again, or gone), settled false, so nothing is
- * said for a file no longer shown.
+ * Puts the focus on `target` as the hiring file shows again (`focusIfLost`).
+ * Landed there, or already where the person put it, that is all: a focus
+ * taken from it afterwards (a click on nothing, a test's blur) stays where
+ * it went. Put back, a focus moved on from there later would be a move from
+ * the title, activity, and keep the file open (employee-file-holders.spec.ts,
+ * failing now and then after #266). Refused, it is put there again from the
+ * page's second drawing on, on each drawing while it is still lost, until
+ * it lands or the person puts it elsewhere (at most `DRAWN_WITHIN_MS`, a
+ * page no longer drawn, with one last try then). The file was held inert
+ * and invisible until the very drawing that shows it again, so a title
+ * whose `visibility` is a transition then (its own or one around it, as
+ * `transition-all` makes it) stays hidden, and refuses the focus, until a
+ * drawing of the page has moved that transition on; one two frames on was
+ * refused too when no drawing came in between (a busy page, or a test's
+ * clock, whose frames are timers). With less motion asked for there is no
+ * such transition since #256 (`globals.css`, every transition 0s); its
+ * 0.01 ms before that made one of every element's `visibility`, and CI's
+ * first run of file-a11y.spec.ts, and its third at 820 px, drew "פרטים
+ * מזהים" again without the focus. `done` settles once that is over, true,
+ * so what is said after the focus landed waits for it (at once when it
+ * landed at once); `stop` ends it early (the file held again, or gone),
+ * settled false, so nothing is said for a file no longer shown. Every try
+ * leaves the page where it is (`preventScroll`, as `focusWhenGone` in
+ * `@ui/focus-after` does): the hold kept the file's layout, so the page is
+ * where the person left it, someone who scrolled on to the bank details
+ * before it stays there, and a screen reader follows the focus anyway.
  */
 export function focusWhenDrawn(
   target: Focusable,
   page: FocusedPage,
   win: Drawings,
 ): { done: Promise<boolean>; stop: () => void } {
-  focusIfLost(target, page);
+  const still: FocusOptions = { preventScroll: true };
+  focusIfLost(target, page, still);
+  // On the title now, or where the person put it: over, nothing more put.
+  if (!focusLost(page)) return { done: Promise.resolve(true), stop: () => {} };
   let settle: (landed: boolean) => void = () => {};
   const done = new Promise<boolean>((resolve) => {
     settle = resolve;
@@ -86,7 +99,7 @@ export function focusWhenDrawn(
     if (over) return;
     drawn += 1;
     if (drawn >= 2) {
-      focusIfLost(target, page);
+      focusIfLost(target, page, still);
       // On the title now, or where the person put it.
       if (!focusLost(page)) {
         end(true);
@@ -97,7 +110,7 @@ export function focusWhenDrawn(
   };
   late = win.setTimeout(() => {
     if (over) return;
-    focusIfLost(target, page);
+    focusIfLost(target, page, still);
     end(true);
   }, DRAWN_WITHIN_MS);
   frame = win.requestAnimationFrame(drawing);

@@ -280,7 +280,27 @@ export function IdentityStep({ kit, active }: { kit: Kit; active: boolean }) {
   const failureWords = failure ? t(`failures.${failureKey(failure)}`) : null;
 
   return (
-    <FileSection step="identity" active={active} kit={kit}>
+    <FileSection
+      step="identity"
+      active={active}
+      kit={kit}
+      dock={
+        active ? (
+          <StepDock
+            kit={kit}
+            step="identity"
+            main={{
+              label: t("actions.next"),
+              form: formId,
+              // Something missing is said above it; anything else, once pressed.
+              disabled: empty > 0,
+              pending,
+            }}
+            notice={empty > 0 ? t("missingRequired", { count: empty }) : null}
+          />
+        ) : null
+      }
+    >
       <form
         id={formId}
         onSubmit={save}
@@ -454,20 +474,6 @@ export function IdentityStep({ kit, active }: { kit: Kit; active: boolean }) {
         </div>
       </form>
       <LaterLink kit={kit} />
-      {active ? (
-        <StepDock
-          kit={kit}
-          step="identity"
-          main={{
-            label: t("actions.next"),
-            form: formId,
-            // Something missing is said above it; anything else, once pressed.
-            disabled: empty > 0,
-            pending,
-          }}
-          notice={empty > 0 ? t("missingRequired", { count: empty }) : null}
-        />
-      ) : null}
     </FileSection>
   );
 }

@@ -80,7 +80,32 @@ export function Form101Step({
   }
 
   return (
-    <FileSection step="form101" active={active} kit={kit}>
+    <FileSection
+      step="form101"
+      active={active}
+      kit={kit}
+      dock={
+        active ? (
+          <StepDock
+            kit={kit}
+            step="form101"
+            main={
+              blocker
+                ? {
+                    label: t(`actions.finish.${blocker}`),
+                    onClick: () => kit.go(blocker),
+                  }
+                : {
+                    label: t("actions.send", business),
+                    onClick: onSend,
+                    pending: sending,
+                  }
+            }
+            notice={blocker ? t("actions.sendWaits") : sendFailure}
+          />
+        ) : null
+      }
+    >
       <Card padding="lg" className="flex flex-col gap-3">
         {setup.way === "link" ? (
           <>
@@ -180,25 +205,6 @@ export function Form101Step({
         </Failure>
       </Card>
       <LaterLink kit={kit} />
-      {active ? (
-        <StepDock
-          kit={kit}
-          step="form101"
-          main={
-            blocker
-              ? {
-                  label: t(`actions.finish.${blocker}`),
-                  onClick: () => kit.go(blocker),
-                }
-              : {
-                  label: t("actions.send", business),
-                  onClick: onSend,
-                  pending: sending,
-                }
-          }
-          notice={blocker ? t("actions.sendWaits") : sendFailure}
-        />
-      ) : null}
     </FileSection>
   );
 }

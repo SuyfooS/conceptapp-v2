@@ -216,14 +216,16 @@ test("the file twin, its quarter of an hour ending with the focus on 'להשאי
   await expect(warning).toHaveCount(0);
   await expect(first).toBeVisible();
   // "פרטים מזהים" was inert and invisible with the file until the drawing
-  // that shows it again, and these tests ask for less motion
-  // (playwright.config.ts), so the design system's 0.01 ms transitions
-  // make its `visibility` one too: hidden, refusing the focus, until a
-  // drawing of the page moves it on. CI's first run, and its third at
-  // 820 px, drew it there without the focus, the second try coming two of
-  // the page clock's frames on (timers) before any drawing. The file puts
-  // the focus there again on each drawing while it is lost
-  // (`focusWhenDrawn`), and only once it landed says it stays open.
+  // that shows it again. These tests ask for less motion
+  // (playwright.config.ts), and until #256 the design system's 0.01 ms
+  // transitions made its `visibility` one too: hidden, refusing the focus,
+  // until a drawing of the page moved it on. CI's first run, and its third
+  // at 820 px, drew it there without the focus, the second try coming two
+  // of the page clock's frames on (timers) before any drawing. Transitions
+  // are 0s with less motion now, so the first try lands; a title still
+  // hidden then (a transition of its own) gets the focus again on each
+  // drawing while it is lost (`focusWhenDrawn`), and only once it landed
+  // is it said that the file stays open.
   await expect(first).toBeFocused();
   await expect(saidSince(polite, hf.idle.kept)).toHaveCount(1);
   await expect.poll(() => focusWhenSaid(page)).toBe(true);
