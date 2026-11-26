@@ -1701,8 +1701,10 @@ function WeekBuilder({
         });
       }
       case "shiftFull":
+        // Said for the button pressed: a published week has no save.
         return t.rich("app.build.errors.shiftFull", {
           max: MAX_PEOPLE_ON_A_SHIFT,
+          intent,
           ltr,
         });
       case "published":

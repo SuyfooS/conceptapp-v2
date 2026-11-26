@@ -62,17 +62,36 @@ describe("the builder's words for a shift past the people it holds", () => {
     ltr: (chunks: string) => `[${chunks}]`,
   };
 
+  const said = (intent: "save" | "publish") => ({
+    he: heT.markup("app.build.errors.shiftFull", { ...values, intent }),
+    en: enT.markup("app.build.errors.shiftFull", { ...values, intent }),
+  });
+
   it("name the cap the app and the database hold, its number kept left to right", () => {
-    expect(heT.markup("app.build.errors.shiftFull", values)).toMatch(
-      /^במשמרת יכולים להיות עד \[50\] אנשים, ולכן הסידור לא נשמר\./,
+    expect(said("save").he).toMatch(
+      /^במשמרת יכולים להיות עד \[50\] אנשים, ולכן הסידור לא נשמר\. מורידים אנשים מהמשמרת שיש בה יותר ושומרים שוב\./,
     );
-    expect(enT.markup("app.build.errors.shiftFull", values)).toMatch(
-      /^A shift can have at most \[50\] people, so the schedule was not saved\./,
+    expect(said("save").en).toMatch(
+      /^A shift can have at most \[50\] people, so the schedule was not saved\. Take people off the shift that has more, and save again\./,
     );
   });
 
+  it("send a publish back to publishing, as a published week has no save", () => {
+    const { he: heWords, en: enWords } = said("publish");
+    expect(heWords).toMatch(
+      /^במשמרת יכולים להיות עד \[50\] אנשים, ולכן הסידור לא פורסם\. מורידים אנשים מהמשמרת שיש בה יותר ומפרסמים שוב\./,
+    );
+    expect(heWords).not.toMatch(/נשמר|שומרים/);
+    expect(enWords).toMatch(
+      /^A shift can have at most \[50\] people, so the schedule was not published\. Take people off the shift that has more, and publish again\./,
+    );
+    expect(enWords).not.toMatch(/\bsaved?\b/);
+  });
+
   it("say what to do when the screen shows no such shift, as when people were added meanwhile", () => {
-    expect(he.app.build.errors.shiftFull).toContain("רעננו את המסך");
-    expect(en.app.build.errors.shiftFull).toContain("refresh the screen");
+    for (const intent of ["save", "publish"] as const) {
+      expect(said(intent).he).toContain("רעננו את המסך");
+      expect(said(intent).en).toContain("refresh the screen");
+    }
   });
 });

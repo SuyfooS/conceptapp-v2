@@ -116,24 +116,52 @@ begin
 end;
 $$;
 
+-- Runs a statement and keeps what it did, as a statement of its own would:
+-- 'ok', or the refusal as pg_temp.outcome reads it, with nothing of the
+-- statement left. Only what is expected to be refused goes through here, so
+-- a count after it shows whether the refusal really left nobody on.
+create function pg_temp.kept(statement text) returns text language plpgsql as $$
+declare
+  code text;
+  words text;
+  why text;
+  more text;
+begin
+  begin
+    execute statement;
+    return 'ok';
+  exception when others then
+    get stacked diagnostics code = returned_sqlstate, words = message_text,
+      why = pg_exception_hint, more = pg_exception_detail;
+    return concat_ws(' | ', code, words, nullif(why, ''), nullif(more, ''));
+  end;
+end;
+$$;
+
 -- A statement putting people on shifts, by the shift's name and the person's
--- number, tried and undone.
-create function pg_temp.try_add(placed jsonb) returns text language sql as $$
-  select pg_temp.outcome(format(
+-- number.
+create function pg_temp.adding(placed jsonb) returns text language sql as $$
+  select format(
     'insert into public.shift_assignments (shift_id, business_id, user_id)
      select s.id, s.business_id, pg_temp.p(x.n)
      from jsonb_to_recordset(%L::jsonb) as x (shift text, n integer)
      join ids i on i.name = x.shift
      join public.schedule_shifts s on s.id = i.id',
     placed
-  ))
+  )
 $$;
 
--- A publish of one of C's weeks by its owner, tried and undone.
+-- People put on shifts that should refuse them, kept if they weren't.
+create function pg_temp.try_add(placed jsonb) returns text language sql as $$
+  select pg_temp.kept(pg_temp.adding(placed))
+$$;
+
+-- A publish of one of C's weeks by its owner that should be refused, kept if
+-- it wasn't.
 create function pg_temp.try_publish(
   week_name text, payload jsonb, seen jsonb, at_time timestamptz, joins jsonb
 ) returns text language sql as $$
-  select pg_temp.outcome(format(
+  select pg_temp.kept(format(
     'select public.publish_week_schedule(%L::uuid, %L::uuid, %L::jsonb, %L::jsonb, %L::timestamptz, %L::jsonb)',
     pg_temp.p(100), pg_temp.id(week_name), payload, seen, at_time, joins
   ))
@@ -213,10 +241,12 @@ select is(
   'a 51st on a shift of 50 is refused, in a statement of its own'
 );
 
+-- The one taken, to 50, is undone: the late shift stays at 49 for the joins
+-- below.
 select is(
   array[
     pg_temp.try_add('[{"shift": "late", "n": 50}, {"shift": "late", "n": 51}]'),
-    pg_temp.try_add('[{"shift": "late", "n": 50}]')
+    pg_temp.outcome(pg_temp.adding('[{"shift": "late", "n": 50}]'))
   ],
   array[pg_temp.crowded(array['late']), 'ok'],
   '49 and two more in one statement are refused; one more, to 50, is taken'
@@ -230,6 +260,8 @@ select is(
   'one statement onto three shifts names the two it takes past 50, in order of id, and not the one it fills'
 );
 
+-- Each refused statement above was kept had it gone through, so the count
+-- shows whether any put someone on.
 select is(
   array[pg_temp.headcount('big'), pg_temp.headcount('late'), pg_temp.headcount('thursday')],
   array[50, 49, 50],
@@ -290,6 +322,7 @@ select is(
   'someone joining a shift of 50 under way is refused, and the publish with it'
 );
 
+-- The publish was kept had it gone through.
 select is(pg_temp.headcount('big'), 50, 'and nobody joined it');
 
 -- Tuesday at 17:00: the late shift, 49, is under way, the big one over.
