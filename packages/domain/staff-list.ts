@@ -1,5 +1,6 @@
 import type { Role } from "./modules";
 import { normalizeIsraeliMobile } from "./phone";
+import { searchable } from "./wording";
 
 /**
  * The staff list the new-business wizard takes as pasted text: one person
@@ -66,16 +67,59 @@ const ACCOUNTANT_PHRASES = new Set([
 ]);
 
 // A run of digits with the separators people put in phone numbers.
-const PHONE_RUN = /\+?\d[\d\s\-().]*\d/g;
+export const PHONE_RUN = /\+?\d[\d\s\-().]*\d/g;
 const SEPARATORS = /[,;|\t]+|\s[-–]\s/g;
 const QUOTES = /["'״׳]/g;
 const LIST_MARKER = /^\s*(?:\d{1,3}[.)]\s+|[-*•]\s*)/;
 
-function wordKey(word: string): string {
+/**
+ * A word as role words and a sheet's headers are compared: without quotes
+ * or gershayim (אחמ"ש, טל'), parentheses, colons or dots (ת.ז.), case aside.
+ */
+export function wordKey(word: string): string {
   return word
     .replace(QUOTES, "")
     .replace(/[():.]/g, "")
     .toLowerCase();
+}
+
+/**
+ * A role word compared as a search compares it too (`searchable`): "מנהל/ת"
+ * reads as "מנהלת" and "עובד/ת" as "עובדת", which `wordKey` keeps with
+ * their slash.
+ */
+const roleWordKey = (text: string) => searchable(wordKey(text));
+
+/**
+ * The built-in roles' own words, for the list of people
+ * (@domain/people-import): the accountant's phrases first, then the role
+ * words and the worker's, with "employee" among them. The wizard's reader
+ * (`parseStaffList`) keeps its own lists until it reads with that one.
+ */
+const BUILT_IN_ROLE_WORDS: ReadonlyMap<string, Role> = new Map<string, Role>([
+  ...[...ACCOUNTANT_PHRASES].map((phrase): [string, Role] => [
+    roleWordKey(phrase),
+    "accountant",
+  ]),
+  ...Object.entries(ROLE_WORDS).map(([word, role]): [string, Role] => [
+    roleWordKey(word),
+    role,
+  ]),
+  ...[...WORKER_WORDS, "employee"].map((word): [string, Role] => [
+    roleWordKey(word),
+    "worker",
+  ]),
+]);
+
+/**
+ * The built-in role a word or a phrase names, whatever the business calls
+ * it ("מנהלת", "מנהל/ת", "owner", "מנהלת חשבונות", "עובד/ת", "employee"),
+ * compared by `wordKey` and `searchable`; null for anything else.
+ */
+export function builtInRoleWord(text: string): Role | null {
+  const key = roleWordKey(text);
+  if (!key) return null;
+  return BUILT_IN_ROLE_WORDS.get(key) ?? null;
 }
 
 function parseLine(

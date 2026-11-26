@@ -123,6 +123,55 @@ viewer gives that hold what they don't, which the role sheet shows as an
 owner's to give, and `namedRoleShown` strips a named role to its names and
 base before it reaches a browser: what it holds is the owner's to read.
 
+`people-import.ts` reads a pasted list of people to invite at once ("הזמנה
+מרשימה", part 1 of the plan of 25 November 2026): from WhatsApp, Excel,
+Google Sheets or a note, on the device, so only each person's name, number
+and role ever leave it. `parsePeopleList` chooses the cells once from most
+lines (a tab, then `;` or `,` read quote-aware, then the staff list's `|` or
+a spaced dash), splits each raw line before cleaning its cells (cleaning
+collapses tabs), with every dash in a number read as "-" and WhatsApp's time,
+date and sender before a message left out, finds a header row after any title
+(`שם`, `נייד`, `ת"ז`, `תפקיד` and the like, an unknown header named in
+`ignored`; a sheet's one-cell title may hold a mobile), and without one the
+phone, role and name columns by most of their cells (a sheet's single row by
+its cells; a line with no delimiter, or typed by hand with its mobile in
+another place, as free text); two columns of mobiles are never guessed
+between (`phoneColumns`, with the headers that named them, and a typed list's
+second column of mobiles beside the first on a line, when a line has it with
+no mobile of its own; else it is left out), and a word in a role column that
+names no role is left out, the line given the list's role. A name's header
+word exactly comes before one in other words, and "שם הסניף", "שם מנהל",
+"שם האב" or "Username" is never the person's, nor "שם תפקיד" (the role's),
+while "שם / תפקיד" is; first and last names come before a name's header in
+other words only together. "שם" beside "שם משפחה" is the first name, and the
+two are joined; a second column of single words joins the name only when it
+varies, holds no digits and isn't past the phone. In free text a mobile must
+start with 0, 972, +972 or 00972 (Excel's dropped zero only from a sheet's
+cell's first group, so a 9-digit ID starting with 5 is never a phone, and no
+number of another country is read as one, while "+054…" and "001 050-…" are
+no country's), every other number, Excel's "5.01E+08" and a number's label
+(`ת.ז`, `מס' עובד`, `שכר:`, `דרכון`) leave the name (`dropped`), but one or
+two digits right after its words ("דנה כהן 2"); a role is read at the line's
+end or start, a named role of one word only as a field of its own or after a
+name of two words, so a role named like a first name or a surname ("בר") is
+never read off "בר כהן", and a name line followed by its number line is one
+person. Names go through `parseTeamName`, phones
+through `normalizeIsraeliMobile`; owners and accountants are one by one,
+roles above the viewer's rank, with pay or held are refused with the invite
+form's reasons, and past `PEOPLE_IMPORT_MAX` (300) no line is drawn. The
+same number twice is one person (`sameLine`) by the same name and the same
+role, written on the line or the list's (the first line sent, as naming it
+when either does), else a conflict (`duplicate`).
+`importRolesOf` builds the roles from `inviteChoices` and the business's
+words, `againstTeam` checks the paste against the team the page loaded (a
+member, or an invite with a link, an owner's or an accountant's, or one the
+viewer may not change, is left out whatever its line says; an invite with no
+link yet is updated, its role kept when the line names none), and
+`peopleImportRows` is what the server takes again. `pasted-text.ts` holds
+what it shares with the menu's reader (`clean`, the marks, `readsBackwards`)
+and `westernDigits` for Arabic-Indic digits; `staff-list.ts` exports
+`wordKey` and `builtInRoleWord` ("מנהל/ת", "עובד/ת", "employee").
+
 `setup.ts` is the console's checklist of a business just opened (opened,
 owner, staff, address), each item from the business as stored, and the rule
 for "staff" it shares with the owner's first steps: managers and workers
