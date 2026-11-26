@@ -147,17 +147,23 @@ export const formIdOf = (step: FileStep) => `file-${step}-form`;
  * scrolls a desktop to it. Its title takes the focus when it opens, so a
  * keyboard or a screen reader goes on from there. On a phone and a tablet
  * the step says why its details are asked; a desktop has the summary's one
- * way to the notice, beside every step.
+ * way to the notice, beside every step. The step's `StepDock` comes last,
+ * after "למה מבקשים את זה": the room it keeps under the page is then below
+ * every control, so at the end of the page none of them sits under the dock
+ * and its notice, whether the tab bar is full or shrunk.
  */
 export function FileSection({
   step,
   active,
   kit,
+  dock,
   children,
 }: {
   step: FileStep;
   active: boolean;
   kit: Kit;
+  /** The step's `StepDock` while it is the step on screen. */
+  dock?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -180,6 +186,7 @@ export function FileSection({
       <div className="flex flex-wrap items-center gap-x-4 px-1 xl:hidden">
         <WhyButton kit={kit} />
       </div>
+      {dock}
     </section>
   );
 }
@@ -240,7 +247,7 @@ export function Reason({ children }: { children: ReactNode }) {
  * missing, which the notice counts; with everything filled in it can be
  * pressed, and a step that still can't save says each problem under its
  * field (`showFirstProblem`). Room is kept under the page so nothing hides
- * behind it.
+ * behind it: drawn as `FileSection`'s `dock`, below the step's last control.
  */
 export function StepDock({
   kit,

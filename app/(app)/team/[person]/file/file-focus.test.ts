@@ -13,7 +13,8 @@ import {
  * after a right code, each only when what held the focus went with the part
  * of the screen it was in, never away from where the person put it; and
  * back to a title of the file as it shows again after a hold, and again on
- * each of the page's drawings from the second while it is still lost.
+ * each of the page's drawings from the second while it is still lost, never
+ * once it landed.
  */
 
 const body = { isConnected: true };
@@ -198,6 +199,36 @@ describe("focusWhenDrawn", () => {
     expect(refusing.focus).toHaveBeenCalledTimes(3);
     expect(page.activeElement).toBe(tabBar);
     expect(meanwhile.waiting()).toBe(0);
+  });
+
+  // employee-file-holders.spec.ts, now and then after #266: the focus put
+  // on "פרטים מזהים" landed at once and the test's blur took it before the
+  // page's second drawing, which put it back; the test's focus on
+  // "להשאיר פתוח" was then a move from the title, activity, and the file
+  // stayed open where it should have locked.
+  it("never puts back a focus that landed at once and was taken away", async () => {
+    const page = { activeElement: body as { isConnected: boolean }, body };
+    const title = {
+      isConnected: true,
+      focus: vi.fn(() => {
+        page.activeElement = title;
+      }),
+    };
+    const { win, frame, late, waiting } = drawings();
+    const { done, stop } = focusWhenDrawn(title, page, win);
+    expect(page.activeElement).toBe(title);
+    // Blurred before the page's second drawing, and its longest wait over.
+    page.activeElement = body;
+    frame();
+    frame();
+    late();
+    expect(title.focus).toHaveBeenCalledTimes(1);
+    expect(page.activeElement).toBe(body);
+    expect(waiting()).toBe(0);
+    expect(await done).toBe(true);
+    // The file held again later runs the same stop: nothing changes.
+    stop();
+    expect(await done).toBe(true);
   });
 
   it("stops waiting for drawings after DRAWN_WITHIN_MS, a page no longer drawn", async () => {
