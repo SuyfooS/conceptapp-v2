@@ -1629,7 +1629,8 @@
         "role": {
           "label": "Role for the list",
           "hint": "Everyone on the list gets this role, except a line that names another one.",
-          "oneByOne": "{owner} and {accountant} are invited one at a time, from “Invite to the team”."
+          "oneByOne": "{owner} and {accountant} are invited one at a time, from “Invite to the team”.",
+          "oneByOneOwners": "{owner} and {accountant} are invited one at a time, and only owners invite them."
         },
         "paste": {
           "label": "The list",
@@ -1712,7 +1713,8 @@
           "excelNumber": "The number came from Excel shortened, like <ltr>5.01E+08</ltr>. Widen the column in Excel, or format it as text, and copy again",
           "duplicate": "The number is already on line <ltr>{line}</ltr>, with another name or role",
           "oneByOne": "{role}: invited one at a time, from “Invite to the team”",
-          "notAllowed": "You can't invite to {role} from here",
+          "oneByOneOwners": "{role}: only owners invite to this role, one at a time",
+          "notAllowed": "Only someone above your level invites to {role}",
           "givesPay": "{role} sees pay, so only owners invite to it",
           "held": "{role} holds permissions you don't, so only owners invite to it"
         },

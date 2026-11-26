@@ -18,7 +18,7 @@ import {
 import { secondPage, signIn } from "./session";
 import { codesSince, lastCodeId } from "./sms";
 import { heT } from "./t";
-import { expect, type Page, test } from "./test";
+import { expect, type Locator, type Page, test } from "./test";
 
 // "הזמנה מרשימה" on the Team screen (inviting from a list, part 5; Orel, 25
 // November 2026: owners and managers paste on /team, and each person's link
@@ -28,11 +28,13 @@ import { expect, type Page, test } from "./test";
 // three people at once with no link, nobody told. On the done screen each
 // one's link is made, WhatsApp to their own number (read, never opened) or
 // a copy, the focus on to the next person; the lapsed invite gets "קישור
-// חדש". A second list is taken back. Back on /team the rest still wait for
-// their links. A manager's line naming the owner's role waits for one by
-// one, and a worker who edits the team can't name a manager. A demo never
-// takes invites here, so each screen size opens a real business of its own
-// (e2e/db.ts) through the wizard's own function, and takes it away after.
+// חדש". Taken back then, only the one with no link would go, and "ביטול"
+// says so; a second list is taken back. Back on /team the rest still wait
+// for their links. A manager's line naming the owner's role is for the
+// owners alone, and a worker who edits the team can't name a manager. A
+// demo never takes invites here, so each screen size opens a real business
+// of its own (e2e/db.ts) through the wizard's own function, and takes it
+// away after.
 // No code reaches anyone on the lists: they are never sent anything.
 
 type Size = keyof typeof TEAM_IMPORT;
@@ -77,6 +79,13 @@ function sheetOf(business: TeamImportBusiness): string {
     ),
   ].join("\n");
 }
+
+/** What the role card says of owners and accountants, by whether the viewer invites them. */
+const oneByOneWords = (key: "role.oneByOne" | "role.oneByOneOwners") =>
+  heT(`app.team.import.${key}`, {
+    owner: he.app.roles.owner,
+    accountant: he.app.roles.accountant,
+  });
 
 /** The import's field and press, on any page. */
 const screenOf = (page: Page) => ({
@@ -178,6 +187,9 @@ test("the Team screen's import: a sheet saved at once with no link, each link se
         { exact: true },
       ),
     ).toBeVisible();
+    // An owner invites owners and accountants on "הזמנה לצוות": the words
+    // lead there.
+    await expect(screen.shown(oneByOneWords("role.oneByOne"))).toHaveCount(1);
     await expectCleanPage(page);
     await page.screenshot({
       path: testInfo.outputPath("team-import-1-empty.png"),
@@ -283,6 +295,49 @@ test("the Team screen's import: a sheet saved at once with no link, each link se
     await expect(rowOf(first.name)).toContainText(he.app.roles.worker);
     await expect(rowOf(first.name)).toContainText(first.local);
     await expect(page.locator('a[href*="wa.me"]')).toHaveCount(0);
+    // The ways on never stand between the card's words and the first
+    // "יצירת קישור": after the list on a phone and a computer, under the
+    // card, beside the list, on a tablet; after the list in the reading
+    // order everywhere.
+    const remove = page.getByRole("button", {
+      name: i.done.remove,
+      exact: true,
+    });
+    const firstCreate = page
+      .locator("[data-pending-create]")
+      .filter({ visible: true })
+      .first();
+    const boxOf = async (what: Locator) => {
+      const box = await what.boundingBox();
+      if (!box) throw new Error("Not drawn");
+      return box;
+    };
+    const across = (
+      a: { x: number; width: number },
+      b: { x: number; width: number },
+    ) => a.x < b.x + b.width && b.x < a.x + a.width;
+    const removeBox = await boxOf(remove);
+    const heading = await boxOf(screen.done(3));
+    const sendList = await boxOf(
+      page.locator("[data-pending-links]").filter({ visible: true }),
+    );
+    if (testInfo.project.name === "tablet") {
+      expect(across(removeBox, heading)).toBe(true);
+      expect(across(sendList, heading)).toBe(false);
+      expect(removeBox.y).toBeGreaterThan(heading.y);
+    } else {
+      expect(removeBox.y).toBeGreaterThanOrEqual(sendList.y + sendList.height);
+    }
+    expect(
+      await firstCreate.evaluate((create) => {
+        const button = document.querySelector("[data-import-remove]");
+        return Boolean(
+          button &&
+            create.compareDocumentPosition(button) &
+              Node.DOCUMENT_POSITION_FOLLOWING,
+        );
+      }),
+    ).toBe(true);
     await expectCleanPage(page);
     await page.screenshot({
       path: testInfo.outputPath("team-import-3-done.png"),
@@ -385,6 +440,30 @@ test("the Team screen's import: a sheet saved at once with no link, each link se
       fullPage: true,
     });
 
+    // Taken back now, the undo would cancel only the one still with no
+    // link: its "ביטול" says so at once, never "3 הזמנות נמחקו", and brings
+    // the done screen back with the links made, never "יצירת קישור" again.
+    await remove.click();
+    const keptBack = page.getByRole("status").filter({
+      hasText: [
+        heT("app.team.import.done.removed", { count: 1 }),
+        heT("app.team.import.done.removedKept", { count: 2 }),
+      ].join(". "),
+    });
+    await expect(keptBack).toBeVisible();
+    await keptBack.getByRole("button").click();
+    await expect(screen.done(3)).toBeVisible();
+    await expect(remove).toBeFocused();
+    await expect(whatsapp(first.name)).toBeVisible();
+    await expect(whatsapp(second.name)).toBeVisible();
+    await expect(create(first.name)).toHaveCount(0);
+    await expect(create(third.name)).toBeVisible();
+    await expect(left(2)).toHaveCount(1);
+    expect(await pendingLinkStates(business)).toMatchObject({
+      [first.e164]: { pending: false, open: true },
+      [third.e164]: { pending: true, open: true },
+    });
+
     // A second list, taken back with its "ביטול" left to run out: its
     // invite is cancelled, kept as a row for the log.
     await page
@@ -429,14 +508,19 @@ test("the Team screen's import: a sheet saved at once with no link, each link se
     await expect(create(first.name)).toHaveCount(0);
     await expect(create(business.takenBack.name)).toHaveCount(0);
 
-    // A manager: a line naming the owner's role waits for one by one, and
-    // holds the list until it goes; the rest is the manager's to invite.
+    // A manager: a line naming the owner's role is for the owners alone,
+    // one at a time (their invite form offers neither role), and holds the
+    // list until it goes; the rest is the manager's to invite.
     const managers = await secondPage(browser, testInfo);
     try {
       await signIn(managers, business.manager);
       const theirs = screenOf(managers);
       await managers.goto("/team/import");
       await expect(theirs.title).toBeVisible();
+      await expect(
+        theirs.shown(oneByOneWords("role.oneByOneOwners")),
+      ).toHaveCount(1);
+      await expect(theirs.shown(oneByOneWords("role.oneByOne"))).toHaveCount(0);
       await theirs.field.fill(
         [
           `${business.fromManager.name} ${business.fromManager.local}`,
@@ -445,7 +529,7 @@ test("the Team screen's import: a sheet saved at once with no link, each link se
       );
       await expect(
         theirs.shown(
-          heT("app.team.import.problem.oneByOne", {
+          heT("app.team.import.problem.oneByOneOwners", {
             role: he.app.roles.owner,
           }),
         ),
@@ -496,6 +580,9 @@ test("the Team screen's import: a sheet saved at once with no link, each link se
       await expect(roles).toHaveAccessibleName(
         new RegExp(`^${literal(he.app.roles.worker)}`),
       );
+      await expect(
+        theirs.shown(oneByOneWords("role.oneByOneOwners")),
+      ).toHaveCount(1);
       await theirs.field.fill(
         `${business.managerLine.name} ${business.managerLine.local} מנהל`,
       );

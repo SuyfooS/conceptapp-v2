@@ -149,6 +149,21 @@ describe("importRolesOf", () => {
     expect(EDITOR.aboveRank.map((role) => role.label)).toEqual(["ניהול"]);
   });
 
+  it("says whether the viewer invites owners and accountants one at a time: an owner alone", () => {
+    const given = (roles: ImportRoles) =>
+      roles.oneByOne.map((role) => [role.role, role.given]);
+    expect(given(OWNER)).toEqual([
+      ["owner", true],
+      ["accountant", true],
+    ]);
+    for (const roles of [MANAGER, EDITOR]) {
+      expect(given(roles)).toEqual([
+        ["owner", false],
+        ["accountant", false],
+      ]);
+    }
+  });
+
   it("starts the list on workers, else the first role the viewer gives", () => {
     expect(listRoleOf(OWNER)?.label).toBe("צוות");
     const paid = rolesFor(

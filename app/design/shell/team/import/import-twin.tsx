@@ -27,8 +27,10 @@ const wait = () => new Promise((done) => setTimeout(done, WAIT_MS));
  * so whoever pastes a real list on the hosted demo sends nobody anything.
  * An import answers as the database would for the twin's team: a number
  * with an invite still unsent, the twin's or one an import made, is
- * updated, any other is made. Taking it back cancels what it made, so an
- * import that goes before the undo of the last finds those still waiting.
+ * updated, any other is made. Taking it back cancels what it made, those
+ * whose link the done screen made aside (kept, as the database keeps them),
+ * so an import that goes before the undo of the last finds those still
+ * waiting.
  * `fail` makes the import, or its taking back, refuse as a real one may
  * (`open`: the business has too many invites waiting).
  * The console's twin (`mode="console"`) also names the numbers on another
@@ -77,6 +79,8 @@ export function ImportTwin({
   );
   /** What each import made, by its id, for its undo to cancel. */
   const [made] = useState(() => new Map<string, string[]>());
+  /** The invites whose link the done screen made: the undo keeps them. */
+  const [linked] = useState(() => new Set<string>());
   const imports = useRef(0);
   /** The invites made so far: each new one's id is its own, never a number. */
   const invites = useRef(0);
@@ -113,8 +117,17 @@ export function ImportTwin({
     if (fail === "undo") return { ok: false, failure: "failed" };
     const phones = made.get(importId) ?? [];
     made.delete(importId);
-    for (const phone of phones) unsent.delete(phone);
-    return { ok: true, cancelled: phones.length, kept: 0 };
+    // As the database does: only those with no link yet are cancelled.
+    const cancelled = phones.filter((phone) => {
+      const invite = unsent.get(phone);
+      return invite === undefined || !linked.has(invite);
+    });
+    for (const phone of cancelled) unsent.delete(phone);
+    return {
+      ok: true,
+      cancelled: cancelled.length,
+      kept: phones.length - cancelled.length,
+    };
   };
   return (
     <PeopleImportView
@@ -131,7 +144,16 @@ export function ImportTwin({
       }
       initialPaste={initialPaste}
       startAt={startAt}
-      send={send}
+      send={
+        send && {
+          ...send,
+          firstLink: async (inviteId, prev, form) => {
+            const state = await send.firstLink(inviteId, prev, form);
+            if (state.link) linked.add(inviteId);
+            return state;
+          },
+        }
+      }
     />
   );
 }

@@ -6,9 +6,9 @@ import { PageSection } from "@ui/page";
 import { PersonRow } from "@ui/person-row";
 import { ChevronDown } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, startTransition, useState } from "react";
 import type { PendingRow } from "../pending-links";
-import { InviteLinks, ResendLink } from "../resend-link";
+import { InviteLinks, ResendLink, useInviteLinks } from "../resend-link";
 import {
   PendingCount,
   PendingLinks,
@@ -48,7 +48,9 @@ export type SendLinks = {
  * The links made on the done screen, for every shape at once and for as long
  * as the screen is up: a list taken back and kept again with its "ביטול"
  * still shows the links made before, never "יצירת קישור" again, whose press
- * would be refused. `rows` are the done screen's people, none without one.
+ * would be refused. Each link is kept as it arrives, whether or not its row
+ * is still drawn (`keptAsMade`). `rows` are the done screen's people, none
+ * without one.
  */
 export function DoneLinks({
   send,
@@ -62,17 +64,56 @@ export function DoneLinks({
   if (!send) return children;
   return (
     <InviteLinks>
-      <PendingLinks
-        rows={rows}
-        invites={rows.map((row) => row.id)}
-        business={send.business}
-        toNumber={send.toNumber}
-        resend={send.firstLink}
-      >
+      <DonePending send={send} rows={rows}>
         {children}
-      </PendingLinks>
+      </DonePending>
     </InviteLinks>
   );
+}
+
+/** The send list's rows, inside `InviteLinks`, whose links it keeps. */
+function DonePending({
+  send,
+  rows,
+  children,
+}: {
+  send: SendLinks;
+  rows: readonly PendingRow[];
+  children: ReactNode;
+}) {
+  const links = useInviteLinks();
+  return (
+    <PendingLinks
+      rows={rows}
+      invites={rows.map((row) => row.id)}
+      business={send.business}
+      toNumber={send.toNumber}
+      resend={keptAsMade(send.firstLink, links?.keep)}
+    >
+      {children}
+    </PendingLinks>
+  );
+}
+
+/**
+ * A link's action whose link is kept on the screen (`InviteLinks`) as it
+ * arrives, not only by the row that asked for it: a row the done card took
+ * away while its press was on its way (its list taken back, or another list
+ * started) shows the link once the card is back, never "יצירת קישור" or
+ * "קישור חדש" again, which would be refused, or would stop the link from
+ * working. In the press's own transition, so a row still drawn gets the link
+ * and its answer at once.
+ */
+export function keptAsMade(
+  resend: Resend,
+  keep: ((inviteId: string, link: string) => void) | undefined,
+): Resend {
+  return async (inviteId, prev, form) => {
+    const state = await resend(inviteId, prev, form);
+    const { link } = state;
+    if (link && keep) startTransition(() => keep(inviteId, link));
+    return state;
+  };
 }
 
 const th = "px-5 pt-4 pb-2.5 text-start font-medium text-ink-2 text-sm";
@@ -132,8 +173,8 @@ export function DoneSendList({ count }: { count: number }) {
 /**
  * Those on the list whose earlier link ran out, folded into one row until
  * asked for: each with "קישור חדש", which opens the invite again for 14 days
- * (the link before it no longer works). One list in every shape: a few
- * rows at most, under the send list.
+ * (the link before it no longer works), kept as it arrives (`keptAsMade`).
+ * One list in every shape: a few rows at most, under the send list.
  */
 export function DoneExpired({
   rows,
@@ -143,8 +184,10 @@ export function DoneExpired({
   renew: Resend;
 }) {
   const t = useTranslations("app.team");
+  const links = useInviteLinks();
   const [open, setOpen] = useState(false);
   if (rows.length === 0) return null;
+  const kept = keptAsMade(renew, links?.keep);
   return (
     <PageSection title={t("import.done.expired.title")}>
       <div className="overflow-hidden rounded-card bg-surface shadow-card">
@@ -189,7 +232,7 @@ export function DoneExpired({
                   <ResendLink
                     inviteId={row.id}
                     name={row.shown}
-                    resend={renew}
+                    resend={kept}
                   />
                 }
               />

@@ -10358,6 +10358,25 @@ test("the people import's twin sends each one's link from its done screen, to no
   await expect(creates).toHaveCount(6);
   await expect(creates.first()).toBeFocused();
   await expectCleanPage(page);
+
+  // Taken back, the one whose link was made stays, and "ביטול" says so at
+  // once; kept, the done screen still shows that link.
+  const remove = page.getByRole("button", {
+    name: he.app.team.import.done.remove,
+    exact: true,
+  });
+  await remove.click();
+  const keptBack = page.getByRole("status").filter({
+    hasText: [
+      heT("app.team.import.done.removed", { count: 6 }),
+      heT("app.team.import.done.removedKept", { count: 1 }),
+    ].join(". "),
+  });
+  await expect(keptBack).toBeVisible();
+  await keptBack.getByRole("button").click();
+  await expect(remove).toBeFocused();
+  await expect(whatsapp).toHaveCount(1);
+  await expect(creates).toHaveCount(6);
   // No chat to any number, anywhere on the twin.
   for (const link of await page.locator('a[href*="wa.me"]').all()) {
     expect(await link.getAttribute("href")).toMatch(

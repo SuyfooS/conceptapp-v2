@@ -4,7 +4,7 @@ import {
   knownTeamOf,
 } from "@domain/people-import";
 import { describe, expect, it } from "vitest";
-import { withoutTakenBack } from "./taken-back";
+import { takeBackOf, withoutTakenBack } from "./taken-back";
 
 const invite = (
   id: string,
@@ -80,5 +80,63 @@ describe("withoutTakenBack", () => {
   it("is the team as read when nothing is taken back", () => {
     expect(withoutTakenBack(afterImport, null)).toBe(afterImport);
     expect(withoutTakenBack(afterImport, new Set())).toBe(afterImport);
+  });
+});
+
+describe("takeBackOf", () => {
+  const ids = made.map((one) => one.id);
+  const none = () => false;
+
+  it("cancels every invite the import made while none has a link, whichever reading the page has", () => {
+    for (const known of [before, afterImport]) {
+      expect(takeBackOf(ids, known, none)).toEqual({
+        cancels: ["a", "b", "c"],
+        kept: 0,
+      });
+    }
+  });
+
+  it("keeps one whose link was made on the screen, before the page reads the team again", () => {
+    // "יצירת קישור" for the first, then "מחיקת ההזמנות מהרשימה": the undo
+    // cancels two, never "3 הזמנות נמחקו", and only those two are hidden.
+    const here = new Set(["a"]);
+    for (const known of [before, afterImport]) {
+      expect(takeBackOf(ids, known, (id) => here.has(id))).toEqual({
+        cancels: ["b", "c"],
+        kept: 1,
+      });
+    }
+  });
+
+  it("keeps one the page reads with its link made, here or elsewhere", () => {
+    const linked = invite("b", "+972500007803", { linkPending: false });
+    const known = knownTeamOf(
+      [owner],
+      [accountant, ...made.map((one) => (one.id === linked.id ? linked : one))],
+    );
+    expect(takeBackOf(ids, known, none)).toEqual({
+      cancels: ["a", "c"],
+      kept: 1,
+    });
+  });
+
+  it("cancels none once each has its link, so nothing is left to take back", () => {
+    const all = new Set(ids);
+    expect(takeBackOf(ids, afterImport, (id) => all.has(id))).toEqual({
+      cancels: [],
+      kept: 3,
+    });
+  });
+
+  it("counts only the import's own invites", () => {
+    expect(takeBackOf([], afterImport, none)).toEqual({
+      cancels: [],
+      kept: 0,
+    });
+    // The accountant's invite, waiting with no link, was never the import's.
+    expect(takeBackOf(["a"], afterImport, none)).toEqual({
+      cancels: ["a"],
+      kept: 0,
+    });
   });
 });

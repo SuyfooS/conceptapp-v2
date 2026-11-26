@@ -163,9 +163,11 @@ same number twice is one person (`sameLine`) by the same name and the same
 role, written on the line or the list's (the first line sent, as naming it
 when either does), else a conflict (`duplicate`).
 `importRolesOf` builds the roles from `inviteChoices` and the business's
-words, `againstTeam` checks the paste against the team the page loaded (a
-member, or an invite with a link, an owner's or an accountant's, or one the
-viewer may not change, is left out whatever its line says; an invite with no
+words (owners and accountants one at a time, `given` when the viewer
+invites them on the invite form, an owner alone), `againstTeam` checks the
+paste against the team the page loaded (a member, or an invite with a link,
+an owner's or an accountant's, or one the viewer may not change, is left
+out whatever its line says; an invite with no
 link yet is updated, its role kept when the line names none; from the
 console, a line it would write whose number the database found on another
 business's staff, its third argument, is to fix, `elsewhere`, until it is

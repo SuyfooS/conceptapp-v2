@@ -12,7 +12,9 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 const { NextIntlClientProvider, createTranslator } = await import("next-intl");
-const { DoneExpired, DoneLinks, DoneSendList } = await import("./done-send");
+const { DoneExpired, DoneLinks, DoneSendList, keptAsMade } = await import(
+  "./done-send"
+);
 const { PENDING_LIST } = await import("../pending-links");
 const he = (await import("@/messages/he.json")).default;
 
@@ -130,5 +132,51 @@ describe("the done screen's send list", () => {
     expect(
       text(drawn(createElement(DoneExpired, { rows: [], renew: resend }))),
     ).toBe("");
+  });
+});
+
+describe("keptAsMade", () => {
+  // A press on its way when the done card goes (its list taken back, or
+  // another list started): its row is gone, so the screen keeps the link,
+  // and the card brought back by "ביטול" shows it.
+  const form = new FormData();
+
+  it("keeps the link on the screen as it arrives, and answers as the action does", async () => {
+    const kept: [string, string][] = [];
+    const asked: string[] = [];
+    const made = keptAsMade(
+      async (inviteId) => {
+        asked.push(inviteId);
+        return { link: `https://app.example/join/${inviteId}` };
+      },
+      (inviteId, link) => kept.push([inviteId, link]),
+    );
+    expect(await made("dana", {}, form)).toEqual({
+      link: "https://app.example/join/dana",
+    });
+    expect(asked).toEqual(["dana"]);
+    expect(kept).toEqual([["dana", "https://app.example/join/dana"]]);
+  });
+
+  it("keeps nothing for a refusal, a link made elsewhere among them", async () => {
+    const kept: string[] = [];
+    for (const failure of ["linked", "failed"] as const) {
+      const made = keptAsMade(
+        async () => ({ failure }),
+        (inviteId) => kept.push(inviteId),
+      );
+      expect(await made("dana", {}, form)).toEqual({ failure });
+    }
+    expect(kept).toEqual([]);
+  });
+
+  it("answers the same with no screen to keep it on", async () => {
+    const made = keptAsMade(
+      async () => ({ link: "https://app.example/join/x" }),
+      undefined,
+    );
+    expect(await made("x", {}, form)).toEqual({
+      link: "https://app.example/join/x",
+    });
   });
 });

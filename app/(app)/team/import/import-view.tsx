@@ -29,7 +29,7 @@ import { pageGlowClass } from "@ui/page-glow";
 import { PersonList, PersonRow } from "@ui/person-row";
 import { StatusToast } from "@ui/status-toast";
 import { TextArea } from "@ui/text-field";
-import { UndoRow } from "@ui/undo-row";
+import { UndoRow, type UndoRowProps } from "@ui/undo-row";
 import { Check, ShieldCheck, Trash2, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
@@ -44,6 +44,7 @@ import {
 } from "react";
 import { HOLD_MS, useHeldWrite } from "../../use-held-write";
 import type { PendingRow } from "../pending-links";
+import { useInviteLinks } from "../resend-link";
 import { doneLinksOf, type ExpiredRow } from "./done-links";
 import {
   DoneExpired,
@@ -67,7 +68,7 @@ import type {
   UndoPeopleImport,
 } from "./import-types";
 import { type LineSpan, lineRange, withoutLines } from "./paste-edit";
-import { withoutTakenBack } from "./taken-back";
+import { takeBackOf, withoutTakenBack } from "./taken-back";
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 
@@ -199,6 +200,9 @@ export type PeopleImportViewProps = {
  * link made there, one person at a time, and "קישור חדש" for those whose
  * link ran out: the done card at the start of a tablet's columns, the list
  * at their end; on a computer the card above, the list a table under it.
+ * Its ways on (deleting the list's invites, back to the team, another list)
+ * come after the list on a phone and a computer, under the card on a
+ * tablet, so the first "יצירת קישור" follows the card's words.
  */
 export function PeopleImportView({
   mode = "team",
@@ -222,7 +226,6 @@ export function PeopleImportView({
   const send = inConsole ? undefined : sendLinks;
   const words = useLineWords(roles, mode);
   const statusId = useId();
-  const removeHereId = useId();
   /** Owners and accountants, as the business words them: invited one at a time. */
   const oneByOne = (role: "owner" | "accountant") =>
     roles.oneByOne.find((one) => one.role === role)?.label ?? "";
@@ -464,11 +467,16 @@ export function PeopleImportView({
     };
   }
 
-  function takeBack() {
+  /**
+   * Takes the import back: `cancels` its invites the undo cancels, those
+   * still with no link (`takeBackOf`).
+   */
+  function takeBack(cancels: readonly string[]) {
     if (!done?.importId) return;
     setRemoved({ done, kept: null });
-    // Its invites read as gone at once, as the undo will leave them.
-    setHidden(new Set(done.invites));
+    // Those invites read as gone at once, as the undo will leave them; one
+    // whose link was made here stays, before the page reads the team again.
+    setHidden(new Set(cancels));
     setDone(null);
     setToast(null);
     held.hold({ importId: done.importId, done });
@@ -745,7 +753,19 @@ export function PeopleImportView({
     send !== undefined &&
     done !== null &&
     done.links.length + done.expired.length > 0;
-  const removable = Boolean(done?.importId) && (done?.made ?? 0) > 0;
+  /** The done card's ways on, as each shape places them (`DoneActions`). */
+  const doneActions = (className: string) =>
+    done ? (
+      <DoneActions
+        done={done}
+        known={known}
+        inConsole={inConsole}
+        back={paths.done}
+        onRemove={takeBack}
+        onAnother={another}
+        className={className}
+      />
+    ) : null;
 
   return (
     <DoneLinks
@@ -806,10 +826,11 @@ export function PeopleImportView({
             className={
               sending
                 ? // Beside the people to send links to: one under the other on
-                  // a phone, the card at the start of a tablet's columns and
-                  // the list at their end; on a computer the card above, the
-                  // list a table across under it.
-                  "grid gap-6 md:grid-cols-2 md:items-start md:gap-8 xl:grid-cols-1"
+                  // a phone, the card, the list, then the ways on; the card
+                  // and the ways on at the start of a tablet's columns, the
+                  // list at their end; on a computer the card above, the list
+                  // a table across under it, then the ways on.
+                  "grid gap-6 md:grid-cols-2 md:grid-rows-[auto_1fr] md:items-start md:gap-8 xl:grid-cols-1 xl:grid-rows-none"
                 : saved.length > 0
                   ? // Beside the people it saved, in the editor's columns: one
                     // under the other on a phone, the card at the start of a
@@ -850,47 +871,30 @@ export function PeopleImportView({
                   <p>{t("done.later")}</p>
                 </>
               )}
-              {inConsole && removable ? (
-                // The console deletes no invite one at a time: once this card
-                // goes ("הזמנה מרשימה נוספת" too, or leaving the screen),
-                // only the owners can, on their Team screen. Its words say so.
-                <p id={removeHereId}>{ta("done.removeHere")}</p>
-              ) : null}
-              <div className="mt-1 flex flex-col gap-2 md:flex-row md:flex-wrap">
-                {removable ? (
-                  <Button
-                    variant="secondary"
-                    data-import-remove=""
-                    aria-describedby={inConsole ? removeHereId : undefined}
-                    onClick={takeBack}
-                  >
-                    <Trash2 aria-hidden="true" />
-                    {t("done.remove")}
-                  </Button>
-                ) : null}
-                <Button asChild variant="secondary">
-                  <Link href={paths.done.href}>{paths.done.label}</Link>
-                </Button>
-                <Button variant="ghost" onClick={another}>
-                  {t("done.another")}
-                </Button>
-              </div>
+              {/* With a send list, after it (below), so on a phone the first
+                  "יצירת קישור" follows these words, never the ways out. */}
+              {sending ? null : doneActions("mt-1")}
             </Card>
             {saved.length > 0 ? <DonePeople people={saved} /> : null}
             {sending && send ? (
-              <div className="flex min-w-0 flex-col gap-6">
-                <DoneSendList count={done.links.length} />
-                <DoneExpired rows={done.expired} renew={send.renew} />
-              </div>
+              <>
+                <div className="flex min-w-0 flex-col gap-6 md:col-start-2 md:row-span-2 md:row-start-1 xl:col-start-1 xl:row-span-1 xl:row-start-2">
+                  <DoneSendList count={done.links.length} />
+                  <DoneExpired rows={done.expired} renew={send.renew} />
+                </div>
+                {doneActions("md:col-start-1 md:row-start-2 xl:row-start-3")}
+              </>
             ) : null}
           </div>
         ) : (
           <>
             {held.held && removed ? (
               // Each import taken back is a row of its own, said afresh.
-              <UndoRow
+              <TakenBackUndo
                 key={held.held.importId}
-                message={t("done.removed", { count: removed.done.made })}
+                done={removed.done}
+                known={known}
+                keptWords={keptWords}
                 onUndo={keepImport}
                 autoFocus
                 onWaitingChange={(waiting) =>
@@ -953,7 +957,12 @@ export function PeopleImportView({
                   <p className="px-1 text-ink-2 text-sm">
                     {inConsole
                       ? ta("role.oneByOne", oneByOneRoles)
-                      : t("role.oneByOne", oneByOneRoles)}
+                      : t(
+                          words.givesOneByOne
+                            ? "role.oneByOne"
+                            : "role.oneByOneOwners",
+                          oneByOneRoles,
+                        )}
                   </p>
                 </div>
                 <div className="flex flex-col gap-2">
@@ -1126,6 +1135,110 @@ export function PeopleImportView({
       </PageBody>
     </DoneLinks>
   );
+}
+
+/**
+ * What taking the import back does now (`takeBackOf`): the links made on
+ * this screen (`InviteLinks`, under `DoneLinks`; none in the console) and the
+ * team as the page last read it.
+ */
+function useTakeBack(done: Done, known: KnownTeam) {
+  const links = useInviteLinks();
+  return takeBackOf(done.invites, known, (id) => links?.links.has(id) === true);
+}
+
+/**
+ * The done card's ways on: "מחיקת ההזמנות מהרשימה" while its undo would
+ * cancel any of the import's invites (one whose link was made since stays
+ * either way, so with every link made it is not offered), back to the team,
+ * and another list. The console says first that only here are they deleted
+ * together. `className` places the row in the shape it is drawn in.
+ */
+function DoneActions({
+  done,
+  known,
+  inConsole,
+  back,
+  onRemove,
+  onAnother,
+  className,
+}: {
+  done: Done;
+  known: KnownTeam;
+  inConsole: boolean;
+  back: { href: string; label: string };
+  /** Takes the import back, with the invites its undo cancels, to hide. */
+  onRemove: (cancels: readonly string[]) => void;
+  onAnother: () => void;
+  className: string;
+}) {
+  const t = useTranslations("app.team.import");
+  const ta = useTranslations("admin.peopleImport");
+  const removeHereId = useId();
+  const { cancels } = useTakeBack(done, known);
+  const removable = done.importId !== null && cancels.length > 0;
+  return (
+    <>
+      {inConsole && removable ? (
+        // The console deletes no invite one at a time: once this card goes
+        // ("הזמנה מרשימה נוספת" too, or leaving the screen), only the owners
+        // can, on their Team screen. Its words say so.
+        <p id={removeHereId}>{ta("done.removeHere")}</p>
+      ) : null}
+      <div
+        className={cn(
+          "flex flex-col gap-2 md:flex-row md:flex-wrap",
+          className,
+        )}
+      >
+        {removable ? (
+          <Button
+            variant="secondary"
+            data-import-remove=""
+            aria-describedby={inConsole ? removeHereId : undefined}
+            onClick={() => onRemove(cancels)}
+          >
+            <Trash2 aria-hidden="true" />
+            {t("done.remove")}
+          </Button>
+        ) : null}
+        <Button asChild variant="secondary">
+          <Link href={back.href}>{back.label}</Link>
+        </Button>
+        <Button variant="ghost" onClick={onAnother}>
+          {t("done.another")}
+        </Button>
+      </div>
+    </>
+  );
+}
+
+/**
+ * "ביטול" for an import taken back, while it holds: how many of its invites
+ * go, and, said at once, how many stay since a link was made for them
+ * meanwhile (the undo cancels only those with none). A link that arrives
+ * while it holds changes its words. The database's own count is said after,
+ * under the field.
+ */
+function TakenBackUndo({
+  done,
+  known,
+  keptWords,
+  ...row
+}: Omit<UndoRowProps, "message"> & {
+  done: Done;
+  known: KnownTeam;
+  keptWords: (count: number) => string;
+}) {
+  const t = useTranslations("app.team.import");
+  const { cancels, kept } = useTakeBack(done, known);
+  const message = [
+    cancels.length > 0 ? t("done.removed", { count: cancels.length }) : null,
+    kept > 0 ? keptWords(kept) : null,
+  ]
+    .filter(Boolean)
+    .join(". ");
+  return <UndoRow {...row} message={message} />;
 }
 
 /**

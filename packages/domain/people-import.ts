@@ -91,6 +91,12 @@ export type ImportRoles = {
     role: "owner" | "accountant";
     label: string;
     names: readonly string[];
+    /**
+     * The viewer invites to it themselves, one at a time ("הזמנה לצוות"):
+     * among their `inviteChoices`, so an owner. Anyone else is told only the
+     * owners do.
+     */
+    given: boolean;
   }[];
   /** Staff roles above the viewer's rank (a worker who edits the team: managers). */
   aboveRank: readonly {
@@ -144,6 +150,7 @@ export function importRolesOf({
       role,
       label: labels[role],
       names: [labels[role]],
+      given: choices.some((choice) => choice.role === role),
     })),
     aboveRank: STAFF.filter((role) => !given.has(role)).flatMap((role) => [
       { role, namedRole: null, label: labels[role], names: [labels[role]] },
