@@ -8106,18 +8106,10 @@
       },
       "staff": {
         "label": "Staff list",
-        "hint": "One line per person: a name and a mobile number. Add “owner” or “manager” where it fits. Optional.",
+        "hint": "One line per person: a name and a mobile number, in any order, and a role if you like, such as “owner”, “manager” or “accountant”. You can copy columns from Excel or Google Sheets, header row included. Optional.",
         "placeholder": "Ronit Cohen 050-123-4567 owner\nShai Levi 052-765-4321",
         "count": "{count, plural, =0 {Nobody added yet} one {One person will be invited} other {# people will be invited}}",
         "problems": "{count, plural, one {One line needs fixing} other {# lines need fixing}}",
-        "line": "Line {line}",
-        "lineErrors": {
-          "noPhone": "No mobile number",
-          "invalidPhone": "The number does not look like an Israeli mobile",
-          "noName": "No name",
-          "nameTooLong": "The name is longer than 80 characters",
-          "duplicate": "The number is already on an earlier line"
-        },
         "listLabel": "Who will be invited",
         "notSent": "At this step the invites are only saved. Nobody gets a message."
       }

@@ -367,25 +367,33 @@ export async function activeElsewhere(
 /**
  * Which of the staff list's numbers are on a business's staff already, for a
  * business not opened yet (the console's new-business wizard): `activeElsewhere`
- * for the whole list in one read. Only the entries in a staff role count: an
- * accountant may keep the books of any number of businesses. The numbers come
- * back as given (E.164), in the list's order.
+ * for the whole list in one call, `public.admin_staff_elsewhere`, which asks
+ * that `actorId` is on the ConceptApp team. The numbers go in the request's
+ * body, never in an address a request log keeps (inviting from a list, part
+ * 6; the read before put them in a GET's query string), and nothing writes
+ * them down. Only the entries in a staff role count: an accountant may keep
+ * the books of any number of businesses. The numbers come back as given
+ * (E.164), in the list's order. Before the function reaches a project none
+ * is found, never asked another way: a claim refuses a second place on a
+ * staff anyway, and /join says why.
  */
 export async function onAnotherStaff(
+  actorId: string,
   entries: readonly { phone: string; role: Role }[],
 ): Promise<string[]> {
   const phones = [
     ...new Set(entries.filter((e) => isStaff(e.role)).map((e) => e.phone)),
   ];
   if (phones.length === 0) return [];
-  const { data, error } = await createAdminClient()
-    // bounded: one wizard's numbers (at most 60), a few businesses each.
-    .from("memberships")
-    .select("profiles!inner(phone)")
-    .eq("active", true)
-    .in("profiles.phone", phones)
-    .neq("role", "accountant");
-  if (error) throw error;
-  const taken = new Set(data.map((row) => row.profiles.phone));
+  const { data, error } = await createAdminClient().rpc(
+    "admin_staff_elsewhere",
+    { actor: actorId, phones },
+  );
+  if (error) {
+    if (isMissingFunction(error)) return [];
+    // The function's refusals hold no number, nor does this.
+    throw new Error(`Could not ask about other staffs: ${error.message}`);
+  }
+  const taken = new Set(z.array(z.string()).parse(data));
   return phones.filter((phone) => taken.has(phone));
 }

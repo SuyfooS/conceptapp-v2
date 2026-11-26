@@ -1,7 +1,11 @@
 "use server";
 
 import { randomBytes, randomUUID } from "node:crypto";
-import { NEW_BUSINESS_FIELDS, parseNewBusiness } from "@domain/business";
+import {
+  NEW_BUSINESS_FIELDS,
+  parseNewBusiness,
+  roleWordsOf,
+} from "@domain/business";
 import { inviteLink } from "@domain/invites";
 import { type ModuleManifest, moduleKeyOf } from "@domain/modules";
 import { MENU_CAPS } from "@domain/order-taking";
@@ -9,6 +13,7 @@ import { checkSettingsChange } from "@domain/settings-form";
 import { checkSentence, type MessageTree, sentenceFits } from "@domain/wording";
 import { manifestFor } from "@modules/registry";
 import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { z } from "zod";
 import { requestOrigin } from "@/app/origin";
 import he from "@/messages/he.json";
@@ -74,8 +79,13 @@ export async function demoCreateBusiness(
   _prev: NewBusinessState,
   form: FormData,
 ): Promise<NewBusinessState> {
+  // The staff list read as the real action reads it, with nothing asked of
+  // other staffs.
+  const roles = await getTranslations("app.roles");
   const parsed = parseNewBusiness(
     Object.fromEntries(NEW_BUSINESS_FIELDS.map((f) => [f, form.get(f)])),
+    NEW_BUSINESS_FIELDS,
+    { labels: roleWordsOf((role) => roles(role)) },
   );
   if (!parsed.ok) return { errors: parsed.errors };
   // Taken in the demo too, so the way back to the slug can be seen.

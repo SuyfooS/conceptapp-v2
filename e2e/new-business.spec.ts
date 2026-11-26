@@ -184,6 +184,10 @@ test("a platform admin opens a restaurant and invites its staff", async ({
 
   await signIn(page, PLATFORM_ADMIN, /\/admin$/);
   await page.goto("/admin/new");
+  // The form is drawn before anything is pressed in it.
+  await expect(
+    page.getByRole("heading", { level: 2, name: w.steps.template }),
+  ).toBeVisible();
 
   await page
     .getByRole("radio", { name: new RegExp(w.templates.restaurant.name) })
@@ -209,9 +213,10 @@ test("a platform admin opens a restaurant and invites its staff", async ({
       "תמר בדיקה 03-1234567",
     ].join("\n"),
   );
+  // Each line's problem in the import's words (inviting from a list, part 6).
   await expect(page.getByText("שורה אחת צריכה תיקון")).toBeVisible();
   await expect(
-    page.getByText(`שורה 3 · ${w.staff.lineErrors.invalidPhone}`),
+    page.getByText(`שורה 3 · ${he.app.team.import.problem.invalidPhone}`),
   ).toBeVisible();
   await page.getByRole("button", { name: w.actions.create }).click();
   await expect(page.getByText(w.errors.staff.invalid)).toBeVisible();
@@ -219,7 +224,7 @@ test("a platform admin opens a restaurant and invites its staff", async ({
 
   // One place on a staff per login (payroll P3b): the shop's Roni, on its
   // staff (supabase/seed.sql), can't be on this one's too. The list comes
-  // back with the number named, and nothing opens.
+  // back with the number named and its line to fix, and nothing opens.
   await list.fill(
     ["רונית בדיקה 050-000-0701 בעלים", "רוני 050-000-0012"].join("\n"),
   );
@@ -233,20 +238,42 @@ test("a platform admin opens a restaurant and invites its staff", async ({
       }),
     ),
   ).toBeVisible();
+  await expect(
+    page.getByText(`שורה 2 · ${he.admin.peopleImport.problem.elsewhere}`),
+  ).toBeVisible();
   await expect(page).toHaveURL(/\/admin\/new$/);
   expect(await businessBySlug(slug)).toBeNull();
 
+  // A sheet pasted with its header row: an ID column, a direction mark,
+  // Excel's dropped zero and a role column, read as the import reads them.
   await list.fill(
     [
-      "רונית בדיקה 050-000-0701 בעלים",
-      "שי בדיקה, מנהל, 0500000702",
-      "תמר בדיקה 050-000-0703",
+      "שם\tת.ז.\tנייד\tתפקיד",
+      `${String.fromCodePoint(0x200f)}רונית בדיקה\t123456782\t050-000-0701\tבעלים`,
+      "שי בדיקה\t234567891\t500000702\tמנהל",
+      "תמר בדיקה\t\t0500000703\t",
     ].join("\n"),
   );
   await expect(page.getByText("3 אנשים יוזמנו").first()).toBeVisible();
+  await expect(
+    page.getByText(
+      heT.markup("app.team.import.summary.header", {
+        line: 1,
+        ltr: (chunks) => chunks,
+      }),
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      heT("app.team.import.paste.ignored", { count: 1, names: "ת.ז." }),
+    ),
+  ).toBeVisible();
   const invited = page.getByRole("list", { name: w.staff.listLabel });
   await expect(invited.getByRole("listitem")).toHaveCount(3);
   await expect(invited.getByText("050-000-0701")).toBeVisible();
+  await expect(invited.getByText("050-000-0702")).toBeVisible();
+  // No ID number of the sheet is drawn among the people.
+  await expect(invited.getByText("123456782")).toHaveCount(0);
   await page.screenshot({
     path: testInfo.outputPath("new-business-staff.png"),
     fullPage: true,

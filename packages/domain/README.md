@@ -182,7 +182,20 @@ all (a staff role among the invite form's choices that isn't an owner's
 alone), so the import and the rows leading to it open only then. `pasted-text.ts` holds
 what it shares with the menu's reader (`clean`, the marks, `readsBackwards`)
 and `westernDigits` for Arabic-Indic digits; `staff-list.ts` exports
-`wordKey` and `builtInRoleWord` ("מנהל/ת", "עובד/ת", "employee").
+`wordKey` and `builtInRoleWord` ("מנהל/ת", "עובד/ת", "employee"), and the
+wizard's `STAFF_LIST_MAX` (60) and `StaffEntry`. Since part 6 the console's
+new-business wizard reads its staff list with the same reader
+(`parseStaffList` in `business.ts`, which `parseNewBusiness` runs): a header
+row, an ID column, direction marks, Excel's dropped zero, names through
+`parseTeamName` and each problem as the import has it, against
+`staffRolesOf` (every role, none blocked: a line naming an owner or an
+accountant, which the import holds for one by one, carries the role it
+named, `role` on the problem, and the wizard invites them), the app's words
+for the roles (`labels`, from `app.roles` in the viewer's language, so
+"ניהול" and "צוות" read too) and the numbers the database found on another
+staff (`elsewhere`, whose staff lines are to fix until they go). The same
+number twice is one person by the same name and role, an owner's line
+included, else a `duplicate` naming the first line with it.
 
 `setup.ts` is the console's checklist of a business just opened (opened,
 owner, staff, address), each item from the business as stored, and the rule
