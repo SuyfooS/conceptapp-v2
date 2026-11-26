@@ -7,11 +7,14 @@
 -- owner), every row checked first (a mobile, a name, each number once, 1 to
 -- 300). Against the team: a member's number is left out, an owner's or an
 -- accountant's invite kept, an invite with a link never touched, one with no
--- link the giver may not change left, and one they may updated keeping its
--- role unless the line names one; anything else is a new invite, pending,
--- of the import. One invite.import row, ids and counts only; nobody told.
--- From the console a number on another business's staff refuses it all.
--- The cap of 500 waiting. A full join through an imported invite. The undo:
+-- link the giver may not change (by rank too) left, and one they may
+-- updated, whatever its date, keeping its role unless the line names one;
+-- anything else is a new invite, pending, of the import. One invite.import
+-- row, ids and counts only; nobody told. From the console a number on
+-- another business's staff refuses it all when the list would write its
+-- invite, never when it leaves one as it is. The cap of 500 waiting, an
+-- invite with no link whatever its date. A full join through an imported
+-- invite. The undo, an owner's, a manager's or the console's:
 -- only the import's invites still with no link, the rows kept, by rank, once,
 -- the linked and the joined counted apart. A role an imported invite waits
 -- for its link with isn't archived, even past the invite's date.
@@ -53,7 +56,8 @@ create function pg_temp.person(
       else jsonb_build_object('named_role', named) end
 $$;
 -- What a call said: 'ok', or its SQLSTATE, then its hint and, after '@', its
--- detail (the rows' places) when it has them. A refusal writes nothing.
+-- detail (the rows' places) when it has them. A refusal writes nothing: the
+-- exception block takes back all the call did, so nothing below asks again.
 create function pg_temp.said_by(statement_text text) returns text language plpgsql as $$
 declare
   why text;
@@ -85,9 +89,6 @@ create function pg_temp.undo_console(actor integer, business uuid, batch uuid)
 returns text language sql as $$
   select pg_temp.said_by(format('select public.admin_import_undo(%L::uuid, %L::uuid, %L::uuid)',
     pg_temp.p(actor), business, batch))
-$$;
-create function pg_temp.count_in(business uuid) returns bigint language sql as $$
-  select count(*) from public.invites i where i.business_id = business
 $$;
 
 -- 1 owner of A, 2 its manager, 3 a worker, 4 a worker raised to edit the
@@ -181,8 +182,6 @@ create temporary table before on commit drop as
     i.expires_at, i.token_hash, i.link_pending
   from public.invites i
   where i.business_id = pg_temp.a() and i.claimed_at is null;
-create temporary table counted on commit drop as
-  select pg_temp.count_in(pg_temp.a()) as n;
 
 ------------------------------------------------------------------------------
 -- 1. The column, and who may call what
@@ -262,10 +261,6 @@ select is(
   'created',
   'one its definition opens takes them, as the local seed''s demos'
 );
-select is_empty(
-  $$select 1 from public.invites i where i.business_id = pg_temp.b(3)$$,
-  'and the closed one has none'
-);
 
 ------------------------------------------------------------------------------
 -- 4. Staff roles only, each held to the giver's rules
@@ -300,14 +295,39 @@ select is(
   '42501 held @1',
   'nor gives it to a worker''s invite with no link yet by naming it on the line'
 );
-select is_empty(
-  $$select 1 from before b join public.invites i on i.id = b.id
-    where b.phone = pg_temp.ph(21)
-      and (i.full_name, i.role, i.named_role, i.invited_by, i.expires_at, i.token_hash, i.link_pending)
-        is distinct from
-        (b.full_name, b.role, b.named_role, b.invited_by, b.expires_at, b.token_hash, b.link_pending)$$,
-  'and that invite is as it was'
+
+-- 23: the wizard's manager, still with no link. The worker who edits the
+-- team, raised to hold everything there is to hold, in a business whose
+-- managers don't see pay: only the rank rule is left to keep it as it is.
+update public.memberships m
+set perms = array(select k.key from public.permission_keys k where k.settable)
+  || '{team.view,team.edit}'::text[]
+where m.business_id = pg_temp.a() and m.user_id = pg_temp.p(4);
+
+select ok(
+  not private.role_holds_beyond(pg_temp.a(), 'manager', pg_temp.p(4))
+    and not private.role_holds_pay(pg_temp.a(), 'manager'),
+  'a worker raised to hold all a manager holds, where managers don''t see pay'
 );
+create temporary table outranked on commit drop as
+  select public.team_import_people(pg_temp.p(4), pg_temp.a(), jsonb_build_array(
+    pg_temp.person(23, 'Wizard Manager Renamed'))) as answer;
+select is(
+  (select o.answer -> 'rows' -> 0 ->> 'status' from outranked o)
+    || ' | ' || (
+      select count(*) from before b join public.invites i on i.id = b.id
+      where b.phone = pg_temp.ph(23)
+        and (i.full_name, i.role, i.named_role, i.invited_by, i.expires_at, i.token_hash, i.link_pending)
+          is distinct from
+          (b.full_name, b.role, b.named_role, b.invited_by, b.expires_at, b.token_hash, b.link_pending)
+    )::text,
+  'invited | 0',
+  'still leaves a manager''s invite with no link yet as it is, renamed on the line: the rank rule'
+);
+
+update public.memberships m
+set perms = '{team.view,team.edit}'
+where m.business_id = pg_temp.a() and m.user_id = pg_temp.p(4);
 
 -- Managers see pay in A, as an owner may set it.
 select public.set_role_permission(pg_temp.p(1), pg_temp.a(), 'manager', 'clock.payroll', true);
@@ -366,11 +386,6 @@ select is(
   '54000 limit',
   'and at most 300 people at a time'
 );
-select is(
-  pg_temp.count_in(pg_temp.a()),
-  (select n from counted),
-  'none of these refusals wrote anything'
-);
 
 ------------------------------------------------------------------------------
 -- 6. A manager pastes, while managers see pay
@@ -408,6 +423,11 @@ create temporary table told on commit drop as
 
 ------------------------------------------------------------------------------
 -- 7. The owner pastes A's list
+
+-- 22: past its date, with no link yet. It still waits for its link, so the
+-- list updates it, and gives it its 14 days again.
+update public.invites i set expires_at = now() - interval '1 day'
+where i.business_id = pg_temp.a() and i.phone = pg_temp.ph(22) and i.claimed_at is null;
 
 create temporary table got on commit drop as
   select public.team_import_people(pg_temp.p(1), pg_temp.a(), jsonb_build_array(
@@ -503,15 +523,15 @@ select ok(
 );
 select results_eq(
   $$select i.phone, i.full_name, i.role::text, i.link_pending, i.token_hash = b.token_hash,
-      i.invited_by = pg_temp.p(1), i.import_id is null
+      i.invited_by = pg_temp.p(1), i.import_id is null, i.expires_at > now() + interval '13 days'
     from public.invites i join before b on b.id = i.id
     where b.phone in (pg_temp.ph(22), pg_temp.ph(24), pg_temp.ph(32))
     order by i.phone$$,
   $$values
-    (pg_temp.ph(22), 'New Name'::text, 'worker'::text, true, true, true, true),
-    (pg_temp.ph(24), 'Promote Me', 'worker', true, true, true, true),
-    (pg_temp.ph(32), 'Mgr New', 'manager', true, true, true, true)$$,
-  'an invite with no link yet is updated in place: a new name, the role only where the line named one, still no link, the same hash, made by no import'
+    (pg_temp.ph(22), 'New Name'::text, 'worker'::text, true, true, true, true, true),
+    (pg_temp.ph(24), 'Promote Me', 'worker', true, true, true, true, true),
+    (pg_temp.ph(32), 'Mgr New', 'manager', true, true, true, true, true)$$,
+  'an invite with no link yet is updated in place, past its date too: a new name, the role only where the line named one, still no link, the same hash, 14 days from now, made by no import'
 );
 select is_empty(
   $$select 1 from before b join public.invites i on i.id = b.id
@@ -622,16 +642,30 @@ select is(
   '23505 elsewhere @2,4',
   'from the console, numbers on another business''s staff refuse the whole list, by their rows, never as an accountant'
 );
-select is_empty(
-  $$select 1 from public.invites i
-    where i.business_id = pg_temp.a() and i.phone in (pg_temp.ph(55), pg_temp.ph(8))$$,
-  'and nothing of it is written'
-);
 select is(
   public.team_import_people(pg_temp.p(1), pg_temp.a(),
     jsonb_build_array(pg_temp.person(7, 'Works At B'))) -> 'rows' -> 0 ->> 'status',
   'created',
   'the Team screen''s door never asks where else a number works (#80)'
+);
+-- 7 has an invite with no link in A now. The console asks of what it
+-- writes, an update too, and of nothing it leaves as it is.
+select is(
+  pg_temp.console(5, pg_temp.a(), jsonb_build_array(
+    pg_temp.person(56, 'Fresh Too'), pg_temp.person(7, 'Works At B Renamed'))),
+  '23505 elsewhere @2',
+  'from the console, a list that would update the invite of a number on another business''s staff is refused too'
+);
+select public.team_invite_link(pg_temp.p(1),
+  (select i.id from public.invites i
+    where i.business_id = pg_temp.a() and i.phone = pg_temp.ph(7) and i.claimed_at is null),
+  md5('pim 07') || md5('pim 07 b'));
+select is(
+  (select string_agg(r ->> 'status', ' ' order by (r ->> 'i')::integer)
+    from jsonb_array_elements(public.admin_import_people(pg_temp.p(5), pg_temp.a(), jsonb_build_array(
+      pg_temp.person(56, 'Fresh Too'), pg_temp.person(7, 'Works At B Renamed'))) -> 'rows') r),
+  'created invited',
+  'but once its link is made the list leaves it as it is, and goes through'
 );
 select is(
   (select count(*) from public.notifications x where x.business_id = pg_temp.a()),
@@ -702,12 +736,6 @@ select is(
   'a worker who edits the team can''t take back a list with a manager''s invite in it: the rank rule, as deleting one'
 );
 select is(
-  (select count(*) from public.invites i
-    where i.import_id = pg_temp.batch() and i.cancelled_at is not null),
-  0::bigint,
-  'and nothing of it is deleted'
-);
-select is(
   public.team_import_undo(pg_temp.p(6), pg_temp.b(2), pg_temp.batch()),
   '{"cancelled": 0, "kept": 0, "joined": 0}'::jsonb,
   'another business''s import id deletes nothing in one''s own'
@@ -774,6 +802,12 @@ select is_empty(
       and (i.claimed_at is not null or not i.link_pending)$$,
   'and never the invites it only updated, which no import made'
 );
+-- 53: the one invite the manager's list of section 6 made, a worker's.
+select is(
+  public.team_import_undo(pg_temp.p(2), pg_temp.a(), (select (m.answer ->> 'import')::uuid from managed m)),
+  '{"cancelled": 1, "kept": 0, "joined": 0}'::jsonb,
+  'and a manager takes back their own list of workers'
+);
 select is(
   (select count(*) from public.notifications x
     where x.business_id = pg_temp.a() and x.kind <> 'team.joined'),
@@ -805,12 +839,27 @@ select is(
 ------------------------------------------------------------------------------
 -- 11. At most 500 waiting
 
--- F: 499 invites with no link yet; one sent and run out and one deleted,
--- which don't wait.
-insert into public.invites (business_id, phone, role, full_name, token_hash, invited_by, link_pending)
+-- F: a list of 300, the most at a time, then 199 more invites with no link
+-- yet, every other one past its date, which waits for its link all the
+-- same: 499 waiting. One sent and run out and one deleted don't wait.
+select is(
+  (select count(*)
+    from jsonb_array_elements(public.team_import_people(pg_temp.p(15), pg_temp.b(6), (
+      select jsonb_agg(jsonb_build_object('name', 'Waiting ' || n,
+        'phone', '+97250009' || lpad(n::text, 4, '0'), 'role', 'worker', 'role_from_line', false))
+      from generate_series(1, 300) as n
+    )) -> 'rows') r
+    where r ->> 'status' = 'created'),
+  300::bigint,
+  'a list of 300 is taken whole'
+);
+insert into public.invites (
+  business_id, phone, role, full_name, token_hash, invited_by, link_pending, expires_at
+)
 select pg_temp.b(6), '+97250009' || lpad(n::text, 4, '0'), 'worker', 'Waiting ' || n,
-  md5('pim cap ' || n) || md5('pim cap b ' || n), pg_temp.p(15), true
-from generate_series(1, 499) as n;
+  md5('pim cap ' || n) || md5('pim cap b ' || n), pg_temp.p(15), true,
+  case when n % 2 = 0 then now() - interval '1 day' else now() + interval '14 days' end
+from generate_series(301, 499) as n;
 insert into public.invites (
   business_id, phone, role, full_name, token_hash, invited_by, expires_at, claimed_at, cancelled_at
 )
@@ -824,12 +873,7 @@ select is(
   pg_temp.team(15, pg_temp.b(6), jsonb_build_array(
     pg_temp.person(70, 'Cap One'), pg_temp.person(71, 'Cap Two'))),
   '54000 open @499',
-  'a list that would leave more than 500 invites waiting is refused, saying how many wait'
-);
-select is(
-  pg_temp.count_in(pg_temp.b(6)),
-  501::bigint,
-  'and writes nothing'
+  'a list that would leave more than 500 invites waiting is refused, saying how many wait, those past their date with no link among them'
 );
 select is(
   public.team_import_people(pg_temp.p(15), pg_temp.b(6),

@@ -19,7 +19,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
  * owner, a manager and the console, in every state a number can be in: "the
  * database decides the same again" holds only if both are asked. That runs
  * in one transaction it rolls back, each import in a savepoint of its own.
- * Then two sessions at once: a single invite made while an import runs, two
+ * Then two sessions at once: a single invite made while an import runs, a
+ * claim of the number's invite under way while it reads the number, two
  * imports into one business, and an undo while a link is being made. Those
  * sessions must see the business, so it is committed: made before the tests
  * and taken away after them. Ids and numbers of its own (d73…, 050-000-73xx),
@@ -179,8 +180,10 @@ async function parityTeam(tx: Tx) {
       ${name}, md5(${`parity ${phone}`}) || md5(${`parity b ${phone}`}),
       ${P.owner}, ${extra.pending ?? true},
       now() + ${extra.expires ?? "10 days"}::interval,
-      ${extra.cancelled ? new Date().toISOString() : null}::timestamptz,
-      ${extra.cancelled ? new Date().toISOString() : null}::timestamptz
+      -- One moment for both, as invites_cancelled_closed asks: now() stays
+      -- the same for the whole transaction.
+      case when ${extra.cancelled ?? false}::boolean then now() end,
+      case when ${extra.cancelled ?? false}::boolean then now() end
     )`;
   await invite(n(61), "Same", "worker");
   await invite(n(62), "Old", "worker");
@@ -427,10 +430,13 @@ describe("a list against the team, on the screen as in the database", () => {
 const RACE = "d7300000-0000-4000-b000-000000000001";
 const OWNER = "d7300000-0000-4000-a000-000000000001";
 const MANAGER = "d7300000-0000-4000-a000-000000000002";
+/** Signed up, on no team: joins the business by an invite during a race. */
+const JOINER = "d7300000-0000-4000-a000-000000000003";
 const RACE_PEOPLE = [
   [OWNER, "972500007301", "owner"],
   [MANAGER, "972500007302", "manager"],
 ] as const;
+const RACE_USERS = [...RACE_PEOPLE, [JOINER, "972500007340"] as const];
 
 const pids = { first: 0, second: 0 };
 
@@ -447,13 +453,13 @@ async function takeAway() {
       await tx`select private.purge_business_records(${RACE}::uuid)`;
       await tx`delete from public.businesses where id = ${RACE}`;
     }
-    await tx`delete from auth.users where id in ${tx([OWNER, MANAGER])}`;
+    await tx`delete from auth.users where id in ${tx([OWNER, MANAGER, JOINER])}`;
   });
 }
 
 async function make() {
   await sql.begin(async (tx) => {
-    for (const [id, phone] of RACE_PEOPLE) {
+    for (const [id, phone] of RACE_USERS) {
       await tx`
         insert into auth.users (
           instance_id, id, aud, role, phone, phone_confirmed_at,
@@ -609,6 +615,46 @@ describe("an import beside another write at the same moment", () => {
       { phone: x, full_name: "Single Invite", link_pending: false },
       { phone: y, full_name: "Listed First", link_pending: true },
     ]);
+  }, 30_000);
+
+  it("waits for a claim of the number's invite under way, then leaves the number out as a member's", async () => {
+    // The joiner's number: their invite, with its link, sent and committed.
+    const z = raceNumber(40);
+    await sql`
+      select public.team_invite(${OWNER}::uuid, ${RACE}::uuid, ${z},
+        'Joining Now', 'worker'::public.member_role,
+        md5('race claim') || md5('race claim b'))`;
+    // They join by it, not committed yet: the import waits on the invite's
+    // row, which it locks before it reads the team.
+    const claim = await begun(
+      first,
+      (tx) => tx`
+        select public.claim_invite(md5('race claim') || md5('race claim b'),
+          ${JOINER}::uuid)`,
+    );
+    let imported: Promise<Answer> | null = null;
+    try {
+      imported = underWay(
+        second.begin((tx) =>
+          importIn(tx, OWNER, [person(z, "Joining Listed")]),
+        ),
+      );
+      await waitsOn(pids.second, pids.first);
+    } finally {
+      await claim.commit();
+    }
+    if (!imported) throw new Error("The import never ran");
+    const answer = await imported;
+    // The team read after the claim: a member's number, and no second invite.
+    expect(statusesOf(answer)).toEqual(["member"]);
+    expect(answer.rows[0]).toMatchObject({ i: 1, invite: null });
+    expect(answer.import).toBeNull();
+    expect(
+      await sql<{ claimed_by: string | null; open: boolean }[]>`
+        select i.claimed_by, i.claimed_at is null as open
+        from public.invites i
+        where i.business_id = ${RACE} and i.phone = ${z}`,
+    ).toEqual([{ claimed_by: JOINER, open: false }]);
   }, 30_000);
 
   it("takes two imports into one business in turn: the second finds the first's invites", async () => {
