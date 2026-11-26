@@ -3,10 +3,10 @@ import { isolate, LRI, PDI } from "./bidi";
 
 describe("isolate", () => {
   it("holds what it is given, as it is, between LRI and PDI", () => {
-    expect(LRI).toBe("⁦");
-    expect(PDI).toBe("⁩");
-    expect(isolate("16:00–23:30")).toBe("⁦16:00–23:30⁩");
-    expect(isolate("")).toBe("⁦⁩");
+    expect([...LRI].map((c) => c.codePointAt(0))).toEqual([0x2066]);
+    expect([...PDI].map((c) => c.codePointAt(0))).toEqual([0x2069]);
+    expect(isolate("16:00–23:30")).toBe(`${LRI}16:00–23:30${PDI}`);
+    expect(isolate("")).toBe(`${LRI}${PDI}`);
   });
 
   it("adds exactly two characters and changes nothing inside", () => {
