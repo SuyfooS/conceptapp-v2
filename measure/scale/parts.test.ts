@@ -1,8 +1,9 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import type postgres from "postgres";
 import { describe, expect, it } from "vitest";
 import { choice, choiceSql } from "./ids";
-import { PARTS, readPart, stepFailure, stepsOf } from "./parts";
+import { PARTS, readPart, runPart, stepFailure, stepsOf } from "./parts";
 import { partData } from "./seed";
 import { shape } from "./shape";
 
@@ -103,18 +104,58 @@ describe("the seed's SQL parts", () => {
   it("an error names the part, the step and the line", () => {
     const [step] = stepsOf(
       "-- intro\n\n-- step: rows\nselect 1\nfrom nowhere",
-      "40-weeks",
+      "92-weeks",
     );
     if (!step) throw new Error("no step");
-    const error = stepFailure("40-weeks", step, {
+    const error = stepFailure("92-weeks", step, {
       message: 'relation "nowhere" does not exist',
       code: "42P01",
       position: "15",
     });
     expect(error.message).toMatch(
-      /40-weeks, step rows \(line 5 of 40-weeks\.sql\)/,
+      /92-weeks, step rows \(line 5 of 92-weeks\.sql\)/,
     );
     expect(error.message).toMatch(/code 42P01/);
+  });
+
+  it("sends a step's rows as a typed JSON parameter, so they are encoded once", async () => {
+    // `$1::jsonb` makes postgres.js take the parameter as jsonb and encode
+    // it: a string already encoded would arrive as a JSON string, which
+    // jsonb_to_recordset refuses. tx.json(rows) is encoded once.
+    const sent: unknown[][] = [];
+    const tx = {
+      json: (value: unknown) => ({ json: value }),
+      unsafe: async (_text: string, parameters: unknown[] = []) => {
+        sent.push(parameters);
+        return [];
+      },
+    } as unknown as postgres.TransactionSql;
+    const many = Array.from({ length: 2001 }, (_, i) => ({ id: String(i) }));
+    await runPart(tx, "20-business", {
+      businesses: many,
+      templates: [],
+      settings: [],
+      departments: [],
+      owners: [],
+      named_role: [],
+      role_edits_clock: [],
+    });
+    await runPart(tx, "90-log", { history: { businesses: ["b"] } });
+    expect(sent).toEqual([
+      [{ json: many.slice(0, 2000) }],
+      [{ json: many.slice(2000) }],
+      [{ json: { businesses: ["b"] } }],
+    ]);
+  });
+
+  it("nothing in measure/ sends rows to SQL as JSON text cast to jsonb", () => {
+    for (const file of readdirSync(__dirname).filter((f) =>
+      f.endsWith(".ts"),
+    )) {
+      const text = readFileSync(join(__dirname, file), "utf8");
+      expect(text, file).not.toMatch(/JSON\.stringify\([^)]*\)\}::jsonb/);
+      expect(text, file).not.toMatch(/\[JSON\.stringify\(chunk\)\]/);
+    }
   });
 
   it("the SQL choice reads md5 as the TypeScript one does", () => {

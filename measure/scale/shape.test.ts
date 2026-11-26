@@ -1,17 +1,22 @@
+import { addDays, instantIn } from "@domain/availability";
 import { scheduledShift } from "@domain/schedule";
 import { manifest as scheduling } from "@modules/scheduling/manifest";
 import { manifest as timeClock } from "@modules/time_clock/manifest";
 import { describe, expect, it } from "vitest";
 import {
+  businessNameOf,
   choice,
   FAKE_NAME,
   FICTIONAL_NUMBER,
+  FIRST_NAMES,
   fictionalNumber,
   IMPORT_NUMBER,
   importNumber,
+  nameOf,
   PREFIX,
   personId,
   rowId,
+  SECOND_NAMES,
 } from "./ids";
 import {
   anchorRefusal,
@@ -331,6 +336,101 @@ describe("people's shifts and hours", () => {
     }
   }, 60_000);
 
+  it("at every anchor a run takes, 300 has its 15 on the clock and 100 punchers, and 20 live swaps until the week's last hours", () => {
+    // Four-hourly through a week, at the minutes when most shifts are about
+    // to end (05:50 and 21:50 in Israel among them), and the hours that fell
+    // short before: past midnight into Wednesday, and Saturday evening.
+    const anchors = [
+      ...Array.from(
+        { length: 42 },
+        (_, i) => Date.parse("2026-11-21T23:50:00Z") + i * 4 * HOUR,
+      ),
+      Date.parse("2026-11-22T20:30:00Z"),
+      Date.parse("2026-11-24T22:30:00Z"),
+      Date.parse("2026-11-25T12:00:00Z"),
+      Date.parse("2026-11-28T18:45:00Z"),
+      Date.parse("2026-11-28T19:15:00Z"),
+      Date.parse("2026-11-28T20:00:00Z"),
+    ]
+      .map((t) => new Date(t))
+      .filter((anchor) => anchorRefusal(anchor, 120) === null);
+    expect(anchors.length).toBeGreaterThan(40);
+    for (const anchor of anchors) {
+      const at = anchor.toISOString();
+      const t = anchor.getTime();
+      const s = shape({
+        people: 300,
+        depth: "history",
+        months: 1,
+        chat: "ci",
+        anchor,
+      });
+      const b = s.scale;
+      const shifts = b.weeks
+        .filter((w) => w.kind !== "next")
+        .flatMap((w) => w.shifts);
+      const shiftOf = (user: string, day: string) =>
+        shifts.find(
+          (x) => x.day === day && x.assignees.some((a) => a.user === user),
+        );
+
+      // On the clock: 15, each arrived and in a shift still running; one
+      // with under 2 hours left only once everyone with 2 or more is on.
+      const open = b.entries.filter((e) => e.clockOut === null);
+      expect(open, at).toHaveLength(15);
+      const onClock = new Set(open.map((e) => e.user));
+      let short = false;
+      for (const e of open) {
+        const shift = shiftOf(e.user, e.day);
+        expect(shift, at).toBeDefined();
+        expect(ms(e.clockIn), at).toBeLessThan(t);
+        expect(ms(shift?.endsAt ?? ""), at).toBeGreaterThan(t);
+        if (ms(shift?.endsAt ?? "") - t < 2 * HOUR) short = true;
+      }
+      if (short) {
+        for (const x of shifts) {
+          if (ms(x.startsAt) > t - 10 * 60_000) continue;
+          if (ms(x.endsAt) - t < 2 * HOUR) continue;
+          for (const a of x.assignees)
+            expect(onClock.has(a.user), `${at} ${a.user}`).toBe(true);
+        }
+      }
+
+      // The punchers: 100, none with a shift today, running or about to
+      // start, none on the clock.
+      expect(new Set(b.punchers).size, at).toBe(100);
+      const busy = new Set(
+        shifts
+          .filter(
+            (x) =>
+              x.day === s.today ||
+              (ms(x.startsAt) <= t + 10 * 60_000 && ms(x.endsAt) > t),
+          )
+          .flatMap((x) => x.assignees.map((a) => a.user)),
+      );
+      for (const p of b.punchers) {
+        expect(busy.has(p), `${at} ${p}`).toBe(false);
+        expect(onClock.has(p), `${at} ${p}`).toBe(false);
+      }
+
+      // Live swaps: on this week's shifts more than an hour ahead, 20 but
+      // in the week's last three hours, when fewer places are left to ask.
+      const ahead = (b.weeks.find((w) => w.kind === "this")?.shifts ?? [])
+        .filter((x) => ms(x.startsAt) > t + HOUR)
+        .reduce((sum, x) => sum + x.assignees.length, 0);
+      const live = b.swaps.filter(
+        (w) => w.status === "open" && w.weekStart === s.weekStart,
+      ).length;
+      expect(live, at).toBe(Math.min(20, ahead));
+      const weekEnds = instantIn(
+        addDays(s.weekStart, 7),
+        "00:00",
+        "Asia/Jerusalem",
+      ).getTime();
+      if (t <= weekEnds - 3 * HOUR) expect(live, at).toBe(20);
+    }
+  }, 120_000);
+
   it("the proofs follow the stated mix, and what waits is as planned", () => {
     const s = of(300, "history");
     const ended = s.scale.entries.filter(
@@ -466,6 +566,24 @@ describe("what can never reach anyone", () => {
     expect(named).toHaveLength(100);
     expect(named.some((p) => p.role === "owner")).toBe(false);
     for (const p of named) expect(p.businessName).not.toBe(p.name);
+  });
+
+  it("the names docs/measure.md gives are the ones made, and a double name keeps one form", () => {
+    const s = of(300, "people");
+    const person = (n: number) => s.scale.people.find((p) => p.n === n);
+    expect(nameOf(17).name).toBe("נועם בדיקה 017");
+    expect(person(17)?.businessName).toBeNull();
+    expect(person(18)?.name).toBe("סמאח בדיקה 018");
+    expect(person(18)?.businessName).toBe(businessNameOf(18));
+    expect(businessNameOf(18)).toBe("סמאח ב׳ 018");
+    expect(nameOf(25).name).toBe("יוסף-אליעזר בדיקה-ארוכה 025");
+    const forms = new Map(FIRST_NAMES);
+    for (let n = 25; n <= 1000; n += 25) {
+      const { name, addressForm } = nameOf(n);
+      const [first = "", second = ""] = (name.split(" ")[0] ?? "").split("-");
+      expect(forms.get(first), name).toBe(addressForm);
+      expect(SECOND_NAMES[addressForm], name).toContain(second);
+    }
   });
 
   it("display numbers are fictional and unique; the import's are its block alone", () => {

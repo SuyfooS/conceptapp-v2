@@ -1,5 +1,11 @@
--- 40-weeks: every week of the schedule, the history written directly, the
+-- 92-weeks: every week of the schedule, the history written directly, the
 -- last three through the app's own functions.
+--
+-- After the history's log (90-log): publishing writes its schedule.publish
+-- rows at the anchor, and the activity feed reads by id, so they come after
+-- every row of the history. Nothing before this part needs the weeks: the
+-- hours tie to no shift, and the bell's history of publishing (80-lines)
+-- names its weeks in the lines alone.
 --
 -- The weeks' rows first, each with the seed's id, then
 -- public.open_schedule_week for the three the app writes, which finds each

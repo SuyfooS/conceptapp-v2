@@ -4,14 +4,16 @@
 -- One entry per placed shift that has ended, never two on a day, and at
 -- least 12 hours between two of a person's (time_entries_no_overlap treats
 -- an open entry as running to infinity, so only those on the clock now are
--- open, in a shift that runs two hours more or longer). A missed punch is
+-- open, in a shift still running: two hours more or longer when enough
+-- shifts have that, else the most time left). A missed punch is
 -- an entry a manager closed later, its departure 'manager' with
 -- edited_by and edited_at; a corrected time is 'manager' too
 -- (20261108000300_sealed.sql). Entries without a code ('none') and a
 -- manager's own hours ('self') are confirmed after they ended, but for the
--- ones waiting now. Breaks lie inside their entry. The days away go through
--- public.record_absence as the owner, as the team's hours screen records
--- them. The log of all this comes later, in one insert (90-log).
+-- ones waiting now. Breaks lie inside their entry. The hours come before
+-- the weeks' rows (92-weeks): nothing in the database ties an entry to a
+-- shift. The log of all this comes later, in one insert (90-log), and the
+-- days away after it (93-absences).
 
 -- step: entries
 insert into public.time_entries (
@@ -36,11 +38,3 @@ select r.id, r.entry, r.business, r.person, r.started_at, r.ended_at, false, r.s
 from jsonb_to_recordset($1::jsonb)
   as r (id uuid, entry uuid, business uuid, person uuid, started_at timestamptz,
     ended_at timestamptz);
-
--- step: absences
-select public.record_absence(
-  r.actor, r.business, r.person, r.kind, r.first_day, r.last_day, null,
-  current_setting('scale.anchor')::timestamptz
-)
-from jsonb_to_recordset($1::jsonb)
-  as r (actor uuid, business uuid, person uuid, kind text, first_day date, last_day date);

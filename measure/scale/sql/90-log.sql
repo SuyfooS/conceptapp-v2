@@ -1,5 +1,10 @@
 -- 90-log: the history's log, in one insert ordered by created_at, so its
 -- ids follow time (the activity feed reads by id, packages/db/activity.ts).
+-- It comes before the weeks the app publishes (92-weeks) and the days away
+-- it records (93-absences), whose rows are the anchor's, so the feed shows
+-- them first. The named role's rows (role.create, role.permission,
+-- 20-business) still come before it, as a business's first: the team's
+-- memberships, which the hours need, hold that role.
 --
 -- Every entry's arrival and departure (clock.in, clock.out), as the punch
 -- wrote them; each confirmation of hours without a code or of a manager's

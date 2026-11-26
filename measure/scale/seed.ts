@@ -218,114 +218,6 @@ export function partData(
         })),
       ),
     },
-    "40-weeks": {
-      weeks: each(s, (b) =>
-        b.weeks.map((w) => ({
-          id: w.id,
-          business: b.id,
-          starts_on: w.startsOn,
-          due_at: w.dueAt,
-          published_at: w.publishedAt,
-        })),
-      ),
-      opened: each(s, (b) =>
-        b.weeks
-          .filter((w) => w.via !== "direct")
-          .map((w) => ({
-            id: w.id,
-            business: b.id,
-            starts_on: w.startsOn,
-            due_at: w.dueAt,
-          })),
-      ),
-      history_shifts: each(s, (b) =>
-        b.weeks
-          .filter((w) => w.via === "direct")
-          .flatMap((w) =>
-            w.shifts.map((x) => ({
-              id: x.id,
-              business: b.id,
-              week: w.id,
-              day: x.day,
-              pattern: x.pattern,
-              name: x.name,
-              starts_at: x.start,
-              ends_at: x.end,
-              needed: x.needed,
-              published_at: w.publishedAt,
-            })),
-          ),
-      ),
-      history_assignments: each(s, (b) =>
-        b.weeks
-          .filter((w) => w.via === "direct")
-          .flatMap((w) =>
-            w.shifts.flatMap((x) =>
-              x.assignees.map((a) => ({
-                shift: x.id,
-                business: b.id,
-                person: a.user,
-                position_key: a.position,
-              })),
-            ),
-          ),
-      ),
-      published: each(s, (b) =>
-        b.weeks
-          .filter((w) => w.via === "publish")
-          .map((w) => ({
-            actor: b.scheduler,
-            week: w.id,
-            shifts: w.shifts.map(sent),
-          })),
-      ),
-      draft: each(s, (b) =>
-        b.weeks
-          .filter((w) => w.via === "draft")
-          .map((w) => ({
-            actor: b.scheduler,
-            week: w.id,
-            shifts: w.shifts.map(sent),
-          })),
-      ),
-      availability: each(s, (b) =>
-        b.availability.map((a) => ({
-          id: a.id,
-          business: b.id,
-          week: a.week,
-          person: a.user,
-          submitted_at: a.submittedAt,
-        })),
-      ),
-      ranges: each(s, (b) =>
-        b.availability.flatMap((a) =>
-          a.ranges.map((r) => ({
-            id: r.id,
-            submission: a.id,
-            day: r.day,
-            starts_at: r.start,
-            ends_at: r.end,
-          })),
-        ),
-      ),
-      swaps: each(s, (b) =>
-        b.swaps.map((w) => ({
-          id: w.id,
-          business: b.id,
-          shift: w.shift,
-          week_start: w.weekStart,
-          day: w.day,
-          pattern: w.pattern,
-          requested_by: w.requestedBy,
-          status: w.status,
-          taken_by: w.takenBy,
-          decided_by: w.decidedBy,
-          decided_at: w.decidedAt,
-          cancelled_because: w.cancelledBecause,
-          created_at: w.createdAt,
-        })),
-      ),
-    },
     "50-hours": {
       entries: each(s, (b) =>
         b.entries.map((e) => ({
@@ -354,16 +246,6 @@ export function partData(
           person: x.user,
           started_at: x.startedAt,
           ended_at: x.endedAt,
-        })),
-      ),
-      absences: each(s, (b) =>
-        b.absences.map((a) => ({
-          actor: b.owner,
-          business: b.id,
-          person: a.user,
-          kind: a.kind,
-          first_day: a.from,
-          last_day: a.to,
         })),
       ),
     },
@@ -496,6 +378,126 @@ export function partData(
         ),
       },
     },
+    "92-weeks": {
+      weeks: each(s, (b) =>
+        b.weeks.map((w) => ({
+          id: w.id,
+          business: b.id,
+          starts_on: w.startsOn,
+          due_at: w.dueAt,
+          published_at: w.publishedAt,
+        })),
+      ),
+      opened: each(s, (b) =>
+        b.weeks
+          .filter((w) => w.via !== "direct")
+          .map((w) => ({
+            id: w.id,
+            business: b.id,
+            starts_on: w.startsOn,
+            due_at: w.dueAt,
+          })),
+      ),
+      history_shifts: each(s, (b) =>
+        b.weeks
+          .filter((w) => w.via === "direct")
+          .flatMap((w) =>
+            w.shifts.map((x) => ({
+              id: x.id,
+              business: b.id,
+              week: w.id,
+              day: x.day,
+              pattern: x.pattern,
+              name: x.name,
+              starts_at: x.start,
+              ends_at: x.end,
+              needed: x.needed,
+              published_at: w.publishedAt,
+            })),
+          ),
+      ),
+      history_assignments: each(s, (b) =>
+        b.weeks
+          .filter((w) => w.via === "direct")
+          .flatMap((w) =>
+            w.shifts.flatMap((x) =>
+              x.assignees.map((a) => ({
+                shift: x.id,
+                business: b.id,
+                person: a.user,
+                position_key: a.position,
+              })),
+            ),
+          ),
+      ),
+      published: each(s, (b) =>
+        b.weeks
+          .filter((w) => w.via === "publish")
+          .map((w) => ({
+            actor: b.scheduler,
+            week: w.id,
+            shifts: w.shifts.map(sent),
+          })),
+      ),
+      draft: each(s, (b) =>
+        b.weeks
+          .filter((w) => w.via === "draft")
+          .map((w) => ({
+            actor: b.scheduler,
+            week: w.id,
+            shifts: w.shifts.map(sent),
+          })),
+      ),
+      availability: each(s, (b) =>
+        b.availability.map((a) => ({
+          id: a.id,
+          business: b.id,
+          week: a.week,
+          person: a.user,
+          submitted_at: a.submittedAt,
+        })),
+      ),
+      ranges: each(s, (b) =>
+        b.availability.flatMap((a) =>
+          a.ranges.map((r) => ({
+            id: r.id,
+            submission: a.id,
+            day: r.day,
+            starts_at: r.start,
+            ends_at: r.end,
+          })),
+        ),
+      ),
+      swaps: each(s, (b) =>
+        b.swaps.map((w) => ({
+          id: w.id,
+          business: b.id,
+          shift: w.shift,
+          week_start: w.weekStart,
+          day: w.day,
+          pattern: w.pattern,
+          requested_by: w.requestedBy,
+          status: w.status,
+          taken_by: w.takenBy,
+          decided_by: w.decidedBy,
+          decided_at: w.decidedAt,
+          cancelled_because: w.cancelledBecause,
+          created_at: w.createdAt,
+        })),
+      ),
+    },
+    "93-absences": {
+      absences: each(s, (b) =>
+        b.absences.map((a) => ({
+          actor: b.owner,
+          business: b.id,
+          person: a.user,
+          kind: a.kind,
+          first_day: a.from,
+          last_day: a.to,
+        })),
+      ),
+    },
     "95-waiting": {
       waiting: both(s).map((b) => b.id),
     },
@@ -545,19 +547,6 @@ export function expectations(
             (i) => Date.parse(i.expiresAt) > Date.parse(s.anchor),
           ).length,
         },
-        "40-weeks": {
-          weeks: b.weeks.length,
-          shifts: shifts.length,
-          assignments: shifts.reduce((sum, x) => sum + x.assignees.length, 0),
-          submissions: b.availability.length,
-          ranges: b.availability.reduce((sum, a) => sum + a.ranges.length, 0),
-          swaps: b.swaps.length,
-          swaps_open: b.swaps.filter((w) => w.status === "open").length,
-          log_schedule_publish: b.weeks.filter((w) => w.via === "publish")
-            .length,
-          lines_published: thisWeek,
-          lines: thisWeek,
-        },
         "50-hours": {
           entries: b.entries.length,
           entries_open: b.entries.filter((e) => e.clockOut === null).length,
@@ -566,8 +555,6 @@ export function expectations(
           entries_waiting_self: waiting.filter((e) => e.inProof === "self")
             .length,
           breaks: b.breaks.length,
-          absences: b.absences.length,
-          log_absence_add: b.absences.length,
         },
         "60-chat": {
           conversations: 1 + b.departments.length + b.chat.directs.length,
@@ -586,10 +573,10 @@ export function expectations(
         },
         "80-lines": {
           lines_joined: joined,
-          lines_published: thisWeek + published,
+          lines_published: published,
           lines_read: readLines(b, s.weekStart),
           lines_pushing: 0,
-          lines: thisWeek + published + joined,
+          lines: published + joined,
         },
         "90-log": {
           log_clock_in: notWaiting.length,
@@ -605,8 +592,25 @@ export function expectations(
             b.payrollViews.holders.length *
             payrollViewDays(b.payrollViews.from, b.payrollViews.to),
           // The history's log told nobody.
-          lines: thisWeek + published + joined,
+          lines: published + joined,
           lines_read: readLines(b, s.weekStart),
+        },
+        "92-weeks": {
+          weeks: b.weeks.length,
+          shifts: shifts.length,
+          assignments: shifts.reduce((sum, x) => sum + x.assignees.length, 0),
+          submissions: b.availability.length,
+          ranges: b.availability.reduce((sum, a) => sum + a.ranges.length, 0),
+          swaps: b.swaps.length,
+          swaps_open: b.swaps.filter((w) => w.status === "open").length,
+          log_schedule_publish: b.weeks.filter((w) => w.via === "publish")
+            .length,
+          lines_published: thisWeek + published,
+          lines: thisWeek + published + joined,
+        },
+        "93-absences": {
+          absences: b.absences.length,
+          log_absence_add: b.absences.length,
         },
         "95-waiting": {
           lines_confirm: confirm,
@@ -619,12 +623,13 @@ export function expectations(
   const parts = [
     "20-business",
     "30-team",
-    "40-weeks",
     "50-hours",
     "60-chat",
     "70-documents",
     "80-lines",
     "90-log",
+    "92-weeks",
+    "93-absences",
     "95-waiting",
   ];
   return Object.fromEntries(

@@ -747,39 +747,15 @@ function build(spec: Spec, context: Context): BusinessShape {
     (p) => p.role === "owner" || p.role === "manager" || p.lead,
   );
   const weeks = weeksOf(spec, context, people, patterns);
+  // Before the hours: a puncher has today off, so no entry of today holds them.
+  const punchers = context.history
+    ? punchersOf(spec, context, staff, weeks)
+    : [];
   const entries: Entry[] = [];
   const breaks: Break[] = [];
   if (context.history) {
     hoursOf(spec, context, weeks, people, holders, entries, breaks);
   }
-
-  const shiftsToday = new Set<string>();
-  for (const week of weeks) {
-    for (const s of week.shifts) {
-      const running = ms(s.startsAt) <= anchor && ms(s.endsAt) > anchor;
-      if (s.day === today || running) {
-        for (const a of s.assignees) shiftsToday.add(a.user);
-      }
-    }
-  }
-  const open = new Set(
-    entries.filter((e) => e.clockOut === null).map((e) => e.user),
-  );
-  const punchers = context.history
-    ? byChoice(
-        staff.filter(
-          (p) =>
-            p.role !== "owner" &&
-            p.joinedOn < today &&
-            !shiftsToday.has(p.id) &&
-            !open.has(p.id),
-        ),
-        "puncher",
-        (p) => p.id,
-      )
-        .slice(0, spec.punchers)
-        .map((p) => p.id)
-    : [];
 
   const thisWeek = weeks.find((w) => w.kind === "this");
   const nextWeek = weeks.find((w) => w.kind === "next");
@@ -1512,6 +1488,48 @@ function draftOf(
 }
 
 /**
+ * The people the measuring run punches in with (the plan's 1.3): a third of
+ * the staff but the owner, none with a shift today, one running now or one
+ * about to start (an arrival is up to 10 minutes early). Those already off
+ * come first, by the seed's choice; when too few are off (at 300 some days
+ * have about 95, and past midnight last night's shifts still run), the rest
+ * are taken off those shifts before any hours are planned. So the count
+ * holds at every anchor.
+ */
+function punchersOf(
+  spec: Spec,
+  context: Context,
+  staff: Person[],
+  weeks: Week[],
+): string[] {
+  const { anchor, today } = context;
+  if (spec.punchers === 0) return [];
+  const now = weeks
+    .flatMap((w) => w.shifts)
+    .filter(
+      (s) =>
+        s.day === today ||
+        (ms(s.startsAt) <= anchor + 10 * MINUTE && ms(s.endsAt) > anchor),
+    );
+  const busy = new Set(now.flatMap((s) => s.assignees.map((a) => a.user)));
+  const ordered = byChoice(
+    staff.filter((p) => p.role !== "owner" && p.joinedOn < today),
+    "puncher",
+    (p) => p.id,
+  );
+  const chosen = [
+    ...ordered.filter((p) => !busy.has(p.id)),
+    ...ordered.filter((p) => busy.has(p.id)),
+  ]
+    .slice(0, spec.punchers)
+    .map((p) => p.id);
+  const off = new Set(chosen);
+  for (const s of now)
+    s.assignees = s.assignees.filter((a) => !off.has(a.user));
+  return chosen;
+}
+
+/**
  * One entry per placed shift that has ended, nineteen in twenty kept, by
  * the rules of the plan's 1.5: arrivals 10 minutes early to 5 late,
  * departures 5 early to 15 late; a stated mix of proofs; then what waits
@@ -1542,7 +1560,7 @@ function hoursOf(
   };
   const managers = holders.filter((p) => p.role === "manager");
   const correctors = managers.length > 0 ? managers : [owner];
-  const running: { shift: Shift; user: string }[] = [];
+  const running: { shift: Shift; user: string; arrival: number }[] = [];
 
   for (const week of weeks) {
     if (week.kind === "next") continue;
@@ -1553,8 +1571,11 @@ function hoursOf(
         const person = byId.get(user);
         if (!person) continue;
         if (end + 20 * MINUTE > anchor) {
-          if (start <= anchor - 10 * MINUTE && end >= anchor + 2 * HOUR)
-            running.push({ shift, user });
+          // Arrived already (10 minutes early to 5 late), and the shift still runs.
+          const arrival =
+            start + pick(-10, 5, choice("in", user, shift.day)) * MINUTE;
+          if (arrival <= anchor - MINUTE && end > anchor)
+            running.push({ shift, user, arrival });
           continue;
         }
         if (choice("absent", user, shift.day) < 0.05) continue;
@@ -1666,21 +1687,33 @@ function hoursOf(
     entry.confirmedBy = null;
   }
 
-  // On the clock now: in a shift that runs two hours more or longer.
-  for (const { shift, user } of byChoice(
-    running,
-    "clock",
-    (r) => `${r.user}:${r.shift.day}`,
-  ).slice(0, spec.onClock)) {
+  // On the clock now: arrived, in a shift that runs two hours more or
+  // longer. When too few have that (at 300 around 06:00 and 22:00, as most
+  // shifts end within the hour), the rest from the running shifts with the
+  // most time left, so the count holds whenever enough people are on a
+  // shift (at 300 always; at 30 and 100 none while the business is closed).
+  const left = (r: { shift: Shift }) => ms(r.shift.endsAt) - anchor;
+  const clockKey = (r: { shift: Shift; user: string }) =>
+    `${r.user}:${r.shift.day}`;
+  const onClock = [
+    ...byChoice(
+      running.filter((r) => left(r) >= 2 * HOUR),
+      "clock",
+      clockKey,
+    ),
+    ...byChoice(
+      running.filter((r) => left(r) < 2 * HOUR),
+      "clock",
+      clockKey,
+    ).sort((a, b) => left(b) - left(a)),
+  ].slice(0, spec.onClock);
+  for (const { shift, user, arrival } of onClock) {
     entries.push({
       id: ids.take("entry"),
       user,
       day: shift.day,
       kind: "open",
-      clockIn: iso(
-        ms(shift.startsAt) +
-          pick(-10, 5, choice("in", user, shift.day)) * MINUTE,
-      ),
+      clockIn: iso(arrival),
       clockOut: null,
       inProof: "scan",
       outProof: null,
@@ -1714,7 +1747,12 @@ function hoursOf(
   void spec;
 }
 
-/** Requests to swap: some open on this week's shifts ahead, the rest on past ones. */
+/**
+ * Requests to swap: some open on this week's shifts that start more than an
+ * hour from now (a fifteenth of the staff, or as many places as those
+ * shifts have, which is fewer only in the week's last hours: next week is a
+ * draft, and the app makes no request on a draft), the rest on past ones.
+ */
 function swapsOf(
   spec: Spec,
   context: Context,
@@ -2143,17 +2181,26 @@ export function israelDate(instant: string): string {
   return dateIn(new Date(instant), ZONE);
 }
 
-/** Lines the seed wrote itself and marks read: seven in ten, made before this week. */
+/** Whether the seed marks a line it wrote itself read (80-lines): seven in ten, made before this week. */
+export function seedReads(
+  user: string,
+  when: string,
+  weekStart: string,
+): boolean {
+  return (
+    ms(when) < at(weekStart, "00:00") &&
+    choice("read", user, israelDate(when)) < 0.7
+  );
+}
+
+/** Lines the seed wrote itself and marks read. */
 export function readLines(business: BusinessShape, weekStart: string): number {
-  const cutoff = at(weekStart, "00:00");
   let read = 0;
-  const count = (user: string, when: string) => {
-    if (ms(when) >= cutoff) return;
-    if (choice("read", user, israelDate(when)) < 0.7) read += 1;
-  };
   for (const line of business.joined)
-    for (const user of line.recipients) count(user, line.at);
-  for (const line of business.published) count(line.user, line.at);
+    for (const user of line.recipients)
+      if (seedReads(user, line.at, weekStart)) read += 1;
+  for (const line of business.published)
+    if (seedReads(line.user, line.at, weekStart)) read += 1;
   return read;
 }
 

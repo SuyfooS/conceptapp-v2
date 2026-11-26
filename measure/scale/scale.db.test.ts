@@ -234,7 +234,7 @@ describe("the test business, made in the database", () => {
           select r.kind, r.subject, r.day,
             (('x' || substr(md5(current_setting('scale.version') || ':' || r.kind || ':'
               || r.subject || ':' || r.day), 1, 8))::bit(32)::bigint)::text as n
-          from jsonb_to_recordset(${JSON.stringify(vector)}::jsonb)
+          from jsonb_to_recordset(${tx.json(vector)}::jsonb)
             as r (kind text, subject text, day text)`;
         const key = (v: { kind: string; subject: string; day: string }) =>
           `${v.kind}|${v.subject}|${v.day}`;
@@ -315,6 +315,18 @@ describe("the test business, made in the database", () => {
             .sort((a, b) => (a.user_id < b.user_id ? -1 : 1)),
         );
         expect(names.some((n) => n.user_id === s.scale.owner)).toBe(false);
+
+        // The activity feed reads by id: what the app wrote at the anchor
+        // (this week's publishing, the days away) after every row of the
+        // history's log, so the feed shows it first.
+        const [order] = await tx<{ after: boolean | null }[]>`
+          select (select max(a.id) from public.audit_log a
+              where a.business_id = ${s.scale.id}
+                and a.action in ('clock.confirm', 'clock.correct'))
+            < (select min(a.id) from public.audit_log a
+              where a.business_id = ${s.scale.id}
+                and a.action in ('schedule.publish', 'clock.absence_add')) as after`;
+        expect(order?.after).toBe(true);
 
         // Only the lines the seed meant: no reminder, nothing for a phone.
         const kinds = await tx<{ kind: string }[]>`

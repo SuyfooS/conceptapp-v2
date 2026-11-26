@@ -157,15 +157,25 @@ export const FIRST_NAMES: readonly (readonly [string, "f" | "m"])[] = [
   ["עידו", "m"],
 ];
 
-/** Second names for every 25th person's long double name, to test wrapping. */
-const SECOND_NAMES = ["שושנה", "מרים", "אליעזר", "גבריאל", "רבקה"] as const;
+/**
+ * Second names for every 25th person's long double name, to test wrapping:
+ * of the same form as the first, so a double name never mixes the two.
+ */
+export const SECOND_NAMES: Record<"f" | "m", readonly string[]> = {
+  f: ["שושנה", "מרים", "רבקה"],
+  m: ["אליעזר", "גבריאל", "בנימין"],
+};
 
-/** `<first> בדיקה <NNN>`, or every 25th `<first>-<second> בדיקה-ארוכה <NNN>`. */
+/**
+ * `<first> בדיקה <NNN>`, or every 25th `<first>-<second> בדיקה-ארוכה <NNN>`:
+ * 017 is "נועם בדיקה 017", 025 "יוסף-אליעזר בדיקה-ארוכה 025".
+ */
 export function nameOf(n: number): { name: string; addressForm: "f" | "m" } {
   const [first, form] = FIRST_NAMES[n % FIRST_NAMES.length] ?? ["נועה", "f"];
   const number = String(n).padStart(3, "0");
   if (n % 25 === 0) {
-    const second = SECOND_NAMES[(n / 25) % SECOND_NAMES.length] ?? "שושנה";
+    const seconds = SECOND_NAMES[form];
+    const second = seconds[Math.floor(n / 50) % seconds.length] ?? "שושנה";
     return {
       name: `${first}-${second} בדיקה-ארוכה ${number}`,
       addressForm: form,
@@ -174,7 +184,7 @@ export function nameOf(n: number): { name: string; addressForm: "f" | "m" } {
   return { name: `${first} בדיקה ${number}`, addressForm: form };
 }
 
-/** The name the business uses instead, for a third of its people: `<first> ב׳ <NNN>`. */
+/** The name the business uses instead, for a third of its people (every third number): `<first> ב׳ <NNN>`, as "סמאח ב׳ 018". */
 export function businessNameOf(n: number): string {
   const [first] = FIRST_NAMES[n % FIRST_NAMES.length] ?? ["נועה"];
   return `${first} ב׳ ${String(n).padStart(3, "0")}`;

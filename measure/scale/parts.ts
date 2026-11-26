@@ -6,10 +6,13 @@ import type postgres from "postgres";
  * The seed's SQL, part by part (./sql/*.sql). A part is a file of steps, each
  * one statement after a `-- step: <name>` line, with no dollar quote and no
  * DO block, so each runs, fails and is timed on its own, and an error names
- * the part, the step and the line. A step reads its rows from `$1` (JSON,
- * sent in chunks when long) and the run's settings with
+ * the part, the step and the line. A step reads its rows from `$1` (a JSON
+ * parameter, sent in chunks when long) and the run's settings with
  * `current_setting('scale.…')`. A step that returns a `problem` column fails
- * with each problem it returns.
+ * with each problem it returns. The parts run in the order of their names:
+ * the history's log (90) before the weeks the app publishes (92) and the
+ * days away it records (93), so the rows the app writes at the anchor come
+ * after the history's in the activity feed, which reads by id.
  */
 
 export const PARTS = [
@@ -17,12 +20,13 @@ export const PARTS = [
   "10-people",
   "20-business",
   "30-team",
-  "40-weeks",
   "50-hours",
   "60-chat",
   "70-documents",
   "80-lines",
   "90-log",
+  "92-weeks",
+  "93-absences",
   "95-waiting",
   "99-counts",
 ] as const;
@@ -166,9 +170,12 @@ export async function runPart(
     const rows: Record<string, unknown>[] = [];
     for (const chunk of chunks) {
       try {
+        // A typed JSON parameter, which postgres.js encodes once. A string
+        // would be encoded again (`$1::jsonb` makes the parameter jsonb) and
+        // arrive as a JSON string, which jsonb_to_recordset refuses.
         const result = await tx.unsafe(
           step.text,
-          step.takesRows ? [JSON.stringify(chunk)] : [],
+          step.takesRows ? [tx.json(chunk as postgres.JSONValue)] : [],
         );
         rows.push(...(result as unknown as Record<string, unknown>[]));
       } catch (error) {
