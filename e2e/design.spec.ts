@@ -10296,6 +10296,131 @@ test("the people import's twin stops at too many people and at two phone columns
   ).toBeVisible();
 });
 
+// Inviting from a list, part 5: the Team twin's import sends each one's
+// link from its done screen, as /team/import does, with the Team twin's
+// stand-in; WhatsApp there asks whom to send to, never a number's chat, as
+// a list pasted on the twin may be real. The Team twin and its invite form
+// lead to it by a quiet row.
+test("the people import's twin sends each one's link from its done screen, to no number's chat", async ({
+  page,
+}) => {
+  const tp = he.app.team.pending;
+  // Nothing pasted leaves the browser, links made included.
+  const sent: string[] = [];
+  page.on("request", (request) => {
+    sent.push(`${request.url()} ${request.postData() ?? ""}`);
+  });
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto(`${importTwin}?state=done`);
+  await expect(
+    page.getByRole("heading", {
+      level: 2,
+      name: heT("app.team.import.done.title", { count: 7 }),
+    }),
+  ).toBeVisible();
+  const main = page.getByRole("main");
+  const left = (count: number) =>
+    main
+      .getByText(heT("app.team.pending.count", { count }), { exact: true })
+      .filter({ visible: true });
+  await expect(left(7)).toHaveCount(1);
+  await expect(main.getByText(tp.hint).filter({ visible: true })).toHaveCount(
+    1,
+  );
+  const list = page.locator("[data-pending-links]").filter({ visible: true });
+  const creates = list.locator("[data-pending-create]");
+  await expect(creates).toHaveCount(7);
+  // Each "יצירת קישור" says whose link it makes.
+  await expect(creates.first()).toHaveAccessibleName(
+    new RegExp(`^${asIs(heT("app.team.pending.createFor", { name: "" }))}`),
+  );
+  await expect(page.locator('a[href*="wa.me"]')).toHaveCount(0);
+
+  await creates.first().click();
+  // A real link, opened by the press itself: read here, never opened.
+  const whatsapp = list.locator('a[href*="wa.me"]');
+  await expect(whatsapp).toHaveCount(1);
+  await expect(whatsapp).toBeFocused();
+  const href = new URL((await whatsapp.getAttribute("href")) ?? "");
+  // To nobody: WhatsApp asks whom to send it to.
+  expect(`${href.origin}${href.pathname}`).toBe("https://wa.me/");
+  expect(href.searchParams.get("text")).toContain("/join/");
+  expect(href.searchParams.get("text")).toContain(
+    heT("app.team.pending.message", { business: "מסעדת הדגמה" }),
+  );
+  await expect(left(6)).toHaveCount(1);
+
+  // Copied, and on to the next person, whose "יצירת קישור" has the focus.
+  await list.getByRole("button", { name: he.app.team.link.copy }).click();
+  await expect(
+    list.getByRole("button", { name: he.app.team.link.copied }),
+  ).toBeVisible();
+  await expect(creates).toHaveCount(6);
+  await expect(creates.first()).toBeFocused();
+  await expectCleanPage(page);
+  // No chat to any number, anywhere on the twin.
+  for (const link of await page.locator('a[href*="wa.me"]').all()) {
+    expect(await link.getAttribute("href")).toMatch(
+      /^https:\/\/wa\.me\/\?text=/,
+    );
+  }
+  const decoded = (line: string) => {
+    try {
+      return decodeURIComponent(line);
+    } catch {
+      return line;
+    }
+  };
+  expect(
+    sent.filter((line) => /54\D{0,3}710\D{0,3}22\d\d/.test(decoded(line))),
+  ).toEqual([]);
+});
+
+test("the Team twin and its invite form lead to the import by a quiet row, for whoever may invite from a list", async ({
+  page,
+}) => {
+  const i = he.app.team.import;
+  const entry = page
+    .getByRole("link", { name: new RegExp(`^${asIs(i.entry)}`) })
+    .filter({ visible: true });
+  await page.goto("/design/shell/team");
+  await expect(
+    page.getByRole("heading", { level: 1, name: he.app.team.title }),
+  ).toBeVisible();
+  await expect(entry).toHaveCount(1);
+  await expect(entry).toHaveAttribute("href", importTwin);
+  await expect(entry).toContainText(i.entryHint);
+  // Not in a demo business, which takes no invites, nor for a reader.
+  for (const state of ["demo", "view"]) {
+    await page.goto(`/design/shell/team?state=${state}`);
+    await expect(
+      page.getByRole("heading", { level: 1, name: he.app.team.title }),
+    ).toBeVisible();
+    await expect(entry).toHaveCount(0);
+  }
+  // The invite form: above it, for an owner and for a worker who edits the
+  // team; none where no role is left to give.
+  for (const as of ["", "?as=editor"]) {
+    await page.goto(`/design/shell/team/invite${as}`);
+    await expect(
+      page.getByRole("heading", { level: 1, name: he.app.team.invite.title }),
+    ).toBeVisible();
+    await expect(entry).toHaveAttribute("href", importTwin);
+  }
+  await page.goto("/design/shell/team/invite?as=paid");
+  await expect(
+    page.getByRole("heading", { level: 1, name: he.app.team.invite.title }),
+  ).toBeVisible();
+  await expect(entry).toHaveCount(0);
+  await page.goto("/design/shell/team/invite");
+  await expect(entry).toBeVisible();
+  await entry.click();
+  await expect(page).toHaveURL(new RegExp(`${asIs(importTwin)}$`));
+  await expect(
+    page.getByRole("heading", { level: 1, name: i.title }),
+  ).toBeVisible();
+});
+
 // Inviting from a list, part 4: the console's twin, the same screen in the
 // console's words, on the console twin's restaurant. Its done card lists the
 // invites saved and makes no link; a number on another of the twin's

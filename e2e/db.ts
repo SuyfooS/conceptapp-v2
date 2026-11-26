@@ -6488,9 +6488,9 @@ export async function closePendingLinksBusiness(
 }
 
 /** Its invites by number: whether each has no link yet, and is still open. */
-export async function pendingLinkStates(
-  business: PendingLinksBusiness,
-): Promise<Record<string, { pending: boolean; open: boolean }>> {
+export async function pendingLinkStates(business: {
+  slug: string;
+}): Promise<Record<string, { pending: boolean; open: boolean }>> {
   const rows = await sql<{ phone: string; pending: boolean; open: boolean }[]>`
     select i.phone, i.link_pending as pending, i.claimed_at is null as open
     from public.invites i join public.businesses b on b.id = i.business_id
@@ -6753,9 +6753,9 @@ export type ImportedInvite = {
 };
 
 /** Every invite the business has, cancelled ones too, oldest first. */
-export async function invitesIn(
-  business: ConsoleImportBusiness,
-): Promise<ImportedInvite[]> {
+export async function invitesIn(business: {
+  slug: string;
+}): Promise<ImportedInvite[]> {
   return await sql<ImportedInvite[]>`
     select i.phone, i.full_name as name, i.role::text as role,
       i.link_pending as pending, i.claimed_at is null as open,
@@ -6769,9 +6769,9 @@ export async function invitesIn(
 }
 
 /** The business's log rows of imports and their undos, oldest first. */
-export async function importLog(
-  business: ConsoleImportBusiness,
-): Promise<{ action: string; details: Record<string, unknown> }[]> {
+export async function importLog(business: {
+  slug: string;
+}): Promise<{ action: string; details: Record<string, unknown> }[]> {
   return await sql<{ action: string; details: Record<string, unknown> }[]>`
     select a.action, a.details from public.audit_log a
     join public.businesses b on b.id = a.business_id
@@ -6791,4 +6791,161 @@ export async function consoleImportRole(
     join public.profiles p on p.id = m.user_id
     where b.slug = ${business.slug} and p.phone = ${phone} and m.active`;
   return row?.role ?? null;
+}
+
+/**
+ * The Team screen's people import (inviting from a list, part 5): one real
+ * business per screen size, opened by the wizard's own function, so it takes
+ * invites as a demo never does here. On its team: its owner, a manager and
+ * a worker raised to edit the team (`perms`), each with a login of their
+ * own. The wizard saved a manager's invite with no link, and an invite whose
+ * link ran out waits too. Everyone else is on the lists the spec pastes.
+ * Fictional numbers of their own block (050-000-79xx), in no other spec;
+ * nobody here is ever sent anything.
+ */
+function teamImportBusiness(size: string, label: string, first: number) {
+  const number = (at: number) => {
+    const digits = String(first + at);
+    return { local: `050-000-${digits}`, e164: `+97250000${digits}` };
+  };
+  const login = (at: number, name: string) => ({
+    id: `00000000-0000-4000-a000-00000000${first + at}`,
+    name,
+    ...number(at),
+  });
+  const person = (at: number, name: string) => ({ name, ...number(at) });
+  return {
+    slug: `team-import-e2e-${size}`,
+    name: `צוות מרשימה ${label}`,
+    owner: login(0, "שירה בעלים"),
+    manager: login(1, "מאיר מנהל"),
+    editor: login(2, "עדי עורכת"),
+    /** The wizard's manager, with no link yet: her line on the list names no role. */
+    wizard: person(3, "דליה מהאשף"),
+    /** An invite whose link ran out: "קישור חדש" on the done screen. */
+    lapsed: person(4, "גלעד שפג"),
+    /** The owner's list: new people, the second one a manager by its line. */
+    people: [
+      { ...person(5, "אביגיל מהרשימה"), role: "worker" },
+      { ...person(6, "בנימין מהרשימה"), role: "manager" },
+      { ...person(7, "חן מהרשימה"), role: "worker" },
+    ] as const,
+    /** The owner's second list, taken back. */
+    takenBack: person(8, "עומר לביטול"),
+    /** The manager's list: one new person, and a line naming the owner's role. */
+    fromManager: person(9, "יעל מהמנהל"),
+    ownerLine: person(10, "נועה חדשה"),
+    /** The worker who edits the team: a line naming a manager. */
+    managerLine: person(11, "תמר חדשה"),
+  };
+}
+
+export const TEAM_IMPORT = {
+  phone: teamImportBusiness("phone", "טלפון", 7900),
+  tablet: teamImportBusiness("tablet", "טאבלט", 7920),
+  desktop: teamImportBusiness("desktop", "מחשב", 7940),
+};
+
+export type TeamImportBusiness = ReturnType<typeof teamImportBusiness>;
+
+/**
+ * The business opened afresh by the wizard's function, an earlier run's gone
+ * first with its records: the wizard's manager saved with no link, its three
+ * people on its team (their logins made when missing), and an invite to a
+ * worker whose link ran out yesterday.
+ */
+export async function openTeamImportBusiness(
+  business: TeamImportBusiness,
+): Promise<void> {
+  await closeTeamImportBusiness(business);
+  await ensureLogins([business.owner, business.manager, business.editor]);
+  await sql`select public.create_business(${SEEDED_PLATFORM_ADMIN}::uuid,
+    ${business.name}, ${business.slug}, null, '#0e7490', 'general',
+    ${sql.json([
+      {
+        name: business.wizard.name,
+        phone: business.wizard.e164,
+        role: "manager",
+      },
+    ])}::jsonb)`;
+  await sql`insert into public.memberships (business_id, user_id, role)
+    select b.id, ${business.owner.id}, 'owner'
+    from public.businesses b where b.slug = ${business.slug}`;
+  await sql`insert into public.memberships (business_id, user_id, role)
+    select b.id, ${business.manager.id}, 'manager'
+    from public.businesses b where b.slug = ${business.slug}`;
+  await sql`insert into public.memberships (business_id, user_id, role, perms)
+    select b.id, ${business.editor.id}, 'worker', '{team.view,team.edit}'
+    from public.businesses b where b.slug = ${business.slug}`;
+  await sql`insert into public.invites
+      (business_id, phone, role, full_name, token_hash, invited_by, expires_at)
+    select b.id, ${business.lapsed.e164}, 'worker', ${business.lapsed.name},
+      md5(random()::text) || md5(random()::text), ${business.owner.id},
+      now() - interval '1 day'
+    from public.businesses b where b.slug = ${business.slug}`;
+}
+
+/**
+ * The business gone with its records, when the test is done, and no longer
+ * a demo: `private.demo_businesses` has no foreign key.
+ */
+export async function closeTeamImportBusiness(
+  business: TeamImportBusiness,
+): Promise<void> {
+  const id = await businessIdBySlug(business.slug);
+  if (!id) return;
+  await sql`delete from private.demo_businesses where business_id = ${id}`;
+  await deleteRealBusiness(id);
+}
+
+/**
+ * The business closed to invites, as a hosted demo is
+ * (`private.closed_to_invites`), or open again: a demo with no definition
+ * takes none. It keeps its people.
+ */
+export async function setTeamImportInvites(
+  business: TeamImportBusiness,
+  open: boolean,
+): Promise<void> {
+  await sql`delete from private.demo_businesses d
+    using public.businesses b
+    where d.business_id = b.id and b.slug = ${business.slug}`;
+  if (open) return;
+  await sql`insert into private.demo_businesses (business_id, definition)
+    select b.id, '{}' from public.businesses b where b.slug = ${business.slug}`;
+}
+
+/**
+ * The invite to this number, unclaimed or not, as the import left it: who
+ * saved it, whether its link was ever made and whether it still runs.
+ */
+export async function teamImportInvite(
+  business: TeamImportBusiness,
+  phone: string,
+): Promise<{
+  name: string | null;
+  role: string;
+  invitedBy: string | null;
+  pending: boolean;
+  open: boolean;
+  runs: boolean;
+} | null> {
+  const [row] = await sql<
+    {
+      name: string | null;
+      role: string;
+      invitedBy: string | null;
+      pending: boolean;
+      open: boolean;
+      runs: boolean;
+    }[]
+  >`
+    select i.full_name as name, i.role::text as role,
+      i.invited_by::text as "invitedBy", i.link_pending as pending,
+      i.claimed_at is null as open, i.expires_at > now() as runs
+    from public.invites i join public.businesses b on b.id = i.business_id
+    where b.slug = ${business.slug} and i.phone = ${phone}
+    order by i.created_at desc
+    limit 1`;
+  return row ?? null;
 }

@@ -17,10 +17,11 @@ import { Button } from "@ui/button";
 import { Card, CardText } from "@ui/card";
 import { cn } from "@ui/cn";
 import { EmptyState } from "@ui/empty-state";
+import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
 import { PersonAvatar, PersonList, PersonRow } from "@ui/person-row";
-import { FolderLock, UserPlus } from "lucide-react";
+import { FolderLock, ListPlus, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { createFormatter } from "next-intl";
 import type { ComponentProps } from "react";
@@ -90,6 +91,8 @@ type ViewProps = {
   format: Format;
   /** Which of the filter's choices each member's file shows under (H6b-2). */
   tags: (userId: string) => FileTag[];
+  /** "הזמנה מרשימה", for whoever may invite from a list here; none otherwise. */
+  importHref?: string;
 };
 
 /**
@@ -146,6 +149,7 @@ export function TeamView({
   businessName,
   whatsappToNumber = false,
   wording,
+  importHref,
 }: {
   team: Team;
   /** The signed-in person, with what they hold (`my_permissions`). */
@@ -206,6 +210,12 @@ export function TeamView({
   whatsappToNumber?: boolean;
   /** The business's words; the app's own on the demo. */
   wording: AppWording;
+  /**
+   * The import from a list (`/team/import`), when it would open for the
+   * viewer (`importsPeople`): a quiet row at the foot of the invites, never
+   * a second main action. Drawn only where invites are, for whoever edits.
+   */
+  importHref?: string;
 }) {
   const t = translator(wording, "app");
   const invites = inviteHref !== undefined && !filesOnly;
@@ -237,6 +247,7 @@ export function TeamView({
       timeZone: "UTC",
     }),
     tags: (userId) => tagsOf.get(userId) ?? [],
+    importHref: invites && edits ? importHref : undefined,
   };
   // The filter, while any file shows (H6b-2): counted from the members
   // drawn, so a choice that shows nobody says so.
@@ -627,8 +638,28 @@ function Invites(view: ViewProps) {
             </PageSection>
           </UnlessAllPendingHere>
         ) : null}
+        <ImportEntry {...view} />
       </div>
     </FileShown>
+  );
+}
+
+/**
+ * "הזמנה מרשימה · יש רשימה? כמה אנשים בבת אחת": a quiet row at the foot of
+ * the invites, leading to the import, for whoever may invite from a list;
+ * the screen's one main action stays "הזמנה לצוות".
+ */
+function ImportEntry({ t, importHref }: ViewProps) {
+  if (!importHref) return null;
+  return (
+    <ListGroup>
+      <ListRow
+        href={importHref}
+        leading={<ListPlus />}
+        title={t("team.import.entry")}
+        subtitle={t("team.import.entryHint")}
+      />
+    </ListGroup>
   );
 }
 
@@ -822,6 +853,10 @@ function Everyone(view: ViewProps) {
       ) : note ? (
         <p className="px-1 text-ink-2 text-sm">{note}</p>
       ) : null}
+      {/* With the invites, which a choice of the filter hides (H6b-2). */}
+      <FileShown tags={[]}>
+        <ImportEntry {...view} />
+      </FileShown>
     </PageSection>
   );
 }

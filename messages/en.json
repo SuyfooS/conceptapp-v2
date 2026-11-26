@@ -1622,6 +1622,8 @@
       "import": {
         "title": "Invite from a list",
         "subtitle": "Paste a name and a mobile number for each person, and see what each line becomes. The invites are saved, and the links are sent afterwards, one by one.",
+        "entry": "Invite from a list",
+        "entryHint": "Have a list? Several people at once",
         "back": "Back to the team",
         "existing": "{members, plural, =0 {Nobody is on the team yet} one {One person is on the team already} other {# people are on the team already}}, {invites, plural, =0 {and no invites are waiting} one {and one invite is waiting} other {and # invites are waiting}}. Nobody already there is invited again.",
         "role": {
@@ -1741,7 +1743,11 @@
           "remove": "Delete this list's invites",
           "removed": "{count, plural, one {The invite was deleted} other {# invites were deleted}}",
           "removedKept": "{count, plural, one {One invite already got a link, so it stays. You can delete it on the Team screen.} other {# invites already got a link, so they stay. You can delete them on the Team screen.}}",
-          "removedBack": "The list is still here, to fix and invite again."
+          "removedBack": "The list is still here, to fix and invite again.",
+          "expired": {
+            "title": "Their earlier link ran out",
+            "count": "{count, plural, one {One person on the list} other {# people on the list}}"
+          }
         },
         "errors": {
           "businessChanged": "You switched to another business meanwhile, so nobody was invited. Go back to the team of the business you meant.",

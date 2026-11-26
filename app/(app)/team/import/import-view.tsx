@@ -43,6 +43,14 @@ import {
   useState,
 } from "react";
 import { HOLD_MS, useHeldWrite } from "../../use-held-write";
+import type { PendingRow } from "../pending-links";
+import { doneLinksOf, type ExpiredRow } from "./done-links";
+import {
+  DoneExpired,
+  DoneLinks,
+  DoneSendList,
+  type SendLinks,
+} from "./done-send";
 import { ignoredWords } from "./ignored-words";
 import {
   type ImportMode,
@@ -116,6 +124,12 @@ type Done = {
   invites: readonly string[];
   /** Everyone it made or updated, in the order of the lines. */
   people: readonly DonePerson[];
+  /**
+   * The Team screen's: everyone on the list whose invite has no link yet,
+   * theirs to make here (`doneLinksOf`), and those whose link ran out.
+   */
+  links: readonly PendingRow[];
+  expired: readonly ExpiredRow[];
 };
 
 /** A refusal, said under the press, drawn anew for each answer. */
@@ -130,6 +144,7 @@ type Refusal = {
 };
 
 const NOBODY: ReadonlySet<string> = new Set();
+const NO_LINKS: readonly PendingRow[] = [];
 
 export type PeopleImportViewProps = {
   /**
@@ -153,6 +168,12 @@ export type PeopleImportViewProps = {
     /** Where the done card goes back to. */
     done: { href: string; label: string };
   };
+  /**
+   * The Team screen's send list after an import (team mode only): each
+   * person's link made at the moment of sending, then WhatsApp or a copy,
+   * with the actions that make them; none, and the done card alone, without.
+   */
+  send?: SendLinks;
   /** What the field starts with: the twin's pastes. */
   initialPaste?: string;
   /**
@@ -173,7 +194,11 @@ export type PeopleImportViewProps = {
  * same view for every route, each with its own actions, and for the twins
  * on /design with stand-ins that write nothing. From the console, a number
  * the database finds on another business's staff refuses the list, and
- * its line is marked to fix until it is removed.
+ * its line is marked to fix until it is removed. On the Team screen the done
+ * screen lists everyone on the list with no link yet (`send`), each one's
+ * link made there, one person at a time, and "קישור חדש" for those whose
+ * link ran out: the done card at the start of a tablet's columns, the list
+ * at their end; on a computer the card above, the list a table under it.
  */
 export function PeopleImportView({
   mode = "team",
@@ -182,6 +207,7 @@ export function PeopleImportView({
   importPeople,
   undoImport,
   paths,
+  send: sendLinks,
   initialPaste = "",
   startAt,
 }: PeopleImportViewProps) {
@@ -189,8 +215,11 @@ export function PeopleImportView({
   const ta = useTranslations("admin.peopleImport");
   const ti = useTranslations("app.team.invite");
   const tc = useTranslations("app.team.changes");
+  const tt = useTranslations("app.team");
   const locale = useLocale();
   const inConsole = mode === "console";
+  // The console makes no link: the owners send them from /team.
+  const send = inConsole ? undefined : sendLinks;
   const words = useLineWords(roles, mode);
   const statusId = useId();
   const removeHereId = useId();
@@ -379,7 +408,8 @@ export function PeopleImportView({
 
   /**
    * What an import did, from the database's answer for each row sent (never
-   * the preview's): `left` the lines the screen left out itself.
+   * the preview's): `left` the lines the screen left out itself. Its send
+   * list (the Team screen's) reads the team as it was at the press.
    */
   function doneOf(
     importId: string | null,
@@ -411,6 +441,14 @@ export function PeopleImportView({
         },
       ];
     });
+    const { links, expired } = doneLinksOf({
+      rows,
+      sent,
+      lines: check.lines,
+      team,
+      labelOf: words.labelOf,
+      noName: tt("noName"),
+    });
     return {
       importId,
       made: of(["created"]).length,
@@ -421,6 +459,8 @@ export function PeopleImportView({
         row.invite ? [row.invite] : [],
       ),
       people,
+      links,
+      expired,
     };
   }
 
@@ -700,364 +740,391 @@ export function PeopleImportView({
   const tooManyOpen = { open: team.waiting, max: WAITING_INVITES_MAX, ltr };
   /** The console's list of whom the import saved, beside its done card. */
   const saved = inConsole && done ? done.people : [];
+  /** The Team screen's send list beside its done card, while anyone is on it. */
+  const sending =
+    send !== undefined &&
+    done !== null &&
+    done.links.length + done.expired.length > 0;
   const removable = Boolean(done?.importId) && (done?.made ?? 0) > 0;
 
   return (
-    <PageBody className={pageGlowClass}>
-      <StatusToast
-        message={toast?.text ?? null}
-        stamp={toast ? String(toast.stamp) : undefined}
-        // As long as a deleted invite's way back is offered.
-        duration={HOLD_MS}
-        action={
-          toast
-            ? {
-                label: t("undoRemove"),
-                onClick: () => {
-                  // Where the person was: the line's "הסרת השורה", or
-                  // "הסרת # השורות בלי מספר נייד", drawn again (above).
-                  const [one] = toast.spans;
-                  restored.current =
-                    toast.spans.length > 1
-                      ? "[data-remove-no-phone]"
-                      : `[data-remove-line="${one?.line ?? 0}"]`;
-                  setPaste(toast.before);
-                  setToast(null);
-                },
-              }
-            : null
-        }
-        focusAction
-        onFocusLeave={() => {
-          // Taken back: its lines' own button takes the focus (above).
-          if (restored.current) return;
-          // Its time up: the line now in the removed one's place, else the
-          // preview's title, or the done card's once an import is done.
-          const at = toast?.spans[0]?.line;
-          focusFirst([
-            at !== undefined ? `[data-remove-line="${at}"]` : null,
-            previewHeading.current,
-            doneHeading.current,
-          ]);
-        }}
-      />
-      <PageHeader
-        back={paths.back}
-        title={inConsole ? ta("title") : t("title")}
-        subtitle={inConsole ? ta("subtitle") : t("subtitle")}
-      />
-      {done && undoFailed > 0 ? (
-        <p key={undoFailed} role="alert" className="px-1 text-danger">
-          {inConsole ? ta("errors.removeFailed") : t("errors.removeFailed")}
-        </p>
-      ) : null}
-      {done ? (
-        <div
-          className={
-            saved.length > 0
-              ? // Beside the people it saved, in the editor's columns: one
-                // under the other on a phone, the card at the start of a
-                // tablet's and a computer's, the people at their end.
-                "grid gap-6 md:grid-cols-2 md:items-start md:gap-8 xl:grid-cols-[24rem_minmax(0,1fr)]"
-              : "contents"
+    <DoneLinks
+      send={send}
+      // Its links kept while it is taken back, for its "ביטול".
+      rows={(done ?? removed?.done)?.links ?? NO_LINKS}
+    >
+      <PageBody className={pageGlowClass}>
+        <StatusToast
+          message={toast?.text ?? null}
+          stamp={toast ? String(toast.stamp) : undefined}
+          // As long as a deleted invite's way back is offered.
+          duration={HOLD_MS}
+          action={
+            toast
+              ? {
+                  label: t("undoRemove"),
+                  onClick: () => {
+                    // Where the person was: the line's "הסרת השורה", or
+                    // "הסרת # השורות בלי מספר נייד", drawn again (above).
+                    const [one] = toast.spans;
+                    restored.current =
+                      toast.spans.length > 1
+                        ? "[data-remove-no-phone]"
+                        : `[data-remove-line="${one?.line ?? 0}"]`;
+                    setPaste(toast.before);
+                    setToast(null);
+                  },
+                }
+              : null
           }
-        >
-          <Card
-            tone="accent"
-            padding="lg"
-            className={cn(
-              "flex flex-col gap-3",
-              saved.length === 0 && "md:max-w-2xl",
-            )}
+          focusAction
+          onFocusLeave={() => {
+            // Taken back: its lines' own button takes the focus (above).
+            if (restored.current) return;
+            // Its time up: the line now in the removed one's place, else the
+            // preview's title, or the done card's once an import is done.
+            const at = toast?.spans[0]?.line;
+            focusFirst([
+              at !== undefined ? `[data-remove-line="${at}"]` : null,
+              previewHeading.current,
+              doneHeading.current,
+            ]);
+          }}
+        />
+        <PageHeader
+          back={paths.back}
+          title={inConsole ? ta("title") : t("title")}
+          subtitle={inConsole ? ta("subtitle") : t("subtitle")}
+        />
+        {done && undoFailed > 0 ? (
+          <p key={undoFailed} role="alert" className="px-1 text-danger">
+            {inConsole ? ta("errors.removeFailed") : t("errors.removeFailed")}
+          </p>
+        ) : null}
+        {done ? (
+          <div
+            className={
+              sending
+                ? // Beside the people to send links to: one under the other on
+                  // a phone, the card at the start of a tablet's columns and
+                  // the list at their end; on a computer the card above, the
+                  // list a table across under it.
+                  "grid gap-6 md:grid-cols-2 md:items-start md:gap-8 xl:grid-cols-1"
+                : saved.length > 0
+                  ? // Beside the people it saved, in the editor's columns: one
+                    // under the other on a phone, the card at the start of a
+                    // tablet's and a computer's, the people at their end.
+                    "grid gap-6 md:grid-cols-2 md:items-start md:gap-8 xl:grid-cols-[24rem_minmax(0,1fr)]"
+                  : "contents"
+            }
           >
-            <h2
-              ref={doneHeading}
-              tabIndex={-1}
-              className="flex items-start gap-2 text-balance font-bold text-xl outline-none"
+            <Card
+              tone="accent"
+              padding="lg"
+              className={cn(
+                "flex flex-col gap-3",
+                saved.length === 0 && "md:max-w-2xl",
+              )}
             >
-              <Check aria-hidden="true" className="mt-1 size-6 shrink-0" />
-              {t("done.title", { count: done.made })}
-            </h2>
-            {done.updated + done.skipped > 0 ? (
-              <p>
-                {t("done.more", {
-                  updated: done.updated,
-                  skipped: done.skipped,
+              <h2
+                ref={doneHeading}
+                tabIndex={-1}
+                className="flex items-start gap-2 text-balance font-bold text-xl outline-none"
+              >
+                <Check aria-hidden="true" className="mt-1 size-6 shrink-0" />
+                {t("done.title", { count: done.made })}
+              </h2>
+              {done.updated + done.skipped > 0 ? (
+                <p>
+                  {t("done.more", {
+                    updated: done.updated,
+                    skipped: done.skipped,
+                  })}
+                </p>
+              ) : null}
+              {inConsole ? (
+                <p>{ta("done.console")}</p>
+              ) : (
+                <>
+                  <p>{t("done.team")}</p>
+                  <p>{t("done.later")}</p>
+                </>
+              )}
+              {inConsole && removable ? (
+                // The console deletes no invite one at a time: once this card
+                // goes ("הזמנה מרשימה נוספת" too, or leaving the screen),
+                // only the owners can, on their Team screen. Its words say so.
+                <p id={removeHereId}>{ta("done.removeHere")}</p>
+              ) : null}
+              <div className="mt-1 flex flex-col gap-2 md:flex-row md:flex-wrap">
+                {removable ? (
+                  <Button
+                    variant="secondary"
+                    data-import-remove=""
+                    aria-describedby={inConsole ? removeHereId : undefined}
+                    onClick={takeBack}
+                  >
+                    <Trash2 aria-hidden="true" />
+                    {t("done.remove")}
+                  </Button>
+                ) : null}
+                <Button asChild variant="secondary">
+                  <Link href={paths.done.href}>{paths.done.label}</Link>
+                </Button>
+                <Button variant="ghost" onClick={another}>
+                  {t("done.another")}
+                </Button>
+              </div>
+            </Card>
+            {saved.length > 0 ? <DonePeople people={saved} /> : null}
+            {sending && send ? (
+              <div className="flex min-w-0 flex-col gap-6">
+                <DoneSendList count={done.links.length} />
+                <DoneExpired rows={done.expired} renew={send.renew} />
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <>
+            {held.held && removed ? (
+              // Each import taken back is a row of its own, said afresh.
+              <UndoRow
+                key={held.held.importId}
+                message={t("done.removed", { count: removed.done.made })}
+                onUndo={keepImport}
+                autoFocus
+                onWaitingChange={(waiting) =>
+                  waiting ? held.pause() : held.resume()
+                }
+                focusAfter={() => ["[data-import-remove]", field.current]}
+                className="md:max-w-2xl"
+              />
+            ) : null}
+            {removed ? (
+              <p className="px-1 text-ink-2 md:max-w-2xl">
+                {t("done.removedBack")}
+                {removed.kept ? ` ${keptWords(removed.kept)}` : ""}
+              </p>
+            ) : (
+              <p className="-mt-2 px-1 text-ink-2 md:-mt-4 md:max-w-2xl">
+                {t("existing", {
+                  members: team.members.length,
+                  invites: team.waiting,
                 })}
               </p>
-            ) : null}
-            {inConsole ? (
-              <p>{ta("done.console")}</p>
-            ) : (
-              <>
-                <p>{t("done.team")}</p>
-                <p>{t("done.later")}</p>
-              </>
             )}
-            {inConsole && removable ? (
-              // The console deletes no invite one at a time: once this card
-              // goes ("הזמנה מרשימה נוספת" too, or leaving the screen),
-              // only the owners can, on their Team screen. Its words say so.
-              <p id={removeHereId}>{ta("done.removeHere")}</p>
-            ) : null}
-            <div className="mt-1 flex flex-col gap-2 md:flex-row md:flex-wrap">
-              {removable ? (
-                <Button
-                  variant="secondary"
-                  data-import-remove=""
-                  aria-describedby={inConsole ? removeHereId : undefined}
-                  onClick={takeBack}
-                >
-                  <Trash2 aria-hidden="true" />
-                  {t("done.remove")}
-                </Button>
-              ) : null}
-              <Button asChild variant="secondary">
-                <Link href={paths.done.href}>{paths.done.label}</Link>
-              </Button>
-              <Button variant="ghost" onClick={another}>
-                {t("done.another")}
-              </Button>
-            </div>
-          </Card>
-          {saved.length > 0 ? <DonePeople people={saved} /> : null}
-        </div>
-      ) : (
-        <>
-          {held.held && removed ? (
-            // Each import taken back is a row of its own, said afresh.
-            <UndoRow
-              key={held.held.importId}
-              message={t("done.removed", { count: removed.done.made })}
-              onUndo={keepImport}
-              autoFocus
-              onWaitingChange={(waiting) =>
-                waiting ? held.pause() : held.resume()
-              }
-              focusAfter={() => ["[data-import-remove]", field.current]}
-              className="md:max-w-2xl"
-            />
-          ) : null}
-          {removed ? (
-            <p className="px-1 text-ink-2 md:max-w-2xl">
-              {t("done.removedBack")}
-              {removed.kept ? ` ${keptWords(removed.kept)}` : ""}
-            </p>
-          ) : (
-            <p className="-mt-2 px-1 text-ink-2 md:-mt-4 md:max-w-2xl">
-              {t("existing", {
-                members: team.members.length,
-                invites: team.waiting,
-              })}
-            </p>
-          )}
-          <div className="grid gap-6 md:grid-cols-2 md:items-start md:gap-8 xl:grid-cols-[24rem_minmax(0,1fr)]">
-            <div
-              // Stuck beside the lines, it scrolls on its own when taller
-              // than the screen, so the field it focuses comes into view.
-              className="flex min-w-0 flex-col gap-6 md:sticky md:top-20 md:-mx-1 md:max-h-[calc(100dvh-env(safe-area-inset-bottom)-13.5rem)] md:overflow-y-auto md:px-1 md:pb-4 xl:top-8 xl:max-h-[calc(100dvh-4rem)]"
-            >
-              <div className="flex flex-col gap-2">
-                <ChoiceList legend={t("role.label")}>
-                  {roles.choices.map((choice) => {
-                    const key = roleChoiceKey(choice);
-                    const base = words.labelOf({
-                      role: choice.role,
-                      namedRole: null,
-                    });
-                    return (
-                      <ChoiceRow
-                        key={key}
-                        name="import-role"
-                        value={key}
-                        checked={!choice.blocked && key === roleKey}
-                        disabled={Boolean(choice.blocked)}
-                        onChange={() => setRoleKey(key)}
-                        title={choice.label}
-                        hint={
-                          choice.blocked === "pay"
-                            ? tc("payHint")
-                            : choice.blocked === "held"
-                              ? tc("heldHint")
-                              : choice.namedRole
-                                ? ti("namedHint", { role: base })
-                                : ti(`roleHint.${choice.role}`)
-                        }
-                      />
-                    );
-                  })}
-                </ChoiceList>
-                <p className="px-1 text-ink-2 text-sm">{t("role.hint")}</p>
-                <p className="px-1 text-ink-2 text-sm">
-                  {inConsole
-                    ? ta("role.oneByOne", oneByOneRoles)
-                    : t("role.oneByOne", oneByOneRoles)}
-                </p>
-              </div>
-              <div className="flex flex-col gap-2">
-                <TextArea
-                  ref={field}
-                  label={t("paste.label")}
-                  hint={t("paste.hint")}
-                  placeholder={t("paste.placeholder")}
-                  rows={8}
-                  dir="auto"
-                  spellCheck={false}
-                  autoComplete="off"
-                  value={paste}
-                  onChange={(event) => {
-                    setEdits((count) => count + 1);
-                    setPaste(event.target.value);
-                    setFailure(null);
-                    // A removal's "ביטול" brings back the text as it was
-                    // then, so it goes once the text changes since.
-                    setToast(null);
-                  }}
-                />
-                <p className="flex items-start gap-1.5 px-1 text-ink-2 text-sm">
-                  <ShieldCheck
-                    aria-hidden="true"
-                    className="mt-0.5 size-4 shrink-0"
+            <div className="grid gap-6 md:grid-cols-2 md:items-start md:gap-8 xl:grid-cols-[24rem_minmax(0,1fr)]">
+              <div
+                // Stuck beside the lines, it scrolls on its own when taller
+                // than the screen, so the field it focuses comes into view.
+                className="flex min-w-0 flex-col gap-6 md:sticky md:top-20 md:-mx-1 md:max-h-[calc(100dvh-env(safe-area-inset-bottom)-13.5rem)] md:overflow-y-auto md:px-1 md:pb-4 xl:top-8 xl:max-h-[calc(100dvh-4rem)]"
+              >
+                <div className="flex flex-col gap-2">
+                  <ChoiceList legend={t("role.label")}>
+                    {roles.choices.map((choice) => {
+                      const key = roleChoiceKey(choice);
+                      const base = words.labelOf({
+                        role: choice.role,
+                        namedRole: null,
+                      });
+                      return (
+                        <ChoiceRow
+                          key={key}
+                          name="import-role"
+                          value={key}
+                          checked={!choice.blocked && key === roleKey}
+                          disabled={Boolean(choice.blocked)}
+                          onChange={() => setRoleKey(key)}
+                          title={choice.label}
+                          hint={
+                            choice.blocked === "pay"
+                              ? tc("payHint")
+                              : choice.blocked === "held"
+                                ? tc("heldHint")
+                                : choice.namedRole
+                                  ? ti("namedHint", { role: base })
+                                  : ti(`roleHint.${choice.role}`)
+                          }
+                        />
+                      );
+                    })}
+                  </ChoiceList>
+                  <p className="px-1 text-ink-2 text-sm">{t("role.hint")}</p>
+                  <p className="px-1 text-ink-2 text-sm">
+                    {inConsole
+                      ? ta("role.oneByOne", oneByOneRoles)
+                      : t("role.oneByOne", oneByOneRoles)}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <TextArea
+                    ref={field}
+                    label={t("paste.label")}
+                    hint={t("paste.hint")}
+                    placeholder={t("paste.placeholder")}
+                    rows={8}
+                    dir="auto"
+                    spellCheck={false}
+                    autoComplete="off"
+                    value={paste}
+                    onChange={(event) => {
+                      setEdits((count) => count + 1);
+                      setPaste(event.target.value);
+                      setFailure(null);
+                      // A removal's "ביטול" brings back the text as it was
+                      // then, so it goes once the text changes since.
+                      setToast(null);
+                    }}
                   />
-                  <span>{t("paste.kept")}</span>
-                </p>
-                {ignored.length > 0 ? (
-                  <p className="px-1 text-ink-2 text-sm">{ignored.join(" ")}</p>
+                  <p className="flex items-start gap-1.5 px-1 text-ink-2 text-sm">
+                    <ShieldCheck
+                      aria-hidden="true"
+                      className="mt-0.5 size-4 shrink-0"
+                    />
+                    <span>{t("paste.kept")}</span>
+                  </p>
+                  {ignored.length > 0 ? (
+                    <p className="px-1 text-ink-2 text-sm">
+                      {ignored.join(" ")}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+              <div className="flex min-w-0 flex-col gap-4">
+                <PageSection
+                  title={t("preview.title")}
+                  headingRef={previewHeading}
+                >
+                  {empty ? (
+                    <p className="rounded-card bg-surface px-4 py-3.5 text-ink-2 shadow-card">
+                      {t("preview.empty")}
+                    </p>
+                  ) : (
+                    <div className="flex flex-col gap-6">
+                      {parsed.lines.length > 0 ? (
+                        <Card
+                          tone="accent"
+                          padding="lg"
+                          className="flex flex-col gap-1"
+                        >
+                          <p className="font-semibold text-md">{readyWords}</p>
+                          {byRole.length > 0 ? (
+                            <p>
+                              {byRole.map(([key, count], index) => (
+                                <span key={key}>
+                                  {index > 0 ? " · " : null}
+                                  {t.rich("summary.byRole", {
+                                    role: words.labelOfKey(key),
+                                    count,
+                                    ltr,
+                                  })}
+                                </span>
+                              ))}
+                            </p>
+                          ) : null}
+                          {problems > 0 ? (
+                            <p>{t("summary.fix", { count: problems })}</p>
+                          ) : null}
+                          {teamLeftOut > 0 ? (
+                            <p>
+                              {t("summary.leftOut", { count: teamLeftOut })}
+                            </p>
+                          ) : null}
+                          {headerLine !== undefined ? (
+                            <p>
+                              {t.rich("summary.header", {
+                                line: headerLine,
+                                ltr,
+                              })}
+                            </p>
+                          ) : null}
+                        </Card>
+                      ) : null}
+                      {parsed.lines.length > 0 ? (
+                        <>
+                          <div className="xl:hidden">
+                            <LineGroups
+                              lines={check.lines}
+                              words={words}
+                              actions={actions}
+                              removeNoPhone={(spans) => removeLines(spans)}
+                            />
+                          </div>
+                          <div className="hidden xl:block">
+                            <LinesTable
+                              // Drawn anew, its filter back to all, by each
+                              // number found on another business's staff (the
+                              // set only grows): the line marked is on screen
+                              // as its removal takes the focus (below).
+                              key={elsewhere.size}
+                              lines={check.lines}
+                              words={words}
+                              actions={actions}
+                              removeNoPhone={(spans) => removeLines(spans)}
+                            />
+                          </div>
+                        </>
+                      ) : null}
+                    </div>
+                  )}
+                </PageSection>
+                {failure ? (
+                  // Beside the press it answers, drawn anew for each answer,
+                  // so the same refusal again is heard.
+                  <p
+                    key={failure.answer}
+                    ref={refusal}
+                    role="alert"
+                    className="px-1 text-danger"
+                  >
+                    {failureWords()}
+                  </p>
+                ) : null}
+                {status ? (
+                  <p id={statusId} className="px-1 font-medium">
+                    {blocked === "tooMany"
+                      ? t.rich("status.tooMany", {
+                          max: PEOPLE_IMPORT_MAX,
+                          count: parsed.people,
+                          ltr,
+                        })
+                      : blocked === "tooManyOpen"
+                        ? inConsole
+                          ? ta.rich("status.tooManyOpen", tooManyOpen)
+                          : t.rich("status.tooManyOpen", tooManyOpen)
+                        : status}
+                  </p>
+                ) : null}
+                {!empty ? (
+                  <>
+                    <p className="px-1 text-ink-2 text-sm">
+                      {t("status.notSent")}
+                    </p>
+                    <FloatingAction>
+                      <Button
+                        ref={submit}
+                        size="lg"
+                        loading={importing}
+                        disabled={!ready}
+                        aria-describedby={status ? statusId : undefined}
+                        className={cn(
+                          "w-full md:w-auto md:shadow-none",
+                          floatingButtonClass,
+                        )}
+                        onClick={() => void importNow()}
+                      >
+                        <UserPlus aria-hidden="true" />
+                        {label}
+                      </Button>
+                    </FloatingAction>
+                  </>
                 ) : null}
               </div>
             </div>
-            <div className="flex min-w-0 flex-col gap-4">
-              <PageSection
-                title={t("preview.title")}
-                headingRef={previewHeading}
-              >
-                {empty ? (
-                  <p className="rounded-card bg-surface px-4 py-3.5 text-ink-2 shadow-card">
-                    {t("preview.empty")}
-                  </p>
-                ) : (
-                  <div className="flex flex-col gap-6">
-                    {parsed.lines.length > 0 ? (
-                      <Card
-                        tone="accent"
-                        padding="lg"
-                        className="flex flex-col gap-1"
-                      >
-                        <p className="font-semibold text-md">{readyWords}</p>
-                        {byRole.length > 0 ? (
-                          <p>
-                            {byRole.map(([key, count], index) => (
-                              <span key={key}>
-                                {index > 0 ? " · " : null}
-                                {t.rich("summary.byRole", {
-                                  role: words.labelOfKey(key),
-                                  count,
-                                  ltr,
-                                })}
-                              </span>
-                            ))}
-                          </p>
-                        ) : null}
-                        {problems > 0 ? (
-                          <p>{t("summary.fix", { count: problems })}</p>
-                        ) : null}
-                        {teamLeftOut > 0 ? (
-                          <p>{t("summary.leftOut", { count: teamLeftOut })}</p>
-                        ) : null}
-                        {headerLine !== undefined ? (
-                          <p>
-                            {t.rich("summary.header", {
-                              line: headerLine,
-                              ltr,
-                            })}
-                          </p>
-                        ) : null}
-                      </Card>
-                    ) : null}
-                    {parsed.lines.length > 0 ? (
-                      <>
-                        <div className="xl:hidden">
-                          <LineGroups
-                            lines={check.lines}
-                            words={words}
-                            actions={actions}
-                            removeNoPhone={(spans) => removeLines(spans)}
-                          />
-                        </div>
-                        <div className="hidden xl:block">
-                          <LinesTable
-                            // Drawn anew, its filter back to all, by each
-                            // number found on another business's staff (the
-                            // set only grows): the line marked is on screen
-                            // as its removal takes the focus (below).
-                            key={elsewhere.size}
-                            lines={check.lines}
-                            words={words}
-                            actions={actions}
-                            removeNoPhone={(spans) => removeLines(spans)}
-                          />
-                        </div>
-                      </>
-                    ) : null}
-                  </div>
-                )}
-              </PageSection>
-              {failure ? (
-                // Beside the press it answers, drawn anew for each answer,
-                // so the same refusal again is heard.
-                <p
-                  key={failure.answer}
-                  ref={refusal}
-                  role="alert"
-                  className="px-1 text-danger"
-                >
-                  {failureWords()}
-                </p>
-              ) : null}
-              {status ? (
-                <p id={statusId} className="px-1 font-medium">
-                  {blocked === "tooMany"
-                    ? t.rich("status.tooMany", {
-                        max: PEOPLE_IMPORT_MAX,
-                        count: parsed.people,
-                        ltr,
-                      })
-                    : blocked === "tooManyOpen"
-                      ? inConsole
-                        ? ta.rich("status.tooManyOpen", tooManyOpen)
-                        : t.rich("status.tooManyOpen", tooManyOpen)
-                      : status}
-                </p>
-              ) : null}
-              {!empty ? (
-                <>
-                  <p className="px-1 text-ink-2 text-sm">
-                    {t("status.notSent")}
-                  </p>
-                  <FloatingAction>
-                    <Button
-                      ref={submit}
-                      size="lg"
-                      loading={importing}
-                      disabled={!ready}
-                      aria-describedby={status ? statusId : undefined}
-                      className={cn(
-                        "w-full md:w-auto md:shadow-none",
-                        floatingButtonClass,
-                      )}
-                      onClick={() => void importNow()}
-                    >
-                      <UserPlus aria-hidden="true" />
-                      {label}
-                    </Button>
-                  </FloatingAction>
-                </>
-              ) : null}
-            </div>
-          </div>
-        </>
-      )}
-    </PageBody>
+          </>
+        )}
+      </PageBody>
+    </DoneLinks>
   );
 }
 

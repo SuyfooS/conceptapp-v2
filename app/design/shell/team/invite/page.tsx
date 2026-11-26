@@ -1,4 +1,5 @@
 import type { Viewer } from "@domain/modules";
+import { importsPeople } from "@domain/people-import";
 import { inviteChoices, namedRoleShown, ownerOnlyRoles } from "@domain/team";
 import { Suspense } from "react";
 import { TeamInviteView } from "../../../../(app)/team/invite/invite-view";
@@ -17,7 +18,9 @@ type Props = { searchParams: Promise<{ as?: string }> };
 // workers hold pay, which only an owner gives, in a business with no named
 // role, so no role is left and the screen says so; ?as=held: the same worker
 // where workers hold pay, so neither workers nor the named role are left,
-// for two reasons, and the screen says only an owner gives them.
+// for two reasons, and the screen says only an owner gives them. Above the
+// form, "הזמנה מרשימה" for whoever may invite from a list, leading to the
+// import's twin, the owner's (inviting from a list, part 5).
 export default function ShellTeamInvite(props: Props) {
   return (
     <Suspense>
@@ -39,9 +42,13 @@ async function Demo({ searchParams }: Props) {
     as === "paid" ? ["manager", "worker"] : as === "held" ? ["worker"] : [],
   );
   const named = as === "paid" ? [] : [demoNamedRole];
+  const roles = inviteChoices(viewer, named, ownerOnly);
   return (
     <TeamInviteView
-      roles={inviteChoices(viewer, named, ownerOnly)}
+      roles={roles}
+      importHref={
+        importsPeople(roles) ? "/design/shell/team/import" : undefined
+      }
       namedRoles={named.map(namedRoleShown)}
       teamHref="/design/shell/team"
       invite={demoInviteAction}

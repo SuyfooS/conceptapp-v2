@@ -33,7 +33,9 @@ const wait = () => new Promise((done) => setTimeout(done, WAIT_MS));
  * (`open`: the business has too many invites waiting).
  * The console's twin (`mode="console"`) also names the numbers on another
  * business's staff (`elsewhere`): a list holding one is refused as the
- * console's database refuses it, by the rows' places.
+ * console's database refuses it, by the rows' places. The Team twin's done
+ * screen sends links with the Team twin's stand-in (`send`), WhatsApp to
+ * nobody: the people pasted may be real, and their numbers stay here.
  */
 export function ImportTwin({
   mode = "team",
@@ -44,6 +46,7 @@ export function ImportTwin({
   fail,
   paths,
   elsewhere = [],
+  send,
 }: {
   mode?: ImportMode;
   roles: ImportRoles;
@@ -55,20 +58,28 @@ export function ImportTwin({
   paths?: PeopleImportViewProps["paths"];
   /** The console's: numbers on another of the twin's businesses' staff. */
   elsewhere?: readonly string[];
+  /** The Team twin's send list after an import: never to a number. */
+  send?: PeopleImportViewProps["send"];
 }) {
   const t = useTranslations("app.team.import");
-  /** The numbers whose invite waits with no link yet, kept as the database keeps them. */
+  /**
+   * The invites waiting with no link yet, by number, kept as the database
+   * keeps them: each one's id stays as it is updated, so a link made for it
+   * after one import is the same after the next.
+   */
   const [unsent] = useState(
     () =>
-      new Set(
+      new Map(
         known.invites
           .filter((invite) => invite.linkPending)
-          .map((invite) => invite.phone),
+          .map((invite) => [invite.phone, invite.id]),
       ),
   );
   /** What each import made, by its id, for its undo to cancel. */
   const [made] = useState(() => new Map<string, string[]>());
   const imports = useRef(0);
+  /** The invites made so far: each new one's id is its own, never a number. */
+  const invites = useRef(0);
   const importPeople: ImportPeople = async (people) => {
     await wait();
     if (fail === "import") return { ok: false, failure: "failed" };
@@ -79,18 +90,19 @@ export function ImportTwin({
       elsewhere.includes(person.phone) ? [index + 1] : [],
     );
     if (far.length > 0) return { ok: false, failure: "elsewhere", rows: far };
-    const rows = people.map((person, index) => ({
-      i: index + 1,
-      status: unsent.has(person.phone)
-        ? ("updated" as const)
-        : ("created" as const),
-      invite: `twin-${index + 1}`,
-    }));
-    const phones = people
-      .filter((person) => !unsent.has(person.phone))
-      .map((person) => person.phone);
+    const phones: string[] = [];
+    const rows = people.map((person, index) => {
+      const waiting = unsent.get(person.phone);
+      if (waiting !== undefined) {
+        return { i: index + 1, status: "updated" as const, invite: waiting };
+      }
+      invites.current += 1;
+      const invite = `twin-invite-${invites.current}`;
+      unsent.set(person.phone, invite);
+      phones.push(person.phone);
+      return { i: index + 1, status: "created" as const, invite };
+    });
     if (phones.length === 0) return { ok: true, importId: null, rows };
-    for (const phone of phones) unsent.add(phone);
     imports.current += 1;
     const importId = `twin-import-${imports.current}`;
     made.set(importId, phones);
@@ -119,6 +131,7 @@ export function ImportTwin({
       }
       initialPaste={initialPaste}
       startAt={startAt}
+      send={send}
     />
   );
 }

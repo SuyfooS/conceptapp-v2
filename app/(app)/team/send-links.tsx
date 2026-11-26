@@ -264,7 +264,9 @@ export function PendingList() {
                 subtitle={
                   <>
                     {row.role}
-                    {" · "}
+                    {/* A role the import's done screen can't know (an
+                        invite made meanwhile elsewhere) says none. */}
+                    {row.role ? " · " : null}
                     <Phone phone={row.phone} />
                   </>
                 }

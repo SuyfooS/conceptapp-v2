@@ -300,7 +300,12 @@ manager and the console, and two sessions at once (a single invite made
 meanwhile, two imports, an undo while a link is made). The console's screen
 (`/admin/businesses/<slug>/people/import`) is the first caller: its actions
 check `staff.invite` and read the rows again as "הוספת אדם" would take them
-before `importPeopleFromConsole` is asked.
+before `importPeopleFromConsole` is asked. The Team screen's (`/team/import`,
+part 5) is the second: its actions check team.edit, the business the page
+was bound to and a session viewing as someone, and read each row again as
+the invite form would take it from that person (no role that sees pay but
+an owner's) before `importPeopleToTeam` is asked; it never says where else a
+number works.
 
 A week is written shift by shift (`20261115000100_week_in_place.sql`; Orel's
 answers of 15 November 2026). `public.week_shifts(week)` reads a week's shifts
