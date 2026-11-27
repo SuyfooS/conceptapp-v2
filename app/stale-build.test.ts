@@ -4,6 +4,7 @@ import {
   isStaleBuild,
   NOTE_FOR_MS,
   RELOAD_EVERY_MS,
+  RELOAD_WAIT_MS,
   RELOADED_KEY,
   reloadForRelease,
   takeUpdatedNote,
@@ -17,8 +18,10 @@ import {
  * once a minute at most, and the page loaded says the app was updated, once,
  * to the person who pressed. Over a tab's sessionStorage in memory, a window
  * whose reload is counted, and the very error Next.js throws
- * (`next/navigation`'s check is an `instanceof` on its class). No e2e: it
- * would take two builds of the app.
+ * (`next/navigation`'s check is an `instanceof` on its class). The press
+ * itself, in the built app with Next.js's own answer, is
+ * e2e/clock-release.spec.ts's: one build is enough, an action id the server
+ * doesn't know standing for a page from the release before.
  */
 
 /** A tab's sessionStorage, in memory, that can be made to refuse. */
@@ -58,19 +61,26 @@ const B = "6b000000-0000-4000-a000-00000000000b";
 
 let tab: ReturnType<typeof fakeStorage>;
 let reload: ReturnType<typeof vi.fn>;
+/** The window, for its events: shown again, a step in its history. */
+let page: EventTarget;
 const START = Date.parse("2026-11-27T21:59:00Z");
 
 beforeEach(() => {
   tab = fakeStorage();
   reload = vi.fn();
   vi.stubGlobal("sessionStorage", tab.storage);
-  vi.stubGlobal("window", { location: { reload } });
+  page = Object.assign(new EventTarget(), { location: { reload } });
+  vi.stubGlobal("window", page);
   vi.useFakeTimers({ now: START });
 });
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
+
+/** `pageshow`: from the browser's keeping (`persisted`), or as it first loads. */
+const shown = (persisted: boolean) =>
+  Object.assign(new Event("pageshow"), { persisted });
 
 /** The page as it loads again: a fresh tab of the same session. */
 function loadAgain() {
@@ -191,11 +201,74 @@ describe("a press on a page from an earlier release", () => {
     expect(tab.map.has(UPDATED_KEY)).toBe(false);
   });
 
-  it("waits, never answering, while the page goes", async () => {
+  it("waits while the page goes, and gives the press back once it stays", async () => {
+    expect(reloadForRelease(stale(), A)).toBe(true);
     const settled = vi.fn();
     void untilReloaded().then(settled, settled);
-    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTimeAsync(RELOAD_WAIT_MS - 1);
     expect(settled).not.toHaveBeenCalled();
+    expect(tab.map.has(UPDATED_KEY)).toBe(true);
+    // The reload stopped: the press goes on to say it failed, and React's
+    // transition it was on ends with it.
+    await vi.advanceTimersByTimeAsync(1);
+    expect(settled).toHaveBeenCalledTimes(1);
+    expect(settled).toHaveBeenCalledWith(undefined);
+    // No page loaded again to say the note; the guard stays, so the next
+    // press within the minute says the failure rather than loading again.
+    expect(tab.map.has(UPDATED_KEY)).toBe(false);
+    expect(tab.map.get(RELOADED_KEY)).toBe(String(START));
+    expect(reloadForRelease(stale(), A)).toBe(false);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives the press back at once when the page is shown again, or steps in its history", async () => {
+    for (const event of [shown(true), new Event("popstate")]) {
+      tab.map.set(UPDATED_KEY, `${START} ${A}`);
+      const settled = vi.fn();
+      void untilReloaded().then(settled, settled);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(settled, event.type).not.toHaveBeenCalled();
+      page.dispatchEvent(event);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(settled, event.type).toHaveBeenCalledTimes(1);
+      expect(tab.map.has(UPDATED_KEY), event.type).toBe(false);
+    }
+  });
+
+  it("isn't given back by a page shown as it first loads", async () => {
+    const settled = vi.fn();
+    void untilReloaded().then(settled, settled);
+    page.dispatchEvent(shown(false));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).not.toHaveBeenCalled();
+  });
+
+  it("lets go of its time and its events once given back", async () => {
+    const settled = vi.fn();
+    void untilReloaded().then(settled, settled);
+    page.dispatchEvent(new Event("popstate"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+    // A note left by a later press stays for its own page: nothing of this
+    // wait takes it away.
+    tab.map.set(UPDATED_KEY, `${START} ${A}`);
+    page.dispatchEvent(new Event("popstate"));
+    page.dispatchEvent(shown(true));
+    await vi.advanceTimersByTimeAsync(RELOAD_WAIT_MS);
+    expect(settled).toHaveBeenCalledTimes(1);
+    expect(tab.map.get(UPDATED_KEY)).toBe(`${START} ${A}`);
+  });
+
+  it("gives the press back even when the note can't be taken away", async () => {
+    tab.map.set(UPDATED_KEY, `${START} ${A}`);
+    tab.refuse.remove = true;
+    const settled = vi.fn();
+    void untilReloaded().then(settled, settled);
+    await vi.advanceTimersByTimeAsync(RELOAD_WAIT_MS);
+    expect(settled).toHaveBeenCalledTimes(1);
+    // And the note, never taken away, says nothing either.
+    expect(takeUpdatedNote(A)).toBe(false);
   });
 });
 

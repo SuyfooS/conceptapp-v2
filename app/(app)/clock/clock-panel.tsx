@@ -91,7 +91,8 @@ function useNow(initial: string, running: boolean): number {
  * would cut that line off. A press on a page from the release before loads
  * the page again (`@/app/stale-build`), which then says the app was updated,
  * to the same person only; nothing is sent again, so the time recorded is
- * the person's next press.
+ * the person's next press. Should the page stay (its reload stopped), the
+ * press says it failed after a while, as before.
  */
 export function ClockPanel({
   data,
@@ -224,8 +225,9 @@ export function ClockPanel({
         // failure: the demo moves between its states that way.
         unstable_rethrow(error);
         // A page from the release before loads again, the press busy until
-        // it has gone, and is never sent again: the person presses.
-        if (reloadForRelease(error, userId)) return untilReloaded();
+        // it has gone, and is never sent again: the person presses. A page
+        // that stays says the press failed, as any other failure.
+        if (reloadForRelease(error, userId)) await untilReloaded();
         refused();
         setRunning(null);
         sayWhenOver({ failure: "failed" });
@@ -280,7 +282,7 @@ export function ClockPanel({
       unstable_rethrow(error);
       // As the screen's own press: the camera or the sheet stays busy while
       // the page loads again, and nothing is sent again.
-      if (reloadForRelease(error, userId)) return untilReloaded();
+      if (reloadForRelease(error, userId)) await untilReloaded();
       return { ok: false, failure: "failed" };
     }
   }

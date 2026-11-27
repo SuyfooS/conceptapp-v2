@@ -46,7 +46,9 @@ const LISTED: Record<string, string[]> = {
  * Where a press loads its page again for a release (`reloadForRelease`),
  * and how many times: the clock's own press and a code's punch, and nowhere
  * else until someone decides (PR 1b brings the other presses). Each waits
- * for the page to go, none sends its press again (a punch's time is the
+ * for the page to go, a while at most, then goes on to its failure should
+ * the page stay (a wait with no end would hold every later transition,
+ * navigations included). None sends its press again (a punch's time is the
  * person's own press), and each leaves its note for the signed-in person,
  * by their `userId`.
  */
@@ -83,7 +85,7 @@ describe("a whole page loaded from the app's code", () => {
     expect(found).toEqual(RELOADS_FOR_RELEASE);
     for (const [file, calls] of Object.entries(RELOADS_FOR_RELEASE)) {
       const waits = read(file).match(
-        /if \(reloadForRelease\(error, (\w+\.)*userId\)\) return untilReloaded\(\);/g,
+        /if \(reloadForRelease\(error, (\w+\.)*userId\)\) await untilReloaded\(\);/g,
       );
       expect(waits?.length, file).toBe(calls);
     }
@@ -93,8 +95,10 @@ describe("a whole page loaded from the app's code", () => {
     // With a deployment id set in the config, Next.js leaves its build id
     // out of an action's answer (`maybeAppendBuildIdToRSCPayload`), so an
     // answer from the next release is drawn into the page from the one
-    // before instead of loading it whole. Vercel's Skew Protection sets
-    // NEXT_DEPLOYMENT_ID, which Next.js reads by itself.
+    // before instead of being dropped. Vercel's Skew Protection sets
+    // NEXT_DEPLOYMENT_ID, which Next.js takes as its deployment id whatever
+    // the config says (`config.js`), so this check can't see it: turning it
+    // on needs this checked again (next.config.ts, ROADMAP).
     expect(read("next.config.ts")).not.toMatch(/\bdeploymentId\s*:/);
   });
 
