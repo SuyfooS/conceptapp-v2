@@ -74,8 +74,10 @@ Only `app/` imports app code (`@/…`). `measure/` imports only `@domain` and
 
 - `<html lang="he" dir="rtl">`. Use logical utilities only: `ps-`/`pe-`,
   `ms-`/`me-`, `start-`/`end-`, `text-start`. Never `pl-`, `mr-`, `left-`.
-- `rtl:`/`ltr:` are redefined on CSS `:dir()` (see globals.css), so they follow
-  the element's real direction even inside a nested `dir` block. Use
+- `rtl:`/`ltr:` are written on CSS `:dir()` (see globals.css), but the build turns
+  `:dir()` into `:lang()` while Next's browser targets include Chrome 111 (the old-browser
+  notice's floor rests on that; `tooling/old-browser.test.ts`). So in the served CSS they
+  follow `lang`: a nested `dir` block that should flip them also sets its `lang`. Use
   `rtl:-scale-x-100` to mirror arrows and chevrons.
 - Time, phone and number inputs get `dir="ltr"` plus `ltrInputClass` (from
   `@ui/text-field`), so digits read LTR but the field still aligns with the
@@ -129,7 +131,8 @@ Only `app/` imports app code (`@/…`). `measure/` imports only `@domain` and
   CountryField, and MaskedValue (shown for a minute); StepRow takes `current` (mock screens
   at `/design/shell/me/file`), and CaptchaBox with useCaptcha (Cloudflare Turnstile before
   every SMS code: drawn only when it asks for a tick, its fallback words; stand-ins at
-  `/design`).
+  `/design`), and OldBrowserNotice (shown by CSS alone on a browser older than the app
+  needs, on every page; shown on `/design` through its prop).
 - ConceptApp's logo (`@ui/logo`, files in `docs/brand`) appears only where
   ConceptApp itself speaks: sign-in, the console, marketing.
 - A business accent is applied with `{...accentProps(accentTokens(hex))}` on a
