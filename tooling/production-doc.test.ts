@@ -263,6 +263,14 @@ describe("docs/production.md", () => {
     );
     expect([...listed].sort()).toEqual([...names].sort());
     expect(checks).toContain("`Require status checks to pass`");
+    // The other way too: a check renamed, removed or split anew never
+    // reports its old name, so its PR waits for the ruleset, and says so.
+    expect(checks).toContain("GitHub מחכה לשמות הישנים");
+    expect(checks).toContain("PR כזה אומר את זה בתיאור שלו ומחכה לך");
+    const brief = readRepoFile("docs/AGENT.md").replace(/\s+/g, " ");
+    expect(brief).toContain(
+      "a pull request that renames, removes or re-splits a CI job can't merge until Orel lists the new check names there and drops the old",
+    );
   });
 
   it("rules main and production: never deleted, never forced, main only through a PR with the checks (A1)", () => {

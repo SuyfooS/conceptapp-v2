@@ -11,6 +11,7 @@ import {
   PATHS,
   report,
   SECURITY_HEADERS,
+  STOPPED,
   TURNSTILE_TEST_KEYS,
 } from "./check-site.mjs";
 
@@ -31,7 +32,20 @@ type Answer = {
   status?: number;
   body?: string;
   headers?: Record<string, string>;
+  /** Its headers sent, its body cut short with this, as undici does. */
+  cut?: Error;
 };
+
+/** A body that sends a little, then fails with `error`. */
+const cutShort = (error: Error) =>
+  new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode("<html><body>"));
+    },
+    pull(controller) {
+      controller.error(error);
+    },
+  });
 type Call = { url: string; init: RequestInit | undefined };
 
 /** The page headers the code sends, as a site that is up to date sends them. */
@@ -67,7 +81,8 @@ function site(overrides: Record<string, Answer | Error> = {}) {
     const answer = answers[path];
     if (answer instanceof Error) throw answer;
     if (!answer) return new Response("not found", { status: 404 });
-    return new Response(answer.body ?? null, {
+    const body = answer.cut ? cutShort(answer.cut) : (answer.body ?? null);
+    return new Response(body, {
       status: answer.status ?? 200,
       headers: answer.headers ?? {},
     });
@@ -86,6 +101,12 @@ async function run(overrides: Record<string, Answer | Error> = {}) {
 const offline = () =>
   Object.assign(new TypeError("fetch failed"), {
     cause: { code: "ENOTFOUND" },
+  });
+
+/** The connection dropped while a body was still coming. */
+const dropped = () =>
+  Object.assign(new TypeError("terminated"), {
+    cause: { code: "UND_ERR_SOCKET", message: "other side closed" },
   });
 
 describe("what it checks, kept the same as the code", () => {
@@ -164,8 +185,13 @@ describe("what fails", () => {
     expect(text.split("\n").at(-1)).toBe("בדיקה אחת נכשלה.");
   });
 
-  it("fails every other test key, and a key of no known shape, which it never prints", async () => {
-    for (const key of [CODE_TEST_KEYS.fail, CODE_TEST_KEYS.tap]) {
+  it("fails every other test key, the invisible two among them, and a key of no known shape, which it never prints", async () => {
+    const others = Object.values(CODE_TEST_KEYS).filter(
+      (key) => key !== CODE_TEST_KEYS.pass,
+    );
+    expect(others).toContain("1x00000000000000000000BB");
+    expect(others).toContain("2x00000000000000000000BB");
+    for (const key of others) {
       const { of } = await run({
         "/sign-in": {
           body: `<div data-sitekey="${key}"></div>`,
@@ -301,6 +327,45 @@ describe("what fails", () => {
     expect(gone.of("כותרות האבטחה")?.outcome).toBe("fail");
   });
 
+  it("says a /sign-in cut short after its headers, with every line before it", async () => {
+    const { found, failed, text, of } = await run({
+      "/sign-in": { cut: dropped(), headers: pageHeaders() },
+    });
+    expect(found.map((f) => f.subject)).toEqual([
+      "/health",
+      "/health/db",
+      "/enter",
+      "Turnstile",
+      "כותרות האבטחה",
+    ]);
+    expect(of("/health")?.outcome).toBe("pass");
+    expect(of("Turnstile")?.outcome).toBe("fail");
+    expect(of("Turnstile")?.words).toContain("UND_ERR_SOCKET");
+    expect(of("כותרות האבטחה")?.words).toContain("לא נבדקו");
+    expect(failed).toBe(2);
+    expect(text.split("\n").at(-1)).toBe("2 בדיקות נכשלו.");
+    expect(text).not.toContain("terminated");
+    expect(text).not.toContain("other side closed");
+    // Its time running out while the body still came.
+    const late = Object.assign(new Error("timed out"), {
+      name: "TimeoutError",
+    });
+    const slow = await run({
+      "/sign-in": { cut: late, headers: pageHeaders() },
+    });
+    expect(slow.of("Turnstile")?.words).toContain("15 שניות");
+    expect(slow.failed).toBe(2);
+  });
+
+  it("says a /health cut short as no answer, not as another site, and goes on", async () => {
+    const { found, of, text } = await run({ "/health": { cut: dropped() } });
+    expect(of("/health")?.outcome).toBe("fail");
+    expect(of("/health")?.words).toContain("UND_ERR_SOCKET");
+    expect(of("/health")?.words).not.toContain("כמו האפליקציה");
+    expect(found).toHaveLength(4 + CODE_HEADERS.length);
+    expect(text).not.toContain("terminated");
+  });
+
   it("counts the failures in its last line", async () => {
     const { text } = await run({
       "/health/db": { status: 503 },
@@ -426,5 +491,19 @@ describe("the command", () => {
       expect(calls, String(args)).toHaveLength(0);
       expect(none.said.join("\n")).toContain("node tooling/check-site.mjs");
     }
+  });
+
+  it("says in one line when it stopped on what it didn't expect, never the error, and ends 1", async () => {
+    const stopped = quiet();
+    const strange = async () =>
+      ({
+        get status(): number {
+          throw new TypeError("SECRET-STACK at undici");
+        },
+      }) as unknown as Response;
+    expect(await main([ORIGIN], strange, stopped.out)).toBe(1);
+    expect(stopped.said).toEqual([STOPPED]);
+    expect(STOPPED).toMatch(/[֐-׿]/);
+    expect(stopped.said.join("\n")).not.toContain("SECRET");
   });
 });

@@ -154,7 +154,11 @@ substantive change gets them as separate reviewers, each trying to refute it.
    Stay in the run until CI has finished, checking it yourself: nobody is awake
    to wake you, and a run that ended its turn to wait for a CI event stalled for
    a day on 5 November. If `main` moved meanwhile, rebase, re-run the checks,
-   then merge. Never force-push `main`.
+   then merge. Never force-push `main`. Once `main` has its ruleset
+   (`docs/production.md`, A1), a pull request that renames, removes or
+   re-splits a CI job can't merge until Orel lists the new check names there
+   and drops the old: say so in its description and in the nightly note, and
+   leave it open for him.
 7. **Log.** Append an entry to `docs/agent/LOG.md` (date, what was done, left or
    guessed, what changed, commit, restore point, next, defaults applied) in the
    same merge, and add the nightly note to `יומן הסוכן`.

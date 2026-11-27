@@ -184,11 +184,13 @@ describe("captchaLanguageOf", () => {
 });
 
 describe("Cloudflare's addresses and keys", () => {
-  it("are the three published test keys", () => {
+  it("are the five published test keys, the invisible two among them", () => {
     expect(TURNSTILE_TEST_KEYS).toEqual({
       pass: "1x00000000000000000000AA",
       fail: "2x00000000000000000000AB",
       tap: "3x00000000000000000000FF",
+      passInvisible: "1x00000000000000000000BB",
+      failInvisible: "2x00000000000000000000BB",
     });
   });
 

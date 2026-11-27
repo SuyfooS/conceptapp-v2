@@ -21,10 +21,12 @@
 //                the security headers every page carries are the code's
 //
 // Answers in Hebrew, for Orel. The exit code is 0 when nothing failed, 1 when
-// something did, 2 when the address can't be read. A .mjs on Node 20 can't
-// import packages/domain's TypeScript, so the header names, Cloudflare's test
-// keys and the paths are written here, and tooling/check-site.test.ts keeps
-// them the same as the code's, with a fake fetch in place of the internet.
+// something did (or it stopped on what it didn't expect, said in one line and
+// never as the error), 2 when the address can't be read. A .mjs on Node 20
+// can't import packages/domain's TypeScript, so the header names,
+// Cloudflare's test keys and the paths are written here, and
+// tooling/check-site.test.ts keeps them the same as the code's, with a fake
+// fetch in place of the internet.
 import { basename } from "node:path";
 
 /**
@@ -56,6 +58,8 @@ export const TURNSTILE_TEST_KEYS = {
   pass: "1x00000000000000000000AA",
   fail: "2x00000000000000000000AB",
   tap: "3x00000000000000000000FF",
+  passInvisible: "1x00000000000000000000BB",
+  failInvisible: "2x00000000000000000000BB",
 };
 
 /** The shape of a Turnstile site key, as packages/db/env.ts takes one. */
@@ -130,6 +134,18 @@ async function read(fetchImpl, origin, path) {
   }
 }
 
+/**
+ * An answer's body, or why it didn't arrive whole: the connection cut, or
+ * the time `read` gave it running out while it was still coming.
+ */
+async function textOf(response) {
+  try {
+    return { text: await response.text() };
+  } catch (error) {
+    return { error: reasonOf(error) };
+  }
+}
+
 const isRedirect = (status) => status >= 300 && status < 400;
 
 /** Where a redirect goes, as an origin and a path: never its query. */
@@ -178,9 +194,15 @@ async function checkHealth(fetchImpl, origin) {
       found: finding("fail", subject, `עונה ${response.status}, לא 200.`),
     };
   }
+  // Headers came, so the address is right: a body cut short is no answer,
+  // and the other addresses are still read.
+  const answer = await textOf(response);
+  if (answer.error !== undefined) {
+    return { stop: false, found: finding("fail", subject, answer.error) };
+  }
   let ok = false;
   try {
-    ok = JSON.parse(await response.text())?.status === "ok";
+    ok = JSON.parse(answer.text)?.status === "ok";
   } catch {
     ok = false;
   }
@@ -333,16 +355,19 @@ export async function checkSite(origin, fetchImpl = globalThis.fetch) {
     await checkDatabase(fetchImpl, origin),
     await checkDoor(fetchImpl, origin),
   ];
+  // No answer, or a page whose body was cut short: neither is checked.
   const { response, error } = await read(fetchImpl, origin, PATHS.signIn);
-  if (!response) {
+  const answer =
+    response?.status === 200 ? await textOf(response) : { text: "" };
+  const lost = error ?? answer.error;
+  if (!response || lost !== undefined) {
     found.push(
-      finding("fail", "Turnstile", `${PATHS.signIn}: ${error}`),
+      finding("fail", "Turnstile", `${PATHS.signIn}: ${lost}`),
       finding("fail", "כותרות האבטחה", `לא נבדקו: ${PATHS.signIn} לא ענה.`),
     );
     return found;
   }
-  const html = response.status === 200 ? await response.text() : "";
-  found.push(checkTurnstile(response.status, html));
+  found.push(checkTurnstile(response.status, answer.text ?? ""));
   if (response.status === 200) {
     found.push(...checkHeaders(response.headers));
   } else {
@@ -386,6 +411,10 @@ const USAGE = [
   "node tooling/check-site.mjs https://www.conceptapp.co.il",
 ].join("\n");
 
+/** What it says when it stopped on something it didn't expect: never the error. */
+export const STOPPED =
+  "הבדיקה נעצרה לפני שהסתיימה. מריצים אותה שוב, ואם זה חוזר, שואלים בסשן.";
+
 /**
  * The command itself: the exit code it ends with.
  * @param {string[]} args
@@ -399,13 +428,26 @@ export async function main(args, fetchImpl = globalThis.fetch, out = console) {
     out.error(USAGE);
     return 2;
   }
-  const { text, failed } = report(origin, await checkSite(origin, fetchImpl));
+  let findings;
+  try {
+    findings = await checkSite(origin, fetchImpl);
+  } catch {
+    out.error(STOPPED);
+    return 1;
+  }
+  const { text, failed } = report(origin, findings);
   out.log(text);
   return failed === 0 ? 0 : 1;
 }
 
 if (basename(process.argv[1] ?? "") === "check-site.mjs") {
-  main(process.argv.slice(2)).then((code) => {
-    process.exitCode = code;
-  });
+  main(process.argv.slice(2)).then(
+    (code) => {
+      process.exitCode = code;
+    },
+    () => {
+      console.error(STOPPED);
+      process.exitCode = 1;
+    },
+  );
 }
