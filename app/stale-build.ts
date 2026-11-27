@@ -18,14 +18,21 @@ import { unstable_isUnrecognizedActionError } from "next/navigation";
  *
  * Both marks live in the tab's sessionStorage, inside try/catch: storage
  * that can't be read or written keeps neither the minute's guard nor the
- * note, so the page isn't loaded again and the press says what it said
- * before. Nothing here imports React, for the tests.
+ * note (the note is written first, and taken away again when the guard
+ * can't follow it), so the page isn't loaded again and the press says what
+ * it said before. The note names the person whose press it was, and only
+ * their clock says it: should the reload have gone to the door, the session
+ * over, whoever signs in next on that tab is told nothing. Nothing here
+ * imports React, for the tests.
  */
 
 /** sessionStorage: when this tab last loaded itself again for a release. */
 export const RELOADED_KEY = "stale-build-reloaded";
 
-/** sessionStorage: the note for the page loaded again, with when it was left. */
+/**
+ * sessionStorage: the note for the page loaded again, when it was left and
+ * for whom, as `<time> <person>`.
+ */
 export const UPDATED_KEY = "stale-build-updated";
 
 /**
@@ -37,8 +44,9 @@ export const RELOAD_EVERY_MS = 60_000;
 
 /**
  * How long the note waits for the page that says it. One left longer ago
- * (the reload went to the door, the session over) goes saying nothing, so a
- * clock opened much later doesn't say an update nobody saw.
+ * (the reload went to the door, the session over, and the same person
+ * signed in again later) goes saying nothing, so a clock opened much later
+ * doesn't say an update nobody saw.
  */
 export const NOTE_FOR_MS = 5 * 60_000;
 
@@ -64,25 +72,28 @@ function within(at: number | null, now: number, span: number): boolean {
 
 /**
  * A press failed: when its page is from an earlier release, loads the page
- * again, leaves the note for it and returns true; the press then waits for
- * the page to go (`untilReloaded`). False, for the press to say its failure
- * as before: any other error, a reload in the last minute, or storage that
- * can't keep the guard and the note.
+ * again, leaves the note for it, for `person` (the signed-in person whose
+ * press it was), and returns true; the press then waits for the page to go
+ * (`untilReloaded`). False, for the press to say its failure as before: any
+ * other error, a reload in the last minute, or storage that can't keep the
+ * guard and the note.
  */
-export function reloadForRelease(error: unknown): boolean {
+export function reloadForRelease(error: unknown, person: string): boolean {
   if (!isStaleBuild(error)) return false;
   const now = Date.now();
   try {
     const last = keptTime(sessionStorage.getItem(RELOADED_KEY));
     if (within(last, now, RELOAD_EVERY_MS)) return false;
+    // The note first: a guard kept without it would hold the next minute's
+    // press back, with no page loaded again.
+    sessionStorage.setItem(UPDATED_KEY, `${now} ${person}`);
     sessionStorage.setItem(RELOADED_KEY, String(now));
-    sessionStorage.setItem(UPDATED_KEY, String(now));
   } catch {
     // Kept halfway, the note would say an update on a page never loaded.
     try {
       sessionStorage.removeItem(UPDATED_KEY);
     } catch {
-      // Nothing kept at all.
+      // Refused as well: nothing more this press can do.
     }
     return false;
   }
@@ -99,15 +110,22 @@ export function untilReloaded(): Promise<never> {
 }
 
 /**
- * The page was loaded again for a release: true once, for its toast, and the
- * note goes. A note too old to be this page's goes too, and says nothing;
- * so does one that can't be taken away, which would say it at every look.
+ * The page was loaded again for a release: true once, for its toast, when
+ * the note is `person`'s, and the note goes. One for someone else (the
+ * reload went to the door, and another person signed in on that tab) goes
+ * too, and says nothing; so does one too old to be this page's, and one
+ * that can't be taken away, which would say it at every look.
  */
-export function takeUpdatedNote(): boolean {
+export function takeUpdatedNote(person: string): boolean {
   try {
-    const at = keptTime(sessionStorage.getItem(UPDATED_KEY));
+    const kept = sessionStorage.getItem(UPDATED_KEY) ?? "";
     sessionStorage.removeItem(UPDATED_KEY);
-    return within(at, Date.now(), NOTE_FOR_MS);
+    const cut = kept.indexOf(" ");
+    return (
+      cut > 0 &&
+      kept.slice(cut + 1) === person &&
+      within(keptTime(kept.slice(0, cut)), Date.now(), NOTE_FOR_MS)
+    );
   } catch {
     return false;
   }

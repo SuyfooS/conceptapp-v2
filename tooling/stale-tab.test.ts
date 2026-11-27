@@ -37,6 +37,8 @@ const LISTED: Record<string, string[]> = {
   // minute at most, the press never sent again. The server never ran the
   // press, so nothing ended the session; should it have ended meanwhile, the
   // reload comes from the app's own page, and the proxy keeps nothing of it.
+  // Its note is that person's alone (`takeUpdatedNote(userId)`), so whoever
+  // signs in next on that tab isn't told a press of theirs wasn't recorded.
   "app/stale-build.ts": ["window.location.reload();"],
 };
 
@@ -44,8 +46,9 @@ const LISTED: Record<string, string[]> = {
  * Where a press loads its page again for a release (`reloadForRelease`),
  * and how many times: the clock's own press and a code's punch, and nowhere
  * else until someone decides (PR 1b brings the other presses). Each waits
- * for the page to go, and none sends its press again: a punch's time is the
- * person's own press.
+ * for the page to go, none sends its press again (a punch's time is the
+ * person's own press), and each leaves its note for the signed-in person,
+ * by their `userId`.
  */
 const RELOADS_FOR_RELEASE: Record<string, number> = {
   "app/(app)/clock/clock-panel.tsx": 2,
@@ -80,7 +83,7 @@ describe("a whole page loaded from the app's code", () => {
     expect(found).toEqual(RELOADS_FOR_RELEASE);
     for (const [file, calls] of Object.entries(RELOADS_FOR_RELEASE)) {
       const waits = read(file).match(
-        /if \(reloadForRelease\(error\)\) return untilReloaded\(\);/g,
+        /if \(reloadForRelease\(error, (\w+\.)*userId\)\) return untilReloaded\(\);/g,
       );
       expect(waits?.length, file).toBe(calls);
     }

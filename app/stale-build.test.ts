@@ -14,10 +14,11 @@ import {
 /*
  * A screen left open across a release (closing the pilot, PR 1a): the press
  * that meets a server action the server no longer has loads the page again,
- * once a minute at most, and the page loaded says the app was updated, once.
- * Over a tab's sessionStorage in memory, a window whose reload is counted,
- * and the very error Next.js throws (`next/navigation`'s check is an
- * `instanceof` on its class). No e2e: it would take two builds of the app.
+ * once a minute at most, and the page loaded says the app was updated, once,
+ * to the person who pressed. Over a tab's sessionStorage in memory, a window
+ * whose reload is counted, and the very error Next.js throws
+ * (`next/navigation`'s check is an `instanceof` on its class). No e2e: it
+ * would take two builds of the app.
  */
 
 /** A tab's sessionStorage, in memory, that can be made to refuse. */
@@ -51,6 +52,10 @@ const stale = () =>
     'Server Action "00abc" was not found on the server.',
   );
 
+/** The person who pressed, and the next one to sign in on that tab. */
+const A = "6a000000-0000-4000-a000-00000000000a";
+const B = "6b000000-0000-4000-a000-00000000000b";
+
 let tab: ReturnType<typeof fakeStorage>;
 let reload: ReturnType<typeof vi.fn>;
 const START = Date.parse("2026-11-27T21:59:00Z");
@@ -72,6 +77,20 @@ function loadAgain() {
   reload.mockClear();
 }
 
+/** Storage that refuses to keep this one mark, and keeps the other. */
+function refusing(refused: string) {
+  const setItem = tab.storage.setItem;
+  tab.storage.setItem = (key, value) => {
+    if (key === refused) {
+      throw new DOMException("full", "QuotaExceededError");
+    }
+    setItem(key, value);
+  };
+  return () => {
+    tab.storage.setItem = setItem;
+  };
+}
+
 describe("a press on a page from an earlier release", () => {
   it("is told by Next.js's own error, and nothing else", () => {
     expect(isStaleBuild(stale())).toBe(true);
@@ -88,39 +107,39 @@ describe("a press on a page from an earlier release", () => {
     }
   });
 
-  it("loads the page again, and leaves the note for it", () => {
-    expect(reloadForRelease(stale())).toBe(true);
+  it("loads the page again, and leaves the note for it, for whoever pressed", () => {
+    expect(reloadForRelease(stale(), A)).toBe(true);
     expect(reload).toHaveBeenCalledTimes(1);
     expect(tab.map.get(RELOADED_KEY)).toBe(String(START));
-    expect(tab.map.get(UPDATED_KEY)).toBe(String(START));
+    expect(tab.map.get(UPDATED_KEY)).toBe(`${START} ${A}`);
   });
 
   it("leaves any other failure to the press, loading nothing", () => {
     for (const other of [new TypeError("Failed to fetch"), new Error("500")]) {
-      expect(reloadForRelease(other)).toBe(false);
+      expect(reloadForRelease(other, A)).toBe(false);
     }
     expect(reload).not.toHaveBeenCalled();
     expect(tab.map.size).toBe(0);
   });
 
   it("loads again once a minute at most: a page still old says the failure", () => {
-    expect(reloadForRelease(stale())).toBe(true);
+    expect(reloadForRelease(stale(), A)).toBe(true);
     loadAgain();
-    expect(takeUpdatedNote()).toBe(true);
+    expect(takeUpdatedNote(A)).toBe(true);
     // Pressed again on a page still from the release before.
     vi.advanceTimersByTime(RELOAD_EVERY_MS - 1);
-    expect(reloadForRelease(stale())).toBe(false);
+    expect(reloadForRelease(stale(), A)).toBe(false);
     expect(reload).not.toHaveBeenCalled();
     expect(tab.map.has(UPDATED_KEY)).toBe(false);
     // A minute on, once more.
     vi.advanceTimersByTime(1);
-    expect(reloadForRelease(stale())).toBe(true);
+    expect(reloadForRelease(stale(), A)).toBe(true);
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
   it("isn't held back by a time after now, the phone's clock moved back", () => {
     tab.map.set(RELOADED_KEY, String(START + 3_600_000));
-    expect(reloadForRelease(stale())).toBe(true);
+    expect(reloadForRelease(stale(), A)).toBe(true);
     expect(tab.map.get(RELOADED_KEY)).toBe(String(START));
   });
 
@@ -128,32 +147,47 @@ describe("a press on a page from an earlier release", () => {
     for (const kept of ["", "soon", "-5", "1.5", "NaN", "Infinity"]) {
       tab.map.set(RELOADED_KEY, kept);
       reload.mockClear();
-      expect(reloadForRelease(stale()), kept).toBe(true);
+      expect(reloadForRelease(stale(), A), kept).toBe(true);
       expect(reload).toHaveBeenCalledTimes(1);
     }
   });
 
   it("loads nothing when storage can't be read: no guard, so no loop", () => {
     tab.refuse.get = true;
-    expect(reloadForRelease(stale())).toBe(false);
+    expect(reloadForRelease(stale(), A)).toBe(false);
     expect(reload).not.toHaveBeenCalled();
   });
 
-  it("loads nothing when storage can't keep the marks, and leaves no note halfway", () => {
+  it("loads nothing when storage can't keep the marks, and keeps neither halfway", () => {
     tab.refuse.set = true;
-    expect(reloadForRelease(stale())).toBe(false);
+    expect(reloadForRelease(stale(), A)).toBe(false);
     expect(reload).not.toHaveBeenCalled();
     expect(tab.map.size).toBe(0);
-
-    // The guard kept, the note refused: the note is taken away again.
     tab.refuse.set = false;
-    const setItem = tab.storage.setItem;
-    tab.storage.setItem = (key, value) => {
-      if (key === UPDATED_KEY) throw new DOMException("full");
-      setItem(key, value);
-    };
-    expect(reloadForRelease(stale())).toBe(false);
+
+    // The note kept, the guard refused: the note is taken away again.
+    let keep = refusing(RELOADED_KEY);
+    expect(reloadForRelease(stale(), A)).toBe(false);
     expect(reload).not.toHaveBeenCalled();
+    expect(tab.map.size).toBe(0);
+    keep();
+
+    // The note refused: no guard is left either, so with storage working
+    // again the next press loads the page, a minute or not.
+    keep = refusing(UPDATED_KEY);
+    expect(reloadForRelease(stale(), A)).toBe(false);
+    expect(reload).not.toHaveBeenCalled();
+    expect(tab.map.size).toBe(0);
+    keep();
+    expect(reloadForRelease(stale(), A)).toBe(true);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it("takes away an earlier note it can't follow with the guard", () => {
+    // Left by a reload that went to the door, nobody's clock opened since.
+    tab.map.set(UPDATED_KEY, `${START - 90_000} ${A}`);
+    refusing(RELOADED_KEY);
+    expect(reloadForRelease(stale(), A)).toBe(false);
     expect(tab.map.has(UPDATED_KEY)).toBe(false);
   });
 
@@ -167,49 +201,71 @@ describe("a press on a page from an earlier release", () => {
 
 describe("the page loaded again", () => {
   it("says the app was updated once", () => {
-    reloadForRelease(stale());
+    reloadForRelease(stale(), A);
     loadAgain();
     vi.advanceTimersByTime(3_000);
-    expect(takeUpdatedNote()).toBe(true);
-    expect(takeUpdatedNote()).toBe(false);
+    expect(takeUpdatedNote(A)).toBe(true);
+    expect(takeUpdatedNote(A)).toBe(false);
     expect(tab.map.has(UPDATED_KEY)).toBe(false);
     // The guard stays, for the minute.
     expect(tab.map.get(RELOADED_KEY)).toBe(String(START));
   });
 
+  it("says nothing to someone else signed in on that tab, and lets the note go", () => {
+    // A's session ended with the old clock open, so the reload went to the
+    // door; B signed in on the same tab and opened the clock.
+    reloadForRelease(stale(), A);
+    loadAgain();
+    vi.advanceTimersByTime(60_000);
+    expect(takeUpdatedNote(B)).toBe(false);
+    expect(tab.map.has(UPDATED_KEY)).toBe(false);
+    // Nor to A, signing in again after: the note went with B's look.
+    expect(takeUpdatedNote(A)).toBe(false);
+  });
+
   it("says nothing without a note, as on any page loaded", () => {
-    expect(takeUpdatedNote()).toBe(false);
+    expect(takeUpdatedNote(A)).toBe(false);
   });
 
   it("says nothing of a note left too long ago, and lets it go", () => {
-    reloadForRelease(stale());
+    reloadForRelease(stale(), A);
     vi.advanceTimersByTime(NOTE_FOR_MS);
-    expect(takeUpdatedNote()).toBe(false);
+    expect(takeUpdatedNote(A)).toBe(false);
     expect(tab.map.has(UPDATED_KEY)).toBe(false);
   });
 
   it("still says a note left just within its time", () => {
-    reloadForRelease(stale());
+    reloadForRelease(stale(), A);
     vi.advanceTimersByTime(NOTE_FOR_MS - 1);
-    expect(takeUpdatedNote()).toBe(true);
+    expect(takeUpdatedNote(A)).toBe(true);
   });
 
-  it("says nothing of a note that doesn't read, or is from after now", () => {
-    for (const kept of ["yes", "", String(START + 60_000)]) {
+  it("says nothing of a note that doesn't read, names nobody, or is from after now", () => {
+    for (const kept of [
+      "yes",
+      "",
+      String(START),
+      `${START} `,
+      ` ${A}`,
+      `soon ${A}`,
+      `${START} ${A} `,
+      `${START} ${A}${B}`,
+      `${START + 60_000} ${A}`,
+    ]) {
       tab.map.set(UPDATED_KEY, kept);
-      expect(takeUpdatedNote(), kept).toBe(false);
+      expect(takeUpdatedNote(A), kept).toBe(false);
       expect(tab.map.has(UPDATED_KEY)).toBe(false);
     }
   });
 
   it("says nothing when storage can't be read, or the note can't be taken away", () => {
-    tab.map.set(UPDATED_KEY, String(START));
+    tab.map.set(UPDATED_KEY, `${START} ${A}`);
     tab.refuse.get = true;
-    expect(takeUpdatedNote()).toBe(false);
+    expect(takeUpdatedNote(A)).toBe(false);
     tab.refuse.get = false;
     tab.refuse.remove = true;
     // Kept, it would say so at every look.
-    expect(takeUpdatedNote()).toBe(false);
+    expect(takeUpdatedNote(A)).toBe(false);
   });
 
   it("says the press wasn't recorded, then what to do, as the clock's other failures do", async () => {
