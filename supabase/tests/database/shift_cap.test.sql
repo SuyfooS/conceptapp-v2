@@ -94,7 +94,8 @@ create function pg_temp.on_it(shift_name text, n integer) returns boolean langua
 $$;
 
 -- Runs a statement and undoes it: 'ok', or the refusal's code, words, hint
--- and detail.
+-- and detail. Only what is expected to go through runs here, undone so the
+-- shifts stay as they were for what follows.
 create function pg_temp.outcome(statement text) returns text language plpgsql as $$
 declare
   code text;
@@ -118,8 +119,9 @@ $$;
 
 -- Runs a statement and keeps what it did, as a statement of its own would:
 -- 'ok', or the refusal as pg_temp.outcome reads it, with nothing of the
--- statement left. Only what is expected to be refused goes through here, so
--- a count after it shows whether the refusal really left nobody on.
+-- statement left. Every statement expected to be refused goes through here,
+-- so its own answer ('ok' had it gone through), and a count after it where
+-- there is one, show whether the refusal really left nobody on.
 create function pg_temp.kept(statement text) returns text language plpgsql as $$
 declare
   code text;
@@ -294,7 +296,7 @@ select is(
 
 select is(
   array[
-    pg_temp.outcome(format(
+    pg_temp.kept(format(
       'update public.shift_assignments set shift_id = %L::uuid where shift_id = %L::uuid and user_id = %L::uuid',
       pg_temp.id('big'), pg_temp.id('thursday'), pg_temp.p(52))),
     -- Two people trading shifts: each shift as full as before.
@@ -339,20 +341,26 @@ select is(
   'one joining it, to 50, is taken'
 );
 
+-- A save of a published week writes first and is refused after it (55000),
+-- so a join through it meets the trigger's refusal first.
 select is(
   array[
     pg_temp.headcount('late')::text,
-    pg_temp.try_publish('w', '[]', '{}', '2026-12-08 15:30+00', pg_temp.joining('late', array[51]))
+    pg_temp.try_publish('w', '[]', '{}', '2026-12-08 15:30+00', pg_temp.joining('late', array[51])),
+    pg_temp.kept(format(
+      'select public.save_week_schedule(%L::uuid, %L::uuid, %L::jsonb, %L::jsonb, %L::timestamptz, %L::jsonb)',
+      pg_temp.p(100), pg_temp.id('w'), '[]', '{}', '2026-12-08 15:30+00',
+      pg_temp.joining('late', array[51])))
   ],
-  array['50', pg_temp.crowded(array['late'])],
-  'and the next to join it is refused'
+  array['50', pg_temp.crowded(array['late']), pg_temp.crowded(array['late'])],
+  'and the next to join it is refused, through the publish and through the save'
 );
 
 ------------------------------------------------------------------------------
 -- A draft: a new shift, and one edited
 
 select matches(
-  pg_temp.outcome(format(
+  pg_temp.kept(format(
     'select public.save_week_schedule(%L::uuid, %L::uuid, %L::jsonb, null, %L::timestamptz, null)',
     pg_temp.p(100), pg_temp.id('w2'),
     jsonb_build_array(pg_temp.shift('Crowded', '2026-12-15', '07:00', '15:00', pg_temp.people(1, 51))),
@@ -373,7 +381,7 @@ insert into ids
 select 'tuesday', s.id from public.schedule_shifts s where s.week_id = pg_temp.id('w2');
 
 select is(
-  pg_temp.outcome(format(
+  pg_temp.kept(format(
     'select public.save_week_schedule(%L::uuid, %L::uuid, %L::jsonb, %L::jsonb, %L::timestamptz, null)',
     pg_temp.p(100), pg_temp.id('w2'),
     jsonb_build_array(
