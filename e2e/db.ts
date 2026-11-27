@@ -8,6 +8,10 @@ export type OpenedBusiness = {
   templateKey: string | null;
   modules: number;
   audited: number;
+  /** Scheduling's stored `closedOnShabbat`; null when nothing set it. */
+  closedOnShabbat: boolean | null;
+  /** Its settings changes in the audit log (`module.settings`). */
+  settingsAudited: number;
 };
 
 /** A business the wizard opened, as the database has it. */
@@ -19,7 +23,13 @@ export async function businessBySlug(
       (select count(*)::int from public.business_modules m
         where m.business_id = b.id) as modules,
       (select count(*)::int from public.audit_log a
-        where a.business_id = b.id and a.action = 'business.create') as audited
+        where a.business_id = b.id and a.action = 'business.create') as audited,
+      (select m.settings -> 'closedOnShabbat' from public.business_modules m
+        where m.business_id = b.id and m.module_key = 'scheduling')
+        as "closedOnShabbat",
+      (select count(*)::int from public.audit_log a
+        where a.business_id = b.id and a.action = 'module.settings')
+        as "settingsAudited"
     from public.businesses b where b.slug = ${slug}`;
   return rows[0] ?? null;
 }

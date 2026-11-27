@@ -3,12 +3,19 @@
 import { createBusiness, getPlatformStaff } from "@db/admin";
 import { onAnotherStaff } from "@db/invites";
 import {
+  getBusinessModulesForTeam,
+  setModuleSettings,
+} from "@db/module-settings";
+import {
   NEW_BUSINESS_FIELDS,
   type NewBusinessErrors,
   parseNewBusiness,
   roleWordsOf,
 } from "@domain/business";
+import { readModuleSettings } from "@domain/modules";
 import { platformCan } from "@domain/platform";
+import { checkSettingsChange } from "@domain/settings-form";
+import { manifestFor } from "@modules/registry";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 
@@ -33,8 +40,11 @@ export type NewBusinessState = {
  * login, payroll P3b): the list goes back with those numbers named, before
  * anything is written, as the Team screen and the business's page in the
  * console say it for one person; the numbers are asked in the call's body
- * (`onAnotherStaff`), and never logged. On success the business's checklist
- * opens; otherwise the form goes back to the step with the first error.
+ * (`onAnotherStaff`), and never logged. Once it is open, the answer about
+ * Shabbat is saved as its settings page saves it (`saveShabbat`, below):
+ * `create_business` takes no settings. On success the business's checklist
+ * opens, saying so if that answer could not be saved; otherwise the form
+ * goes back to the step with the first error.
  */
 export async function createBusinessAction(
   _prev: NewBusinessState,
@@ -66,5 +76,57 @@ export async function createBusinessAction(
   }
   if (!result.ok) return { errors: { slug: "taken" } };
 
-  redirect(`/admin/businesses/${parsed.value.slug}?created=1`);
+  // The business is open whatever happens next, so the checklist opens: a
+  // second press would find its slug taken.
+  const saved = await saveShabbat(
+    staff.userId,
+    result.id,
+    parsed.value.closedOnShabbat,
+  );
+  redirect(
+    `/admin/businesses/${parsed.value.slug}?created=1${saved ? "" : "&shabbat=unsaved"}`,
+  );
+}
+
+/**
+ * The wizard's answer to "העסק פתוח בשבת", saved for the business just
+ * opened through the settings engine, as the console's settings page and
+ * /manage/scheduling save it: checked against scheduling's manifest at the
+ * team's level (`checkSettingsChange`), then `set_module_settings`, which
+ * writes the change's `module.settings` line in the audit log, from what
+ * the template gave to the answer. An answer the template already gives
+ * (or none, from a form drawn before the wizard asked) writes nothing, as
+ * the settings screens send only what changed. False when it could not be
+ * saved; only the error's message is logged.
+ */
+async function saveShabbat(
+  actorId: string,
+  businessId: string,
+  closedOnShabbat: boolean | null,
+): Promise<boolean> {
+  if (closedOnShabbat === null) return true;
+  try {
+    const manifest = manifestFor("scheduling");
+    const rows = await getBusinessModulesForTeam(businessId);
+    const stored = rows.find((row) => row.key === "scheduling")?.settings;
+    const given = readModuleSettings(manifest, stored).closedOnShabbat;
+    if (given === closedOnShabbat) return true;
+    const checked = checkSettingsChange(
+      manifest,
+      stored,
+      { closedOnShabbat },
+      "team",
+    );
+    if (!checked.ok) return false;
+    const written = await setModuleSettings(
+      actorId,
+      businessId,
+      "scheduling",
+      checked.patch,
+    );
+    return written.ok;
+  } catch (error) {
+    console.error("saving Shabbat failed", (error as Error).message);
+    return false;
+  }
 }

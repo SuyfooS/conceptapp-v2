@@ -92,6 +92,21 @@ test("an onboarder opens a café from the template, with no staff yet", async ({
   await page
     .getByLabel(w.fields.address.label, { exact: true })
     .fill("רחוב הבדיקה 5, חיפה");
+  // Shabbat is asked with the details (closing the pilot, PR 3): the
+  // template's own answer first, closed, and this café opens on Shabbat.
+  const shabbat = page.getByRole("switch", { name: w.fields.shabbat.label });
+  await expect(shabbat).toHaveAttribute("aria-checked", "false");
+  await shabbat.click();
+  await expect(shabbat).toHaveAttribute("aria-checked", "true");
+  // Another template picked on the way back keeps what was set.
+  for (const template of ["general", "cafe-bar"] as const) {
+    await page.getByRole("button", { name: w.actions.back }).click();
+    await page
+      .getByRole("radio", { name: new RegExp(w.templates[template].name) })
+      .check();
+    await next(page);
+    await expect(shabbat).toHaveAttribute("aria-checked", "true");
+  }
   await page.screenshot({
     path: testInfo.outputPath("new-business-2-details.png"),
     fullPage: true,
@@ -124,6 +139,11 @@ test("an onboarder opens a café from the template, with no staff yet", async ({
   await expect(
     page
       .getByText("demo-restaurant", { exact: true })
+      .filter({ visible: true }),
+  ).toHaveCount(1);
+  await expect(
+    page
+      .getByText(w.summary.shabbatAnswer.open, { exact: true })
       .filter({ visible: true }),
   ).toHaveCount(1);
   await page.getByRole("button", { name: w.actions.create }).click();
@@ -164,7 +184,8 @@ test("an onboarder opens a café from the template, with no staff yet", async ({
   await expect(page).toHaveURL(`/admin/businesses/${slug}`);
   await expect(page.getByRole("status")).toHaveCount(0);
 
-  // Set up from the template in one go, and recorded.
+  // Set up from the template in one go, and recorded; the answer about
+  // Shabbat saved as the settings page saves it, with its own line.
   expect(await businessBySlug(slug)).toEqual({
     name,
     accent: "#0f766e",
@@ -172,6 +193,8 @@ test("an onboarder opens a café from the template, with no staff yet", async ({
     // One row per module, on or off.
     modules: MODULE_KEYS.length,
     audited: 1,
+    closedOnShabbat: false,
+    settingsAudited: 1,
   });
   expect(await invitesBySlug(slug)).toEqual([]);
 });
@@ -198,6 +221,10 @@ test("a platform admin opens a restaurant and invites its staff", async ({
   await page
     .getByLabel(w.fields.address.label, { exact: true })
     .fill("רחוב הבדיקה 7, תל אביב");
+  // Shabbat left as the restaurant's template has it: closed.
+  await expect(
+    page.getByRole("switch", { name: w.fields.shabbat.label }),
+  ).toHaveAttribute("aria-checked", "false");
   await next(page);
   await next(page);
 
@@ -318,6 +345,9 @@ test("a platform admin opens a restaurant and invites its staff", async ({
     templateKey: "restaurant",
     modules: MODULE_KEYS.length,
     audited: 1,
+    // The template's answer kept: nothing written for it.
+    closedOnShabbat: null,
+    settingsAudited: 0,
   });
   expect(await invitesBySlug(slug)).toEqual([
     { name: "רונית בדיקה", phone: "+972500000701", role: "owner" },

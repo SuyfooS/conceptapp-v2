@@ -36,6 +36,23 @@ export const TEMPLATE_KEYS = [
 
 export type TemplateKey = (typeof TEMPLATE_KEYS)[number];
 
+/**
+ * Whether each template starts closed on Shabbat: scheduling's
+ * `closedOnShabbat` as its row in `templates` leaves it. None sets it, so
+ * each has the manifest's default, closed. The console's wizard starts its
+ * question from here (`shabbatAnswerOf` in `business.ts`), so a template
+ * that opens on Shabbat changes this too: `modules/templates.db.test.ts`
+ * keeps the two equal.
+ */
+export const TEMPLATE_CLOSED_ON_SHABBAT: Readonly<
+  Record<TemplateKey, boolean>
+> = {
+  retail: true,
+  restaurant: true,
+  "cafe-bar": true,
+  general: true,
+};
+
 const moduleEntry = z.strictObject({
   enabled: z.boolean(),
   settings: z.record(z.string(), z.unknown()),

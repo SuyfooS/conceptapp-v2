@@ -8056,6 +8056,10 @@
           "label": "Address",
           "placeholder": "5 Herzl Street, Haifa",
           "hint": "Optional."
+        },
+        "shabbat": {
+          "label": "The business is open on Shabbat",
+          "hint": "If so, availability can be given for Shabbat too, and filling from availability places people in it. You can change this later in the business settings."
         }
       },
       "accent": {
@@ -8069,6 +8073,11 @@
         "name": "Name",
         "slug": "English name",
         "address": "Address",
+        "shabbat": "On Shabbat",
+        "shabbatAnswer": {
+          "open": "Open",
+          "closed": "Closed"
+        },
         "empty": "Not filled in",
         "staff": "Staff"
       },
@@ -8096,6 +8105,9 @@
         },
         "address": {
           "tooLong": "Up to 200 characters."
+        },
+        "shabbat": {
+          "invalid": "Choose whether the business is open on Shabbat."
         },
         "accent": {
           "required": "Choose a colour.",
@@ -8128,7 +8140,8 @@
     "setup": {
       "opened": {
         "title": "{name} is open",
-        "body": "The business is ready with the “{template}” template’s settings."
+        "body": "The business is ready with the “{template}” template’s settings.",
+        "shabbatUnsaved": "The answer about Shabbat wasn’t saved because of a problem. You can set it in the business settings."
       },
       "subtitle": "Template: {template} · English name: <ltr>{slug}</ltr>",
       "back": "All businesses",

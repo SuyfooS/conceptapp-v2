@@ -28,7 +28,7 @@ export default async function BusinessSetupPage({
 }: PageProps<"/admin/businesses/[slug]">) {
   const role = await currentPlatformRole();
   if (!platformCan(role, "businesses.read")) notFound();
-  const [{ slug }, { created, view }] = await Promise.all([
+  const [{ slug }, { created, view, shabbat }] = await Promise.all([
     params,
     searchParams,
   ]);
@@ -49,6 +49,7 @@ export default async function BusinessSetupPage({
       business={business}
       listHref="/admin"
       created={Boolean(created)}
+      shabbatUnsaved={Boolean(created) && shabbat === "unsaved"}
       viewFailure={viewAsFailureOf(view)}
       settingsHref={
         platformCan(role, "businesses.edit")

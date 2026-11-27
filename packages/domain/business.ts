@@ -12,14 +12,19 @@ import {
 } from "./people-import";
 import { STAFF_LIST_MAX, type StaffEntry } from "./staff-list";
 import { inviteChoices } from "./team";
-import { TEMPLATE_KEYS, type TemplateKey } from "./templates";
+import {
+  TEMPLATE_CLOSED_ON_SHABBAT,
+  TEMPLATE_KEYS,
+  type TemplateKey,
+} from "./templates";
 
 /**
  * A new business as the admin console's wizard collects it: a template,
  * then the name, the slug (the public page's address), an optional address,
- * the accent and the staff list to invite (`parseStaffList`, below).
- * `parseNewBusiness` is the one check both the form (per step) and the
- * server action run; the database repeats the hard limits.
+ * whether it is open on Shabbat, the accent and the staff list to invite
+ * (`parseStaffList`, below). `parseNewBusiness` is the one check both the
+ * form (per step) and the server action run; the database repeats the hard
+ * limits.
  */
 
 export const BUSINESS_NAME_MAX = 80;
@@ -72,10 +77,26 @@ export const NEW_BUSINESS_FIELDS = [
   "name",
   "slug",
   "address",
+  "shabbat",
   "accent",
   "staff",
 ] as const;
 export type NewBusinessField = (typeof NEW_BUSINESS_FIELDS)[number];
+
+/**
+ * The wizard's question "העסק פתוח בשבת", as its form sends it: open, or
+ * closed (scheduling's `closedOnShabbat`).
+ */
+export const SHABBAT_ANSWERS = ["open", "closed"] as const;
+export type ShabbatAnswer = (typeof SHABBAT_ANSWERS)[number];
+
+/**
+ * The answer the question starts from for a template: the template's own
+ * (`TEMPLATE_CLOSED_ON_SHABBAT`), until the person changes it.
+ */
+export function shabbatAnswerOf(template: TemplateKey): ShabbatAnswer {
+  return TEMPLATE_CLOSED_ON_SHABBAT[template] ? "closed" : "open";
+}
 
 /**
  * What can be wrong with each field ("taken" and "elsewhere" come from the
@@ -86,6 +107,8 @@ export type NewBusinessErrors = {
   name?: "required" | "tooLong";
   slug?: "required" | "tooShort" | "tooLong" | "invalid" | "reserved" | "taken";
   address?: "tooLong";
+  /** Neither answer, nor none: only a form not the wizard's sends it. */
+  shabbat?: "invalid";
   accent?: "required" | "invalid";
   /**
    * Details per line come from `parseStaffList`. "elsewhere": a number in a
@@ -101,6 +124,13 @@ export type NewBusiness = {
   slug: string;
   /** Null when left empty. */
   address: string | null;
+  /**
+   * The answer to "העסק פתוח בשבת", as scheduling's `closedOnShabbat`:
+   * saved after the business opens, when it isn't the template's. Null
+   * from a form with no answer (one drawn before the wizard asked), which
+   * keeps the template's.
+   */
+  closedOnShabbat: boolean | null;
   /** The accent to store: the pick, darkened if it was not readable. */
   accent: string;
   /** People to invite, possibly none. */
@@ -157,6 +187,7 @@ export function parseNewBusiness(
   const name = tidyText(input.name);
   const slug = normalizeSlug(text(input.slug));
   const address = tidyText(input.address);
+  const shabbat = text(input.shabbat).trim();
   const accent = text(input.accent).trim();
   const staff = parseStaffList(text(input.staff), reading);
 
@@ -165,6 +196,10 @@ export function parseNewBusiness(
     name: nameError(name),
     slug: slugError(slug),
     address: address.length > BUSINESS_ADDRESS_MAX ? "tooLong" : null,
+    shabbat:
+      shabbat === "" || SHABBAT_ANSWERS.includes(shabbat as ShabbatAnswer)
+        ? null
+        : "invalid",
     accent: accentError(accent),
     staff: staff.error,
   };
@@ -184,6 +219,7 @@ export function parseNewBusiness(
       name,
       slug,
       address: address || null,
+      closedOnShabbat: shabbat === "" ? null : shabbat === "closed",
       accent: found.accent ? accent : accentTokens(accent).accent,
       staff: staff.entries,
     },
@@ -193,7 +229,7 @@ export function parseNewBusiness(
 /** Which wizard step each field is asked on, in order. */
 export const NEW_BUSINESS_STEPS = [
   ["template"],
-  ["name", "slug", "address"],
+  ["name", "slug", "address", "shabbat"],
   ["accent"],
   ["staff"],
 ] as const satisfies readonly (readonly NewBusinessField[])[];

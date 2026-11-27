@@ -59,6 +59,7 @@ export async function BusinessView({
   business,
   listHref,
   created,
+  shabbatUnsaved = false,
   viewFailure,
   settingsHref,
   wordingHref,
@@ -73,6 +74,11 @@ export async function BusinessView({
   business: BusinessSetup;
   listHref: string;
   created: boolean;
+  /**
+   * Just opened, and the wizard's answer about Shabbat could not be saved
+   * (`?shabbat=unsaved`): the card says so, and where to set it.
+   */
+  shabbatUnsaved?: boolean;
   /** Why the last view didn't open (`?view=`), or null. */
   viewFailure: ViewAsFailure | null;
   /** Where this business's settings are, when the person may edit them. */
@@ -154,6 +160,11 @@ export async function BusinessView({
             <CardText className="text-sm">
               {t("setup.opened.body", { template })}
             </CardText>
+            {shabbatUnsaved ? (
+              <span className="font-medium text-sm text-warning">
+                {t("setup.opened.shabbatUnsaved")}
+              </span>
+            ) : null}
           </span>
         </Card>
       ) : null}
