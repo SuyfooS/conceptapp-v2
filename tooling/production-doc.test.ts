@@ -160,8 +160,9 @@ describe("docs/production.md", () => {
   });
 
   it("has the environment's secrets entered by the workflow's names, never development's", () => {
-    // Development's are repository secrets: entered under those names,
-    // production's values would overwrite them and reach migrate-dev.yml.
+    // Development's are repository secrets until A1: entered under those
+    // names, production's values would overwrite them and reach
+    // migrate-dev.yml.
     const prod = secretsOf(".github/workflows/migrate-prod.yml");
     expect(prod.length).toBeGreaterThan(0);
     const b3 = section("ב3.");
@@ -273,6 +274,14 @@ describe("docs/production.md", () => {
     expect(brief).toContain(
       "a pull request that renames, removes or re-splits a CI job can't merge until Orel lists the new check names there and drops the old",
     );
+    // A job added to CI merges, and its check blocks nothing until Orel adds
+    // it to the ruleset: so its PR names it for him, in words he looks for.
+    expect(checks).toContain(
+      "עד אז היא לא עוצרת שום מיזוג, ולכן ה-PR שמוסיף אותה כותב בתיאור שלו את השם להוספה",
+    );
+    expect(brief).toContain(
+      'a pull request that adds a CI job merges, but its check blocks nothing until Orel adds it: write "add `<check name>` to main\'s ruleset (docs/production.md, A1 step 4)" in its description and in the nightly note',
+    );
   });
 
   it("rules main and production: never deleted, never forced, main only through a PR with the checks (A1)", () => {
@@ -294,6 +303,24 @@ describe("docs/production.md", () => {
     expect(main).toContain("`Required approvals` 0");
     expect(main).toContain(
       "`Require branches to be up to date before merging`: לא לסמן",
+    );
+    // Unticked, a PR that conflicts with main still needs updating with it,
+    // and nearly every one does, each writing at the top of the log; with the
+    // ruleset that update waits for every check again. Orel hears it before
+    // he turns the rule on, and the brief stays for that run.
+    expect(readRepoFile("docs/agent/LOG.md")).toContain("Newest entry on top");
+    const updated =
+      main.split("\n").find((line) => line.includes("PR שמתנגש עם `main`")) ??
+      "";
+    expect(updated).toContain("כולם כותבים בראש `docs/agent/LOG.md`");
+    expect(updated).toContain(
+      "מחכה שוב לכל הבדיקות, עם ה-e2e, גם כשההתנגשות רק במסמכים",
+    );
+    expect(
+      main.indexOf("`Require branches to be up to date before merging`"),
+    ).toBeLessThan(main.indexOf(updated));
+    expect(readRepoFile("docs/AGENT.md").replace(/\s+/g, " ")).toContain(
+      "a branch brought up to date with `main`, even for a conflict only in the log or the roadmap, waits for its whole CI run again, e2e and all, before it can merge",
     );
     expect(production).toContain("`Include by pattern`, והשם `production`");
     expect(production).toContain("לא `Restrict creations`");

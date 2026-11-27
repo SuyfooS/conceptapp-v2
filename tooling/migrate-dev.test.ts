@@ -169,6 +169,34 @@ describe("Migrate conceptapp-dev", () => {
     expect(step("The demo businesses")).toContain("supabase/hosted-demo.sql");
   });
 
+  it("is said to keep its secrets in the repository only until A1", () => {
+    // Where supabase/README.md and production's workflow say why production's
+    // names are their own: development's are the repository's until
+    // docs/production.md's A1 moves them, then only conceptapp-dev's.
+    const readme = readRepoFile("supabase/README.md").replace(/\s+/g, " ");
+    const comments = prod
+      .split("\n")
+      .filter((line) => /^\s*#/.test(line))
+      .map((line) => line.replace(/^\s*#\s?/, ""))
+      .join(" ")
+      .replace(/\s+/g, " ");
+    expect(readme).toContain(
+      "`conceptapp-dev`'s are repository secrets until A1, then only in the environment `conceptapp-dev`",
+    );
+    expect(comments).toContain(
+      "migrate-dev.yml's secrets (repository secrets until docs/production.md's A1, then only in the environment conceptapp-dev)",
+    );
+    for (const [where, text] of [
+      ["supabase/README.md", readme],
+      ["migrate-prod.yml", comments],
+    ] as const) {
+      expect(text, where).not.toMatch(
+        /conceptapp-dev`?'s are repository secrets[,.]/,
+      );
+      expect(text, where).not.toContain("migrate-dev.yml's repository secrets");
+    }
+  });
+
   it("reads the code and nothing more, with every action pinned", () => {
     expect(topLevel(dev, "permissions").trim()).toBe(
       "permissions:\n  contents: read",

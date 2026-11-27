@@ -158,7 +158,13 @@ substantive change gets them as separate reviewers, each trying to refute it.
    (`docs/production.md`, A1), a pull request that renames, removes or
    re-splits a CI job can't merge until Orel lists the new check names there
    and drops the old: say so in its description and in the nightly note, and
-   leave it open for him.
+   leave it open for him. With the ruleset, a pull request that adds a CI job
+   merges, but its check blocks nothing until Orel adds it: write "add
+   `<check name>` to main's ruleset (docs/production.md, A1 step 4)" in its
+   description and in the nightly note. And a branch brought up to date with
+   `main`, even for a conflict only in the log or the roadmap, waits for its
+   whole CI run again, e2e and all, before it can merge: stay in the run for
+   that one too.
 7. **Log.** Append an entry to `docs/agent/LOG.md` (date, what was done, left or
    guessed, what changed, commit, restore point, next, defaults applied) in the
    same merge, and add the nightly note to `יומן הסוכן`.

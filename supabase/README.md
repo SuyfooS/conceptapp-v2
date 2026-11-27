@@ -55,7 +55,8 @@ from `main` only, in the GitHub environment `conceptapp-prod`, which waits for O
 on every run and alone holds the project's two secrets, `PROD_SUPABASE_DB_PASSWORD` and
 `PROD_SUPABASE_PROJECT_REF`. Their names are their own: GitHub hands a job the repository
 secret of the same name when its environment has none, and `conceptapp-dev`'s are repository
-secrets, so a missing one stops the run before it connects anywhere. Before anything else it
+secrets until A1, then only in the environment `conceptapp-dev`, so a missing one stops the
+run before it connects anywhere. Before anything else it
 checks that the project holds no demo business (one that does is `conceptapp-dev`, its secrets
 entered by mistake), and it never adds the demo or the seed, and never runs a SQL file
 (`tooling/migrate-prod.test.ts`). With "apply" on, its summary ends with the commit it applied
