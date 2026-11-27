@@ -32,6 +32,23 @@ const LISTED: Record<string, string[]> = {
   // one that doesn't depend on what broke. Sent by the app's own page, so the
   // proxy keeps nothing of it.
   "app/global-error.tsx": ["onRetry={() => window.location.reload()}"],
+  // A press on a page from the release before (closing the pilot, PR 1a):
+  // the same page again, for the same person in the same session, once a
+  // minute at most, the press never sent again. The server never ran the
+  // press, so nothing ended the session; should it have ended meanwhile, the
+  // reload comes from the app's own page, and the proxy keeps nothing of it.
+  "app/stale-build.ts": ["window.location.reload();"],
+};
+
+/**
+ * Where a press loads its page again for a release (`reloadForRelease`),
+ * and how many times: the clock's own press and a code's punch, and nowhere
+ * else until someone decides (PR 1b brings the other presses). Each waits
+ * for the page to go, and none sends its press again: a punch's time is the
+ * person's own press.
+ */
+const RELOADS_FOR_RELEASE: Record<string, number> = {
+  "app/(app)/clock/clock-panel.tsx": 2,
 };
 
 describe("a whole page loaded from the app's code", () => {
@@ -49,6 +66,24 @@ describe("a whole page loaded from the app's code", () => {
       if (lines.length > 0) found[file] = lines;
     }
     expect(found).toEqual(LISTED);
+  });
+
+  it("for a release, comes from the presses listed, each waiting for the page to go", () => {
+    const found: Record<string, number> = {};
+    for (const file of ["app", "packages", "modules"].flatMap((dir) =>
+      sourceFiles(dir, root),
+    )) {
+      if (/\.test\.tsx?$/.test(file) || file === "app/stale-build.ts") continue;
+      const calls = read(file).match(/\breloadForRelease\(/g)?.length ?? 0;
+      if (calls > 0) found[file] = calls;
+    }
+    expect(found).toEqual(RELOADS_FOR_RELEASE);
+    for (const [file, calls] of Object.entries(RELOADS_FOR_RELEASE)) {
+      const waits = read(file).match(
+        /if \(reloadForRelease\(error\)\) return untilReloaded\(\);/g,
+      );
+      expect(waits?.length, file).toBe(calls);
+    }
   });
 
   it("is found however it is written", () => {

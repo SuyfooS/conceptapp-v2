@@ -338,4 +338,13 @@ changes on the screen, and puts it there only
 answered (`byPerson`: an answer with no hours in it included), fewest shifts
 first, with their shifts, hours and how many of them the fill gave.
 
+Which release a build is (`deployment-id.ts`, closing the pilot's PR 1a) is
+`deploymentIdOf`, which next.config.ts passes to Next.js's `deploymentId`:
+Next.js's own `NEXT_DEPLOYMENT_ID` first (Vercel sets it with Skew
+Protection, and on Vercel a config that differs from it fails the build),
+else Vercel's `VERCEL_DEPLOYMENT_ID`, one for each deployment, and none on a
+local build or CI's, as before. A value that would break an asset's address
+(`?dpl=`) counts as none. A press on a page from the release before is the
+app's (`app/stale-build.ts`).
+
 Import as `@domain/<file>`.

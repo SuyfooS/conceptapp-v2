@@ -35,6 +35,11 @@ import {
   useState,
   useTransition,
 } from "react";
+import {
+  reloadForRelease,
+  takeUpdatedNote,
+  untilReloaded,
+} from "@/app/stale-build";
 import { type ClockPress, clockState, pressOver } from "./clock-focus";
 import type { ClockActionResult, ClockActions, ClockData } from "./clock-types";
 import { PunchCodeSheet } from "./punch-code-sheet";
@@ -83,7 +88,9 @@ function useNow(initial: string, running: boolean): number {
  * was refused, by the screen or the camera) comes after the focus has
  * landed, never before; for a scanned punch the toast says it, the camera's
  * line only showing it (`quietRead`), as the focus moving on from the camera
- * would cut that line off.
+ * would cut that line off. A press on a page from the release before loads
+ * the page again (`@/app/stale-build`), which then says the app was updated;
+ * nothing is sent again, so the time recorded is the person's next press.
  */
 export function ClockPanel({
   data,
@@ -93,6 +100,7 @@ export function ClockPanel({
   actions: ClockActions;
 }) {
   const t = useTranslations("app.clock");
+  const tu = useTranslations("app.updated");
   const { open, undo } = data;
   const { needsCode } = data.punch;
   const pause = open?.breaks.find((b) => b.endedAt === null) ?? null;
@@ -147,6 +155,12 @@ export function ClockPanel({
   // this, coming back through the tab bar would open the camera with nobody
   // pressing. Back on the screen, the circle shows.
   useLayoutEffect(() => () => setScanning(null), []);
+
+  // Loaded again for a release that came while the clock was open (a press
+  // met it, below): said once, and the press is the person's to make again.
+  useEffect(() => {
+    if (takeUpdatedNote()) setToast(toastOf(tu("toast")));
+  }, [tu]);
 
   // The decoder downloads when the clock opens, not at the press (and not at
   // all on a phone that reads QR codes itself).
@@ -207,6 +221,9 @@ export function ClockPanel({
         // A press with no signal stays on this screen. A redirect is not a
         // failure: the demo moves between its states that way.
         unstable_rethrow(error);
+        // A page from the release before loads again, the press busy until
+        // it has gone, and is never sent again: the person presses.
+        if (reloadForRelease(error)) return untilReloaded();
         refused();
         setRunning(null);
         sayWhenOver({ failure: "failed" });
@@ -259,6 +276,9 @@ export function ClockPanel({
       return result;
     } catch (error) {
       unstable_rethrow(error);
+      // As the screen's own press: the camera or the sheet stays busy while
+      // the page loads again, and nothing is sent again.
+      if (reloadForRelease(error)) return untilReloaded();
       return { ok: false, failure: "failed" };
     }
   }

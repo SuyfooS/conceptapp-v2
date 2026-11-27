@@ -7552,6 +7552,9 @@
     },
     "mode": {
       "leave": "Back to the app"
+    },
+    "updated": {
+      "toast": "The app was updated. You can press again."
     }
   },
   "modules": {
