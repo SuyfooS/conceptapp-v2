@@ -6,6 +6,7 @@ import {
   weekdayOf,
   weekStartOf,
 } from "@domain/availability";
+import { MAX_PEOPLE_ON_A_SHIFT } from "@domain/staffing";
 import { manifest as scheduling } from "@modules/scheduling/manifest";
 import { manifest as timeClock } from "@modules/time_clock/manifest";
 import {
@@ -59,7 +60,7 @@ export type ShapeOptions = {
 export const CAPS = {
   shiftsAWeek: 200,
   patterns: 30,
-  needed: 50,
+  needed: MAX_PEOPLE_ON_A_SHIFT,
   departments: 30,
   importAtOnce: 300,
   invitesWaiting: 500,

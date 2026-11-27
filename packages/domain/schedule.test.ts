@@ -8,6 +8,7 @@ import {
   changedSince,
   changesWeek,
   coverageOf,
+  crowdedShiftIn,
   dayOfMoved,
   doubleBooked,
   draftWeek,
@@ -35,6 +36,7 @@ import {
   withShiftsAsNow,
 } from "./schedule";
 import { ISRAEL_TIME_ZONE } from "./shabbat";
+import { MAX_PEOPLE_ON_A_SHIFT } from "./staffing";
 
 // 1 November 2026 is a Sunday.
 const WEEK = "2026-11-01";
@@ -184,6 +186,71 @@ describe("weekSchedule", () => {
       ]),
     ).toEqual(["The same shift twice"]);
     expect(issues([{ ...morning, id: "morning" }])).toHaveLength(1);
+  });
+});
+
+// A shift holds at most 50 people, the database's cap on every path
+// (20261128000500_shift_cap.sql): a week sent with more on one says so in
+// words of its own (`shiftFull`), not that something doesn't fit.
+describe("crowdedShiftIn", () => {
+  const person = (n: number) =>
+    `65000000-0000-4000-a000-${n.toString(16).padStart(12, "0")}`;
+  const people = (count: number) =>
+    Array.from({ length: count }, (_, i) => ({ user: person(i + 1) }));
+  const refusal = (input: unknown) => {
+    const result = weekSchedule(WEEK, ["waiter"]).safeParse(input);
+    return result.success ? null : result.error;
+  };
+
+  it("takes a shift of 50, and knows one of 51", () => {
+    expect(
+      refusal([
+        {
+          ...morning,
+          needed: MAX_PEOPLE_ON_A_SHIFT,
+          assignees: people(MAX_PEOPLE_ON_A_SHIFT),
+        },
+      ]),
+    ).toBeNull();
+    const crowded = refusal([
+      { ...morning, assignees: people(2) },
+      {
+        ...morning,
+        name: "Evening",
+        start: "16:00",
+        end: "23:00",
+        assignees: people(MAX_PEOPLE_ON_A_SHIFT + 1).map((p) => ({
+          user: p.user.replace("65000000", "66000000"),
+        })),
+      },
+    ]);
+    expect(crowded && crowdedShiftIn(crowded)).toBe(true);
+  });
+
+  it("knows it beside another problem, and only for the people on a shift", () => {
+    // Another shift's own problem: the week's checks (outside the week, twice,
+    // at the same time) don't run once a shift fails, so none of them is here.
+    const both = refusal([
+      { ...morning, name: "" },
+      { ...morning, assignees: people(MAX_PEOPLE_ON_A_SHIFT + 1) },
+    ]);
+    expect(both?.issues.map((issue) => issue.path)).toEqual([
+      [0, "name"],
+      [1, "assignees"],
+    ]);
+    expect(both && crowdedShiftIn(both)).toBe(true);
+    for (const other of [
+      // More needed than a shift holds is the form's to say (`needed`).
+      [{ ...morning, needed: MAX_PEOPLE_ON_A_SHIFT + 1 }],
+      [{ ...morning, day: "2026-11-08" }],
+      [{ ...morning, assignees: [{ user: dana }, { user: dana }] }],
+      [{ ...morning, assignees: [{ user: dana, position: "pilot" }] }],
+      Array.from({ length: 201 }, () => morning),
+    ]) {
+      const error = refusal(other);
+      expect(error).not.toBeNull();
+      expect(error && crowdedShiftIn(error)).toBe(false);
+    }
   });
 });
 

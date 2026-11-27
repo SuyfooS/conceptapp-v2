@@ -4,6 +4,7 @@ import {
   boardDraft,
   builderHref,
   builderWeekOf,
+  crowdedByJoins,
   draftAhead,
   edgeWeek,
   gapsAhead,
@@ -21,7 +22,7 @@ import {
 } from "./running-week";
 import type { ScheduledShift } from "./schedule";
 import { ISRAEL_TIME_ZONE } from "./shabbat";
-import type { ShiftPattern } from "./staffing";
+import { MAX_PEOPLE_ON_A_SHIFT, type ShiftPattern } from "./staffing";
 
 const zone = ISRAEL_TIME_ZONE;
 // Sunday 15 November 2026 to Saturday 21 November; winter time (UTC+2).
@@ -240,6 +241,124 @@ describe("weekWrite", () => {
     const { id: _, ...fresh } = { ...tueEvening, day: "2026-11-19" };
     const write = weekWrite([fresh], [], null, new Set());
     expect(write).toEqual({ shifts: [fresh], basis: null, joins: [] });
+  });
+});
+
+// The people joining a shift under way, counted against the 50 a shift holds
+// with everyone on it as stored (20261128000500_shift_cap.sql holds the same
+// cap in the database, on every path).
+describe("crowdedByJoins", () => {
+  const person = (n: number) =>
+    `66000000-0000-4000-a000-${n.toString(16).padStart(12, "0")}`;
+  /** People 1 to `count`, or from `from`. */
+  const people = (count: number, from = 1) =>
+    Array.from({ length: count }, (_, i) => person(from + i));
+  const on = (n: number, users: string[]): ScheduledShift => ({
+    ...shift(n, "2026-11-17", "08:00", "15:00", users),
+    needed: MAX_PEOPLE_ON_A_SHIFT,
+  });
+  const joining = (n: number, users: string[]) =>
+    users.map((user) => ({ shift: ID(n), user, position: null }));
+
+  it("is nothing with nobody joining", () => {
+    expect(crowdedByJoins([on(3, people(MAX_PEOPLE_ON_A_SHIFT))], [])).toEqual(
+      [],
+    );
+    expect(crowdedByJoins([], [])).toEqual([]);
+  });
+
+  it("takes a shift up to the 50 it holds, and names one past it", () => {
+    const stored = [on(3, people(MAX_PEOPLE_ON_A_SHIFT - 1))];
+    expect(crowdedByJoins(stored, joining(3, [person(900)]))).toEqual([]);
+    expect(
+      crowdedByJoins(stored, joining(3, [person(900), person(901)])),
+    ).toEqual([ID(3)]);
+    // A shift already full takes nobody more.
+    expect(
+      crowdedByJoins(
+        [on(3, people(MAX_PEOPLE_ON_A_SHIFT))],
+        joining(3, [person(900)]),
+      ),
+    ).toEqual([ID(3)]);
+  });
+
+  it("counts each shift on its own, and names those past it in the order joined", () => {
+    const stored = [
+      on(3, people(MAX_PEOPLE_ON_A_SHIFT)),
+      on(4, people(10, 100)),
+      on(6, people(MAX_PEOPLE_ON_A_SHIFT - 1, 200)),
+    ];
+    const joins = [
+      ...joining(6, [person(900), person(901)]),
+      ...joining(4, [person(902)]),
+      ...joining(3, [person(903)]),
+    ];
+    expect(crowdedByJoins(stored, joins)).toEqual([ID(6), ID(3)]);
+    // People joining two shifts are counted on each, never across them.
+    expect(
+      crowdedByJoins(
+        [on(3, people(MAX_PEOPLE_ON_A_SHIFT - 1)), on(4, [])],
+        [...joining(3, [person(900)]), ...joining(4, [person(900)])],
+      ),
+    ).toEqual([]);
+  });
+
+  it("counts a shift it wasn't given from its joins alone", () => {
+    // Deleted meanwhile, or not of this week: the database refuses the join
+    // for its own reason.
+    expect(crowdedByJoins([], joining(7, [person(900)]))).toEqual([]);
+    expect(
+      crowdedByJoins(
+        [on(3, people(MAX_PEOPLE_ON_A_SHIFT))],
+        joining(7, people(MAX_PEOPLE_ON_A_SHIFT + 1, 300)),
+      ),
+    ).toEqual([ID(7)]);
+    // A draft's shift, with no id, is no shift a join can name.
+    const { id: _, ...drawn } = on(3, people(MAX_PEOPLE_ON_A_SHIFT));
+    expect(crowdedByJoins([drawn], joining(3, [person(900)]))).toEqual([]);
+  });
+
+  it("counts each person once, whatever the case of the ids", () => {
+    const stored = [on(3, people(MAX_PEOPLE_ON_A_SHIFT))];
+    // Someone already on it, or the same person twice: the database refuses
+    // either for its own reason, and neither takes the shift past 50.
+    expect(crowdedByJoins(stored, joining(3, [person(1)]))).toEqual([]);
+    expect(
+      crowdedByJoins(
+        [on(3, people(MAX_PEOPLE_ON_A_SHIFT - 1))],
+        joining(3, [person(900), person(900).toUpperCase()]),
+      ),
+    ).toEqual([]);
+    // The shift named in capitals is the one stored, and named as joined.
+    const loud = ID(3).toUpperCase();
+    expect(
+      crowdedByJoins(stored, [{ shift: loud, user: person(900) }]),
+    ).toEqual([loud]);
+    expect(
+      crowdedByJoins(stored, [{ shift: loud, user: person(1).toUpperCase() }]),
+    ).toEqual([]);
+  });
+
+  it("reads what weekWrite sends", () => {
+    const stored = [on(3, people(MAX_PEOPLE_ON_A_SHIFT))];
+    const [full] = stored;
+    if (!full) throw new Error("No shift");
+    const screen = [
+      {
+        ...full,
+        assignees: [...full.assignees, { user: person(900), position: null }],
+      },
+    ];
+    const write = weekWrite(
+      screen,
+      stored,
+      { [ID(3)]: "0".repeat(32) },
+      new Set([ID(3)]),
+    );
+    expect(write.joins).toHaveLength(1);
+    expect(crowdedByJoins(stored, shiftJoins.parse(write.joins))).toEqual([
+      ID(3),
+    ]);
   });
 });
 

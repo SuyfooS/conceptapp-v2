@@ -464,6 +464,31 @@ draft saved, which is neither logged nor told, leaves it taken, its approval
 refused until the week is published. `running_week_edge.test.sql` covers it,
 and `tooling/running-week-edge.test.ts` pins the locks' order.
 
+A shift holds at most 50 people (`20261128000500_shift_cap.sql`;
+`MAX_PEOPLE_ON_A_SHIFT` in `@domain/staffing`), on every path that puts people
+on one. Two statement-level triggers on `shift_assignments`
+(`shift_assignments_at_most_50` after insert, `shift_assignments_moved_at_most_50`
+after update, both with transition tables) run `private.refuse_crowded_shifts`
+(security definer, revoked from public, anon and authenticated): it takes the
+shifts the statement put more people on than it took off, locks them for no
+key update in order of id, counts, and refuses any past 50 with 22023, hint
+`full` and their ids in DETAIL (`crowdedShifts` in `@db/schedule-errors`).
+So the week's write (its new and edited shifts, and `joins` to a shift under
+way), the demo's renewal, the seeds and the helpers' inserts are all held. A
+swap's approval (one person for another), a position changed and someone taken
+off pass, on a shift already over 50 too, which only takes nobody more. The
+lock lets two statements adding to one shift at once take turns: in read
+committed the one that waited counts after the other committed. It is for no
+key update because every insert holds a key share on its shift through the
+foreign key, which for update would wait for; the week's write already holds
+its shifts for update and takes nothing new, and no week row is locked. The
+builder's action counts first (`crowdedShiftIn` in `@domain/schedule` for a
+shift sent with more, `crowdedByJoins` in `@domain/running-week` for people
+joining one under way, against the week as stored), so the database's refusal
+is a race's, and all three say `shiftFull`. `shift_cap.test.sql` covers it,
+`tooling/shift-cap.test.ts` pins the lock and the cap, and
+`measure/scale/scale.db.test.ts` sees 51 refused at 300.
+
 The audit log is the business's activity log. Only server functions write it,
 each for its own action (`business.details`, `module.settings`, `clock.correct`,
 `clock.confirm` from `confirm_time_entry`, `clock.code.locked`,
