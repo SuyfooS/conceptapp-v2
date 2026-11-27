@@ -32,6 +32,28 @@ const LISTED: Record<string, string[]> = {
   // one that doesn't depend on what broke. Sent by the app's own page, so the
   // proxy keeps nothing of it.
   "app/global-error.tsx": ["onRetry={() => window.location.reload()}"],
+  // A press on a page from the release before (closing the pilot, PR 1a):
+  // the same page again, for the same person in the same session, once a
+  // minute at most, the press never sent again. The server never ran the
+  // press, so nothing ended the session; should it have ended meanwhile, the
+  // reload comes from the app's own page, and the proxy keeps nothing of it.
+  // Its note is that person's alone (`takeUpdatedNote(userId)`), so whoever
+  // signs in next on that tab isn't told a press of theirs wasn't recorded.
+  "app/stale-build.ts": ["window.location.reload();"],
+};
+
+/**
+ * Where a press loads its page again for a release (`reloadForRelease`),
+ * and how many times: the clock's own press and a code's punch, and nowhere
+ * else until someone decides (PR 1b brings the other presses). Each waits
+ * for the page to go, a while at most, then goes on to its failure should
+ * the page stay (a wait with no end would hold every later transition,
+ * navigations included). None sends its press again (a punch's time is the
+ * person's own press), and each leaves its note for the signed-in person,
+ * by their `userId`.
+ */
+const RELOADS_FOR_RELEASE: Record<string, number> = {
+  "app/(app)/clock/clock-panel.tsx": 2,
 };
 
 describe("a whole page loaded from the app's code", () => {
@@ -49,6 +71,35 @@ describe("a whole page loaded from the app's code", () => {
       if (lines.length > 0) found[file] = lines;
     }
     expect(found).toEqual(LISTED);
+  });
+
+  it("for a release, comes from the presses listed, each waiting for the page to go", () => {
+    const found: Record<string, number> = {};
+    for (const file of ["app", "packages", "modules"].flatMap((dir) =>
+      sourceFiles(dir, root),
+    )) {
+      if (/\.test\.tsx?$/.test(file) || file === "app/stale-build.ts") continue;
+      const calls = read(file).match(/\breloadForRelease\(/g)?.length ?? 0;
+      if (calls > 0) found[file] = calls;
+    }
+    expect(found).toEqual(RELOADS_FOR_RELEASE);
+    for (const [file, calls] of Object.entries(RELOADS_FOR_RELEASE)) {
+      const waits = read(file).match(
+        /if \(reloadForRelease\(error, (\w+\.)*userId\)\) await untilReloaded\(\);/g,
+      );
+      expect(waits?.length, file).toBe(calls);
+    }
+  });
+
+  it("for an action's answer from another release, comes from Next.js by its build id", () => {
+    // With a deployment id set in the config, Next.js leaves its build id
+    // out of an action's answer (`maybeAppendBuildIdToRSCPayload`), so an
+    // answer from the next release is drawn into the page from the one
+    // before instead of being dropped. Vercel's Skew Protection sets
+    // NEXT_DEPLOYMENT_ID, which Next.js takes as its deployment id whatever
+    // the config says (`config.js`), so this check can't see it: turning it
+    // on needs this checked again (next.config.ts, ROADMAP).
+    expect(read("next.config.ts")).not.toMatch(/\bdeploymentId\s*:/);
   });
 
   it("is found however it is written", () => {

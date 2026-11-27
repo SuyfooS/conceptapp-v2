@@ -204,6 +204,7 @@ export async function currentClock(): Promise<ClockData | null> {
   const later =
     open && today && Date.parse(today.from) - now.getTime() > EARLY_ARRIVAL_MS;
   return {
+    userId,
     now: now.toISOString(),
     timeZone,
     open,

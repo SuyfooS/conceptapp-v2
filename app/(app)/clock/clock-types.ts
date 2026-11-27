@@ -27,6 +27,12 @@ export type ClockActions = {
 };
 
 export type ClockData = {
+  /**
+   * The signed-in person. A press that loads the page again for a release
+   * leaves its note for them (`@/app/stale-build`), so whoever signs in next
+   * on that tab isn't told a press of theirs wasn't recorded.
+   */
+  userId: string;
   /** When the page was read: the first value of the running time. */
   now: string;
   timeZone: string;
