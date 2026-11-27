@@ -198,17 +198,28 @@ describe("the notice for an old browser", () => {
     }
   });
 
-  it("says what to do on Android and on iPhone, whom to tell, and that the page can still be tried", () => {
+  it("says what to do on Android and on iPhone and iPad, whom to tell, and that the page can still be tried", () => {
     const words = he.app.oldBrowser;
     expect(Object.keys(words).sort()).toEqual(
       ["android", "cantUpdate", "iphone", "title", "tryAnyway"].sort(),
     );
     expect(words.android).toMatch(/Chrome.*Play/);
+    // The title says "this device", and the clock station is often an old
+    // iPad: the Apple line names it, whose version and Settings are the same.
+    expect(words.iphone).toMatch(/^<b>באייפון ובאייפד:<\/b>/);
+    expect(en.app.oldBrowser.iphone).toMatch(/^<b>On iPhone and iPad:<\/b>/);
     // The floor's iOS, as the push card says it (notifications.iosVersion).
     expect(words.iphone).toContain("iOS 16.4");
     expect(en.app.oldBrowser.iphone).toContain("iOS 16.4");
     expect(words.iphone).toContain("בהגדרות, בכללי, בעדכון תוכנה");
-    expect(words.cantUpdate).toContain("מי שמכין את הסידור");
+    // Whom to tell is someone every reader has, in any business: not a
+    // role a module gives (a business may run no schedule), and for an
+    // owner the ConceptApp team.
+    expect(words.cantUpdate).toContain("מי שהזמין אותך");
+    expect(en.app.oldBrowser.cantUpdate).toContain("whoever invited you");
+    for (const text of [words.cantUpdate, en.app.oldBrowser.cantUpdate]) {
+      expect(text).not.toMatch(/סידור|schedule/);
+    }
     for (const [key, text] of [
       ...Object.entries(words),
       ...Object.entries(en.app.oldBrowser),

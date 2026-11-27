@@ -8,10 +8,11 @@ const platform = (chunks: ReactNode) => (
 
 /**
  * The notice for a browser older than the app needs, in the app's words
- * (`app.oldBrowser`): what to do on Android and on iPhone, whom to tell when
- * it can't be updated, and that the page can still be tried. Drawn by the
- * root layout on every page, where it stays hidden unless app/globals.css
- * shows it, and by the /design gallery, shown. No script of its own.
+ * (`app.oldBrowser`): what to do on Android and on iPhone and iPad, whom to
+ * tell when it can't be updated, and that the page can still be tried. Drawn
+ * by the root layout on every page, where it stays hidden unless
+ * app/globals.css shows it, and by the /design gallery, shown. No script of
+ * its own.
  */
 export function OldBrowser({
   shown,
