@@ -28,19 +28,72 @@ export const NO_CODE_WAITING = -1;
 export const CODE_JUST_SENT = -2;
 
 /**
+ * What the database adds to the seconds to wait when the caller's own
+ * windows hold a try, whatever the number's (`public.note_auth_attempt`,
+ * 20261128000600_network_limit.sql). A wait is shorter than its window, at
+ * most a day, so the two never meet; and a server from before it reads any
+ * positive answer as too many, as it did.
+ */
+export const HELD_BY_CALLER = 100_000;
+
+/** A day in seconds: no window is longer (`private.auth_limits`), nor a wait. */
+const DAY = 86_400;
+
+/**
+ * A try that may not go yet: whose windows held it, the number's (`phone`)
+ * or the caller's, and the seconds until it may. Held by both, it is the
+ * caller's, with the caller's own seconds, so what is said of it is the same
+ * for every number.
+ */
+export type Held = { by: "phone" | "caller"; seconds: number };
+
+/**
+ * What counting a try answered: 0, counted, so it may go ahead;
+ * `NO_CODE_WAITING` or `CODE_JUST_SENT`, counted for its caller only; or
+ * held, and by whose windows.
+ */
+export type AttemptAnswer =
+  | 0
+  | typeof NO_CODE_WAITING
+  | typeof CODE_JUST_SENT
+  | Held;
+
+/** The database's answer, read: anything else throws. */
+const attemptAnswer = z
+  .number()
+  .int()
+  .min(CODE_JUST_SENT)
+  .max(HELD_BY_CALLER + DAY)
+  .refine((answer) => answer <= DAY || answer > HELD_BY_CALLER)
+  .transform((answer): AttemptAnswer => {
+    if (answer > HELD_BY_CALLER) {
+      return { by: "caller", seconds: answer - HELD_BY_CALLER };
+    }
+    if (answer > 0) return { by: "phone", seconds: answer };
+    if (answer === NO_CODE_WAITING) return NO_CODE_WAITING;
+    if (answer === CODE_JUST_SENT) return CODE_JUST_SENT;
+    return 0;
+  });
+
+/**
  * Counts the attempt for its number and its caller, against every window of
  * the limits in `private.auth_limits` (a quarter of an hour, and a day for
- * a number; `public.note_auth_attempt`). Returns 0 when it may go ahead,
- * else the seconds until it may; a refused try is not counted. A check is
- * counted for its number only while a code sent to it may still be waiting
- * (ten minutes), and otherwise answers `NO_CODE_WAITING`. A send inside the
- * app's own wait after the number's last counted send answers
- * `CODE_JUST_SENT`. Either answer is counted for the caller only. Either
- * the number or the caller may be null, and is then not counted. Runs with
- * the secret key; the database keeps only hashes of both. Before the
- * function reaches a project, nothing is limited, as before.
+ * a number; `public.note_auth_attempt`). Answers 0 when it may go ahead,
+ * else held: by the caller's windows (`caller`, whatever the number's) or
+ * by the number's alone (`phone`), with the seconds until it may; a refused
+ * try is not counted. A check is counted for its number only while a code
+ * sent to it may still be waiting (ten minutes), and otherwise answers
+ * `NO_CODE_WAITING`. A send inside the app's own wait after the number's
+ * last counted send answers `CODE_JUST_SENT`. Either answer is counted for
+ * the caller only. Either the number or the caller may be null, and is then
+ * not counted. Runs with the secret key; the database keeps only hashes of
+ * both. Before the function reaches a project, nothing is limited, as
+ * before; and until it says the caller's (20261128000600_network_limit.sql)
+ * every wait reads as the number's, said as before.
  */
-export async function noteAuthAttempt(attempt: AuthAttempt): Promise<number> {
+export async function noteAuthAttempt(
+  attempt: AuthAttempt,
+): Promise<AttemptAnswer> {
   const { data, error } = await createAdminClient().rpc("note_auth_attempt", {
     kind: attempt.kind,
     // An empty string is no number, or no caller.
@@ -52,7 +105,7 @@ export async function noteAuthAttempt(attempt: AuthAttempt): Promise<number> {
     if (isMissingFunction(error)) return 0;
     throw new Error(`Could not count the attempt: ${error.message}`);
   }
-  return z.number().int().min(CODE_JUST_SENT).parse(data);
+  return attemptAnswer.parse(data);
 }
 
 /**

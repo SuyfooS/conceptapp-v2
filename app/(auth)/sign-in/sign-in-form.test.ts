@@ -10,8 +10,10 @@ import type { SignInState } from "../actions";
 // code that didn't come is always there, in Hebrew and in English; and no
 // word anywhere in sign-in says a number isn't registered. Each step has
 // the "אני לא רובוט" check above its press, in each of its states, and a
-// send refused for it is said where the step says its errors. The router
-// and links are stood in for; nothing here is sent.
+// send refused for it is said where the step says its errors. Too many
+// codes from this network is said there too, with its minutes in their own
+// direction, the same for every number. The router and links are stood in
+// for; nothing here is sent.
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: () => {}, push: () => {}, refresh: () => {} }),
@@ -71,16 +73,39 @@ const unnumbered = (html: string, phone: string) =>
 const REGISTERED = "+972500000003";
 const UNKNOWN = "+972509999999";
 
-const STATES: Omit<Extract<SignInState, { step: "code" }>, "phone">[] = [
+/** A code step with its number left out, each kind of refusal kept whole. */
+type Unnumbered<S> = S extends unknown ? Omit<S, "phone"> : never;
+
+const STATES: Unnumbered<Extract<SignInState, { step: "code" }>>[] = [
   { step: "code" },
   { step: "code", resent: true },
   { step: "code", error: "wrongCode" },
   { step: "code", error: "invalidCode" },
   { step: "code", error: "tooMany" },
+  { step: "code", error: "tooManyNetwork", minutes: 12 },
   { step: "code", error: "rateLimit" },
   { step: "code", error: "captcha" },
   { step: "code", error: "failed" },
 ];
+
+/**
+ * Too many codes from this network, as its line says it, number and all.
+ * "Or later": the minutes are the network's, and the number's own count
+ * may still hold a send once they pass (auth_limits_network.test.sql).
+ */
+const network = (locale: "he" | "en", minutes: number) =>
+  ({
+    he: {
+      1: "נשלחו הרבה קודים מהרשת הזאת. אפשר לכבות את ה-Wi-Fi ולנסות מהסלולר, או לנסות שוב בעוד דקה או מאוחר יותר.",
+      2: "נשלחו הרבה קודים מהרשת הזאת. אפשר לכבות את ה-Wi-Fi ולנסות מהסלולר, או לנסות שוב בעוד שתי דקות או מאוחר יותר.",
+      12: 'נשלחו הרבה קודים מהרשת הזאת. אפשר לכבות את ה-Wi-Fi ולנסות מהסלולר, או לנסות שוב בעוד <span dir="ltr">12</span> דקות או מאוחר יותר.',
+    },
+    en: {
+      1: "Many codes were sent from this network. You can turn off Wi-Fi and try on mobile data, or try again in a minute or later.",
+      2: 'Many codes were sent from this network. You can turn off Wi-Fi and try on mobile data, or try again in <span dir="ltr">2</span> minutes or later.',
+      12: 'Many codes were sent from this network. You can turn off Wi-Fi and try on mobile data, or try again in <span dir="ltr">12</span> minutes or later.',
+    },
+  })[locale][minutes as 1 | 2 | 12];
 
 describe("sign-in's code step", () => {
   it("reads the same for every valid number, in each of its states", () => {
@@ -281,6 +306,48 @@ describe("sign-in's refusals", () => {
         /<span id="[^"]+" class="sr-only" aria-live="polite"/,
       );
     }
+  });
+});
+
+describe("too many codes from this network", () => {
+  it("is said above the press on the phone step, its minutes in their own direction, in Hebrew and in English", () => {
+    for (const locale of ["he", "en"] as const) {
+      for (const minutes of [1, 2, 12]) {
+        const html = draw(
+          { step: "phone", error: "tooManyNetwork", minutes },
+          locale,
+        );
+        const line = html.indexOf(
+          `<p role="alert" class="px-1 text-danger text-sm">${network(locale, minutes)}</p>`,
+        );
+        expect(line, `${locale} ${minutes}`).toBeGreaterThan(0);
+        expect(html.indexOf('value="send"')).toBeGreaterThan(line);
+        // The number was fine: its field isn't marked.
+        const field = phoneInput(html);
+        expect(attribute(field, "aria-invalid")).toBeUndefined();
+        expect(attribute(field, "aria-describedby")).toBeUndefined();
+      }
+    }
+  });
+
+  it("is the code field's own on the code step, why first, the same for every number, with no alert", () => {
+    const states = [
+      { step: "code", phone: REGISTERED, error: "tooManyNetwork", minutes: 12 },
+      { step: "code", phone: UNKNOWN, error: "tooManyNetwork", minutes: 12 },
+    ] as const;
+    const [registered, unknown] = states.map((state) => draw(state));
+    expect(unnumbered(unknown ?? "", UNKNOWN)).toBe(
+      unnumbered(registered ?? "", REGISTERED),
+    );
+    const html = unknown ?? "";
+    const id = new RegExp(`<p id="([^"]+)"[^>]*>${network("he", 12)}</p>`).exec(
+      html,
+    )?.[1];
+    expect(id).toBeTruthy();
+    const field = codeInput(html);
+    expect(attribute(field, "aria-describedby")?.split(" ")[0]).toBe(id);
+    expect(attribute(field, "aria-invalid")).toBeUndefined();
+    expect(html).not.toContain('role="alert"');
   });
 });
 

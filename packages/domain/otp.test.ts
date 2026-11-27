@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeOtpCode, refusalReason } from "./otp";
+import { minutesToWait, normalizeOtpCode, refusalReason } from "./otp";
 
 describe("normalizeOtpCode", () => {
   it.each([
@@ -29,5 +29,23 @@ describe("refusalReason", () => {
     [undefined, null],
   ] as const)("reads %j as %j", (code, expected) => {
     expect(refusalReason(code)).toBe(expected);
+  });
+});
+
+describe("minutesToWait", () => {
+  it.each([
+    [1, 1],
+    [59, 1],
+    [60, 1],
+    [61, 2],
+    [570, 10],
+    [870, 15],
+    [900, 15],
+  ])("says %j seconds as %j minutes, rounded up", (seconds, minutes) => {
+    expect(minutesToWait(seconds)).toBe(minutes);
+  });
+
+  it("says at least a minute", () => {
+    expect(minutesToWait(0)).toBe(1);
   });
 });

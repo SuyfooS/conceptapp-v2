@@ -31,12 +31,20 @@ export async function demoSignIn(
   if (intent === "verify" && prev.step === "code") {
     const raw = form.get("code");
     const code = normalizeOtpCode(typeof raw === "string" ? raw : "");
+    // A network's minutes the twin opened with go with its first answer.
     if (code === DEMO_CODE) {
-      return { ...prev, error: undefined, resent: false, to: DEMO_APP };
+      return {
+        ...prev,
+        error: undefined,
+        minutes: undefined,
+        resent: false,
+        to: DEMO_APP,
+      };
     }
     return {
       ...prev,
       error: code ? "wrongCode" : "invalidCode",
+      minutes: undefined,
       resent: false,
     };
   }

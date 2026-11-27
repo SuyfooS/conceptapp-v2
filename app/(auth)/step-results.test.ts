@@ -46,6 +46,8 @@ describe("a refusal on the phone step", () => {
       expect(aboutTheNumber(error as SignInError), error).toBe(onField);
     }
     expect(aboutTheNumber(undefined)).toBe(false);
+    // Too many from this network: the number was fine.
+    expect(aboutTheNumber("tooManyNetwork")).toBe(false);
   });
 });
 
@@ -55,6 +57,7 @@ describe("a refusal on the code step", () => {
       expect(aboutTheCode(error), error).toBe(marked);
     }
     expect(aboutTheCode(undefined)).toBe(false);
+    expect(aboutTheCode("tooManyNetwork")).toBe(false);
   });
 });
 

@@ -147,8 +147,17 @@ as one asked for, so neither the first answer nor the wait tells the link's hold
 the number already had an account. "Too many" said later still does: after five sign-in
 codes to the number and then a new code on `/join`, or one sign-in code and ten wrong checks
 and then a check on `/join`, only a number with an account hears it, and its person sees
-the five codes, or only one stray code in the second way (known issue 94). The team tunes
-the limits and the wait in those tables, with SQL.
+the five codes, or only one stray code in the second way (known issue 94). A try its
+caller's windows hold answers 100000 over the caller's own seconds, whatever the number's
+(`20261128000600_network_limit.sql`), and sign-in and `/join` say it: "נשלחו הרבה קודים
+מהרשת הזאת", with the minutes left and the way round, mobile data. That count is the same
+for every number (joining clears only the number's), but for two sends. One given back is
+given back for the caller too: on sign-in only a number with an account meets that, and its
+send already answered "something went wrong" (known issue 98). One on `/join` that the
+number's own count holds is counted for nobody, the network included, and joining cleared
+the counts of a number with no account, so only one with an account is held so: after the
+five codes of known issue 94, which already tell, the network's count ends one lower for it.
+The number's own count stays unsaid. The team tunes the limits and the wait in those tables, with SQL.
 A number locked by the day's window (someone sent it codes and typed many wrong ones) is
 cleared with:
 

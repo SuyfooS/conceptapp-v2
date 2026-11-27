@@ -13,7 +13,9 @@ import type { SignInState } from "./actions";
 // has an account or not, and a resend or a check reads the number from the
 // step's own state, never the form's. A send and a resend pass on the "אני
 // לא רובוט" check's token, and one of another shape is dropped; a send the
-// auth server refused for it stays on its step and says so. A right code
+// auth server refused for it stays on its step and says so, and so does
+// one held by too many codes from this network, with its minutes, which a
+// code checked next leaves behind. A right code
 // lands on the page a link kept for after sign-in (known issue 21), taken
 // from its cookie then and only then, and checked again: one that isn't a
 // page to keep lands on Today, deleted all the same.
@@ -213,6 +215,51 @@ describe("signing in", () => {
         resent: false,
       });
     }
+  });
+
+  it("keeps too many from this network on its step, with its minutes", async () => {
+    // The step only: sendSignInCode is stood in for, so whether its answer
+    // is the same for every number is not shown here, but in
+    // supabase/tests/database/auth_limits_network.test.sql (the count) and
+    // otp.test.ts (said before the auth server is asked).
+    const held = { error: "tooManyNetwork", minutes: 12 } as const;
+    mocks.sendSignInCode.mockResolvedValueOnce(held);
+    expect(
+      await signIn(
+        phoneStep,
+        posted({ intent: "send", phone: "050-000-0003" }),
+      ),
+    ).toEqual({ step: "phone", ...held });
+    mocks.sendSignInCode.mockResolvedValueOnce(held);
+    expect(await signIn(codeStep, posted({ intent: "resend" }))).toEqual({
+      step: "code",
+      phone: "+972500000003",
+      ...held,
+      resent: false,
+    });
+  });
+
+  it("leaves a network's minutes behind once a code is checked", async () => {
+    const held: SignInState = {
+      ...codeStep,
+      error: "tooManyNetwork",
+      minutes: 12,
+    };
+    mocks.verifyCode.mockResolvedValueOnce({ error: "wrongCode" });
+    for (const [code, error] of [
+      ["123456", "wrongCode"],
+      ["12", "invalidCode"],
+    ] as const) {
+      const after = await signIn(held, posted({ intent: "verify", code }));
+      expect(after).toMatchObject({ error });
+      expect(after.minutes, code).toBeUndefined();
+    }
+    const right = await signIn(
+      held,
+      posted({ intent: "verify", code: "123456" }),
+    );
+    expect(right).toMatchObject({ error: undefined, to: "/home" });
+    expect(right.minutes).toBeUndefined();
   });
 
   it("catches a malformed number before anything is asked", async () => {

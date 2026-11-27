@@ -46,13 +46,24 @@ export function JoinForm({
   const send = useRef<HTMLButtonElement>(null);
   // The state the screen starts with is read whole as it is drawn.
   const seen = useRef<JoinState | null>(state);
+  const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
+  // Too many codes from this network says its minutes: in their own
+  // direction on the screen, as plain words for the announcer.
   const error =
     state.error === "shiftsLeft" || state.error === "elsewhere"
       ? t(state.error)
-      : state.error
-        ? errors(state.error)
-        : undefined;
-  const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
+      : state.error === "tooManyNetwork"
+        ? errors.markup("tooManyNetwork", {
+            minutes: state.minutes,
+            ltr: (chunks) => chunks,
+          })
+        : state.error
+          ? errors(state.error)
+          : undefined;
+  const errorLine =
+    state.error === "tooManyNetwork"
+      ? errors.rich("tooManyNetwork", { minutes: state.minutes, ltr })
+      : error;
 
   // A code that didn't go, once per answer (`arrived`): its line says it,
   // and the press, busy meanwhile, takes back the focus it lost, to be tried
@@ -76,7 +87,7 @@ export function JoinForm({
         <p className="text-ink-2">{t.rich("sendIntro", { ending, ltr })}</p>
         {error ? (
           <p key={answer} role="alert" className="text-danger text-sm">
-            {error}
+            {errorLine}
           </p>
         ) : null}
         <CaptchaBox captcha={box} name={CAPTCHA_FIELD} />
@@ -114,6 +125,7 @@ export function JoinForm({
         label={t("codeLabel")}
         intro={words}
         error={error}
+        errorLine={errorLine}
         resent={state.resent ? words : undefined}
         answer={answer}
         wrongCode={state.error === "wrongCode"}

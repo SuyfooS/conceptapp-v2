@@ -4,7 +4,8 @@
 -- are kept only as hashes, for a day. The limits are set here, since the
 -- local seed lifts them for the browser tests. These are the quarter-hour
 -- windows; the day's windows, a code waiting and the app's own wait between
--- codes are in auth_limits_windows.test.sql.
+-- codes are in auth_limits_windows.test.sql. A try the caller's count holds
+-- answers 100000 over its seconds (auth_limits_network.test.sql).
 begin;
 select plan(20);
 
@@ -64,7 +65,7 @@ select is(
 );
 select is(
   public.note_auth_attempt('send', '+972500000986', '4.4.4.4', '2026-11-10 09:00:30+00'),
-  570, 'a fourth number from the same caller waits'
+  100570, 'a fourth number from the same caller waits, said as the caller''s (100000 over its seconds)'
 );
 select is(
   public.note_auth_attempt('send', '+972500000986', null, '2026-11-10 09:00:40+00'),

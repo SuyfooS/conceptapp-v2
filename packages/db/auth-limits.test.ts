@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The counts on sign-in codes as the server reads them, with the database
-// stood in for: 0 to go ahead, the seconds to wait, no code waiting for a
-// check, or a code sent within the wait for a send; anything else, or a
-// failure but a function not there yet, throws.
+// stood in for: 0 to go ahead, the seconds to wait and whose count held the
+// try (the number's, or the caller's, 100000 over its seconds), no code
+// waiting for a check, or a code sent within the wait for a send; anything
+// else, or a failure but a function not there yet, throws.
 // Joining clears the counts of a number with no account, by the number only.
 // A send refused for its "אני לא רובוט" check is given back to its number
 // only, the caller's try kept.
@@ -31,6 +32,7 @@ const {
   forgetAuthAttempt,
   forgetNumberAttempts,
   forgetRefusedSend,
+  HELD_BY_CALLER,
   NO_CODE_WAITING,
   noteAuthAttempt,
 } = await import("./auth-limits");
@@ -48,8 +50,8 @@ beforeEach(() => {
 });
 
 describe("noteAuthAttempt", () => {
-  it("answers 0, the seconds to wait, no code waiting or a code just sent, as the database says", async () => {
-    for (const data of [0, 412, -1, -2]) {
+  it("answers 0, no code waiting or a code just sent, as the database says", async () => {
+    for (const data of [0, -1, -2]) {
       db.answers.push({ data, error: null });
       expect(await noteAuthAttempt(ATTEMPT)).toBe(data);
     }
@@ -66,10 +68,27 @@ describe("noteAuthAttempt", () => {
     });
   });
 
-  it("throws on any other answer", async () => {
-    for (const data of [-3, 1.5, "x", null]) {
+  it("reads a wait as the number's, up to a day, and one past the offset as the caller's, with its own seconds", async () => {
+    for (const [data, held] of [
+      [1, { by: "phone", seconds: 1 }],
+      [412, { by: "phone", seconds: 412 }],
+      [86_400, { by: "phone", seconds: 86_400 }],
+      [100_001, { by: "caller", seconds: 1 }],
+      [100_870, { by: "caller", seconds: 870 }],
+      [186_400, { by: "caller", seconds: 86_400 }],
+    ] as const) {
       db.answers.push({ data, error: null });
-      await expect(noteAuthAttempt(ATTEMPT)).rejects.toThrow();
+      expect(await noteAuthAttempt(ATTEMPT), String(data)).toEqual(held);
+    }
+    expect(HELD_BY_CALLER).toBe(100_000);
+  });
+
+  it("throws on any other answer", async () => {
+    // Past a day and short of the offset, the offset itself, or past it by
+    // more than a day: no window answers these.
+    for (const data of [-3, 1.5, "x", null, 86_401, 100_000, 186_401]) {
+      db.answers.push({ data, error: null });
+      await expect(noteAuthAttempt(ATTEMPT), String(data)).rejects.toThrow();
     }
   });
 
