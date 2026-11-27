@@ -88,6 +88,7 @@ import { type ReactNode, useId, useRef, useState } from "react";
 import { direction, type Locale } from "@/i18n/config";
 import enMessages from "@/messages/en.json";
 import heMessages from "@/messages/he.json";
+import { OldBrowser } from "../old-browser";
 import { GalleryChat } from "./gallery-chat";
 import { GalleryFileField } from "./gallery-documents";
 import { GalleryFile } from "./gallery-file";
@@ -1066,6 +1067,13 @@ function GalleryBody({
               <Button>{t("emptyAction")}</Button>
             </EmptyState>
           </Card>
+        </Section>
+
+        <Section title={t("oldBrowser")}>
+          {/* The notice the root layout keeps hidden in this browser, shown
+              here by its prop, in the gallery's language. */}
+          <OldBrowser shown className="px-0 pt-0" />
+          <p className="px-1 text-ink-2 text-sm">{t("oldBrowserHint")}</p>
         </Section>
 
         <Section title={t("floatingAction")}>

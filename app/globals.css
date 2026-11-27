@@ -1,9 +1,15 @@
 @import "tailwindcss";
 
 /*
- * Direction variants follow the element's real direction (:dir), so an LTR
- * block inside the RTL page (English text, a phone field) flips correctly.
- * Tailwind's built-in rtl:/ltr: also match any descendant of [dir=rtl].
+ * Direction variants, written on :dir(). The CSS served has no :dir(): while
+ * Next's browser targets include Chrome 111, the build turns these, and the
+ * arbitrary [:dir(…)] variants (`ltrInputClass`, the floating dock), into
+ * :lang(), so they follow the element's `lang`, not its `dir`. An LTR block
+ * inside the RTL page that should flip them (English text) sets its `lang`
+ * too; a phone field with only dir="ltr" still matches rtl:. The old-browser
+ * rule below says why its floor counts on that, and tooling/old-browser.test.ts
+ * holds the targets. Tailwind's built-in rtl:/ltr: also match any descendant
+ * of [dir=rtl].
  */
 @custom-variant rtl (&:dir(rtl));
 @custom-variant ltr (&:dir(ltr));
@@ -359,6 +365,43 @@ body {
  */
 [data-focus-landing]:focus {
   outline: none;
+}
+
+/*
+ * A browser older than the app needs: the notice at the top of every page
+ * (`@ui/old-browser-notice`, drawn by app/layout.tsx) carries Tailwind's
+ * `hidden`, and this rule shows it. CSS only, as the page's script may never
+ * run on such a browser. Outside any layer, so it wins over `hidden`, which
+ * is in one; a browser too old for layers (Chrome 98, Safari 15.3) never
+ * applies `hidden` at all.
+ *
+ * The floor is relative colours, `rgb(from …)`, which the accent's hover and
+ * press above are made of: Chrome and Edge 119, Safari 16.4 (iOS 16.4),
+ * Firefox 128, Samsung Internet 25. It is the highest of what the served app
+ * needs: Next 16 supports Chrome and Edge 111, Firefox 111 and Safari 16.4
+ * (node_modules/next/dist/docs/03-architecture/supported-browsers.md);
+ * Tailwind 4's @property is Safari 16.4 and Firefox 128; color-mix(), for
+ * every soft tint, Chrome 111, Safari 16.2 and Firefox 113; toSpliced (the
+ * availability sheet) Chrome 110, Safari 16 and Firefox 115; a regex
+ * lookbehind (the imports) Safari 16.4.
+ *
+ * Not :dir() (Chrome 120): for Next's default targets (Chrome 111) the
+ * build's Lightning CSS turns the rtl:/ltr: variants above into :lang(), so
+ * the CSS served has no :dir(), and Chrome 119 draws the app. Should
+ * next.config.ts ever keep :dir() (`lightningCssFeatures` excluding
+ * `dir-selector`) or set other targets, the floor moves (to Chrome 120 for
+ * :dir(): add `or (not selector(:dir(rtl)))` here). Until both change
+ * together a test fails: tooling/old-browser.test.ts holds the targets (the
+ * repo's config, Next's default and what Next reads here), and
+ * e2e/old-browser.spec.ts finds no :dir() in the CSS the build serves, which
+ * also catches a Lightning CSS that stops rewriting it. A BROWSERSLIST set
+ * only on Vercel is seen by neither: set none. A declaration test needs no
+ * selector(), so every browser with @supports reads it.
+ */
+@supports not (color: rgb(from red r g b)) {
+  [data-old-browser] {
+    display: block;
+  }
 }
 
 /*

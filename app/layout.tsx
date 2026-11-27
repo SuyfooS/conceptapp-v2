@@ -4,6 +4,7 @@ import { getTranslations } from "next-intl/server";
 import "@fontsource-variable/heebo";
 import { Announcer } from "@ui/announcer";
 import { defaultLocale, direction } from "@/i18n/config";
+import { OldBrowser } from "./old-browser";
 import "./globals.css";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -50,6 +51,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         {/* First, and kept across navigations: a line said just before one
             is heard on the next screen. It has no words of its own. */}
         <Announcer />
+        {/* At the top of every page of every route group, signed out too,
+            and hidden unless the browser is older than the app needs: only
+            app/globals.css shows it, with no script. */}
+        <OldBrowser />
         <NextIntlClientProvider>{children}</NextIntlClientProvider>
       </body>
     </html>
