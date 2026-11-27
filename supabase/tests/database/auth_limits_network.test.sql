@@ -4,8 +4,10 @@
 -- this network sent too many; a try only the number's windows hold answers
 -- its seconds, as before, and stays unsaid. Held by both, the caller's is
 -- said, with the caller's seconds: the number's would tell, on joining, a
--- number whose counts were kept (one with an account) from one cleared. The
--- two exceptions, written down here. A send given back (the SMS provider or
+-- number whose counts were kept (one with an account) from one cleared. So
+-- once the caller's minutes pass, the number's own count may still hold a
+-- send from that network, unsaid, and the words say "או מאוחר יותר" and
+-- promise no time. The two exceptions, written down here. A send given back (the SMS provider or
 -- the project's SMS cap refused it, met on sign-in only by a number with an
 -- account) is given back for the caller too, so the caller's count then
 -- differs by account. That very send already answered "משהו השתבש" for a
@@ -20,7 +22,7 @@
 -- and the wait are set here, since the local seed lifts the limits and
 -- shortens the wait for the browser tests.
 begin;
-select plan(29);
+select plan(30);
 
 select function_returns(
   'public', 'note_auth_attempt',
@@ -110,6 +112,10 @@ select is(
 select is(
   public.note_auth_attempt('send', '+972500005831', '8.8.8.8', '2026-11-21 10:06:30+00'),
   750, 'from another network the number''s own count holds it, its seconds as before'
+);
+select is(
+  public.note_auth_attempt('send', '+972500005831', '8.8.8.7', '2026-11-21 10:15:30+00'),
+  210, 'once the network''s minutes pass, the number''s own count may still hold it, its seconds as before, unsaid: the words promise no time'
 );
 
 -- A send within the app's wait is counted for its caller only, and its

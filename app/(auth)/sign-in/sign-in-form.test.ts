@@ -88,18 +88,22 @@ const STATES: Unnumbered<Extract<SignInState, { step: "code" }>>[] = [
   { step: "code", error: "failed" },
 ];
 
-/** Too many codes from this network, as its line says it, number and all. */
+/**
+ * Too many codes from this network, as its line says it, number and all.
+ * "Or later": the minutes are the network's, and the number's own count
+ * may still hold a send once they pass (auth_limits_network.test.sql).
+ */
 const network = (locale: "he" | "en", minutes: number) =>
   ({
     he: {
-      1: "נשלחו הרבה קודים מהרשת הזאת. אפשר לכבות את ה-Wi-Fi ולנסות מהסלולר, או לנסות שוב בעוד דקה.",
-      2: "נשלחו הרבה קודים מהרשת הזאת. אפשר לכבות את ה-Wi-Fi ולנסות מהסלולר, או לנסות שוב בעוד שתי דקות.",
-      12: 'נשלחו הרבה קודים מהרשת הזאת. אפשר לכבות את ה-Wi-Fi ולנסות מהסלולר, או לנסות שוב בעוד <span dir="ltr">12</span> דקות.',
+      1: "נשלחו הרבה קודים מהרשת הזאת. אפשר לכבות את ה-Wi-Fi ולנסות מהסלולר, או לנסות שוב בעוד דקה או מאוחר יותר.",
+      2: "נשלחו הרבה קודים מהרשת הזאת. אפשר לכבות את ה-Wi-Fi ולנסות מהסלולר, או לנסות שוב בעוד שתי דקות או מאוחר יותר.",
+      12: 'נשלחו הרבה קודים מהרשת הזאת. אפשר לכבות את ה-Wi-Fi ולנסות מהסלולר, או לנסות שוב בעוד <span dir="ltr">12</span> דקות או מאוחר יותר.',
     },
     en: {
-      1: "Many codes were sent from this network. You can turn off Wi-Fi and try on mobile data, or try again in a minute.",
-      2: 'Many codes were sent from this network. You can turn off Wi-Fi and try on mobile data, or try again in <span dir="ltr">2</span> minutes.',
-      12: 'Many codes were sent from this network. You can turn off Wi-Fi and try on mobile data, or try again in <span dir="ltr">12</span> minutes.',
+      1: "Many codes were sent from this network. You can turn off Wi-Fi and try on mobile data, or try again in a minute or later.",
+      2: 'Many codes were sent from this network. You can turn off Wi-Fi and try on mobile data, or try again in <span dir="ltr">2</span> minutes or later.',
+      12: 'Many codes were sent from this network. You can turn off Wi-Fi and try on mobile data, or try again in <span dir="ltr">12</span> minutes or later.',
     },
   })[locale][minutes as 1 | 2 | 12];
 

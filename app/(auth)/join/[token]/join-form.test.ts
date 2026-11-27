@@ -58,7 +58,7 @@ const CODE_STATES: Extract<JoinState, { step: "code" }>[] = [
 
 /** Too many codes from this network in twelve minutes, as its line says it. */
 const NETWORK =
-  'נשלחו הרבה קודים מהרשת הזאת. אפשר לכבות את ה-Wi-Fi ולנסות מהסלולר, או לנסות שוב בעוד <span dir="ltr">12</span> דקות.';
+  'נשלחו הרבה קודים מהרשת הזאת. אפשר לכבות את ה-Wi-Fi ולנסות מהסלולר, או לנסות שוב בעוד <span dir="ltr">12</span> דקות או מאוחר יותר.';
 
 /** The code field, as drawn. */
 const codeInput = (html: string) =>

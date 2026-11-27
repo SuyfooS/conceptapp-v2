@@ -11,7 +11,9 @@
 --                   quarter of an hour) answers 100000 more than the
 --                   caller's own seconds to wait, whatever the number's
 --                   count. Held by both, it is the caller's that is said,
---                   with the caller's seconds, never the number's. A wait
+--                   with the caller's seconds, never the number's; once
+--                   they pass, the number's may still hold a send, unsaid,
+--                   so the words promise no time ("או מאוחר יותר"). A wait
 --                   is shorter than its window and no window is longer than
 --                   a day (86400 seconds), so the two never meet. A try
 --                   counted for its caller only (-1, nothing to check; -2,
