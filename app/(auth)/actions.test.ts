@@ -217,14 +217,19 @@ describe("signing in", () => {
     }
   });
 
-  it("keeps too many from this network on its step, with its minutes, the same for every number", async () => {
+  it("keeps too many from this network on its step, with its minutes", async () => {
+    // The step only: sendSignInCode is stood in for, so whether its answer
+    // is the same for every number is not shown here, but in
+    // supabase/tests/database/auth_limits_network.test.sql (the count) and
+    // otp.test.ts (said before the auth server is asked).
     const held = { error: "tooManyNetwork", minutes: 12 } as const;
-    for (const phone of ["050-000-0003", "050-999-9999"]) {
-      mocks.sendSignInCode.mockResolvedValueOnce(held);
-      expect(
-        await signIn(phoneStep, posted({ intent: "send", phone })),
-      ).toEqual({ step: "phone", ...held });
-    }
+    mocks.sendSignInCode.mockResolvedValueOnce(held);
+    expect(
+      await signIn(
+        phoneStep,
+        posted({ intent: "send", phone: "050-000-0003" }),
+      ),
+    ).toEqual({ step: "phone", ...held });
     mocks.sendSignInCode.mockResolvedValueOnce(held);
     expect(await signIn(codeStep, posted({ intent: "resend" }))).toEqual({
       step: "code",

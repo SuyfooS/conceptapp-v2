@@ -16,9 +16,11 @@ import type { JoinState } from "./actions";
 // is said on either step, with its minutes: that count is the caller's,
 // which joining never clears, so with the same count it is said whether the
 // number had an account or not (the count itself after a send the number's
-// own count held: docs/ROADMAP.md, 94). A right code with a claim that
-// works forgets a page an earlier link kept for after sign-in (known issue
-// 21) and lands where H5b says; a refused claim forgets nothing.
+// own count held: docs/ROADMAP.md, 94), which auth_limits_network.test.sql
+// and otp.test.ts show; here, only the step it is said on. A right code
+// with a claim that works forgets a page an earlier link kept for after
+// sign-in (known issue 21) and lands where H5b says; a refused claim
+// forgets nothing.
 
 vi.mock("server-only", () => ({}));
 
@@ -139,20 +141,16 @@ describe("the first send", () => {
   });
 
   it("says too many from this network on the invite step, with its minutes, never as the code step", async () => {
+    // The step only: sendJoinCode is stood in for, so whether its answer is
+    // the same with an account or without is not shown here, but in
+    // supabase/tests/database/auth_limits_network.test.sql (the count) and
+    // otp.test.ts (said before anything that knows the account is asked).
     const held = { error: "tooManyNetwork", minutes: 12 } as const;
-    // A number with an account and one without: sendJoinCode answers both
-    // alike, the network's count being the caller's.
-    for (const phone of ["+972500000801", "+972509999999"]) {
-      mocks.findInvite.mockResolvedValueOnce({
-        ...(await mocks.findInvite()),
-        phone,
-      });
-      mocks.sendJoinCode.mockResolvedValueOnce(held);
-      expect(await join(TOKEN_LINK, inviteStep, posted("send"))).toEqual({
-        step: "invite",
-        ...held,
-      });
-    }
+    mocks.sendJoinCode.mockResolvedValueOnce(held);
+    expect(await join(TOKEN_LINK, inviteStep, posted("send"))).toEqual({
+      step: "invite",
+      ...held,
+    });
   });
 
   it("keeps a malformed number and a failure on the invite step", async () => {
