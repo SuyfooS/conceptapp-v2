@@ -2,6 +2,7 @@
 
 import { WEEKDAY_KEYS } from "@domain/availability-form";
 import {
+  MAX_PEOPLE_ON_A_SHIFT,
   newStaffingKey,
   type ShiftPattern,
   shiftPattern,
@@ -26,7 +27,7 @@ import { useSheetReturn } from "./use-sheet-return";
 
 const SHIFTS_MAX = 30;
 const NAME_MAX = 40;
-const NEEDED_MAX = 50;
+const NEEDED_MAX = MAX_PEOPLE_ON_A_SHIFT;
 
 /** A new shift's first values: nothing here is about any kind of business. */
 const blank = (): ShiftPattern => ({

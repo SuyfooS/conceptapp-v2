@@ -5,7 +5,7 @@ import { z } from "zod";
  * (`public.save_week_schedule`, `public.publish_week_schedule`), with what it
  * said: its code, hint and detail as well as its words, so a caller can tell
  * the refusals apart (`scheduleTeamChanged`, `movedShifts`, `startedShifts`,
- * `pastShifts`, `scheduleWeekOver`, `edgeClashes`).
+ * `pastShifts`, `scheduleWeekOver`, `edgeClashes`, `crowdedShifts`).
  */
 export class ScheduleWriteError extends Error {
   readonly code: string | null;
@@ -219,4 +219,21 @@ export function edgeClashes(error: unknown): EdgeClash[] | null {
   } catch {
     return [];
   }
+}
+
+/**
+ * The shifts the save or publish would have taken past the people a shift
+ * holds (22023 with hint `full`, the ids in its detail,
+ * 20261128000500_shift_cap.sql: at most 50, MAX_PEOPLE_ON_A_SHIFT in
+ * @domain/staffing, on every path that puts people on a shift). What was sent
+ * passed the action's own count first (`weekSchedule`'s cap, and
+ * `crowdedByJoins` in @domain/running-week for the people joining a shift
+ * under way), so people were put on those shifts meanwhile, from another
+ * screen. Nothing was written. Empty when the detail can't be read; null for
+ * any other failure.
+ */
+export function crowdedShifts(error: unknown): string[] | null {
+  return refusedAs(error, "22023", "full")
+    ? idsIn((error as ScheduleWriteError).detail)
+    : null;
 }
