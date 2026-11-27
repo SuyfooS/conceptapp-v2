@@ -126,9 +126,10 @@ export type NewBusiness = {
   address: string | null;
   /**
    * The answer to "העסק פתוח בשבת", as scheduling's `closedOnShabbat`:
-   * saved after the business opens, when it isn't the template's. Null
-   * from a form with no answer (one drawn before the wizard asked), which
-   * keeps the template's.
+   * saved after the business opens, even when it is the template's, so the
+   * business says it was answered (a stored `closedOnShabbat` and a
+   * `module.settings` line). Null from a form with no answer (one drawn
+   * before the wizard asked), which writes nothing and keeps the template's.
    */
   closedOnShabbat: boolean | null;
   /** The accent to store: the pick, darkened if it was not readable. */

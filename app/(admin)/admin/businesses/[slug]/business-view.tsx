@@ -144,7 +144,6 @@ export async function BusinessView({
         <Card
           tone="flat"
           padding="md"
-          role="status"
           className="flex items-center gap-3 md:max-w-2xl"
         >
           <span
@@ -154,14 +153,20 @@ export async function BusinessView({
             <Check />
           </span>
           <span className="flex min-w-0 flex-col">
-            <span className="font-semibold">
-              {t("setup.opened.title", { name: business.name })}
+            <span role="status" className="flex flex-col">
+              <span className="font-semibold">
+                {t("setup.opened.title", { name: business.name })}
+              </span>
+              <CardText className="text-sm">
+                {t("setup.opened.body", { template })}
+              </CardText>
             </span>
-            <CardText className="text-sm">
-              {t("setup.opened.body", { template })}
-            </CardText>
             {shabbatUnsaved ? (
-              <span className="font-medium text-sm text-warning">
+              // An alert of its own beside the status, never inside it: the
+              // card arrives with the page, words and all, and a status drawn
+              // that way is often not heard, where an alert is said as it is
+              // drawn (as the view-as failure below).
+              <span role="alert" className="font-medium text-sm text-warning">
                 {t("setup.opened.shabbatUnsaved")}
               </span>
             ) : null}

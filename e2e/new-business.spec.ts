@@ -168,6 +168,9 @@ test("an onboarder opens a café from the template, with no staff yet", async ({
   ).toBeVisible();
   await expect(page.getByText(remaining(2))).toBeVisible();
   await expect(page.getByText(a.setup.people.empty)).toBeVisible();
+  // The answer was saved, so the card says nothing about Shabbat.
+  const unsaved = a.setup.opened.shabbatUnsaved;
+  await expect(page.getByText(unsaved)).toHaveCount(0);
   await page.screenshot({
     path: testInfo.outputPath("new-business-5-checklist.png"),
     fullPage: true,
@@ -183,6 +186,24 @@ test("an onboarder opens a café from the template, with no staff yet", async ({
     .click();
   await expect(page).toHaveURL(`/admin/businesses/${slug}`);
   await expect(page.getByRole("status")).toHaveCount(0);
+
+  // The real page reads the address a save that failed sends (read only,
+  // nothing written): the line, an alert of its own beside the card's
+  // status; and without `created`, no card and no line.
+  await page.goto(`/admin/businesses/${slug}?created=1&shabbat=unsaved`);
+  await expect(
+    page.getByRole("alert").filter({ hasText: unsaved }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("status")
+      .getByText(a.setup.opened.title.replace("{name}", name)),
+  ).toBeVisible();
+  await expect(page.getByRole("status").getByText(unsaved)).toHaveCount(0);
+  await page.goto(`/admin/businesses/${slug}?shabbat=unsaved`);
+  await expect(page.getByText(remaining(2))).toBeVisible();
+  await expect(page.getByRole("status")).toHaveCount(0);
+  await expect(page.getByText(unsaved)).toHaveCount(0);
 
   // Set up from the template in one go, and recorded; the answer about
   // Shabbat saved as the settings page saves it, with its own line.
