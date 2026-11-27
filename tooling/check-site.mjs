@@ -7,14 +7,16 @@
 // It reads four public addresses, each with one GET and nothing else: no form
 // is sent, no cookie kept or sent, no redirect followed, no setting or secret
 // read, nothing installed (Node 20's own fetch). What it prints names paths,
-// statuses and header names, never a cookie, a header's value or a page's
-// body. The one value it prints is the Turnstile site key the sign-in page
-// itself shows, public by design (it is in every page that sends a code).
+// statuses and header names, never a cookie or a page's body, and no
+// header's value but where a redirect goes: its origin and path, never its
+// query. The one other value it prints is the Turnstile site key the
+// sign-in page itself shows, public by design (it is in every page that
+// sends a code).
 //
 //   /health      the running server answers 200 with {"status":"ok"}
 //   /health/db   the database answers too. It comes later (closing the
-//                pilot, PR 11): until a site has it, "not there yet", not a
-//                failure
+//                pilot, PR 11): until a site has it, a 404 after a /health
+//                that passed is "not there yet", not a failure
 //   /enter       the demo door: closed (on to /sign-in, as on the site of real
 //                businesses) or open (the demo's own site), said either way
 //   /sign-in     Turnstile's data-sitekey is no test key of Cloudflare's, and
@@ -24,9 +26,9 @@
 // something did (or it stopped on what it didn't expect, said in one line and
 // never as the error), 2 when the address can't be read. A .mjs on Node 20
 // can't import packages/domain's TypeScript, so the header names,
-// Cloudflare's test keys and the paths are written here, and
-// tooling/check-site.test.ts keeps them the same as the code's, with a fake
-// fetch in place of the internet.
+// Cloudflare's test keys, a site key's shape and the paths are written here,
+// and tooling/check-site.test.ts keeps them the same as the code's, with a
+// fake fetch in place of the internet.
 import { basename } from "node:path";
 
 /**
@@ -63,7 +65,7 @@ export const TURNSTILE_TEST_KEYS = {
 };
 
 /** The shape of a Turnstile site key, as packages/db/env.ts takes one. */
-const SITE_KEY = /^[0-3]x[0-9A-Za-z_-]{18,30}$/;
+export const SITE_KEY = /^[0-3]x[0-9A-Za-z_-]{18,30}$/;
 
 /** The four addresses it reads, and nothing else. */
 export const PATHS = {
@@ -218,7 +220,12 @@ async function checkHealth(fetchImpl, origin) {
   };
 }
 
-async function checkDatabase(fetchImpl, origin) {
+/**
+ * `/health/db`, after `/health` (`healthPassed`): a 404 is "not there yet"
+ * only on a site that is the app, never on one that answers 404 everywhere,
+ * as an address with no deployment on it does.
+ */
+async function checkDatabase(fetchImpl, origin, healthPassed) {
   const subject = PATHS.database;
   const { response, error } = await read(fetchImpl, origin, subject);
   if (!response) return finding("fail", subject, error);
@@ -228,11 +235,17 @@ async function checkDatabase(fetchImpl, origin) {
     // Until the route reaches every site. Once it has (closing the pilot,
     // PR 11), a 404 here means it went missing: that PR makes it a failure.
     case 404:
-      return finding(
-        "later",
-        subject,
-        "עוד לא באתר הזה: הבדיקה של מסד הנתונים מגיעה בהמשך. זה לא כשל.",
-      );
+      return healthPassed
+        ? finding(
+            "later",
+            subject,
+            "עוד לא באתר הזה: הבדיקה של מסד הנתונים מגיעה בהמשך. זה לא כשל.",
+          )
+        : finding(
+            "fail",
+            subject,
+            `עונה 404, לא 200, וגם ${PATHS.health} לא עבר.`,
+          );
     case 503:
       return finding(
         "fail",
@@ -310,7 +323,14 @@ function checkTurnstile(status, html) {
       `data-sitekey הוא מפתח בדיקה של Cloudflare, ${test}, לא ה-Site Key של הווידג'ט.`,
     );
   }
-  if (keys.length > 1 || !SITE_KEY.test(keys[0] ?? "")) {
+  if (keys.length > 1) {
+    return finding(
+      "fail",
+      subject,
+      `בדף ${PATHS.signIn} יש כמה ערכים שונים של data-sitekey, ולא אחד.`,
+    );
+  }
+  if (!SITE_KEY.test(keys[0] ?? "")) {
     return finding(
       "fail",
       subject,
@@ -352,7 +372,7 @@ export async function checkSite(origin, fetchImpl = globalThis.fetch) {
   if (health.stop) return [health.found];
   const found = [
     health.found,
-    await checkDatabase(fetchImpl, origin),
+    await checkDatabase(fetchImpl, origin, health.found.outcome === "pass"),
     await checkDoor(fetchImpl, origin),
   ];
   // No answer, or a page whose body was cut short: neither is checked.

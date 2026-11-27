@@ -11,6 +11,7 @@ import {
   PATHS,
   report,
   SECURITY_HEADERS,
+  SITE_KEY,
   STOPPED,
   TURNSTILE_TEST_KEYS,
 } from "./check-site.mjs";
@@ -19,9 +20,10 @@ import {
 // for Orel's steps (docs/production.md, Turnstile and B7; closing the pilot,
 // PR 18). Never against a real site here: every answer comes from a fake
 // fetch. The script reads public pages with GET alone, follows no redirect,
-// sends no cookie and prints no header's value; its header names, Cloudflare's
-// test keys and its paths are written in it (a .mjs on Node 20 can't import
-// the TypeScript), so this keeps them the same as the code's.
+// sends no cookie and prints no header's value but a redirect's origin and
+// path (never its query); its header names, Cloudflare's test keys, a site
+// key's shape and its paths are written in it (a .mjs on Node 20 can't
+// import the TypeScript), so this keeps them the same as the code's.
 
 const root = join(__dirname, "..");
 const source = readFileSync(join(root, "tooling/check-site.mjs"), "utf8");
@@ -118,6 +120,20 @@ describe("what it checks, kept the same as the code", () => {
 
   it("knows Cloudflare's test keys", () => {
     expect(TURNSTILE_TEST_KEYS).toEqual(CODE_TEST_KEYS);
+  });
+
+  it("takes a site key of the shape the build takes, no wider and no narrower", () => {
+    // packages/db/env.ts keeps its pattern to itself, so this reads it: a
+    // key the build lets through and this refused would stop Orel at
+    // Turnstile step 4 with a real key.
+    const env = readFileSync(join(root, "packages/db/env.ts"), "utf8");
+    const built =
+      /const TurnstileSiteKey = z[\s\S]*?\.regex\((\/.+\/[a-z]*)\)/.exec(
+        env,
+      )?.[1];
+    expect(built).toBeDefined();
+    expect(String(SITE_KEY)).toBe(built);
+    expect(SITE_KEY.test(REAL_KEY)).toBe(true);
   });
 
   it("reads the app's own addresses", () => {
@@ -217,13 +233,22 @@ describe("what fails", () => {
       "/sign-in": { body: "<html></html>", headers: pageHeaders() },
     });
     expect(none.of("Turnstile")?.outcome).toBe("fail");
+    expect(none.of("Turnstile")?.words).toContain("אין data-sitekey");
+    const other = "0xFAKEsiteKeyForTests2";
     const two = await run({
       "/sign-in": {
-        body: `<div data-sitekey="${REAL_KEY}"></div><div data-sitekey="0xFAKEsiteKeyForTests2"></div>`,
+        body: `<div data-sitekey="${REAL_KEY}"></div><div data-sitekey="${other}"></div>`,
         headers: pageHeaders(),
       },
     });
     expect(two.of("Turnstile")?.outcome).toBe("fail");
+    // Both are of a key's shape: what's wrong is that there are two.
+    expect(two.of("Turnstile")?.words).toContain(
+      "יש כמה ערכים שונים של data-sitekey",
+    );
+    expect(two.of("Turnstile")?.words).not.toContain("צורה לא מוכרת");
+    expect(two.text).not.toContain(REAL_KEY);
+    expect(two.text).not.toContain(other);
   });
 
   it("fails a missing header and one the code doesn't send, never printing a value", async () => {
@@ -298,6 +323,28 @@ describe("what fails", () => {
     expect(down.of("/health/db")?.outcome).toBe("fail");
     const odd = await run({ "/health/db": { status: 500 } });
     expect(odd.of("/health/db")?.outcome).toBe("fail");
+  });
+
+  it("says /health/db's 404 is 'not there yet' only after a /health that passed", async () => {
+    // An address with no deployment on it answers 404 everywhere, as Vercel
+    // does: there /health/db is no route still to come.
+    const nothing = { status: 404, body: "The deployment could not be found" };
+    const gone = await run({
+      "/health": nothing,
+      "/health/db": nothing,
+      "/enter": nothing,
+      "/sign-in": nothing,
+    });
+    expect(gone.of("/health")?.outcome).toBe("fail");
+    expect(gone.of("/health/db")?.outcome).toBe("fail");
+    expect(gone.of("/health/db")?.words).toContain("404");
+    expect(gone.text).not.toContain("עוד לא באתר");
+    expect(gone.text).not.toContain("זה לא כשל");
+    expect(gone.failed).toBe(5);
+    // And a /health that answers, but not as the app.
+    const broken = await run({ "/health": { status: 500 } });
+    expect(broken.of("/health/db")?.outcome).toBe("fail");
+    expect(broken.of("/health/db")?.words).toContain(`${PATHS.health} לא עבר`);
   });
 
   it("fails a door that goes anywhere but /sign-in, naming no query", async () => {

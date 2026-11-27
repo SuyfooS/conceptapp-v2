@@ -263,6 +263,8 @@ describe("docs/production.md", () => {
     );
     expect([...listed].sort()).toEqual([...names].sort());
     expect(checks).toContain("`Require status checks to pass`");
+    // Named, never counted: a word for nine would go stale with PR 27's job.
+    expect(checks).toContain("לבדוק), השמות האלה בדיוק");
     // The other way too: a check renamed, removed or split anew never
     // reports its old name, so its PR waits for the ruleset, and says so.
     expect(checks).toContain("GitHub מחכה לשמות הישנים");
@@ -684,6 +686,9 @@ describe("docs/production.md", () => {
       "https://conceptapp-v2.vercel.app",
     ]);
     expect(look.indexOf("check-site.mjs")).toBeLessThan(look.indexOf(unloaded));
+    // Its lines start with a mark ("[v] Turnstile: …"), not the word.
+    expect(look).toContain("בשורה של `Turnstile`");
+    expect(look).not.toContain("שמתחילה ב-`Turnstile`");
     expect(readRepoFile("packages/ui/captcha.tsx")).toContain(
       "data-sitekey={siteKey",
     );
