@@ -11,9 +11,10 @@ import { unstable_isUnrecognizedActionError } from "next/navigation";
  * minute at most, and leaves a note so the page loaded says the app was
  * updated and the press is the person's to make again. Nothing here presses
  * again by itself: a punch's time is the moment the person pressed. A
- * navigation needs none of this, as Next.js loads the whole page itself when
- * the server is on another release (by its build id, or by the
- * `deploymentId` next.config.ts gives a Vercel deployment).
+ * navigation needs none of this, nor a press the new release still knows:
+ * Next.js loads the whole page itself when a navigation or an action's
+ * answer comes from another release, by its build id (next.config.ts sets
+ * no deployment id, which would leave the id out of an action's answer).
  *
  * Both marks live in the tab's sessionStorage, inside try/catch: storage
  * that can't be read or written keeps neither the minute's guard nor the

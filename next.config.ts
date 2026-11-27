@@ -1,6 +1,5 @@
 import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
-import { deploymentIdOf } from "./packages/domain/deployment-id";
 import { headerRules } from "./packages/domain/security-headers";
 
 const nextConfig: NextConfig = {
@@ -11,15 +10,12 @@ const nextConfig: NextConfig = {
     return headerRules();
   },
   cacheComponents: true,
-  // Each Vercel deployment's own id, so a page left open across a release is
-  // told by its deployment, not its build, loads whole on its next
-  // navigation and asks for its assets by release; none on a local build or
-  // CI's, which tell builds apart as before (packages/domain/deployment-id.ts).
-  // A press on such a page is app/stale-build.ts's.
-  deploymentId: deploymentIdOf({
-    NEXT_DEPLOYMENT_ID: process.env.NEXT_DEPLOYMENT_ID,
-    VERCEL_DEPLOYMENT_ID: process.env.VERCEL_DEPLOYMENT_ID,
-  }),
+  // No deployment id set here (closing the pilot, PR 1a): with one, Next.js
+  // leaves its build id out of a server action's answer, so an answer from
+  // the next release would be drawn into a page from the one before instead
+  // of loading it whole. Vercel's Skew Protection sets NEXT_DEPLOYMENT_ID,
+  // which Next.js reads by itself, and keeps such a page on its own release.
+  // A press the new release doesn't know is app/stale-build.ts's.
   // A demo business's sample documents, read from public/demo-documents/ by
   // the routes that serve documents (app/document-files/served.ts): public/
   // is the CDN's, so a function has them only when traced in.

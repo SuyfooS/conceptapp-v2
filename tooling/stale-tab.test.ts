@@ -86,6 +86,15 @@ describe("a whole page loaded from the app's code", () => {
     }
   });
 
+  it("for an action's answer from another release, comes from Next.js by its build id", () => {
+    // With a deployment id set in the config, Next.js leaves its build id
+    // out of an action's answer (`maybeAppendBuildIdToRSCPayload`), so an
+    // answer from the next release is drawn into the page from the one
+    // before instead of loading it whole. Vercel's Skew Protection sets
+    // NEXT_DEPLOYMENT_ID, which Next.js reads by itself.
+    expect(read("next.config.ts")).not.toMatch(/\bdeploymentId\s*:/);
+  });
+
   it("is found however it is written", () => {
     for (const code of [
       "window.location.reload();",

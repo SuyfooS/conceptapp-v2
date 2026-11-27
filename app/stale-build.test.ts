@@ -211,4 +211,17 @@ describe("the page loaded again", () => {
     // Kept, it would say so at every look.
     expect(takeUpdatedNote()).toBe(false);
   });
+
+  it("says the press wasn't recorded, then what to do, as the clock's other failures do", async () => {
+    // After the reload the clock still shows the shift open: the words say
+    // what didn't happen, so nobody takes the note for "נרשמה יציאה".
+    const he = (await import("@/messages/he.json")).default;
+    const en = (await import("@/messages/en.json")).default;
+    expect(he.app.updated.toast).toBe(
+      "האפליקציה התעדכנה, והלחיצה לא נרשמה. לוחצים שוב.",
+    );
+    expect(en.app.updated.toast).toBe(
+      "The app was updated, and your press wasn't recorded. Press again.",
+    );
+  });
 });
