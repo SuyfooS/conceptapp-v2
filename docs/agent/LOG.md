@@ -5,6 +5,17 @@ what is next, defaults applied.
 
 Older entries are in [`log/`](log/): [1–19 November 2026](log/2026-11-01-to-19.md) and [October 2026](log/2026-10.md).
 
+## 2026-11-27 · nightly run · the test business of 300, run for the first time: its numbers in docs/measure.md (guessed)
+
+- Guessed: Orel left no work, no `question`, `orel` or `urgent` issue is open, and nobody wrote `בטל`. Of what merged since the last run, #275's entry says `pnpm measure:seed` at 300 with 13 months "waits for a machine with Docker or PR 1b's run", and docs/measure.md said the first numbers would come from there. This run's container could start Docker, so it ran it: `pnpm db:start`, `pnpm measure:seed` (300 people, 13 months, main at `4969d69`), then `pnpm measure:clean`. Local database only; nothing hosted touched.
+- The numbers, now in docs/measure.md ("ההרצה הראשונה"): 114 s, every count as the shape planned; the database grew 142 MB (25 to 174), `audit_log` 62 MB of it; about 10.5 MB a month by the seed's arithmetic (the log 4.5, hours 2.1, breaks 1.3, chat 1.3, assignments 0.9), the bell's lines about 4.3 MB held; payslips at 150 KB about 44 MB a month, so the 50 MB document space fills in about a month at 300 people (8 to 16 months for a pilot of 20 to 40).
+- Found: a punch that waits for confirmation costs about 56 ms in the database at 300 people against about 3 ms at 7, nearly all in `audit_log_notifies`: `private.notify_for`'s clock case calls `private.members_holding(b, 'clock.edit')`, which asks `private.holds_perm` for every member, about 313 `private.role_gives` calls a punch (`explain analyze` and `pg_stat_xact_user_functions` on 20 punches each, rolled back). Scanned punches only resolve, so they don't take this path. That is why the seed's 95-waiting step took 69 s. Fine at 300, but linear in the team; the fix (the roles that give a permission read once, not once a member) is a migration for a day with Orel, not a guess.
+- Changed: docs/measure.md and this log only. No code, migration, words or screen.
+- Checked: `pnpm check` and `pnpm build`.
+- Restore point: branch `backup/before-night-2026-11-27` at `4969d69` (the tag push was cut off).
+- Next: PR 1b (the measuring run in GitHub) with Orel; whether `members_holding` should be made cheaper before a bigger business, and the document space for a business with payslips for hundreds, are his.
+- Defaults applied: none.
+
 ## 2026-11-26 · chat · measuring a business of a few hundred people, part 1a: the test business, made locally
 
 - On chat/scale-300 from origin/main 21a80d42 (#274). The measuring plan's PR 1a (Orel's decision of 22.11 on #1; readiness review section 4 item 11, then item 9; ROADMAP 82): the test business, its generator and its database test, with no browser, no workflow and no Playwright project that loads a page. No migration, no new npm package, no change to `supabase/seed.sql`, `hosted-demo.sql`, `e2e/`, `playwright.config.ts` or the six e2e shards. No customer is named anywhere: "a business of a few hundred people".
