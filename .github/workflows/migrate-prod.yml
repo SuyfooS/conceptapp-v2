@@ -52,7 +52,8 @@ jobs:
 
       # The two secrets reach this step alone (#80); from here on the steps
       # read DB_URL, masked. Their names are their own, never those of
-      # migrate-dev.yml's repository secrets: GitHub hands a job the
+      # migrate-dev.yml's secrets (repository secrets until docs/production.md's
+      # A1, then only in the environment conceptapp-dev): GitHub hands a job the
       # repository secret of the same name when its environment has none, and
       # makes the environment, with no rules, the first time a job asks for
       # it. So a secret missing here is empty, the check below stops the run

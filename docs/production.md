@@ -21,8 +21,64 @@
 |---|---|---|
 | `DEMO_DOOR` | `packages/db/env.ts` | דלת ההדגמה של כל אתר. `off` באתר של עסקים אמיתיים, `on` (או בלי הגדרה בכלל) באתר ההדגמה. עם `off` הכתובת `/enter` עוברת לכניסה עם טלפון: אין אנשי הדגמה, אין כניסה בלחיצה ואין איפוס. ערך אחר עוצר את הבנייה, והאתר הקודם נשאר באוויר |
 | Migrate conceptapp-prod | `.github/workflows/migrate-prod.yml` | מעדכן את מבנה המסד בפרויקט הייצור. רק בהרצה ידנית, רק מ-`main` ורק אחרי אישור שלך. קודם בודק שזה לא הפרויקט של ההדגמה, ואף פעם לא מוסיף את ההדגמה. בסוף הרצה עם `apply` דלוק הוא כותב בסיכום שלה את הגרסה שממנה הגיע המבנה, ואת שתי השורות שמשחררות אותה לאתר של העסקים האמיתיים |
+| Migrate conceptapp-dev | `.github/workflows/migrate-dev.yml` | מעדכן את מבנה המסד בפרויקט של ההדגמה, ומוסיף את עסקי ההדגמה. רק בהרצה ידנית, ומשנה משהו רק מ-`main`. רץ בסביבה `conceptapp-dev`: מא1, רק הרצה מ-`main` מגיעה לסיסמה של המסד |
 | `/health` | `app/health/route.ts` | עונה 200 כשהשרת עונה, בשביל בדיקת זמינות. בלי נתונים, ובלי לשאול את מסד הנתונים |
-| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | `packages/db/env.ts` | "אני לא רובוט" של Cloudflare Turnstile לפני כל קוד ב-SMS (כניסה, הצטרפות, פתיחת תיקים, חשבון בנק). בלי הגדרה: מפתח הבדיקה של Cloudflare, שתמיד עובר. ב-`Production` זו טעות שהמסך לא מראה: הבנייה כותבת עליה אזהרה ביומן, ובודקים את המפתח בצעד 4 של הסעיף הבא. ערך בצורה אחרת עוצר את הבנייה, והאתר הקודם נשאר באוויר. דלת ההדגמה לא שולחת קוד ולא צריכה אותו. ההדלקה: הסעיף הבא |
+| בדיקת אתר | `tooling/check-site.mjs` | פקודה אחת שבודקת אתר מבחוץ, בלי חשבון ובלי סוד, ולא שולחת שום טופס: ש-`/health` עונה, אם דלת ההדגמה סגורה או פתוחה, שהמפתח של Turnstile בדף הכניסה הוא לא מפתח הבדיקה, ושכותרות האבטחה כמו בקוד. `/health/db` עוד לא באתר: היא אומרת את זה, בלי להיכשל. איך מריצים: סעיף Turnstile, צעד 4 |
+| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | `packages/db/env.ts` | "אני לא רובוט" של Cloudflare Turnstile לפני כל קוד ב-SMS (כניסה, הצטרפות, פתיחת תיקים, חשבון בנק). בלי הגדרה: מפתח הבדיקה של Cloudflare, שתמיד עובר. ב-`Production` זו טעות שהמסך לא מראה: הבנייה כותבת עליה אזהרה ביומן, ובודקים את המפתח בצעד 4 של סעיף Turnstile. ערך בצורה אחרת עוצר את הבנייה, והאתר הקודם נשאר באוויר. דלת ההדגמה לא שולחת קוד ולא צריכה אותו. ההדלקה: סעיף Turnstile |
+
+## א1. GitHub: הסביבה conceptapp-dev, וכללים ל-main ול-production
+
+**למה:** היום סיסמת מסד הנתונים של `conceptapp-dev` שמורה ב-GitHub כסוד של כל המאגר, וכל הרצה של Migrate conceptapp-dev, מכל ענף, מגיעה אליה. בסביבה שמקבלת רק את `main`, רק מה שכבר נכנס ל-`main` מגיע אליה. והכללים לענפים שומרים על `main` ועל `production`: שום דבר לא נכנס ל-`main` לפני שכל הבדיקות של CI עברו, ואף אחד, גם לא הסוכן הלילי, שכותב דרך החשבון שלך, לא מוחק אותם ולא דורס אותם בכוח. **זמן:** כרבע שעה. **עלות:** אין.
+
+זה צעד של עכשיו, לפני שעסק אמר כן. Migrate conceptapp-dev כבר רץ בסביבה `conceptapp-dev`. כל עוד היא לא קיימת, GitHub יוצר אותה בהרצה הראשונה, בלי כללים, ונותן להרצה את הסודות של המאגר באותם שמות, ולכן שום דבר לא משתנה עד הצעד הזה.
+
+1. **הסביבה:** ב-GitHub, במאגר, `Settings → Environments`. אם `conceptapp-dev` כבר ברשימה, פותחים אותה. אחרת `New environment`, שם בדיוק `conceptapp-dev`.
+   - `Deployment branches and tags`: `Selected branches and tags`, וכלל אחד: `main`.
+   - `Allow administrators to bypass configured protection rules`, אם התיבה מופיעה: להוריד את הסימון.
+   - בלי `Required reviewers`: זה הפרויקט של ההדגמה, ורק אתה מריץ אותו.
+   - `Environment secrets`: שני סודות, בשמות האלה בדיוק, עם הערכים של `conceptapp-dev` בלבד.
+     - `SUPABASE_DB_PASSWORD`: סיסמת מסד הנתונים של `conceptapp-dev`, ממנהל הסיסמאות. אם היא לא שם: ב-Supabase, בפרויקט `conceptapp-dev`, `Project Settings → Database` ואז `Reset database password` (לבדוק), ומשם ישר לכאן ולמנהל הסיסמאות. רק Migrate conceptapp-dev משתמש בה: האתר מתחבר עם המפתחות, לא עם הסיסמה.
+     - `SUPABASE_PROJECT_REF`: המזהה של `conceptapp-dev`, שמופיע בכתובת שלו בלוח.
+2. **הרצת ניסיון:** `Actions → Migrate conceptapp-dev → Run workflow`, ענף `main`, `apply` ו-`demo` כבויים. הצעד "Find the connection" מתחבר, ובדף של ההרצה מופיעה הסביבה `conceptapp-dev`. כשיש סוד באותו שם בסביבה ובמאגר, GitHub נותן את זה של הסביבה, ולכן הרצה שמתחברת עכשיו מתחברת עם מה שהכנסת בצעד 1. אם הצעד נכשל, אחד מהשניים לא נכון: מתקנים ומריצים שוב, ולא ממשיכים לצעד 3.
+3. **הסודות של המאגר:** `Settings → Secrets and variables → Actions`, ב-`Repository secrets`: מוחקים את `SUPABASE_DB_PASSWORD` ואת `SUPABASE_PROJECT_REF`, שעכשיו בסביבה, ואת `SUPABASE_ACCESS_TOKEN`, שאף תהליך לא קורא יותר.
+   - ב-Supabase, `Account → Access Tokens` (לבדוק): מבטלים (`Revoke`) את הטוקן שנעשה בשביל GitHub. אם לא ברור איזה מהם, שואלים בסשן לפני שמבטלים.
+   - ושוב הרצת ניסיון, כמו בצעד 2: עכשיו יש לה רק את הסודות של הסביבה.
+   - מכאן Migrate conceptapp-dev רץ רק מ-`main`. הרצה מענף אחר נעצרת לפני הצעד הראשון, גם עם `apply` כבוי.
+4. **כללים ל-`main`:** `Settings → Rules → Rulesets`, ואז `New ruleset` ו-`New branch ruleset` (לבדוק).
+   - `Ruleset Name`: `main`. `Enforcement status`: `Active`.
+   - `Bypass list`: ריק. גם בלי `Repository admin`: זה החשבון שלך, שגם הסוכן כותב דרכו.
+   - `Target branches`: `Add target`, ואז `Include default branch`.
+   - מסמנים ארבעה כללים:
+     - `Restrict deletions`.
+     - `Block force pushes`.
+     - `Require a pull request before merging`, עם `Required approvals` 0: אתה והסוכן כותבים מאותו חשבון, ו-GitHub לא נותן לאשר PR של עצמך. כך עובדים גם היום: כל שינוי נכנס דרך PR.
+     - `Require status checks to pass`, ובו `Add checks` (המקור: `GitHub Actions`, לבדוק), השמות האלה בדיוק, כמו ש-CI מריץ אותם היום. בדיקה בקוד שומרת שהרשימה כאן שלמה, וכשבדיקה חדשה נכנסת ל-CI היא נכנסת גם לכאן, ואתה מוסיף אותה לכלל: עד אז היא לא עוצרת שום מיזוג, ולכן ה-PR שמוסיף אותה כותב בתיאור שלו את השם להוספה. ולהפך: PR שמשנה שם של בדיקה, מוריד אחת או מחלק אותה אחרת לא יכול להתמזג, כי GitHub מחכה לשמות הישנים. PR כזה אומר את זה בתיאור שלו ומחכה לך: מעדכנים את הכלל, השמות החדשים בלי הישנים, ואז הוא מתמזג. GitHub מציע שם רק של בדיקה שרצה לאחרונה (לבדוק).
+       - `gate`
+       - `check`
+       - `database`
+       - `e2e (phone 1/2)`
+       - `e2e (phone 2/2)`
+       - `e2e (tablet 1/2)`
+       - `e2e (tablet 2/2)`
+       - `e2e (desktop 1/2)`
+       - `e2e (desktop 2/2)`
+   - `gate` רץ רק כשמשהו נכנס ל-`main`. ב-PR הוא מדלג, ו-GitHub סופר בדיקה שדילגה כעוברת.
+   - `Require branches to be up to date before merging`: לא לסמן. אחרת, אחרי כל מיזוג, כל PR פתוח צריך לרוץ שוב, עם ה-e2e, לפני שאפשר למזג אותו. ה-CI של `main` ממילא מריץ הכול שוב כשמה שנכנס לא נבדק בדיוק כך.
+   - גם בלי הסימון, PR שמתנגש עם `main` צריך עדכון מ-`main` לפני שהוא מתמזג, וזה כמעט כל PR: כולם כותבים בראש `docs/agent/LOG.md`. כשהכלל פעיל, אחרי עדכון כזה ה-PR מחכה שוב לכל הבדיקות, עם ה-e2e, גם כשההתנגשות רק במסמכים: בערך 35 עד 45 דקות עד שאפשר למזג. היום סשן ממזג PR כזה בלי לחכות שוב ל-e2e, כש-CI כבר עבר עליו לפני העדכון.
+   - `Create`.
+5. **כללים ל-`production`:** עוד `New branch ruleset`.
+   - `Ruleset Name`: `production`. `Enforcement status`: `Active`. `Bypass list`: ריק.
+   - `Target branches`: `Add target`, ואז `Include by pattern`, והשם `production`.
+   - מסמנים רק `Restrict deletions` ו-`Block force pushes`.
+   - לא `Restrict creations`: הענף עוד לא קיים, והשחרור הראשון (ב7 צעד ב) יוצר אותו. בלי PR ובלי בדיקות: שחרור הוא דחיפה ישירה של גרסה שכבר עברה ב-`main`, והכלל רק דואג שהוא תמיד מקדם את הענף, ואף פעם לא מוחק אותו או מחזיר אותו אחורה.
+   - `Create`.
+
+**בדיקה אחרי:**
+
+- בדף של הסביבה `conceptapp-dev`: ב-`Deployment branches and tags` הכלל `main`, וב-`Environment secrets` שני הסודות.
+- ב-`Repository secrets` אין אף אחד משלושת השמות של צעד 3.
+- ב-`Settings → Rules → Rulesets` שני כללים, `main` ו-`production`, שניהם `Active`.
+- ב-PR הבא, של סשן או של הסוכן, ליד הבדיקות כתוב `Required`, והמיזוג מחכה להן.
 
 ## Turnstile: "אני לא רובוט" בכל שליחת קוד
 
@@ -37,10 +93,18 @@
    - זה הערך היחיד שנכנס גם ל-`Preview`: הוא ציבורי (הוא בכל דף ששולח קוד), ואותו ערך בכל מקום.
    - ה-`Secret Key` של הווידג'ט לא נכנס ל-Vercel אף פעם: רק ל-Supabase, בצעד 5.
 3. **`Redeploy`:** ב-`Deployments`, הגרסה העליונה של `Production`, `⋯` → `Redeploy`. המפתח נכנס לאתר כשהוא נבנה. מב7 צעד 4 זו הגרסה הנוכחית של `Production`, מהענף `production`.
-4. **בדיקה בחלון פרטי** (`InPrivate` ב-Edge, `Incognito` ב-Chrome): `/sign-in` בשתי הכתובות.
-   - **קודם המפתח:** בכל כתובת, `Ctrl+U` (המקור של הדף), ושם `Ctrl+F` ו-`data-sitekey`. הערך שאחריו צריך להיות ה-`Site Key` של הווידג'ט, מצעד 2.
+4. **בדיקה, בשתי הכתובות:** קודם פקודה, ואז חלון פרטי.
+   - **קודם המפתח, בפקודה:** ב-PowerShell, בתיקייה של הפרויקט, שורה אחת בכל פעם:
+
+     ```powershell
+     git pull
+     node tooling/check-site.mjs https://www.conceptapp.co.il
+     node tooling/check-site.mjs https://conceptapp-v2.vercel.app
+     ```
+
+     כל שורה בודקת כתובת אחת מבחוץ, בלי חשבון, כמו חלון פרטי: היא רק קוראת דפים ציבוריים, ולא שולחת שום טופס. בשורה של `Turnstile` היא כותבת את הערך של `data-sitekey` בדף `/sign-in`, והוא צריך להיות ה-`Site Key` של הווידג'ט, מצעד 2. בסוף היא כותבת "הכול תקין", או כמה בדיקות נכשלו, וליד כל אחת `[x]` ולמה. כש-`/health` עובר, השורה של `/health/db` אומרת שהבדיקה הזו עוד לא באתר: זה לא כשל.
    - **אם הערך הוא `1x00000000000000000000AA`, עוצרים:** זה מפתח הבדיקה של Cloudflare, שעובר תמיד ובכל כתובת, והאתר משתמש בו כשהמשתנה לא הגיע לבנייה (שם לא מדויק, בלי הסימון `Production`, או שנשמר אחרי ה-`Redeploy`). מתקנים בצעד 2, ושוב `Redeploy` ובדיקה. עם מפתח הבדיקה, CAPTCHA של צעד 5 עוצר כל קוד, ושום דבר על המסך לא מראה את זה לפני כן.
-   - בדרך כלל לא רואים שום דבר חדש: תיבה לסימון מופיעה רק כש-Cloudflare מבקש.
+   - **ואז בחלון פרטי** (`InPrivate` ב-Edge, `Incognito` ב-Chrome), `/sign-in` בשתי הכתובות. בדרך כלל לא רואים שום דבר חדש: תיבה לסימון מופיעה רק כש-Cloudflare מבקש.
    - אם מופיע "הבדיקה שזה לא רובוט לא נטענה", עוצרים: הכתובת לא ב-`Hostnames` של הווידג'ט, או שהמפתח לא נכון. ממשיכים לצעד 5 רק כש-`data-sitekey` הוא ה-`Site Key` וזה לא מופיע.
    - ב-Cloudflare → `Turnstile` → ConceptApp → `Analytics` רואים בדיקה מהדקות האחרונות (לבדוק).
 5. **CAPTCHA ב-Supabase:** ב-`conceptapp-dev`, `Authentication → Attack Protection`: דלוק, ספק Turnstile, וה-`Secret Key` של הווידג'ט, ישר מ-Cloudflare או ממנהל הסיסמאות, ואז `Save` (שמות השדות: לבדוק).
@@ -90,7 +154,7 @@
    - `Wait timer`: 0.
    - שומרים: `Save protection rules`.
    - `Deployment branches and tags`: `Selected branches and tags`, וכלל אחד: `main`.
-   - `Environment secrets`: `PROD_SUPABASE_DB_PASSWORD` (סיסמת מסד הנתונים מב2) ו-`PROD_SUPABASE_PROJECT_REF` (המזהה של הפרויקט, שמופיע בכתובת שלו בלוח), בשמות האלה בדיוק, עם `PROD_` בהתחלה. רק כאן, ואף פעם לא ב-`Repository secrets`: שם יש כבר שני סודות בשמות דומים בלי `PROD_`, של פרויקט הפיתוח, ולא נוגעים בהם.
+   - `Environment secrets`: `PROD_SUPABASE_DB_PASSWORD` (סיסמת מסד הנתונים מב2) ו-`PROD_SUPABASE_PROJECT_REF` (המזהה של הפרויקט, שמופיע בכתובת שלו בלוח), בשמות האלה בדיוק, עם `PROD_` בהתחלה. רק כאן, ואף פעם לא ב-`Repository secrets` או בסביבה `conceptapp-dev`: לפרויקט הפיתוח יש שני סודות בשמות דומים בלי `PROD_` (א1), ולא נוגעים בהם.
    - **בדיקה:** בדף של הסביבה מופיעים ב-`Required reviewers` השם שלך וב-`Deployment branches and tags` הכלל `main`, והתיבה `Allow administrators to bypass configured protection rules` ריקה. ב-`Settings → Secrets and variables → Actions`, ב-`Repository secrets` אין אף שם שמתחיל ב-`PROD_`.
 2. **הרצת ניסיון:** `Actions → Migrate conceptapp-prod → Run workflow`, ענף `main`, ו-`apply` כבוי. ההרצה מחכה לך: `Review deployments`, מסמנים `conceptapp-prod`, `Approve and deploy`. קוראים את הצעד "What would run": כל קובצי המבנה מהתיקייה `supabase/migrations`, מהראשון ועד האחרון. אם הצעד "Find the connection" נעצר כי אין `PROD_SUPABASE_DB_PASSWORD` או `PROD_SUPABASE_PROJECT_REF`, הם לא בסביבה בשמות האלה בדיוק: מתקנים ומריצים שוב. אם הצעד "Not the demo's project" נכשל, הסודות שהוכנסו הם של פרויקט הפיתוח: מתקנים אותם ולא ממשיכים.
 3. **הרצה אמיתית:** שוב `Run workflow`, הפעם עם `apply` דלוק, ואישור. בסוף, בדף של ההרצה ב-`Summary`, מופיעות שתי שורות לשחרור. את השורות של ההרצה הזו לא מריצים בכלל: בב7 צעד ב מריצים שוב, ומשחררים מהסיכום של ההרצה ההיא.
@@ -131,7 +195,7 @@
    | השאר: מיילים, משתמשים אנונימיים ו-Web3 | | בלי שינוי | לא בשימוש |
 
 6. `Authentication → URL Configuration`: `Site URL` הוא `https://www.conceptapp.co.il`, ובכתובות החזרה הכתובת הזו בלבד.
-7. CAPTCHA: הקוד כבר שולח את האסימון של Turnstile, ו-CAPTCHA של `conceptapp-dev` נדלק בסעיף Turnstile, למעלה. כאן: `Authentication → Attack Protection` של `conceptapp-prod`, ספק Turnstile, עם ה-`Secret Key` של אותו ווידג'ט, ממנהל הסיסמאות. האתר של העסקים האמיתיים שולח את האסימון מהשחרור הראשון, כי `NEXT_PUBLIC_TURNSTILE_SITE_KEY` כבר מסומן בו ל-`Production`. הבדיקה: ב7 צעד ב, קודם `data-sitekey` במקור של `/sign-in`, שהוא ה-`Site Key` ולא מפתח הבדיקה, ואז הכניסה עם המספר שלך, שלא נעצרת על "לא הצלחנו לוודא שזה לא רובוט".
+7. CAPTCHA: הקוד כבר שולח את האסימון של Turnstile, ו-CAPTCHA של `conceptapp-dev` נדלק בסעיף Turnstile, למעלה. כאן: `Authentication → Attack Protection` של `conceptapp-prod`, ספק Turnstile, עם ה-`Secret Key` של אותו ווידג'ט, ממנהל הסיסמאות. האתר של העסקים האמיתיים שולח את האסימון מהשחרור הראשון, כי `NEXT_PUBLIC_TURNSTILE_SITE_KEY` כבר מסומן בו ל-`Production`. הבדיקה: ב7 צעד ב, קודם הפקודה של סעיף Turnstile, צעד 4, שאומרת ש-`data-sitekey` בדף הכניסה הוא ה-`Site Key` ולא מפתח הבדיקה, ואז הכניסה עם המספר שלך, שלא נעצרת על "לא הצלחנו לוודא שזה לא רובוט".
 8. ב-Twilio עצמו: הגבלה של בקשות לכל מספר ו-`Fraud Guard` דלוק; הרשאות מדינה לישראל בלבד; התראה על הוצאה (`Usage Triggers`, לבדוק); ותקרה לטעינה האוטומטית של היתרה.
 9. **שתי הגדרות נשארות כמו שהן**, כי האפליקציה סופרת לפיהן: תוקף הקוד ב-Twilio Verify, 10 דקות, והזמן בין שני קודים לאותו מספר ב-Supabase, 60 שניות (`Phone`, שם ההגדרה: לבדוק). לאפליקציה יש המתנה משלה של 65 שניות בין קודים, ותקרה של 15 קודים ו-30 בדיקות קוד ביום לכל מספר, ואין להן הגדרה כאן. מי שמשנה אחת מהשתיים משנה איתה גם את האפליקציה (`supabase/README.md`).
 
@@ -203,7 +267,14 @@ returning user_id;
    - ואז `Redeploy`: ב-`Deployments`, הגרסה העליונה, `⋯` → `Redeploy`. הכתובת של Supabase ו-`DEMO_DOOR` נכנסים לאתר כשהוא נבנה, והבנייה הראשונה הייתה בלעדיהם.
    - ב-Cloudflare Turnstile לא משנים כלום: `conceptapp.co.il` ב-`Hostnames` של הווידג'ט מכסה גם את `demo.conceptapp.co.il` (לפי Cloudflare, כתובת מכסה את תת-הכתובות שלה: לבדוק). אם בכתובת החדשה המסך אומר שהבדיקה לא נטענה, מוסיפים אותה שם.
    - לבדוק: לכבות בפרויקט הזה את גרסאות הניסיון (`Preview`), כדי שכל שינוי לא ייבנה פעמיים.
-   - **בדיקה:** נכנסים להדגמה בכתובת החדשה, ו-`https://demo.conceptapp.co.il/health` עונה. ובחלון פרטי, ב-`https://demo.conceptapp.co.il/sign-in`: `data-sitekey` במקור של הדף (`Ctrl+U`) הוא ה-`Site Key`, לא `1x00000000000000000000AA` (סעיף Turnstile, צעד 4). אם הוא מפתח הבדיקה, `NEXT_PUBLIC_TURNSTILE_SITE_KEY` לא נכנס לבנייה, וכל קוד ב-SMS בכתובת הזו נעצר: מתקנים אותו בטבלה, ושוב `Redeploy` ובדיקה.
+   - **בדיקה:** נכנסים להדגמה בכתובת החדשה. ואז הפקודה של סעיף Turnstile, צעד 4, עם הכתובת הזו:
+
+     ```powershell
+     git pull
+     node tooling/check-site.mjs https://demo.conceptapp.co.il
+     ```
+
+     `/health` עונה 200, דלת ההדגמה פתוחה, ו-`data-sitekey` הוא ה-`Site Key`, לא `1x00000000000000000000AA`. אם הוא מפתח הבדיקה, `NEXT_PUBLIC_TURNSTILE_SITE_KEY` לא נכנס לבנייה, וכל קוד ב-SMS בכתובת הזו נעצר: מתקנים אותו בטבלה, ושוב `Redeploy` ובדיקה.
    - **רק אחרי שהבדיקה עברה,** ב-`conceptapp-dev`: `app_url` ב-Vault ו-`Site URL` (ב-`Authentication → URL Configuration`) עוברים לכתובת החדשה, `https://demo.conceptapp.co.il`. אם עשית להדגמה `CRON_SECRET` חדש, גם `cron_secret` ב-Vault מקבל אותו, אותו ערך בדיוק. אחרת המשימות של המסד נדחות (נספח).
 3. **האתר הראשי, צעד א (עדיין על פרויקט הפיתוח):** `DEMO_DOOR` = `off`, ל-`Production` בלבד, ואז `Redeploy`.
    - **בדיקה, בחלון פרטי** (`InPrivate` ב-Edge, `Incognito` ב-Chrome), כדי להיות מחוץ לחשבון: למי שמחובר, גם כאיש הדגמה, `/enter` עובר ל-`/home` בכל מקרה, והבדיקה לא אומרת כלום. בחלון הפרטי: `www.conceptapp.co.il/enter` עובר ל-`/sign-in`; אין "כניסה להדגמה, בלי טלפון"; `/health` עונה 200.
@@ -250,7 +321,14 @@ returning user_id;
 
    - **בדיקה:**
      - ב-Vercel, `Deployments`: הגרסה העליונה של `Production` היא מהענף `production`, ב-`Ready`.
-     - **קודם המפתח של Turnstile,** בחלון פרטי, ב-`www.conceptapp.co.il/sign-in`: `data-sitekey` במקור של הדף (`Ctrl+U`) הוא ה-`Site Key`, לא `1x00000000000000000000AA` (סעיף Turnstile, צעד 4). אם הוא מפתח הבדיקה, CAPTCHA של `conceptapp-prod` (ב4, סעיף 7) עוצר כל קוד: עוצרים, בודקים ב-`Settings → Environment Variables` ש-`NEXT_PUBLIC_TURNSTILE_SITE_KEY` מסומן `Production`, ואז `Redeploy` לגרסה העליונה של `Production`, מהענף `production`, ובדיקה שוב.
+     - **קודם הפקודה של סעיף Turnstile, צעד 4,** עם הכתובת של האתר:
+
+       ```powershell
+       git pull
+       node tooling/check-site.mjs https://www.conceptapp.co.il
+       ```
+
+       `/health` עונה 200, דלת ההדגמה סגורה, ו-`data-sitekey` הוא ה-`Site Key`, לא `1x00000000000000000000AA`. אם הוא מפתח הבדיקה, CAPTCHA של `conceptapp-prod` (ב4, סעיף 7) עוצר כל קוד: עוצרים, בודקים ב-`Settings → Environment Variables` ש-`NEXT_PUBLIC_TURNSTILE_SITE_KEY` מסומן `Production`, ואז `Redeploy` לגרסה העליונה של `Production`, מהענף `production`, ובדיקה שוב.
      - נכנסים עם המספר שלך מב6, והקונסולה נפתחת. `www.conceptapp.co.il/health` עונה 200.
      - **אף ערך של הייצור לא בגרסאות הניסיון:** ב-`Settings → Environment Variables`, מסננים לפי סביבה (לבדוק איפה) ל-`Preview`, ואחר כך ל-`Development`. בשתיהן `NEXT_PUBLIC_SUPABASE_URL` הוא הכתובת של `conceptapp-dev` (המזהה שלו בכתובת), או שהוא לא שם. ובכל אחד מ-`SUPABASE_SECRET_KEY`, `CRON_SECRET`, `VAPID_PRIVATE_KEY` ו-`EMPLOYEE_DATA_KEKS` (אחרי ב9): ברשומה שמסומן בה `Production` לא מסומנים גם `Preview` או `Development`. אם ערך של הייצור הגיע לאחת מהן: מורידים אותו משם, ומחליפים את הסוד (נספח), כי אולי כבר נבנתה איתו גרסת ניסיון.
      - **אם הבדיקה לא עוברת** (הגרסה לא ב-`Ready`, `/health` לא עונה 200 או שהכניסה לא עובדת): עוד אף עסק לא באתר, ולכן לא מחזירים כלום לאחור. פותחים סשן, ולא פותחים עסק בקונסולה עד שהבדיקה עוברת.
@@ -358,7 +436,7 @@ update private.auth_limits set max_count = 40 where kind = 'verify' and scope = 
 | `SUPABASE_SECRET_KEY` | יוצרים חדש ב-`Project Settings → API Keys` ומכניסים ל-Vercel. ואז `Redeploy` לגרסה הנוכחית של `Production`, מהענף `production` (עדכון אחרי שעסק אמיתי עלה), ומוחקים את הישן רק כשהיא `Ready` ונכנסים עם המספר שלך | קודי השעון בני 6 הספרות ואישור הכניסה לתיק נגזרים ממנו: קוד שמוצג באותו רגע ורבע השעה הפתוחה של תיק נפסקים, וזהו. מחיקה לפני כן לוקחת מהאתר את המפתח שהוא רץ איתו |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | זוג חדש (ב7), ל-Vercel, ואז `Redeploy` לגרסה הנוכחית של `Production`, מהענף `production` (עדכון אחרי שעסק אמיתי עלה) | ההתראות לטלפון נפסקות בכל הטלפונים, עד שכל אחד פותח שוב את האפליקציה |
 | `CRON_SECRET` | ערך חדש בפקודה של ב5, למנהל הסיסמאות, ומשם ל-Vercel. ואז `Redeploy` לגרסה הנוכחית של `Production`, מהענף `production` (עדכון אחרי שעסק אמיתי עלה), וכשהיא `Ready`, מיד אותו ערך ל-`cron_secret` ב-Vault | הערך הישן נדחה רק מה-`Ready`. משם ועד ש-Vault מקבל את החדש, המשימות של המסד נדחות והתראות לטלפון מחכות, ולכן Vault מיד אחרי |
-| `PROD_SUPABASE_DB_PASSWORD` (סיסמת מסד הנתונים של הייצור) | ב-Supabase (`Project Settings → Database`), ואז הסוד `PROD_SUPABASE_DB_PASSWORD` בסביבה `conceptapp-prod` ב-GitHub, ולא אחד מ-`Repository secrets`, שהם של פרויקט הפיתוח | שום דבר באפליקציה. רק ההרצה הבאה של Migrate conceptapp-prod צריכה את החדשה |
+| `PROD_SUPABASE_DB_PASSWORD` (סיסמת מסד הנתונים של הייצור) | ב-Supabase (`Project Settings → Database`), ואז הסוד `PROD_SUPABASE_DB_PASSWORD` בסביבה `conceptapp-prod` ב-GitHub, ולא ב-`Repository secrets` או בסביבה `conceptapp-dev`, של פרויקט הפיתוח (א1) | שום דבר באפליקציה. רק ההרצה הבאה של Migrate conceptapp-prod צריכה את החדשה |
 | `EMPLOYEE_DATA_KEKS` | מפתח חדש אחרי הישנים (`node tooling/employee-data-key.mjs --id 2`), ו-`EMPLOYEE_DATA_KEK_ACTIVE` עובר למספר החדש, שניהם ב-Vercel. ואז `Redeploy` לגרסה הנוכחית של `Production`, מהענף `production` (עדכון אחרי שעסק אמיתי עלה) | אף פעם לא מוחקים מפתח ישן: בלעדיו התיקים שנשמרו בו לא נקראים (`.env.example`) |
 | `Auth Token` של Twilio | ב-Twilio, ואז ב-Supabase (ב4) | עד שהחדש ב-Supabase, קודים לא נשלחים |
 | `Secret Key` של Turnstile | ב-Cloudflare (`Turnstile` → הווידג'ט → `Rotate`, לבדוק), ואז ב-`Attack Protection` של Supabase, בכל פרויקט שהוא דלוק בו | עד שהחדש ב-Supabase, כל קוד נדחה (אולי Cloudflare משאיר את הישן בתוקף זמן מה: לבדוק). ה-`Site Key` לא משתנה |

@@ -223,8 +223,9 @@ describe("Migrate conceptapp-prod", () => {
     expect(group(prod)).toBe("migrate-prod");
     expect(group(dev)).toBeDefined();
     expect(group(dev)).not.toBe(group(prod));
-    // migrate-dev.yml's secrets are the repository's, and GitHub hands a job
-    // the repository secret of the same name when its environment has none:
+    // migrate-dev.yml's secrets are the repository's until docs/production.md's
+    // A1, and GitHub hands a job the repository secret of the same name when
+    // its environment has none:
     // under a shared name, a secret missing here would be development's, and
     // entering production's would overwrite it.
     const devSecrets = secretsOf(dev);
