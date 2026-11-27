@@ -1,7 +1,7 @@
 import { TURNSTILE_TEST_KEYS } from "@domain/turnstile";
 import { describe, expect, it } from "vitest";
 import he from "../messages/he.json";
-import { jobs, readRepoFile, topLevel } from "./workflows";
+import { blocks, jobs, readRepoFile, topLevel } from "./workflows";
 
 // docs/production.md, the step-by-step setup of production for Orel (P9):
 // linked from where he and a session look, its commands pasteable into
@@ -16,8 +16,12 @@ import { jobs, readRepoFile, topLevel } from "./workflows";
 // branch only after Migrate conceptapp-prod. The repo is public, so what it
 // must never hold is checked here too. Turnstile's "אני לא רובוט" (P9b) goes
 // on in its own order: the code, the public key in Vercel and a rebuild, a
-// look at the key each site names (never Cloudflare's test key), and only
-// then CAPTCHA in Supabase, with a way back.
+// look at the key each site names (never Cloudflare's test key, read by
+// tooling/check-site.mjs), and only then CAPTCHA in Supabase, with a way
+// back. And A1, free and now: development's secrets in their own
+// environment, limited to main, and rules for main (CI's checks by the
+// names GitHub shows, every one) and for production (never deleted or
+// forced).
 
 const doc = readRepoFile("docs/production.md");
 
@@ -54,6 +58,33 @@ function rows(text: string): string[][] {
         .split("|")
         .map((cell) => cell.trim()),
     );
+}
+
+/**
+ * The addresses `text` runs tooling/check-site.mjs on, in order: each a line
+ * of its own, `https://` and a host, in a PowerShell block that starts with
+ * `git pull`.
+ */
+function checkSiteRuns(text: string): string[] {
+  const found: string[] = [];
+  for (const { lang, body } of fences) {
+    if (!body.includes("check-site.mjs") || !text.includes(body)) continue;
+    const lines = body
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line !== "");
+    expect(lang, body).toBe("powershell");
+    expect(lines[0], body).toBe("git pull");
+    for (const line of lines.slice(1)) {
+      const site =
+        /^node tooling\/check-site\.mjs (https:\/\/[a-z0-9.-]+)$/.exec(
+          line,
+        )?.[1];
+      expect(site, line).toBeDefined();
+      if (site) found.push(site);
+    }
+  }
+  return found;
 }
 
 const SECRET = /\$\{\{\s*secrets\.([A-Za-z0-9_]+)\s*\}\}/g;
@@ -137,11 +168,128 @@ describe("docs/production.md", () => {
     for (const name of prod) {
       expect(b3, name).toContain(`\`${name}\``);
     }
+    // Development's names appear only where development's secrets move into
+    // their own environment (A1), and nowhere production's are entered.
     const dev = secretsOf(".github/workflows/migrate-dev.yml");
     expect(dev.length).toBeGreaterThan(0);
+    const a1 = section("א1.");
+    const outside = doc.replace(a1, "");
     for (const name of dev) {
-      expect(doc, name).not.toContain(`\`${name}\``);
+      expect(outside, name).not.toContain(`\`${name}\``);
+      expect(a1, name).toContain(`\`${name}\``);
     }
+  });
+
+  it("moves development's secrets into conceptapp-dev, limited to main, before the repository's go (A1)", () => {
+    const workflow = readRepoFile(".github/workflows/migrate-dev.yml");
+    const name = /^name: (.+)$/m.exec(topLevel(workflow, "name"))?.[1];
+    expect(name).toBe("Migrate conceptapp-dev");
+    const environments = jobs(workflow).map(
+      ({ body }) => /^ {4}environment: (\S+)$/m.exec(body)?.[1],
+    );
+    expect(environments).toEqual(["conceptapp-dev"]);
+    const a1 = section("א1.");
+    const environment = stepOf(a1, 1);
+    for (const word of [
+      `New environment\`, שם בדיוק \`${environments[0]}\``,
+      "`Selected branches and tags`, וכלל אחד: `main`",
+      "`Environment secrets`",
+      ...secretsOf(".github/workflows/migrate-dev.yml").map((s) => `\`${s}\``),
+    ]) {
+      expect(environment, word).toContain(word);
+    }
+    // GitHub ticks it on a new environment, as in B3.
+    const bypass =
+      "`Allow administrators to bypass configured protection rules`";
+    const bypassLines = environment
+      .split("\n")
+      .filter((line) => line.includes(bypass));
+    expect(bypassLines.length).toBeGreaterThan(0);
+    for (const line of bypassLines) {
+      expect(line).toContain("להוריד את הסימון");
+    }
+    // A run that connects with the environment's own before the
+    // repository's are deleted, and the unused token with them.
+    const dry = stepOf(a1, 2);
+    expect(dry).toContain(`Actions → ${name} → Run workflow`);
+    expect(dry).toContain("ענף `main`");
+    expect(dry).toContain('"Find the connection"');
+    const repository = stepOf(a1, 3);
+    expect(repository).toContain("`Repository secrets`");
+    for (const secret of [
+      ...secretsOf(".github/workflows/migrate-dev.yml"),
+      "SUPABASE_ACCESS_TOKEN",
+    ]) {
+      expect(repository, secret).toContain(`\`${secret}\``);
+    }
+    // Deleting the token breaks nothing: no workflow reads it.
+    for (const file of ["ci.yml", "migrate-dev.yml", "migrate-prod.yml"]) {
+      expect(readRepoFile(`.github/workflows/${file}`), file).not.toContain(
+        "SUPABASE_ACCESS_TOKEN",
+      );
+    }
+  });
+
+  it("names CI's required checks as GitHub shows them, every one (A1)", () => {
+    // A job's check is its `name:` with the matrix filled in, else its id;
+    // gate counts too (skipped on a pull request, which GitHub counts as
+    // passed). A job added to CI fails here until the list has it.
+    const ci = readRepoFile(".github/workflows/ci.yml");
+    const names = jobs(ci).flatMap(({ key, body }) => {
+      const template = /^ {4}name: (.+)$/m.exec(body)?.[1];
+      if (!template) return [key];
+      const strategy = blocks(body, 4).find((b) => b.key === "strategy");
+      const axes = [
+        ...(strategy?.body ?? "").matchAll(/^ {8}(\w+): \[([^\]]*)\]$/gm),
+      ].map(([, axis = "", values = ""]) => ({
+        axis,
+        values: values.split(",").map((v) => v.trim()),
+      }));
+      let filled = [template];
+      for (const { axis, values } of axes) {
+        const slot = new RegExp(`\\$\\{\\{\\s*matrix\\.${axis}\\s*\\}\\}`, "g");
+        filled = filled.flatMap((name) =>
+          values.map((value) => name.replace(slot, value)),
+        );
+      }
+      for (const name of filled) expect(name, key).not.toContain("${{");
+      return filled;
+    });
+    expect(names).toContain("gate");
+    expect(names).toContain("e2e (phone 1/2)");
+    const checks = stepOf(section("א1."), 4);
+    const listed = [...checks.matchAll(/^ +- `([^`]+)`$/gm)].map(
+      ([, name = ""]) => name,
+    );
+    expect([...listed].sort()).toEqual([...names].sort());
+    expect(checks).toContain("`Require status checks to pass`");
+  });
+
+  it("rules main and production: never deleted, never forced, main only through a PR with the checks (A1)", () => {
+    const a1 = section("א1.");
+    const main = stepOf(a1, 4);
+    const production = stepOf(a1, 5);
+    for (const [where, text] of [
+      ["main", main],
+      ["production", production],
+    ] as const) {
+      expect(text, where).toContain(`\`Ruleset Name\`: \`${where}\``);
+      expect(text, where).toContain("`Enforcement status`: `Active`");
+      expect(text, where).toContain("`Bypass list`: ריק");
+      expect(text, where).toContain("`Restrict deletions`");
+      expect(text, where).toContain("`Block force pushes`");
+    }
+    expect(main).toContain("`Include default branch`");
+    expect(main).toContain("`Require a pull request before merging`");
+    expect(main).toContain("`Required approvals` 0");
+    expect(main).toContain(
+      "`Require branches to be up to date before merging`: לא לסמן",
+    );
+    expect(production).toContain("`Include by pattern`, והשם `production`");
+    expect(production).toContain("לא `Restrict creations`");
+    // Orel's release is a direct fast-forward push of a commit main tested.
+    expect(production).not.toContain("`Require a pull request before merging`");
+    expect(production).not.toContain("`Require status checks to pass`");
   });
 
   it("has admin bypass unticked, since GitHub ticks it on a new environment", () => {
@@ -518,11 +666,16 @@ describe("docs/production.md", () => {
     expect(look).toContain(unloaded);
     // The key first, with a hard stop on the test key: it passes on any
     // address, so the screen shows nothing, and CAPTCHA would then refuse
-    // every code. The page names its key where the doc says to look.
-    expect(look).toContain("`Ctrl+U`");
+    // every code. One command per address reads the key the page names
+    // (tooling/check-site.mjs), in place of looking at its source by hand.
     expect(look).toContain("`data-sitekey`");
     expect(look).toContain(`\`${TURNSTILE_TEST_KEYS.pass}\`, עוצרים`);
     expect(look.indexOf("`data-sitekey`")).toBeLessThan(look.indexOf(unloaded));
+    expect(checkSiteRuns(look)).toEqual([
+      "https://www.conceptapp.co.il",
+      "https://conceptapp-v2.vercel.app",
+    ]);
+    expect(look.indexOf("check-site.mjs")).toBeLessThan(look.indexOf(unloaded));
     expect(readRepoFile("packages/ui/captcha.tsx")).toContain(
       "data-sitekey={siteKey",
     );
@@ -548,13 +701,14 @@ describe("docs/production.md", () => {
     // anyone signs in: each is a build of its own.
     const stepB = stepOf(section("ב7."), 5);
     const stepBChecks = stepB.slice(stepB.indexOf("**בדיקה:**"));
-    for (const [where, text] of [
-      ["B7.2", stepOf(section("ב7."), 2)],
-      ["B7 step B", stepBChecks],
+    for (const [where, text, site] of [
+      ["B7.2", stepOf(section("ב7."), 2), "https://demo.conceptapp.co.il"],
+      ["B7 step B", stepBChecks, "https://www.conceptapp.co.il"],
     ] as const) {
       expect(text, where).toContain("`data-sitekey`");
       expect(text, where).toContain(`\`${TURNSTILE_TEST_KEYS.pass}\``);
       expect(text, where).toContain("`Redeploy`");
+      expect(checkSiteRuns(text), where).toEqual([site]);
     }
     expect(stepBChecks.indexOf("`data-sitekey`")).toBeGreaterThan(0);
     expect(stepBChecks.indexOf("`data-sitekey`")).toBeLessThan(
@@ -576,6 +730,19 @@ describe("docs/production.md", () => {
     expect(section("מה הקוד כבר עושה")).toContain(
       "`NEXT_PUBLIC_TURNSTILE_SITE_KEY`",
     );
+  });
+
+  it("checks a site's key by the command, never by reading the page's source by hand", () => {
+    // Closing the pilot, PR 18: one command reads /health, the door, the
+    // key and the headers from outside (tooling/check-site.test.ts).
+    expect(doc).not.toMatch(/Ctrl\+U/i);
+    expect(readRepoFile("tooling/check-site.mjs")).toContain(
+      "export async function checkSite(",
+    );
+    const runs = fences.filter(({ body }) => body.includes("check-site.mjs"));
+    expect(runs.length).toBeGreaterThanOrEqual(3);
+    expect(checkSiteRuns(doc).length).toBeGreaterThanOrEqual(4);
+    expect(section("מה הקוד כבר עושה")).toContain("`tooling/check-site.mjs`");
   });
 
   it("names no path on anyone's computer", () => {

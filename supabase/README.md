@@ -34,6 +34,12 @@ Migrations reach `conceptapp-dev` only by hand, and never from a nightly run:
    lists what would run and changes nothing.
 3. Read the list, then run it again with "apply" on. The seed never runs here.
 
+The job runs in the GitHub environment `conceptapp-dev` (`tooling/migrate-dev.test.ts`). Once
+Orel limits it to `main` and moves the database's two secrets into it
+([`docs/production.md`](../docs/production.md), A1), only a run from `main` starts at all, so
+only `main` reaches the password. Until then GitHub makes the environment on the first run,
+with no rules, and hands the job the repository secrets of the same names, as before.
+
 To have something to open, run it with "apply" and "demo" on. "demo" adds the demo
 businesses from `hosted-demo.sql` that aren't there yet, and leaves the others as
 visitors left them; it is safe to run again, and needs the migrations applied first.

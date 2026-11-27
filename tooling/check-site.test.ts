@@ -1,0 +1,430 @@
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { phoneSignInPath, signInPath } from "@domain/passive-sign-in";
+import { SECURITY_HEADERS as CODE_HEADERS } from "@domain/security-headers";
+import { TURNSTILE_TEST_KEYS as CODE_TEST_KEYS } from "@domain/turnstile";
+import { describe, expect, it } from "vitest";
+import {
+  checkSite,
+  main,
+  originOf,
+  PATHS,
+  report,
+  SECURITY_HEADERS,
+  TURNSTILE_TEST_KEYS,
+} from "./check-site.mjs";
+
+// tooling/check-site.mjs, the one command that checks a site from outside
+// for Orel's steps (docs/production.md, Turnstile and B7; closing the pilot,
+// PR 18). Never against a real site here: every answer comes from a fake
+// fetch. The script reads public pages with GET alone, follows no redirect,
+// sends no cookie and prints no header's value; its header names, Cloudflare's
+// test keys and its paths are written in it (a .mjs on Node 20 can't import
+// the TypeScript), so this keeps them the same as the code's.
+
+const root = join(__dirname, "..");
+const source = readFileSync(join(root, "tooling/check-site.mjs"), "utf8");
+const ORIGIN = "https://site.example";
+const REAL_KEY = "0xFAKEsiteKeyForTests1";
+
+type Answer = {
+  status?: number;
+  body?: string;
+  headers?: Record<string, string>;
+};
+type Call = { url: string; init: RequestInit | undefined };
+
+/** The page headers the code sends, as a site that is up to date sends them. */
+const pageHeaders = () =>
+  Object.fromEntries(CODE_HEADERS.map(({ key, value }) => [key, value]));
+
+/** A closed, up-to-date site of real businesses with a real key. */
+function site(overrides: Record<string, Answer | Error> = {}) {
+  const answers: Record<string, Answer | Error> = {
+    "/health": {
+      body: '{"status":"ok"}',
+      headers: { "content-type": "application/json" },
+    },
+    "/health/db": { status: 404, body: "not found" },
+    "/enter": {
+      status: 307,
+      headers: { location: `${ORIGIN}/sign-in` },
+    },
+    "/sign-in": {
+      body: `<html><body><form><div data-captcha-frame="" data-sitekey="${REAL_KEY}" class="hidden"></div></form></body></html>`,
+      headers: { ...pageHeaders(), "content-type": "text/html" },
+    },
+    ...overrides,
+  };
+  const calls: Call[] = [];
+  const fetch = async (
+    url: string | URL | Request,
+    init?: RequestInit,
+  ): Promise<Response> => {
+    const href = String(url);
+    calls.push({ url: href, init });
+    const path = new URL(href).pathname;
+    const answer = answers[path];
+    if (answer instanceof Error) throw answer;
+    if (!answer) return new Response("not found", { status: 404 });
+    return new Response(answer.body ?? null, {
+      status: answer.status ?? 200,
+      headers: answer.headers ?? {},
+    });
+  };
+  return { fetch, calls };
+}
+
+async function run(overrides: Record<string, Answer | Error> = {}) {
+  const { fetch, calls } = site(overrides);
+  const found = await checkSite(ORIGIN, fetch);
+  const { text, failed } = report(ORIGIN, found);
+  const of = (subject: string) => found.find((f) => f.subject === subject);
+  return { found, text, failed, calls, of };
+}
+
+const offline = () =>
+  Object.assign(new TypeError("fetch failed"), {
+    cause: { code: "ENOTFOUND" },
+  });
+
+describe("what it checks, kept the same as the code", () => {
+  it("names the security headers every page carries, with their values", () => {
+    expect(SECURITY_HEADERS).toEqual(
+      CODE_HEADERS.map(({ key, value }) => ({ key, value })),
+    );
+  });
+
+  it("knows Cloudflare's test keys", () => {
+    expect(TURNSTILE_TEST_KEYS).toEqual(CODE_TEST_KEYS);
+  });
+
+  it("reads the app's own addresses", () => {
+    expect(PATHS.door).toBe(signInPath);
+    expect(PATHS.signIn).toBe(phoneSignInPath);
+    expect(existsSync(join(root, "app/health/route.ts"))).toBe(true);
+    // /health/db is closing the pilot's PR 11: until it lands, the script
+    // says the site doesn't have it yet.
+    expect(PATHS.health).toBe("/health");
+    expect(PATHS.database).toBe("/health/db");
+    expect(
+      readFileSync(join(root, "packages/ui/captcha.tsx"), "utf8"),
+    ).toContain("data-sitekey={siteKey");
+  });
+});
+
+describe("a site as it should be", () => {
+  it("passes the closed site of real businesses with a real key", async () => {
+    const { found, failed, text, of } = await run();
+    expect(failed).toBe(0);
+    expect(of("/health")?.outcome).toBe("pass");
+    expect(of("/health/db")?.outcome).toBe("later");
+    expect(of("/enter")?.outcome).toBe("info");
+    expect(of("/enter")?.words).toContain("סגורה");
+    expect(of("Turnstile")?.outcome).toBe("pass");
+    expect(of("Turnstile")?.words).toContain(REAL_KEY);
+    for (const { key } of CODE_HEADERS) {
+      expect(of(key)?.outcome, key).toBe("pass");
+    }
+    expect(found).toHaveLength(4 + CODE_HEADERS.length);
+    expect(text.split("\n").at(-1)).toBe("הכול תקין.");
+  });
+
+  it("says the demo's door is open, without failing", async () => {
+    const { failed, of } = await run({
+      "/enter": { body: "<html>demo</html>", headers: pageHeaders() },
+    });
+    expect(failed).toBe(0);
+    expect(of("/enter")?.outcome).toBe("info");
+    expect(of("/enter")?.words).toContain("פתוחה");
+  });
+
+  it("takes the door's redirect as Next.js writes it, a whole address or a path", async () => {
+    for (const location of [`${ORIGIN}/sign-in`, "/sign-in"]) {
+      const { of } = await run({
+        "/enter": { status: 307, headers: { location } },
+      });
+      expect(of("/enter")?.words, location).toContain("סגורה");
+    }
+  });
+});
+
+describe("what fails", () => {
+  it("stops at Cloudflare's always-passing test key", async () => {
+    const { failed, of, text } = await run({
+      "/sign-in": {
+        body: `<div data-sitekey="${CODE_TEST_KEYS.pass}"></div>`,
+        headers: pageHeaders(),
+      },
+    });
+    expect(failed).toBe(1);
+    expect(of("Turnstile")?.outcome).toBe("fail");
+    expect(of("Turnstile")?.words).toContain(CODE_TEST_KEYS.pass);
+    expect(of("Turnstile")?.words).toContain("NEXT_PUBLIC_TURNSTILE_SITE_KEY");
+    expect(text.split("\n").at(-1)).toBe("בדיקה אחת נכשלה.");
+  });
+
+  it("fails every other test key, and a key of no known shape, which it never prints", async () => {
+    for (const key of [CODE_TEST_KEYS.fail, CODE_TEST_KEYS.tap]) {
+      const { of } = await run({
+        "/sign-in": {
+          body: `<div data-sitekey="${key}"></div>`,
+          headers: pageHeaders(),
+        },
+      });
+      expect(of("Turnstile")?.outcome, key).toBe("fail");
+      expect(of("Turnstile")?.words, key).toContain(key);
+    }
+    const odd = "sk_live_not-a-site-key";
+    const { of, text } = await run({
+      "/sign-in": {
+        body: `<div data-sitekey="${odd}"></div>`,
+        headers: pageHeaders(),
+      },
+    });
+    expect(of("Turnstile")?.outcome).toBe("fail");
+    expect(text).not.toContain(odd);
+  });
+
+  it("fails a sign-in page with no key, or two", async () => {
+    const none = await run({
+      "/sign-in": { body: "<html></html>", headers: pageHeaders() },
+    });
+    expect(none.of("Turnstile")?.outcome).toBe("fail");
+    const two = await run({
+      "/sign-in": {
+        body: `<div data-sitekey="${REAL_KEY}"></div><div data-sitekey="0xFAKEsiteKeyForTests2"></div>`,
+        headers: pageHeaders(),
+      },
+    });
+    expect(two.of("Turnstile")?.outcome).toBe("fail");
+  });
+
+  it("fails a missing header and one the code doesn't send, never printing a value", async () => {
+    const headers: Record<string, string> = {
+      ...Object.fromEntries(
+        CODE_HEADERS.filter(({ key }) => key !== "X-Frame-Options").map(
+          ({ key, value }) => [key, value],
+        ),
+      ),
+      "Content-Security-Policy":
+        "frame-ancestors *; report-uri https://x.example/k3y-SECRET",
+      "set-cookie": "sb-session=COOKIE-SECRET; HttpOnly",
+    };
+    const { of, text, failed } = await run({
+      "/sign-in": { body: `<div data-sitekey="${REAL_KEY}"></div>`, headers },
+    });
+    expect(failed).toBe(2);
+    expect(of("X-Frame-Options")?.outcome).toBe("fail");
+    expect(of("X-Frame-Options")?.words).toContain("חסרה");
+    expect(of("Content-Security-Policy")?.outcome).toBe("fail");
+    expect(text).not.toContain("SECRET");
+    expect(text).not.toContain("frame-ancestors");
+    expect(text).not.toContain("sb-session");
+  });
+
+  it("stops after /health when the site can't be reached", async () => {
+    const { found, calls, failed } = await run({ "/health": offline() });
+    expect(failed).toBe(1);
+    expect(found).toHaveLength(1);
+    expect(found[0]?.words).toBe("הכתובת לא נמצאה");
+    expect(calls).toHaveLength(1);
+  });
+
+  it("says when a request took too long", async () => {
+    const late = Object.assign(new Error("timed out"), {
+      name: "TimeoutError",
+    });
+    const { found } = await run({ "/health": late });
+    expect(found[0]?.words).toContain("15 שניות");
+  });
+
+  it("stops when the address moves to another, and names only its origin", async () => {
+    const { found, calls, text } = await run({
+      "/health": {
+        status: 308,
+        headers: { location: "https://www.site.example/health?token=abc" },
+      },
+    });
+    expect(calls).toHaveLength(1);
+    expect(found).toHaveLength(1);
+    expect(found[0]?.outcome).toBe("fail");
+    expect(found[0]?.words).toContain("https://www.site.example");
+    expect(text).not.toContain("token");
+  });
+
+  it("fails /health that answers something else, and goes on", async () => {
+    const broken = await run({ "/health": { status: 500, body: "" } });
+    expect(broken.of("/health")?.outcome).toBe("fail");
+    expect(broken.of("/health")?.words).toContain("500");
+    expect(broken.found.length).toBeGreaterThan(1);
+    const wrong = await run({ "/health": { body: "<html>parked</html>" } });
+    expect(wrong.of("/health")?.outcome).toBe("fail");
+  });
+
+  it("reads /health/db: there, not yet there, or the database down", async () => {
+    const up = await run({ "/health/db": { body: "" } });
+    expect(up.of("/health/db")?.outcome).toBe("pass");
+    const notYet = await run({ "/health/db": { status: 404 } });
+    expect(notYet.of("/health/db")?.outcome).toBe("later");
+    expect(notYet.failed).toBe(0);
+    const down = await run({ "/health/db": { status: 503 } });
+    expect(down.of("/health/db")?.outcome).toBe("fail");
+    const odd = await run({ "/health/db": { status: 500 } });
+    expect(odd.of("/health/db")?.outcome).toBe("fail");
+  });
+
+  it("fails a door that goes anywhere but /sign-in, naming no query", async () => {
+    for (const location of [
+      `${ORIGIN}/home?x=secret`,
+      "https://elsewhere.example/sign-in",
+    ]) {
+      const { of, text } = await run({
+        "/enter": { status: 307, headers: { location } },
+      });
+      expect(of("/enter")?.outcome, location).toBe("fail");
+      expect(text, location).not.toContain("secret");
+    }
+    const { of } = await run({ "/enter": { status: 500 } });
+    expect(of("/enter")?.outcome).toBe("fail");
+  });
+
+  it("fails Turnstile and the headers when /sign-in doesn't answer 200", async () => {
+    const { of, failed } = await run({
+      "/sign-in": { status: 500, headers: pageHeaders() },
+    });
+    expect(of("Turnstile")?.outcome).toBe("fail");
+    expect(of("כותרות האבטחה")?.outcome).toBe("fail");
+    expect(failed).toBe(2);
+    const gone = await run({ "/sign-in": offline() });
+    expect(gone.of("Turnstile")?.outcome).toBe("fail");
+    expect(gone.of("כותרות האבטחה")?.outcome).toBe("fail");
+  });
+
+  it("counts the failures in its last line", async () => {
+    const { text } = await run({
+      "/health/db": { status: 503 },
+      "/enter": { status: 500 },
+    });
+    expect(text.split("\n").at(-1)).toBe("2 בדיקות נכשלו.");
+  });
+});
+
+describe("how it asks", () => {
+  it("reads the four addresses once each, with GET, following no redirect, sending nothing", async () => {
+    const { calls } = await run();
+    expect(calls.map(({ url }) => url)).toEqual([
+      `${ORIGIN}/health`,
+      `${ORIGIN}/health/db`,
+      `${ORIGIN}/enter`,
+      `${ORIGIN}/sign-in`,
+    ]);
+    for (const { url, init } of calls) {
+      expect(init?.method, url).toBe("GET");
+      expect(init?.redirect, url).toBe("manual");
+      expect(init?.body, url).toBeUndefined();
+      expect(init?.credentials, url).toBeUndefined();
+      const names = Object.keys(
+        (init?.headers ?? {}) as Record<string, string>,
+      ).map((name) => name.toLowerCase());
+      expect(names, url).toEqual(["accept"]);
+      expect(init?.signal, url).toBeInstanceOf(AbortSignal);
+    }
+    // The pages as a browser asks for them, the health checks as JSON.
+    expect(
+      calls.map(
+        ({ init }) => (init?.headers as Record<string, string>)?.accept,
+      ),
+    ).toEqual([
+      "application/json",
+      "application/json",
+      "text/html",
+      "text/html",
+    ]);
+  });
+
+  it("is plain Node 20, with no package, no setting and no other method", () => {
+    const code = source
+      .split("\n")
+      .filter((line) => !/^\s*(\/\/|\*|\/\*\*)/.test(line))
+      .join("\n");
+    const imports = [...code.matchAll(/^import .* from "([^"]+)";$/gm)].map(
+      ([, from]) => from,
+    );
+    expect(imports.length).toBeGreaterThan(0);
+    for (const from of imports) expect(from).toMatch(/^node:/);
+    expect(code).not.toMatch(/\brequire\(/);
+    expect(code).not.toContain("process.env");
+    expect([...code.matchAll(/method: "([A-Z]+)"/g)].map(([, m]) => m)).toEqual(
+      ["GET"],
+    );
+    expect(code).not.toMatch(/\bbody:/);
+    expect(code).not.toMatch(/\bcookie\b/i);
+    // Newer than Node 20.
+    for (const newer of [
+      "import.meta.dirname",
+      "import.meta.filename",
+      "Promise.withResolvers",
+      "Object.groupBy",
+      "process.getBuiltinModule",
+      ".union(",
+    ]) {
+      expect(code, newer).not.toContain(newer);
+    }
+  });
+});
+
+describe("the command", () => {
+  const quiet = () => {
+    const said: string[] = [];
+    return {
+      said,
+      out: {
+        log: (line: string) => said.push(line),
+        error: (line: string) => said.push(line),
+      },
+    };
+  };
+
+  it("takes the address as typed, with or without https://, and nothing else", () => {
+    expect(originOf("https://www.conceptapp.co.il")).toBe(
+      "https://www.conceptapp.co.il",
+    );
+    expect(originOf(" https://www.conceptapp.co.il/sign-in?x=1 ")).toBe(
+      "https://www.conceptapp.co.il",
+    );
+    expect(originOf("www.conceptapp.co.il")).toBe(
+      "https://www.conceptapp.co.il",
+    );
+    expect(originOf("http://localhost:3000")).toBe("http://localhost:3000");
+    for (const bad of [
+      "",
+      "   ",
+      "ftp://example.com",
+      "https://user:pass@example.com",
+      "javascript:alert(1)",
+      "https://",
+      undefined,
+    ]) {
+      expect(originOf(bad as string), String(bad)).toBeNull();
+    }
+  });
+
+  it("ends 0 when nothing failed, 1 when something did, 2 without one address", async () => {
+    const good = quiet();
+    expect(await main([ORIGIN], site().fetch, good.out)).toBe(0);
+    expect(good.said.join("\n")).toContain("הכול תקין.");
+
+    const bad = quiet();
+    const failing = site({ "/health": { status: 500 } }).fetch;
+    expect(await main([ORIGIN], failing, bad.out)).toBe(1);
+
+    for (const args of [[], ["a", "b"], ["ftp://x"]]) {
+      const none = quiet();
+      const { fetch, calls } = site();
+      expect(await main(args, fetch, none.out), String(args)).toBe(2);
+      expect(calls, String(args)).toHaveLength(0);
+      expect(none.said.join("\n")).toContain("node tooling/check-site.mjs");
+    }
+  });
+});
