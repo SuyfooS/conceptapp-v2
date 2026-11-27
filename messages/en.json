@@ -311,6 +311,8 @@
     "emptyTitle": "Nothing here yet",
     "emptyBody": "Every empty screen says what to do next.",
     "emptyAction": "The next step",
+    "oldBrowser": "A browser too old",
+    "oldBrowserHint": "The notice shows at the top of every page, only when the browser is too old for the app. Here it is always shown.",
     "floatingAction": "The floating main action",
     "ring": "How much is done",
     "steps": "Step rows",
@@ -1277,6 +1279,13 @@
   "app": {
     "loading": "Loading",
     "signOut": "Sign out",
+    "oldBrowser": {
+      "title": "The browser on this device is too old for the app",
+      "android": "<b>On Android:</b> update Chrome in the Play Store, and open the app in it.",
+      "iphone": "<b>On iPhone:</b> it needs iOS 16.4 or later. You can update in Settings, General, Software Update.",
+      "cantUpdate": "If it can't be updated, tell whoever makes the schedule.",
+      "tryAnyway": "You can still try, but some things may not work."
+    },
     "nav": {
       "home": "Today"
     },

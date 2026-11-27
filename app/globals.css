@@ -362,6 +362,40 @@ body {
 }
 
 /*
+ * A browser older than the app needs: the notice at the top of every page
+ * (`@ui/old-browser-notice`, drawn by app/layout.tsx) carries Tailwind's
+ * `hidden`, and this rule shows it. CSS only, as the page's script may never
+ * run on such a browser. Outside any layer, so it wins over `hidden`, which
+ * is in one; a browser too old for layers (Chrome 98, Safari 15.3) never
+ * applies `hidden` at all.
+ *
+ * The floor is relative colours, `rgb(from …)`, which the accent's hover and
+ * press above are made of: Chrome and Edge 119, Safari 16.4 (iOS 16.4),
+ * Firefox 128, Samsung Internet 25. It is the highest of what the served app
+ * needs: Next 16 supports Chrome and Edge 111, Firefox 111 and Safari 16.4
+ * (node_modules/next/dist/docs/03-architecture/supported-browsers.md);
+ * Tailwind 4's @property is Safari 16.4 and Firefox 128; color-mix(), for
+ * every soft tint, Chrome 111, Safari 16.2 and Firefox 113; toSpliced (the
+ * availability sheet) Chrome 110, Safari 16 and Firefox 115; a regex
+ * lookbehind (the imports) Safari 16.4.
+ *
+ * Not :dir() (Chrome 120): for Next's default targets (Chrome 111) the
+ * build's Lightning CSS turns the rtl:/ltr: variants above into :lang(), so
+ * the CSS served has no :dir(), and Chrome 119 draws the app. Should
+ * next.config.ts ever keep :dir() (`lightningCssFeatures` excluding
+ * `dir-selector`) or set other targets, the floor moves (to Chrome 120 for
+ * :dir(): add `or (not selector(:dir(rtl)))` here), and
+ * tooling/old-browser.test.ts fails until both change together. A
+ * declaration test needs no selector(), so every browser with @supports
+ * reads it.
+ */
+@supports not (color: rgb(from red r g b)) {
+  [data-old-browser] {
+    display: block;
+  }
+}
+
+/*
  * Glass: only on what floats above the content (tab bar, floating title,
  * sheets). Opaque when the device asks for less transparency or more contrast.
  */

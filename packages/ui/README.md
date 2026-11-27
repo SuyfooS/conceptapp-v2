@@ -31,6 +31,21 @@ When it asks for a tick while a press waits, the pressed button is busy, so the
 line takes the focus that fell to the page, and the next stop is Cloudflare's
 box.
 
+`@ui/old-browser-notice` is what a browser older than the app needs reads at the
+top of every page (closing the pilot, PR 26): `OldBrowserNotice` takes a title
+and a paragraph each of what to do, and `app/old-browser.tsx` gives it the
+app's words (`app.oldBrowser`) for the root layout. It is CSS only, with no
+script, since on such a browser the page's script may never run: it carries
+Tailwind's `hidden`, which is in a cascade layer, and one rule in
+`app/globals.css`, outside any layer, shows it where relative colours are
+missing (Chrome and Edge 119, Safari 16.4, Firefox 128; the rule's comment
+says why that is the floor). A browser too old for layers never applies
+`hidden`, so it shows there too. `shown` draws it in any browser, for the
+gallery. It lies in the flow, above the fixed sidebar and floating title
+(`z-40`) and never over the page, which scrolls on under it, and its colours
+are plain tokens (surface, ink, warning), never one mixed with `color-mix()`
+or a relative colour. Its region is named by its title.
+
 ## For a screen reader and the keyboard
 
 `@ui/announcer` is the page's one announcer: `<Announcer />` is drawn first in
