@@ -1,6 +1,9 @@
 # Applies migrations to conceptapp-dev. Only by hand: Orel presses Run workflow,
 # and with "apply" off it shows what would run and changes nothing. Applying only
-# ever runs from main. See issue #8.
+# ever runs from main. See issue #8. The job runs in the GitHub environment
+# conceptapp-dev (docs/production.md, A1): once Orel limits it to main and
+# moves the database's two secrets into it, a run from any other branch never
+# starts, so only main reaches the password (tooling/migrate-dev.test.ts).
 name: Migrate conceptapp-dev
 
 on:
@@ -26,6 +29,11 @@ permissions:
 
 jobs:
   migrate:
+    # Until Orel makes the environment, GitHub makes it the first time a job
+    # asks for it, with no rules, and hands the job the repository secrets of
+    # the same names (migrate-prod.yml says the same): the run goes as it did
+    # before this line. Nothing else here changed with it.
+    environment: conceptapp-dev
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # The database's secrets reach only the step that connects (#80), never
