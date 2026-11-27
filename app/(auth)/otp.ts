@@ -34,8 +34,9 @@ export type SignInError =
  * Too many codes asked for from the caller's network lately, whatever the
  * number's own count: said with the whole minutes until one may go from it
  * (`tooManyNetwork`, sign-in's and joining's sends). The count is the
- * caller's, kept the same for every number, with an account or without, so
- * saying it tells nothing of the number (20261128000600_network_limit.sql).
+ * caller's, kept the same for every number, with an account or without, but
+ * for two exceptions that tell nothing new, so saying it tells nothing of
+ * the number (20261128000600_network_limit.sql).
  */
 export type NetworkHeld = { error: "tooManyNetwork"; minutes: number };
 
@@ -268,7 +269,9 @@ export async function sendCode(
  * account and `captcha` for one without (docs/ROADMAP.md, 94). Too many
  * from this network is said with its minutes (`NetworkHeld`): the clear is
  * the number's alone, so the network's count is the same whether the number
- * had an account or not.
+ * had an account or not, but for a send the number's own count holds, which
+ * is counted for nobody: here only a number with an account keeps a count
+ * to hold it, after codes its person sees (docs/ROADMAP.md, 94).
  */
 export async function sendJoinCode(
   phone: string,

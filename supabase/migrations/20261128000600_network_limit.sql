@@ -22,15 +22,16 @@
 --                   as it was.
 --
 -- Why the caller's may be said: a caller's count is the same for every
--- number it asked for, with an account or without. Sign-in counts a send to
--- a number with no account as it counts one that went, joining from an
--- invite clears the number's counts only (public.forget_number_attempts),
--- and -1 and -2 are counted for the caller alike. Held by both, saying the
--- number's would tell, on joining, a number whose counts were kept (one with
--- an account) from one whose counts were cleared; so the caller's is said,
--- and its seconds, which say nothing of the number.
+-- number it asked for, with an account or without, but for the two
+-- exceptions below. Sign-in counts a send to a number with no account as it
+-- counts one that went, joining from an invite clears the number's counts
+-- only (public.forget_number_attempts), and -1 and -2 are counted for the
+-- caller alike. Held by both, saying the number's would tell, on joining, a
+-- number whose counts were kept (one with an account) from one whose counts
+-- were cleared; so the caller's is said, and its seconds, which say nothing
+-- of the number.
 --
--- The one exception: a send the auth server sent nothing for (the project's
+-- The first exception: a send the auth server sent nothing for (the project's
 -- SMS in an hour, its requests from one address) or the SMS provider failed
 -- is given back for the number and the caller (public.forget_auth_attempt,
 -- 20261108000300_sealed.sql; said in 20261127000200_sign_in_windows.sql),
@@ -45,8 +46,23 @@
 -- this; only which count held it is new, and the caller's is the same for
 -- every number. On joining every number has its account before its code
 -- goes, so a send given back there is given back alike. So the screen is
--- not kept silent after a send given back. auth_limits_network.test.sql
--- shows the exception.
+-- not kept silent after a send given back.
+--
+-- The second: a try only the number's windows hold is counted for nobody,
+-- its caller included (a refused try counted nowhere), and joining clears
+-- the counts of a number with no account first, so there only a number with
+-- an account can be held by its own windows. After codes to the number fill
+-- its quarter of an hour, a send on joining from a network one short of its
+-- count leaves that count where it was for a number with an account and
+-- brings it to the limit for one without, so the next send from that
+-- network goes for the first and is held by the network's count for the
+-- second. It tells nothing that wasn't told: it needs those codes to the
+-- number, which its person sees, and after them a new code asked for on
+-- joining already answers "too many" only for a number with an account
+-- (docs/ROADMAP.md, known issue 94). Counting such a try for its caller
+-- would make the count the same, but would change what a refused try is,
+-- so it stays counted nowhere. auth_limits_network.test.sql shows both
+-- exceptions.
 --
 -- The rest is its version in 20261127000200_sign_in_windows.sql, unchanged:
 -- 0 when counted, -1 and -2, every window, the app's wait, the locks, a

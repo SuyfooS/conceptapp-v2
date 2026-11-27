@@ -5,16 +5,22 @@
 -- its seconds, as before, and stays unsaid. Held by both, the caller's is
 -- said, with the caller's seconds: the number's would tell, on joining, a
 -- number whose counts were kept (one with an account) from one cleared. The
--- one exception, written down here: a send given back (the SMS provider or
+-- two exceptions, written down here. A send given back (the SMS provider or
 -- the project's SMS cap refused it, met on sign-in only by a number with an
 -- account) is given back for the caller too, so the caller's count then
 -- differs by account. That very send already answered "משהו השתבש" for a
 -- number with an account and the code step for one without (ROADMAP, known
--- issue 98), so the caller's answer after it tells nothing more. The limits
+-- issue 98), so the caller's answer after it tells nothing more. And a send
+-- on joining that the number's own windows hold is counted for nobody, its
+-- caller included, while joining clears the counts of a number with no
+-- account first: so after codes fill the number's quarter of an hour, the
+-- caller's count differs by account too. Those codes already make a new
+-- code on joining answer "too many" only for a number with an account
+-- (ROADMAP, known issue 94), so it tells nothing more either. The limits
 -- and the wait are set here, since the local seed lifts the limits and
 -- shortens the wait for the browser tests.
 begin;
-select plan(24);
+select plan(29);
 
 select function_returns(
   'public', 'note_auth_attempt',
@@ -36,10 +42,12 @@ where kind = 'verify' and scope = 'caller';
 -- As on a hosted project.
 update private.auth_send_wait set per = interval '65 seconds';
 
--- 5801 has an account, as the auth server keeps it, with no +. The others
--- have none.
+-- 5801 and 5891 have an account, as the auth server keeps it, with no +.
+-- The others have none.
 insert into auth.users (id, aud, role, phone)
-values ('58000000-0000-4000-a000-000000000001', 'authenticated', 'authenticated', '972500005801');
+values
+  ('58000000-0000-4000-a000-000000000001', 'authenticated', 'authenticated', '972500005801'),
+  ('58000000-0000-4000-a000-000000000002', 'authenticated', 'authenticated', '972500005891');
 
 set local role service_role;
 
@@ -152,6 +160,42 @@ select is(
 select is(
   public.note_auth_attempt('send', '+972500005877', '8.8.9.4', '2026-11-21 14:00:30+00'),
   0, 'the one whose last send was given back, a number with an account, is not: its count differs by account, which that send''s own answer already told (issue 98)'
+);
+
+-- The second exception. Two invited numbers get their quarter of an hour's
+-- codes from other networks, 5891 with an account and 5892 without, and
+-- two networks one short of their count each press send on joining, which
+-- clears 5892's counts and keeps 5891's.
+select is(
+  (select max(w) from (values
+    (public.note_auth_attempt('send', '+972500005891', '8.8.9.7', '2026-11-21 15:00+00')),
+    (public.note_auth_attempt('send', '+972500005891', '8.8.9.8', '2026-11-21 15:01:30+00')),
+    (public.note_auth_attempt('send', '+972500005892', '8.8.9.9', '2026-11-21 15:00+00')),
+    (public.note_auth_attempt('send', '+972500005892', '8.8.9.10', '2026-11-21 15:01:30+00')),
+    (public.note_auth_attempt('send', '+972500005893', '8.8.9.5', '2026-11-21 15:00+00')),
+    (public.note_auth_attempt('send', '+972500005894', '8.8.9.5', '2026-11-21 15:00:10+00')),
+    (public.note_auth_attempt('send', '+972500005895', '8.8.9.6', '2026-11-21 15:00+00')),
+    (public.note_auth_attempt('send', '+972500005896', '8.8.9.6', '2026-11-21 15:00:10+00'))
+  ) tries (w)),
+  0, 'two invited numbers get two codes each, and two networks send two codes each'
+);
+select public.forget_number_attempts('+972500005891');
+select public.forget_number_attempts('+972500005892');
+select is(
+  public.note_auth_attempt('send', '+972500005891', '8.8.9.5', '2026-11-21 15:03+00'),
+  720, 'joining a number with an account: its kept count holds the send, its seconds, and nobody counts it, its network included'
+);
+select is(
+  public.note_auth_attempt('send', '+972500005892', '8.8.9.6', '2026-11-21 15:03+00'),
+  0, 'joining a number with none: its count was cleared, so the send is counted, for its network too'
+);
+select is(
+  public.note_auth_attempt('send', '+972500005897', '8.8.9.5', '2026-11-21 15:03:10+00'),
+  0, 'so the next send from the first network goes'
+);
+select is(
+  public.note_auth_attempt('send', '+972500005898', '8.8.9.6', '2026-11-21 15:03:10+00'),
+  100710, 'and from the second it is held by the network''s count: it differs by account, which those codes already told on joining (issue 94)'
 );
 
 reset role;

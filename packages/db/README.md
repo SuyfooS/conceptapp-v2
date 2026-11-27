@@ -3154,7 +3154,10 @@ read as messages/he.json. Console reads and writes are in `@db/wording`;
   (`tooManyNetwork`, with its minutes, `app/(auth)/otp.ts`); the number's
   stays unsaid. A send given back is given back for the caller too, and on
   sign-in that happens only to a number with an account, whose send already
-  answered "something went wrong" (`docs/ROADMAP.md`, known issue 98).
+  answered "something went wrong" (`docs/ROADMAP.md`, known issue 98). A
+  send the number's own count holds is counted for nobody, the caller
+  included, and on joining only a number with an account keeps a count to
+  hold it, after the five codes of known issue 94, which already tell.
 - `@db/admin`: the console's reads and writes. `createBusiness(actor,
   business)` calls `public.create_business` (service role only): it opens
   the business, applies its template and writes `business.create` to the

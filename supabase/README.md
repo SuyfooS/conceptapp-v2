@@ -144,10 +144,13 @@ the five codes, or only one stray code in the second way (known issue 94). A try
 caller's windows hold answers 100000 over the caller's own seconds, whatever the number's
 (`20261128000600_network_limit.sql`), and sign-in and `/join` say it: "נשלחו הרבה קודים
 מהרשת הזאת", with the minutes left and the way round, mobile data. That count is the same
-for every number (joining clears only the number's), but for a send given back, which is
+for every number (joining clears only the number's), but for two sends. One given back is
 given back for the caller too: on sign-in only a number with an account meets that, and its
-send already answered "something went wrong" (known issue 98). The number's own count stays
-unsaid. The team tunes the limits and the wait in those tables, with SQL.
+send already answered "something went wrong" (known issue 98). One on `/join` that the
+number's own count holds is counted for nobody, the network included, and joining cleared
+the counts of a number with no account, so only one with an account is held so: after the
+five codes of known issue 94, which already tell, the network's count ends one lower for it.
+The number's own count stays unsaid. The team tunes the limits and the wait in those tables, with SQL.
 A number locked by the day's window (someone sent it codes and typed many wrong ones) is
 cleared with:
 

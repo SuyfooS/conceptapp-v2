@@ -14,8 +14,9 @@ import type { JoinState } from "./actions";
 // רובוט" check's token, and one the auth server refused for it is said on
 // its own step, the same for every number. Too many codes from this network
 // is said on either step, with its minutes: that count is the caller's,
-// which joining never clears, so it is the same whether the number had an
-// account or not. A right code with a claim that
+// which joining never clears, so with the same count it is said whether the
+// number had an account or not (the count itself after a send the number's
+// own count held: docs/ROADMAP.md, 94). A right code with a claim that
 // works forgets a page an earlier link kept for after sign-in (known issue
 // 21) and lands where H5b says; a refused claim forgets nothing.
 

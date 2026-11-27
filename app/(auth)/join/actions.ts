@@ -58,8 +58,13 @@ export type JoinState =
  * would hide the refusal, so that is a known issue too (docs/ROADMAP.md,
  * 94). Too many codes from this network is said, with its minutes, on
  * either step: that count is the caller's, which joining doesn't clear, so
- * it is the same whether the number had an account or not. The number
- * always comes from the invite, never from the form.
+ * it is the same whether the number had an account or not, but for a send
+ * the number's own count holds. That send is counted for nobody, the
+ * network included, and only a number with an account keeps a count to
+ * hold it here, so after codes fill the number's quarter of an hour the
+ * network's count ends one lower for it; a new code asked for after those
+ * codes already says "too many" only for such a number (docs/ROADMAP.md,
+ * 94). The number always comes from the invite, never from the form.
  * A link that stopped working on the way goes back to its page, which says
  * why.
  */
@@ -95,7 +100,9 @@ export async function join(
       // account had its counts cleared and one with an account kept them,
       // so anything else here would tell the link's holder which it was.
       // Too many from this network is said: joining clears no network's
-      // count, so it is the same either way.
+      // count, so with the same count it is said either way (the count
+      // itself can differ by account after a send the number's own count
+      // held, as above).
       if (error === "tooMany" || error === "rateLimit") {
         return { step: "code", error: undefined, resent: false };
       }
