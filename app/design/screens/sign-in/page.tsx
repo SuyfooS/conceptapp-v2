@@ -4,6 +4,7 @@ import { AuthScreen } from "../../../(auth)/auth-screen";
 import { SignInForm } from "../../../(auth)/sign-in/sign-in-form";
 import { demoSignIn } from "../actions";
 import { captchaTwinOf } from "../captcha-twin";
+import { refusalTwinOf } from "../refusal-twin";
 
 type Props = {
   searchParams: Promise<{
@@ -21,7 +22,9 @@ type Props = {
 // with no way to the demo. The two go together (`?step=code&door=off`).
 // The "אני לא רובוט" check (P9b): `?captcha=` a state of its stand-in
 // (`captchaTwinOf`), or Cloudflare's own test widget (`live`, `ask`);
-// `?error=captcha` a send the auth server refused for it, on either step.
+// `?error=captcha` a send the auth server refused for it, on either step;
+// `?error=network` too many codes from this network (closing the pilot,
+// PR 2), twelve minutes to wait, on either step too.
 export default function SignInDemo({ searchParams }: Props) {
   const t = useTranslations("auth.signIn");
   return (
@@ -35,7 +38,7 @@ export default function SignInDemo({ searchParams }: Props) {
 
 async function DemoForm({ searchParams }: Props) {
   const { step, door, captcha, error } = await searchParams;
-  const refused = error === "captcha" ? ("captcha" as const) : undefined;
+  const refused = refusalTwinOf(error);
   return (
     <SignInForm
       signIn={demoSignIn}
@@ -43,9 +46,9 @@ async function DemoForm({ searchParams }: Props) {
       demoHref={door === "off" ? undefined : "/design/screens/enter"}
       start={
         step === "code"
-          ? { step: "code", phone: "+972501234567", error: refused }
+          ? { step: "code", phone: "+972501234567", ...refused }
           : refused
-            ? { step: "phone", error: refused }
+            ? { step: "phone", ...refused }
             : undefined
       }
     />

@@ -24,6 +24,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // keeps no session, so this browser's cookies are never written and stay
 // the person's whoever the number turns out to be; the session the check
 // opened is ended at once; and every check is counted with the sign-in codes.
+//
+// Too many codes from one network (the caller's own count, whatever the
+// number's) is said on sign-in's and joining's sends, with its minutes
+// rounded up, the same for every number; the number's own count stays
+// unsaid, "too many" as before. A check held by the network's count, and the
+// file's codes, say "too many" as they did. Nothing is sent and nothing
+// runs past either.
 
 vi.mock("server-only", () => ({}));
 
@@ -74,6 +81,12 @@ const {
 } = await import("./otp");
 
 const NOA = "33333333-3333-4333-a333-333333333333";
+
+/** Held by the number's own count, as `noteAuthAttempt` reads it. */
+const BY_NUMBER = { by: "phone", seconds: 30 } as const;
+
+/** Held by the network's count: 570 seconds, said as ten minutes. */
+const BY_NETWORK = { by: "caller", seconds: 570 } as const;
 
 beforeEach(() => {
   mocks.order.length = 0;
@@ -187,9 +200,36 @@ describe("sendSignInCode", () => {
   });
 
   it("sends nothing past too many", async () => {
-    mocks.noteAuthAttempt.mockResolvedValue(30);
+    mocks.noteAuthAttempt.mockResolvedValue(BY_NUMBER);
     expect(await sendSignInCode("+972500000003")).toBe("tooMany");
     expect(mocks.signInWithOtp).not.toHaveBeenCalled();
+  });
+
+  it("says too many from this network with its minutes, the same for a number with an account and one without, and sends nothing", async () => {
+    for (const phone of ["+972500000003", "+972509999999"]) {
+      mocks.noteAuthAttempt.mockResolvedValueOnce(BY_NETWORK);
+      expect(await sendSignInCode(phone)).toEqual({
+        error: "tooManyNetwork",
+        minutes: 10,
+      });
+    }
+    expect(mocks.signInWithOtp).not.toHaveBeenCalled();
+    expect(mocks.forgetAuthAttempt).not.toHaveBeenCalled();
+  });
+
+  it("says the minutes rounded up, and at least one", async () => {
+    for (const [seconds, minutes] of [
+      [1, 1],
+      [60, 1],
+      [61, 2],
+      [900, 15],
+    ] as const) {
+      mocks.noteAuthAttempt.mockResolvedValueOnce({ by: "caller", seconds });
+      expect(await sendSignInCode("+972500000003")).toEqual({
+        error: "tooManyNetwork",
+        minutes,
+      });
+    }
   });
 
   it("sends nothing when the count fails", async () => {
@@ -270,7 +310,15 @@ describe("sendCode", () => {
 
   it("runs nothing past too many", async () => {
     const prepare = vi.fn();
-    mocks.noteAuthAttempt.mockResolvedValue(30);
+    mocks.noteAuthAttempt.mockResolvedValue(BY_NUMBER);
+    expect(await sendCode("+972500000003", { prepare })).toBe("tooMany");
+    expect(prepare).not.toHaveBeenCalled();
+    expect(mocks.signInWithOtp).not.toHaveBeenCalled();
+  });
+
+  it("says too many from this network as too many, as the file's codes did, and runs nothing", async () => {
+    const prepare = vi.fn();
+    mocks.noteAuthAttempt.mockResolvedValue(BY_NETWORK);
     expect(await sendCode("+972500000003", { prepare })).toBe("tooMany");
     expect(prepare).not.toHaveBeenCalled();
     expect(mocks.signInWithOtp).not.toHaveBeenCalled();
@@ -300,12 +348,30 @@ describe("sendJoinCode", () => {
       "rateLimit",
     );
     expect(mocks.order).toEqual(["clear"]);
-    mocks.noteAuthAttempt.mockResolvedValue(30);
+    mocks.noteAuthAttempt.mockResolvedValue(BY_NUMBER);
     mocks.order.length = 0;
     expect(await sendJoinCode("+972500000003", { makeAccount })).toBe(
       "tooMany",
     );
     expect(mocks.order).toEqual(["clear"]);
+    expect(mocks.signInWithOtp).not.toHaveBeenCalled();
+  });
+
+  it("says too many from this network with its minutes, cleared or not, and makes no account", async () => {
+    mocks.noteAuthAttempt.mockResolvedValue(BY_NETWORK);
+    expect(await sendJoinCode("+972500000003", { makeAccount })).toEqual({
+      error: "tooManyNetwork",
+      minutes: 10,
+    });
+    // The clear is the number's alone: the network's count stays.
+    expect(mocks.order).toEqual(["clear"]);
+    mocks.forgetNumberAttempts.mockRejectedValueOnce(new Error("down"));
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await sendJoinCode("+972500000003", { makeAccount })).toEqual({
+      error: "tooManyNetwork",
+      minutes: 10,
+    });
+    logged.mockRestore();
     expect(mocks.signInWithOtp).not.toHaveBeenCalled();
   });
 
@@ -448,6 +514,21 @@ describe("verifyCode", () => {
     });
     expect(mocks.cookieVerifyOtp).not.toHaveBeenCalled();
   });
+
+  it("says too many checks, from this network or for the number, as too many, and checks nothing", async () => {
+    for (const held of [BY_NETWORK, BY_NUMBER]) {
+      mocks.noteAuthAttempt.mockResolvedValueOnce(held);
+      expect(await verifyCode("+972500000003", "123456")).toEqual({
+        error: "tooMany",
+      });
+      mocks.noteAuthAttempt.mockResolvedValueOnce(held);
+      expect(await checkCode("+972500000003", "123456")).toEqual({
+        error: "tooMany",
+      });
+    }
+    expect(mocks.cookieVerifyOtp).not.toHaveBeenCalled();
+    expect(mocks.verifyOtp).not.toHaveBeenCalled();
+  });
 });
 
 describe("signInPhoneOf", () => {
@@ -495,7 +576,7 @@ describe("checkCode", () => {
     expect(mocks.noteAuthAttempt).toHaveBeenCalledWith(
       expect.objectContaining({ kind: "verify", phone: "+972500000003" }),
     );
-    mocks.noteAuthAttempt.mockResolvedValue(30);
+    mocks.noteAuthAttempt.mockResolvedValue(BY_NUMBER);
     mocks.verifyOtp.mockClear();
     expect(await checkCode("+972500000003", "123456")).toEqual({
       error: "tooMany",

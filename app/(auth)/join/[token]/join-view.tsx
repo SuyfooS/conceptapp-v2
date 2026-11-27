@@ -15,6 +15,7 @@ import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 import type { ComponentProps } from "react";
 import { CenteredScreen } from "@/app/centered-screen";
+import type { JoinState } from "../actions";
 import { JoinForm } from "./join-form";
 import { TitleOnArrival } from "./title-on-arrival";
 
@@ -37,11 +38,14 @@ export async function JoinView({
   invite,
   join,
   captcha,
+  start,
 }: {
   invite: OpenInvite;
   join: ComponentProps<typeof JoinForm>["join"];
   /** The "אני לא רובוט" check: this deployment's widget, or the twin's stand-in. */
   captcha: CaptchaSetup;
+  /** The step the form opens on: the invite's, or another the twin draws. */
+  start?: JoinState;
 }) {
   const t = await getTranslations("auth.join");
   // A role the business named, by its own name (the roles plan's R11b).
@@ -74,6 +78,7 @@ export async function JoinView({
             join={join}
             captcha={captcha}
             ending={phoneEnding(invite.phone)}
+            start={start}
           />
         </Card>
       </div>

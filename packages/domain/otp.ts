@@ -31,3 +31,12 @@ export function refusalReason(
   if (code === "captcha_failed") return "captcha";
   return null;
 }
+
+/**
+ * The whole minutes a screen says for a wait of `seconds` (too many codes
+ * from one network, `tooManyNetwork`): rounded up, so the person never tries
+ * again a moment too soon, and at least one.
+ */
+export function minutesToWait(seconds: number): number {
+  return Math.max(1, Math.ceil(seconds / 60));
+}

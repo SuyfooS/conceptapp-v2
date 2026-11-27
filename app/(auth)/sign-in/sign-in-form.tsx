@@ -9,7 +9,13 @@ import { FieldGroup, GroupedPhoneField } from "@ui/field-group";
 import { arrived, focusFirst } from "@ui/focus-after";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useActionState, useId, useLayoutEffect, useRef } from "react";
+import {
+  type ReactNode,
+  useActionState,
+  useId,
+  useLayoutEffect,
+  useRef,
+} from "react";
 import type { SignInState } from "../actions";
 import { authFieldsClass } from "../auth-screen";
 import { CodeField } from "../code-field";
@@ -41,7 +47,9 @@ const SENDS = ["send", "resend"] as const;
  * drawn anew each time, the press taking back the focus it lost, and the
  * number isn't marked. Never the focus from where the person put it. The
  * code step's words as it arrives, and its answers, a refusal or a new
- * code, are its field's to say (`CodeField`), once each.
+ * code, are its field's to say (`CodeField`), once each. Too many codes
+ * from this network says its minutes, in their own direction on the screen
+ * and as plain words for the announcer.
  */
 export function SignInForm({
   signIn,
@@ -69,7 +77,20 @@ export function SignInForm({
   // send made before the page could answer it comes back with the page.
   const seen = useRef<SignInState | null>(state);
   const { quiet, hush } = useQuietWhy(phone);
-  const error = state.error ? t(`errors.${state.error}`) : undefined;
+  const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
+  const error =
+    state.error === "tooManyNetwork"
+      ? t.markup("errors.tooManyNetwork", {
+          minutes: state.minutes,
+          ltr: (chunks) => chunks,
+        })
+      : state.error
+        ? t(`errors.${state.error}`)
+        : undefined;
+  const errorLine =
+    state.error === "tooManyNetwork"
+      ? t.rich("errors.tooManyNetwork", { minutes: state.minutes, ltr })
+      : error;
   const onTheNumber = aboutTheNumber(state.error);
 
   // A refusal on the phone step, once per answer: not when the screen is
@@ -119,7 +140,7 @@ export function SignInForm({
         <CaptchaBox captcha={box} name={CAPTCHA_FIELD} />
         {error && !onTheNumber ? (
           <p key={answer} role="alert" className="px-1 text-danger text-sm">
-            {error}
+            {errorLine}
           </p>
         ) : null}
         <Button
@@ -157,13 +178,14 @@ export function SignInForm({
       <p className="px-1 text-ink-2">
         {t.rich(state.resent ? "codeResent" : "codeIntro", {
           phone: shownPhone,
-          ltr: (chunks) => <span dir="ltr">{chunks}</span>,
+          ltr,
         })}
       </p>
       <CodeField
         label={t("codeLabel")}
         intro={words}
         error={error}
+        errorLine={errorLine}
         resent={state.resent ? words : undefined}
         answer={answer}
         wrongCode={state.error === "wrongCode"}
