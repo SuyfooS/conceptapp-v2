@@ -9,7 +9,7 @@ import he from "@/messages/he.json";
 // the database, a number on another staff sends the list back named before
 // anything is written, and nothing with a number is logged. The answer
 // about Shabbat (closing the pilot, PR 3) is saved once the business is
-// open, through the settings engine, only when it isn't the template's.
+// open, through the settings engine, even when it is the template's.
 
 const mocks = vi.hoisted(() => ({
   getPlatformStaff: vi.fn(),
@@ -205,7 +205,8 @@ describe("the answer about Shabbat", () => {
     );
   });
 
-  it("writes nothing when the answer is the template's", async () => {
+  it("saves the answer when it is the template's too, so it reads as answered", async () => {
+    // The manifest's default, which every template leaves in place.
     expect(await wentTo(formOf(SHEET, "closed"))).toBe(OPENED);
     mocks.getBusinessModulesForTeam.mockResolvedValue(
       rowsWith({ closedOnShabbat: false }),
@@ -214,7 +215,11 @@ describe("the answer about Shabbat", () => {
     // A module row the template left out reads as the manifest's default.
     mocks.getBusinessModulesForTeam.mockResolvedValue([]);
     expect(await wentTo(formOf(SHEET, "closed"))).toBe(OPENED);
-    expect(mocks.setModuleSettings).not.toHaveBeenCalled();
+    expect(mocks.setModuleSettings.mock.calls).toEqual([
+      [STAFF, BUSINESS, "scheduling", { closedOnShabbat: true }],
+      [STAFF, BUSINESS, "scheduling", { closedOnShabbat: false }],
+      [STAFF, BUSINESS, "scheduling", { closedOnShabbat: true }],
+    ]);
   });
 
   it("keeps the template's for a form with no answer, asking nothing", async () => {

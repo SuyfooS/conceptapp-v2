@@ -345,9 +345,10 @@ test("a platform admin opens a restaurant and invites its staff", async ({
     templateKey: "restaurant",
     modules: MODULE_KEYS.length,
     audited: 1,
-    // The template's answer kept: nothing written for it.
-    closedOnShabbat: null,
-    settingsAudited: 0,
+    // The template's answer kept, and saved all the same, so the business
+    // says it was answered.
+    closedOnShabbat: true,
+    settingsAudited: 1,
   });
   expect(await invitesBySlug(slug)).toEqual([
     { name: "רונית בדיקה", phone: "+972500000701", role: "owner" },

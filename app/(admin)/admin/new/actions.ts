@@ -12,7 +12,6 @@ import {
   parseNewBusiness,
   roleWordsOf,
 } from "@domain/business";
-import { readModuleSettings } from "@domain/modules";
 import { platformCan } from "@domain/platform";
 import { checkSettingsChange } from "@domain/settings-form";
 import { manifestFor } from "@modules/registry";
@@ -94,10 +93,14 @@ export async function createBusinessAction(
  * /manage/scheduling save it: checked against scheduling's manifest at the
  * team's level (`checkSettingsChange`), then `set_module_settings`, which
  * writes the change's `module.settings` line in the audit log, from what
- * the template gave to the answer. An answer the template already gives
- * (or none, from a form drawn before the wizard asked) writes nothing, as
- * the settings screens send only what changed. False when it could not be
- * saved; only the error's message is logged.
+ * the template gave to the answer. It is saved even when the template
+ * already gives it, so that line, and a stored `closedOnShabbat` (no
+ * template stores one), say the question was answered; /manage/activity
+ * leaves out a line
+ * that ends where the module's default is (`withoutNoChange` in
+ * `@domain/activity`). No answer, from a form drawn before the wizard
+ * asked, writes nothing. False when it could not be saved; only the
+ * error's message is logged.
  */
 async function saveShabbat(
   actorId: string,
@@ -109,8 +112,6 @@ async function saveShabbat(
     const manifest = manifestFor("scheduling");
     const rows = await getBusinessModulesForTeam(businessId);
     const stored = rows.find((row) => row.key === "scheduling")?.settings;
-    const given = readModuleSettings(manifest, stored).closedOnShabbat;
-    if (given === closedOnShabbat) return true;
     const checked = checkSettingsChange(
       manifest,
       stored,

@@ -3165,8 +3165,9 @@ read as messages/he.json. Console reads and writes are in `@db/wording`;
   staff. A taken slug comes back as `slugTaken`. It takes no settings, so
   the wizard's answer about Shabbat is saved after it, by the action, with
   `setModuleSettings` (`@db/module-settings`) as the console's settings
-  page saves it, and only when it isn't the template's: `set_module_settings`
-  writes that change's own `module.settings` line.
+  page saves it, even when it is the template's, so the business says it
+  was answered: `set_module_settings` writes that change's own
+  `module.settings` line.
 - `@db/env`: the public settings and the secret key, checked with Zod, and
   this site's demo door (`DEMO_DOOR`: `demoDoorOpen`, read here alone, for
   server code and the proxy only). `turnstileSiteKey` (`parseTurnstileSiteKey`)
