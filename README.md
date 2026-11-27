@@ -69,7 +69,9 @@ Vercel and what to watch. The code's side of it:
 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Cloudflare Turnstile's public Site Key for the "אני לא רובוט" check before every SMS code (sign-in, joining, the file codes). Unset: Cloudflare's always-passing test key, as locally and in CI; another shape fails the build. Supabase's CAPTCHA, with the widget's Secret Key, goes on only after it (`docs/production.md`, Turnstile) | Vercel: `Production` and `Preview`, never the Secret Key |
 
 - Migrations reach each hosted project only by hand: "Migrate conceptapp-dev"
-  (`.github/workflows/migrate-dev.yml`) for the demo's project, and "Migrate conceptapp-prod"
+  (`.github/workflows/migrate-dev.yml`) for the demo's project, in the GitHub environment
+  `conceptapp-dev`, which Orel limits to `main` and gives the database's two secrets
+  (`docs/production.md`, A1), and "Migrate conceptapp-prod"
   (`.github/workflows/migrate-prod.yml`) for real businesses, from `main` only, in the GitHub
   environment `conceptapp-prod` that waits for Orel's approval, never with the demo
   (`supabase/README.md`).
@@ -80,6 +82,14 @@ Vercel and what to watch. The code's side of it:
   forced. Nobody else pushes to `production`.
 - `GET /health` (or `HEAD`) answers 200 with `{"status":"ok"}` from the running server, for an
   uptime monitor. It doesn't ask the database.
+- `node tooling/check-site.mjs <address>` checks one site from outside, on Node 20 with
+  nothing installed and no secret, one GET per address and no redirect followed: `/health`
+  answers 200, `/health/db` too once a site has it (until then it says so and doesn't fail),
+  whether `/enter` goes on to `/sign-in` (the door closed) or is open, that `/sign-in`'s
+  Turnstile `data-sitekey` is none of Cloudflare's test keys, and the security headers of
+  `@domain/security-headers`, named but never their values. It answers in Hebrew and exits 1
+  when something failed (`docs/production.md`, Turnstile step 4 and B7;
+  `tooling/check-site.test.ts`, with a fake fetch).
 
 ## Scripts
 
@@ -104,6 +114,9 @@ a build with the demo door open and a local Supabase, once the other two pass: s
 by side, each size in two parts by file with `--shard`, each with its own database). A push to `main` runs them again, unless that exact tree already
 passed all three in a pull request run created the same day in Israel
 (`.github/scripts/tested-tree.sh`). Actions → CI → Run workflow forces a full run on `main`.
+The ruleset Orel sets on `main` (`docs/production.md`, A1) requires every job by the name
+GitHub shows it: `gate`, `check`, `database` and the six `e2e (<size> <part>/2)`. The doc
+lists them, and `tooling/production-doc.test.ts` fails when CI gains a job the list lacks.
 
 ## Plan and decisions
 

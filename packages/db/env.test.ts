@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
+import { TURNSTILE_TEST_KEYS } from "@domain/turnstile";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   demoDoorOpen,
@@ -147,11 +148,7 @@ describe("parseTurnstileSiteKey", () => {
         NEXT_PUBLIC_TURNSTILE_SITE_KEY: ` ${SITE_KEY}\n`,
       }),
     ).toBe(SITE_KEY);
-    for (const key of [
-      "1x00000000000000000000AA",
-      "2x00000000000000000000AB",
-      "3x00000000000000000000FF",
-    ]) {
+    for (const key of Object.values(TURNSTILE_TEST_KEYS)) {
       expect(
         parseTurnstileSiteKey({ NEXT_PUBLIC_TURNSTILE_SITE_KEY: key }),
       ).toBe(key);
@@ -203,6 +200,14 @@ describe("turnstileSiteKey", () => {
         expect(String(warn.mock.calls[0]?.[0])).toMatch(
           /NEXT_PUBLIC_TURNSTILE_SITE_KEY.*Production.*docs\/production\.md/,
         );
+      }
+      // Every published test key, the invisible two among them, not only
+      // the one an unset setting gives.
+      for (const key of Object.values(TURNSTILE_TEST_KEYS)) {
+        vi.stubEnv("NEXT_PUBLIC_TURNSTILE_SITE_KEY", key);
+        warn.mockClear();
+        expect(turnstileSiteKey(), key).toBe(key);
+        expect(warn, key).toHaveBeenCalledTimes(1);
       }
       vi.stubEnv("NEXT_PUBLIC_TURNSTILE_SITE_KEY", siteKey);
       warn.mockClear();

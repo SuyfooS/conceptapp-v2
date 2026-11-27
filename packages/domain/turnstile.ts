@@ -26,12 +26,17 @@ export const TURNSTILE_SCRIPT = `${TURNSTILE_ORIGIN}/turnstile/v0/api.js?render=
  * (developers.cloudflare.com/turnstile/troubleshooting/testing): one that
  * always passes, the key of every site with none set (local, CI, e2e,
  * where Supabase's CAPTCHA is off); one that always fails; one that always
- * asks for a tick, for the design twin.
+ * asks for a tick, for the design twin; and the invisible two, one that
+ * always passes and one that always fails, which the app never uses but
+ * which are no real key either (`@db/env`'s warning on Production,
+ * tooling/check-site.mjs).
  */
 export const TURNSTILE_TEST_KEYS = {
   pass: "1x00000000000000000000AA",
   fail: "2x00000000000000000000AB",
   tap: "3x00000000000000000000FF",
+  passInvisible: "1x00000000000000000000BB",
+  failInvisible: "2x00000000000000000000BB",
 } as const;
 
 /** The form field a send posts its token in. */
