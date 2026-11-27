@@ -7556,7 +7556,9 @@
       "leave": "Back to the app"
     },
     "updated": {
-      "toast": "The app was updated, and your press wasn't recorded. Press again."
+      "toast": "The app was updated, and your press wasn't recorded. Press again.",
+      "chat": "The app was updated, and your message wasn't sent. Reload, and your message waits in the field.",
+      "reload": "Reload"
     }
   },
   "modules": {

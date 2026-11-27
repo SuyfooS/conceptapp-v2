@@ -12,6 +12,7 @@ import {
 import type { Metadata } from "next";
 import { useTranslations } from "next-intl";
 import { getTranslations } from "next-intl/server";
+import { ReleaseNote } from "../../release-note";
 import { demoSwitcher } from "./businesses";
 import { demoAccountantName } from "./clock/pay/data";
 import { business, demoBusinesses, totalOpenSlots, user } from "./data";
@@ -102,7 +103,10 @@ export default function ShellDemoLayout({
         nav: accountantNav,
       }}
     >
-      {children}
+      {/* Shiran is the one signed in: a press on a page from the release
+          before, as e2e/release.ts sends one, loads it again, and the page
+          loaded says so once, as the app's frame does. */}
+      <ReleaseNote userId="shiran">{children}</ReleaseNote>
     </DemoShell>
   );
 }

@@ -40,6 +40,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { useSignedInId } from "@/app/release-note";
 import { inTurn, writesOnWay } from "./in-turn";
 import { keepLostNotice } from "./lost-notice";
 import { newId } from "./new-id";
@@ -62,6 +63,7 @@ import {
   unsentOf,
 } from "./outbox";
 import { readyMarks } from "./ready-marks";
+import { reloadOnRelease } from "./release-writes";
 import {
   pendingOfDraft,
   refusalMoved,
@@ -902,23 +904,25 @@ export function OrdersModeProvider({
   // A ticket marked ready here is no news to this phone, until it is put
   // back here and a read made after that has come. A close or a move goes
   // after every write sent before it, from whichever screen: a line's fix
-  // sent on leaving the order's screen lands before the till's close.
-  const modeActions = useMemo<OrdersActions>(
-    () =>
-      inTurn<OrdersActions>(
-        {
-          ...actions,
-          setReady: async (ticket, ready) => {
-            const result = await actions.setReady(ticket, ready);
-            if (result.ok) marks.said(ticket, ready);
-            return result;
-          },
+  // sent on leaving the order's screen lands before the till's close. Each
+  // pressed on a page from the release before loads the page again, for
+  // the person signed in, before its screen says it failed (known issue 37).
+  const signedIn = useSignedInId();
+  const modeActions = useMemo<OrdersActions>(() => {
+    const writes = reloadOnRelease(actions, signedIn);
+    return inTurn<OrdersActions>(
+      {
+        ...writes,
+        setReady: async (ticket, ready) => {
+          const result = await writes.setReady(ticket, ready);
+          if (result.ok) marks.said(ticket, ready);
+          return result;
         },
-        ["close", "move"],
-        onWay,
-      ),
-    [actions, marks, onWay],
-  );
+      },
+      ["close", "move"],
+      onWay,
+    );
+  }, [actions, signedIn, marks, onWay]);
 
   // The items' counts, as the sync hears them, and what hasn't gone on the
   // floor's.

@@ -23,6 +23,12 @@ import {
   useEffect,
   useState,
 } from "react";
+import { useSignedInId } from "@/app/release-note";
+import {
+  isStaleBuild,
+  reloadForRelease,
+  untilReloaded,
+} from "@/app/stale-build";
 import {
   PushAsk,
   type PushAskOffer,
@@ -63,7 +69,11 @@ const cardClass =
  * sheet. Phone: one grouped list, Send floating above the tab bar; tablet: a
  * grid of four; desktop: the whole week in a row, Send on the hero. The same
  * checks run here, in the sheet and on the server. Once it's sent, the first
- * time, the offer of notifications on the phone sits under the days.
+ * time, the offer of notifications on the phone sits under the days. Sent
+ * from a page of the release before, the page loads again (`@/app/stale-build`),
+ * Send busy until it has gone, and its frame says the app was updated: the
+ * person sends again, nothing sent by itself. A page that stays says the
+ * form's own failure, the week as it was written still on it.
  */
 export function AvailabilityForm({
   week,
@@ -72,7 +82,26 @@ export function AvailabilityForm({
   ask = null,
 }: AvailabilityFormProps) {
   const t = useTranslations("app.availability");
-  const [state, action, pending] = useActionState(save, initialState);
+  // Whose press it is, for a page loaded again for a release.
+  const signedIn = useSignedInId();
+  const [state, action, pending] = useActionState(
+    async (
+      prev: AvailabilityState,
+      form: FormData,
+    ): Promise<AvailabilityState> => {
+      try {
+        return await save(prev, form);
+      } catch (error) {
+        // Any other error goes to the error screen, as before.
+        if (!isStaleBuild(error)) throw error;
+        // A page from the release before loads again, Send busy until it has
+        // gone; one that stays says it failed, and keeps the days written.
+        if (reloadForRelease(error, signedIn)) await untilReloaded();
+        return { failure: "failed" };
+      }
+    },
+    initialState,
+  );
   const [days, setDays] = useState<Record<string, Row[]>>(() =>
     Object.fromEntries(
       week.dates.map((date) => [

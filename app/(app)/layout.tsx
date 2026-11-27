@@ -20,6 +20,7 @@ import { currentPastJobs } from "../(account)/me/past/past-file";
 import { PastJobsSection } from "../(account)/me/past/past-jobs";
 import { currentPlatformRole } from "../(admin)/staff";
 import { signOut } from "../(auth)/actions";
+import { ReleaseNote } from "../release-note";
 import { currentBusinesses } from "./businesses";
 import { currentWording } from "./current-wording";
 import { DepartureNotice } from "./departure-notice";
@@ -223,7 +224,9 @@ async function Shell({ children }: { children: ReactNode }) {
               wording={wording}
             />
           ) : null}
-          {children}
+          {/* A press on a page from the release before loads it again, and
+              the page loaded says so once, to the person who pressed. */}
+          <ReleaseNote userId={member.userId}>{children}</ReleaseNote>
           {push ? <PushRegistration publicKey={push.publicKey} /> : null}
         </AppShell>
       </WordingProvider>

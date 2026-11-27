@@ -1,26 +1,32 @@
 import { UnrecognizedActionError } from "next/dist/client/components/unrecognized-action-error";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  forgetOthersWords,
   isStaleBuild,
   NOTE_FOR_MS,
   RELOAD_EVERY_MS,
   RELOAD_WAIT_MS,
   RELOADED_KEY,
   reloadForRelease,
+  reloadKeepingWords,
+  takeKeptWords,
   takeUpdatedNote,
   UPDATED_KEY,
   untilReloaded,
+  WORDS_KEY,
 } from "./stale-build";
 
 /*
- * A screen left open across a release (closing the pilot, PR 1a): the press
- * that meets a server action the server no longer has loads the page again,
- * once a minute at most, and the page loaded says the app was updated, once,
- * to the person who pressed. Over a tab's sessionStorage in memory, a window
- * whose reload is counted, and the very error Next.js throws
- * (`next/navigation`'s check is an `instanceof` on its class). The press
- * itself, in the built app with Next.js's own answer, is
- * e2e/clock-release.spec.ts's: one build is enough, an action id the server
+ * A screen left open across a release (closing the pilot, PRs 1a and 1b):
+ * the press that meets a server action the server no longer has loads the
+ * page again, once a minute at most, and the page loaded says the app was
+ * updated, once, to the person who pressed; a chat's send never loads it by
+ * itself, and its "טעינה מחדש" keeps what is written for that person's chat.
+ * Over a tab's sessionStorage in memory, a window whose reload is counted,
+ * and the very error Next.js throws (`next/navigation`'s check is an
+ * `instanceof` on its class). The presses themselves, in the built app with
+ * Next.js's own answer, are e2e/clock-release.spec.ts's and
+ * e2e/release.spec.ts's: one build is enough, an action id the server
  * doesn't know standing for a page from the release before.
  */
 
@@ -61,15 +67,19 @@ const B = "6b000000-0000-4000-a000-00000000000b";
 
 let tab: ReturnType<typeof fakeStorage>;
 let reload: ReturnType<typeof vi.fn>;
-/** The window, for its events: shown again, a step in its history. */
-let page: EventTarget;
+/** The window, for its events (shown again, a step in its history) and its address. */
+let page: EventTarget & { location: { reload: unknown; pathname: string } };
+/** A conversation's address, where a chat's words are kept. */
+const CHAT = "/chat/c0000000-0000-4000-a000-000000000001";
 const START = Date.parse("2026-11-27T21:59:00Z");
 
 beforeEach(() => {
   tab = fakeStorage();
   reload = vi.fn();
   vi.stubGlobal("sessionStorage", tab.storage);
-  page = Object.assign(new EventTarget(), { location: { reload } });
+  page = Object.assign(new EventTarget(), {
+    location: { reload, pathname: CHAT },
+  });
   vi.stubGlobal("window", page);
   vi.useFakeTimers({ now: START });
 });
@@ -130,6 +140,18 @@ describe("a press on a page from an earlier release", () => {
     }
     expect(reload).not.toHaveBeenCalled();
     expect(tab.map.size).toBe(0);
+  });
+
+  it("loads nothing for a press outside a frame, with nobody to tell", () => {
+    // The /design gallery draws screens with no frame: no person, so no
+    // page loaded again could say the note, and the press says its failure.
+    for (const nobody of [null, ""]) {
+      expect(reloadForRelease(stale(), nobody)).toBe(false);
+    }
+    expect(reload).not.toHaveBeenCalled();
+    expect(tab.map.size).toBe(0);
+    // Not even the minute's guard: the frame's next press loads the page.
+    expect(reloadForRelease(stale(), A)).toBe(true);
   });
 
   it("loads again once a minute at most: a page still old says the failure", () => {
@@ -352,5 +374,154 @@ describe("the page loaded again", () => {
     expect(en.app.updated.toast).toBe(
       "The app was updated, and your press wasn't recorded. Press again.",
     );
+  });
+});
+
+describe("a chat's send on a page from an earlier release", () => {
+  const kept = (at: number, person: string, where: string, words: string) =>
+    JSON.stringify({ at, person, where, words });
+
+  it("keeps what is written for the page loaded, and loads it as pressed", () => {
+    reloadKeepingWords(A, "נגמר החלב\nבמקרר השני");
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(tab.map.get(WORDS_KEY) ?? "")).toEqual({
+      at: START,
+      person: A,
+      where: CHAT,
+      words: "נגמר החלב\nבמקרר השני",
+    });
+    // Pressed, never by itself: no note for the frame, no minute's guard.
+    expect(tab.map.has(UPDATED_KEY)).toBe(false);
+    expect(tab.map.has(RELOADED_KEY)).toBe(false);
+  });
+
+  it("gives the words back once, to that person's chat at that address", () => {
+    reloadKeepingWords(A, "נגמר החלב");
+    loadAgain();
+    vi.advanceTimersByTime(2_000);
+    expect(takeKeptWords(A)).toBe("נגמר החלב");
+    expect(takeKeptWords(A)).toBeNull();
+    expect(tab.map.has(WORDS_KEY)).toBe(false);
+  });
+
+  it("still gives back words kept just within their time", () => {
+    reloadKeepingWords(A, "נגמר החלב");
+    vi.advanceTimersByTime(NOTE_FOR_MS - 1);
+    expect(takeKeptWords(A)).toBe("נגמר החלב");
+  });
+
+  it("keeps another chat's words for that chat", () => {
+    reloadKeepingWords(A, "נגמר החלב");
+    // Signed in again after the door, the person opened another chat first.
+    page.location.pathname = "/chat/c0000000-0000-4000-a000-000000000002";
+    expect(takeKeptWords(A)).toBeNull();
+    expect(tab.map.has(WORDS_KEY)).toBe(true);
+    page.location.pathname = CHAT;
+    expect(takeKeptWords(A)).toBe("נגמר החלב");
+  });
+
+  it("gives nothing to someone else signed in on that tab, and lets the words go", () => {
+    reloadKeepingWords(A, "נגמר החלב");
+    loadAgain();
+    expect(takeKeptWords(B)).toBeNull();
+    expect(tab.map.has(WORDS_KEY)).toBe(false);
+    expect(takeKeptWords(A)).toBeNull();
+  });
+
+  it("gives nothing of words kept too long ago, and lets them go", () => {
+    reloadKeepingWords(A, "נגמר החלב");
+    vi.advanceTimersByTime(NOTE_FOR_MS);
+    expect(takeKeptWords(A)).toBeNull();
+    expect(tab.map.has(WORDS_KEY)).toBe(false);
+  });
+
+  it("gives nothing of words that don't read, or are from after now, and lets them go", () => {
+    // As written by the chat, they would be given back.
+    tab.map.set(WORDS_KEY, kept(START, A, CHAT, "x"));
+    expect(takeKeptWords(A)).toBe("x");
+    for (const odd of [
+      "yes",
+      "{}",
+      kept(START, A, CHAT, ""),
+      kept(START, "", CHAT, "x"),
+      kept(START, A, "chat", "x"),
+      kept(-1, A, CHAT, "x"),
+      kept(Date.now() + 60_000, A, CHAT, "x"),
+      JSON.stringify({ at: START, person: A, where: CHAT, words: 5 }),
+    ]) {
+      tab.map.set(WORDS_KEY, odd);
+      expect(takeKeptWords(A), odd).toBeNull();
+      expect(tab.map.has(WORDS_KEY), odd).toBe(false);
+    }
+  });
+
+  it("keeps nothing when nothing is written, or nobody signed in is known, and loads all the same", () => {
+    for (const [person, words] of [
+      [A, ""],
+      [A, "  \n "],
+      [null, "נגמר החלב"],
+      ["", "נגמר החלב"],
+    ] as const) {
+      // What an earlier press kept goes too: this page's field is the one.
+      tab.map.set(WORDS_KEY, kept(Date.now(), A, CHAT, "ישן"));
+      reload.mockClear();
+      reloadKeepingWords(person, words);
+      expect(reload).toHaveBeenCalledTimes(1);
+      expect(tab.map.has(WORDS_KEY)).toBe(false);
+    }
+  });
+
+  it("loads the page all the same when storage can't keep the words", () => {
+    tab.refuse.set = true;
+    reloadKeepingWords(A, "נגמר החלב");
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(tab.map.has(WORDS_KEY)).toBe(false);
+    tab.refuse.set = false;
+    tab.refuse.remove = true;
+    reload.mockClear();
+    reloadKeepingWords(A, "נגמר החלב");
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives nothing when storage can't be read, or the words can't be let go", () => {
+    tab.map.set(WORDS_KEY, kept(START, A, CHAT, "נגמר החלב"));
+    tab.refuse.get = true;
+    expect(takeKeptWords(A)).toBeNull();
+    tab.refuse.get = false;
+    tab.refuse.remove = true;
+    // Kept, they would come back at every look.
+    expect(takeKeptWords(A)).toBeNull();
+  });
+
+  it("lets go of anyone else's words as the frame opens, and keeps the person's own", () => {
+    tab.map.set(WORDS_KEY, kept(START, A, CHAT, "נגמר החלב"));
+    forgetOthersWords(A);
+    expect(tab.map.has(WORDS_KEY)).toBe(true);
+    forgetOthersWords(B);
+    expect(tab.map.has(WORDS_KEY)).toBe(false);
+    // Too old, or not words at all: gone for the person too.
+    tab.map.set(WORDS_KEY, kept(START - NOTE_FOR_MS, A, CHAT, "נגמר החלב"));
+    forgetOthersWords(A);
+    expect(tab.map.has(WORDS_KEY)).toBe(false);
+    tab.map.set(WORDS_KEY, "yes");
+    forgetOthersWords(A);
+    expect(tab.map.has(WORDS_KEY)).toBe(false);
+    // Storage refused: nothing it can do, and nothing thrown.
+    tab.map.set(WORDS_KEY, kept(START, A, CHAT, "נגמר החלב"));
+    tab.refuse.get = true;
+    expect(() => forgetOthersWords(B)).not.toThrow();
+  });
+
+  it("says the message wasn't sent, then what to do, and that it waits in the field", async () => {
+    const he = (await import("@/messages/he.json")).default;
+    const en = (await import("@/messages/en.json")).default;
+    expect(he.app.updated.chat).toBe(
+      "האפליקציה התעדכנה, וההודעה לא נשלחה. טוענים מחדש, וההודעה מחכה בשדה.",
+    );
+    expect(he.app.updated.reload).toBe("טעינה מחדש");
+    expect(en.app.updated.chat).toBe(
+      "The app was updated, and your message wasn't sent. Reload, and your message waits in the field.",
+    );
+    expect(en.app.updated.reload).toBe("Reload");
   });
 });

@@ -67,6 +67,8 @@ import {
   useState,
   useTransition,
 } from "react";
+import { useSignedInId } from "@/app/release-note";
+import { reloadForRelease, untilReloaded } from "@/app/stale-build";
 import { byAttribute, refusalArrived } from "../../manage/editor-focus";
 import { TYPING_MS } from "../../manage/use-draft";
 import type {
@@ -332,6 +334,8 @@ function ListScreen({
   const th = useTranslations("app.lists.list.history");
   const router = useRouter();
   const { list, lookups, userId, timeZone, can } = data;
+  // Whose press it is, for a page loaded again for a release: the frame's.
+  const signedIn = useSignedInId();
   // Fixing a finished list in place (L6b-1): the screen's own state. How
   // many changes it saved, for "התיקון נשמר", the saves on their way, which
   // "סיום התיקון" waits for, and how many changes were refused, so it stays
@@ -799,7 +803,12 @@ function ListScreen({
     let saved: ListActionResult<unknown, ItemFailure>;
     try {
       saved = await actions.setItem(item.id, result, fix);
-    } catch {
+    } catch (error) {
+      // A page from the release before loads again, the change shown until
+      // it has gone, and is never sent again: the page loaded shows the item
+      // as the list has it, and the person ticks it again. A page that stays
+      // puts it back and says it failed, as any other failure.
+      if (reloadForRelease(error, signedIn)) await untilReloaded();
       saved = { ok: false, failure: "failed" };
     }
     if (saved.ok) {

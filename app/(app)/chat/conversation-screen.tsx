@@ -55,6 +55,7 @@ import {
 } from "@domain/chat-thread";
 import { AnnouncementCard } from "@ui/announcement-card";
 import { AttachSheet } from "@ui/attach-sheet";
+import { Button } from "@ui/button";
 import { ChatHeader } from "@ui/chat-header";
 import { Composer, type ComposerAttach } from "@ui/composer";
 import { DayDivider } from "@ui/day-divider";
@@ -89,6 +90,12 @@ import {
   useRef,
   useState,
 } from "react";
+import { useSignedInId } from "@/app/release-note";
+import {
+  isStaleBuild,
+  reloadKeepingWords,
+  takeKeptWords,
+} from "@/app/stale-build";
 import { actionsNameValues } from "./actions-name";
 import { focusLost, titleTakesFocus } from "./chat-focus";
 import { ChatNotice } from "./chat-notice";
@@ -349,6 +356,13 @@ type Shown =
  * through the signed upload the server gives for its one place, with its bar
  * and the way to stop it, and sent once the server has checked it.
  *
+ * A message sent from a page of the release before (closing the pilot, PR
+ * 1b) never went: its words go back to the field, and the line over it says
+ * the app was updated, with "טעינה מחדש". The page never loads again by
+ * itself, as what is written would go with it; pressed, it keeps the field's
+ * words for the page loaded, which puts them back (`@/app/stale-build`), and
+ * the person sends them. A picture or a PDF says it didn't go, as before.
+ *
  * The messages are a log screen readers don't read out as it grows (older
  * pages come in above it, a long gap at once); a line of its own says what
  * arrived from others, and that older messages came in.
@@ -356,10 +370,14 @@ type Shown =
 export function ConversationScreen(props: Props) {
   const { toPerson, kind, actions } = props;
   const t = useTranslations("app.chat");
+  const tu = useTranslations("app.updated");
   const format = useFormatter();
   const router = useRouter();
   const chat = useChat();
   const reader = chat.readerId;
+  // Whose words are kept across "טעינה מחדש", for a page from the release
+  // before: the frame's signed-in person.
+  const signedIn = useSignedInId();
 
   const [conversation, setConversation] = useState(props.conversation);
   // Sending reads the newest, never the one its drawing had.
@@ -386,6 +404,18 @@ export function ConversationScreen(props: Props) {
   const [outgoing, setOutgoing] = useState<OutgoingMessage[]>([]);
   const [text, setText] = useState("");
   const [notice, setNotice] = useState<ComposerNotice | null>(null);
+  /**
+   * A message met a page from the release before: the line over the field
+   * says so with "טעינה מחדש" until the page loads again, as nothing sent
+   * from this page goes.
+   */
+  const [updated, setUpdated] = useState(false);
+  // Loaded again from "טעינה מחדש": what was written is back in the field,
+  // for the person to send; never sent by itself.
+  useEffect(() => {
+    const words = takeKeptWords(signedIn);
+    if (words !== null) setText((now) => (now === "" ? words : now));
+  }, [signedIn]);
   /** The picture that goes with the next message, once made ready (C4). */
   const [picked, setPicked] = useState<Picture | null>(null);
   const [preparing, setPreparing] = useState(false);
@@ -971,6 +1001,19 @@ export function ConversationScreen(props: Props) {
   }
 
   /**
+   * It met a page from the release before, so it never went, and trying
+   * again from here never would: it leaves the conversation, its words go
+   * back to the field (before anything written since), and the line over
+   * the field says the app was updated, with "טעינה מחדש", which keeps them
+   * for the page loaded. Nothing loads by itself.
+   */
+  function stayedFromRelease(item: OutgoingMessage) {
+    setOutgoing((list) => list.filter((m) => m.draft !== item.draft));
+    setText((now) => (now.trim() === "" ? item.body : `${item.body}\n${now}`));
+    setUpdated(true);
+  }
+
+  /**
    * A message, a picture or a PDF refused as the chat closed, or as no
    * longer the person's (`closed`, `noAccess`): the screen is drawn again,
    * the line that says why where the field was (the Composer says it), or
@@ -1150,7 +1193,11 @@ export function ConversationScreen(props: Props) {
     let result: Awaited<ReturnType<ConversationActions["send"]>>;
     try {
       result = await actions.send(input);
-    } catch {
+    } catch (error) {
+      if (isStaleBuild(error)) {
+        stayedFromRelease(item);
+        return;
+      }
       result = { ok: false, failure: "failed" };
     }
     if (result.ok) {
@@ -2248,13 +2295,25 @@ export function ConversationScreen(props: Props) {
         onSend={send}
         blocked={props.blocked}
         notice={
-          notice
-            ? notice.of === "conversation"
-              ? t(`conversation.${notice.key}`)
-              : notice.of === "pdfFailure"
-                ? t.rich(`pdfFailure.${notice.key}`, { max: PDF_MB, ltr })
-                : t(`fileFailure.${notice.key}`)
-            : null
+          updated ? (
+            <span className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+              <span>{tu("chat")}</span>
+              <Button
+                variant="secondary"
+                onClick={() => reloadKeepingWords(signedIn, text)}
+              >
+                {tu("reload")}
+              </Button>
+            </span>
+          ) : notice ? (
+            notice.of === "conversation" ? (
+              t(`conversation.${notice.key}`)
+            ) : notice.of === "pdfFailure" ? (
+              t.rich(`pdfFailure.${notice.key}`, { max: PDF_MB, ltr })
+            ) : (
+              t(`fileFailure.${notice.key}`)
+            )
+          ) : null
         }
         tooLong={t.rich("conversation.tooLong", { max: CHAT_MESSAGE_MAX, ltr })}
         attach={attach}
