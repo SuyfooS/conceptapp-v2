@@ -8,8 +8,9 @@ import type { JoinState } from "../actions";
 // its code step's states (accessibility, part 2): the step's words are no
 // live line, so a new code is said once, by its field, and not again by a
 // line that changed; a refusal is the field's own, with no alert, the field
-// marked invalid only when the digits were refused. The router is stood in
-// for; nothing here is sent.
+// marked invalid only when the digits were refused. Too many codes from
+// this network is said with its minutes, in their own direction, on either
+// step. The router is stood in for; nothing here is sent.
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: () => {}, push: () => {}, refresh: () => {} }),
@@ -49,10 +50,15 @@ const CODE_STATES: Extract<JoinState, { step: "code" }>[] = [
   { step: "code", error: "wrongCode" },
   { step: "code", error: "invalidCode" },
   { step: "code", error: "tooMany" },
+  { step: "code", error: "tooManyNetwork", minutes: 12 },
   { step: "code", error: "failed" },
   { step: "code", error: "shiftsLeft" },
   { step: "code", error: "elsewhere" },
 ];
+
+/** Too many codes from this network in twelve minutes, as its line says it. */
+const NETWORK =
+  'נשלחו הרבה קודים מהרשת הזאת. אפשר לכבות את ה-Wi-Fi ולנסות מהסלולר, או לנסות שוב בעוד <span dir="ltr">12</span> דקות.';
 
 /** The code field, as drawn. */
 const codeInput = (html: string) =>
@@ -90,7 +96,9 @@ describe("joining's code step", () => {
       const words =
         state.error === "shiftsLeft" || state.error === "elsewhere"
           ? he.auth.join[state.error]
-          : he.auth.signIn.errors[state.error];
+          : state.error === "tooManyNetwork"
+            ? NETWORK
+            : he.auth.signIn.errors[state.error];
       const id = new RegExp(`<p id="([^"]+)"[^>]*>${words}</p>`).exec(
         html,
       )?.[1];
@@ -116,5 +124,14 @@ describe("joining's invite step", () => {
     expect(line).toBeGreaterThan(0);
     expect(html.indexOf('value="send"')).toBeGreaterThan(line);
     expect(draw({ step: "invite" })).not.toContain('role="alert"');
+  });
+
+  it("says too many codes from this network there, with its minutes in their own direction", () => {
+    const html = draw({ step: "invite", error: "tooManyNetwork", minutes: 12 });
+    const line = html.indexOf(
+      `<p role="alert" class="text-danger text-sm">${NETWORK}</p>`,
+    );
+    expect(line).toBeGreaterThan(0);
+    expect(html.indexOf('value="send"')).toBeGreaterThan(line);
   });
 });

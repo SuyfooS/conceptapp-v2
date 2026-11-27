@@ -8,7 +8,12 @@ import { redirect } from "next/navigation";
 import { rememberBusiness } from "../../(app)/business-cookie";
 import { pushSoon } from "../../push/server";
 import { forgetAfterSignIn } from "../after-sign-in";
-import { type SignInError, sendJoinCode, verifyCode } from "../otp";
+import {
+  type Refusal,
+  type SignInError,
+  sendJoinCode,
+  verifyCode,
+} from "../otp";
 import { landingAfterJoin } from "./landing";
 
 /**
@@ -18,9 +23,13 @@ import { landingAfterJoin } from "./landing";
  */
 export type JoinError = SignInError | "shiftsLeft" | "elsewhere";
 
+/**
+ * Joining's two steps, each with why it refused, if it did: an error, or
+ * too many codes from this network with its minutes (`Refusal`).
+ */
 export type JoinState =
-  | { step: "invite"; error?: JoinError }
-  | { step: "code"; error?: JoinError; resent?: boolean };
+  | ({ step: "invite" } & Refusal<JoinError>)
+  | ({ step: "code"; resent?: boolean } & Refusal<JoinError>);
 
 /**
  * Joining from an invite link: send a code to the invited number (its
@@ -47,7 +56,10 @@ export type JoinState =
  * check when it had none (its counts cleared). The app can't tell a bad
  * token itself, and showing the code step for a send refused for its check
  * would hide the refusal, so that is a known issue too (docs/ROADMAP.md,
- * 94). The number always comes from the invite, never from the form.
+ * 94). Too many codes from this network is said, with its minutes, on
+ * either step: that count is the caller's, which joining doesn't clear, so
+ * it is the same whether the number had an account or not. The number
+ * always comes from the invite, never from the form.
  * A link that stopped working on the way goes back to its page, which says
  * why.
  */
@@ -63,25 +75,31 @@ export async function join(
   const intent = form.get("intent");
 
   if (intent === "send" || intent === "resend") {
-    let error: SignInError | null;
+    let sent: Awaited<ReturnType<typeof sendJoinCode>>;
     try {
-      error = await sendJoinCode(invite.phone, {
+      sent = await sendJoinCode(invite.phone, {
         makeAccount: () => ensurePhoneAccount(invite.phone),
         captcha: captchaTokenOf(form.get(CAPTCHA_FIELD)),
       });
     } catch (cause) {
       console.error("join: sending the code failed", (cause as Error).message);
-      error = "failed";
+      sent = "failed";
     }
-    if (intent === "send" && error) {
-      // Too many, or a code sent to the number within the wait: the code
-      // step, word for word as for a code that went. A number with no
+    // Too many from this network comes with its minutes.
+    const refused: Refusal<SignInError> | null =
+      typeof sent === "string" ? { error: sent } : sent;
+    const error = refused?.error;
+    if (intent === "send" && refused) {
+      // Too many for the number, or a code sent to it within the wait: the
+      // code step, word for word as for a code that went. A number with no
       // account had its counts cleared and one with an account kept them,
       // so anything else here would tell the link's holder which it was.
+      // Too many from this network is said: joining clears no network's
+      // count, so it is the same either way.
       if (error === "tooMany" || error === "rateLimit") {
         return { step: "code", error: undefined, resent: false };
       }
-      return { step: "invite", error };
+      return { step: "invite", ...refused };
     }
     // A new code asked for within the app's wait between codes, which runs
     // from the number's last counted send: a sign-in code counted for a
@@ -94,8 +112,9 @@ export async function join(
     }
     return {
       step: "code",
-      error: error ?? undefined,
-      resent: intent === "resend" && !error,
+      error: undefined,
+      ...refused,
+      resent: intent === "resend" && !refused,
     };
   }
 

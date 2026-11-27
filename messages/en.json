@@ -1108,6 +1108,7 @@
         "invalidPhone": "Enter an Israeli mobile number, e.g. 050-123-4567.",
         "rateLimit": "You can ask for a new code in a few seconds.",
         "tooMany": "There were too many tries. You can try again later.",
+        "tooManyNetwork": "Many codes were sent from this network. You can turn off Wi-Fi and try on mobile data, or try again in {minutes, plural, one {a minute} other {<ltr>{minutes}</ltr> minutes}}.",
         "invalidCode": "The code is 6 digits.",
         "wrongCode": "The code is wrong or has expired. You can ask for a new one.",
         "captcha": "We couldn't confirm you're not a robot, so no code was sent. You can try again.",

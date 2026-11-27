@@ -5,7 +5,13 @@ import { announce } from "@ui/announcer";
 import { CodeSlots } from "@ui/code-slots";
 import { arrived } from "@ui/focus-after";
 import { useRouter } from "next/navigation";
-import { useEffect, useId, useLayoutEffect, useRef } from "react";
+import {
+  type ReactNode,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+} from "react";
 import { authFieldsClass } from "./auth-screen";
 import { answerHeard, focusAt, useQuietWhy } from "./step-results";
 
@@ -24,12 +30,16 @@ const ACCEPTED_MS = 650;
  * that was lost but never one the person put elsewhere. Its line is the
  * field's description too, first, for whoever comes back to it, though not
  * while the field keeps the focus it had as the announcer said it. A new
- * code asked for is said after it, the same words again included.
+ * code asked for is said after it, the same words again included. A line
+ * with a number in it (too many from this network, its minutes) shows as
+ * `errorLine` draws it, the number in its own direction, and is said as
+ * `error`, its plain words.
  */
 export function CodeField({
   label,
   intro,
   error,
+  errorLine,
   resent,
   answer,
   wrongCode,
@@ -40,7 +50,10 @@ export function CodeField({
   label: string;
   /** The step's words as it arrives (where the code went), in plain words. */
   intro?: string;
+  /** Why the step refused, in plain words: said, and shown unless `errorLine`. */
   error?: string;
+  /** The same words as the line shows them (`t.rich`, `<ltr>`), when not plain. */
+  errorLine?: ReactNode;
   /** On an answer that asked for a new code: what it says, in plain words. */
   resent?: string;
   /** Which answer of the step this is (`useAnswerCount`): each is heard. */
@@ -119,7 +132,7 @@ export function CodeField({
       />
       {error ? (
         <p id={errorId} className="px-1 text-danger text-sm">
-          {error}
+          {errorLine ?? error}
         </p>
       ) : null}
     </div>

@@ -3126,10 +3126,14 @@ read as messages/he.json. Console reads and writes are in `@db/wording`;
   for server-only writes. Bypasses RLS, so every caller checks who is
   asking first.
 - `@db/auth-limits`: the counts on sign-in codes, with the secret key.
-  `noteAuthAttempt` gives 0, the seconds to wait (any window of
-  `private.auth_limits`: a quarter of an hour, a day per number),
-  `NO_CODE_WAITING` (-1) for a check with no code sent to its number in the
-  last ten minutes, or `CODE_JUST_SENT` (-2) for a send within the app's
+  `noteAuthAttempt` gives 0, held (`{ by, seconds }`: the seconds to wait,
+  any window of `private.auth_limits`, a quarter of an hour and a day per
+  number; `by` the number's, `phone`, or the caller's, `caller`, whatever
+  the number's, which the database answers as `HELD_BY_CALLER`, 100000, over
+  the caller's own seconds, `20261128000600_network_limit.sql`; parsed with
+  Zod, anything else throws), `NO_CODE_WAITING` (-1) for a check with no
+  code sent to its number in the last ten minutes, or `CODE_JUST_SENT` (-2)
+  for a send within the app's
   own wait of the number's last counted one, on either side of it
   (`private.auth_send_wait`, 65 seconds, the same for every number; of two
   sent at once, the one stamped later may be counted first); either is
@@ -3145,7 +3149,12 @@ read as messages/he.json. Console reads and writes are in `@db/wording`;
   which is the whole site's. `forgetNumberAttempts` clears a
   number's counts while it has no account (none reached anyone): for
   joining from an open invite only, before its code is counted; the
-  database keeps the counts of a number with an account.
+  database keeps the counts of a number with an account. The caller's count
+  is the same for every number, so sign-in's and joining's sends say it
+  (`tooManyNetwork`, with its minutes, `app/(auth)/otp.ts`); the number's
+  stays unsaid. A send given back is given back for the caller too, and on
+  sign-in that happens only to a number with an account, whose send already
+  answered "something went wrong" (`docs/ROADMAP.md`, known issue 98).
 - `@db/admin`: the console's reads and writes. `createBusiness(actor,
   business)` calls `public.create_business` (service role only): it opens
   the business, applies its template and writes `business.create` to the

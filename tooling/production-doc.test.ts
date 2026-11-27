@@ -186,6 +186,18 @@ describe("docs/production.md", () => {
     }
   });
 
+  it("says in B12 what the screen tells someone the network's count stopped, in its own words", () => {
+    // Closing the pilot, PR 2: the 21st person on the shop's Wi-Fi is told,
+    // and the day's SQL is for when cellular isn't an answer.
+    const [said = ""] = he.auth.signIn.errors.tooManyNetwork.split(".");
+    expect(said.length).toBeGreaterThan(10);
+    const joining = section("ב12.");
+    expect(joining).toContain(said);
+    expect(joining.indexOf(said)).toBeLessThan(
+      joining.indexOf("update private.auth_limits"),
+    );
+  });
+
   it("checks the closed door signed out, since the proxy sends anyone signed in home", () => {
     const checks = doc
       .split("\n")

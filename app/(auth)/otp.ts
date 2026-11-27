@@ -11,7 +11,7 @@ import {
 import { createAdminClient } from "@db/supabase/admin";
 import { createDetachedClient } from "@db/supabase/detached";
 import { createClient } from "@db/supabase/server";
-import { refusalReason } from "@domain/otp";
+import { minutesToWait, refusalReason } from "@domain/otp";
 import { normalizeIsraeliMobile } from "@domain/phone";
 import { headers } from "next/headers";
 
@@ -31,6 +31,23 @@ export type SignInError =
   | "failed";
 
 /**
+ * Too many codes asked for from the caller's network lately, whatever the
+ * number's own count: said with the whole minutes until one may go from it
+ * (`tooManyNetwork`, sign-in's and joining's sends). The count is the
+ * caller's, kept the same for every number, with an account or without, so
+ * saying it tells nothing of the number (20261128000600_network_limit.sql).
+ */
+export type NetworkHeld = { error: "tooManyNetwork"; minutes: number };
+
+/**
+ * Why a step of sign-in or joining refused, as its state holds it: one of
+ * its errors (`E`), or too many codes from this network, with its minutes.
+ */
+export type Refusal<E extends string = SignInError> =
+  | { error?: E; minutes?: undefined }
+  | NetworkHeld;
+
+/**
  * The address the request came from. Vercel sets these headers itself, so a
  * visitor can't choose them. Null when there is none.
  */
@@ -43,18 +60,21 @@ async function callerAddress(): Promise<string | null> {
 
 /**
  * Count a code about to be sent or checked, or say why it may not go: the
- * number or the caller tried too many lately, no code went to the number
- * lately so there is nothing to check (`noCode`), a code was counted for the
- * number within the app's own wait between codes so none goes now
- * (`justSent`, the same for every number), or the count itself failed (and
- * then nothing goes). `noCode` and `justSent` are counted for the caller
- * only. These limits hold the app's own way in; the auth API called directly
- * is held by Supabase's and Twilio's own limits.
+ * caller tried too many lately (`tooManyNetwork`, with its minutes, whatever
+ * the number's count), the number did (`tooMany`, unsaid as ever), no code
+ * went to the number lately so there is nothing to check (`noCode`), a code
+ * was counted for the number within the app's own wait between codes so none
+ * goes now (`justSent`, the same for every number), or the count itself
+ * failed (and then nothing goes). `noCode` and `justSent` are counted for
+ * the caller only. These limits hold the app's own way in; the auth API
+ * called directly is held by Supabase's and Twilio's own limits.
  */
 async function count(
   kind: AuthAttempt["kind"],
   phone: string,
-): Promise<AuthAttempt | "tooMany" | "noCode" | "justSent" | "failed"> {
+): Promise<
+  AuthAttempt | NetworkHeld | "tooMany" | "noCode" | "justSent" | "failed"
+> {
   try {
     const attempt: AuthAttempt = {
       kind,
@@ -65,7 +85,12 @@ async function count(
     const answer = await noteAuthAttempt(attempt);
     if (answer === NO_CODE_WAITING) return "noCode";
     if (answer === CODE_JUST_SENT) return "justSent";
-    return answer > 0 ? "tooMany" : attempt;
+    if (answer === 0) return attempt;
+    // The caller's count, the same for every number, is said with its own
+    // minutes; the number's stays unsaid.
+    return answer.by === "caller"
+      ? { error: "tooManyNetwork", minutes: minutesToWait(answer.seconds) }
+      : "tooMany";
   } catch (cause) {
     console.error(
       "counting a sign-in attempt failed",
@@ -79,7 +104,8 @@ async function count(
  * What asking for a code came to: sent; a code counted for the number within
  * the app's own wait, so the auth server wasn't asked (`justSent`); the
  * number has no account, counted all the same (`unknownPhone`); refused for
- * its "אני לא רובוט" check (`captcha`); too many; or failed.
+ * its "אני לא רובוט" check (`captcha`); too many, from this network
+ * (`NetworkHeld`) or for the number; or failed.
  */
 type Requested =
   | "sent"
@@ -87,6 +113,7 @@ type Requested =
   | "unknownPhone"
   | "captcha"
   | "tooMany"
+  | NetworkHeld
   | "failed";
 
 /** How a code goes: what runs first, and the check's token. */
@@ -122,7 +149,7 @@ async function requestCode(
   const attempt = await count("send", number);
   // Only a check can find no code waiting.
   if (attempt === "noCode") return "failed";
-  if (typeof attempt === "string") return attempt;
+  if (typeof attempt === "string" || "error" in attempt) return attempt;
   await prepare?.();
   const supabase = await createClient();
   const { error } = await supabase.auth.signInWithOtp({
@@ -162,16 +189,20 @@ async function requestCode(
  * without still gets the code step (a known issue in docs/ROADMAP.md). A
  * send refused for its "אני לא רובוט" check (`captcha`) is said the same
  * for every number: the auth server checks it before it looks the number
- * up.
+ * up. Too many from this network is said with its minutes (`NetworkHeld`),
+ * the same for every number too; too many for the number is `tooMany`.
  */
 export async function sendSignInCode(
   phone: string,
   captcha?: string,
-): Promise<"invalidPhone" | "tooMany" | "failed" | "captcha" | null> {
+): Promise<
+  "invalidPhone" | "tooMany" | "failed" | "captcha" | NetworkHeld | null
+> {
   // One spelling per number, so each number has one count.
   const number = normalizeIsraeliMobile(phone);
   if (!number) return "invalidPhone";
   const sent = await requestCode(number, { captcha });
+  if (typeof sent === "object") return sent;
   return sent === "tooMany" || sent === "failed" || sent === "captcha"
     ? sent
     : null;
@@ -181,17 +212,18 @@ export async function sendSignInCode(
  * Send a code by SMS to a number known to have an account, unless the number
  * or the caller asked for too many lately: joining (`sendJoinCode`), once the
  * invite's account is made (`prepare`, which runs once the code may go,
- * before it does), and the hiring file's codes, to the session's own number.
- * A code counted for the number within the app's own wait is said
- * (`rateLimit`; joining answers it as a code asked for, `join`); nothing
- * went, and the auth server wasn't asked. The "אני לא רובוט" check's token
- * goes with it (`captcha`), and a refusal for it is said. Accounts are
- * never created here; people arrive through invites.
+ * before it does), and the hiring file's codes (`sendCode`). A code counted
+ * for the number within the app's own wait is said (`rateLimit`; joining
+ * answers it as a code asked for, `join`); nothing went, and the auth
+ * server wasn't asked. Too many from this network is said with its minutes
+ * (`NetworkHeld`). The "אני לא רובוט" check's token goes with it
+ * (`captcha`), and a refusal for it is said. Accounts are never created
+ * here; people arrive through invites.
  */
-export async function sendCode(
+async function sendTo(
   phone: string,
-  options: SendOptions = {},
-): Promise<SignInError | null> {
+  options: SendOptions,
+): Promise<SignInError | NetworkHeld | null> {
   // One spelling per number, so each number has one count.
   const number = normalizeIsraeliMobile(phone);
   if (!number) return "invalidPhone";
@@ -208,6 +240,19 @@ export async function sendCode(
 }
 
 /**
+ * Send one of the hiring file's codes, to the session's own number, as
+ * `sendTo` does. Too many from this network is `tooMany` here, as it was:
+ * the file's screens say too many in their own words.
+ */
+export async function sendCode(
+  phone: string,
+  options: SendOptions = {},
+): Promise<SignInError | null> {
+  const refused = await sendTo(phone, options);
+  return typeof refused === "object" && refused !== null ? "tooMany" : refused;
+}
+
+/**
  * Send the code to join from an open invite, making the invited number's
  * account once the code may go (`makeAccount`). While the number has no
  * account its counts are cleared first: sign-in counts a send to such a
@@ -220,7 +265,10 @@ export async function sendCode(
  * the account made, which joining needs anyway. The clear and the app's
  * wait come before the check too, so within the wait after a sign-in code
  * a send with no good token answers `rateLimit` for a number with an
- * account and `captcha` for one without (docs/ROADMAP.md, 94).
+ * account and `captcha` for one without (docs/ROADMAP.md, 94). Too many
+ * from this network is said with its minutes (`NetworkHeld`): the clear is
+ * the number's alone, so the network's count is the same whether the number
+ * had an account or not.
  */
 export async function sendJoinCode(
   phone: string,
@@ -228,13 +276,13 @@ export async function sendJoinCode(
     makeAccount,
     captcha,
   }: { makeAccount: () => Promise<void>; captcha?: string },
-): Promise<SignInError | null> {
+): Promise<SignInError | NetworkHeld | null> {
   const number = normalizeIsraeliMobile(phone);
   if (!number) return "invalidPhone";
   await forgetNumberAttempts(number).catch((cause: Error) => {
     console.error("clearing a new number's attempts failed", cause.message);
   });
-  return sendCode(number, { prepare: makeAccount, captcha });
+  return sendTo(number, { prepare: makeAccount, captcha });
 }
 
 type Checked =
@@ -245,7 +293,8 @@ type Checked =
  * A code checked on `client`, counted first: the number in one spelling,
  * so a respelled one meets the same count. With no code sent to the number
  * lately there is nothing to check, so it is a wrong code and the auth
- * server isn't asked.
+ * server isn't asked. Too many checks from this network is `tooMany`, as
+ * it was: the network's words speak of codes sent.
  */
 async function checked(
   client: Pick<ReturnType<typeof createDetachedClient>, "auth">,
@@ -259,6 +308,7 @@ async function checked(
   // Only a send can meet the wait between codes.
   if (attempt === "justSent") return { error: "failed" };
   if (typeof attempt === "string") return { error: attempt };
+  if ("error" in attempt) return { error: "tooMany" };
   const { data, error } = await client.auth.verifyOtp({
     phone: number,
     token,

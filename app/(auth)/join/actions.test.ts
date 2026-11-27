@@ -12,7 +12,10 @@ import type { JoinState } from "./actions";
 // kept and one with none had cleared; too many and a failure are said. A
 // link that stopped working sends nothing. Each send passes on the "אני לא
 // רובוט" check's token, and one the auth server refused for it is said on
-// its own step, the same for every number. A right code with a claim that
+// its own step, the same for every number. Too many codes from this network
+// is said on either step, with its minutes: that count is the caller's,
+// which joining never clears, so it is the same whether the number had an
+// account or not. A right code with a claim that
 // works forgets a page an earlier link kept for after sign-in (known issue
 // 21) and lands where H5b says; a refused claim forgets nothing.
 
@@ -134,6 +137,23 @@ describe("the first send", () => {
     }
   });
 
+  it("says too many from this network on the invite step, with its minutes, never as the code step", async () => {
+    const held = { error: "tooManyNetwork", minutes: 12 } as const;
+    // A number with an account and one without: sendJoinCode answers both
+    // alike, the network's count being the caller's.
+    for (const phone of ["+972500000801", "+972509999999"]) {
+      mocks.findInvite.mockResolvedValueOnce({
+        ...(await mocks.findInvite()),
+        phone,
+      });
+      mocks.sendJoinCode.mockResolvedValueOnce(held);
+      expect(await join(TOKEN_LINK, inviteStep, posted("send"))).toEqual({
+        step: "invite",
+        ...held,
+      });
+    }
+  });
+
   it("keeps a malformed number and a failure on the invite step", async () => {
     for (const error of ["invalidPhone", "failed"] as const) {
       mocks.sendJoinCode.mockResolvedValueOnce(error);
@@ -182,6 +202,16 @@ describe("a new code", () => {
         resent: false,
       });
     }
+  });
+
+  it("says too many from this network on the code step, with its minutes", async () => {
+    const held = { error: "tooManyNetwork", minutes: 3 } as const;
+    mocks.sendJoinCode.mockResolvedValueOnce(held);
+    expect(await join(TOKEN_LINK, codeStep, posted("resend"))).toEqual({
+      step: "code",
+      ...held,
+      resent: false,
+    });
   });
 });
 

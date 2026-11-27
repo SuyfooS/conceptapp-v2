@@ -7,9 +7,10 @@
 -- (forget_number_attempts); one with an account keeps them. A send within
 -- the app's own wait of the number's last counted one, the same for every
 -- number, answers -2 and is counted for its caller alone, and so does one
--- stamped a moment before a send already counted. The limits and the
--- wait are set here, since the local seed lifts the limits and shortens the
--- wait for the browser tests.
+-- stamped a moment before a send already counted. A try its caller's count
+-- holds answers 100000 over its seconds (auth_limits_network.test.sql).
+-- The limits and the wait are set here, since the local seed lifts the
+-- limits and shortens the wait for the browser tests.
 begin;
 select plan(51);
 
@@ -69,7 +70,7 @@ select is(
       '2026-11-20 08:00+00'::timestamptz + n * interval '1 second') as w
     from generate_series(1, 3) n
   ) tries),
-  898, 'with no code waiting, a check is still held by its caller''s limit'
+  100898, 'with no code waiting, a check is still held by its caller''s limit, said as the caller''s'
 );
 
 -- A code's ten minutes.
@@ -229,7 +230,7 @@ select is(
 );
 select is(
   public.note_auth_attempt('send', '+972500005700', '7.7.7.5', '2026-11-20 15:01:50+00'),
-  791, 'within the wait, a send is still held by its caller''s limit'
+  100791, 'within the wait, a send is still held by its caller''s limit, said as the caller''s'
 );
 -- Two codes asked for at once: the app stamps each before it reaches the
 -- database, so the one stamped later may take the number's lock first.

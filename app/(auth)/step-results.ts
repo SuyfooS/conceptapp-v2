@@ -7,16 +7,18 @@
 import type { Politeness } from "@ui/announcer-store";
 import { type DocLike, focusLost } from "@ui/focus-after";
 import { type RefObject, useEffect, useState } from "react";
-import type { SignInError } from "./otp";
+import type { NetworkHeld, SignInError } from "./otp";
 
 /**
  * Whether a refusal on the phone step is about the number itself, and so
  * said on its field: the field marked invalid, its message read with it, the
  * focus taken there. Every other one (the "אני לא רובוט" check, too many
- * tries, a failure) has its own line above the press, and the number, which
- * was fine, isn't marked.
+ * tries, too many from this network, a failure) has its own line above the
+ * press, and the number, which was fine, isn't marked.
  */
-export function aboutTheNumber(error: SignInError | undefined): boolean {
+export function aboutTheNumber(
+  error: SignInError | NetworkHeld["error"] | undefined,
+): boolean {
   return error === "invalidPhone";
 }
 
