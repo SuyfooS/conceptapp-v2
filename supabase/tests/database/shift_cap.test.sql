@@ -11,7 +11,7 @@
 -- is and takes nobody more. Fixed ids (ca5…), numbers (97250085xxxx) and
 -- slugs (cap-…) of its own, and explicit times wherever the clock matters.
 begin;
-select plan(24);
+select plan(25);
 set local timezone = 'UTC';
 
 create function pg_temp.p(n integer) returns uuid language sql as $$
@@ -392,6 +392,30 @@ select is(
     '2026-12-09 09:00+00')),
   pg_temp.crowded(array['tuesday']),
   'the shift written in place with a 51st is refused'
+);
+
+-- The edit a full shift meets most: one person for another, the other 49 the
+-- same. Kept, as a save of its own would be (nothing below reads this week),
+-- so the count after it shows who is on. The write takes the one off before
+-- it puts the other on; a write that put the new one on first would count 51
+-- and be refused.
+select is(
+  array[
+    pg_temp.kept(format(
+      'select public.save_week_schedule(%L::uuid, %L::uuid, %L::jsonb, %L::jsonb, %L::timestamptz, null)',
+      pg_temp.p(100), pg_temp.id('w2'),
+      jsonb_build_array(
+        pg_temp.shift('Tuesday', '2026-12-15', '07:00', '15:00', pg_temp.people(2, 51))
+          || jsonb_build_object('id', pg_temp.id('tuesday'))
+      ),
+      (select jsonb_object_agg(d.shift_id, d.digest) from private.week_digests(pg_temp.id('w2')) d),
+      '2026-12-09 10:00+00')),
+    pg_temp.headcount('tuesday')::text,
+    pg_temp.on_it('tuesday', 51)::text,
+    pg_temp.on_it('tuesday', 1)::text
+  ],
+  array['ok', '50', 'true', 'false'],
+  'one person swapped for another on that full shift is saved, and it still holds 50: the new one on, the old one off'
 );
 
 ------------------------------------------------------------------------------
