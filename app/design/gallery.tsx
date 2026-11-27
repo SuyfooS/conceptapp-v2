@@ -1072,7 +1072,7 @@ function GalleryBody({
         <Section title={t("oldBrowser")}>
           {/* The notice the root layout keeps hidden in this browser, shown
               here by its prop, in the gallery's language. */}
-          <OldBrowser shown className="z-auto px-0 pt-0" />
+          <OldBrowser shown className="px-0 pt-0" />
           <p className="px-1 text-ink-2 text-sm">{t("oldBrowserHint")}</p>
         </Section>
 

@@ -1,9 +1,15 @@
 @import "tailwindcss";
 
 /*
- * Direction variants follow the element's real direction (:dir), so an LTR
- * block inside the RTL page (English text, a phone field) flips correctly.
- * Tailwind's built-in rtl:/ltr: also match any descendant of [dir=rtl].
+ * Direction variants, written on :dir(). The CSS served has no :dir(): while
+ * Next's browser targets include Chrome 111, the build turns these, and the
+ * arbitrary [:dir(…)] variants (`ltrInputClass`, the floating dock), into
+ * :lang(), so they follow the element's `lang`, not its `dir`. An LTR block
+ * inside the RTL page that should flip them (English text) sets its `lang`
+ * too; a phone field with only dir="ltr" still matches rtl:. The old-browser
+ * rule below says why its floor counts on that, and tooling/old-browser.test.ts
+ * holds the targets. Tailwind's built-in rtl:/ltr: also match any descendant
+ * of [dir=rtl].
  */
 @custom-variant rtl (&:dir(rtl));
 @custom-variant ltr (&:dir(ltr));

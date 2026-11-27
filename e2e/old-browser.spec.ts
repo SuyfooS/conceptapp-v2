@@ -11,8 +11,9 @@ import { expect, type Page, test } from "./test";
 // stays hidden on every page, signed out and in, and the CSS served has no
 // :dir(), which the floor counts on; the rule is then taken from
 // the stylesheet as served and applied as such a browser applies it, to see
-// the notice at the top, above the page's fixed bars, readable, and the page
-// still there under it. The gallery shows it by its prop. Unit and tooling
+// the notice at the top, with nothing drawn over it, readable, the page still
+// there under it and its bars still taking the press, a short phone's tab bar
+// over it too. The gallery shows it by its prop. Unit and tooling
 // tests: packages/ui/old-browser-notice.test.ts, tooling/old-browser.test.ts.
 
 const w = he.app.oldBrowser;
@@ -37,6 +38,17 @@ const pageNotice = (page: Page) => page.locator("body > [data-old-browser]");
 /** The page's own title, once its streamed part is in. */
 const pageTitle = (page: Page) =>
   page.getByRole("heading", { level: 1 }).filter({ visible: true }).first();
+
+/**
+ * The first link of the main navigation in sight: the desktop's sidebar, or
+ * the tab bar below that width.
+ */
+const firstTab = (page: Page) =>
+  page
+    .getByRole("navigation", { name: he.ui.appShell.mainNav, exact: true })
+    .filter({ visible: true })
+    .getByRole("link")
+    .first();
 
 /**
  * The rule that shows the notice, as the build served it, applied with no
@@ -170,20 +182,31 @@ test("the gallery shows it by its prop, in Hebrew and English, while the page's 
     await expect(shown).toContainText(line);
   }
   // The platforms in bold, as the words mark them.
-  await expect(shown.locator("strong")).toHaveText(
-    [w.android, w.iphone].map((line) => /<b>(.*?)<\/b>/.exec(line)?.[1] ?? ""),
-  );
-  const { violations } = await new AxeBuilder({ page })
-    .include("main [data-old-browser]")
-    .analyze();
-  expect(violations.map((v) => v.id)).toEqual([]);
+  const bold = (lines: string[]) =>
+    lines.map((line) => /<b>(.*?)<\/b>/.exec(line)?.[1] ?? "");
+  await expect(shown.locator("strong")).toHaveText(bold([w.android, w.iphone]));
+  const axeOnIt = async () =>
+    (
+      await new AxeBuilder({ page })
+        .include("main [data-old-browser]")
+        .analyze()
+    ).violations.map((v) => v.id);
+  expect(await axeOnIt()).toEqual([]);
 
+  // In English, left to right, the same: its lines, its bold, axe.
   await page
     .getByRole("button", { name: he.design.languages.en, exact: true })
     .click();
-  const english = main.getByRole("region", { name: en.app.oldBrowser.title });
+  const ew = en.app.oldBrowser;
+  const english = main.getByRole("region", { name: ew.title });
   await expect(english).toBeVisible();
-  await expect(english).toContainText(en.app.oldBrowser.cantUpdate);
+  for (const line of [ew.cantUpdate, ew.tryAnyway]) {
+    await expect(english).toContainText(line);
+  }
+  await expect(english.locator("strong")).toHaveText(
+    bold([ew.android, ew.iphone]),
+  );
+  expect(await axeOnIt()).toEqual([]);
 });
 
 for (const colorScheme of ["light", "dark"] as const) {
@@ -191,7 +214,7 @@ for (const colorScheme of ["light", "dark"] as const) {
     test.use({ colorScheme });
 
     for (const path of ["/sign-in", "/design/shell"]) {
-      test(`${path}: where relative colours are missing, the notice is at the top, above the bars, and the page still works`, async ({
+      test(`${path}: where relative colours are missing, the notice is at the top, nothing is drawn over it, and the page still works`, async ({
         page,
       }) => {
         await page.goto(path);
@@ -208,10 +231,13 @@ for (const colorScheme of ["light", "dark"] as const) {
           await expect(region).toContainText(line);
         }
 
-        // At the top of the page, and nothing fixed is drawn over it: the
-        // desktop's sidebar takes the pointer, so it would be the element
-        // found. The floating title and its fade take none, so they are
-        // passed through here; they sit at z-30 and z-20, under its z-40.
+        // At the top of the page, and nothing that is drawn lies over it.
+        // It has no z-index, so a fixed bar that met it would be drawn over
+        // it: at the top none does (the desktop's sidebar is beside it, the
+        // tab bar far below), and the floating title and its fade, which
+        // would, stay see-through until the header has scrolled away. So no
+        // point of it is another element's, and no fixed element that can
+        // be seen meets it, those that take no pointer included.
         const box = await region.boundingBox();
         expect(box?.y ?? Number.POSITIVE_INFINITY).toBeLessThan(48);
         const covered = await notice.evaluate((root) => {
@@ -224,11 +250,47 @@ for (const colorScheme of ["light", "dark"] as const) {
             [r.left + 28, r.bottom - 28],
             [r.right - 28, r.bottom - 28],
           ];
-          return points
+          const taken = points
             .filter(([x, y]) => !root.contains(document.elementFromPoint(x, y)))
             .map(([x, y]) => `${Math.round(x)},${Math.round(y)}`);
+          const seen = (element: Element) => {
+            if (getComputedStyle(element).visibility !== "visible") {
+              return false;
+            }
+            for (let at: Element | null = element; at; at = at.parentElement) {
+              if (getComputedStyle(at).opacity === "0") return false;
+            }
+            return true;
+          };
+          const over = Array.from(document.body.querySelectorAll("*"))
+            .filter(
+              (element) =>
+                !root.contains(element) &&
+                getComputedStyle(element).position === "fixed" &&
+                seen(element),
+            )
+            .filter((element) => {
+              const b = element.getBoundingClientRect();
+              return (
+                b.width > 0 &&
+                b.height > 0 &&
+                b.left < r.right &&
+                b.right > r.left &&
+                b.top < r.bottom &&
+                b.bottom > r.top
+              );
+            })
+            .map((element) => element.outerHTML.slice(0, 120));
+          return [...taken, ...over];
         });
         expect(covered).toEqual([]);
+
+        // And what lies beside it still takes the press: the desktop's
+        // sidebar, whose first links sit level with it, or the tab bar. A
+        // trial press fails when something else is under the link's middle.
+        if (path === "/design/shell") {
+          await firstTab(page).click({ trial: true });
+        }
 
         // It never blocks the page: the page is all still there, under it.
         await expect(pageTitle(page)).toBeVisible();
@@ -241,3 +303,39 @@ for (const colorScheme of ["light", "dark"] as const) {
     }
   });
 }
+
+test("on a phone too short for both, the tab bar is drawn over the notice and still takes the press", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "phone", "A phone's tab bar, once.");
+  await page.goto("/design/shell");
+  await expect(pageTitle(page)).toBeVisible();
+  expect(await showAsAnOldBrowser(page)).not.toBeNull();
+  const card = pageNotice(page).locator("section");
+  await expect(card).toBeVisible();
+  const tab = firstTab(page);
+  await expect(tab).toBeVisible();
+
+  // The screen made just short enough for the tab's middle to fall 24px
+  // inside the card, as on a first iPhone SE with Safari's bars showing:
+  // the bar keeps to the bottom, the card to the top.
+  const size = page.viewportSize();
+  const [cardBox, tabBox] = await Promise.all([
+    card.boundingBox(),
+    tab.boundingBox(),
+  ]);
+  if (!size || !cardBox || !tabBox) throw new Error("Not drawn");
+  const middleFromBottom = size.height - (tabBox.y + tabBox.height / 2);
+  await page.setViewportSize({
+    width: size.width,
+    height: Math.round(cardBox.y + cardBox.height - 24 + middleFromBottom),
+  });
+  const [cardNow, tabNow] = await Promise.all([
+    card.boundingBox(),
+    tab.boundingBox(),
+  ]);
+  expect((tabNow?.y ?? 0) + (tabNow?.height ?? 0) / 2).toBeLessThan(
+    (cardNow?.y ?? 0) + (cardNow?.height ?? 0),
+  );
+  await tab.click({ trial: true });
+});

@@ -41,10 +41,12 @@ Tailwind's `hidden`, which is in a cascade layer, and one rule in
 missing (Chrome and Edge 119, Safari 16.4, Firefox 128; the rule's comment
 says why that is the floor). A browser too old for layers never applies
 `hidden`, so it shows there too. `shown` draws it in any browser, for the
-gallery. It lies in the flow, above the fixed sidebar and floating title
-(`z-40`) and never over the page, which scrolls on under it, and its colours
-are plain tokens (surface, ink, warning), never one mixed with `color-mix()`
-or a relative colour. Its region is named by its title.
+gallery. It lies in the flow, never over the page, which scrolls on under
+it, and has no z-index: the fixed bars, a toast and a sheet are drawn over it
+as over the page, so a tab bar it reaches on a short phone still takes the
+press, and at the top none of them meets it. Its colours are plain tokens
+(surface, ink, warning), never one mixed with `color-mix()` or a relative
+colour. Its region is named by its title.
 
 ## For a screen reader and the keyboard
 

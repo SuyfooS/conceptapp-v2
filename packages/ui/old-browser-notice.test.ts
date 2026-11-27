@@ -59,14 +59,21 @@ describe("OldBrowserNotice", () => {
     expect(html).toMatch(/<svg[^>]*aria-hidden="true"/);
   });
 
-  it("never blocks the page: in the flow, above the fixed bars only while it is there", () => {
-    const classes = rootClasses(draw());
-    expect(classes).toContain("relative");
-    expect(classes).toContain("z-40");
-    for (const blocking of ["fixed", "absolute", "sticky", "inset-0"]) {
-      expect(classes).not.toContain(blocking);
+  it("never blocks the page: in the flow, with no z-index, so every fixed bar is drawn over it", () => {
+    const html = draw();
+    const card = /<section [^>]*class="([^"]*)"/.exec(html)?.[1];
+    expect(card).toBeTruthy();
+    // Neither the full-width box nor its card is lifted: a lifted box would
+    // lie over the desktop's sidebar beside the card, and the card over a
+    // short phone's tab bar.
+    for (const classes of [rootClasses(html), (card ?? "").split(/\s+/)]) {
+      for (const lifted of ["relative", "fixed", "absolute", "sticky"]) {
+        expect(classes).not.toContain(lifted);
+      }
+      expect(classes).not.toContain("inset-0");
+      expect(classes.filter((name) => /^-?z-/.test(name))).toEqual([]);
     }
-    expect(draw()).not.toMatch(/pointer-events|aria-modal|role="dialog"/);
+    expect(html).not.toMatch(/pointer-events|aria-modal|role="dialog"/);
   });
 
   it("takes a screen's own spacing in place of its own", () => {

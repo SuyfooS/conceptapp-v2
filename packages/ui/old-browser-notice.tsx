@@ -31,10 +31,14 @@ export type OldBrowserNoticeProps = {
  * layers never applies `hidden` at all, so it shows there too.
  *
  * It never blocks the page: it lies in the flow above it and scrolls away
- * with it, so the person can still try. While it is there it is drawn above
- * the desktop's sidebar and the floating title, which are fixed. Its colours
- * are the plain tokens (surface, ink, warning), never one mixed with
- * color-mix() or a relative colour, so it reads in the browser it is for.
+ * with it, so the person can still try. It has no z-index of its own, so the
+ * fixed bars, a toast and a sheet are drawn over it as over the rest of the
+ * page, and a tab bar it reaches on a short phone still takes the press. At
+ * the top none of them meets it: the desktop's sidebar is beside it, and the
+ * floating title and its fade show only once the header below it has
+ * scrolled away. Its colours are the plain tokens (surface, ink, warning),
+ * never one mixed with color-mix() or a relative colour, so it reads in the
+ * browser it is for.
  */
 export function OldBrowserNotice({
   title,
@@ -48,7 +52,7 @@ export function OldBrowserNotice({
       data-old-browser=""
       className={cn(
         !shown && "hidden",
-        "relative z-40 px-4 pt-[max(1rem,env(safe-area-inset-top))]",
+        "px-4 pt-[max(1rem,env(safe-area-inset-top))]",
         className,
       )}
     >
