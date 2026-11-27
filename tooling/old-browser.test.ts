@@ -1,5 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { OLD_BROWSER_ATTRIBUTE } from "@ui/old-browser-notice";
+import { getSupportedBrowsers } from "next/dist/build/get-supported-browsers";
+import MODERN_BROWSERSLIST_TARGET from "next/dist/shared/lib/modern-browserslist-target";
 import { NextIntlClientProvider } from "next-intl";
 import { createElement } from "react";
 import { renderToString } from "react-dom/server";
@@ -114,6 +116,15 @@ describe("the notice for an old browser", () => {
     // needs no :dir() (Chrome 120). Keeping :dir() raises the floor: the
     // condition in app/globals.css gains `or (not selector(:dir(rtl)))`
     // in the same change, and this test with it.
+    const checkedOn = ["chrome 111", "edge 111", "firefox 111", "safari 16.4"];
+    // Next's own default, which it regenerates from "baseline widely
+    // available": an update that raises it to Chrome 120 keeps :dir().
+    expect(MODERN_BROWSERSLIST_TARGET).toEqual(checkedOn);
+    // What the build takes, read as Next reads it: a browserslist anywhere
+    // up the tree, or BROWSERSLIST in the environment, wins over the
+    // default. One set only where the site is built (Vercel) is seen by no
+    // test here; the e2e finds no :dir() in the CSS CI's build serves.
+    expect(getSupportedBrowsers(process.cwd(), false)).toEqual(checkedOn);
     expect(readFileSync("next.config.ts", "utf8")).not.toMatch(
       /lightningCssFeatures|dir-selector|browserslist/,
     );
@@ -205,12 +216,15 @@ describe("the notice for an old browser", () => {
     );
     expect(words.android).toMatch(/Chrome.*Play/);
     // The title says "this device", and the clock station is often an old
-    // iPad: the Apple line names it, whose version and Settings are the same.
+    // iPad: the Apple line names it, whose Settings path is the same.
     expect(words.iphone).toMatch(/^<b>באייפון ובאייפד:<\/b>/);
     expect(en.app.oldBrowser.iphone).toMatch(/^<b>On iPhone and iPad:<\/b>/);
     // The floor's iOS, as the push card says it (notifications.iosVersion).
     expect(words.iphone).toContain("iOS 16.4");
     expect(en.app.oldBrowser.iphone).toContain("iOS 16.4");
+    // An iPad's Software Update says iPadOS, never iOS: the line names it.
+    expect(words.iphone).toContain("(באייפד: iPadOS 16.4)");
+    expect(en.app.oldBrowser.iphone).toContain("(on iPad: iPadOS 16.4)");
     expect(words.iphone).toContain("בהגדרות, בכללי, בעדכון תוכנה");
     // Whom to tell is someone every reader has, in any business: not a
     // role a module gives (a business may run no schedule), and for an

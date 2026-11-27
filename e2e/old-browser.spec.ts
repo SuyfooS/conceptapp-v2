@@ -8,7 +8,8 @@ import { expect, type Page, test } from "./test";
 // only a rule in app/globals.css shows it, where relative colours are missing
 // (Chrome 119, Safari 16.4, Firefox 128; its comment says why that is the
 // floor), with no script. The Chromium these tests run is newer, so here it
-// stays hidden on every page, signed out and in; the rule is then taken from
+// stays hidden on every page, signed out and in, and the CSS served has no
+// :dir(), which the floor counts on; the rule is then taken from
 // the stylesheet as served and applied as such a browser applies it, to see
 // the notice at the top, above the page's fixed bars, readable, and the page
 // still there under it. The gallery shows it by its prop. Unit and tooling
@@ -71,6 +72,29 @@ async function showAsAnOldBrowser(page: Page): Promise<string | null> {
   });
 }
 
+/**
+ * The served CSS's rules that still use :dir(), which Chrome 119 lacks. The
+ * floor counts on none: the build's targets turn every rtl:/ltr: into
+ * :lang() (app/globals.css). Should the floor ever move to :dir(), its
+ * condition names it: this check goes then, and the condition's below moves.
+ */
+async function dirRules(page: Page): Promise<string[]> {
+  return page.evaluate(() =>
+    Array.from(document.styleSheets).flatMap((sheet) => {
+      try {
+        return Array.from(sheet.cssRules)
+          .map((rule) => rule.cssText)
+          .filter((text) => text.includes(":dir("));
+      } catch {
+        return [];
+      }
+    }),
+  );
+}
+
+/** `text` matched as it is, inside a pattern. */
+const literally = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 async function expectAccessible(page: Page) {
   const { violations } = await new AxeBuilder({ page }).analyze();
   expect(
@@ -84,17 +108,23 @@ async function expectAccessible(page: Page) {
   expect(overflow).toBeLessThanOrEqual(0);
 }
 
-test("the server sends the notice in the page itself, before any script", async ({
+test("the server sends the notice in the page's markup, so it shows with no script", async ({
   request,
 }) => {
+  // Every word of the app is in each page's scripts too (the intl provider
+  // passes them all), and so is the notice's attribute: the markup is read
+  // without them, and the title must be inside the notice's own card.
+  const inTheNotice = new RegExp(
+    `<div data-old-browser=""[^>]*>(?:(?!</section>)[\\s\\S])*?${literally(w.title)}`,
+  );
   for (const path of ["/sign-in", "/enter"]) {
     const html = await (await request.get(path)).text();
-    expect(html, path).toContain("data-old-browser");
-    expect(html, path).toContain(w.title);
+    const markup = html.replace(/<script[\s\S]*?<\/script>/g, "");
+    expect(markup, path).toMatch(inTheNotice);
   }
 });
 
-test("in a browser that has what the app needs, the notice stays hidden on every page signed out", async ({
+test("in a browser that has what the app needs, the notice stays hidden on every page signed out, and the CSS has no :dir()", async ({
   page,
 }) => {
   for (const path of SIGNED_OUT) {
@@ -108,6 +138,7 @@ test("in a browser that has what the app needs, the notice stays hidden on every
     await expect(notice, path).toHaveCount(1);
     await expect(notice, path).toBeHidden();
     await expect(notice, path).toContainText(w.title);
+    expect(await dirRules(page), path).toEqual([]);
   }
 });
 
@@ -123,6 +154,7 @@ test("signed in, inside the app's frame, it stays hidden too", async ({
   await expect(pageTitle(page)).toBeVisible();
   await expect(pageNotice(page)).toHaveCount(1);
   await expect(pageNotice(page)).toBeHidden();
+  expect(await dirRules(page)).toEqual([]);
 });
 
 test("the gallery shows it by its prop, in Hebrew and English, while the page's own stays hidden", async ({

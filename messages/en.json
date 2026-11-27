@@ -1282,7 +1282,7 @@
     "oldBrowser": {
       "title": "The browser on this device is too old for the app",
       "android": "<b>On Android:</b> update Chrome in the Play Store, and open the app in it.",
-      "iphone": "<b>On iPhone and iPad:</b> it needs iOS 16.4 or later. You can update in Settings, General, Software Update.",
+      "iphone": "<b>On iPhone and iPad:</b> it needs iOS 16.4 or later (on iPad: iPadOS 16.4). You can update in Settings, General, Software Update.",
       "cantUpdate": "If it can't be updated, tell whoever invited you.",
       "tryAnyway": "You can still try, but some things may not work."
     },

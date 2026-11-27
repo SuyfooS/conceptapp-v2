@@ -384,10 +384,13 @@ body {
  * the CSS served has no :dir(), and Chrome 119 draws the app. Should
  * next.config.ts ever keep :dir() (`lightningCssFeatures` excluding
  * `dir-selector`) or set other targets, the floor moves (to Chrome 120 for
- * :dir(): add `or (not selector(:dir(rtl)))` here), and
- * tooling/old-browser.test.ts fails until both change together. A
- * declaration test needs no selector(), so every browser with @supports
- * reads it.
+ * :dir(): add `or (not selector(:dir(rtl)))` here). Until both change
+ * together a test fails: tooling/old-browser.test.ts holds the targets (the
+ * repo's config, Next's default and what Next reads here), and
+ * e2e/old-browser.spec.ts finds no :dir() in the CSS the build serves, which
+ * also catches a Lightning CSS that stops rewriting it. A BROWSERSLIST set
+ * only on Vercel is seen by neither: set none. A declaration test needs no
+ * selector(), so every browser with @supports reads it.
  */
 @supports not (color: rgb(from red r g b)) {
   [data-old-browser] {
