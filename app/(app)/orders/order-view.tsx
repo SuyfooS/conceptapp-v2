@@ -62,6 +62,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type Ref, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
+import { useSignedInId } from "@/app/release-note";
+import { takeKept } from "@/app/stale-build";
 import { useHeldWrite } from "../use-held-write";
 import { CancelOrderSheet } from "./cancel-order-sheet";
 import { ChoiceSheet } from "./choice-sheet";
@@ -92,6 +94,7 @@ import type {
   WholeWrite,
 } from "./orders-types";
 import { Picker } from "./picker";
+import { KEPT_LABEL, KeptLabel } from "./release-writes";
 import { type LineShown, RoundState, Rounds, shownOf } from "./rounds";
 import { sendWaits } from "./send-store";
 
@@ -266,6 +269,16 @@ export function OrderView({
     known || count > 0 || sender.pending(key).length > 0 ? "order" : "add",
   );
   const [label, setLabel] = useState(known?.takeaway?.label ?? "");
+  // Loaded again as its name met the release before: the name as typed is
+  // back in its field, unsaved, and goes as the field is left again; never
+  // saved by itself.
+  const signedIn = useSignedInId();
+  const orderId = known?.id ?? null;
+  useEffect(() => {
+    if (orderId === null) return;
+    const kept = takeKept(signedIn, KEPT_LABEL, KeptLabel);
+    if (kept?.order === orderId) setLabel(kept.label);
+  }, [signedIn, orderId]);
   const [sending, setSending] = useState(false);
   // What was just added, for screen readers: a new node each time, so a
   // second tap on the same item is said again.

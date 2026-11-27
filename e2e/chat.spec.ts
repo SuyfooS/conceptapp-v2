@@ -15,6 +15,12 @@ import {
   seeDemoChatNotice,
 } from "./db";
 import { cameraPhoto } from "./photo";
+import {
+  countLoads,
+  markBeforeRelease,
+  stillBeforeRelease,
+  unknownId,
+} from "./release";
 import { secondPage, signIn } from "./session";
 import { countedTabName, heT, needsActionCount } from "./t";
 import { expect, type Locator, type Page, test } from "./test";
@@ -613,6 +619,95 @@ test("a message that didn't go is said, and each message's actions say whose and
   // The field keeps the focus, for the next message or the way back.
   await expect(composer(page)).toBeFocused();
   await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+// A page of the release before (closing the pilot, PR 1b): the message goes
+// out with an action id the server doesn't have, as e2e/release.ts does it,
+// so nothing reaches the demo. It comes back to the field, the line over it
+// says the app was updated, with "טעינה מחדש", and it is said once; sent
+// again from that page, nothing goes and the line is said again; pressed,
+// "טעינה מחדש" loads the page once, and the words wait in the field there.
+test("a message sent from a page of the release before comes back to the field, and 'טעינה מחדש' keeps it there", async ({
+  page,
+}) => {
+  const words = "e2e: written before the release";
+  const u = he.app.updated;
+  const kitchen = await demoConversation({ kind: "department", name: KITCHEN });
+  expect(kitchen).not.toBeNull();
+  const path = `/chat/${kitchen}`;
+  await enterAs(page, "worker");
+  await page.goto(path);
+  await expect(
+    page.getByRole("heading", { level: 1, name: KITCHEN }),
+  ).toBeVisible();
+
+  // Only its sending goes as from the release before: the chat's own reads
+  // go as they are.
+  const sent: string[] = [];
+  await page.route(
+    (url) => url.pathname === path,
+    async (route) => {
+      const request = route.request();
+      const id = request.headers()["next-action"];
+      if (
+        request.method() !== "POST" ||
+        id === undefined ||
+        !(request.postData() ?? "").includes(words)
+      ) {
+        await route.fallback();
+        return;
+      }
+      sent.push(id);
+      const headers = await request.allHeaders();
+      await route.continue({
+        headers: { ...headers, "next-action": unknownId(id) },
+      });
+    },
+  );
+  const loads = countLoads(page);
+  await markBeforeRelease(page);
+  await noteIfSaid(page, u.chat);
+  const reload = page.getByRole("button", { name: u.reload, exact: true });
+  const bubble = log(page).locator("[data-bubble]").filter({ hasText: words });
+  try {
+    await send(page, words);
+    // Nothing went: the words are back in the field and nowhere in the
+    // conversation, and the line says so, with its button; the page as it was.
+    await expect(page.getByText(u.chat)).toBeVisible();
+    await expect(reload).toBeVisible();
+    await expect(composer(page)).toHaveValue(words);
+    await expect(bubble).toHaveCount(0);
+    await expect.poll(() => wasSaid(page, u.chat)).toBe(true);
+    expect(sent).toHaveLength(1);
+    expect(loads.count).toBe(0);
+    expect(await stillBeforeRelease(page)).toBe(true);
+    await expectCleanPage(page);
+
+    // Sent again from that page: nothing goes, the words stay, and the
+    // screen's own line says the line over the field again.
+    await sendButton(page).click();
+    await expect(
+      page.locator("p[aria-live]").filter({ hasText: u.chat }),
+    ).toHaveCount(1);
+    await expect(composer(page)).toHaveValue(words);
+    await expect(bubble).toHaveCount(0);
+    expect(sent).toHaveLength(1);
+
+    // "טעינה מחדש": the same address loaded once, the words in the field,
+    // and nothing sent.
+    const loaded = page.waitForEvent("load");
+    await reload.click();
+    await loaded;
+    expect(await stillBeforeRelease(page)).toBe(false);
+    await expect(page).toHaveURL(new RegExp(`${path}$`));
+    await expect(composer(page)).toHaveValue(words);
+    await expect(page.getByText(u.chat)).toHaveCount(0);
+    await expect(bubble).toHaveCount(0);
+    expect(sent).toHaveLength(1);
+    expect(loads.count).toBe(1);
+  } finally {
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+  }
 });
 
 // Accessibility, part 7. The kitchen removed while Shiran writes there: she

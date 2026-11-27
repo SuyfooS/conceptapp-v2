@@ -63,7 +63,7 @@ import {
   unsentOf,
 } from "./outbox";
 import { readyMarks } from "./ready-marks";
-import { reloadOnRelease } from "./release-writes";
+import { keepLabel, reloadOnRelease } from "./release-writes";
 import {
   pendingOfDraft,
   refusalMoved,
@@ -906,10 +906,11 @@ export function OrdersModeProvider({
   // after every write sent before it, from whichever screen: a line's fix
   // sent on leaving the order's screen lands before the till's close. Each
   // pressed on a page from the release before loads the page again, for
-  // the person signed in, before its screen says it failed (known issue 37).
+  // the person signed in, before its screen says it failed (known issue 37);
+  // a takeaway's name, as typed, is kept for the page loaded.
   const signedIn = useSignedInId();
   const modeActions = useMemo<OrdersActions>(() => {
-    const writes = reloadOnRelease(actions, signedIn);
+    const writes = reloadOnRelease(actions, signedIn, { setLabel: keepLabel });
     return inTurn<OrdersActions>(
       {
         ...writes,

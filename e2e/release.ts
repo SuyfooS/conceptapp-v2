@@ -8,7 +8,8 @@ import type { Page } from "@playwright/test";
  * answers as it answers a page from the release before (409,
  * `x-nextjs-action-not-found`), and the client throws its own
  * `UnrecognizedActionError`. What the specs share: e2e/clock-release.spec.ts
- * and e2e/release.spec.ts.
+ * and e2e/release.spec.ts, and the chat's, in e2e/chat.spec.ts, on the
+ * demo's real /chat (its own sends only, so its reads go as they are).
  */
 
 /** An action id of the same length that the server doesn't have. */

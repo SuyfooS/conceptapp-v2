@@ -1,7 +1,18 @@
 import { UnrecognizedActionError } from "next/dist/client/components/unrecognized-action-error";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { RELOAD_WAIT_MS, RELOADED_KEY, UPDATED_KEY } from "@/app/stale-build";
-import { reloadOnRelease } from "./release-writes";
+import {
+  KEPT_KEY,
+  RELOAD_WAIT_MS,
+  RELOADED_KEY,
+  takeKept,
+  UPDATED_KEY,
+} from "@/app/stale-build";
+import {
+  KEPT_LABEL,
+  KeptLabel,
+  keepLabel,
+  reloadOnRelease,
+} from "./release-writes";
 
 /*
  * Waiter mode's writes on a page from the release before (closing the
@@ -28,7 +39,9 @@ beforeEach(() => {
   });
   vi.stubGlobal(
     "window",
-    Object.assign(new EventTarget(), { location: { reload } }),
+    Object.assign(new EventTarget(), {
+      location: { reload, pathname: "/orders/takeaway/o-1" },
+    }),
   );
   vi.useFakeTimers({ now: START });
 });
@@ -111,6 +124,39 @@ describe("waiter mode's writes across a release", () => {
       UnrecognizedActionError,
     );
     expect(reload).not.toHaveBeenCalled();
+  });
+
+  it("keep what a write's arguments carry as typed, for the page loaded again", async () => {
+    const writes = {
+      ...modeWrites(stale),
+      setLabel: vi.fn(async (_order: string, _label: string | null) => {
+        throw stale();
+      }),
+    };
+    const kept = reloadOnRelease(writes, PERSON, { setLabel: keepLabel });
+    void kept.setLabel("o-1", "רותם").catch(() => null);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(reload).toHaveBeenCalledTimes(1);
+    // Said in the words for what was typed, and given back to its screen.
+    expect(storage.get(UPDATED_KEY)).toBe(`${START} ${PERSON} typed`);
+    expect(takeKept(PERSON, KEPT_LABEL, KeptLabel)).toEqual({
+      order: "o-1",
+      label: "רותם",
+    });
+    // A write with nothing to keep keeps nothing: its press is made again.
+    storage.clear();
+    void kept.serve("t-1", true).catch(() => null);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(storage.has(KEPT_KEY)).toBe(false);
+    expect(storage.get(UPDATED_KEY)).toBe(`${START} ${PERSON}`);
+  });
+
+  it("keep a takeaway's name cleared as nothing", () => {
+    expect(keepLabel("o-1", null)).toEqual({
+      of: KEPT_LABEL,
+      value: { order: "o-1", label: "" },
+      words: "typed",
+    });
   });
 
   it("load nothing with nobody signed in to tell", async () => {

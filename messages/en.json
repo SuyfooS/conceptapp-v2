@@ -7558,7 +7558,9 @@
     "updated": {
       "toast": "The app was updated, and your press wasn't recorded. Press again.",
       "chat": "The app was updated, and your message wasn't sent. Reload, and your message waits in the field.",
-      "reload": "Reload"
+      "reload": "Reload",
+      "availability": "The app was updated, and your availability wasn't sent. What you marked is still here: press Send availability again.",
+      "typed": "The app was updated, and what you typed wasn't saved. It's back where you typed it, to save again."
     }
   },
   "modules": {

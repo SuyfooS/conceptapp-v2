@@ -67,8 +67,14 @@ import {
   useState,
   useTransition,
 } from "react";
+import { z } from "zod";
 import { useSignedInId } from "@/app/release-note";
-import { reloadForRelease, untilReloaded } from "@/app/stale-build";
+import {
+  type KeepForPage,
+  reloadForRelease,
+  takeKept,
+  untilReloaded,
+} from "@/app/stale-build";
 import { byAttribute, refusalArrived } from "../../manage/editor-focus";
 import { TYPING_MS } from "../../manage/use-draft";
 import type {
@@ -189,6 +195,21 @@ const typed = (reading: number | null, minus: boolean) =>
 /** An order's count as its stepper shows it. */
 const countText = (count: number | null) =>
   count === null ? "" : String(count);
+
+/**
+ * What was typed on a list and not saved when a change met a page from the
+ * release before (closing the pilot, PR 1b), kept for the page loaded
+ * again, by item: each number's or note's field as typed, a number's minus
+ * with it, an order's count, and a comment being saved or written.
+ */
+const KeptTyped = z.object({
+  fields: z.record(z.string(), z.string()),
+  minus: z.record(z.string(), z.boolean()),
+  given: z.record(z.string(), z.string()),
+  comment: z.object({ item: z.string(), text: z.string() }).nullable(),
+});
+
+type KeptTyped = z.infer<typeof KeptTyped>;
 
 /** The range as words: "0–5", "from 0", "up to 5" (`numberRange`). */
 const rangeOf = numberRange;
@@ -482,6 +503,51 @@ function ListScreen({
   useEffect(() => {
     givenNow.current = givenDrafts;
   }, [givenDrafts]);
+  // And what is typed in the fields and the comment sheet, for a change that
+  // meets the release before to keep across the page loaded again.
+  const draftsNow = useRef(drafts);
+  const minusNow = useRef(minus);
+  const commentNow = useRef({ item: commentFor, text: commentDraft });
+  useEffect(() => {
+    draftsNow.current = drafts;
+    minusNow.current = minus;
+    commentNow.current = { item: commentFor, text: commentDraft };
+  }, [drafts, minus, commentFor, commentDraft]);
+
+  // Loaded again as a change met the release before: what was typed is back
+  // in its field, or in its comment's sheet, unsaved, for the person to save
+  // again; never saved by itself.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once, as the screen opens, with the list it opened on
+  useEffect(() => {
+    const kept = takeKept(signedIn, "list", KeptTyped);
+    if (!kept) return;
+    const here = new Map(list.items.map((item) => [item.id, item]));
+    const kindOf = (id: string) => here.get(id)?.kind;
+    const only = <T,>(
+      record: Record<string, T>,
+      keep: (id: string) => boolean,
+    ) => Object.fromEntries(Object.entries(record).filter(([id]) => keep(id)));
+    const typedHere = (id: string) =>
+      kindOf(id) === "number" || kindOf(id) === "note";
+    setDrafts((current) => ({ ...current, ...only(kept.fields, typedHere) }));
+    setMinus((current) => ({
+      ...current,
+      ...only(kept.minus, (id) => {
+        const item = here.get(id);
+        return item !== undefined && needsMinus(item);
+      }),
+    }));
+    if (list.asksQuantities) {
+      setGivenDrafts((current) => ({
+        ...current,
+        ...only(kept.given, (id) => kindOf(id) === "check"),
+      }));
+    }
+    if (kept.comment && can.fill && here.has(kept.comment.item)) {
+      setCommentDraft(kept.comment.text);
+      setCommentFor(kept.comment.item);
+    }
+  }, [signedIn]);
   useEffect(() => {
     fixingNow.current = fixing;
   }, [fixing]);
@@ -727,6 +793,61 @@ function ListScreen({
     }
   }
 
+  /**
+   * What was typed on the list and isn't saved, for the page loaded again
+   * as `change` to `saving` meets the release before: each field and
+   * count typed that differs from its item as saved here (`saving` as it
+   * was before this change), and the comment being saved or written.
+   * Nothing, for the press's own words, when nothing typed would be lost: a
+   * tick, its count with it, or a minus is pressed again.
+   */
+  function typedToKeep(
+    saving: ListItem,
+    change: ItemChange,
+  ): KeepForPage | undefined {
+    const kept: KeptTyped = { fields: {}, minus: {}, given: {}, comment: null };
+    for (const shown of itemsNow.current) {
+      const item = shown.id === saving.id ? saving : shown;
+      const draft = draftsNow.current[item.id];
+      if (item.kind === "number" && draft !== undefined) {
+        const sign = minusNow.current[item.id] ?? false;
+        if (draft !== typed(item.reading, sign)) {
+          kept.fields[item.id] = draft;
+          if (needsMinus(item)) kept.minus[item.id] = sign;
+        }
+      }
+      if (
+        item.kind === "note" &&
+        draft !== undefined &&
+        draft !== (item.answer ?? "")
+      ) {
+        kept.fields[item.id] = draft;
+      }
+      const count = givenNow.current[item.id];
+      const ticked = item.id === saving.id && "checked" in change;
+      if (
+        item.kind === "check" &&
+        list.asksQuantities &&
+        !ticked &&
+        count !== undefined &&
+        count !== countText(item.given)
+      ) {
+        kept.given[item.id] = count;
+      }
+    }
+    const writing = commentNow.current;
+    if ("comment" in change && change.comment) {
+      kept.comment = { item: saving.id, text: change.comment };
+    } else if (writing.item !== null && writing.text.trim() !== "") {
+      kept.comment = { item: writing.item, text: writing.text };
+    }
+    const any =
+      Object.keys(kept.fields).length > 0 ||
+      Object.keys(kept.given).length > 0 ||
+      kept.comment !== null;
+    return any ? { of: "list", value: kept, words: "typed" } : undefined;
+  }
+
   async function saveNow(item: ListItem, change: ItemChange): Promise<boolean> {
     // A fix of the finished list (L6b-1), as this change began; read from
     // the ref, so a count saved on the way out is a fix too.
@@ -806,9 +927,11 @@ function ListScreen({
     } catch (error) {
       // A page from the release before loads again, the change shown until
       // it has gone, and is never sent again: the page loaded shows the item
-      // as the list has it, and the person ticks it again. A page that stays
-      // puts it back and says it failed, as any other failure.
-      if (reloadForRelease(error, signedIn)) await untilReloaded();
+      // as the list has it, and the person ticks it again; what was typed
+      // is kept for it, and put back unsaved. A page that stays puts it back
+      // and says it failed, as any other failure.
+      const keep = typedToKeep(before, change);
+      if (reloadForRelease(error, signedIn, keep)) await untilReloaded();
       saved = { ok: false, failure: "failed" };
     }
     if (saved.ok) {

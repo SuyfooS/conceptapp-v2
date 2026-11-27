@@ -131,6 +131,7 @@ import { documentsPaths } from "./documents/documents-paths";
 import { InfoButton } from "./info-button";
 import { MessageActionsSheet } from "./message-actions";
 import { ReadersSheet } from "./readers-sheet";
+import { type GivenBack, wordsBack } from "./words-back";
 
 /** What the screen asks the server to do, bound to the business it was drawn for. */
 export type ConversationActions = {
@@ -357,11 +358,14 @@ type Shown =
  * and the way to stop it, and sent once the server has checked it.
  *
  * A message sent from a page of the release before (closing the pilot, PR
- * 1b) never went: its words go back to the field, and the line over it says
- * the app was updated, with "טעינה מחדש". The page never loads again by
- * itself, as what is written would go with it; pressed, it keeps the field's
- * words for the page loaded, which puts them back (`@/app/stale-build`), and
- * the person sends them. A picture or a PDF says it didn't go, as before.
+ * 1b) never went: its words go back to the field, in the order written, its
+ * "הודעה מההנהלה" switch with them, and the line over it says the app was
+ * updated, with "טעינה מחדש"; a message sent from that page then sends
+ * nothing, its words staying, and the line is said again. The page never
+ * loads again by itself, as what is written would go with it; pressed, it
+ * keeps the field's words and its switch for the page loaded, which puts
+ * them back (`@/app/stale-build`), and the person sends them. A picture or
+ * a PDF says it didn't go, as before.
  *
  * The messages are a log screen readers don't read out as it grows (older
  * pages come in above it, a long gap at once); a line of its own says what
@@ -410,12 +414,15 @@ export function ConversationScreen(props: Props) {
    * from this page goes.
    */
   const [updated, setUpdated] = useState(false);
-  // Loaded again from "טעינה מחדש": what was written is back in the field,
-  // for the person to send; never sent by itself.
-  useEffect(() => {
-    const words = takeKeptWords(signedIn);
-    if (words !== null) setText((now) => (now === "" ? words : now));
-  }, [signedIn]);
+  /**
+   * The field as now, for words given back to it as they meet the release
+   * before, and those given back so far, in the order they were written.
+   */
+  const textNow = useRef(text);
+  useLayoutEffect(() => {
+    textNow.current = text;
+  }, [text]);
+  const givenBack = useRef<GivenBack[]>([]);
   /** The picture that goes with the next message, once made ready (C4). */
   const [picked, setPicked] = useState<Picture | null>(null);
   const [preparing, setPreparing] = useState(false);
@@ -534,6 +541,15 @@ export function ConversationScreen(props: Props) {
       askedAnnounce.current = false;
     };
   }, [props.announceFirst, canAnnounce, writable]);
+  // Loaded again from "טעינה מחדש": what was written is back in the field,
+  // for the person to send, as "הודעה מההנהלה" again when it was to go as
+  // one and still may; never sent by itself.
+  useEffect(() => {
+    const kept = takeKeptWords(signedIn);
+    if (kept === null) return;
+    setText((now) => (now === "" ? kept.words : now));
+    if (kept.announce && canAnnounce && writable) setAnnounce(true);
+  }, [signedIn, canAnnounce, writable]);
   /**
    * Messages and pins changed here and not yet answered: what a sync brings
    * of them waits, so a removal on its way doesn't flicker back.
@@ -1003,13 +1019,22 @@ export function ConversationScreen(props: Props) {
   /**
    * It met a page from the release before, so it never went, and trying
    * again from here never would: it leaves the conversation, its words go
-   * back to the field (before anything written since), and the line over
-   * the field says the app was updated, with "טעינה מחדש", which keeps them
-   * for the page loaded. Nothing loads by itself.
+   * back to the field (among those given back before them, in the order
+   * written, and before anything written since: `wordsBack`), its switch
+   * with them when it was to go as "הודעה מההנהלה", and the line over the
+   * field says the app was updated, with "טעינה מחדש", which keeps them for
+   * the page loaded. Nothing loads by itself.
    */
   function stayedFromRelease(item: OutgoingMessage) {
     setOutgoing((list) => list.filter((m) => m.draft !== item.draft));
-    setText((now) => (now.trim() === "" ? item.body : `${item.body}\n${now}`));
+    const back = wordsBack(textNow.current, givenBack.current, {
+      at: item.at,
+      body: item.body,
+    });
+    givenBack.current = back.given;
+    textNow.current = back.field;
+    setText(back.field);
+    if (item.announce && canAnnounce) setAnnounce(true);
     setUpdated(true);
   }
 
@@ -1310,6 +1335,13 @@ export function ConversationScreen(props: Props) {
   function send(body: string) {
     const picture = pickedNow.current;
     const pdf = picture ? null : pickedPdfNow.current;
+    // Once one met the release before, no message from this page would go:
+    // it stays in the field, nothing is sent, and the line over the field,
+    // which doesn't change, is said again, here.
+    if (updated && !picture && !pdf) {
+      say(tu("chat"));
+      return;
+    }
     const item: OutgoingMessage = {
       draft: newDraftId(),
       body,
@@ -2300,7 +2332,7 @@ export function ConversationScreen(props: Props) {
               <span>{tu("chat")}</span>
               <Button
                 variant="secondary"
-                onClick={() => reloadKeepingWords(signedIn, text)}
+                onClick={() => reloadKeepingWords(signedIn, text, announcing)}
               >
                 {tu("reload")}
               </Button>

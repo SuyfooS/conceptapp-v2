@@ -1,27 +1,33 @@
 import { UnrecognizedActionError } from "next/dist/client/components/unrecognized-action-error";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import {
-  forgetOthersWords,
+  forgetOthersKept,
   isStaleBuild,
+  KEPT_KEY,
+  type KeepForPage,
   NOTE_FOR_MS,
+  RELEASE_WORDS,
   RELOAD_EVERY_MS,
   RELOAD_WAIT_MS,
   RELOADED_KEY,
   reloadForRelease,
   reloadKeepingWords,
+  takeKept,
   takeKeptWords,
   takeUpdatedNote,
   UPDATED_KEY,
   untilReloaded,
-  WORDS_KEY,
 } from "./stale-build";
 
 /*
  * A screen left open across a release (closing the pilot, PRs 1a and 1b):
  * the press that meets a server action the server no longer has loads the
  * page again, once a minute at most, and the page loaded says the app was
- * updated, once, to the person who pressed; a chat's send never loads it by
- * itself, and its "טעינה מחדש" keeps what is written for that person's chat.
+ * updated, once, to the person who pressed, in the words of the screen
+ * whose writing the press kept for it, if any, which that screen alone
+ * takes back; a chat's send never loads it by itself, and its "טעינה מחדש"
+ * keeps what is written, and its switch, for that person's chat.
  * Over a tab's sessionStorage in memory, a window whose reload is counted,
  * and the very error Next.js throws (`next/navigation`'s check is an
  * `instanceof` on its class). The presses themselves, in the built app with
@@ -157,7 +163,7 @@ describe("a press on a page from an earlier release", () => {
   it("loads again once a minute at most: a page still old says the failure", () => {
     expect(reloadForRelease(stale(), A)).toBe(true);
     loadAgain();
-    expect(takeUpdatedNote(A)).toBe(true);
+    expect(takeUpdatedNote(A)).toBe("toast");
     // Pressed again on a page still from the release before.
     vi.advanceTimersByTime(RELOAD_EVERY_MS - 1);
     expect(reloadForRelease(stale(), A)).toBe(false);
@@ -290,17 +296,17 @@ describe("a press on a page from an earlier release", () => {
     await vi.advanceTimersByTimeAsync(RELOAD_WAIT_MS);
     expect(settled).toHaveBeenCalledTimes(1);
     // And the note, never taken away, says nothing either.
-    expect(takeUpdatedNote(A)).toBe(false);
+    expect(takeUpdatedNote(A)).toBeNull();
   });
 });
 
 describe("the page loaded again", () => {
-  it("says the app was updated once", () => {
+  it("says the app was updated once, in the press's own words", () => {
     reloadForRelease(stale(), A);
     loadAgain();
     vi.advanceTimersByTime(3_000);
-    expect(takeUpdatedNote(A)).toBe(true);
-    expect(takeUpdatedNote(A)).toBe(false);
+    expect(takeUpdatedNote(A)).toBe("toast");
+    expect(takeUpdatedNote(A)).toBeNull();
     expect(tab.map.has(UPDATED_KEY)).toBe(false);
     // The guard stays, for the minute.
     expect(tab.map.get(RELOADED_KEY)).toBe(String(START));
@@ -312,27 +318,27 @@ describe("the page loaded again", () => {
     reloadForRelease(stale(), A);
     loadAgain();
     vi.advanceTimersByTime(60_000);
-    expect(takeUpdatedNote(B)).toBe(false);
+    expect(takeUpdatedNote(B)).toBeNull();
     expect(tab.map.has(UPDATED_KEY)).toBe(false);
     // Nor to A, signing in again after: the note went with B's look.
-    expect(takeUpdatedNote(A)).toBe(false);
+    expect(takeUpdatedNote(A)).toBeNull();
   });
 
   it("says nothing without a note, as on any page loaded", () => {
-    expect(takeUpdatedNote(A)).toBe(false);
+    expect(takeUpdatedNote(A)).toBeNull();
   });
 
   it("says nothing of a note left too long ago, and lets it go", () => {
     reloadForRelease(stale(), A);
     vi.advanceTimersByTime(NOTE_FOR_MS);
-    expect(takeUpdatedNote(A)).toBe(false);
+    expect(takeUpdatedNote(A)).toBeNull();
     expect(tab.map.has(UPDATED_KEY)).toBe(false);
   });
 
   it("still says a note left just within its time", () => {
     reloadForRelease(stale(), A);
     vi.advanceTimersByTime(NOTE_FOR_MS - 1);
-    expect(takeUpdatedNote(A)).toBe(true);
+    expect(takeUpdatedNote(A)).toBe("toast");
   });
 
   it("says nothing of a note that doesn't read, names nobody, or is from after now", () => {
@@ -348,7 +354,7 @@ describe("the page loaded again", () => {
       `${START + 60_000} ${A}`,
     ]) {
       tab.map.set(UPDATED_KEY, kept);
-      expect(takeUpdatedNote(A), kept).toBe(false);
+      expect(takeUpdatedNote(A), kept).toBeNull();
       expect(tab.map.has(UPDATED_KEY)).toBe(false);
     }
   });
@@ -356,11 +362,11 @@ describe("the page loaded again", () => {
   it("says nothing when storage can't be read, or the note can't be taken away", () => {
     tab.map.set(UPDATED_KEY, `${START} ${A}`);
     tab.refuse.get = true;
-    expect(takeUpdatedNote(A)).toBe(false);
+    expect(takeUpdatedNote(A)).toBeNull();
     tab.refuse.get = false;
     tab.refuse.remove = true;
     // Kept, it would say so at every look.
-    expect(takeUpdatedNote(A)).toBe(false);
+    expect(takeUpdatedNote(A)).toBeNull();
   });
 
   it("says the press wasn't recorded, then what to do, as the clock's other failures do", async () => {
@@ -377,37 +383,202 @@ describe("the page loaded again", () => {
   });
 });
 
+describe("what a press keeps for the page loaded again", () => {
+  const WEEK = "/schedule/availability";
+  const Week = z.object({ week: z.string(), note: z.string() });
+  const week: KeepForPage = {
+    of: "availability",
+    value: { week: "2026-11-29", note: "רק בבוקר" },
+    words: "availability",
+  };
+
+  beforeEach(() => {
+    page.location.pathname = WEEK;
+  });
+
+  it("keeps it with the note, whose words are the screen's", () => {
+    expect(reloadForRelease(stale(), A, week)).toBe(true);
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(tab.map.get(UPDATED_KEY)).toBe(`${START} ${A} availability`);
+    expect(JSON.parse(tab.map.get(KEPT_KEY) ?? "")).toEqual({
+      at: START,
+      person: A,
+      where: WEEK,
+      of: "availability",
+      value: { week: "2026-11-29", note: "רק בבוקר" },
+    });
+    loadAgain();
+    expect(takeUpdatedNote(A)).toBe("availability");
+  });
+
+  it("gives it back once, to that person's screen at that address, as its schema reads it", () => {
+    reloadForRelease(stale(), A, week);
+    loadAgain();
+    vi.advanceTimersByTime(2_000);
+    // Another screen's name, or another address: kept for that one.
+    expect(takeKept(A, "list", Week)).toBeNull();
+    page.location.pathname = "/lists/l1";
+    expect(takeKept(A, "availability", Week)).toBeNull();
+    expect(tab.map.has(KEPT_KEY)).toBe(true);
+    page.location.pathname = WEEK;
+    expect(takeKept(A, "availability", Week)).toEqual({
+      week: "2026-11-29",
+      note: "רק בבוקר",
+    });
+    expect(takeKept(A, "availability", Week)).toBeNull();
+    expect(tab.map.has(KEPT_KEY)).toBe(false);
+  });
+
+  it("gives nothing to someone else, nor once too old or unread by the screen, and lets it go", () => {
+    reloadForRelease(stale(), A, week);
+    expect(takeKept(B, "availability", Week)).toBeNull();
+    expect(tab.map.has(KEPT_KEY)).toBe(false);
+
+    tab.map.clear();
+    reloadForRelease(stale(), A, week);
+    vi.advanceTimersByTime(NOTE_FOR_MS);
+    expect(takeKept(A, "availability", Week)).toBeNull();
+    expect(tab.map.has(KEPT_KEY)).toBe(false);
+
+    tab.map.clear();
+    vi.advanceTimersByTime(RELOAD_EVERY_MS);
+    reloadForRelease(stale(), A, { ...week, value: { week: 5 } });
+    expect(takeKept(A, "availability", Week)).toBeNull();
+    expect(tab.map.has(KEPT_KEY)).toBe(false);
+  });
+
+  it("keeps nothing within the minute, nor halfway when storage refuses", () => {
+    reloadForRelease(stale(), A);
+    reload.mockClear();
+    // Within the minute: the page stays, with what is written on it.
+    expect(reloadForRelease(stale(), A, week)).toBe(false);
+    expect(tab.map.has(KEPT_KEY)).toBe(false);
+
+    tab.map.clear();
+    for (const refused of [KEPT_KEY, UPDATED_KEY, RELOADED_KEY]) {
+      const keep = refusing(refused);
+      expect(reloadForRelease(stale(), A, week), refused).toBe(false);
+      expect(tab.map.size, refused).toBe(0);
+      keep();
+    }
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it("lets go of what the press kept when the page stays, and of nothing kept before it", async () => {
+    // Kept earlier for another screen, at another address.
+    tab.map.set(
+      KEPT_KEY,
+      JSON.stringify({
+        at: START - 90_000,
+        person: A,
+        where: "/lists/l1",
+        of: "list",
+        value: {},
+      }),
+    );
+    reloadForRelease(stale(), A);
+    const settled = vi.fn();
+    void untilReloaded().then(settled, settled);
+    page.dispatchEvent(new Event("popstate"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toHaveBeenCalledTimes(1);
+    expect(tab.map.has(KEPT_KEY)).toBe(true);
+
+    // This press's own, its time the note's.
+    tab.map.clear();
+    vi.advanceTimersByTime(RELOAD_EVERY_MS);
+    reloadForRelease(stale(), A, week);
+    void untilReloaded();
+    await vi.advanceTimersByTimeAsync(RELOAD_WAIT_MS);
+    expect(tab.map.has(UPDATED_KEY)).toBe(false);
+    expect(tab.map.has(KEPT_KEY)).toBe(false);
+  });
+
+  it("says the press's own words for a note with none, as the release before left it, or with words it doesn't know", () => {
+    expect(RELEASE_WORDS).toEqual(["toast", "availability", "typed"]);
+    for (const [kept, words] of [
+      [`${START} ${A}`, "toast"],
+      [`${START} ${A} toast`, "toast"],
+      [`${START} ${A} typed`, "typed"],
+      [`${START} ${A} later`, "toast"],
+      [`${START} ${A} typed more`, null],
+    ] as const) {
+      tab.map.set(UPDATED_KEY, kept);
+      expect(takeUpdatedNote(A), kept).toBe(words);
+      expect(tab.map.has(UPDATED_KEY)).toBe(false);
+    }
+  });
+
+  it("says the availability wasn't sent and what was marked stays, or what was typed is back", async () => {
+    const he = (await import("@/messages/he.json")).default;
+    const en = (await import("@/messages/en.json")).default;
+    expect(he.app.updated.availability).toBe(
+      "האפליקציה התעדכנה, והזמינות לא נשלחה. מה שסימנתם נשאר כאן: לוחצים שוב על שליחת הזמינות.",
+    );
+    expect(he.app.updated.typed).toBe(
+      "האפליקציה התעדכנה, ומה שכתבתם לא נשמר. הוא חזר למקום שבו כתבתם, ואפשר לשמור אותו שוב.",
+    );
+    expect(en.app.updated.availability).toBe(
+      "The app was updated, and your availability wasn't sent. What you marked is still here: press Send availability again.",
+    );
+    expect(en.app.updated.typed).toBe(
+      "The app was updated, and what you typed wasn't saved. It's back where you typed it, to save again.",
+    );
+    // Its button's own name, as the availability screen says it.
+    expect(he.app.updated.availability).toContain(he.app.availability.submit);
+  });
+});
+
 describe("a chat's send on a page from an earlier release", () => {
   const kept = (at: number, person: string, where: string, words: string) =>
-    JSON.stringify({ at, person, where, words });
+    JSON.stringify({ at, person, where, of: "chat", value: { words } });
+  /** The words given back, as an ordinary message. */
+  const plain = (words: string) => ({ words, announce: false });
 
   it("keeps what is written for the page loaded, and loads it as pressed", () => {
     reloadKeepingWords(A, "נגמר החלב\nבמקרר השני");
     expect(reload).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(tab.map.get(WORDS_KEY) ?? "")).toEqual({
+    expect(JSON.parse(tab.map.get(KEPT_KEY) ?? "")).toEqual({
       at: START,
       person: A,
       where: CHAT,
-      words: "נגמר החלב\nבמקרר השני",
+      of: "chat",
+      value: { words: "נגמר החלב\nבמקרר השני" },
     });
     // Pressed, never by itself: no note for the frame, no minute's guard.
     expect(tab.map.has(UPDATED_KEY)).toBe(false);
     expect(tab.map.has(RELOADED_KEY)).toBe(false);
   });
 
+  it("keeps an announcement's switch with its words, and gives it back", () => {
+    reloadKeepingWords(A, "סגור מחר", true);
+    expect(JSON.parse(tab.map.get(KEPT_KEY) ?? "").value).toEqual({
+      words: "סגור מחר",
+      announce: true,
+    });
+    loadAgain();
+    expect(takeKeptWords(A)).toEqual({ words: "סגור מחר", announce: true });
+    // An ordinary message keeps none.
+    reloadKeepingWords(A, "סגור מחר", false);
+    expect(JSON.parse(tab.map.get(KEPT_KEY) ?? "").value).toEqual({
+      words: "סגור מחר",
+    });
+    expect(takeKeptWords(A)).toEqual(plain("סגור מחר"));
+  });
+
   it("gives the words back once, to that person's chat at that address", () => {
     reloadKeepingWords(A, "נגמר החלב");
     loadAgain();
     vi.advanceTimersByTime(2_000);
-    expect(takeKeptWords(A)).toBe("נגמר החלב");
+    expect(takeKeptWords(A)).toEqual(plain("נגמר החלב"));
     expect(takeKeptWords(A)).toBeNull();
-    expect(tab.map.has(WORDS_KEY)).toBe(false);
+    expect(tab.map.has(KEPT_KEY)).toBe(false);
   });
 
   it("still gives back words kept just within their time", () => {
     reloadKeepingWords(A, "נגמר החלב");
     vi.advanceTimersByTime(NOTE_FOR_MS - 1);
-    expect(takeKeptWords(A)).toBe("נגמר החלב");
+    expect(takeKeptWords(A)).toEqual(plain("נגמר החלב"));
   });
 
   it("keeps another chat's words for that chat", () => {
@@ -415,16 +586,16 @@ describe("a chat's send on a page from an earlier release", () => {
     // Signed in again after the door, the person opened another chat first.
     page.location.pathname = "/chat/c0000000-0000-4000-a000-000000000002";
     expect(takeKeptWords(A)).toBeNull();
-    expect(tab.map.has(WORDS_KEY)).toBe(true);
+    expect(tab.map.has(KEPT_KEY)).toBe(true);
     page.location.pathname = CHAT;
-    expect(takeKeptWords(A)).toBe("נגמר החלב");
+    expect(takeKeptWords(A)).toEqual(plain("נגמר החלב"));
   });
 
   it("gives nothing to someone else signed in on that tab, and lets the words go", () => {
     reloadKeepingWords(A, "נגמר החלב");
     loadAgain();
     expect(takeKeptWords(B)).toBeNull();
-    expect(tab.map.has(WORDS_KEY)).toBe(false);
+    expect(tab.map.has(KEPT_KEY)).toBe(false);
     expect(takeKeptWords(A)).toBeNull();
   });
 
@@ -432,13 +603,13 @@ describe("a chat's send on a page from an earlier release", () => {
     reloadKeepingWords(A, "נגמר החלב");
     vi.advanceTimersByTime(NOTE_FOR_MS);
     expect(takeKeptWords(A)).toBeNull();
-    expect(tab.map.has(WORDS_KEY)).toBe(false);
+    expect(tab.map.has(KEPT_KEY)).toBe(false);
   });
 
   it("gives nothing of words that don't read, or are from after now, and lets them go", () => {
     // As written by the chat, they would be given back.
-    tab.map.set(WORDS_KEY, kept(START, A, CHAT, "x"));
-    expect(takeKeptWords(A)).toBe("x");
+    tab.map.set(KEPT_KEY, kept(START, A, CHAT, "x"));
+    expect(takeKeptWords(A)).toEqual(plain("x"));
     for (const odd of [
       "yes",
       "{}",
@@ -447,11 +618,19 @@ describe("a chat's send on a page from an earlier release", () => {
       kept(START, A, "chat", "x"),
       kept(-1, A, CHAT, "x"),
       kept(Date.now() + 60_000, A, CHAT, "x"),
-      JSON.stringify({ at: START, person: A, where: CHAT, words: 5 }),
+      JSON.stringify({ at: START, person: A, where: CHAT, words: "x" }),
+      JSON.stringify({ at: START, person: A, where: CHAT, of: "chat" }),
+      JSON.stringify({
+        at: START,
+        person: A,
+        where: CHAT,
+        of: "chat",
+        value: { words: 5 },
+      }),
     ]) {
-      tab.map.set(WORDS_KEY, odd);
+      tab.map.set(KEPT_KEY, odd);
       expect(takeKeptWords(A), odd).toBeNull();
-      expect(tab.map.has(WORDS_KEY), odd).toBe(false);
+      expect(tab.map.has(KEPT_KEY), odd).toBe(false);
     }
   });
 
@@ -463,11 +642,11 @@ describe("a chat's send on a page from an earlier release", () => {
       ["", "נגמר החלב"],
     ] as const) {
       // What an earlier press kept goes too: this page's field is the one.
-      tab.map.set(WORDS_KEY, kept(Date.now(), A, CHAT, "ישן"));
+      tab.map.set(KEPT_KEY, kept(Date.now(), A, CHAT, "ישן"));
       reload.mockClear();
       reloadKeepingWords(person, words);
       expect(reload).toHaveBeenCalledTimes(1);
-      expect(tab.map.has(WORDS_KEY)).toBe(false);
+      expect(tab.map.has(KEPT_KEY)).toBe(false);
     }
   });
 
@@ -475,7 +654,7 @@ describe("a chat's send on a page from an earlier release", () => {
     tab.refuse.set = true;
     reloadKeepingWords(A, "נגמר החלב");
     expect(reload).toHaveBeenCalledTimes(1);
-    expect(tab.map.has(WORDS_KEY)).toBe(false);
+    expect(tab.map.has(KEPT_KEY)).toBe(false);
     tab.refuse.set = false;
     tab.refuse.remove = true;
     reload.mockClear();
@@ -484,7 +663,7 @@ describe("a chat's send on a page from an earlier release", () => {
   });
 
   it("gives nothing when storage can't be read, or the words can't be let go", () => {
-    tab.map.set(WORDS_KEY, kept(START, A, CHAT, "נגמר החלב"));
+    tab.map.set(KEPT_KEY, kept(START, A, CHAT, "נגמר החלב"));
     tab.refuse.get = true;
     expect(takeKeptWords(A)).toBeNull();
     tab.refuse.get = false;
@@ -493,23 +672,23 @@ describe("a chat's send on a page from an earlier release", () => {
     expect(takeKeptWords(A)).toBeNull();
   });
 
-  it("lets go of anyone else's words as the frame opens, and keeps the person's own", () => {
-    tab.map.set(WORDS_KEY, kept(START, A, CHAT, "נגמר החלב"));
-    forgetOthersWords(A);
-    expect(tab.map.has(WORDS_KEY)).toBe(true);
-    forgetOthersWords(B);
-    expect(tab.map.has(WORDS_KEY)).toBe(false);
+  it("lets go of anything kept for anyone else as the frame opens, and keeps the person's own", () => {
+    tab.map.set(KEPT_KEY, kept(START, A, CHAT, "נגמר החלב"));
+    forgetOthersKept(A);
+    expect(tab.map.has(KEPT_KEY)).toBe(true);
+    forgetOthersKept(B);
+    expect(tab.map.has(KEPT_KEY)).toBe(false);
     // Too old, or not words at all: gone for the person too.
-    tab.map.set(WORDS_KEY, kept(START - NOTE_FOR_MS, A, CHAT, "נגמר החלב"));
-    forgetOthersWords(A);
-    expect(tab.map.has(WORDS_KEY)).toBe(false);
-    tab.map.set(WORDS_KEY, "yes");
-    forgetOthersWords(A);
-    expect(tab.map.has(WORDS_KEY)).toBe(false);
+    tab.map.set(KEPT_KEY, kept(START - NOTE_FOR_MS, A, CHAT, "נגמר החלב"));
+    forgetOthersKept(A);
+    expect(tab.map.has(KEPT_KEY)).toBe(false);
+    tab.map.set(KEPT_KEY, "yes");
+    forgetOthersKept(A);
+    expect(tab.map.has(KEPT_KEY)).toBe(false);
     // Storage refused: nothing it can do, and nothing thrown.
-    tab.map.set(WORDS_KEY, kept(START, A, CHAT, "נגמר החלב"));
+    tab.map.set(KEPT_KEY, kept(START, A, CHAT, "נגמר החלב"));
     tab.refuse.get = true;
-    expect(() => forgetOthersWords(B)).not.toThrow();
+    expect(() => forgetOthersKept(B)).not.toThrow();
   });
 
   it("says the message wasn't sent, then what to do, and that it waits in the field", async () => {

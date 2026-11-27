@@ -17,12 +17,19 @@ import { expect, type Page, test } from "./test";
 // the page loads again once, its frame says the app was updated, nothing is
 // sent again by itself, and a second such press within the minute says the
 // screen's own failure rather than loading again. Sending a week's
-// availability, ticking a list's item, and giving a shift away.
+// availability, a day changed first, which the page loaded puts back on the
+// form, unsent; ticking a list's item; a note typed on a list, which comes
+// back to its field, unsaved; and giving a shift away.
 
 const AVAILABILITY = "/design/shell/schedule/availability";
 const LIST = "/design/shell/lists/list-kitchen-opening";
 const SHIFTS = "/design/shell/schedule/shifts";
 const ta = he.app.availability;
+// A day on the availability screen: a row on phones, a card from tablet up.
+const dayButton = (page: Page, weekday: keyof typeof ta.weekdays) =>
+  page.getByRole("button", {
+    name: ta.dayName.replace("{day}", ta.weekdays[weekday]),
+  });
 
 /** The page as the frame loaded it again, with axe (accessibility, parts 1–9). */
 async function expectCleanPage(page: Page) {
@@ -47,28 +54,41 @@ async function openBeforeRelease(page: Page, path: string) {
   return { loads, presses };
 }
 
-test("availability sent from a page of the release before loads it again once, says the app was updated, and sends nothing again", async ({
+test("availability sent from a page of the release before loads it again once, keeps the week as marked, and sends nothing again", async ({
   page,
 }) => {
   const { loads, presses } = await openBeforeRelease(page, AVAILABILITY);
   // One Send at each width: floating until a desktop, on the hero there.
   const send = page.getByRole("button", { name: ta.submit });
   const failed = page.getByRole("alert").filter({ hasText: ta.errors.failed });
+  const monday = dayButton(page, "mon");
   try {
+    // Monday marked first: the week sent before had no hours on it.
+    await expect(monday).toContainText(ta.noHours);
+    await monday.click();
+    const sheet = page.getByRole("dialog");
+    await sheet.getByRole("button", { name: ta.sheet.done }).click();
+    await expect(sheet).toHaveCount(0);
+    await expect(monday).not.toContainText(ta.noHours);
+    const marked = await monday.textContent();
+
     const loaded = page.waitForEvent("load");
     await send.click();
     await loaded;
 
-    // A whole new page, at the same address, that says so once: nothing was
-    // sent, and the form says no failure of its own.
+    // A whole new page, at the same address, that says so once in the
+    // availability's words: nothing was sent, Monday is back on the form as
+    // marked, and the form says no failure of its own.
     expect(await stillBeforeRelease(page)).toBe(false);
     await expect(page).toHaveURL(new RegExp(`${AVAILABILITY}$`));
     await expect
       .poll(() => statusWordsSeen(page))
-      .toContain(he.app.updated.toast);
+      .toContain(he.app.updated.availability);
+    await expect(monday).toHaveText(marked ?? "");
     await expect(failed).toHaveCount(0);
     await expect(send).toBeEnabled();
     expect(presses.sent).toHaveLength(1);
+    expect(await statusWordsSeen(page)).not.toContain(ta.saved);
     await expectCleanPage(page);
 
     // Sent again within the minute, the page still from the release before:
@@ -76,6 +96,7 @@ test("availability sent from a page of the release before loads it again once, s
     await send.click();
     await expect(failed).toBeVisible();
     await expect(send).toBeEnabled();
+    await expect(monday).toHaveText(marked ?? "");
     expect(presses.sent).toHaveLength(2);
     expect(loads.count).toBe(1);
     expect(await statusWordsSeen(page)).not.toContain(ta.saved);
@@ -120,6 +141,38 @@ test("a list's item ticked on a page of the release before loads it again once, 
     await expect(preps).not.toBeChecked();
     expect(presses.sent).toHaveLength(2);
     expect(loads.count).toBe(1);
+  } finally {
+    await presses.stop();
+  }
+});
+
+test("a note typed on a list on a page of the release before comes back to its field after the page loads again, unsaved", async ({
+  page,
+}) => {
+  const words = "שמן זית וקמח";
+  const { loads, presses } = await openBeforeRelease(page, LIST);
+  const missing = page
+    .getByRole("main")
+    .getByRole("textbox", { name: "מה חסר במטבח" });
+  try {
+    await missing.fill(words);
+    // Left, it saves: the save meets the release before.
+    const loaded = page.waitForEvent("load");
+    await missing.blur();
+    await loaded;
+
+    // The page loaded has the note back in its field, saved by nobody, and
+    // says what was typed wasn't saved, once.
+    expect(await stillBeforeRelease(page)).toBe(false);
+    await expect(page).toHaveURL(new RegExp(`${LIST}$`));
+    await expect
+      .poll(() => statusWordsSeen(page))
+      .toContain(he.app.updated.typed);
+    await expect(missing).toHaveValue(words);
+    expect(presses.sent).toHaveLength(1);
+    expect(loads.count).toBe(1);
+    expect(await statusWordsSeen(page)).not.toContain(he.app.updated.toast);
+    await expectCleanPage(page);
   } finally {
     await presses.stop();
   }

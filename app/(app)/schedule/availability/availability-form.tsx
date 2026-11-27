@@ -23,10 +23,13 @@ import {
   useEffect,
   useState,
 } from "react";
+import { z } from "zod";
 import { useSignedInId } from "@/app/release-note";
 import {
   isStaleBuild,
+  type KeepForPage,
   reloadForRelease,
+  takeKept,
   untilReloaded,
 } from "@/app/stale-build";
 import {
@@ -50,6 +53,33 @@ import { HeroChip } from "./hero-chip";
 
 const initialState: AvailabilityState = {};
 
+/**
+ * The week as marked when Send met a page from the release before, kept for
+ * the page loaded again (`reloadForRelease`'s `keep`): which week, its
+ * hours and its note, as the form sends them.
+ */
+const KeptWeek = z.object({
+  week: z.string(),
+  ranges: z.array(
+    z.object({ day: z.string(), start: z.string(), end: z.string() }),
+  ),
+  note: z.string(),
+});
+
+/** The week as the form sends it, read back; null for one that doesn't read. */
+function sentWeek(form: FormData): z.infer<typeof KeptWeek> | null {
+  try {
+    const kept = KeptWeek.safeParse({
+      week: form.get("week"),
+      ranges: JSON.parse(String(form.get("ranges") ?? "[]")),
+      note: form.get("note") ?? "",
+    });
+    return kept.success ? kept.data : null;
+  } catch {
+    return null;
+  }
+}
+
 export type AvailabilityFormProps = {
   week: AvailabilityWeek;
   /** The due moment has passed. */
@@ -71,9 +101,11 @@ const cardClass =
  * checks run here, in the sheet and on the server. Once it's sent, the first
  * time, the offer of notifications on the phone sits under the days. Sent
  * from a page of the release before, the page loads again (`@/app/stale-build`),
- * Send busy until it has gone, and its frame says the app was updated: the
- * person sends again, nothing sent by itself. A page that stays says the
- * form's own failure, the week as it was written still on it.
+ * Send busy until it has gone, keeping the week as marked, which the page
+ * loaded puts back on the form, unsent, and its frame says the availability
+ * wasn't sent and what was marked is still there: the person sends again,
+ * nothing sent by itself. A page that stays says the form's own failure,
+ * the week as it was written still on it.
  */
 export function AvailabilityForm({
   week,
@@ -95,8 +127,13 @@ export function AvailabilityForm({
         // Any other error goes to the error screen, as before.
         if (!isStaleBuild(error)) throw error;
         // A page from the release before loads again, Send busy until it has
-        // gone; one that stays says it failed, and keeps the days written.
-        if (reloadForRelease(error, signedIn)) await untilReloaded();
+        // gone, the week as marked kept for the page loaded; one that stays
+        // says it failed, and keeps the days written.
+        const marked = sentWeek(form);
+        const keep: KeepForPage | undefined = marked
+          ? { of: "availability", value: marked, words: "availability" }
+          : undefined;
+        if (reloadForRelease(error, signedIn, keep)) await untilReloaded();
         return { failure: "failed" };
       }
     },
@@ -122,6 +159,23 @@ export function AvailabilityForm({
 
   const pushAsk = usePushAskOnce(ask);
   const offerPush = pushAsk.offer;
+
+  // Loaded again as Send met the release before: the week as it was marked
+  // is back on the form, for the person to send; never sent by itself.
+  useEffect(() => {
+    const kept = takeKept(signedIn, "availability", KeptWeek);
+    if (!kept || kept.week !== week.start) return;
+    setDays(
+      Object.fromEntries(
+        week.dates.map((date) => [
+          date,
+          kept.ranges.filter((r) => r.day === date).map(newRow),
+        ]),
+      ),
+    );
+    setNote(kept.note);
+    setDirty(true);
+  }, [signedIn, week.start, week.dates]);
 
   // "Saved" shows for a moment; the hero keeps saying it was sent.
   useEffect(() => {

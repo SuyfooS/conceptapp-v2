@@ -68,6 +68,26 @@ const RELOADS_FOR_RELEASE: Record<string, number> = {
   "app/(app)/orders/release-writes.ts": 1,
 };
 
+/**
+ * The presses that keep what was written with them for the page loaded
+ * again (`keep`), each under its screen's own name for it, which that
+ * screen alone takes back (`takeKept`): the week's availability as marked,
+ * a list's typed fields, a takeaway's name (through the wrapper's one
+ * caller, for the order's screen).
+ */
+const KEEPS: Record<string, string> = {
+  "app/(app)/schedule/availability/availability-form.tsx": "availability",
+  "app/(app)/lists/[id]/list-screen.tsx": "list",
+  "app/(app)/orders/release-writes.ts": "takeaway",
+};
+
+/** Where each screen takes back what it kept, and how many times. */
+const TAKES: Record<string, number> = {
+  "app/(app)/schedule/availability/availability-form.tsx": 1,
+  "app/(app)/lists/[id]/list-screen.tsx": 1,
+  "app/(app)/orders/order-view.tsx": 1,
+};
+
 /** The one that wraps a set of writes, and who hands it the person. */
 const WRAPPER = "app/(app)/orders/release-writes.ts";
 const WRAPPED_BY = "app/(app)/orders/orders-provider.tsx";
@@ -112,7 +132,7 @@ describe("a whole page loaded from the app's code", () => {
       const person = file === WRAPPER ? "person" : "signedIn";
       const waits = read(file).match(
         new RegExp(
-          `if \\(reloadForRelease\\(error, ${person}\\)\\) await untilReloaded\\(\\);`,
+          `if \\(reloadForRelease\\(error, ${person}(, keep)?\\)\\) await untilReloaded\\(\\);`,
           "g",
         ),
       );
@@ -132,7 +152,7 @@ describe("a whole page loaded from the app's code", () => {
     expect(callsOf(/\breloadOnRelease\(/g)).toEqual({ [WRAPPED_BY]: 1 });
     const provider = read(WRAPPED_BY);
     expect(provider).toMatch(/const signedIn = useSignedInId\(\);/);
-    expect(provider).toMatch(/reloadOnRelease\(actions, signedIn\)/);
+    expect(provider).toMatch(/reloadOnRelease\(actions, signedIn[,)]/);
     // Said by the frame alone, once a page: a screen taking the note too
     // would race the frame for it.
     expect(callsOf(/\btakeUpdatedNote\(/g)).toEqual({
@@ -147,6 +167,15 @@ describe("a whole page loaded from the app's code", () => {
     }
   });
 
+  it("for a release, keeps what was written with the press for that screen alone", () => {
+    for (const [file, of] of Object.entries(KEEPS)) {
+      expect(read(file), file).toMatch(new RegExp(`of: (KEPT_LABEL|"${of}")`));
+    }
+    expect(read(WRAPPER)).toMatch(/export const KEPT_LABEL = "takeaway";/);
+    expect(read(WRAPPED_BY)).toMatch(/\{ setLabel: keepLabel \}/);
+    expect(callsOf(/\btakeKept\(/g)).toEqual(TAKES);
+  });
+
   it("from a chat, comes only from its own press, keeping what is written", () => {
     // A chat never loads itself again for a release: what is written would
     // go with the page. Its send says the app was updated, and "טעינה מחדש"
@@ -156,7 +185,7 @@ describe("a whole page loaded from the app's code", () => {
     });
     const chat = read("app/(app)/chat/conversation-screen.tsx");
     expect(chat).toMatch(
-      /onClick=\{\(\) => reloadKeepingWords\(signedIn, text\)\}/,
+      /onClick=\{\(\) => reloadKeepingWords\(signedIn, text, announcing\)\}/,
     );
     expect(chat).not.toMatch(/\breloadForRelease\(/);
     expect(callsOf(/\btakeKeptWords\(/g)).toEqual({
