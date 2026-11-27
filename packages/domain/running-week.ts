@@ -14,7 +14,11 @@ import {
   shiftStarted,
 } from "./schedule";
 import { calendarDate } from "./shabbat";
-import { MAX_SHIFTS_IN_A_WEEK, type ShiftPattern } from "./staffing";
+import {
+  MAX_PEOPLE_ON_A_SHIFT,
+  MAX_SHIFTS_IN_A_WEEK,
+  type ShiftPattern,
+} from "./staffing";
 
 /**
  * The week that is already running, as the builder opens it (the
@@ -140,6 +144,49 @@ export const shiftJoin = shiftAssignee.extend({ shift: z.uuid() });
 export type ShiftJoin = z.infer<typeof shiftJoin>;
 
 export const shiftJoins = z.array(shiftJoin).max(MAX_SHIFTS_IN_A_WEEK);
+
+/**
+ * The shifts that `joins` would take past the people a shift holds
+ * (MAX_PEOPLE_ON_A_SHIFT), by id, in the order they are first joined: for
+ * each shift a join names, everyone on it in `stored` (the week as the server
+ * read it) and everyone joining it, each person once. A shift that isn't in
+ * `stored` counts its joins alone: the database refuses a join to it for its
+ * own reason. `shiftJoins` caps only the list's length, so this is what lets
+ * the builder's action say so before anything is sent (`shiftFull`); the
+ * database holds the same cap on every path
+ * (20261128000500_shift_cap.sql), so two screens joining at once still get
+ * those words.
+ */
+export function crowdedByJoins(
+  stored: readonly Pick<ScheduledShift, "id" | "assignees">[],
+  joins: readonly Pick<ShiftJoin, "shift" | "user">[],
+): string[] {
+  const storedById = new Map(
+    stored.flatMap((shift) =>
+      shift.id ? [[shift.id.toLowerCase(), shift] as const] : [],
+    ),
+  );
+  const people = new Map<string, { id: string; on: Set<string> }>();
+  for (const join of joins) {
+    const key = join.shift.toLowerCase();
+    let shift = people.get(key);
+    if (!shift) {
+      shift = {
+        id: join.shift,
+        on: new Set(
+          (storedById.get(key)?.assignees ?? []).map((a) =>
+            a.user.toLowerCase(),
+          ),
+        ),
+      };
+      people.set(key, shift);
+    }
+    shift.on.add(join.user.toLowerCase());
+  }
+  return [...people.values()]
+    .filter((shift) => shift.on.size > MAX_PEOPLE_ON_A_SHIFT)
+    .map((shift) => shift.id);
+}
 
 /**
  * The builder's week once the shifts that began or ended while it was open

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  crowdedShifts,
   edgeClashes,
   endedShifts,
   movedShifts,
@@ -321,5 +322,60 @@ describe("edgeClashes", () => {
       scheduleTeamChanged(across),
       pastShifts(across),
     ]).toEqual([false, false, null]);
+  });
+});
+
+// 20261128000500_shift_cap.sql: a statement that would leave a shift with
+// more than 50 people on it (22023, hint 'full', the shifts' ids in its
+// detail), whichever path put them there. shift_cap.test.sql pins it.
+describe("crowdedShifts", () => {
+  const ID = "7a000000-0000-4000-a000-0000000000e1";
+  const OTHER = "7a000000-0000-4000-a000-0000000000e2";
+  const full = (details: string | null) =>
+    new ScheduleWriteError(
+      "Could not publish the schedule: More than 50 people on a shift",
+      { code: "22023", hint: "full", details },
+    );
+
+  it("names the shifts past the people a shift holds", () => {
+    expect(crowdedShifts(full(`["${ID}", "${OTHER}"]`))).toEqual([ID, OTHER]);
+    // Still that refusal when the detail can't be read.
+    expect(crowdedShifts(full(null))).toEqual([]);
+    expect(crowdedShifts(full("not json"))).toEqual([]);
+    expect(crowdedShifts(full("[]"))).toEqual([]);
+  });
+
+  it("is nothing for any other refusal, and no other refusal is it", () => {
+    expect(
+      crowdedShifts(
+        new ScheduleWriteError(
+          "Could not save the schedule: Each shift needs a day, a name, a start, a different end and 1 to 50 people",
+          { code: "22023" },
+        ),
+      ),
+    ).toBeNull();
+    expect(
+      crowdedShifts(
+        new ScheduleWriteError("x", { code: "22023", hint: "past" }),
+      ),
+    ).toBeNull();
+    expect(
+      crowdedShifts(
+        new ScheduleWriteError("x", { code: "55006", hint: "full" }),
+      ),
+    ).toBeNull();
+    expect(crowdedShifts(new Error("22023 full"))).toBeNull();
+    expect(crowdedShifts(null)).toBeNull();
+    const crowded = full(`["${ID}"]`);
+    expect([
+      scheduleClashedMeanwhile(crowded),
+      scheduleTeamChanged(crowded),
+      movedShifts(crowded),
+      startedShifts(crowded),
+      endedShifts(crowded),
+      pastShifts(crowded),
+      edgeClashes(crowded),
+      scheduleWeekOver(crowded),
+    ]).toEqual([false, false, null, null, null, null, null, false]);
   });
 });

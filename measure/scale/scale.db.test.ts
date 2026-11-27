@@ -1,4 +1,5 @@
 import { appendFileSync } from "node:fs";
+import { MAX_PEOPLE_ON_A_SHIFT } from "@domain/staffing";
 import type postgres from "postgres";
 import { afterAll, describe, expect, it } from "vitest";
 import { BUDGET, budgetOf } from "./budget";
@@ -405,8 +406,9 @@ describe("the test business, made in the database", () => {
           /Too many shifts/,
         );
 
-        // Printed, not asserted: the database checks what a shift needs, not
-        // how many are put on it (F10 needs to know).
+        // 51 people on a shift that needs 50 are refused by the database too
+        // (20261128000500_shift_cap.sql: 22023, hint 'full'), as the app
+        // refuses them, the 50 above still taken.
         const staff = s.scale.people.filter(
           (p) => p.kind === "staff" && p.role === "worker",
         );
@@ -422,18 +424,24 @@ describe("the test business, made in the database", () => {
                   name: "משמרת צפופה",
                   start: "10:00",
                   end: "12:00",
-                  needed: 50,
+                  needed: MAX_PEOPLE_ON_A_SHIFT,
                   pattern: null,
                   assignees: staff
-                    .slice(0, 51)
+                    .slice(0, MAX_PEOPLE_ON_A_SHIFT + 1)
                     .map((p) => ({ user: p.id, position: null })),
                 },
               ],
             )}::jsonb)`,
         );
         note(
-          `- 300: 51 people on a shift that needs 50: ${crowded instanceof Error ? `refused (${crowded.message})` : "taken by the database (the app's own check refuses it)"}`,
+          `- 300: ${MAX_PEOPLE_ON_A_SHIFT + 1} people on a shift that needs ${MAX_PEOPLE_ON_A_SHIFT}: ${crowded instanceof Error ? `refused by the database (${crowded.message})` : "taken by the database"}`,
         );
+        expect(crowded).toBeInstanceOf(Error);
+        expect(crowded).toMatchObject({
+          code: "22023",
+          hint: "full",
+          message: "More than 50 people on a shift",
+        });
 
         // Publishing next week, the first time: a line to each of the 299 on
         // the staff but the one who published, none to the accountant, none

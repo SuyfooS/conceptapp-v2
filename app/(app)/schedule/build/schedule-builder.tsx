@@ -42,7 +42,7 @@ import {
   withShiftsAsNow,
 } from "@domain/schedule";
 import { timeIn } from "@domain/shabbat";
-import type { Position } from "@domain/staffing";
+import { MAX_PEOPLE_ON_A_SHIFT, type Position } from "@domain/staffing";
 import { type ShiftSwap, swapsEndedBy } from "@domain/swaps";
 import type { TeamMember } from "@domain/team";
 import { Badge } from "@ui/badge";
@@ -1700,6 +1700,13 @@ function WeekBuilder({
           ltr,
         });
       }
+      case "shiftFull":
+        // Said for the button pressed: a published week has no save.
+        return t.rich("app.build.errors.shiftFull", {
+          max: MAX_PEOPLE_ON_A_SHIFT,
+          intent,
+          ltr,
+        });
       case "published":
         // Someone who builds without publishing can't publish the changes
         // instead: the week is theirs only to read now.

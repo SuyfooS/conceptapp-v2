@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { newStaffingKey, positions, shiftPatterns, shiftsOn } from "./staffing";
+import {
+  MAX_PEOPLE_ON_A_SHIFT,
+  newStaffingKey,
+  positions,
+  shiftPatterns,
+  shiftsOn,
+} from "./staffing";
 
 const morning = {
   key: "morning",
@@ -83,6 +89,19 @@ describe("shift patterns", () => {
     ]) {
       expect(shiftPatterns.safeParse([bad]).success).toBe(false);
     }
+  });
+
+  it("needs at most the people a shift holds, the database's 50", () => {
+    expect(MAX_PEOPLE_ON_A_SHIFT).toBe(50);
+    expect(
+      shiftPatterns.safeParse([{ ...morning, needed: MAX_PEOPLE_ON_A_SHIFT }])
+        .success,
+    ).toBe(true);
+    expect(
+      shiftPatterns.safeParse([
+        { ...morning, needed: MAX_PEOPLE_ON_A_SHIFT + 1 },
+      ]).success,
+    ).toBe(false);
   });
 
   it("lists a day's shifts, earliest first", () => {

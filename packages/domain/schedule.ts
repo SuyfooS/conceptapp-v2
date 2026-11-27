@@ -9,7 +9,12 @@ import {
 import { minutesOf, rangeMinutes, timeOfDay } from "./hours";
 import { holdsPermission, type Viewer } from "./modules";
 import { calendarDate } from "./shabbat";
-import { MAX_SHIFTS_IN_A_WEEK, type ShiftPattern, shiftsOn } from "./staffing";
+import {
+  MAX_PEOPLE_ON_A_SHIFT,
+  MAX_SHIFTS_IN_A_WEEK,
+  type ShiftPattern,
+  shiftsOn,
+} from "./staffing";
 
 /**
  * The week's schedule: the shifts of one week and who works each. A
@@ -46,10 +51,11 @@ export const scheduledShift = z
     start: timeOfDay,
     /** At or before `start` means the shift ends after midnight. */
     end: timeOfDay,
-    needed: z.int().min(1).max(50),
+    needed: z.int().min(1).max(MAX_PEOPLE_ON_A_SHIFT),
     /** The pattern the shift was made from; null when added by hand. */
     pattern: key.nullable().default(null),
-    assignees: z.array(shiftAssignee).max(50).default([]),
+    /** At most MAX_PEOPLE_ON_A_SHIFT, as the database holds (`crowdedShiftIn`). */
+    assignees: z.array(shiftAssignee).max(MAX_PEOPLE_ON_A_SHIFT).default([]),
   })
   .refine((shift) => shift.start !== shift.end, {
     message: "Start and end must differ",
@@ -145,6 +151,23 @@ export function weekSchedule(
         });
       });
     });
+}
+
+/**
+ * Whether a week `weekSchedule` refused has a shift with more people on it
+ * than a shift holds (MAX_PEOPLE_ON_A_SHIFT): the builder's action then says
+ * so in words of their own (`shiftFull`), the same as for people joining a
+ * shift under way past it (`crowdedByJoins` in ./running-week), rather than
+ * that something doesn't fit.
+ */
+export function crowdedShiftIn(error: z.ZodError): boolean {
+  return error.issues.some(
+    (issue) =>
+      issue.code === "too_big" &&
+      issue.path.length === 2 &&
+      typeof issue.path[0] === "number" &&
+      issue.path[1] === "assignees",
+  );
 }
 
 /**
@@ -623,7 +646,8 @@ export type ShiftDetailsProblem = "name" | "time" | "same" | "needed";
 /**
  * The manager's own edits to a shift (name, hours, people needed), checked
  * field by field as the form shows them: a name, two times that differ
- * (an end at or before the start runs past midnight), 1–50 people.
+ * (an end at or before the start runs past midnight), 1 to
+ * MAX_PEOPLE_ON_A_SHIFT people.
  */
 export function shiftDetailsProblem(details: {
   name: string;
@@ -643,7 +667,7 @@ export function shiftDetailsProblem(details: {
   if (
     !Number.isInteger(details.needed) ||
     details.needed < 1 ||
-    details.needed > 50
+    details.needed > MAX_PEOPLE_ON_A_SHIFT
   ) {
     return "needed";
   }

@@ -3,6 +3,7 @@
 import { openWeek } from "@db/availability";
 import { publishWeekSchedule, saveWeekSchedule } from "@db/schedule";
 import {
+  crowdedShifts,
   type EdgeClash,
   edgeClashes,
   endedShifts,
@@ -17,10 +18,12 @@ import {
 import { copiedOver } from "@domain/copy-week";
 import {
   builderWeekOf,
+  crowdedByJoins,
   type ShiftJoin,
   shiftJoins,
 } from "@domain/running-week";
 import {
+  crowdedShiftIn,
   type ShiftAsNow,
   type ShiftBasis,
   shiftBasis,
@@ -75,6 +78,12 @@ export type ScheduleFailure =
   // People were put on a shift under way that has ended since: nothing was
   // saved. The state says how it is now (`moved`), without them.
   | "shiftEnded"
+  // A shift would hold more people than a shift holds
+  // (MAX_PEOPLE_ON_A_SHIFT): one sent with too many on it, people joining a
+  // shift under way past it, or either reaching it because people were put
+  // on it meanwhile from another screen (the database's own count,
+  // 20261128000500_shift_cap.sql). Nothing was saved.
+  | "shiftFull"
   | "failed";
 
 /**
@@ -145,8 +154,12 @@ const intentOf = (form: FormData) =>
  * doesn't show (`edgeClash`, naming it). A screen that copied last week into
  * the week sends the save moment it read (`copied`), and the week saved
  * since is refused (`copySaved`), as two copies of empty shifts would both
- * go in. Workers see nothing of a draft. A published week is only published
- * again, never saved back into a draft.
+ * go in. A shift never holds more than MAX_PEOPLE_ON_A_SHIFT people: one
+ * sent with more, people joining a shift under way past it (counted with
+ * those on it as stored now), and the database's own refusal when people
+ * were put on it meanwhile all say so (`shiftFull`). Workers see nothing of a
+ * draft. A published week is only published again, never saved back into a
+ * draft.
  */
 export async function saveScheduleAction(
   _prev: ScheduleState,
@@ -202,11 +215,24 @@ export async function saveScheduleAction(
   } catch {
     return { failure: "invalid" };
   }
-  if (!parsed.success) return { failure: "invalid" };
+  if (!parsed.success) {
+    // A shift sent with more people than a shift holds says so, as people
+    // joining one under way past it do below.
+    return {
+      failure: crowdedShiftIn(parsed.error) ? "shiftFull" : "invalid",
+    };
+  }
   // Drawn before the week's first save (or before the week was read with what
   // was seen), while the week is saved and read now: sending it would replace
   // whatever was saved meanwhile, or name ids with nothing read.
   if (read === null && build.basis !== null) return { failure: "weekSaved" };
+  // People joining a shift under way, counted with everyone on it as the
+  // week is stored now: past the people a shift holds, nothing is sent. Two
+  // screens joining it at once are the database's to refuse (`crowdedShifts`
+  // below), in the same words.
+  if (crowdedByJoins(build.shifts, joins).length > 0) {
+    return { failure: "shiftFull", now };
+  }
 
   let weekId: string | null = null;
   try {
@@ -231,6 +257,9 @@ export async function saveScheduleAction(
       return moved ? { failure: "weekMoved", moved } : { failure: "weekMoved" };
     }
     if (scheduleClashedMeanwhile(error)) return { failure: "clashMeanwhile" };
+    // Past the people a shift holds with people put on it meanwhile, which
+    // the count above didn't see (20261128000500_shift_cap.sql).
+    if (crowdedShifts(error)) return { failure: "shiftFull", now: answered };
     // Across the week's edge (20261115000600_running_week_edge.sql): the
     // other week's shift, which this screen doesn't show, named for it.
     const across = edgeClashes(error);
