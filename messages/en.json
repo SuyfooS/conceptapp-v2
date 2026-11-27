@@ -7553,6 +7553,9 @@
     },
     "mode": {
       "leave": "Back to the app"
+    },
+    "updated": {
+      "toast": "The app was updated, and your press wasn't recorded. Press again."
     }
   },
   "modules": {
