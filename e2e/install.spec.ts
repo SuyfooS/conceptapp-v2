@@ -39,6 +39,60 @@ test("a phone can put the app on its home screen", async ({
   }
 });
 
+// Chrome's offer to install the app (closing the pilot, PR 7) is caught by
+// the root layout's script as the page is read, before the app's own code
+// runs, on every page, signed out too: sent the moment the page is parsed
+// (a fake, as headless Chromium sends none), it is kept for a press, and
+// Chrome's own bar is stopped where the site can offer the app's button,
+// with notifications to the phone set up (CI sets them); without them the
+// bar is left to Chrome. Which of the two is read from the page itself, the
+// capture's last argument as the server wrote it (`pushConfig()` there):
+// Next reads `.env.local`, this process doesn't. On the clock station's
+// pages it is left to Chrome, which installs the station there. The button
+// itself is push-card.spec's and design.spec's.
+test("Chrome's offer to install the app is caught before the app draws, except on the station", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    document.addEventListener("DOMContentLoaded", () => {
+      const event = new Event("beforeinstallprompt", { cancelable: true });
+      window.dispatchEvent(event);
+      Object.assign(window, { offerKept: event.defaultPrevented });
+    });
+  });
+  const kept = () =>
+    page.evaluate(() => {
+      // The capture's own call (`installCaptureScript`), not Next's data,
+      // which carries its text too.
+      const capture = [...document.scripts]
+        .map((script) => script.textContent?.trim() ?? "")
+        .find(
+          (text) =>
+            text.startsWith("(") && text.includes("__conceptappInstall"),
+        );
+      return {
+        prevented: (window as unknown as { offerKept?: boolean }).offerKept,
+        held:
+          (
+            window as unknown as {
+              __conceptappInstall?: { event: Event | null };
+            }
+          ).__conceptappInstall?.event?.type ?? null,
+        offered: capture?.match(/,(true|false)\);$/)?.[1] ?? null,
+      };
+    });
+  await page.goto("/enter");
+  const enter = await kept();
+  expect(enter.offered).not.toBeNull();
+  expect(enter).toEqual({
+    prevented: enter.offered === "true",
+    held: "beforeinstallprompt",
+    offered: enter.offered,
+  });
+  await page.goto("/station");
+  expect(await kept()).toMatchObject({ prevented: false, held: null });
+});
+
 // The clock station on a tablet's home screen (#78 phase 5,
 // docs/clock-station.md "במסך הבית"): /station links its own manifest in the
 // app's place, so it opens the station itself, in full screen, either way up,

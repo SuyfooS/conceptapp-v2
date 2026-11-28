@@ -92,6 +92,7 @@ import { OldBrowser } from "../old-browser";
 import { GalleryChat } from "./gallery-chat";
 import { GalleryFileField } from "./gallery-documents";
 import { GalleryFile } from "./gallery-file";
+import { GalleryInstall } from "./gallery-install";
 import { GalleryOrderTaking } from "./gallery-order-taking";
 import { GalleryPushAsk } from "./gallery-push-ask";
 import { GalleryAnnouncer, GalleryUndoRows } from "./gallery-undo";
@@ -1079,6 +1080,10 @@ function GalleryBody({
 
         <Section title={t("pushAsk")}>
           <GalleryPushAsk />
+        </Section>
+
+        <Section title={t("installApp")}>
+          <GalleryInstall />
         </Section>
 
         <Section title={t("floatingAction")}>

@@ -1,6 +1,8 @@
 import AxeBuilder from "@axe-core/playwright";
 import he from "../messages/he.json" with { type: "json" };
+import { pastDrawing } from "./announcer";
 import { demoConversation } from "./db";
+import { heT } from "./t";
 import { expect, type Page, test } from "./test";
 
 // The console, the door to the app and the screens for when something is
@@ -232,8 +234,9 @@ for (const key of ["worker", "manager", "owner", "accountant"] as const) {
 }
 
 // The notification settings in a demo business (N3), whose lines never
-// reach a phone: they say so, with nothing to switch, at every width. What
-// they offer in a real business is notification-settings.spec's.
+// reach a phone: they say so, with nothing to switch, at every width, and
+// no install button on Android either (closing the pilot, PR 7). What they
+// offer in a real business is notification-settings.spec's.
 test("/notifications/settings says a demo business has nothing to choose", async ({
   page,
 }) => {
@@ -244,7 +247,20 @@ test("/notifications/settings says a demo business has nothing to choose", async
     page.getByRole("heading", { level: 1, name: s.title }),
   ).toBeVisible();
   await expect(page.getByText(s.demo).filter({ visible: true })).toBeVisible();
+  // Looked for once the page has hydrated and drawn again: the switch and
+  // the install card are drawn by the browser only, never by the server.
+  await page.waitForLoadState("networkidle");
+  await pastDrawing(page);
   await expect(page.getByRole("switch")).toHaveCount(0);
+  await expect(
+    page.getByRole("region", { name: he.app.notifications.install.title }),
+  ).toHaveCount(0);
+  // The words the phone's Android would show with no offer from Chrome.
+  await expect(
+    page.getByText(
+      heT("app.notifications.install.menu", { browser: "chrome" }),
+    ),
+  ).toHaveCount(0);
   await expect(page).toHaveTitle(/ConceptApp$/);
   await expectAccessible(page);
 });
