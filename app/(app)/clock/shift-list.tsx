@@ -1,6 +1,10 @@
 import { dayMonth } from "@domain/availability-form";
 import type { Attendance, ShiftRecord } from "@domain/time-clock";
-import { formatHours } from "@domain/time-clock-format";
+import {
+  formatHours,
+  LONG_ENTRY_MINUTES,
+  longShiftToAsk,
+} from "@domain/time-clock-format";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { cn } from "@ui/cn";
@@ -8,6 +12,8 @@ import { ListGroup, ListRow } from "@ui/list-row";
 import { useFormatter } from "next-intl";
 import type { ReactNode } from "react";
 import type { Translator } from "../wording";
+import { AskFix } from "./ask-fix";
+import type { ClockAskFix as AskFixData } from "./clock-types";
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 
@@ -30,12 +36,17 @@ function useDayLabel() {
  * the times, the break and what it counted for. A cancelled one shows its
  * times, "בוטלה" instead of what it counted for, and who cancelled it, when
  * and why. For a manager, pressing a shift opens it: to fix one, or to bring
- * a cancelled one back.
+ * a cancelled one back. In the person's own shifts, one that needs fixing
+ * offers, beside its "צריך תיקון", whom to ask (`askFix`, closing the
+ * pilot's PR 8), and so does one that counted over 14 hours, saying why
+ * (`longShiftToAsk`: maybe a forgotten clock-out), until whoever approves
+ * hours corrected it or added it.
  */
 export function ShiftList({
   records,
   t,
   onEdit,
+  askFix = null,
   className,
 }: {
   records: ShiftRecord[];
@@ -49,20 +60,28 @@ export function ShiftList({
    * to bring it back.
    */
   onEdit?: (record: ShiftRecord) => void;
+  /**
+   * The person's own shifts: whom they ask to correct one that needs
+   * fixing. Never with `onEdit`, whose rows are buttons.
+   */
+  askFix?: AskFixData | null;
   className?: string;
 }) {
+  const ask = onEdit ? null : askFix;
   return (
     <>
       <ShiftRows
         records={records}
         t={t}
         onEdit={onEdit}
+        ask={ask}
         className={cn("xl:hidden", className)}
       />
       <ShiftTable
         records={records}
         t={t}
         onEdit={onEdit}
+        ask={ask}
         className={className}
       />
     </>
@@ -162,6 +181,18 @@ export function cancelLine(
   });
 }
 
+/**
+ * Why a long shift offers whom to ask: it counted over 14 hours, and a
+ * clock-out forgotten until the next press may be why.
+ */
+function LongLine({ t }: { t: Translator<"app.clock.history"> }) {
+  return (
+    <span className="block font-normal text-ink-2 text-sm">
+      {t.rich("askFix.long", { hours: LONG_ENTRY_MINUTES / 60, ltr })}
+    </span>
+  );
+}
+
 function StateBadge({
   record,
   t,
@@ -179,12 +210,15 @@ function StateBadge({
 /**
  * What a shift's row on phones and tablets says: its day, its times and the
  * lines under them, and what it counted for. A cancelled one counted for
- * nothing: its times, and who cancelled it, when and why.
+ * nothing: its times, and who cancelled it, when and why. One that needs
+ * fixing has whom to ask under its lines, with `ask`, and a long one too,
+ * after a line that says why.
  */
 function rowOf(
   record: ShiftRecord,
   t: Translator<"app.clock.history">,
   dayLabel: (date: string) => string,
+  ask: AskFixData | null = null,
 ): { title: ReactNode; subtitle: ReactNode; trailing: ReactNode } {
   const times = record.out
     ? t.rich("times", { in: record.in, out: record.out, ltr })
@@ -217,6 +251,12 @@ function rowOf(
         {record.byManager && !added ? t("byManager") : null}
         {proof ? t("withProof", { proof }) : null}
         {fixed ? <span className="block">{fixed}</span> : null}
+        {ask && longShiftToAsk(record) ? <LongLine t={t} /> : null}
+        {ask && (record.overdue || longShiftToAsk(record)) ? (
+          <span className="mt-2 flex">
+            <AskFix ask={ask} />
+          </span>
+        ) : null}
       </>
     ),
     trailing: (
@@ -239,18 +279,20 @@ function ShiftRows({
   records,
   t,
   onEdit,
+  ask,
   className,
 }: {
   records: ShiftRecord[];
   t: Translator<"app.clock.history">;
   onEdit?: (record: ShiftRecord) => void;
+  ask: AskFixData | null;
   className?: string;
 }) {
   const dayLabel = useDayLabel();
   return (
     <ListGroup className={className}>
       {records.map((record) => {
-        const row = rowOf(record, t, dayLabel);
+        const row = rowOf(record, t, dayLabel, ask);
         return onEdit ? (
           <ListRow key={record.id} {...row} onClick={() => onEdit(record)} />
         ) : (
@@ -287,11 +329,13 @@ function ShiftTable({
   records,
   t,
   onEdit,
+  ask,
   className,
 }: {
   records: ShiftRecord[];
   t: Translator<"app.clock.history">;
   onEdit?: (record: ShiftRecord) => void;
+  ask: AskFixData | null;
   className?: string;
 }) {
   const dayLabel = useDayLabel();
@@ -401,6 +445,12 @@ function ShiftTable({
                 <td className={cn(td, "tabular-nums")}>
                   {record.out ? (
                     <span dir="ltr">{record.out}</span>
+                  ) : ask && record.overdue ? (
+                    // Whom to ask, beside "צריך תיקון".
+                    <span className="flex flex-wrap items-center gap-2">
+                      <StateBadge record={record} t={t} />
+                      <AskFix ask={ask} />
+                    </span>
                   ) : (
                     <StateBadge record={record} t={t} />
                   )}
@@ -416,6 +466,13 @@ function ShiftTable({
                   ) : (
                     t("running")
                   )}
+                  {ask && longShiftToAsk(record) ? (
+                    // Whom to ask, beside the hours it counted, saying why.
+                    <span className="mt-2 flex flex-col items-start gap-2">
+                      <LongLine t={t} />
+                      <AskFix ask={ask} />
+                    </span>
+                  ) : null}
                 </td>
                 {onEdit ? (
                   <td className={cn(td, "text-end")}>

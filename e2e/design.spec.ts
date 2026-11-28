@@ -124,6 +124,13 @@ const PAGES = [
   "/design/shell/clock?state=left",
   "/design/shell/clock?code=on",
   "/design/shell/clock?state=working&code=on",
+  // Noa as a worker who forgot to clock out (closing the pilot, PR 8): whom
+  // she asks, one to write to, a choice of two and chat off; and under a
+  // shift just left that counted 17 hours.
+  "/design/shell/clock?state=overdue",
+  "/design/shell/clock?state=overdue&ask=pick",
+  "/design/shell/clock?state=overdue&ask=name",
+  "/design/shell/clock?state=long",
   "/design/shell/clock/code",
   // The device already the business's kitchen's screen: the lock stops it first.
   "/design/shell/clock/code?other=prep",
@@ -142,6 +149,8 @@ const PAGES = [
   "/design/shell/clock/history?state=empty",
   "/design/shell/clock/history?estimate=off",
   "/design/shell/clock/history?absences=1",
+  "/design/shell/clock/history?state=fix",
+  "/design/shell/clock/history?state=fix&ask=pick",
   "/design/shell/clock/team",
   "/design/shell/clock/team?away=1",
   // Days away on the person's page (known issue 19).

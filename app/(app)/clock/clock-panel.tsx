@@ -6,10 +6,13 @@ import {
 } from "@domain/punch-code-format";
 import type { TimeBreak, TimeEntry } from "@domain/time-clock";
 import {
+  asksForFix,
   entryMs,
   entryOverdue,
   formatElapsed,
   formatHours,
+  LONG_ENTRY_MINUTES,
+  longShift,
 } from "@domain/time-clock-format";
 import { Button, type ButtonProps } from "@ui/button";
 import { Card } from "@ui/card";
@@ -37,6 +40,7 @@ import {
 } from "react";
 import { useSignedInId } from "@/app/release-note";
 import { reloadForRelease, untilReloaded } from "@/app/stale-build";
+import { AskFix } from "./ask-fix";
 import { type ClockPress, clockState, pressOver } from "./clock-focus";
 import type { ClockActionResult, ClockActions, ClockData } from "./clock-types";
 import { PunchCodeSheet } from "./punch-code-sheet";
@@ -90,7 +94,10 @@ function useNow(initial: string, running: boolean): number {
  * updated, to the same person only (`@/app/release-note`); nothing is sent
  * again, so the time recorded is the person's next press. Should the page
  * stay (its reload stopped), the press says it failed after a while, as
- * before.
+ * before. Under a refusal that says to ask whoever approves hours (a shift
+ * open over a day, among others), whom to ask: written to in chat, or
+ * named (`AskFix`, closing the pilot's PR 8); and under "יצאת ב-…" for a
+ * shift that counted over 14 hours (`longShift`).
  */
 export function ClockPanel({
   data,
@@ -513,6 +520,12 @@ export function ClockPanel({
           {t(`failure.${shownFailure}`)}
         </p>
       ) : null}
+      {/* Whom to ask, under a refusal that says to ask whoever approves
+          hours (closing the pilot, PR 8): outside the alert, which says
+          only why. */}
+      {data.askFix && asksForFix(shownFailure) ? (
+        <AskFix ask={data.askFix} className="text-center" />
+      ) : null}
       {data.viewOnly ? (
         <p className="text-center text-ink-2 text-sm">{t("viewOnly")}</p>
       ) : null}
@@ -543,6 +556,20 @@ export function ClockPanel({
             {t("undo")}
           </UndoLeaving>
         </Card>
+      ) : null}
+      {/* A shift that counted over 14 hours may be a clock-out forgotten
+          until now, which the clock still takes within its day: whom to
+          ask, as under a refusal (closing the pilot, PR 8). */}
+      {undoLeft && !scanning && data.askFix && longShift(undoLeft) ? (
+        <div className="flex w-full flex-col items-center gap-3 text-center">
+          <p className="text-ink-2 text-sm">
+            {t.rich("history.askFix.long", {
+              hours: LONG_ENTRY_MINUTES / 60,
+              ltr: (chunks) => <span dir="ltr">{chunks}</span>,
+            })}
+          </p>
+          <AskFix ask={data.askFix} />
+        </div>
       ) : null}
 
       {needsCode ? (

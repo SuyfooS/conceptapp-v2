@@ -224,6 +224,9 @@ describe("the clock's browser files", () => {
   /** The clock's browser files, and the packages/ui files only it uses. */
   const clockFiles = [
     "app/(app)/clock/clock-panel.tsx",
+    // Whom to ask under a refusal (closing the pilot, PR 8): its chat
+    // addresses come from the server, so it takes nothing from chat's files.
+    "app/(app)/clock/ask-fix.tsx",
     "app/(app)/clock/punch-code-sheet.tsx",
     "app/(app)/clock/without-code-sheet.tsx",
     "app/(app)/clock/scan-punch.tsx",

@@ -4327,6 +4327,14 @@ export type Database = {
         Args: { actor: string; business: string; person: string; seen: string };
         Returns: undefined;
       };
+      clock_editors: {
+        Args: { business: string };
+        Returns: {
+          name: string;
+          role: Database["public"]["Enums"]["member_role"];
+          user_id: string;
+        }[];
+      };
       clock_in: {
         Args: {
           actor: string;
