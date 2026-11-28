@@ -3,10 +3,10 @@
 -- recipient, so whoever sends one chooses each time, and their note reads
 -- "משהו שחשוב לדעת למשמרת הבאה"; the other templates are as they were; a
 -- business opened from it gets both lists that way, a send with nobody
--- chosen is refused and one to a person reaches only them; a template's
--- later version reaches only the businesses opened after it; and no demo
--- business starts from it, while one that did would still get its example
--- list. Fixed ids of its own.
+-- chosen is refused (as for every template, with or without the migration)
+-- and one to a person reaches only them; a template's later version reaches
+-- only the businesses opened after it; and no demo business starts from it,
+-- while one that did would still get its example list. Fixed ids of its own.
 begin;
 select plan(16);
 
@@ -143,7 +143,11 @@ select is(
   'it records the version, and neither list has times, so nothing goes out by itself'
 );
 
--- Sending: nobody chosen is refused, and one person chosen gets it alone.
+-- Sending. Nobody chosen is refused as for every template: send_list takes
+-- the recipient only from what was sent, never from the template, so this
+-- check holds with or without the migration (what changed, the send screen
+-- starting with nobody chosen, is `sendDefaults` in packages/domain/lists.test.ts).
+-- One person chosen gets it alone.
 select throws_ok(
   $$select public.send_list(
     '9b000000-0000-4000-a000-000000000001', '9b000000-0000-4000-b000-000000000001',
@@ -153,7 +157,7 @@ select throws_ok(
     ))
   )$$,
   '22023', null,
-  'sending "פתיחה" with nobody chosen is refused: the database never picks for the sender'
+  'sending "פתיחה" with nobody chosen is refused, as for every template: send_list never picks for the sender'
 );
 select lives_ok(
   $$select public.send_list(
@@ -183,9 +187,10 @@ select is(
   'no demo business starts from the general template, so neither they nor their reset change'
 );
 
--- Were one to, the reset's example lists (private.seed_demo_lists) would
--- still come: the first list to one worker, by name, and the second only
--- when it has a department or a role, which "סגירה" now doesn't.
+-- Were one to, the reset's example lists (private.seed_demo_lists, called
+-- here alone, not the whole public.reset_demo_business) would still come:
+-- the first list to the definition's first worker, as a person, and the
+-- second only when it has a department or a role, which "סגירה" now doesn't.
 insert into private.demo_businesses (business_id, definition)
 values ('9b000000-0000-4000-b000-000000000002', $json$
   {
@@ -206,7 +211,7 @@ select is(
    join public.list_templates t on t.id = l.template_id
    where l.business_id = '9b000000-0000-4000-b000-000000000002'),
   'opening:person:open:9b000000-0000-4000-a000-000000000003',
-  'a demo on the general template still gets "פתיחה" sent to one worker, and "סגירה" is left for someone to send'
+  'a demo on the general template still gets "פתיחה" sent to its first worker, and "סגירה" is left for someone to send'
 );
 
 -- A later version of a template reaches only the businesses opened after

@@ -635,13 +635,6 @@ template's departments and lists (`private.backfill_lists`), adds
 only while nobody has started the list), and fills `private.seed_demo_lists`:
 the demo reset ends with two example lists sent by the demo's manager, and
 from L5 an order (`lists_on.test.sql`).
-`20261128000700_general_lists.sql` (closing the pilot, PR 9) gives the general
-template's "פתיחה" and "סגירה" no fixed recipient (`"recipient": null`, the
-editor's "בכל פעם"), so whoever sends one chooses who each time instead of
-every worker, and their note reads "משהו שחשוב לדעת למשמרת הבאה". It is a
-version of the template (5 to 6), so only businesses opened from it afterwards
-get it: `apply_template` copies a template's lists once, and a business opened
-before keeps its own (`general_lists.test.sql`).
 `@db/departments` `getDepartmentsForTeam` reads them for the console with the
 secret key, since the team is no member.
 Templates and the full send (L3) need no migration. `saveListTemplate` calls
@@ -662,6 +655,14 @@ shifts `send_list` takes; `hasPublishedWeek` whether the business ever
 published a week, for the owner's first steps (a publish is never taken back). The app binds the template and send writes to the
 business the screen was drawn for (payroll P3b), so a save from a tab left
 open never lands in another business.
+
+The general template's lists (`20261128000700_general_lists.sql`, closing the
+pilot, PR 9): its "פתיחה" and "סגירה" have no fixed recipient
+(`"recipient": null`, the editor's "בכל פעם"), so whoever sends one chooses
+who each time instead of every worker, and their note reads "משהו שחשוב לדעת
+למשמרת הבאה". It is a version of the template (5 to 6), so only businesses
+opened from it afterwards get it: `apply_template` copies a template's lists
+once, and a business opened before keeps its own (`general_lists.test.sql`).
 
 Lists' times (L4, `20261110001300_list_schedules.sql`) run in the database:
 `private.lists_tick`, every minute (the pg_cron job `lists`, pure SQL, no
