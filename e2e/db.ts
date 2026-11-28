@@ -6959,3 +6959,151 @@ export async function teamImportInvite(
     limit 1`;
   return row ?? null;
 }
+
+/**
+ * A worker's first day (closing the pilot, PR 27; e2e/first-day.spec.ts),
+ * one business for each of its two projects: a real business opened by the
+ * console's wizard from the general template, as a pilot business of any
+ * kind is, with a new worker in the wizard's staff; its owner already on
+ * the team, who makes the worker's link on /team. Real, since a demo
+ * business takes no invites outside the local seed and real people never
+ * join one. The worker's number has never signed in on a fresh database
+ * (CI's), so their first sign-in is the code at /join. The numbers and the
+ * owner's id are in no other spec.
+ */
+export const FIRST_DAY = {
+  "webkit-390": {
+    slug: "first-day-e2e-webkit",
+    name: "עסק ליום הראשון באייפון",
+    owner: {
+      id: "00000000-0000-4000-a000-000000000e41",
+      name: "אורית בעלים",
+      e164: "+972500004840",
+    },
+    worker: { name: "מאיה חדשה", e164: "+972500004841" },
+  },
+  "chromium-320": {
+    slug: "first-day-e2e-narrow",
+    name: "עסק ליום הראשון במסך צר",
+    owner: {
+      id: "00000000-0000-4000-a000-000000000e42",
+      name: "אורית בעלים",
+      e164: "+972500004850",
+    },
+    worker: { name: "עידו חדש", e164: "+972500004851" },
+  },
+} as const;
+
+export type FirstDayBusiness = (typeof FIRST_DAY)[keyof typeof FIRST_DAY];
+
+/**
+ * The business opened afresh, an earlier run's gone first with its records:
+ * the wizard's own function with the worker in its staff (saved with no
+ * link), the owner's membership, and the worker's link made by the owner as
+ * /team's "יצירת קישור" makes it. Returns the token, as /join/<token> takes
+ * it.
+ */
+export async function openFirstDayBusiness(
+  business: FirstDayBusiness,
+): Promise<string> {
+  await closeFirstDayBusiness(business);
+  await ensureLogins([business.owner]);
+  const [opened] = await sql<{ id: string }[]>`
+    select public.create_business(${SEEDED_PLATFORM_ADMIN}::uuid,
+      ${business.name}, ${business.slug}, null, '#0f766e', 'general',
+      ${sql.json([
+        {
+          name: business.worker.name,
+          phone: business.worker.e164,
+          role: "worker",
+        },
+      ])}::jsonb)::text as id`;
+  if (!opened) throw new Error(`Could not open ${business.slug}`);
+  await sql`insert into public.memberships (business_id, user_id, role)
+    values (${opened.id}, ${business.owner.id}, 'owner')`;
+  const token = randomBytes(32).toString("base64url");
+  await sql`select public.team_invite_link(${business.owner.id}::uuid,
+    (select i.id from public.invites i
+      where i.business_id = ${opened.id} and i.phone = ${business.worker.e164}
+        and i.claimed_at is null),
+    ${createHash("sha256").update(token, "utf8").digest("hex")})`;
+  return token;
+}
+
+/**
+ * Next week published by the owner, as the builder publishes it, with the
+ * worker who just joined on its first day's morning, 09:00 to 16:00: always
+ * ahead, whatever the hour. Returns that day, and its weekday (0 Sunday).
+ */
+export async function publishFirstDayWeek(
+  business: FirstDayBusiness,
+): Promise<{ day: string; weekday: number }> {
+  const worker = await userIdOf(business.worker.e164);
+  const [week] = await sql<{ id: string; day: string; weekday: number }[]>`
+    with here as (
+      select b.id, (now() at time zone b.timezone)::date as today,
+        coalesce((m.settings ->> 'weekStartsOn')::int, 0) as starts_on
+      from public.businesses b
+      join public.business_modules m
+        on m.business_id = b.id and m.module_key = 'scheduling'
+      where b.slug = ${business.slug}
+    ),
+    next_week as (
+      select id, today - ((extract(dow from today)::int - starts_on + 7) % 7)
+        + 7 as starts_on
+      from here
+    )
+    select public.open_schedule_week(id, starts_on,
+        now() + interval '1 day')::text as id,
+      starts_on::text as day,
+      extract(dow from starts_on)::int as weekday
+    from next_week`;
+  if (!week) throw new Error(`Could not open next week at ${business.slug}`);
+  await sql`select public.publish_week_schedule(${business.owner.id}, ${week.id},
+    ${sql.json([
+      {
+        day: week.day,
+        name: "בוקר",
+        start: "09:00",
+        end: "16:00",
+        needed: 1,
+        assignees: [{ user: worker, position: null }],
+      },
+    ])})`;
+  return { day: week.day, weekday: week.weekday };
+}
+
+/** The worker's role in the business, or null when not an active member. */
+export async function firstDayRole(
+  business: FirstDayBusiness,
+): Promise<string | null> {
+  const [row] = await sql<{ role: string }[]>`
+    select m.role::text as role from public.memberships m
+    join public.businesses b on b.id = m.business_id
+    join public.profiles p on p.id = m.user_id
+    where b.slug = ${business.slug} and p.phone = ${business.worker.e164}
+      and m.active`;
+  return row?.role ?? null;
+}
+
+/** The worker's shifts on the business's clock, still open and ended. */
+export async function firstDayEntries(
+  business: FirstDayBusiness,
+): Promise<{ open: number; ended: number }> {
+  const [row] = await sql<{ open: number; ended: number }[]>`
+    select count(*) filter (where e.clock_out is null)::int as open,
+      count(*) filter (where e.clock_out is not null)::int as ended
+    from public.time_entries e
+    join public.businesses b on b.id = e.business_id
+    join public.profiles p on p.id = e.user_id
+    where b.slug = ${business.slug} and p.phone = ${business.worker.e164}`;
+  return row ?? { open: 0, ended: 0 };
+}
+
+/** The business gone with its records, when the test is done. */
+export async function closeFirstDayBusiness(
+  business: FirstDayBusiness,
+): Promise<void> {
+  const id = await businessIdBySlug(business.slug);
+  if (id) await deleteRealBusiness(id);
+}
