@@ -16,11 +16,16 @@ values
   ('9b000000-0000-4000-a000-000000000002', 'authenticated', 'authenticated', '972500009142'),
   ('9b000000-0000-4000-a000-000000000003', 'authenticated', 'authenticated', '972500009143'),
   ('9b000000-0000-4000-a000-000000000004', 'authenticated', 'authenticated', '972500009144'),
-  ('9b000000-0000-4000-a000-000000000005', 'authenticated', 'authenticated', '972500009145');
+  ('9b000000-0000-4000-a000-000000000005', 'authenticated', 'authenticated', '972500009145'),
+  ('9b000000-0000-4000-a000-000000000006', 'authenticated', 'authenticated', '972500009146'),
+  ('9b000000-0000-4000-a000-000000000007', 'authenticated', 'authenticated', '972500009147'),
+  ('9b000000-0000-4000-a000-000000000008', 'authenticated', 'authenticated', '972500009148'),
+  ('9b000000-0000-4000-a000-000000000009', 'authenticated', 'authenticated', '972500009149');
 
 -- G, a business opened from the general template now: 1 owner, 2 manager,
--- workers 3, 4 and 5. D, a demo business on the same template: 1 owner,
--- 2 manager, workers 3 and 4. H is opened after a later version of it.
+-- workers 3, 4 and 5. D, a demo business on the same template: 6 owner,
+-- 7 manager, workers 8 and 9 (a person is on one business's staff only).
+-- H is opened after a later version of it.
 insert into public.businesses (id, slug, name)
 values
   ('9b000000-0000-4000-b000-000000000001', 'general-lists-g', 'General lists G'),
@@ -103,10 +108,10 @@ values
   ('9b000000-0000-4000-b000-000000000001', '9b000000-0000-4000-a000-000000000003', 'worker', true),
   ('9b000000-0000-4000-b000-000000000001', '9b000000-0000-4000-a000-000000000004', 'worker', true),
   ('9b000000-0000-4000-b000-000000000001', '9b000000-0000-4000-a000-000000000005', 'worker', true),
-  ('9b000000-0000-4000-b000-000000000002', '9b000000-0000-4000-a000-000000000001', 'owner', true),
-  ('9b000000-0000-4000-b000-000000000002', '9b000000-0000-4000-a000-000000000002', 'manager', true),
-  ('9b000000-0000-4000-b000-000000000002', '9b000000-0000-4000-a000-000000000003', 'worker', true),
-  ('9b000000-0000-4000-b000-000000000002', '9b000000-0000-4000-a000-000000000004', 'worker', true);
+  ('9b000000-0000-4000-b000-000000000002', '9b000000-0000-4000-a000-000000000006', 'owner', true),
+  ('9b000000-0000-4000-b000-000000000002', '9b000000-0000-4000-a000-000000000007', 'manager', true),
+  ('9b000000-0000-4000-b000-000000000002', '9b000000-0000-4000-a000-000000000008', 'worker', true),
+  ('9b000000-0000-4000-b000-000000000002', '9b000000-0000-4000-a000-000000000009', 'worker', true);
 
 select is(
   (select string_agg(
@@ -196,10 +201,10 @@ values ('9b000000-0000-4000-b000-000000000002', $json$
   {
     "slug": "general-lists-d", "name": "General lists D", "template": "general",
     "people": [
-      { "user_id": "9b000000-0000-4000-a000-000000000001", "role": "owner", "name": "Owner" },
-      { "user_id": "9b000000-0000-4000-a000-000000000002", "role": "manager", "name": "Manager" },
-      { "user_id": "9b000000-0000-4000-a000-000000000003", "role": "worker", "name": "Worker C" },
-      { "user_id": "9b000000-0000-4000-a000-000000000004", "role": "worker", "name": "Worker D" }
+      { "user_id": "9b000000-0000-4000-a000-000000000006", "role": "owner", "name": "Owner" },
+      { "user_id": "9b000000-0000-4000-a000-000000000007", "role": "manager", "name": "Manager" },
+      { "user_id": "9b000000-0000-4000-a000-000000000008", "role": "worker", "name": "Worker C" },
+      { "user_id": "9b000000-0000-4000-a000-000000000009", "role": "worker", "name": "Worker D" }
     ]
   }
   $json$);
@@ -210,7 +215,7 @@ select is(
    from public.lists l
    join public.list_templates t on t.id = l.template_id
    where l.business_id = '9b000000-0000-4000-b000-000000000002'),
-  'opening:person:open:9b000000-0000-4000-a000-000000000003',
+  'opening:person:open:9b000000-0000-4000-a000-000000000008',
   'a demo on the general template still gets "פתיחה" sent to its first worker, and "סגירה" is left for someone to send'
 );
 
