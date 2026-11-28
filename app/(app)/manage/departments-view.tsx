@@ -12,7 +12,7 @@ import {
 
 /**
  * The business's departments, for its owner and managers: the groups lists go
- * to, such as the kitchen or the checkout, and that prepare what is ordered
+ * to, such as reception or the warehouse, and that prepare what is ordered
  * while taking orders is on (waiter mode P2), each saying then how many of the
  * menu's items it prepares. Also on the design demo.
  */
