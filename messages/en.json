@@ -5416,9 +5416,9 @@
         "failed": "Notifications weren't turned on. You can try again.",
         "failedOff": "Notifications weren't turned off. You can try again.",
         "iosHint": {
-          "title": "Notifications on iPhone",
-          "body": "On an iPhone, notifications reach the app on the home screen. Add it once, from Safari:",
-          "share": "The share button at the bottom of the screen",
+          "title": "{device, select, phone {Notifications on iPhone} other {Notifications on iPad}}",
+          "body": "{device, select, phone {On an iPhone, notifications reach the app on the home screen. Add it once, from Safari:} other {On an iPad, notifications reach the app on the home screen. Add it once, from Safari:}}",
+          "share": "{device, select, phone {The share button at the bottom of the screen} other {The share button at the top of the screen}}",
           "add": "Add to Home Screen",
           "open": "Open it from the home screen, sign in again with the code and turn notifications on here"
         },
@@ -5501,7 +5501,7 @@
         "today": "{device, select, phone {Get notifications on the phone?} other {Get notifications on the device?}}",
         "body": "{device, select, phone {A notification on the phone arrives even with the app closed.} other {A notification on the device arrives even with the app closed.}}",
         "enable": "{device, select, phone {Turn on notifications on the phone} other {Turn on notifications on the device}}",
-        "install": "On an iPhone, add the app to the home screen first. The notification settings say how.",
+        "install": "{device, select, phone {On an iPhone, add the app to the home screen first. The notification settings say how.} other {On an iPad, add the app to the home screen first. The notification settings say how.}}",
         "on": "{device, select, phone {Notifications are on for this phone. In the settings you choose what reaches it.} other {Notifications are on for this device. In the settings you choose what reaches it.}}",
         "settings": "Notification settings",
         "dismiss": "Not now",

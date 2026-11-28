@@ -28,6 +28,8 @@ const n = he.app.notifications;
 const WORKER = PUSH_CARD_PEOPLE.worker;
 const IPHONE_SAFARI =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1";
+const IPAD_SAFARI =
+  "Mozilla/5.0 (iPad; CPU OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1";
 
 test.beforeAll(async () => {
   await openPushCardBusiness();
@@ -93,19 +95,20 @@ async function giveShift(page: Page) {
 }
 
 /**
- * Another device of the same person, an iPhone: in Safari (`standalone`
- * false, and no PushManager outside the home screen), or the app on its
- * home screen, whose storage is its own, as a real iPhone keeps them apart.
+ * Another device of the same person, an iPhone (or an iPad): in Safari
+ * (`standalone` false, and no PushManager outside the home screen), or the
+ * app on its home screen, whose storage is its own, as a real iPhone keeps
+ * them apart.
  */
 async function iphone(
   browser: Browser,
   testInfo: TestInfo,
-  { installed }: { installed: boolean },
+  { installed, ipad = false }: { installed: boolean; ipad?: boolean },
 ) {
   const use = testInfo.project.use;
   const context = await browser.newContext({
-    userAgent: IPHONE_SAFARI,
-    viewport: { width: 390, height: 844 },
+    userAgent: ipad ? IPAD_SAFARI : IPHONE_SAFARI,
+    viewport: ipad ? { width: 820, height: 1180 } : { width: 390, height: 844 },
     locale: use.locale,
     baseURL: use.baseURL,
     reducedMotion: "reduce",
@@ -148,6 +151,15 @@ test("Today offers notifications on the phone until 'לא עכשיו', and not a
     await expect(enable).toBeVisible();
     await expect(dismiss).toBeVisible();
     await expectAccessible(page);
+    // Under the hero: it comes once the browser has answered, after Today
+    // is drawn, and the next shift never moves for it.
+    const hero = page.getByRole("region", { name: he.app.home.hero.next });
+    const heroBox = await hero.boundingBox();
+    const cardBox = await card.boundingBox();
+    expect(heroBox).not.toBeNull();
+    expect(cardBox?.y ?? 0).toBeGreaterThanOrEqual(
+      (heroBox?.y ?? 0) + (heroBox?.height ?? 0),
+    );
 
     // Seen is not asked: it comes again, and nothing is kept.
     await page.reload();
@@ -164,9 +176,26 @@ test("Today offers notifications on the phone until 'לא עכשיו', and not a
     await expect(dismiss).toBeFocused();
     expect((await storedPreferences(WORKER.id))?.askedAt ?? null).toBeNull();
 
-    // Left to go, it is kept for the person, on every device of theirs.
+    // Left to go, it is kept for the person, on every device of theirs. On
+    // the desktop, Today is left for the person's shifts while it is still
+    // held: that screen is drawn before the write lands, and giving the
+    // shift away there offers nothing either (with less motion, as here,
+    // the sheet closes before the screen is drawn again).
     await dismiss.click();
     await expect(undo).toBeVisible();
+    const desktop = testInfo.project.name === "desktop";
+    if (desktop) {
+      await page
+        .getByRole("region", { name: he.app.home.hero.next })
+        .getByRole("link", { name: he.app.home.hero.myShifts })
+        .click();
+      await expect(page).toHaveURL(/\/schedule\/shifts$/);
+      await giveShift(page);
+      await page.waitForTimeout(1000);
+      await expect(page.getByRole("region", { name: n.ask.swap })).toHaveCount(
+        0,
+      );
+    }
     await expect
       .poll(async () => (await storedPreferences(WORKER.id))?.askedAt ?? null, {
         timeout: HOLD_MS + 10_000,
@@ -174,23 +203,15 @@ test("Today offers notifications on the phone until 'לא עכשיו', and not a
       .not.toBeNull();
     await expect(undo).toHaveCount(0);
 
-    // Gone after a reload, and from the moments too: giving the shift away
-    // offers nothing more.
-    await page.reload();
+    // Gone once Today is drawn again.
+    if (desktop) await page.goto("/home");
+    else await page.reload();
     // What it would have shown comes from the browser a moment later.
     await expect(
       page.getByRole("region", { name: he.app.home.hero.next }),
     ).toBeVisible();
     await page.waitForTimeout(1000);
     await expect(card).toHaveCount(0);
-    if (testInfo.project.name === "desktop") {
-      await page.goto("/schedule/shifts");
-      await giveShift(page);
-      await page.waitForTimeout(1000);
-      await expect(page.getByRole("region", { name: n.ask.swap })).toHaveCount(
-        0,
-      );
-    }
   } finally {
     await forgetPreferences(WORKER.id);
   }
@@ -229,11 +250,13 @@ test("an iPhone's Safari shows the steps to the home screen, and the app there s
   try {
     const { page } = safari;
     await signIn(page, owner);
-    const steps = page
-      .getByRole("main")
-      .getByRole("region", { name: n.push.iosHint.title });
+    const steps = page.getByRole("main").getByRole("region", {
+      name: heT("app.notifications.push.iosHint.title", { device: "phone" }),
+    });
     await expect(steps).toBeVisible();
-    await expect(steps).toContainText(n.push.iosHint.share);
+    await expect(steps).toContainText(
+      heT("app.notifications.push.iosHint.share", { device: "phone" }),
+    );
     await expect(steps).toContainText(n.push.iosHint.add);
     await expect(steps).toContainText(n.push.iosHint.open);
     // Nothing can be turned on in Safari.
@@ -272,6 +295,38 @@ test("an iPhone's Safari shows the steps to the home screen, and the app there s
     ).toBeVisible();
   } finally {
     await app.context.close();
+    await forgetPreferences(owner.id);
+  }
+});
+
+test("an iPad's Safari says iPad, with the share button at the top", async ({
+  browser,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "once, on the desktop");
+  test.skip(!PUBLIC_KEY, "needs VAPID keys (CI sets them)");
+  test.setTimeout(90_000);
+  const owner = PUSH_CARD_PEOPLE.owner;
+  await forgetPreferences(owner.id);
+  const ipad = await iphone(browser, testInfo, {
+    installed: false,
+    ipad: true,
+  });
+  try {
+    const { page } = ipad;
+    await signIn(page, owner);
+    const steps = page.getByRole("main").getByRole("region", {
+      name: heT("app.notifications.push.iosHint.title", { device: "other" }),
+    });
+    await expect(steps).toBeVisible();
+    await expect(steps).toContainText(
+      heT("app.notifications.push.iosHint.body", { device: "other" }),
+    );
+    await expect(steps).toContainText(
+      heT("app.notifications.push.iosHint.share", { device: "other" }),
+    );
+    await expectAccessible(page);
+  } finally {
+    await ipad.context.close();
     await forgetPreferences(owner.id);
   }
 });

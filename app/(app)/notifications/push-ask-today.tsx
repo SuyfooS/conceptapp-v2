@@ -26,7 +26,7 @@ import { useHeldWrite } from "../use-held-write";
 import { IosInstallSteps } from "./ios-install-steps";
 import type { PushAskOffer } from "./push-ask";
 import { type PushAskShown, usePushAskState } from "./push-ask-state";
-import { putInstallAway, turnOnPush } from "./push-client";
+import { holdPersonPutAway, putInstallAway, turnOnPush } from "./push-client";
 
 /**
  * What Today's card is given: the app's offer (`currentPushAsk`), or, on
@@ -46,6 +46,8 @@ type Driver = {
   turnOn: () => Promise<PushAskState>;
   /** Keeps what "לא עכשיו" keeps; whether Today is to be drawn again for it. */
   keep: (mark: Kept) => Promise<boolean>;
+  /** What "לא עכשיו" holds for its "ביטול" now, from the press on: none once taken back. */
+  holding: (mark: Kept | null) => void;
 };
 
 /** The twin's stand-in for a press on its way. */
@@ -137,6 +139,9 @@ function LiveToday({
       await offer.putAway();
       return true;
     },
+    // The person's mark is known in this page before the database has it,
+    // so a moment's card on a screen drawn before it lands asks nothing.
+    holding: (mark) => holdPersonPutAway(mark === "person"),
   };
   return (
     <TodayCard
@@ -166,6 +171,7 @@ function TwinToday({
       return "on";
     },
     keep: async () => false,
+    holding: () => {},
   };
   return (
     <TodayCard
@@ -267,6 +273,7 @@ function TodayCard({
     if (mark) {
       setGone(mark);
       held.hold(mark);
+      driver.holding(mark);
       return;
     }
     closedWithFocus.current = Boolean(
@@ -277,6 +284,7 @@ function TodayCard({
 
   function undo() {
     held.release();
+    driver.holding(null);
     backToButton.current = true;
     setGone(null);
   }
@@ -330,7 +338,11 @@ function useTodayWords(
     case "none":
       return null;
     case "install":
-      return { title: t("push.iosHint.title"), body: t("push.iosHint.body") };
+      // Only an iPhone or an iPad gets here: "other" is the iPad.
+      return {
+        title: t("push.iosHint.title", { device }),
+        body: t("push.iosHint.body", { device }),
+      };
     case "on":
       return {
         title: t("ask.today", { device }),
@@ -354,11 +366,13 @@ function useTodayWords(
 /**
  * Today's card in one state, as it draws: a quiet card (the screen's accent
  * stays with its own main action), the question and what it gets, the steps
- * to the home screen in Safari, and its buttons: phone, one under the other
- * across the card; from a tablet up, the words at the start and the buttons
- * at the end. Drawn by `PushAskToday`, and by the /design gallery in each
- * state, with nothing behind its buttons. `landmark` false leaves out its
- * region, for a page that draws several with the same name.
+ * to the home screen in Safari, and its buttons, by the card's own width,
+ * never the screen's: narrow (a phone, under Today's hero from a tablet up,
+ * the /design gallery's column), one under the other across the card; wide,
+ * the words at the start and the buttons at the end. Drawn by
+ * `PushAskToday`, and by the gallery in each state, with nothing behind its
+ * buttons. `landmark` false leaves out its region, for a page that draws
+ * several with the same name.
  */
 export function PushAskTodayCard({
   state,
@@ -390,61 +404,68 @@ export function PushAskTodayCard({
     state === "off" || state === "working" || state === "failed";
   const finished = state === "on" || state === "denied";
 
+  // Wide from 40rem: the 42rem card Today draws with nothing beside it
+  // lays out in a row, and a phone, a column or the gallery's 560px don't.
   return (
-    <Card
-      ref={cardRef}
-      tone="flat"
-      padding="lg"
-      role={landmark ? "region" : undefined}
-      aria-labelledby={landmark ? titleId : undefined}
-      className={cn(
-        "flex flex-col gap-4 md:max-w-2xl md:flex-row md:items-center",
-        className,
-      )}
-    >
-      <div className="flex min-w-0 flex-1 items-start gap-3">
-        <span
-          aria-hidden="true"
-          className="grid size-10 shrink-0 place-items-center rounded-full bg-accent-soft text-ink [&_svg]:size-5"
-        >
-          <BellRing />
-        </span>
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <CardTitle as="h2" id={titleId} className="text-pretty">
-            {words?.title}
-          </CardTitle>
-          <CardText className="text-pretty">{words?.body}</CardText>
-          {state === "install" ? <IosInstallSteps className="mt-2" /> : null}
-        </div>
-      </div>
-      <div
-        ref={actionsRef}
-        className="flex flex-col gap-2 md:shrink-0 md:flex-row"
+    <div className={cn("@container md:max-w-2xl", className)}>
+      <Card
+        ref={cardRef}
+        tone="flat"
+        padding="lg"
+        role={landmark ? "region" : undefined}
+        aria-labelledby={landmark ? titleId : undefined}
+        className="flex flex-col gap-4 @min-[40rem]:flex-row @min-[40rem]:items-center"
       >
-        {canTurnOn ? (
-          <Button
-            variant="secondary"
-            loading={state === "working"}
-            onClick={onEnable}
-            className="w-full md:w-auto"
+        <div className="flex min-w-0 flex-1 items-start gap-3">
+          <span
+            aria-hidden="true"
+            className="grid size-10 shrink-0 place-items-center rounded-full bg-accent-soft text-ink [&_svg]:size-5"
           >
-            {t("enable", { device })}
-          </Button>
-        ) : null}
-        {state === "on" ? (
-          <Button asChild variant="secondary" className="w-full md:w-auto">
-            <Link href={settingsHref}>{t("settings")}</Link>
-          </Button>
-        ) : null}
-        <Button
-          ref={dismissRef}
-          variant="ghost"
-          onClick={onDismiss}
-          className="w-full text-ink-2 md:w-auto"
+            <BellRing />
+          </span>
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <CardTitle as="h2" id={titleId} className="text-pretty">
+              {words?.title}
+            </CardTitle>
+            <CardText className="text-pretty">{words?.body}</CardText>
+            {state === "install" ? (
+              <IosInstallSteps device={device} className="mt-2" />
+            ) : null}
+          </div>
+        </div>
+        <div
+          ref={actionsRef}
+          className="flex flex-col gap-2 @min-[40rem]:shrink-0 @min-[40rem]:flex-row"
         >
-          {finished ? t("close") : t("dismiss")}
-        </Button>
-      </div>
-    </Card>
+          {canTurnOn ? (
+            <Button
+              variant="secondary"
+              loading={state === "working"}
+              onClick={onEnable}
+              className="w-full @min-[40rem]:w-auto"
+            >
+              {t("enable", { device })}
+            </Button>
+          ) : null}
+          {state === "on" ? (
+            <Button
+              asChild
+              variant="secondary"
+              className="w-full @min-[40rem]:w-auto"
+            >
+              <Link href={settingsHref}>{t("settings")}</Link>
+            </Button>
+          ) : null}
+          <Button
+            ref={dismissRef}
+            variant="ghost"
+            onClick={onDismiss}
+            className="w-full text-ink-2 @min-[40rem]:w-auto"
+          >
+            {finished ? t("close") : t("dismiss")}
+          </Button>
+        </div>
+      </Card>
+    </div>
   );
 }

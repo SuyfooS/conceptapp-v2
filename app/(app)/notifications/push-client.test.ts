@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  holdPersonPutAway,
   INSTALL_PUT_AWAY_KEY,
   installPutAway,
+  personPutAwayHere,
   putInstallAway,
 } from "./push-client";
 
@@ -46,5 +48,27 @@ describe("the steps put away in this browser", () => {
     vi.stubGlobal("localStorage", undefined);
     expect(() => putInstallAway()).not.toThrow();
     expect(installPutAway()).toBe(false);
+  });
+});
+
+// Today's "לא עכשיו" for the person, known in this page from the press on,
+// while its write is still held for "ביטול": a moment's card on a screen
+// drawn before the write lands offers nothing then (`usePushAskOnce`; the
+// whole way, e2e/push-card.spec.ts). Never in storage.
+describe("Today's 'לא עכשיו' for the person, in this page", () => {
+  afterEach(() => holdPersonPutAway(false));
+
+  it("isn't said until it is, and 'ביטול' takes it back", () => {
+    expect(personPutAwayHere()).toBe(false);
+    holdPersonPutAway(true);
+    expect(personPutAwayHere()).toBe(true);
+    holdPersonPutAway(false);
+    expect(personPutAwayHere()).toBe(false);
+  });
+
+  it("keeps nothing in the browser's storage", () => {
+    const kept = storage();
+    holdPersonPutAway(true);
+    expect(kept.size).toBe(0);
   });
 });

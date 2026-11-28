@@ -476,7 +476,9 @@ test("the phone's section says what this browser needs", async ({
     await signIn(phone, OWNER);
     await openSettings(phone);
     await expect(
-      phone.getByRole("heading", { name: n.push.iosHint.title }),
+      phone.getByRole("heading", {
+        name: heT("app.notifications.push.iosHint.title", { device: "phone" }),
+      }),
     ).toBeVisible();
     await expect(
       phone.getByText(n.push.iosHint.add).filter({ visible: true }),

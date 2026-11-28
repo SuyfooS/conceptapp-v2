@@ -128,15 +128,40 @@ describe("the offer of notifications on the phone", () => {
     }
   });
 
-  it("never comes again once they said 'לא עכשיו' or a moment's card showed", async () => {
+  it("never comes again once they said 'לא עכשיו' or a moment's card showed, and reads no devices then", async () => {
     mocks.getNotificationPreferences.mockResolvedValue({
       askedAt: "2026-11-28T08:00:00+00:00",
     });
     expect(await currentPushAsk()).toBeNull();
+    expect(mocks.ownDeviceKinds).not.toHaveBeenCalled();
   });
 
-  it("never comes when their choices can't be read", async () => {
+  it("never comes when their choices can't be read, and reads no devices then", async () => {
     mocks.getNotificationPreferences.mockRejectedValue(new Error("down"));
     expect(await currentPushAsk()).toBeNull();
+    expect(mocks.ownDeviceKinds).not.toHaveBeenCalled();
+  });
+
+  it("asks whether lines reach a phone and reads their choices together, the devices only for an offer", async () => {
+    let allow: (allowed: boolean) => void = () => {};
+    mocks.pushAllowed.mockReturnValue(
+      new Promise<boolean>((resolve) => {
+        allow = resolve;
+      }),
+    );
+    const offer = currentPushAsk();
+    await vi.waitFor(() =>
+      expect(mocks.getNotificationPreferences).toHaveBeenCalled(),
+    );
+    expect(mocks.ownDeviceKinds).not.toHaveBeenCalled();
+    allow(true);
+    expect(await offer).not.toBeNull();
+    expect(mocks.ownDeviceKinds).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads no devices where the person's lines reach no phone", async () => {
+    mocks.pushAllowed.mockResolvedValue(false);
+    expect(await currentPushAsk()).toBeNull();
+    expect(mocks.ownDeviceKinds).not.toHaveBeenCalled();
   });
 });

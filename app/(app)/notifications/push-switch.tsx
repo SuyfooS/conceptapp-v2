@@ -30,7 +30,7 @@ type Test = "sending" | "sent" | "tooSoon" | "failed" | null;
  * worker is registered until the person presses the switch. The first press
  * asks for permission before anything else waits, while Safari still counts
  * the press, then registers the worker and subscribes; once the worker is
- * there, a press subscribes at once. An iPhone in Safari is told to add the app to the
+ * there, a press subscribes at once. An iPhone or iPad in Safari is told to add the app to the
  * home screen first; a browser that blocked notifications says so; a demo
  * business says its notifications stay in the app, whatever the browser. Out
  * of a demo, a browser with no push shows nothing. The words say phone or device by what the browser is, never
@@ -183,10 +183,10 @@ export function PushSwitch({
           >
             <BellRing />
           </span>
-          <CardTitle as="h2">{t("iosHint.title")}</CardTitle>
+          <CardTitle as="h2">{t("iosHint.title", { device })}</CardTitle>
         </div>
-        <CardText>{t("iosHint.body")}</CardText>
-        <IosInstallSteps />
+        <CardText>{t("iosHint.body", { device })}</CardText>
+        <IosInstallSteps device={device} />
       </Card>
     );
   }

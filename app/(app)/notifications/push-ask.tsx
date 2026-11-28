@@ -9,7 +9,7 @@ import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { usePushAskState } from "./push-ask-state";
-import { putInstallAway, turnOnPush } from "./push-client";
+import { personPutAwayHere, putInstallAway, turnOnPush } from "./push-client";
 
 /**
  * Who may be offered notifications on the phone, on Today and after giving
@@ -60,13 +60,15 @@ function focusAfter(card: HTMLElement): HTMLElement | null {
 /**
  * The offer as a screen keeps it: nothing until `offer()` at the moment (a
  * shift given away, availability sent), then held even after the screen's
- * refresh says it was made, so the card doesn't go with it. Once.
+ * refresh says it was made, so the card doesn't go with it. Once. Nothing
+ * once Today's "לא עכשיו" was said in this page (`personPutAwayHere`), even
+ * on a screen drawn before its write landed.
  */
 export function usePushAskOnce(ask: PushAskOffer | null) {
   const [asking, setAsking] = useState<PushAskOffer | null>(null);
   const asked = useRef(false);
   const offer = useCallback(() => {
-    if (!ask || asked.current) return;
+    if (!ask || asked.current || personPutAwayHere()) return;
     asked.current = true;
     setAsking(ask);
   }, [ask]);
@@ -213,7 +215,7 @@ function AskCard({
   const title = t(`ask.${moment}`);
   const body =
     state === "install"
-      ? t("ask.install")
+      ? t("ask.install", { device })
       : state === "on"
         ? t("ask.on", { device })
         : state === "denied"

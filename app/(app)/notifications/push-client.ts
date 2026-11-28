@@ -50,6 +50,27 @@ export function putInstallAway(): void {
   }
 }
 
+/**
+ * Today's "לא עכשיו" for the person, said in this page: held for its
+ * "ביטול" (`useHeldWrite`) and sent only once Today is left or the wait
+ * ends, so a screen drawn before it lands (the one being opened as Today is
+ * left, or one Next keeps for the way back) still has the offer. While this
+ * is set, a moment's card offers nothing (`usePushAskOnce`). In this page
+ * only, never stored: every screen drawn after the write lands has no offer
+ * anyway, and signing out loads a new page.
+ */
+let personPutAway = false;
+
+/** Today's "לא עכשיו" for the person was said (true), or taken back with "ביטול" (false). */
+export function holdPersonPutAway(said: boolean): void {
+  personPutAway = said;
+}
+
+/** Whether Today's "לא עכשיו" for the person was said in this page. */
+export function personPutAwayHere(): boolean {
+  return personPutAway;
+}
+
 /** The application server key, as `pushManager.subscribe` takes it. */
 export function keyBytes(publicKey: string): Uint8Array<ArrayBuffer> {
   const base64 = publicKey.replace(/-/g, "+").replace(/_/g, "/");

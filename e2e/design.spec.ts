@@ -1924,9 +1924,9 @@ test("the Today demo's notifications card turns them on, and 'לא עכשיו' p
 
   await page.goto("/design/shell/today/worker?push=install");
   await page.waitForLoadState("networkidle");
-  const steps = page
-    .getByRole("main")
-    .getByRole("region", { name: he.app.notifications.push.iosHint.title });
+  const steps = page.getByRole("main").getByRole("region", {
+    name: heT("app.notifications.push.iosHint.title", { device: "phone" }),
+  });
   await expect(steps).toContainText(he.app.notifications.push.iosHint.add);
   const dismiss = steps.getByRole("button", { name: a.dismiss });
   await dismiss.click();
@@ -1939,6 +1939,56 @@ test("the Today demo's notifications card turns them on, and 'לא עכשיו' p
   await undo.click();
   await expect(steps).toBeVisible();
   await expect(dismiss).toBeFocused();
+});
+
+// The same card in the /design gallery, in each state: it lays out by its
+// own width, never the screen's, so in the gallery's 560px column it draws
+// as under Today's hero, the buttons under the words, at every width and in
+// both languages, and no word spills out of its line (a row there left the
+// English words a column too narrow for "notifications").
+test("the gallery's notifications card draws its buttons under its words, in Hebrew and English", async ({
+  page,
+}) => {
+  await page.goto("/design");
+  for (const [messages, lang] of [
+    [he, "he"],
+    [en, "en"],
+  ] as const) {
+    if (lang === "en") {
+      await page
+        .getByRole("button", { name: he.design.languages.en, exact: true })
+        .click();
+    }
+    const a = messages.app.notifications.ask;
+    const section = page.locator("section").filter({
+      has: page.getByRole("heading", {
+        name: messages.design.pushAsk,
+        exact: true,
+      }),
+    });
+    // Each state's last button: "לא עכשיו", or "סגירה" once on or blocked.
+    const last = section.getByRole("button", {
+      name: new RegExp(`^(${a.dismiss}|${a.close})$`),
+    });
+    await expect(last).toHaveCount(6);
+    const drawn = await last.evaluateAll((buttons) =>
+      buttons.map((button) => {
+        const actions = button.parentElement as HTMLElement;
+        const words = actions.previousElementSibling as HTMLElement;
+        return {
+          under:
+            actions.getBoundingClientRect().top >=
+            words.getBoundingClientRect().bottom - 1,
+          spilled: [...words.querySelectorAll("h2, p, li")].filter(
+            (line) => line.scrollWidth > line.clientWidth + 1,
+          ).length,
+        };
+      }),
+    );
+    expect(drawn, lang).toEqual(
+      Array.from({ length: 6 }, () => ({ under: true, spilled: 0 })),
+    );
+  }
 });
 
 // Signed in again on the business's clock station (#78 phase 5): Today says

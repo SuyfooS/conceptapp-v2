@@ -37,12 +37,16 @@ export async function currentPushAsk(): Promise<PushAskOffer | null> {
   ) {
     return null;
   }
-  if ((await pushAllowed(member.userId)) !== true) return null;
-  const [preferences, devices] = await Promise.all([
+  // Once asked, which most people are after their first visit, nothing more
+  // is read: the devices only for an offer that will be made.
+  const [allowed, preferences] = await Promise.all([
+    pushAllowed(member.userId),
     getNotificationPreferences().catch(() => null),
-    ownDeviceKinds().catch((): DeviceLabel[] => []),
   ]);
-  if (!preferences || preferences.askedAt !== null) return null;
+  if (allowed !== true || !preferences || preferences.askedAt !== null) {
+    return null;
+  }
+  const devices = await ownDeviceKinds().catch((): DeviceLabel[] => []);
   return {
     publicKey: push.publicKey,
     devices,

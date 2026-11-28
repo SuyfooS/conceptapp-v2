@@ -10,6 +10,7 @@ import {
   publishFirstDayWeek,
 } from "./db";
 import { latestCode } from "./sms";
+import { heT } from "./t";
 import { expect, type Page, type TestInfo, test } from "./test";
 
 // A worker's first day (closing the pilot, PR 27), in a browser engine other
@@ -275,7 +276,9 @@ test("a new worker joins from the owner's link and gets through the first day", 
       // blocked, and shows no card.
       if (testInfo.project.name === "webkit-390" && PUSH_SET_UP) {
         const steps = page.getByRole("region", {
-          name: he.app.notifications.push.iosHint.title,
+          name: heT("app.notifications.push.iosHint.title", {
+            device: "phone",
+          }),
         });
         await expect
           .soft(steps, "3-today: the steps to the home screen")
