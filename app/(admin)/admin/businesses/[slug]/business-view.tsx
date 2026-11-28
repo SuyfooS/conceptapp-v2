@@ -1,6 +1,5 @@
 import type { BusinessSetup, SetupPerson } from "@db/admin";
 import { accentTokens } from "@domain/color";
-import type { Role } from "@domain/modules";
 import { displayIsraeliMobile } from "@domain/phone";
 import { type NamedRole, namedRoleName } from "@domain/role-access";
 import {
@@ -11,6 +10,7 @@ import {
   setupChecklist,
   setupCounted,
   setupDone,
+  setupPeople,
   setupRemaining,
   setupTeam,
 } from "@domain/setup";
@@ -138,18 +138,8 @@ export async function BusinessView({
   const tAccess = await getTranslations("app.manage.access");
   const tRoles = await getTranslations("app.manage.roles");
   const template = templateName(t, business.templateKey);
-  // Someone whose invite ran out can't join through it, so they don't count;
-  // one waiting for the owners to send their first link does, whatever its
-  // date (`pending` is never expired).
-  const count = (r: Role) =>
-    business.people.filter((p) => p.role === r && p.status !== "expired")
-      .length;
   const items = setupChecklist({
-    people: {
-      owner: count("owner"),
-      manager: count("manager"),
-      worker: count("worker"),
-    },
+    people: setupPeople(business.people),
     hasAddress: business.address !== null,
     team: setupTeam(business.people),
     ...facts,
@@ -332,12 +322,13 @@ function Checklist({
   };
 }) {
   const remaining = setupRemaining(items);
-  const people = (roles: Role[]) =>
-    business.people.filter(
-      (p) => roles.includes(p.role) && p.status !== "expired",
-    ).length;
-  const ownerExpired = business.people.some(
-    (p) => p.role === "owner" && p.status === "expired",
+  // Counted as the owner and staff items count them (`setupPeople`).
+  const people = setupPeople(business.people);
+  // Why no owner counts yet, when one is on the list: their first link,
+  // only the team's to make, or an invite that ran out. Both are fixed in
+  // the people list, never by inviting them again.
+  const ownerWaiting = (["pending", "expired"] as const).find((status) =>
+    business.people.some((p) => p.role === "owner" && p.status === status),
   );
   // The settings page at the section of the item's module, or at its top
   // (the business's details) for one of the business itself.
@@ -346,14 +337,15 @@ function Checklist({
     const module = SETUP_ITEM_MODULE[item.key];
     return module ? `${hrefs.settings}#${module}` : hrefs.settings;
   };
-  // A missing owner is invited as an owner; one whose invite ran out is
-  // renewed in the people list, never invited again in another role.
+  // A missing owner is invited as an owner; one with no link yet gets it,
+  // and one whose invite ran out is renewed, in the people list, never
+  // invited again in another role.
   const href = (item: SetupItem) => {
     if (item.done) return null;
     switch (item.key) {
       case "owner":
         if (!hrefs.people) return null;
-        return ownerExpired ? "#people" : `${hrefs.people}?role=owner`;
+        return ownerWaiting ? "#people" : `${hrefs.people}?role=owner`;
       case "staff":
         return hrefs.staff;
       case "address":
@@ -377,16 +369,12 @@ function Checklist({
         return t("setup.checklist.items.opened.done", { template });
       case "owner":
         return item.done
-          ? t("setup.checklist.items.owner.done", {
-              count: people(["owner"]),
-            })
-          : ownerExpired
-            ? t("setup.checklist.items.owner.expired")
-            : t("setup.checklist.items.owner.todo");
+          ? t("setup.checklist.items.owner.done", { count: people.owner })
+          : t(`setup.checklist.items.owner.${ownerWaiting ?? "todo"}`);
       case "staff":
         return item.done
           ? t("setup.checklist.items.staff.done", {
-              count: people(["manager", "worker"]),
+              count: people.manager + people.worker,
             })
           : t("setup.checklist.items.staff.todo");
       case "address":

@@ -16,6 +16,7 @@ import {
   setupCounted,
   setupDone,
   setupPay,
+  setupPeople,
   setupRemaining,
   setupTeam,
   storedShabbatAnswer,
@@ -102,6 +103,25 @@ describe("setupChecklist", () => {
       hasAddress: true,
     });
     expect(open(staffOnly)).toEqual(["owner", "joined"]);
+  });
+
+  it("leaves the owner missing until their link is made", () => {
+    const owner = (status: SetupPersonStatus) =>
+      item(
+        setupChecklist({
+          ...bare,
+          people: setupPeople([
+            { role: "owner", status },
+            { role: "worker", status: "pending" },
+          ]),
+        }),
+        "owner",
+      )?.done;
+    // Saved by the wizard with no link: only the team makes the owner's.
+    expect(owner("pending")).toBe(false);
+    expect(owner("expired")).toBe(false);
+    expect(owner("invited")).toBe(true);
+    expect(owner("member")).toBe(true);
   });
 
   it("shows a fresh business from the general template what is missing, in order", () => {
@@ -366,6 +386,31 @@ describe("storedShabbatAnswer", () => {
     expect(storedShabbatAnswer([true])).toBeNull();
     expect(storedShabbatAnswer({ closedOnShabbat: null })).toBeNull();
     expect(storedShabbatAnswer({ closedOnShabbat: "true" })).toBeNull();
+  });
+});
+
+describe("setupPeople", () => {
+  const person = (role: Role, status: SetupPersonStatus) => ({ role, status });
+
+  it("counts an owner with a link or in the business, and the staff unless their link ran out", () => {
+    expect(setupPeople([])).toEqual(none);
+    expect(
+      setupPeople([
+        person("owner", "member"),
+        person("owner", "invited"),
+        // No link yet, which only the team makes, or one that ran out.
+        person("owner", "pending"),
+        person("owner", "expired"),
+        person("manager", "member"),
+        person("manager", "expired"),
+        person("worker", "invited"),
+        // Waiting for the link the owners send.
+        person("worker", "pending"),
+        person("worker", "expired"),
+        // Keeps the books from outside.
+        person("accountant", "member"),
+      ]),
+    ).toEqual({ owner: 2, manager: 1, worker: 2 });
   });
 });
 

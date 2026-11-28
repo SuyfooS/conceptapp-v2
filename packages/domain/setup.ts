@@ -20,7 +20,7 @@ export type CodeDisplay = "station" | "manager" | "both";
 export type SetupPay = { roles: readonly PayRole[]; personal: number };
 
 export type SetupFacts = {
-  /** Active members plus open invites, by role. */
+  /** By role, as `setupPeople` counts them from the console's people. */
   people: { owner: number; manager: number; worker: number };
   hasAddress: boolean;
   /**
@@ -158,6 +158,29 @@ export function hasStaff(people: Record<SetupStaffRole, number>): boolean {
  * ran out.
  */
 export type SetupPersonStatus = "member" | "invited" | "pending" | "expired";
+
+/**
+ * Who is in the business, by role, from the console's list of people. An
+ * owner counts once they joined or hold a link still good: the owner's
+ * first link is the team's to make, so one waiting for it (`pending`) is
+ * still the team's to do. The staff count once they joined, hold a link or
+ * wait for one, which the owners send. Nobody whose link ran out counts:
+ * they can't join through it.
+ */
+export function setupPeople(
+  people: readonly { role: Role; status: SetupPersonStatus }[],
+): SetupFacts["people"] {
+  const counts = (role: Role, statuses: readonly SetupPersonStatus[]) =>
+    people.filter(
+      (person) => person.role === role && statuses.includes(person.status),
+    ).length;
+  const staff = ["member", "invited", "pending"] as const;
+  return {
+    owner: counts("owner", ["member", "invited"]),
+    manager: counts("manager", staff),
+    worker: counts("worker", staff),
+  };
+}
 
 /**
  * Where the team stands, from the console's list of people, counted as

@@ -8191,6 +8191,7 @@
             "title": "Invite the owners",
             "done": "{count, plural, one {One person} other {# people}} with the owner role.",
             "todo": "No owner yet. Without one, nobody runs the business.",
+            "pending": "The owner's link isn't made yet. Create it in the people list and send it on WhatsApp.",
             "expired": "The owner's invite ran out before they joined. Renew it in the people list and send the new link."
           },
           "staff": {

@@ -232,7 +232,9 @@ owner's first steps: managers and workers (`SETUP_STAFF_ROLES`,
 `isSetupStaff`, `hasStaff`), owners counted apart and an accountant outside.
 Since closing the pilot's PR 16 it shows what is still missing
 (`SETUP_ITEMS`, each by its module in `SETUP_ITEM_MODULE`, offered while it
-is on): opened, owner, staff and address; Shabbat answered
+is on): opened, owner, staff and address (`setupPeople`: an owner once
+they joined or hold a link still good, since the owner's first link is the
+team's to make; the staff unless their link ran out); Shabbat answered
 (`storedShabbatAnswer`: a stored `closedOnShabbat`, null for a business
 opened before the wizard asked or whose answer it couldn't save), job roles
 and regular shifts; the clock's

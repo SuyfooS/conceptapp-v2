@@ -353,12 +353,15 @@ test("a platform admin opens a restaurant and invites its staff", async ({
   await expectCleanPage(page);
   await page.getByRole("button", { name: w.actions.create }).click();
 
-  // The checklist: everything the team does is done, and the three people
-  // invited; nobody has joined yet, and no week is published (closing the
-  // pilot, PR 16).
+  // The checklist: the three people invited, but the owner's link, the
+  // team's to make, isn't made yet; nobody has joined, and no week is
+  // published (closing the pilot, PR 16).
   await expect(page).toHaveURL(`/admin/businesses/${slug}?created=1`);
   await expect(page).toHaveTitle(`${slug} · ConceptApp`);
-  await expect(page.getByText(remaining(2))).toBeVisible();
+  await expect(page.getByText(remaining(3))).toBeVisible();
+  await expect(
+    page.getByText(a.setup.checklist.items.owner.pending, { exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByText(a.setup.checklist.items.shabbat.closed, { exact: true }),
   ).toBeVisible();
@@ -429,6 +432,12 @@ test("a platform admin opens a restaurant and invites its staff", async ({
   // on screen with the focus, never a new press in its place.
   await expect(hint(a.setup.people.invited)).toHaveCount(1);
   await expect(hint(a.setup.people.ownerPendingHint)).toHaveCount(0);
+  // With her link made, the team's part is done: joining and the first
+  // week are left, both the business's.
+  await expect(page.getByText(remaining(2))).toBeVisible();
+  await expect(
+    page.getByText(a.setup.checklist.items.owner.pending, { exact: true }),
+  ).toHaveCount(0);
   await expect(field).toHaveValue(link);
   await expect(whatsapp).toBeFocused();
   await expect(
