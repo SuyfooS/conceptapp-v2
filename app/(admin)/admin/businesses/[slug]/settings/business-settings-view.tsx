@@ -159,6 +159,9 @@ export function BusinessSettingsView({
       {modules.map((module) => (
         <PageSection
           key={module.key}
+          // The business page's checklist leads to a module's settings here.
+          id={module.key}
+          className="scroll-mt-16"
           title={tm(`${module.key}.name`)}
           action={
             <ModuleSwitch
