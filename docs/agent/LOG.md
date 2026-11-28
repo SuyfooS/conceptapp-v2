@@ -5,6 +5,16 @@ what is next, defaults applied.
 
 Older entries are in [`log/`](log/): [1–19 November 2026](log/2026-11-01-to-19.md) and [October 2026](log/2026-10.md).
 
+## 2026-11-28 · nightly run · waiter mode's names read page by page (known issue 83, guessed)
+
+- On agent/order-people-pages from main `3db08ea` (#281). Guessed: Orel left no work. What merged since the last run (#277 to #281) left one next step, the builder's sheet at 50, but it needs words in `messages/`, which Orel's #282 was changing (open at the start, merged during this run), so it waits for a day session; the smallest known issue in code alone came next.
+- `getOrderPeople` (`packages/db/orders.ts`, the names the orders' screens show) and `getStationPeople` (`packages/db/order-stations.ts`, the senders on a kitchen's screen) read every membership in one request, so past 1,000 who were ever in the team the rest had no name. Both now read through `allPages`, ordered by `user_id`, as `@db/team` does. Nothing else changed: the same rows, the same short names, the same errors thrown.
+- `tooling/bounded-reads.ts`: `KEPT_OUT` no longer lists `orders.ts`, `order-stations.ts` or `order-taking.ts` (that one had no unbounded read left), so the guard now holds them; only `employee-files.ts` stays out (the hiring file, its stages stopped by Orel on 22.11).
+- Tests: `packages/db/paged-reads.test.ts` "names everyone who was ever in the team, on the phone and on a kitchen's screen" (1,100 memberships, two pages each, every page ordered by `user_id` last; it fails on the old code with 1000). ROADMAP 83 now names the hiring file alone.
+- Reviewed by database-reviewer: no fault in the change; its one test finding taken (the test no longer clears its requests halfway, so the key-order check sees both reads). Offset paging can repeat a row if someone joins between two pages, as in `@db/team`: left.
+- No migration, no words, no screen. Restore point: the branch `backup/before-night-2026-11-28` at `3db08ea` (the tag push was cut off).
+- Next: the builder's sheet at 50 (#277's next step) now that #282 is in; the hiring file's two reads in 83 with H6c. Defaults applied: none.
+
 ## 2026-11-28 · chat · closing the pilot, PR 3: the new-business wizard asks about Shabbat
 
 - On chat/wizard-shabbat from origin/main a0158c82 (#280). The pilot-closing plan's PR 3 only (section 1, A): a business open on Saturday (a shop, a hotel, a factory on shifts) started closed on Shabbat, since `closedOnShabbat` defaults to true (`modules/scheduling/manifest.ts:57`), no template sets it, and the console's wizard never asked (template, details, colour, staff). The setting could already be changed (the console's settings page, `/manage/scheduling`); what was missing was the question. No migration, no new npm package, no new `packages/ui` component (`FieldRow` with a `Switch`, as the settings form and the documents' send form compose them), no change to `seed.sql`, `hosted-demo.sql`, the templates or the demo door. PR 16's card (Shabbat answered) is not here. No customer is named anywhere.
