@@ -1095,7 +1095,7 @@
       "phoneIntro": "We'll text a sign-in code to your mobile number.",
       "phoneLabel": "Mobile number",
       "send": "Send code",
-      "codeIntro": "If <ltr>{phone}</ltr> has been added to a business's team, we sent it a 6-digit code.",
+      "codeIntro": "If you've already joined a business with <ltr>{phone}</ltr>, we sent it a 6-digit code.",
       "codeResent": "We asked for a new code for <ltr>{phone}</ltr>.",
       "codeLabel": "Code from the message",
       "verify": "Sign in",
@@ -1298,7 +1298,7 @@
     },
     "noBusiness": {
       "title": "Not part of a business yet",
-      "body": "Your account works, but no business has added it yet. Whoever runs your business can send an invite to this number.",
+      "body": "Your account works, but you haven't joined a business yet. If you got a personal link in a message, open it to join. No link, or more than 14 days have passed? Ask whoever runs your business for a new one.",
       "left": {
         "title": "No longer on the team of {business}",
         "body": "Your account still works. If this is a mistake, ask the business for a new invite to this number."

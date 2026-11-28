@@ -15,7 +15,9 @@ import { MIGRATIONS, withoutComments } from "./role-checks";
  * every number (sign-in-form.test.ts draws it for one with an account and
  * one without) and tells an invited person who never joined that the first
  * time is through their own link, which lasts as long as the database keeps
- * an invite open.
+ * an invite open; the line above the code says one went only to a number
+ * that joined, and the screen for someone on no business's team sends them
+ * to that link first.
  */
 
 type Tree = { [key: string]: string | Tree };
@@ -62,9 +64,15 @@ const managerWords = (sentence: string) =>
     (word) => word.includes("מנהל") && word !== "שמנהל",
   );
 
-/** Places and people only a restaurant or a bar has, with letters before. */
+/**
+ * Places and people only a restaurant or a bar has. A long word with any
+ * letters before it ("במטבח", "שהקופה"); a short one only after "ה" ("הבר",
+ * "שהבר") or after "ו", "ב" and "ל" alone ("לבר", "ובמנה"), so "כבר"
+ * (already), "שבר", "ממנה" (from her) and "שמנה" are none, and "למנות" (to
+ * count) is none either.
+ */
 const RESTAURANT_ONLY =
-  /^[ושכלמבה]*(?:בר|מטבח|קופה|מלצר|מלצרית|מלצרים|שולחן|שולחנות|מנה|מנות|שף|ברמן|טבח)$/;
+  /^(?!למנות$)(?:[ושכלמבה]*(?:מטבח|קופה|מלצר|מלצרית|מלצרים|שולחן|שולחנות|ברמן|בריסטה|טבח)|(?:[ושכלמבה]*ה|[ובל]*)(?:בר|שף|מנה|מנות))$/;
 const RESTAURANT_ONLY_EN = new Set([
   "bar",
   "kitchen",
@@ -175,10 +183,41 @@ describe("the examples every business sees", () => {
   });
 
   it("finds a bar or a kitchen, with the letters before them", () => {
-    for (const word of ["בר", "בבר", "הבר", "מטבח", "במטבח", "בקופה"]) {
+    for (const word of [
+      "בר",
+      "בבר",
+      "הבר",
+      "לבר",
+      "שהבר",
+      "מהבר",
+      "השף",
+      "המנות",
+      "במנה",
+      "מטבח",
+      "במטבח",
+      "בקופה",
+      "בריסטה",
+    ]) {
       expect(RESTAURANT_ONLY.test(word), word).toBe(true);
     }
-    for (const word of ["מחסן", "בקבלה", "ברחוב", "עבר"]) {
+  });
+
+  it("finds none in a common word that ends like one", () => {
+    for (const word of [
+      "מחסן",
+      "בקבלה",
+      "ברחוב",
+      "עבר",
+      "כבר",
+      "וכבר",
+      "שכבר",
+      "כשכבר",
+      "ממנה",
+      "שבר",
+      "לשבר",
+      "שמנה",
+      "למנות",
+    ]) {
       expect(RESTAURANT_ONLY.test(word), word).toBe(false);
     }
   });
@@ -237,5 +276,37 @@ describe("sign-in's line for when no code came", () => {
     const found = inviteDaysInMigrations();
     expect(found.length).toBeGreaterThan(0);
     expect(found.filter(({ days }) => days !== INVITE_DAYS)).toEqual([]);
+  });
+});
+
+describe("sign-in's line above the code", () => {
+  it("says a code went only to a number that joined, not to one only invited", () => {
+    // Sign-in sends a code only to a number with an account, and only joining
+    // makes one (otp.ts, join/actions.ts), so "added to a team" said a code
+    // went to someone whose manager had only invited them.
+    const intro = at(heLeaves, "auth.signIn.codeIntro");
+    expect(intro).toContain("כבר הצטרפת לעסק");
+    expect(intro).not.toContain("נוסף");
+    const english = at(enLeaves, "auth.signIn.codeIntro");
+    expect(english).toContain("already joined");
+    expect(english).not.toContain("added");
+  });
+});
+
+describe("the screen for someone signed in on no business's team", () => {
+  // Joining makes the account as its code is sent, before it is typed in, so
+  // someone whose invite is still open can sign in and land here: the link
+  // comes first, and a new one only once there is none or it ran out.
+  it("sends them to their own link first, then to whoever runs the business for a new one", () => {
+    const body = at(heLeaves, "app.noBusiness.body");
+    expect(body).toContain("עוד לא הצטרפת");
+    expect(body).toContain("קישור אישי");
+    expect(body).toContain(`${INVITE_DAYS} יום`);
+    expect(body).toContain("ממי שמנהל את העסק");
+    const english = at(enLeaves, "app.noBusiness.body");
+    expect(english).toContain("haven't joined");
+    expect(english).toContain("personal link");
+    expect(english).toContain(`${INVITE_DAYS} days`);
+    expect(english).toContain("whoever runs your business");
   });
 });

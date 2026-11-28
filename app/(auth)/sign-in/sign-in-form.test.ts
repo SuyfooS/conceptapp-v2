@@ -133,7 +133,7 @@ describe("sign-in's code step", () => {
     expect(english).toContain(en.auth.signIn.noCode.body);
   });
 
-  it("says the code went only if the number is on a team", () => {
+  it("says the code went only if the number has joined a business", () => {
     const page = text(draw({ step: "code", phone: UNKNOWN }));
     const [before] = he.auth.signIn.codeIntro.split("<ltr>");
     expect(before).toBeTruthy();
