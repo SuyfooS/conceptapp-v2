@@ -7,8 +7,14 @@ import {
   hoursFixers,
 } from "./ask-fix";
 import type { Department } from "./departments";
+import { LIMITS } from "./payroll-flags";
 import type { PunchFailure } from "./time-clock";
-import { asksForFix, FIX_FAILURES } from "./time-clock-format";
+import {
+  asksForFix,
+  FIX_FAILURES,
+  LONG_ENTRY_MINUTES,
+  longShift,
+} from "./time-clock-format";
 
 // Who a worker asks to correct their hours (closing the pilot, PR 8): those
 // who may edit the clock, never the worker; the owners only when nobody else
@@ -261,5 +267,22 @@ describe("the refusals that say to ask whoever approves hours", () => {
       expect(asksForFix(failure)).toBe(false);
     }
     expect(asksForFix(null)).toBe(false);
+  });
+});
+
+describe("a long shift, which may hide a forgotten clock-out", () => {
+  it("counted over the payroll engine's 14 hours, closed", () => {
+    expect(LONG_ENTRY_MINUTES).toBe(LIMITS.entry);
+    expect(LONG_ENTRY_MINUTES).toBe(14 * 60);
+    expect(longShift({ out: "08:00", minutes: 17 * 60 })).toBe(true);
+    expect(longShift({ out: "14:55", minutes: 23 * 60 + 55 })).toBe(true);
+    expect(longShift({ out: "05:01", minutes: 14 * 60 + 1 })).toBe(true);
+  });
+
+  it("is not one of 14 hours or less, nor one still open", () => {
+    expect(longShift({ out: "05:00", minutes: 14 * 60 })).toBe(false);
+    expect(longShift({ out: "16:00", minutes: 8 * 60 })).toBe(false);
+    // Open: the clock calls it one that needs fixing after 24 hours.
+    expect(longShift({ out: null, minutes: 20 * 60 })).toBe(false);
   });
 });

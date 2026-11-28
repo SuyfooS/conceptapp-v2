@@ -1,6 +1,10 @@
 import { dayMonth } from "@domain/availability-form";
 import type { Attendance, ShiftRecord } from "@domain/time-clock";
-import { formatHours } from "@domain/time-clock-format";
+import {
+  formatHours,
+  LONG_ENTRY_MINUTES,
+  longShift,
+} from "@domain/time-clock-format";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { cn } from "@ui/cn";
@@ -34,7 +38,8 @@ function useDayLabel() {
  * and why. For a manager, pressing a shift opens it: to fix one, or to bring
  * a cancelled one back. In the person's own shifts, one that needs fixing
  * offers, beside its "צריך תיקון", whom to ask (`askFix`, closing the
- * pilot's PR 8).
+ * pilot's PR 8), and so does one that counted over 14 hours, saying why
+ * (`longShift`: maybe a forgotten clock-out).
  */
 export function ShiftList({
   records,
@@ -175,6 +180,18 @@ export function cancelLine(
   });
 }
 
+/**
+ * Why a long shift offers whom to ask: it counted over 14 hours, and a
+ * clock-out forgotten until the next press may be why.
+ */
+function LongLine({ t }: { t: Translator<"app.clock.history"> }) {
+  return (
+    <span className="block font-normal text-ink-2 text-sm">
+      {t.rich("askFix.long", { hours: LONG_ENTRY_MINUTES / 60, ltr })}
+    </span>
+  );
+}
+
 function StateBadge({
   record,
   t,
@@ -193,7 +210,8 @@ function StateBadge({
  * What a shift's row on phones and tablets says: its day, its times and the
  * lines under them, and what it counted for. A cancelled one counted for
  * nothing: its times, and who cancelled it, when and why. One that needs
- * fixing has whom to ask under its lines, with `ask`.
+ * fixing has whom to ask under its lines, with `ask`, and a long one too,
+ * after a line that says why.
  */
 function rowOf(
   record: ShiftRecord,
@@ -232,7 +250,8 @@ function rowOf(
         {record.byManager && !added ? t("byManager") : null}
         {proof ? t("withProof", { proof }) : null}
         {fixed ? <span className="block">{fixed}</span> : null}
-        {ask && record.overdue ? (
+        {ask && longShift(record) ? <LongLine t={t} /> : null}
+        {ask && (record.overdue || longShift(record)) ? (
           <span className="mt-2 flex">
             <AskFix ask={ask} />
           </span>
@@ -446,6 +465,13 @@ function ShiftTable({
                   ) : (
                     t("running")
                   )}
+                  {ask && longShift(record) ? (
+                    // Whom to ask, beside the hours it counted, saying why.
+                    <span className="mt-2 flex flex-col items-start gap-2">
+                      <LongLine t={t} />
+                      <AskFix ask={ask} />
+                    </span>
+                  ) : null}
                 </td>
                 {onEdit ? (
                   <td className={cn(td, "text-end")}>

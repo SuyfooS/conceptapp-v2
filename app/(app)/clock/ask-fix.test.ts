@@ -159,11 +159,32 @@ describe("the words", () => {
 
   it("are plain: no exclamation marks, a full stop after every sentence", () => {
     for (const words of Object.values(a)) expect(words).not.toContain("!");
-    for (const words of [a.pickHint, a.named, a.namedSome]) {
+    for (const words of [a.pickHint, a.named, a.namedSome, a.long]) {
       expect(words.endsWith(".")).toBe(true);
     }
   });
+
+  it("of a long shift say why, its hours apart, and that whoever approves hours fixes it", () => {
+    expect(a.long).toContain("מי שמאשר שעות");
+    for (const words of [a.long, en.app.clock.history.askFix.long]) {
+      expect(words).toContain("<ltr>{hours}</ltr>");
+    }
+  });
+
+  it("of Today's row say one's own shift open over a day needs fixing, as its badge does", async () => {
+    const { MAX_ENTRY_HOURS } = await import("@domain/time-clock-format");
+    for (const messages of [he, en]) {
+      const line = messages.app.clock.todayLine.ownOverdue;
+      expect(line.startsWith(messages.app.clock.history.needsFix)).toBe(true);
+      expect(line).toContain(String(MAX_ENTRY_HOURS));
+    }
+  });
 });
+
+/** What a page says, without its tags. */
+const text = (html: string) => html.replace(/<[^>]+>/g, "");
+/** Why a long shift offers whom to ask, as the page says it. */
+const longWords = a.long.replace("<ltr>{hours}</ltr>", "14");
 
 const NOW = new Date("2026-11-23T12:00:00Z");
 const actions: ClockActions = {
@@ -188,6 +209,13 @@ function clockAt(hoursAgo: number, askFix: AskFixData | null): ClockData {
     shift: null,
     askFix,
   };
+}
+
+/** The clock just after leaving, the shift counted `minutes`, with whom to ask. */
+function leftAfter(minutes: number, askFix: AskFixData | null): ClockData {
+  const left = demoClock("left", NOW);
+  if (!left.undo) throw new Error("no shift just left in the demo");
+  return { ...left, undo: { ...left.undo, minutes }, shift: null, askFix };
 }
 
 const panel = (data: ClockData) =>
@@ -215,6 +243,33 @@ describe("the clock", () => {
     expect(html).toContain(escaped(he.app.clock.failure.tooLong));
     expect(hrefs(html)).toEqual([]);
   });
+
+  it("offers whom to ask under a shift just left that counted over 14 hours, saying why", () => {
+    // In at 15:00, a clock-out forgotten until 08:00: the clock takes it.
+    const html = panel(leftAfter(17 * 60, { kind: "write", person: SHIRAN }));
+    const page = text(html);
+    const left = page.indexOf(he.app.clock.undo);
+    expect(left).toBeGreaterThan(-1);
+    expect(page.indexOf(longWords)).toBeGreaterThan(left);
+    expect(hrefs(html)).toEqual([`/chat/with/${SHIRAN.id}`]);
+    // Nothing was refused.
+    expect(html).not.toContain('role="alert"');
+  });
+
+  it("offers nobody under an ordinary shift just left, nor 14 hours to the minute", () => {
+    for (const minutes of [462, 14 * 60]) {
+      const html = panel(leftAfter(minutes, { kind: "write", person: SHIRAN }));
+      expect(text(html)).not.toContain(longWords);
+      expect(hrefs(html)).toEqual([]);
+    }
+  });
+
+  it("says nothing more after a long shift when there is nobody to ask", () => {
+    const html = panel(leftAfter(17 * 60, null));
+    expect(text(html)).toContain(he.app.clock.undo);
+    expect(text(html)).not.toContain(longWords);
+    expect(hrefs(html)).toEqual([]);
+  });
 });
 
 const OVERDUE: ShiftRecord = {
@@ -238,6 +293,15 @@ const DONE: ShiftRecord = {
   out: "16:00",
   minutes: 480,
   overdue: false,
+};
+/** In at 15:00, out the next morning at 08:00: the clock took it. */
+const LONG: ShiftRecord = {
+  ...DONE,
+  id: "68000000-0000-4000-a000-0000000000cc",
+  date: "2026-11-21",
+  in: "15:00",
+  out: "08:00",
+  minutes: 17 * 60,
 };
 
 const t = translator(baseWording, "app.clock.history");
@@ -267,11 +331,36 @@ describe("the person's shifts", () => {
   });
 
   it("offer nobody beside shifts that need no fixing", () => {
-    expect(hrefs(list([DONE], { kind: "write", person: SHIRAN }))).toEqual([]);
+    const html = list([DONE], { kind: "write", person: SHIRAN });
+    expect(hrefs(html)).toEqual([]);
+    expect(text(html)).not.toContain(longWords);
+  });
+
+  it("offer whom to ask beside a shift that counted over 14 hours, saying why, in every shape", () => {
+    const html = list([LONG, DONE], { kind: "write", person: SHIRAN });
+    // The list of phones and tablets, and the desktop's table.
+    expect(hrefs(html)).toEqual([
+      `/chat/with/${SHIRAN.id}`,
+      `/chat/with/${SHIRAN.id}`,
+    ]);
+    expect(text(html).split(longWords)).toHaveLength(3);
+    // It needs no fixing until asked: no badge says so.
+    expect(html).not.toContain(escaped(he.app.clock.history.needsFix));
+  });
+
+  it("offer nobody beside a long shift when there is nobody to ask", () => {
+    const html = list([LONG], null);
+    expect(hrefs(html)).toEqual([]);
+    expect(text(html)).not.toContain(longWords);
   });
 
   it("are never a manager's: their rows are buttons that open the shift", () => {
-    const html = list([OVERDUE], { kind: "write", person: SHIRAN }, () => {});
+    const html = list(
+      [OVERDUE, LONG],
+      { kind: "write", person: SHIRAN },
+      () => {},
+    );
     expect(hrefs(html)).toEqual([]);
+    expect(text(html)).not.toContain(longWords);
   });
 });

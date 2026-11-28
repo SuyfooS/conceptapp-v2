@@ -142,7 +142,11 @@ can be neither written to nor named before that choice. `askFixOf` makes
 it one person to write to, a choice among several, or, when chat reaches
 none of them, their names. The refusals the clock offers it under are
 `FIX_FAILURES` in `time-clock-format.ts` (with `asksForFix`), which the
-clock's browser files may import: it takes no Zod.
+clock's browser files may import: it takes no Zod. It offers it beside a
+closed shift that counted over 14 hours too (`longShift`,
+`LONG_ENTRY_MINUTES`, which is the payroll engine's `LIMITS.entry`): the
+clock takes a clock-out within 24 hours, so one forgotten until the next
+morning is recorded as a long shift.
 
 `people-import.ts` reads a pasted list of people to invite at once ("הזמנה
 מרשימה", part 1 of the plan of 25 November 2026): from WhatsApp, Excel,

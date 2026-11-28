@@ -41,6 +41,7 @@ import {
   UNDO_CLOCK_OUT_SECONDS,
   undoableEntry,
 } from "@domain/time-clock";
+import { longShift } from "@domain/time-clock-format";
 import { clockAt, nextShift } from "@domain/today";
 import { canWrite } from "@domain/view-as";
 import { wageNow } from "@domain/wages";
@@ -357,9 +358,9 @@ export async function currentClockHistory(
   return {
     month,
     currentMonth,
-    // Whom to ask, beside a shift that needs fixing: read only for a month
-    // that has one.
-    askFix: records.some((record) => record.overdue)
+    // Whom to ask, beside a shift that needs fixing or one that counted over
+    // 14 hours: read only for a month that has one.
+    askFix: records.some((record) => record.overdue || longShift(record))
       ? await askFixFor(access)
       : null,
     // Their own days away (known issue 19): read only, as recorded.
@@ -404,13 +405,16 @@ export const currentEntriesToConfirm = cache(
 
 export type ClockLine =
   | { kind: "working" | "break"; at: string }
+  | { kind: "ownOverdue" }
   | { kind: "overdue"; count: number }
   | { kind: "confirm"; count: number };
 
 /**
  * What the clock's row on Today says: shifts whoever edits the clock has to
  * fix first, then hours waiting for their approval, then where the person
- * stands. Null when there is nothing to say.
+ * stands, their own shift open over 24 hours said as one that needs fixing
+ * (closing the pilot, PR 8: the clock it links to says whom to ask). Null
+ * when there is nothing to say.
  */
 export const currentClockLine = cache(async (): Promise<ClockLine | null> => {
   const access = await clockAccess();
@@ -427,6 +431,7 @@ export const currentClockLine = cache(async (): Promise<ClockLine | null> => {
   if (waiting > 0) return { kind: "confirm", count: waiting };
   const status = clockStatus(openEntryOf(open, access.userId));
   if (status.state === "off") return null;
+  if (entryOverdue(status.entry, now)) return { kind: "ownOverdue" };
   const since =
     status.state === "break" ? status.pause.startedAt : status.entry.clockIn;
   return { kind: status.state, at: timeIn(new Date(since), access.timeZone) };

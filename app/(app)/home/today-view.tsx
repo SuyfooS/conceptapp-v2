@@ -137,9 +137,13 @@ export type TodayData = {
   businessName: string;
   /** From `moduleWidgets`: what the enabled modules bring for this role. */
   widgets: ModuleNavEntry[];
-  /** Where the person stands on the clock, when they are at work. */
+  /**
+   * Where the person stands on the clock, when they are at work: their own
+   * shift open over 24 hours as one that needs fixing (`ownOverdue`).
+   */
   clockLine?:
     | { kind: "working" | "break"; at: string }
+    | { kind: "ownOverdue" }
     | { kind: "overdue"; count: number }
     | { kind: "confirm"; count: number }
     | null;
@@ -489,10 +493,12 @@ export async function TodayView({
                             ? t("clock.team.confirm.title", {
                                 count: data.clockLine.count,
                               })
-                            : t.rich(`clock.todayLine.${data.clockLine.kind}`, {
-                                time: data.clockLine.at,
-                                ltr,
-                              })
+                            : data.clockLine.kind === "ownOverdue"
+                              ? t("clock.todayLine.ownOverdue")
+                              : t.rich(
+                                  `clock.todayLine.${data.clockLine.kind}`,
+                                  { time: data.clockLine.at, ltr },
+                                )
                         : widget.key === "employee_files" && filePart.complete
                           ? t("home.file.complete")
                           : tm(`${widget.key}.description`)

@@ -11,6 +11,8 @@ import {
   entryOverdue,
   formatElapsed,
   formatHours,
+  LONG_ENTRY_MINUTES,
+  longShift,
 } from "@domain/time-clock-format";
 import { Button, type ButtonProps } from "@ui/button";
 import { Card } from "@ui/card";
@@ -94,7 +96,8 @@ function useNow(initial: string, running: boolean): number {
  * stay (its reload stopped), the press says it failed after a while, as
  * before. Under a refusal that says to ask whoever approves hours (a shift
  * open over a day, among others), whom to ask: written to in chat, or
- * named (`AskFix`, closing the pilot's PR 8).
+ * named (`AskFix`, closing the pilot's PR 8); and under "יצאת ב-…" for a
+ * shift that counted over 14 hours (`longShift`).
  */
 export function ClockPanel({
   data,
@@ -553,6 +556,20 @@ export function ClockPanel({
             {t("undo")}
           </UndoLeaving>
         </Card>
+      ) : null}
+      {/* A shift that counted over 14 hours may be a clock-out forgotten
+          until now, which the clock still takes within its day: whom to
+          ask, as under a refusal (closing the pilot, PR 8). */}
+      {undoLeft && !scanning && data.askFix && longShift(undoLeft) ? (
+        <div className="flex w-full flex-col items-center gap-3 text-center">
+          <p className="text-ink-2 text-sm">
+            {t.rich("history.askFix.long", {
+              hours: LONG_ENTRY_MINUTES / 60,
+              ltr: (chunks) => <span dir="ltr">{chunks}</span>,
+            })}
+          </p>
+          <AskFix ask={data.askFix} />
+        </div>
       ) : null}
 
       {needsCode ? (

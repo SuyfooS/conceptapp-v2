@@ -26,6 +26,11 @@ create function pg_temp.sign_in(uid uuid) returns void language sql as $$
   select set_config('request.jwt.claims', json_build_object('sub', uid, 'role', 'authenticated')::text, true);
   select set_config('role', 'authenticated', true);
 $$;
+-- The claims last until the rollback, and `reset role` keeps them: nobody
+-- is signed in only once they are cleared.
+create function pg_temp.sign_out() returns void language sql as $$
+  select set_config('request.jwt.claims', '', true);
+$$;
 
 -- In A: 1 its owner, 2 a manager the business names its own way, 3 the
 -- worker who asks, 4 a worker given clock.edit of their own, 5 its
@@ -164,6 +169,8 @@ select is_empty(
 );
 reset role;
 
+-- The worker above is still in the claims until signed out.
+select pg_temp.sign_out();
 set local role service_role;
 select is_empty(
   $$select * from public.clock_editors(pg_temp.b(1))$$,

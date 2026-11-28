@@ -62,6 +62,27 @@ export function asksForFix(failure: string | null): boolean {
 }
 
 /**
+ * A closed shift that counted longer than this is worth a look: 14 hours, the
+ * payroll engine's own limit (`LIMITS.entry` in @domain/payroll-flags is this
+ * one), the same for every kind of business. The clock takes a clock-out up
+ * to `MAX_ENTRY_HOURS` after the clock-in, so a clock-out forgotten until the
+ * next morning is recorded as a long shift, not one that needs fixing.
+ */
+export const LONG_ENTRY_MINUTES = 14 * 60;
+
+/**
+ * Whether a shift may hide a forgotten clock-out: closed, and counted longer
+ * than `LONG_ENTRY_MINUTES`. Beside it, as beside one that needs fixing, the
+ * clock offers whom to ask (closing the pilot, PR 8).
+ */
+export function longShift(shift: {
+  out: string | null;
+  minutes: number;
+}): boolean {
+  return shift.out !== null && shift.minutes > LONG_ENTRY_MINUTES;
+}
+
+/**
  * What an entry counts for, in milliseconds: its length, without its unpaid
  * breaks. An open entry and an open break count until `now`.
  */
