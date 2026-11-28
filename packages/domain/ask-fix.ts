@@ -1,6 +1,7 @@
 import type { Department } from "./departments";
-import { isStaff, type Role } from "./modules";
+import { isStaff, type Role, type Viewer } from "./modules";
 import { byNameThenId } from "./team";
+import { editsClock } from "./time-clock";
 
 /*
  * Who a person asks to correct their hours (closing the pilot, PR 8): a
@@ -24,6 +25,19 @@ export type ClockEditor = {
   role: Role;
   name: string | null;
 };
+
+/**
+ * Whether the person is offered anyone to ask at all: not whoever edits the
+ * clock themself (`editsClock`: they correct their own on the team's hours),
+ * and not while viewing as someone, where nothing is written. The clock asks
+ * it before reading who may edit the clock.
+ */
+export function asksAnyone({
+  viewOnly,
+  ...viewer
+}: Viewer & { viewOnly: boolean }): boolean {
+  return !viewOnly && !editsClock(viewer);
+}
 
 /** One of those a person may ask, as the clock offers them. */
 export type HoursFixer = ClockEditor & {

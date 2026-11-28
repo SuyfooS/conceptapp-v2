@@ -10,7 +10,7 @@ import {
 } from "@db/time-clock";
 import { getWages } from "@db/wages";
 import { absenceDays, monthSpan } from "@domain/absences";
-import { askFixOf, hoursFixers } from "@domain/ask-fix";
+import { askFixOf, asksAnyone, hoursFixers } from "@domain/ask-fix";
 import { addDays, instantIn } from "@domain/availability";
 import { canOpenModule, isStaff } from "@domain/modules";
 import { canSeePay } from "@domain/payroll-access";
@@ -122,7 +122,7 @@ type ClockAccess = NonNullable<Awaited<ReturnType<typeof clockAccess>>>;
  * opens, and its refusal still says whom to ask in words.
  */
 async function askFixFor(access: ClockAccess): Promise<ClockAskFix | null> {
-  if (access.viewOnly || editsClock(access)) return null;
+  if (!asksAnyone(access)) return null;
   try {
     const [editors, departments] = await Promise.all([
       getClockEditors(access.businessId),

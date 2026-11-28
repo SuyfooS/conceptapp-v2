@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   type AskFix,
   askFixOf,
+  asksAnyone,
   type ClockEditor,
   type HoursFixer,
   hoursFixers,
@@ -222,6 +223,33 @@ describe("hoursFixers", () => {
       chat: true,
     });
     expect(fixers).toHaveLength(1);
+  });
+});
+
+describe("asksAnyone", () => {
+  const own = { viewOnly: false };
+
+  it("offers whom to ask to whoever does not edit the clock", () => {
+    expect(asksAnyone({ ...own, role: "worker", perms: [] })).toBe(true);
+    // A manager whose role an owner lowered asks like a worker.
+    expect(asksAnyone({ ...own, role: "manager", perms: [] })).toBe(true);
+  });
+
+  it("offers nobody to whoever edits the clock: they correct their own on the team's hours", () => {
+    expect(asksAnyone({ ...own, role: "owner", perms: [] })).toBe(false);
+    expect(asksAnyone({ ...own, role: "manager", perms: ["clock.edit"] })).toBe(
+      false,
+    );
+    // A worker given clock.edit of their own.
+    expect(asksAnyone({ ...own, role: "worker", perms: ["clock.edit"] })).toBe(
+      false,
+    );
+  });
+
+  it("offers nobody while viewing as someone, where nothing is written", () => {
+    expect(asksAnyone({ viewOnly: true, role: "worker", perms: [] })).toBe(
+      false,
+    );
   });
 });
 

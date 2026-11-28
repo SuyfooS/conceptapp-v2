@@ -13,8 +13,9 @@ import { expect, type Page, test } from "./test";
 
 // Whom a worker asks to correct their hours (closing the pilot, PR 8): a
 // worker who forgot to clock out yesterday, in a real business of its own
-// (e2e/db.ts, `ASK_FIX_BUSINESS`), sees under the clock's "open more than
-// 24 hours" and beside "צריך תיקון" in their shifts a way to write to whoever
+// (e2e/db.ts, `ASK_FIX_BUSINESS`), reads on Today that the shift needs
+// fixing, and sees under the clock's "open more than 24 hours" and beside
+// "צריך תיקון" in their shifts a way to write to whoever
 // may correct them: the one manager by name, a choice when there are two
 // (the one in the worker's department first), or, with chat off, only their
 // name. The press opens their private chat; nothing is sent from here. The
@@ -73,6 +74,11 @@ test("a worker who forgot to clock out writes to the one manager, from the clock
   await openAskFixBusiness();
   await signIn(page, WORKER);
   const write = heT("app.clock.history.askFix.write", { name: MANAGER.name });
+
+  // Today's clock row says the shift needs fixing, not since when it runs.
+  const row = main(page).locator('a[href="/clock"]');
+  await expect(row).toContainText(c.todayLine.ownOverdue);
+  await expect(row).not.toContainText(c.todayLine.working.split("<")[0] ?? "");
 
   // The clock says the shift is open too long, and whom to ask, not the owner.
   await page.goto("/clock");
