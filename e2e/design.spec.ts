@@ -2066,6 +2066,44 @@ test("the demo's install button installs the app on a press, and says so", async
   await expect(card.getByRole("button", { name: i.action })).toHaveCount(0);
 });
 
+// Notifications turned on while Chrome asks about installing (PR 7, after
+// the second review): pressed on its way, "הפעלת התראות בטלפון" is left for
+// "התקנת האפליקציה", which is busy too when the card's answer comes. That
+// answer leaves the keyboard where the person put it, so the install's own
+// answer takes it, on its words, and not the card's link to the settings.
+// The twin's clock is held, so the card's answer (600 ms) surely comes while
+// the install's is still on its way.
+test("the demo's card leaves the keyboard to the install button pressed while notifications turn on", async ({
+  page,
+}) => {
+  const i = he.app.notifications.install;
+  const card = page.getByRole("main").getByRole("region", {
+    name: heT("app.notifications.ask.today", { device: "phone" }),
+  });
+  const enable = card.getByRole("button", {
+    name: heT("app.notifications.ask.enable", { device: "phone" }),
+  });
+  const install = card.getByRole("button", { name: i.action });
+  await page.clock.install();
+  await page.goto("/design/shell/today/worker?push=off&install=ready");
+  await page.waitForLoadState("networkidle");
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1_000));
+  await enable.click();
+  await expect(enable).toBeDisabled();
+  await page.clock.runFor(300);
+  await install.click();
+  await expect(install).toBeDisabled();
+  // The card's answer, the install's still on its way.
+  await page.clock.runFor(300);
+  await expect(card).toContainText(
+    heT("app.notifications.ask.on", { device: "phone" }),
+  );
+  await expect(install).toBeDisabled();
+  await page.clock.runFor(600);
+  await expect(card).toContainText(i.installed);
+  await expect(card.getByText(i.installed)).toBeFocused();
+});
+
 // Never on the business's clock station, which isn't the person's device:
 // the accountant's Home there, with an offer, draws the station's card and
 // no notifications card, which it draws anywhere else.

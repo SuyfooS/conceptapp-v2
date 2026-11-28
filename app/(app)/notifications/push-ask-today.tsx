@@ -5,7 +5,7 @@ import { announce } from "@ui/announcer";
 import { Button } from "@ui/button";
 import { Card, CardText, CardTitle } from "@ui/card";
 import { cn } from "@ui/cn";
-import { focusLost, focusWhenGone } from "@ui/focus-after";
+import { focusLost, focusWhenGone, watchFocusIn } from "@ui/focus-after";
 import { UndoRow } from "@ui/undo-row";
 import { BellRing } from "lucide-react";
 import Link from "next/link";
@@ -232,8 +232,10 @@ function TodayCard({
   const [gone, setGone] = useState<Kept | "closed" | null>(null);
   // "לא עכשיו" couldn't be kept: the card came back, and says so.
   const [failure, setFailure] = useState(false);
-  // The press that turned notifications on held the keyboard in the card.
-  const refocus = useRef(false);
+  // The press that turned notifications on held the keyboard in the card's
+  // buttons: watched from the press until its answer (`watchFocusIn`), so a
+  // move on meanwhile (to the install button, PR 7) is known.
+  const refocus = useRef<ReturnType<typeof watchFocusIn> | null>(null);
   // A press on its way: its answer is said, and nothing else is.
   const pressed = useRef(false);
   const backToButton = useRef(false);
@@ -247,7 +249,8 @@ function TodayCard({
       shown.current = false;
       // Left with a press on its way: the keyboard is elsewhere by then, so
       // its answer never takes the focus once Today is shown again.
-      refocus.current = false;
+      refocus.current?.stop();
+      refocus.current = null;
     };
   }, []);
 
@@ -275,12 +278,18 @@ function TodayCard({
   }, [body, state]);
 
   // A press whose button went (on, blocked) or was busy keeps the keyboard
-  // in the card, on what is there now, only where the focus was lost: one
-  // the person put elsewhere meanwhile stays there.
+  // in the card, on what is there now, only where the focus was lost and
+  // never moved on: one the person put elsewhere meanwhile stays there, even
+  // fallen to nowhere since (the install button, disabled while Chrome
+  // asks, whose own answer then takes it).
   useEffect(() => {
-    if (state === "working" || !refocus.current) return;
-    refocus.current = false;
-    if (!card.current || !focusLost()) return;
+    if (state === "working") return;
+    const watch = refocus.current;
+    if (!watch) return;
+    refocus.current = null;
+    const stayed = watch.had();
+    watch.stop();
+    if (!stayed || !card.current || !focusLost()) return;
     actions.current
       ?.querySelector<HTMLElement>("a[href], button:not([disabled])")
       ?.focus({ preventScroll: true });
@@ -301,7 +310,8 @@ function TodayCard({
 
   async function enable() {
     if (state === "working") return;
-    refocus.current = Boolean(card.current?.contains(document.activeElement));
+    refocus.current?.stop();
+    refocus.current = actions.current ? watchFocusIn(actions.current) : null;
     pressed.current = true;
     setState("working");
     setState(await driver.turnOn());
