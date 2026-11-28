@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { PastJobsSection } from "../../../(account)/me/past/past-jobs";
 import { MyDocumentsSection } from "../../../(app)/chat/documents/my-documents";
 import { FileSummary } from "../../../(app)/me/file-summary";
+import { HelpSection } from "../../../(app)/me/help-sheet";
 import { MeView } from "../../../(app)/me/me-view";
 import { ModeRows } from "../../../(app)/mode-rows";
 import { NotificationSettingsLink } from "../../../(app)/notifications/settings-link";
@@ -10,6 +11,7 @@ import { baseWording } from "../../../(app)/wording";
 import { demoSignOut } from "../actions";
 import {
   business,
+  demoHelp,
   demoOrdersMode,
   shiranTeamName,
   teamMembers,
@@ -28,6 +30,8 @@ type Props = {
     file?: string;
     past?: string;
     name?: string;
+    help?: string;
+    support?: string;
   }>;
 };
 
@@ -50,7 +54,12 @@ type Props = {
 // saving do, and the title stays it); ?name=none, someone nobody named (her
 // number for a title, and the row asks for a name); ?name=marked, her own
 // name saved with a right-to-left mark nobody sees, which the sheet saves
-// clean as it opens.
+// clean as it opens. "עזרה" (closing the pilot, PR 15): as a manager she
+// asks Uri, the owner, in chat, and reaches ConceptApp's team on WhatsApp
+// (no number on the twin: WhatsApp asks whom to); ?support=off is a
+// deployment with no number, so only Uri; ?help=name, chat off, so Uri is
+// only named; both, only his name and nothing to press; ?state=demo, a demo
+// business, with no ConceptApp team.
 export default function ShellMe({ searchParams }: Props) {
   return (
     <Suspense>
@@ -60,7 +69,7 @@ export default function ShellMe({ searchParams }: Props) {
 }
 
 async function Demo({ searchParams }: Props) {
-  const { state, file, past, name } = await searchParams;
+  const { state, file, past, name, help, support } = await searchParams;
   const shiran = teamMembers.find((m) => m.userId === "shiran");
   const profile = teamProfiles.shiran;
   const empty = state === "empty";
@@ -73,11 +82,17 @@ async function Demo({ searchParams }: Props) {
           `\u{200F}${shiran.name}`
         : (shiran?.name ?? null);
   const kept = name === "kept" ? shiranTeamName : name === "same" ? own : null;
+  const helped = demoHelp({
+    support: support !== "off",
+    chat: help !== "name",
+    demo,
+  });
   return (
     <MeView
       wording={baseWording}
       // Waiter mode's way in, to the twin (P4).
       modes={<ModeRows rows={[{ ...demoOrdersMode, open: false }]} />}
+      help={helped ? <HelpSection help={helped} /> : null}
       signOut={demoSignOut}
       actions={{
         setPhoto: demoSetPhotoAction,

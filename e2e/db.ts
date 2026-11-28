@@ -7389,3 +7389,71 @@ export async function openAskFixBusiness({
 export async function closeAskFixBusiness(): Promise<void> {
   await deleteRealBusiness(ASK_FIX_BUSINESS.id);
 }
+
+/**
+ * "עזרה" on /me (closing the pilot, PR 15): a real business, as the pilot's
+ * is, from the shop's template (the clock and chat on), with its owner, a
+ * manager and a worker, nobody in a department. With `clock: false`, the
+ * clock off, so nobody may edit it (`public.clock_editors` names nobody) and
+ * a worker asks the owner. The people's ids and numbers are in no other spec
+ * and in no pgTAP file. Made afresh for each test and gone after with its
+ * records.
+ */
+export const HELP_BUSINESS = {
+  id: "00000000-0000-4000-b000-0000000000f4",
+  slug: "help-e2e",
+  name: "עסק לעזרה",
+} as const;
+export const HELP_PEOPLE = {
+  owner: {
+    id: "00000000-0000-4000-a000-000000001001",
+    name: "נגה עזרה",
+    local: "050-000-1001",
+    e164: "+972500001001",
+  },
+  manager: {
+    id: "00000000-0000-4000-a000-000000001002",
+    name: "עידו עזרה",
+    local: "050-000-1002",
+    e164: "+972500001002",
+  },
+  worker: {
+    id: "00000000-0000-4000-a000-000000001003",
+    name: "שקד עזרה",
+    local: "050-000-1003",
+    e164: "+972500001003",
+  },
+} as const;
+
+export async function openHelpBusiness({
+  clock = true,
+}: {
+  clock?: boolean;
+} = {}): Promise<void> {
+  const { id, slug, name } = HELP_BUSINESS;
+  const people = HELP_PEOPLE;
+  await closeHelpBusiness();
+  await ensureLogins(Object.values(people));
+  await sql`insert into public.businesses (id, slug, name)
+    values (${id}, ${slug}, ${name})`;
+  await sql`select public.apply_template(${id}, 'retail')`;
+  for (const { person, role } of [
+    { person: people.owner, role: "owner" },
+    { person: people.manager, role: "manager" },
+    { person: people.worker, role: "worker" },
+  ]) {
+    await sql`insert into public.memberships (business_id, user_id, role)
+      values (${id}, ${person.id}, ${role})`;
+  }
+  if (!clock) {
+    const off = await sql`update public.business_modules set enabled = false
+      where business_id = ${id} and module_key = 'time_clock'
+      returning module_key`;
+    if (off.length !== 1) throw new Error("the shop's template has no clock");
+  }
+}
+
+/** The business gone with its records, when the test is done. */
+export async function closeHelpBusiness(): Promise<void> {
+  await deleteRealBusiness(HELP_BUSINESS.id);
+}

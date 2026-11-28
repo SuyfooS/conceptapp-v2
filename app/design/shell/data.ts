@@ -21,12 +21,14 @@ import {
   maskedHint,
 } from "@domain/employee-file";
 import type { FileReview } from "@domain/file-holders";
+import { helpers, helpOf } from "@domain/help";
 import type { ModuleRow } from "@domain/modules";
 import type { AddressForm, CoverPreset } from "@domain/profile";
 import type { Position, ShiftPattern } from "@domain/staffing";
 import type { FileSpace } from "@domain/storage-use";
 import type { GivableNamedRole, TeamInvite, TeamMember } from "@domain/team";
 import type { ClockAskFix } from "../../(app)/clock/clock-types";
+import type { HelpData } from "../../(app)/me/help-sheet";
 import type {
   FileHistory,
   HolderFileData,
@@ -1379,4 +1381,49 @@ export function demoAskFix(kind: string | undefined): ClockAskFix | null {
       href: fixer.chat ? "/design/chat" : null,
     })),
   );
+}
+
+/**
+ * "עזרה" on the profile's demo, Shiran's (closing the pilot, PR 15), worked
+ * out as the app does (`helpers`, `helpOf`): a manager asks the owner, Uri,
+ * whose chat opens the chat demo (Shiran's); `chat: false`, chat off, so Uri
+ * is only named. ConceptApp's team as on a deployment that names its number
+ * (`support`), outside a demo business; on the twin, WhatsApp to no number
+ * (`phone: null`), so WhatsApp asks whom to write to, as no twin writes to a
+ * made-up number that may be someone's.
+ */
+export function demoHelp({
+  support,
+  chat,
+  demo,
+}: {
+  support: boolean;
+  chat: boolean;
+  demo: boolean;
+}): HelpData | null {
+  const fixers = helpers({
+    role: "manager",
+    person: "shiran",
+    editors: [],
+    owners: [{ id: "uri", role: "owner", name: "אורי בן דוד" }],
+    departments: [],
+    chat,
+  }).map((fixer) => ({
+    ...fixer,
+    href: fixer.chat ? "/design/chat" : null,
+  }));
+  const help = helpOf({
+    fixers,
+    role: "manager",
+    viewing: false,
+    demo,
+    support,
+  });
+  return help
+    ? {
+        ask: help.ask,
+        team: help.team ? { phone: null } : null,
+        business: business.name,
+      }
+    : null;
 }

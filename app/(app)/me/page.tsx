@@ -23,6 +23,8 @@ import {
   setMyPhotoAction,
 } from "./actions";
 import { currentFileSummary, FileSummary } from "./file-summary";
+import { currentHelp } from "./help";
+import { HelpSection } from "./help-sheet";
 import { MeView, type PhotoLock } from "./me-view";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -43,6 +45,7 @@ export default async function MePage() {
     modes,
     file,
     past,
+    help,
   ] = await Promise.all([
     currentMember(),
     currentWording(),
@@ -56,6 +59,8 @@ export default async function MePage() {
     currentFileSummary(),
     // The businesses they left whose file they can still read (H5c).
     currentPastJobs(),
+    // "עזרה" (closing the pilot, PR 15): whom to ask, and ConceptApp's team.
+    currentHelp(),
   ]);
   const membership = member?.membership;
   // The layout has already sent these people elsewhere.
@@ -106,6 +111,7 @@ export default async function MePage() {
         ) : null
       }
       modes={modes.length > 0 ? <ModeRows rows={modes} /> : null}
+      help={help ? <HelpSection help={help} /> : null}
       file={file ? <FileSummary data={file} wording={wording} /> : null}
       documents={
         documents ? (
