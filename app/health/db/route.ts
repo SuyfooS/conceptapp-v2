@@ -14,11 +14,12 @@ const HEADERS = {
  *
  * The database is asked one cheap question (`public.ping()`) with the
  * publishable key and no session (`@db/health`), and an answer is kept a
- * minute in this server's memory, so a flood of requests asks it once a
- * minute at most; when it gave none, the next request asks again. Not
- * Next.js's `use cache`: on Vercel's functions its memory may not last
- * from one request to the next, and its stale answer, served while a new
- * one is fetched, could say the database answers after it stopped. The
+ * minute in this server instance's memory, so a flood of requests asks it
+ * once a minute at most per server instance (Vercel may run several at
+ * once, each asking once a minute); when it gave none, the next request
+ * asks again. Not Next.js's `use cache`: its stale answer, served while a
+ * new one is fetched, could say the database answers after it stopped, and
+ * it can't be unit-tested without standing in for Next.js. The
  * response itself is `no-store`, as /health's, so no CDN keeps a copy that
  * answers with the functions down. `connection()` makes it answer at
  * request time, never from a copy made at build (cacheComponents is on).

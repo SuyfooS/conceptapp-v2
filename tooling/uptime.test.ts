@@ -237,6 +237,13 @@ describe("what the script asks and writes", () => {
     expect(brief).toContain("label `uptime`");
     expect(brief).toContain("never close it while the site still fails");
     expect(brief).toContain("only what `github-actions` wrote");
+    // And in the nightly run's catch-up, the list the agent works through.
+    const catchUp = brief.slice(
+      brief.indexOf("1. **Catch up.**"),
+      brief.indexOf("2. **Sync.**"),
+    );
+    expect(catchUp.length).toBeGreaterThan(0);
+    expect(catchUp).toContain("label `uptime`");
   });
 
   it('calls it the check that the site is up, never "זמינות", the staff\'s availability in the app', () => {
@@ -667,7 +674,15 @@ describe.skipIf(process.platform === "win32")(
 
     it("checks an address typed by hand instead, to see the issue open", () => {
       const wrong = "https://wrong.conceptapp.co.il";
-      for (const typed of [wrong, `${wrong}/`, `  ${wrong} `]) {
+      // Capitals, as a phone's keyboard starts what is typed, are made lower
+      // case: a host is the same in either.
+      for (const typed of [
+        wrong,
+        `${wrong}/`,
+        `  ${wrong} `,
+        "Https://Wrong.conceptapp.co.il",
+        "HTTPS://WRONG.CONCEPTAPP.CO.IL/",
+      ]) {
         const r = run({
           site: typed,
           host: wrong,
@@ -723,12 +738,16 @@ describe.skipIf(process.platform === "win32")(
           `#12 is left as it is: this run asked ${other}, not ${REAL}`,
         );
       }
-      // The real site typed by hand is the real site: it answers, and the
-      // issue closes, as with the field empty (docs/production.md, step 3).
-      const real = run({ site: REAL, open: [12], said: SAID_DB });
-      expect(writes(real).map((c) => c.slice(0, 3))).toEqual([
-        ["issue", "close", "12"],
-      ]);
+      // The real site typed by hand is the real site, in capitals too: it
+      // answers, and the issue closes, as with the field empty
+      // (docs/production.md, step 3).
+      for (const typed of [REAL, "Https://www.ConceptApp.co.il"]) {
+        const real = run({ site: typed, open: [12], said: SAID_DB });
+        expect(
+          writes(real).map((c) => c.slice(0, 3)),
+          typed,
+        ).toEqual([["issue", "close", "12"]]);
+      }
     });
 
     it("asks nothing and prints nothing typed for an address it won't take", () => {
@@ -738,7 +757,7 @@ describe.skipIf(process.platform === "win32")(
         "https://site.example/health",
         "https://site.example:8443",
         "https://site.example?x=1",
-        "https://Site.Example",
+        "https://Site.Example/health",
         "https://localhost",
         "https://10.0.0.1",
         "site.example",

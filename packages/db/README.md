@@ -3168,12 +3168,15 @@ read as messages/he.json. Console reads and writes are in `@db/wording`;
   Migrate hasn't brought it to yet, whose API answering is all that says;
   false for any other answer or error, without the two public settings, and
   when anything throws, never throwing and keeping nothing of the error. An
-  answer is kept a minute in the server's memory (`KEEP_ANSWER_MS`), so a
-  flood of requests asks the database once a minute at most; a failure is
-  not kept, so the next request asks again, and requests that come while
-  the question is on its way share it. Covered by `health.test.ts`,
-  `app/health/db/route.test.ts`, pgTAP `ping.test.sql` and
-  `e2e/health.spec.ts`.
+  answer is kept a minute in the server instance's memory (`KEEP_ANSWER_MS`),
+  so a flood of requests asks the database once a minute at most per server
+  instance (Vercel may run several at once, each asking once a minute); a
+  failure is not kept, so the next request asks again, and requests that
+  come while the question is on its way share it. Covered by
+  `health.test.ts` and `app/health/db/route.test.ts`; the function itself by
+  pgTAP `ping.test.sql`; the route and the grant to `anon` against the local
+  stack by `e2e/health.spec.ts` (which a missing function would pass too, as
+  PGRST202).
 - `@db/auth-limits`: the counts on sign-in codes, with the secret key.
   `noteAuthAttempt` gives 0, held (`{ by, seconds }`: the seconds to wait,
   any window of `private.auth_limits`, a quarter of an hour and a day per

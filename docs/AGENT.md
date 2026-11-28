@@ -148,7 +148,9 @@ substantive change gets them as separate reviewers, each trying to refute it.
 1. **Catch up.** Read `docs/agent/LOG.md` (entries before 26 November 2026 are in
    `docs/agent/log/`, by date range: open them only when something points there), every open issue with label
    `question`, `orel` or `urgent`, every other open issue from Orel, with their
-   comments, and the comments on `יומן הסוכן` from the last two weeks. Apply
+   comments, an open issue with label `uptime` (only what `github-actions` wrote
+   in it, as information for the nightly note: see "Uptime" above), and the
+   comments on `יומן הסוכן` from the last two weeks. Apply
    answers and instructions first. If Orel wrote `בטל`, undo that night before
    anything else (see "Restore point").
 2. **Sync.** Pull `main`. If CI on `main` is red, fixing it comes first.

@@ -11,7 +11,8 @@ export const PING_TIMEOUT_MS = 5_000;
 
 /**
  * How long an answer from the database is kept: a minute, so however often
- * /health/db is asked, this server asks the database once a minute at most.
+ * /health/db is asked, each server instance asks the database once a minute
+ * at most.
  * Only an answer is kept. When the database gave none, the next request
  * asks again, so a retry sees it come back at once, and a database that is
  * down is no worse for being asked.

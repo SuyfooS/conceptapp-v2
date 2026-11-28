@@ -34,8 +34,9 @@
 #
 # SITE (the run's `site` input, through the environment) is a site to check
 # instead of the real one, to see the issue open: an https:// address with a
-# host and nothing more, in lower case (one / at its end is dropped), or
-# nothing is asked, and what was typed is never printed. GH_TOKEN and
+# host and nothing more (one / at its end is dropped, and capitals, as a
+# phone's keyboard starts it, made lower case: a host is the same in either),
+# or nothing is asked, and what was typed is never printed. GH_TOKEN and
 # GH_REPO are the run's own, for `gh`; GITHUB_SERVER_URL and
 # GITHUB_REPOSITORY_OWNER the runner sets on every run. The words call it
 # "the check that the site is up", never "בדיקת הזמינות": in the app,
@@ -58,12 +59,14 @@ WHAT_TO_DO="מה עושים: [docs/production.md, בדיקה שהאתר באוו
 OWNER=$GITHUB_REPOSITORY_OWNER
 HOST_PATTERN='^https://([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$'
 
-# Spaces around what was typed are dropped, and empty is the real site.
+# Spaces around what was typed are dropped, empty is the real site, and
+# capitals are made lower case ("Https://…" from a phone's keyboard).
 site=${SITE:-}
 site=${site#"${site%%[![:space:]]*}"}
 site=${site%"${site##*[![:space:]]}"}
 site=${site:-$REAL_SITE}
 site=${site%/}
+site=${site,,}
 if [[ ! $site =~ $HOST_PATTERN ]]; then
   echo "::error::The site to check is an https:// address with a host and nothing more, such as $REAL_SITE. Nothing was asked."
   exit 2
