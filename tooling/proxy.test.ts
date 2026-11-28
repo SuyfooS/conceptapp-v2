@@ -195,14 +195,15 @@ describe("proxy", () => {
     );
   });
 
-  it("leaves the health check out", () => {
-    // /health is for an uptime monitor (app/health/route.ts): no session
-    // read or renewed, no cookie set, never a redirect.
+  it("leaves the health checks out", () => {
+    // /health and /health/db are for the uptime check (app/health/route.ts,
+    // app/health/db/route.ts): no session read or renewed, no cookie set,
+    // never a redirect.
     const block = /matcher: \[([\s\S]*?)\],/.exec(source)?.[1] ?? "";
     const matcher = [...block.matchAll(/^\s+"([^"]+)",$/gm)].map(
       ([, pattern = ""]) => pattern,
     );
-    for (const path of ["/health", "/health/"]) {
+    for (const path of ["/health", "/health/", "/health/db", "/health/db/"]) {
       expect(
         unstable_doesMiddlewareMatch({ config: { matcher }, url: path }),
         path,

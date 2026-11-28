@@ -14,9 +14,9 @@
 // sends a code).
 //
 //   /health      the running server answers 200 with {"status":"ok"}
-//   /health/db   the database answers too. It comes later (closing the
-//                pilot, PR 11): until a site has it, a 404 after a /health
-//                that passed is "not there yet", not a failure
+//   /health/db   the database answers too, 200 with {"status":"ok"} (closing
+//                the pilot, PR 11): 503 is the server answering without it,
+//                and a 404 a site on a version from before it
 //   /enter       the demo door: closed (on to /sign-in, as on the site of real
 //                businesses) or open (the demo's own site), said either way
 //   /sign-in     Turnstile's data-sitekey is no test key of Cloudflare's, and
@@ -32,7 +32,7 @@
 import { basename } from "node:path";
 
 /**
- * @typedef {"pass" | "fail" | "info" | "later"} Outcome
+ * @typedef {"pass" | "fail" | "info"} Outcome
  * @typedef {{ outcome: Outcome, subject: string, words: string }} Finding
  * @typedef {(input: string, init: RequestInit) => Promise<Response>} Fetch
  * @typedef {{ log: (text: string) => void, error: (text: string) => void }} Out
@@ -162,8 +162,17 @@ function targetOf(response, origin) {
   }
 }
 
+/** Whether a health check's body is the app's own `{"status":"ok"}`. */
+function saysOk(text) {
+  try {
+    return JSON.parse(text)?.status === "ok";
+  } catch {
+    return false;
+  }
+}
+
 /**
- * A line of the answer: pass, fail, info (said, not judged) or later.
+ * A line of the answer: pass, fail or info (said, not judged).
  * @param {Outcome} outcome
  * @param {string} subject
  * @param {string} words
@@ -202,15 +211,9 @@ async function checkHealth(fetchImpl, origin) {
   if (answer.error !== undefined) {
     return { stop: false, found: finding("fail", subject, answer.error) };
   }
-  let ok = false;
-  try {
-    ok = JSON.parse(answer.text)?.status === "ok";
-  } catch {
-    ok = false;
-  }
   return {
     stop: false,
-    found: ok
+    found: saysOk(answer.text)
       ? finding("pass", subject, "השרת עונה (200).")
       : finding(
           "fail",
@@ -221,31 +224,35 @@ async function checkHealth(fetchImpl, origin) {
 }
 
 /**
- * `/health/db`, after `/health` (`healthPassed`): a 404 is "not there yet"
- * only on a site that is the app, never on one that answers 404 everywhere,
- * as an address with no deployment on it does.
+ * `/health/db` (closing the pilot, PR 11): the database answers too. A 503
+ * is the server answering without it; a 404 a site on a version from before
+ * the check, or an address with no deployment on it, which answers 404
+ * everywhere.
  */
-async function checkDatabase(fetchImpl, origin, healthPassed) {
+async function checkDatabase(fetchImpl, origin) {
   const subject = PATHS.database;
   const { response, error } = await read(fetchImpl, origin, subject);
   if (!response) return finding("fail", subject, error);
   switch (response.status) {
-    case 200:
-      return finding("pass", subject, "מסד הנתונים עונה (200).");
-    // Until the route reaches every site. Once it has (closing the pilot,
-    // PR 11), a 404 here means it went missing: that PR makes it a failure.
-    case 404:
-      return healthPassed
-        ? finding(
-            "later",
-            subject,
-            "עוד לא באתר הזה: הבדיקה של מסד הנתונים מגיעה בהמשך. זה לא כשל.",
-          )
+    case 200: {
+      const answer = await textOf(response);
+      if (answer.error !== undefined) {
+        return finding("fail", subject, answer.error);
+      }
+      return saysOk(answer.text)
+        ? finding("pass", subject, "מסד הנתונים עונה (200).")
         : finding(
             "fail",
             subject,
-            `עונה 404, לא 200, וגם ${PATHS.health} לא עבר.`,
+            "עונה 200, אבל לא כמו האפליקציה. זו הכתובת הנכונה?",
           );
+    }
+    case 404:
+      return finding(
+        "fail",
+        subject,
+        "עונה 404: האתר על גרסה מלפני הבדיקה של מסד הנתונים, או שזו לא הכתובת של האפליקציה.",
+      );
     case 503:
       return finding(
         "fail",
@@ -372,7 +379,7 @@ export async function checkSite(origin, fetchImpl = globalThis.fetch) {
   if (health.stop) return [health.found];
   const found = [
     health.found,
-    await checkDatabase(fetchImpl, origin, health.found.outcome === "pass"),
+    await checkDatabase(fetchImpl, origin),
     await checkDoor(fetchImpl, origin),
   ];
   // No answer, or a page whose body was cut short: neither is checked.
@@ -402,7 +409,7 @@ export async function checkSite(origin, fetchImpl = globalThis.fetch) {
   return found;
 }
 
-const MARK = { pass: "[v]", fail: "[x]", info: "[i]", later: "[-]" };
+const MARK = { pass: "[v]", fail: "[x]", info: "[i]" };
 
 /**
  * The answer as Orel reads it, a line a finding and the sum at the end.

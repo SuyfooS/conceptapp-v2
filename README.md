@@ -81,10 +81,19 @@ Vercel and what to watch. The code's side of it:
   summary with the commit and the two lines that release it, a fast-forward that is never
   forced. Nobody else pushes to `production`.
 - `GET /health` (or `HEAD`) answers 200 with `{"status":"ok"}` from the running server, for an
-  uptime monitor. It doesn't ask the database.
+  uptime monitor. It doesn't ask the database. `GET /health/db` (or `HEAD`) does: 200 with the
+  same body when `public.ping()` answers (the publishable key, no session; `@db/health` keeps an
+  answer a minute), else 503 with `{"status":"unavailable"}`, never a word of the error.
+- The uptime check, "Uptime" (`.github/workflows/uptime.yml`, the repository's first schedule),
+  asks `https://www.conceptapp.co.il/health` and `/health/db` four times an hour (`:07`, `:22`,
+  `:37`, `:52`) with `curl -fsS --max-time 10 --retry 2`, `GITHUB_TOKEN` alone (code read, issues
+  written) and no secret. While one gets no answer it keeps one issue labelled `uptime` open,
+  with the addresses and the time only, assigned to the repository's owner so that the GitHub app
+  pushes it, and closes it when both answer (`.github/scripts/uptime.sh`, `tooling/uptime.test.ts`;
+  `docs/production.md`, "בדיקה שהאתר באוויר").
 - `node tooling/check-site.mjs <address>` checks one site from outside, on Node 20 with
   nothing installed and no secret, one GET per address and no redirect followed: `/health`
-  answers 200, `/health/db` too once a site has it (until then it says so and doesn't fail),
+  and `/health/db` answer 200 (a 404 on `/health/db` is a site on a version from before it),
   whether `/enter` goes on to `/sign-in` (the door closed) or is open, that `/sign-in`'s
   Turnstile `data-sitekey` is none of Cloudflare's test keys, and the security headers of
   `@domain/security-headers`, named but never their values. It answers in Hebrew and exits 1

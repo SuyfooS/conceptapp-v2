@@ -1,0 +1,65 @@
+# Is the site up? (closing the pilot, PR 11; docs/production.md, "בדיקה
+# שהאתר באוויר".) Four times an hour, off the hour, this asks the hosted
+# site's /health (the server answers) and /health/db (the database answers
+# too), and keeps one issue labelled `uptime` open while either gets no
+# answer: it opens one, assigned to the repository's owner so that the
+# GitHub app pushes it to the phone, comments when what fails changes, and
+# comments and closes it when both answer again (.github/scripts/uptime.sh
+# says how). The repository is public, so the issue says the addresses and
+# the time, and nothing else. A run passes whether the site answered or not:
+# the issue is the alarm, so a failed run means the check itself broke.
+#
+# By hand, Actions → Uptime → Run workflow: with `site` empty it checks the
+# real site, and with another https:// address it checks that one instead,
+# to see the issue open (a wrong address) and then close (empty again). A
+# run on another address opens an issue only when none is open, and never
+# comments on or closes one.
+#
+# The repository's first schedule, at :07, :22, :37 and :52, away from the
+# top of the hour, when GitHub starts the most and runs them late. GitHub
+# may still run one late or skip it, and turns a public repository's
+# schedules off after 60 days with no activity in it. tooling/uptime.test.ts
+# holds all of this.
+name: Uptime
+
+on:
+  schedule:
+    - cron: "7,22,37,52 * * * *"
+  workflow_dispatch:
+    inputs:
+      site:
+        description: An https:// address to check instead of the real site, to see the issue open. Empty checks the real site. What is typed is public, so an address alone, never a token or a password.
+        type: string
+        required: false
+        default: ""
+
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+# GITHUB_TOKEN alone, and no secret: read the code, write the issue and its
+# label. The action is pinned to a commit, with its version beside it for
+# Dependabot, as in the other workflows.
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+
+      # What was typed by hand is never written into the script, nor into
+      # the step's environment, which the runner prints at the top of this
+      # step's public log: the script reads it from the run's event
+      # (GITHUB_EVENT_PATH) and checks it before it asks anything.
+      - name: Ask the site, and open or close the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bash .github/scripts/uptime.sh
