@@ -524,11 +524,12 @@ function partAt(statement: Statement, at: number): Part {
 
 /**
  * A function or policy as it runs: what it is called now, and each part's
- * checks by rank with the migration that wrote that part.
+ * checks by rank with the migration that wrote that part and the text
+ * (comments blanked) of the statement that wrote it.
  */
 type Version = {
   name: string;
-  parts: Map<Part, { migration: string; checks: RoleCheck[] }>;
+  parts: Map<Part, { migration: string; checks: RoleCheck[]; text: string }>;
 };
 
 /**
@@ -582,6 +583,7 @@ function versionsAfter(migrations: readonly Migration[]): Map<string, Version> {
                 check,
                 where: statement.name,
               })),
+            text: code.slice(statement.start, statement.end),
           });
         }
         live.set(statement.key, version);
@@ -597,6 +599,21 @@ function versionsAfter(migrations: readonly Migration[]): Map<string, Version> {
     }
   }
   return live;
+}
+
+/**
+ * Each function as it runs once `migrations` have: its name then, the text
+ * (comments blanked) of the version that runs, and the migration that wrote
+ * it. As for the rules by rank, a later migration's version replaces it, a
+ * drop ends it, and a rename or a move takes it along.
+ */
+export function functionsInForce(
+  migrations: readonly Migration[],
+): { name: string; migration: string; text: string }[] {
+  return [...versionsAfter(migrations).values()].flatMap(({ name, parts }) => {
+    const body = parts.get("body");
+    return body ? [{ name, migration: body.migration, text: body.text }] : [];
+  });
 }
 
 /** A migration after the guard's own, whose rules by rank are checked. */
