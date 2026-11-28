@@ -33,7 +33,8 @@ vi.mock("@db/team", () => ({ getColleagues: mocks.getColleagues }));
 vi.mock("@db/departments", () => ({ getDepartments: mocks.getDepartments }));
 vi.mock("@db/env", () => ({ supportWhatsapp: mocks.supportWhatsapp }));
 // `drawn.open` draws what the sheet holds in place, as if it had been
-// pressed open, since a page drawn on the server has it closed.
+// pressed open, since a page drawn on the server has it closed, with the
+// label its body reads by when it only reads (`readingLabel`).
 const drawn = vi.hoisted(() => ({ open: false }));
 vi.mock("@ui/sheet", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@ui/sheet")>();
@@ -41,7 +42,11 @@ vi.mock("@ui/sheet", async (importOriginal) => {
     ...actual,
     Sheet: (props: Parameters<typeof actual.Sheet>[0]) =>
       drawn.open
-        ? createElement("div", { role: "dialog" }, props.children)
+        ? createElement(
+            "div",
+            { role: "dialog", "data-reading": props.readingLabel },
+            props.children,
+          )
         : createElement(actual.Sheet, props),
   };
 });
@@ -341,9 +346,16 @@ describe("the row", () => {
     ];
     for (const [help, hebrew, english] of cases) {
       const html = row(help);
+      const englishHtml = row(help, en);
       expect(html).toContain(escaped(he.app.me.help.row));
       expect(html, hebrew).toContain(escaped(hebrew));
-      expect(row(help, en), english).toContain(escaped(english));
+      expect(englishHtml, english).toContain(escaped(english));
+      // A hint without the team is the start of the one with it: with no
+      // team, the row must not go on to offer it.
+      if (help.team === null) {
+        expect(html, hebrew).not.toContain("ConceptApp");
+        expect(englishHtml, english).not.toContain("ConceptApp");
+      }
       // A button that opens the sheet, which draws nothing until then: no
       // number, link or chat on the page before it is pressed.
       expect(html).toMatch(/<button[^>]*type="button"/);
@@ -443,6 +455,41 @@ describe("the row", () => {
       expect(drawnLook, name).toEqual(expect.arrayContaining(look));
       const other = look === primary ? secondary : primary;
       for (const token of other) expect(drawnLook, name).not.toContain(token);
+    }
+  });
+
+  it("makes a sheet of only names, with nothing to press, one that reads, in both languages", () => {
+    const named = {
+      kind: "name" as const,
+      people: [{ ...owner, chat: false, href: null }],
+    };
+    const reading = (help: HelpData, messages: typeof he = he) => {
+      drawn.open = true;
+      const html = row(help, messages);
+      drawn.open = false;
+      return {
+        label: html.match(/data-reading="([^"]*)"/)?.[1],
+        links: html.match(/<a /g)?.length ?? 0,
+      };
+    };
+    // The accountant, or chat off, with no number: only the owner's name.
+    expect(reading({ ask: named, team: null, business })).toEqual({
+      label: he.app.me.help.title,
+      links: 0,
+    });
+    expect(reading({ ask: named, team: null, business }, en)).toEqual({
+      label: en.app.me.help.title,
+      links: 0,
+    });
+    // Something to press: the team's WhatsApp, or a chat.
+    for (const help of [
+      { ask: named, team: { phone: NUMBER }, business },
+      { ask: { kind: "write" as const, person: owner }, team: null, business },
+      { ask: null, team: { phone: NUMBER }, business },
+    ]) {
+      const drawnSheet = reading(help);
+      expect(drawnSheet.label, help.ask?.kind ?? "alone").toBeUndefined();
+      expect(drawnSheet.links, help.ask?.kind ?? "alone").toBe(1);
     }
   });
 });

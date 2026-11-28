@@ -57,12 +57,24 @@ async function expectCleanPage(page: Page) {
   expect(overflow).toBeLessThanOrEqual(0);
 }
 
+/**
+ * "עזרה" says `hint`, and names ConceptApp's team only when `hint` does: a
+ * hint without the team is the start of the one with it, so containing it
+ * alone would pass a row that wrongly offers the team.
+ */
+async function expectHint(row: ReturnType<typeof helpRow>, hint: string) {
+  await expect(row).toContainText(hint);
+  if (!hint.includes("ConceptApp")) {
+    await expect(row).not.toContainText("ConceptApp");
+  }
+}
+
 /** Opens "עזרה" on /me, which says whom it reaches, and returns its sheet. */
 async function openHelp(page: Page, hint: string) {
   await page.goto("/me");
   const row = helpRow(page);
   await expect(row).toBeVisible();
-  await expect(row).toContainText(hint);
+  await expectHint(row, hint);
   await row.click();
   const sheet = sheetOf(page);
   await expect(sheet).toBeVisible();
@@ -231,15 +243,14 @@ test("the profile's twin draws 'עזרה' with ConceptApp's team, without its nu
 
   // A deployment with no number: only Uri.
   await page.goto("/design/shell/me?support=off");
-  await expect(helpRow(page)).toContainText(
-    heT("app.me.help.hint.one", { name: uri }),
-  );
+  await expectHint(helpRow(page), heT("app.me.help.hint.one", { name: uri }));
   await helpRow(page).click();
   sheet = sheetOf(page);
   await expect(askLink(sheet, uri)).toBeVisible();
   await expect(team(sheet)).toHaveCount(0);
 
-  // Chat off: Uri only named, the team still there.
+  // Chat off: Uri only named, the team still there, so the sheet has
+  // something to press and its body takes no focus of its own.
   await page.goto("/design/shell/me?help=name");
   await helpRow(page).click();
   sheet = sheetOf(page);
@@ -250,6 +261,23 @@ test("the profile's twin draws 'עזרה' with ConceptApp's team, without its nu
     0,
   );
   await expect(team(sheet)).toBeVisible();
+  await expect(sheet.getByRole("region", { name: h.title })).toHaveCount(0);
+  await expectCleanPage(page);
+
+  // Chat off with no number, as the accountant and a business with chat off
+  // have it until a deployment names one: only Uri's name, nothing to press,
+  // so the sheet's body takes the keyboard to scroll by keys.
+  await page.goto("/design/shell/me?help=name&support=off");
+  await helpRow(page).click();
+  sheet = sheetOf(page);
+  await expect(
+    sheet.getByText(heT("app.me.help.named", { names: uri })),
+  ).toBeVisible();
+  await expect(sheet.getByRole("link")).toHaveCount(0);
+  await expect(sheet.getByRole("region", { name: h.title })).toHaveAttribute(
+    "tabindex",
+    "0",
+  );
   await expectCleanPage(page);
 
   // A demo business: never ConceptApp's team.

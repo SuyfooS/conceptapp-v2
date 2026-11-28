@@ -58,7 +58,8 @@ type Props = {
 // asks Uri, the owner, in chat, and reaches ConceptApp's team on WhatsApp
 // (no number on the twin: WhatsApp asks whom to); ?support=off is a
 // deployment with no number, so only Uri; ?help=name, chat off, so Uri is
-// only named; ?state=demo, a demo business, with no ConceptApp team.
+// only named; both, only his name and nothing to press; ?state=demo, a demo
+// business, with no ConceptApp team.
 export default function ShellMe({ searchParams }: Props) {
   return (
     <Suspense>
