@@ -76,6 +76,27 @@ export function pushTtl(
 /** The coarse word kept for a device, from its browser's user agent. */
 export type DeviceLabel = "iphone" | "ipad" | "android" | "computer";
 
+const deviceKind: z.ZodType<DeviceLabel> = z.enum([
+  "iphone",
+  "ipad",
+  "android",
+  "computer",
+]);
+
+/**
+ * The kinds of the person's own devices as the database keeps them
+ * (`push_subscriptions.label`, which may be null): each read leniently, a
+ * kind it doesn't know left out, each kind once.
+ */
+export const deviceKinds = z.array(z.unknown()).transform((labels) => [
+  ...new Set(
+    labels.flatMap((label) => {
+      const kind = deviceKind.safeParse(label);
+      return kind.success ? [kind.data] : [];
+    }),
+  ),
+]);
+
 /**
  * What kind of device a user agent is, coarsely, for the list of devices; the
  * user agent itself is not kept. An iPad that asks for the desktop site says
@@ -138,6 +159,113 @@ export function pushSupport(facts: BrowserFacts): PushSupport {
     return facts.canPush ? "ready" : "unsupported";
   }
   return facts.canPush ? "ready" : "unsupported";
+}
+
+/**
+ * Where notifications on the phone are offered (closing the pilot, PR 6): a
+ * card on Today, for everyone, until this device has them or the person says
+ * "לא עכשיו"; and the quiet card right after a moment (a shift given away,
+ * availability sent), once.
+ */
+export type PushAskPlace = "today" | "moment";
+
+/**
+ * The offer's card as it goes: how it starts (`install`, an iPhone or iPad
+ * in Safari, the steps to the home screen first; `off`), a press on its way,
+ * and what came of it.
+ */
+export type PushAskState =
+  | "install"
+  | "off"
+  | "working"
+  | "on"
+  | "denied"
+  | "failed";
+
+/** What the card shows before anyone presses it: nothing, the steps, or the way to turn them on. */
+export type PushAskStart = "none" | Extract<PushAskState, "install" | "off">;
+
+/** What the browser and this device say, for `pushAskStart`. */
+export type PushAskFacts = {
+  support: PushSupport;
+  /** `Notification.permission`, where push is ready. */
+  permission: "default" | "granted" | "denied";
+  /** This browser has a subscription already, from the app's worker. */
+  subscribed: boolean;
+  /**
+   * The steps to the home screen were put away in this browser ("לא עכשיו"
+   * on Today, or a moment's card showed them): kept by the browser, never
+   * for the person, so the app on the home screen, whose storage is its own,
+   * still asks.
+   */
+  installPutAway: boolean;
+  /** One of the person's devices is this browser's kind of iPhone or iPad (`installedHere`). */
+  installedHere: boolean;
+};
+
+/**
+ * How the offer's card starts on this browser: nothing where push can't
+ * come (unsupported, too old an iOS, blocked) or is on already; on an iPhone
+ * or iPad in Safari the steps to the home screen, unless they were put away
+ * here or the person's home-screen app there has notifications already;
+ * else the way to turn them on.
+ */
+export function pushAskStart(facts: PushAskFacts): PushAskStart {
+  switch (facts.support) {
+    case "installFirst":
+      return facts.installPutAway || facts.installedHere ? "none" : "install";
+    case "ready":
+      return facts.permission === "denied" || facts.subscribed ? "none" : "off";
+    default:
+      return "none";
+  }
+}
+
+/**
+ * Whether the person already has notifications on a device of this
+ * browser's kind where Safari can't take them itself: an iPhone or iPad
+ * whose app on the home screen was turned on. So this phone has them, and
+ * Safari, opened from a link (known issue 21), offers no steps. Never for
+ * another kind: an iPad that asks for the desktop site says it is a
+ * computer, as any computer does.
+ */
+export function installedHere(
+  label: DeviceLabel,
+  devices: readonly DeviceLabel[],
+): boolean {
+  return (label === "iphone" || label === "ipad") && devices.includes(label);
+}
+
+/** What happened to the card: it was on screen, or one of its presses. */
+export type PushAskEvent = "seen" | "enable" | "settings" | "dismiss";
+
+/**
+ * What an event keeps, so the offer doesn't come again: for the person, on
+ * every device (`push_asked_at`, public.see_push_ask), for this browser
+ * only, or nothing.
+ */
+export type PushAskMark = "person" | "device" | null;
+
+/**
+ * What each event keeps. The steps to the home screen are never counted for
+ * the person: in Safari nothing can be turned on yet, and the app on the
+ * home screen must still ask; they are put away in this browser only. A
+ * moment's card is kept once it is seen or pressed, as before. Today's is
+ * kept only by "לא עכשיו" while it still offers something: seen and left,
+ * it stays until this device has them, and after a press that turned them
+ * on, or found them blocked, there is nothing left to keep.
+ */
+export function pushAskMark(
+  place: PushAskPlace,
+  state: PushAskState,
+  event: PushAskEvent,
+): PushAskMark {
+  if (state === "install") {
+    return place === "moment" || event === "dismiss" ? "device" : null;
+  }
+  if (place === "moment") return "person";
+  if (event !== "dismiss") return null;
+  return state === "on" || state === "denied" ? null : "person";
 }
 
 /** Whether to say "this phone" or "this device". */

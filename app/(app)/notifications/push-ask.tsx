@@ -1,6 +1,6 @@
 "use client";
 
-import { isPhone, pushSupport } from "@domain/push";
+import { type DeviceLabel, type PushAskEvent, pushAskMark } from "@domain/push";
 import { Button } from "@ui/button";
 import { Card } from "@ui/card";
 import { cn } from "@ui/cn";
@@ -8,34 +8,28 @@ import { BellRing } from "lucide-react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { browserFacts, ourWorker, turnOnPush } from "./push-client";
+import { usePushAskState } from "./push-ask-state";
+import { putInstallAway, turnOnPush } from "./push-client";
 
 /**
- * Who may be offered notifications on the phone after giving away a shift or
- * sending availability (`currentPushAsk`): someone in a business whose lines
- * reach a phone, with push set up, never offered before. `seen` keeps that
- * they were (`seePushAskAction`), so it comes once, on any of their devices.
+ * Who may be offered notifications on the phone, on Today and after giving
+ * away a shift or sending availability (`currentPushAsk`): someone in a
+ * business whose lines reach a phone, with push set up, who hasn't said "לא
+ * עכשיו" and wasn't shown a moment's card. `seen` keeps that a moment's card
+ * was (`seePushAskAction`), `putAway` Today's "לא עכשיו"
+ * (`putAwayPushAskAction`), each on any of their devices. `devices`: the
+ * kinds of the devices they already have notifications on.
  */
 export type PushAskOffer = {
   /** VAPID_PUBLIC_KEY, from the server. */
   publicKey: string;
+  devices: DeviceLabel[];
   seen: () => Promise<void>;
+  putAway: () => Promise<void>;
 };
 
 /** What the moment was: a shift given away, or availability sent. */
 export type PushAskMoment = "swap" | "availability";
-
-type State =
-  | "checking"
-  /** Nothing to offer here: no push, blocked, or already on. */
-  | "none"
-  | "off"
-  /** An iPhone in Safari: the app goes on the home screen first. */
-  | "install"
-  | "working"
-  | "on"
-  | "denied"
-  | "failed";
 
 const SETTINGS = "/notifications/settings";
 
@@ -89,12 +83,14 @@ export function usePushAskOnce(ask: PushAskOffer | null) {
  * unsupported or already on, it shows nothing and isn't counted as asked.
  * Shown, it is brought into view, clear of the floating bars, and kept as
  * asked (`offer.seen`) once it has really been on screen or one of its
- * buttons was pressed, so it never comes again. The press turns
- * notifications on there and then, asking for permission first, as the push
- * switch does; an iPhone in Safari is sent to the settings, which say how to
- * add the app to the home screen. "לא עכשיו" puts it away (`onClose`), and
- * the keyboard goes on to what follows it. No sound, no motion of its own:
- * the words change in place and are read out.
+ * buttons was pressed, so it never comes again, here or on Today. The press
+ * turns notifications on there and then, asking for permission first, as the
+ * push switch does; an iPhone in Safari is sent to the settings, which say
+ * how to add the app to the home screen, and is kept in this browser only
+ * (`pushAskMark`): the app on the home screen still offers the switch. "לא
+ * עכשיו" puts it away (`onClose`), and the keyboard goes on to what follows
+ * it. No sound, no motion of its own: the words change in place and are
+ * read out.
  */
 export function PushAsk({
   offer,
@@ -147,9 +143,7 @@ function AskCard({
   const t = useTranslations("app.notifications");
   const locale = useLocale();
   const titleId = useId();
-  const [state, setState] = useState<State>("checking");
-  const [device, setDevice] = useState<"phone" | "other">("other");
-  const worker = useRef<ServiceWorkerRegistration | null>(null);
+  const { state, setState, device, worker } = usePushAskState(offer.devices);
   const card = useRef<HTMLDivElement>(null);
   const actions = useRef<HTMLDivElement>(null);
   const noted = useRef(false);
@@ -162,44 +156,19 @@ function AskCard({
   const fallbackTitle = t("push.notice.fallback.title");
   const fallbackBody = t("push.notice.fallback.body");
 
-  useEffect(() => {
-    let live = true;
-    const facts = browserFacts();
-    setDevice(isPhone(facts) ? "phone" : "other");
-    const support = pushSupport(facts);
-    if (support === "installFirst") {
-      setState("install");
-      return;
-    }
-    if (support !== "ready" || Notification.permission === "denied") {
-      setState("none");
-      return;
-    }
-    (async () => {
-      try {
-        // Only a worker turned on here before: none is registered for asking.
-        const registration = await ourWorker();
-        const subscription = registration
-          ? await registration.pushManager.getSubscription()
-          : null;
-        if (!live) return;
-        worker.current = registration;
-        setState(subscription ? "none" : "off");
-      } catch {
-        if (live) setState("none");
-      }
-    })();
-    return () => {
-      live = false;
-    };
-  }, []);
-
-  // Kept as asked, once: seen, or answered.
-  const note = useCallback(() => {
-    if (noted.current) return;
-    noted.current = true;
-    seen().catch(() => {});
-  }, [seen]);
+  // Kept as asked, once: seen, or answered. The steps to the home screen in
+  // this browser only, everything else for the person (`pushAskMark`).
+  const note = useCallback(
+    (event: PushAskEvent) => {
+      if (noted.current || state === "checking" || state === "none") return;
+      const mark = pushAskMark("moment", state, event);
+      if (!mark) return;
+      noted.current = true;
+      if (mark === "device") putInstallAway();
+      else seen().catch(() => {});
+    },
+    [seen, state],
+  );
 
   const shown = state !== "checking" && state !== "none";
 
@@ -225,13 +194,13 @@ function AskCard({
     const element = card.current;
     if (!shown || noted.current || !element) return;
     if (typeof IntersectionObserver === "undefined") {
-      note();
+      note("seen");
       return;
     }
     const watching = new IntersectionObserver(
       (entries) => {
         if (entries.some((entry) => entry.intersectionRatio >= 0.5)) {
-          note();
+          note("seen");
           watching.disconnect();
         }
       },
@@ -275,7 +244,7 @@ function AskCard({
 
   async function turnOn() {
     if (state === "working") return;
-    note();
+    note("enable");
     refocus.current = Boolean(card.current?.contains(document.activeElement));
     setState("working");
     const { answer, registration } = await turnOnPush(
@@ -297,7 +266,7 @@ function AskCard({
   }
 
   function close() {
-    note();
+    note("dismiss");
     const element = card.current;
     const next =
       element?.contains(document.activeElement) === true
@@ -351,7 +320,7 @@ function AskCard({
         ) : null}
         {state === "install" || state === "on" ? (
           <Button asChild variant="secondary">
-            <Link href={SETTINGS} onClick={note}>
+            <Link href={SETTINGS} onClick={() => note("settings")}>
               {t("ask.settings")}
             </Link>
           </Button>

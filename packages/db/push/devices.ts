@@ -1,17 +1,41 @@
 import "server-only";
-import type { DeviceLabel } from "@domain/push";
+import { type DeviceLabel, deviceKinds } from "@domain/push";
 import { isMissingFunction } from "../missing";
 import { createAdminClient } from "../supabase/admin";
+import { createClient } from "../supabase/server";
 
 /**
  * Each person's devices, written with the secret key for `actorId`, whom the
  * caller has checked is the signed-in person and not viewing as someone. The
  * endpoint has been checked against the push services we know first
  * (@domain/push-endpoint). Everything here waits quietly for its migration:
- * before it reaches a project, nobody is offered the switch.
+ * before it reaches a project, nobody is offered the switch. Only
+ * `ownDeviceKinds` reads, under the person's own session.
  */
 
 const DEMO = "55000";
+
+/**
+ * The kinds of the signed-in person's own devices with notifications on
+ * (`label`, one of the plain columns the browser may read), under their own
+ * session, which sees their rows alone ("people read their own devices",
+ * 20261109000500_push.sql): for the offer on an iPhone's Safari, which shows
+ * no steps once the app on that phone's home screen has them
+ * (`installedHere` in @domain/push). None when they can't be read: the
+ * steps are shown then, as before.
+ */
+export async function ownDeviceKinds(): Promise<DeviceLabel[]> {
+  const supabase = await createClient();
+  // bounded: at most ten devices a person (20261109000500_push.sql).
+  const { data, error } = await supabase
+    .from("push_subscriptions")
+    .select("label");
+  if (error) {
+    console.error("reading the devices failed", error.message);
+    return [];
+  }
+  return deviceKinds.parse((data ?? []).map((row) => row.label));
+}
 
 /**
  * Whether the person can turn notifications on for a phone: false in a demo

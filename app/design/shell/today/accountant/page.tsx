@@ -11,9 +11,15 @@ import {
 } from "../../clock/pay/data";
 import { business, teamFileStatus } from "../../data";
 import { demoSignOutOfStation } from "../../station/actions";
+import { pushTwinOf } from "../push-twin";
 
 type Props = {
-  searchParams: Promise<{ state?: string; estimate?: string; files?: string }>;
+  searchParams: Promise<{
+    state?: string;
+    estimate?: string;
+    files?: string;
+    push?: string;
+  }>;
 };
 
 // Home as the demo's accountant has it: October to pay with its estimate
@@ -26,7 +32,9 @@ type Props = {
 // business's tablet, and signing out goes to the station's twin. The hiring
 // file's card (profile H6a): ?files=missing with the demo's files (Yoav's and
 // Maya's missing details, Maya's account to look at), ?files=complete with
-// every file complete; it leads to the team twin's files.
+// every file complete; it leads to the team twin's files. ?push= has the
+// card that offers notifications on the phone (closing the pilot, PR 6), as
+// on Today's twin (`pushTwinOf`).
 export default function ShellTodayAccountant({ searchParams }: Props) {
   return (
     <Suspense>
@@ -36,7 +44,7 @@ export default function ShellTodayAccountant({ searchParams }: Props) {
 }
 
 async function Demo({ searchParams }: Props) {
-  const { state, estimate, files } = await searchParams;
+  const { state, estimate, files, push } = await searchParams;
   const statuses = Object.values(teamFileStatus);
   return (
     <AccountantHome
@@ -85,6 +93,7 @@ async function Demo({ searchParams }: Props) {
                 href: "/design/shell/team?file=accountant",
               }
             : null,
+        pushAsk: pushTwinOf(push),
       }}
     />
   );

@@ -48,10 +48,25 @@ export async function setNotificationPreferencesAction(
 /**
  * The quiet card that offers notifications on the phone, after giving away a
  * shift or sending availability, was shown: it never comes again, on any of
- * the person's devices. Nothing while viewing as someone.
+ * the person's devices, and neither does Today's. Nothing while viewing as
+ * someone.
  */
 export async function seePushAskAction(): Promise<void> {
   const member = await currentMember();
   if (!member || !canWrite(member.viewing)) return;
   if (await seePushAsk()) refresh();
+}
+
+/**
+ * "לא עכשיו" on Today's card that offers notifications on the phone (closing
+ * the pilot, PR 6), once its "ביטול" went: kept as `seePushAskAction` keeps
+ * it, so neither card comes again on any of the person's devices. Today is
+ * not drawn again from here: the write is held for its undo and can go once
+ * the screen is left, and the card, gone already, draws Today again itself
+ * while it is still on screen. Nothing while viewing as someone.
+ */
+export async function putAwayPushAskAction(): Promise<void> {
+  const member = await currentMember();
+  if (!member || !canWrite(member.viewing)) return;
+  await seePushAsk();
 }

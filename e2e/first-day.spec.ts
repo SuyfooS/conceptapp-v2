@@ -30,6 +30,8 @@ import { expect, type Page, type TestInfo, test } from "./test";
 
 const j = he.auth.join;
 const h = he.app.home;
+/** Notifications on the phone are offered only with push set up. */
+const PUSH_SET_UP = Boolean(process.env.VAPID_PUBLIC_KEY);
 const c = he.app.clock;
 const ts = he.app.shifts;
 const WEEKDAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
@@ -267,6 +269,21 @@ test("a new worker joins from the owner's link and gets through the first day", 
         }),
       ).toBeVisible();
       await expect(hero).toContainText(h.hero.notPublished.title);
+      // An iPhone's Safari has no push outside the home screen, so Today's
+      // card shows the steps to it (closing the pilot, PR 6), once push is
+      // set up (CI makes VAPID keys). Chromium here says notifications are
+      // blocked, and shows no card.
+      if (testInfo.project.name === "webkit-390" && PUSH_SET_UP) {
+        const steps = page.getByRole("region", {
+          name: he.app.notifications.push.iosHint.title,
+        });
+        await expect
+          .soft(steps, "3-today: the steps to the home screen")
+          .toBeVisible();
+        await expect
+          .soft(steps, "3-today: the steps' Add to Home Screen")
+          .toContainText(he.app.notifications.push.iosHint.add);
+      }
       await expectCleanPage(page, testInfo, "3-today");
     });
 

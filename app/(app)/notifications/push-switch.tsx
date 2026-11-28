@@ -7,9 +7,10 @@ import { ListGroup, ListRow } from "@ui/list-row";
 import { PageSection } from "@ui/page";
 import { Spinner } from "@ui/spinner";
 import { Switch } from "@ui/switch";
-import { BellRing, Send, Share, SquarePlus } from "lucide-react";
+import { BellRing, Send } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useId, useRef, useState } from "react";
+import { IosInstallSteps } from "./ios-install-steps";
 import {
   browserFacts,
   forgetSubscription,
@@ -185,26 +186,7 @@ export function PushSwitch({
           <CardTitle as="h2">{t("iosHint.title")}</CardTitle>
         </div>
         <CardText>{t("iosHint.body")}</CardText>
-        <ol className="flex flex-col gap-2 text-ink">
-          <li className="flex items-center gap-2">
-            <Share aria-hidden="true" className="size-5 shrink-0 text-ink-2" />
-            {t("iosHint.share")}
-          </li>
-          <li className="flex items-center gap-2">
-            <SquarePlus
-              aria-hidden="true"
-              className="size-5 shrink-0 text-ink-2"
-            />
-            {t("iosHint.add")}
-          </li>
-          <li className="flex items-center gap-2">
-            <BellRing
-              aria-hidden="true"
-              className="size-5 shrink-0 text-ink-2"
-            />
-            {t("iosHint.open")}
-          </li>
-        </ol>
+        <IosInstallSteps />
       </Card>
     );
   }

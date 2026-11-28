@@ -81,6 +81,10 @@ import { completeHref } from "../me/file/file-parts";
 import type { FileToday, FileTodayActions } from "../me/file/file-types";
 import type { ModeRow } from "../mode-rows";
 import { moduleIcons } from "../module-icons";
+import {
+  PushAskToday,
+  type TodayPushAsk,
+} from "../notifications/push-ask-today";
 import type {
   AvailabilityWeek,
   PublishedSchedule,
@@ -205,6 +209,15 @@ export type TodayData = {
    * else, or with the clock off.
    */
   away?: TodayAway | null;
+  /**
+   * The offer of notifications on the phone (closing the pilot, PR 6:
+   * `currentPushAsk`), for everyone, until this device has them or they
+   * said "לא עכשיו"; the twin's state on /design/shell. Null in a demo
+   * business, viewing as someone, with the module off or push not set up.
+   * Never drawn on the business's clock station, which isn't the person's
+   * device.
+   */
+  pushAsk?: TodayPushAsk | null;
 };
 
 /** Who is away today, as Today lists them. */
@@ -310,8 +323,11 @@ function runningOf(schedule: TodaySchedule, now: string) {
  * what is under it. The hiring file (H5b) has two cards there: its account's
  * change for 14 days, and, while anything is missing, the way to complete it
  * (the accent, unless the first steps or an open mode hold it), which then
- * leaves a quiet row saying the file is complete. `base` prefixes links for
- * the demo, which also renders this with mock data on /design/shell.
+ * leaves a quiet row saying the file is complete. Under them, for everyone,
+ * a quiet card offers notifications on the phone until this device has them
+ * or the person says "לא עכשיו" (`PushAskToday`, closing the pilot, PR 6),
+ * never on the business's clock station. `base` prefixes links for the demo,
+ * which also renders this with mock data on /design/shell.
  */
 export async function TodayView({
   data,
@@ -658,6 +674,13 @@ export async function TodayView({
             t={t}
             day={day}
             href={completeHref(base, file.pension, fileQuery)}
+          />
+        ) : null}
+
+        {data.pushAsk && !data.station ? (
+          <PushAskToday
+            ask={data.pushAsk}
+            settingsHref={path("/notifications/settings")}
           />
         ) : null}
 

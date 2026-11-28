@@ -24,6 +24,32 @@ export function browserFacts(): BrowserFacts {
   };
 }
 
+/**
+ * localStorage: the steps to the home screen were put away in this browser
+ * (`pushAskMark` in @domain/push). Kept by the browser alone, never for the
+ * person: on an iPhone the app on the home screen has storage of its own, so
+ * it still offers the switch once it is installed.
+ */
+export const INSTALL_PUT_AWAY_KEY = "conceptapp:push-install-put-away";
+
+/** Whether the steps to the home screen were put away here; no when storage can't say. */
+export function installPutAway(): boolean {
+  try {
+    return localStorage.getItem(INSTALL_PUT_AWAY_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+
+/** Puts the steps to the home screen away in this browser, when storage lets it. */
+export function putInstallAway(): void {
+  try {
+    localStorage.setItem(INSTALL_PUT_AWAY_KEY, new Date().toISOString());
+  } catch {
+    // Private browsing or blocked storage: they come again next time.
+  }
+}
+
 /** The application server key, as `pushManager.subscribe` takes it. */
 export function keyBytes(publicKey: string): Uint8Array<ArrayBuffer> {
   const base64 = publicKey.replace(/-/g, "+").replace(/_/g, "/");

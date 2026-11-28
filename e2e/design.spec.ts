@@ -50,6 +50,19 @@ const PAGES = [
   "/design/shell/today/worker?file=bank",
   "/design/shell/today/worker?file=disputed",
   "/design/shell/today/worker?file=complete",
+  // Today's card that offers notifications on the phone (closing the pilot,
+  // PR 6) in each state the browser of the tests can't reach: a press on
+  // its way, on, blocked, failed, and an iPhone's Safari with the steps to
+  // the home screen; and before a press, with the hiring file's card above
+  // it, and on the accountant's Today.
+  "/design/shell/today/worker?push=off",
+  "/design/shell/today/worker?push=working",
+  "/design/shell/today/worker?push=on",
+  "/design/shell/today/worker?push=denied",
+  "/design/shell/today/worker?push=failed",
+  "/design/shell/today/worker?push=install",
+  "/design/shell/today/worker?file=missing&push=off",
+  "/design/shell/today/accountant?push=off",
   "/design/shell/today/not-published",
   "/design/shell/today/worker-not-published",
   // A worker who builds the schedule without publishing it (roles R3).
@@ -1868,6 +1881,64 @@ test("the Today demo's first steps lead into the demo and hide with a way back",
   await page.goto("/design/shell/today/first-steps?state=viewing");
   await expect(card).toBeVisible();
   await expect(card.getByRole("button", { name: f.hide })).toHaveCount(0);
+});
+
+// Today's card that offers notifications on the phone (closing the pilot,
+// PR 6) on the twin, which asks the browser nothing and keeps nothing: a
+// press turns them on (a moment's stand-in), says so, leads to the twin's
+// settings and closes with nothing to undo; an iPhone's Safari shows the
+// steps to the home screen, and "לא עכשיו" puts them away with a way back
+// that brings the focus back to it. The app's own card, in a real business:
+// e2e/push-card.spec.ts.
+test("the Today demo's notifications card turns them on, and 'לא עכשיו' puts it away with a way back", async ({
+  page,
+}) => {
+  const a = he.app.notifications.ask;
+  const card = page.getByRole("main").getByRole("region", {
+    name: heT("app.notifications.ask.today", { device: "phone" }),
+  });
+  const on = heT("app.notifications.ask.on", { device: "phone" });
+  await page.goto("/design/shell/today/worker?push=off");
+  await page.waitForLoadState("networkidle");
+  await noteIfSaid(page, on);
+  await card
+    .getByRole("button", {
+      name: heT("app.notifications.ask.enable", { device: "phone" }),
+    })
+    .click();
+  await expect(card).toContainText(on);
+  await expect.poll(() => wasSaid(page, on)).toBe(true);
+  // The button pressed went: the keyboard stays in the card, on what is
+  // there now.
+  const settings = card.getByRole("link", { name: a.settings });
+  await expect(settings).toHaveAttribute(
+    "href",
+    "/design/shell/notifications/settings",
+  );
+  await expect(settings).toBeFocused();
+  await card.getByRole("button", { name: a.close }).click();
+  await expect(card).toHaveCount(0);
+  await expect(
+    page.getByRole("status").filter({ hasText: a.putAway }),
+  ).toHaveCount(0);
+
+  await page.goto("/design/shell/today/worker?push=install");
+  await page.waitForLoadState("networkidle");
+  const steps = page
+    .getByRole("main")
+    .getByRole("region", { name: he.app.notifications.push.iosHint.title });
+  await expect(steps).toContainText(he.app.notifications.push.iosHint.add);
+  const dismiss = steps.getByRole("button", { name: a.dismiss });
+  await dismiss.click();
+  await expect(steps).toHaveCount(0);
+  const undo = page
+    .getByRole("status")
+    .filter({ hasText: a.putAwayHere })
+    .getByRole("button", { name: he.ui.undoRow.undo });
+  await expect(undo).toBeFocused();
+  await undo.click();
+  await expect(steps).toBeVisible();
+  await expect(dismiss).toBeFocused();
 });
 
 // Signed in again on the business's clock station (#78 phase 5): Today says

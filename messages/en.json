@@ -313,6 +313,16 @@
     "emptyAction": "The next step",
     "oldBrowser": "A browser too old",
     "oldBrowserHint": "The notice shows at the top of every page, only when the browser is too old for the app. Here it is always shown.",
+    "pushAsk": "The notifications card on Today",
+    "pushAskHint": "On every Today screen, until the device has notifications or the person says “Not now”. In Safari on an iPhone it shows how to add the app to the home screen. Here each of its states, without asking the browser.",
+    "pushAskStates": {
+      "off": "Before a press",
+      "working": "On its way",
+      "on": "On",
+      "denied": "Blocked in the browser",
+      "failed": "Didn't turn on",
+      "install": "iPhone in Safari"
+    },
     "floatingAction": "The floating main action",
     "ring": "How much is done",
     "steps": "Step rows",
@@ -5488,12 +5498,15 @@
       "ask": {
         "swap": "Want to know when someone takes the shift?",
         "availability": "Want to know when the schedule is published?",
+        "today": "{device, select, phone {Get notifications on the phone?} other {Get notifications on the device?}}",
         "body": "{device, select, phone {A notification on the phone arrives even with the app closed.} other {A notification on the device arrives even with the app closed.}}",
         "enable": "{device, select, phone {Turn on notifications on the phone} other {Turn on notifications on the device}}",
         "install": "On an iPhone, add the app to the home screen first. The notification settings say how.",
         "on": "{device, select, phone {Notifications are on for this phone. In the settings you choose what reaches it.} other {Notifications are on for this device. In the settings you choose what reaches it.}}",
         "settings": "Notification settings",
         "dismiss": "Not now",
+        "putAway": "Hidden. Notifications can be turned on any time in the notification settings.",
+        "putAwayHere": "The steps are hidden in this browser. They stay in the notification settings.",
         "close": "Close"
       }
     },

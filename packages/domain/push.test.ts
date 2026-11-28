@@ -2,9 +2,18 @@ import { describe, expect, it } from "vitest";
 import {
   type BrowserFacts,
   DEFAULT_TTL,
+  type DeviceLabel,
+  deviceKinds,
   deviceLabel,
+  installedHere,
   iosVersion,
   isPhone,
+  type PushAskEvent,
+  type PushAskFacts,
+  type PushAskPlace,
+  type PushAskState,
+  pushAskMark,
+  pushAskStart,
   pushBatch,
   pushInboxBody,
   pushOutcome,
@@ -121,6 +130,14 @@ describe("devices", () => {
     );
     expect(isPhone(facts({}))).toBe(false);
   });
+
+  it("are read back as their kinds, each once, an unknown one left out", () => {
+    expect(
+      deviceKinds.parse(["iphone", "computer", "iphone", null, "watch", 3]),
+    ).toEqual(["iphone", "computer"]);
+    expect(deviceKinds.parse([])).toEqual([]);
+    expect(deviceKinds.safeParse(null).success).toBe(false);
+  });
 });
 
 describe("pushSupport", () => {
@@ -157,6 +174,142 @@ describe("pushSupport", () => {
     expect(pushSupport(facts({ userAgent: IPAD_AS_MAC, canPush: false }))).toBe(
       "unsupported",
     );
+  });
+});
+
+// The offer to turn notifications on (closing the pilot, PR 6): Today's card
+// for everyone, and the quiet card after a moment.
+const asked = (extra: Partial<PushAskFacts>): PushAskFacts => ({
+  support: "ready",
+  permission: "default",
+  subscribed: false,
+  installPutAway: false,
+  installedHere: false,
+  ...extra,
+});
+
+describe("pushAskStart", () => {
+  it("offers the way to turn them on where push is ready and off", () => {
+    expect(pushAskStart(asked({}))).toBe("off");
+    // Allowed before, and turned off since: offered again.
+    expect(pushAskStart(asked({ permission: "granted" }))).toBe("off");
+  });
+
+  it("offers nothing where this browser has them or blocks them", () => {
+    expect(pushAskStart(asked({ subscribed: true }))).toBe("none");
+    expect(pushAskStart(asked({ permission: "denied" }))).toBe("none");
+  });
+
+  it("offers nothing where push can't come", () => {
+    expect(pushAskStart(asked({ support: "unsupported" }))).toBe("none");
+    expect(pushAskStart(asked({ support: "iosTooOld" }))).toBe("none");
+  });
+
+  it("shows the steps to the home screen in an iPhone's Safari", () => {
+    expect(pushAskStart(asked({ support: "installFirst" }))).toBe("install");
+    // Whatever Safari says of its permission, which it can't use.
+    expect(
+      pushAskStart(asked({ support: "installFirst", permission: "denied" })),
+    ).toBe("install");
+  });
+
+  it("leaves the steps out once put away in this browser, or done", () => {
+    expect(
+      pushAskStart(asked({ support: "installFirst", installPutAway: true })),
+    ).toBe("none");
+    expect(
+      pushAskStart(asked({ support: "installFirst", installedHere: true })),
+    ).toBe("none");
+  });
+
+  it("asks again in the app on the home screen, whatever Safari put away", () => {
+    // The home-screen app is `ready`: its own storage, nothing put away.
+    expect(pushAskStart(asked({ installPutAway: true }))).toBe("off");
+    expect(pushAskStart(asked({ installedHere: true }))).toBe("off");
+  });
+});
+
+describe("installedHere", () => {
+  const all: DeviceLabel[] = ["iphone", "ipad", "android", "computer"];
+
+  it("is an iPhone or iPad with the app's notifications on", () => {
+    expect(installedHere("iphone", ["computer", "iphone"])).toBe(true);
+    expect(installedHere("ipad", ["ipad"])).toBe(true);
+  });
+
+  it("is never another kind of device, or another kind of Apple's", () => {
+    expect(installedHere("iphone", ["ipad", "computer"])).toBe(false);
+    expect(installedHere("ipad", ["iphone"])).toBe(false);
+    expect(installedHere("iphone", [])).toBe(false);
+    // An iPad asking for the desktop site says it is a computer.
+    expect(installedHere("computer", all)).toBe(false);
+    expect(installedHere("android", all)).toBe(false);
+  });
+});
+
+describe("pushAskMark", () => {
+  const places: PushAskPlace[] = ["today", "moment"];
+  const states: PushAskState[] = [
+    "install",
+    "off",
+    "working",
+    "on",
+    "denied",
+    "failed",
+  ];
+  const events: PushAskEvent[] = ["seen", "enable", "settings", "dismiss"];
+
+  it("never counts the steps to the home screen as asked", () => {
+    for (const place of places) {
+      for (const event of events) {
+        expect(
+          pushAskMark(place, "install", event),
+          `${place} ${event}`,
+        ).not.toBe("person");
+      }
+    }
+  });
+
+  it("puts the steps away in this browser on Today's 'לא עכשיו' alone", () => {
+    expect(pushAskMark("today", "install", "dismiss")).toBe("device");
+    for (const event of ["seen", "enable", "settings"] as const) {
+      expect(pushAskMark("today", "install", event), event).toBeNull();
+    }
+  });
+
+  it("keeps a moment's steps once, in this browser", () => {
+    for (const event of events) {
+      expect(pushAskMark("moment", "install", event), event).toBe("device");
+    }
+  });
+
+  it("keeps Today's card only by 'לא עכשיו', for the person", () => {
+    for (const state of ["off", "working", "failed"] as const) {
+      expect(pushAskMark("today", state, "dismiss"), state).toBe("person");
+    }
+    for (const state of states) {
+      for (const event of ["seen", "enable", "settings"] as const) {
+        expect(
+          pushAskMark("today", state, event),
+          `${state} ${event}`,
+        ).toBeNull();
+      }
+    }
+  });
+
+  it("keeps nothing when Today's card closes on what came of a press", () => {
+    expect(pushAskMark("today", "on", "dismiss")).toBeNull();
+    expect(pushAskMark("today", "denied", "dismiss")).toBeNull();
+  });
+
+  it("keeps a moment's card once, for the person, as before", () => {
+    for (const state of states.filter((s) => s !== "install")) {
+      for (const event of events) {
+        expect(pushAskMark("moment", state, event), `${state} ${event}`).toBe(
+          "person",
+        );
+      }
+    }
   });
 });
 

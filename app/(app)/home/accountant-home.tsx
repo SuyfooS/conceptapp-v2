@@ -37,6 +37,10 @@ import {
   useShekels,
 } from "../clock/pay/pay-parts";
 import type { StationHome } from "../clock/station/station-types";
+import {
+  PushAskToday,
+  type TodayPushAsk,
+} from "../notifications/push-ask-today";
 import { type AppWording, translator } from "../wording";
 import { MyBusinesses } from "./my-businesses";
 import { RefreshOnReturn } from "./refresh-on-return";
@@ -66,6 +70,11 @@ export type AccountantHomeData = {
    * what waits in them. Null otherwise.
    */
   files?: (FilesHome & { form101: boolean; href: string }) | null;
+  /**
+   * The offer of notifications on the phone (closing the pilot, PR 6), as
+   * on Today (`TodayData.pushAsk`); never drawn on the clock station.
+   */
+  pushAsk?: TodayPushAsk | null;
 };
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
@@ -81,7 +90,9 @@ const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
  * how many things the hours engine asks to check. Someone who keeps the books
  * of several businesses (payroll P3b) has them listed last, on phones and
  * tablets, to switch between. On the business's clock station, the card that
- * says to sign out when done comes under the greeting, as on Today. While
+ * says to sign out when done comes under the greeting, as on Today; on any
+ * other device, the quiet card that offers notifications on the phone, as on
+ * Today (`PushAskToday`, closing the pilot, PR 6). While
  * the hiring file is on, a card "תיקי העובדים" says how many files miss
  * anything and leads to them (H6a): under what to look at before paying,
  * beside the hero from a tablet up. `base` keeps the links inside the demo
@@ -177,6 +188,11 @@ export async function AccountantHome({
         {/* No lock here: an accountant holds clock.payroll alone, never clock.edit. */}
         {data.station ? (
           <StationCard station={data.station} signOut={signOut} t={t} />
+        ) : data.pushAsk ? (
+          <PushAskToday
+            ask={data.pushAsk}
+            settingsHref={path("/notifications/settings")}
+          />
         ) : null}
 
         {pay ? (
