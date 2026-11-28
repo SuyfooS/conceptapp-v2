@@ -1,9 +1,12 @@
 import AxeBuilder from "@axe-core/playwright";
 import he from "../messages/he.json" with { type: "json" };
+import { pastDrawing } from "./announcer";
 import { HOLD_MS } from "./build-screen";
 import { standInForTurnstile } from "./captcha";
 import {
+  addPushCardStation,
   addTestDevice,
+  clearPushCardStations,
   closePushCardBusiness,
   forgetDevices,
   forgetPreferences,
@@ -40,6 +43,12 @@ const IPAD_AS_MAC =
 const NO_SERVICE = "http://127.0.0.1:9";
 // A moment's card seen in this browser (`MOMENT_SEEN_KEY`, push-client.ts).
 const MOMENT_SEEN = "conceptapp:push-moment-seen";
+// This browser saw the app installed (`INSTALL_NAMES.installed`,
+// app/install-capture.ts).
+const APP_INSTALLED = "conceptapp:app-installed";
+// The cookie that makes a device a business's station (`STATION_COOKIE`,
+// @domain/clock-station).
+const STATION_COOKIE = "ca_station";
 
 test.beforeAll(async () => {
   await openPushCardBusiness();
@@ -385,6 +394,207 @@ test("a moment's card seen and left doesn't end Today's card", async ({
     expect((await storedPreferences(WORKER.id))?.askedAt ?? null).toBeNull();
   } finally {
     await withdrawPushCardShift();
+    await forgetPreferences(WORKER.id);
+  }
+});
+
+/**
+ * Chrome's offer to install the app (`beforeinstallprompt`), as a fake sent
+ * to the page as Chrome sends it: it answers `outcome` once asked, and
+ * counts how often it was (`installAsked`). Whether the page kept it for a
+ * press, stopping Chrome's own bar (`defaultPrevented`).
+ */
+function offerInstall(page: Page, outcome: "accepted" | "dismissed") {
+  return page.evaluate((outcome) => {
+    const counted = window as unknown as { installAsked?: number };
+    counted.installAsked = 0;
+    const event = Object.assign(
+      new Event("beforeinstallprompt", { cancelable: true }),
+      {
+        prompt: async () => {
+          counted.installAsked = (counted.installAsked ?? 0) + 1;
+        },
+        userChoice: Promise.resolve({ outcome, platform: "web" }),
+      },
+    );
+    window.dispatchEvent(event);
+    return event.defaultPrevented;
+  }, outcome);
+}
+
+/** How often the fake offer was asked (`offerInstall`). */
+const installAsked = (page: Page) =>
+  page.evaluate(
+    () => (window as unknown as { installAsked?: number }).installAsked ?? 0,
+  );
+
+// The install button on Android (closing the pilot, PR 7), on the app's own
+// pages: the phone project's Pixel says Android Chrome. Headless Chromium
+// sends no install event of its own, so Chrome's offer is a fake sent as
+// Chrome sends it (`offerInstall`), caught by the root layout's script
+// before React draws. With none, the card says where Chrome's menu does
+// it; with one, its button asks Chrome on the press alone and says what
+// came of it, until the page hears more (installed from the menu after a
+// no, or offered again); installed, this browser offers nothing more.
+// Beside the switch in the settings too. Never on the clock station's
+// pages, whose own manifest installs the station. Computers are offered
+// nothing.
+test("on Android, Today's card and the settings offer to install the app", async ({
+  page,
+}, testInfo) => {
+  test.skip(!PUBLIC_KEY, "needs VAPID keys (CI sets them)");
+  test.setTimeout(120_000);
+  const i = he.app.notifications.install;
+  const device = deviceOf(testInfo);
+  const android = testInfo.project.name === "phone";
+  await forgetPreferences(WORKER.id);
+  await notAskedYet(page);
+  try {
+    await signIn(page, WORKER);
+    const card = cardOf(page, device);
+    await expect(card).toBeVisible();
+    const menu = heT("app.notifications.install.menu", { browser: "chrome" });
+    const install = card.getByRole("button", { name: i.action });
+
+    if (!android) {
+      // A computer: the event is caught all the same, and nothing is shown.
+      expect(await offerInstall(page, "accepted")).toBe(true);
+      await pastDrawing(page);
+      await expect(card).not.toContainText(menu);
+      await expect(install).toHaveCount(0);
+      await page.goto("/notifications/settings");
+      await expect(page.getByRole("main")).toBeVisible();
+      await pastDrawing(page);
+      await expect(page.getByRole("region", { name: i.title })).toHaveCount(0);
+      return;
+    }
+
+    // No offer from Chrome yet: where its menu does it, and no button.
+    await expect(card).toContainText(menu);
+    await expect(install).toHaveCount(0);
+    await expectAccessible(page);
+
+    // Chrome's offer, kept for a press and never asked by itself.
+    expect(await offerInstall(page, "dismissed")).toBe(true);
+    await expect(install).toBeVisible();
+    await expect(card).toContainText(i.hint);
+    expect(await installAsked(page)).toBe(0);
+    await expectAccessible(page);
+    // Declined: it can be done later, from the menu, and the keyboard is on
+    // those words once the button went.
+    await install.click();
+    const declined = heT("app.notifications.install.dismissed", {
+      browser: "chrome",
+    });
+    await expect(card).toContainText(declined);
+    await expect(install).toHaveCount(0);
+    await expect(card.getByText(declined)).toBeFocused();
+    expect(await installAsked(page)).toBe(1);
+    // Nothing is kept for a no: the next visit says where the menu does it.
+    await page.reload();
+    await expect(card).toContainText(menu);
+
+    // A no, then the app installed from Chrome's menu on the same page
+    // (Chrome says `appinstalled` however it was installed): the words say
+    // it is installed now, not that it wasn't.
+    expect(await offerInstall(page, "dismissed")).toBe(true);
+    await install.click();
+    await expect(card).toContainText(declined);
+    await page.evaluate(() => window.dispatchEvent(new Event("appinstalled")));
+    await expect(card).toContainText(i.installed);
+    await expect(card).not.toContainText(declined);
+
+    // Accepted, once Chrome offers it again on the same page (removed from
+    // the home screen): the button is back, and once Chrome says it is
+    // installed, this browser offers nothing more, here or in the settings.
+    expect(await offerInstall(page, "accepted")).toBe(true);
+    await expect(install).toBeVisible();
+    await expect(card).toContainText(i.hint);
+    await install.click();
+    await expect(card).toContainText(i.installed);
+    expect(await installAsked(page)).toBe(1);
+    await page.evaluate(() => window.dispatchEvent(new Event("appinstalled")));
+    await expect
+      .poll(() =>
+        page.evaluate((key) => localStorage.getItem(key), APP_INSTALLED),
+      )
+      .not.toBeNull();
+    await page.reload();
+    await expect(card).toBeVisible();
+    await pastDrawing(page);
+    await expect(card).not.toContainText(menu);
+    await expect(card).not.toContainText(i.installed);
+    await page.goto("/notifications/settings");
+    await expect(
+      page.getByRole("heading", { level: 1, name: n.settings.title }),
+    ).toBeVisible();
+    await pastDrawing(page);
+    const own = page.getByRole("main").getByRole("region", { name: i.title });
+    await expect(own).toHaveCount(0);
+
+    // Removed from the home screen, Chrome offers it again: the settings'
+    // card, beside the phone's switch, installs it.
+    expect(await offerInstall(page, "accepted")).toBe(true);
+    await expect(own).toBeVisible();
+    await expect(own).toContainText(i.hint);
+    await expectAccessible(page);
+    await own.getByRole("button", { name: i.action }).click();
+    await expect(own).toContainText(i.installed);
+    await expect(own.getByText(i.installed)).toBeFocused();
+    expect(await installAsked(page)).toBe(1);
+
+    // The clock station's pages leave Chrome's offer to Chrome: it installs
+    // the station, by the station's own manifest.
+    await page.goto("/station");
+    await expect(page).toHaveURL(/\/station$/);
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    expect(await offerInstall(page, "accepted")).toBe(false);
+  } finally {
+    await forgetPreferences(WORKER.id);
+  }
+});
+
+// The settings' install card is for the person's own phone, so never on the
+// business's clock station (`currentOn` in the settings' page), where the
+// switch still shows: the same Android browser shows the card with Chrome's
+// offer, then, locked as the business's station by its cookie, the switch
+// alone, Chrome's offer sent all the same.
+test("on the business's clock station, the settings offer no install", async ({
+  page,
+  baseURL,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "phone", "Android, on the phone");
+  test.skip(!PUBLIC_KEY, "needs VAPID keys (CI sets them)");
+  const i = he.app.notifications.install;
+  await forgetPreferences(WORKER.id);
+  await notAskedYet(page);
+  const token = await addPushCardStation();
+  try {
+    await signIn(page, WORKER);
+    await page.goto("/notifications/settings");
+    const own = page.getByRole("main").getByRole("region", { name: i.title });
+    const phoneSwitch = page
+      .getByRole("main")
+      .getByRole("switch", { name: /^התראות ל/ });
+    await expect(phoneSwitch).toBeVisible();
+    await offerInstall(page, "accepted");
+    await expect(own.getByRole("button", { name: i.action })).toBeVisible();
+
+    await page.context().addCookies([
+      {
+        name: STATION_COOKIE,
+        value: token,
+        url: baseURL ?? "http://127.0.0.1:3000",
+      },
+    ]);
+    await page.reload();
+    await expect(phoneSwitch).toBeVisible();
+    await offerInstall(page, "accepted");
+    await pastDrawing(page);
+    await expect(own).toHaveCount(0);
+    await expect(page.getByText(i.hint)).toHaveCount(0);
+  } finally {
+    await clearPushCardStations();
     await forgetPreferences(WORKER.id);
   }
 });

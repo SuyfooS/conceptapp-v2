@@ -7,13 +7,15 @@ import {
   shiftSkipsQuiet,
 } from "@domain/notifications";
 import { Suspense } from "react";
+import { InstallButton } from "../../../../(app)/notifications/install-button";
 import { NotificationSettingsView } from "../../../../(app)/notifications/settings/settings-view";
 import { baseWording } from "../../../../(app)/wording";
+import { installTwinOf } from "../../today/push-twin";
 import { demoSaveNotificationPreferences } from "../actions";
 import { demoInboxNow } from "../data";
 import { DemoDevice } from "./demo-device";
 
-type Props = { searchParams: Promise<{ state?: string }> };
+type Props = { searchParams: Promise<{ state?: string; install?: string }> };
 
 // The modules the demo business has on.
 const ENABLED: readonly ModuleKey[] = ["scheduling", "time_clock", "chat"];
@@ -29,7 +31,9 @@ const QUIET_NOW = "2026-11-02T21:40:00.000Z";
 // quiet now, no details on the lock screen. ?state=demo: a demo business,
 // which has nothing to choose. ?state=orders: a worker where taking orders
 // is on, with quiet hours: "הזמנות מוכנות" among the groups, and the line
-// saying they still come during a shift (P8b).
+// saying they still come during a shift (P8b). ?install= has the install
+// button on Android beside the phone's switch (closing the pilot, PR 7), in
+// a state of its own (`installTwinOf`): a press asks the browser nothing.
 export default function ShellNotificationSettings({ searchParams }: Props) {
   return (
     <Suspense>
@@ -39,7 +43,8 @@ export default function ShellNotificationSettings({ searchParams }: Props) {
 }
 
 async function Demo({ searchParams }: Props) {
-  const { state } = await searchParams;
+  const { state, install } = await searchParams;
+  const installTwin = installTwinOf(install);
   const quiet = state === "quiet";
   const orders = state === "orders";
   const role = orders ? "worker" : "manager";
@@ -64,12 +69,19 @@ async function Demo({ searchParams }: Props) {
           : { ...DEFAULT_NOTIFICATION_PREFERENCES, pushOff: [] };
   return (
     <NotificationSettingsView
-      key={state ?? "default"}
+      key={`${state ?? "default"}:${installTwin ?? ""}`}
       preferences={preferences}
       groups={groups}
       always={alwaysOnPhone(role, enabled).length > 0}
       shift={shiftSkipsQuiet(groups, enabled)}
-      device={<DemoDevice />}
+      device={
+        <>
+          <DemoDevice />
+          {installTwin ? (
+            <InstallButton shape="settings" twin={installTwin} />
+          ) : null}
+        </>
+      }
       save={demoSaveNotificationPreferences}
       now={quiet ? QUIET_NOW : demoInboxNow}
       backHref="/design/shell/notifications"

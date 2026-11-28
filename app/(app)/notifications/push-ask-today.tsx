@@ -5,7 +5,7 @@ import { announce } from "@ui/announcer";
 import { Button } from "@ui/button";
 import { Card, CardText, CardTitle } from "@ui/card";
 import { cn } from "@ui/cn";
-import { focusLost, focusWhenGone } from "@ui/focus-after";
+import { focusLost, focusWhenGone, watchFocusIn } from "@ui/focus-after";
 import { UndoRow } from "@ui/undo-row";
 import { BellRing } from "lucide-react";
 import Link from "next/link";
@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import {
   type Dispatch,
+  type ReactNode,
   type Ref,
   type SetStateAction,
   useEffect,
@@ -24,6 +25,7 @@ import {
 import { headingsAfter } from "../home/heading-after";
 import { sendHide } from "../home/hide-request";
 import { useHeldWrite } from "../use-held-write";
+import { InstallButton, type InstallTwin } from "./install-button";
 import { IosInstallSteps } from "./ios-install-steps";
 import type { PushAskOffer } from "./push-ask";
 import { type PushAskShown, usePushAskState } from "./push-ask-state";
@@ -32,9 +34,12 @@ import { holdPersonPutAway, putInstallAway, turnOnPush } from "./push-client";
 /**
  * What Today's card is given: the app's offer (`currentPushAsk`), or, on
  * the twin at /design/shell, the state to show, which asks the browser for
- * nothing and keeps nothing.
+ * nothing and keeps nothing, with the install button's on Android (PR 7)
+ * when `install` says one.
  */
-export type TodayPushAsk = { offer: PushAskOffer } | { twin: PushAskState };
+export type TodayPushAsk =
+  | { offer: PushAskOffer }
+  | { twin: PushAskState; install?: InstallTwin };
 
 /** What Today's "לא עכשיו" keeps: only a moment's card is ever kept as seen. */
 type Kept = Extract<PushAskMark, "person" | "device">;
@@ -59,6 +64,8 @@ type Driver = {
   keep: (mark: Kept) => Promise<KeptAnswer>;
   /** What "לא עכשיו" holds for its "ביטול" now, from the press on: none once taken back. */
   holding: (mark: Kept | null) => void;
+  /** The install button on Android, last in the card, after its own buttons (PR 7). */
+  install: ReactNode;
 };
 
 /** The twin's stand-in for a press on its way. */
@@ -72,8 +79,10 @@ const pause = () => new Promise((resolve) => setTimeout(resolve, 600));
  * them on, the press turns them on there and then, asking for permission
  * first, as the push switch does; in an iPhone's or iPad's Safari it shows
  * the steps to the home screen (`IosInstallSteps`), and the app there, once
- * installed, shows the switch. Blocked, unsupported or on already, it shows
- * nothing. Being seen keeps nothing. "לא עכשיו" puts it away the way Today's
+ * installed, shows the switch. On Android, last, after its own buttons, the
+ * install button (`InstallButton`, PR 7), which draws nothing anywhere else.
+ * Blocked, unsupported or on already, it shows nothing. Being seen keeps
+ * nothing. "לא עכשיו" puts it away the way Today's
  * other cards go: at once, with "ביטול" in its place holding the focus and
  * the write (`useHeldWrite`), which keeps it for the person, on every device
  * and for the moments' cards too (/home/push-ask, sent with keepalive so it
@@ -106,6 +115,7 @@ export function PushAskToday({
   ) : (
     <TwinToday
       twin={ask.twin}
+      install={ask.install}
       settingsHref={settingsHref}
       className={className}
     />
@@ -156,6 +166,7 @@ function LiveToday({
     // The person's mark is known in this page before the database has it,
     // so a moment's card on a screen drawn before it lands asks nothing.
     holding: (mark) => holdPersonPutAway(mark === "person"),
+    install: <InstallButton shape="card" />,
   };
   return (
     <TodayCard
@@ -168,10 +179,12 @@ function LiveToday({
 
 function TwinToday({
   twin,
+  install,
   settingsHref,
   className,
 }: {
   twin: PushAskState;
+  install?: InstallTwin;
   settingsHref: string;
   className?: string;
 }) {
@@ -187,6 +200,7 @@ function TwinToday({
     },
     keep: async () => "kept",
     holding: () => {},
+    install: install ? <InstallButton shape="card" twin={install} /> : null,
   };
   return (
     <TodayCard
@@ -218,8 +232,10 @@ function TodayCard({
   const [gone, setGone] = useState<Kept | "closed" | null>(null);
   // "לא עכשיו" couldn't be kept: the card came back, and says so.
   const [failure, setFailure] = useState(false);
-  // The press that turned notifications on held the keyboard in the card.
-  const refocus = useRef(false);
+  // The press that turned notifications on held the keyboard in the card's
+  // buttons: watched from the press until its answer (`watchFocusIn`), so a
+  // move on meanwhile (to the install button, PR 7) is known.
+  const refocus = useRef<ReturnType<typeof watchFocusIn> | null>(null);
   // A press on its way: its answer is said, and nothing else is.
   const pressed = useRef(false);
   const backToButton = useRef(false);
@@ -233,7 +249,8 @@ function TodayCard({
       shown.current = false;
       // Left with a press on its way: the keyboard is elsewhere by then, so
       // its answer never takes the focus once Today is shown again.
-      refocus.current = false;
+      refocus.current?.stop();
+      refocus.current = null;
     };
   }, []);
 
@@ -261,12 +278,18 @@ function TodayCard({
   }, [body, state]);
 
   // A press whose button went (on, blocked) or was busy keeps the keyboard
-  // in the card, on what is there now, only where the focus was lost: one
-  // the person put elsewhere meanwhile stays there.
+  // in the card, on what is there now, only where the focus was lost and
+  // never moved on: one the person put elsewhere meanwhile stays there, even
+  // fallen to nowhere since (the install button, disabled while Chrome
+  // asks, whose own answer then takes it).
   useEffect(() => {
-    if (state === "working" || !refocus.current) return;
-    refocus.current = false;
-    if (!card.current || !focusLost()) return;
+    if (state === "working") return;
+    const watch = refocus.current;
+    if (!watch) return;
+    refocus.current = null;
+    const stayed = watch.had();
+    watch.stop();
+    if (!stayed || !card.current || !focusLost()) return;
     actions.current
       ?.querySelector<HTMLElement>("a[href], button:not([disabled])")
       ?.focus({ preventScroll: true });
@@ -287,7 +310,8 @@ function TodayCard({
 
   async function enable() {
     if (state === "working") return;
-    refocus.current = Boolean(card.current?.contains(document.activeElement));
+    refocus.current?.stop();
+    refocus.current = actions.current ? watchFocusIn(actions.current) : null;
     pressed.current = true;
     setState("working");
     setState(await driver.turnOn());
@@ -346,6 +370,7 @@ function TodayCard({
       settingsHref={settingsHref}
       onEnable={enable}
       onDismiss={dismiss}
+      install={driver.install}
       cardRef={card}
       actionsRef={actions}
       dismissRef={dismissButton}
@@ -416,6 +441,7 @@ export function PushAskTodayCard({
   settingsHref,
   onEnable,
   onDismiss,
+  install,
   landmark = true,
   cardRef,
   actionsRef,
@@ -427,6 +453,12 @@ export function PushAskTodayCard({
   settingsHref: string;
   onEnable?: () => void;
   onDismiss?: () => void;
+  /**
+   * The install button on Android (PR 7), last in the card, after its own
+   * buttons, in every state but Safari's, whose steps stand under the
+   * words; it draws nothing elsewhere.
+   */
+  install?: ReactNode;
   landmark?: boolean;
   cardRef?: Ref<HTMLDivElement>;
   actionsRef?: Ref<HTMLDivElement>;
@@ -441,7 +473,9 @@ export function PushAskTodayCard({
   const finished = state === "on" || state === "denied";
 
   // Wide from 40rem: the 42rem card Today draws with nothing beside it
-  // lays out in a row, and a phone, a column or the gallery's 560px don't.
+  // lays out its words and buttons in a row, and a phone, a column or the
+  // gallery's 560px don't. The install button on Android comes after both,
+  // so the card's own question is answered first.
   return (
     <div className={cn("@container md:max-w-2xl", className)}>
       <Card
@@ -450,57 +484,60 @@ export function PushAskTodayCard({
         padding="lg"
         role={landmark ? "region" : undefined}
         aria-labelledby={landmark ? titleId : undefined}
-        className="flex flex-col gap-4 @min-[40rem]:flex-row @min-[40rem]:items-center"
+        className="flex flex-col gap-4"
       >
-        <div className="flex min-w-0 flex-1 items-start gap-3">
-          <span
-            aria-hidden="true"
-            className="grid size-10 shrink-0 place-items-center rounded-full bg-accent-soft text-ink [&_svg]:size-5"
+        <div className="flex flex-col gap-4 @min-[40rem]:flex-row @min-[40rem]:items-center">
+          <div className="flex min-w-0 flex-1 items-start gap-3">
+            <span
+              aria-hidden="true"
+              className="grid size-10 shrink-0 place-items-center rounded-full bg-accent-soft text-ink [&_svg]:size-5"
+            >
+              <BellRing />
+            </span>
+            <div className="flex min-w-0 flex-1 flex-col gap-1">
+              <CardTitle as="h2" id={titleId} className="text-pretty">
+                {words?.title}
+              </CardTitle>
+              <CardText className="text-pretty">{words?.body}</CardText>
+              {state === "install" ? (
+                <IosInstallSteps device={device} className="mt-2" />
+              ) : null}
+            </div>
+          </div>
+          <div
+            ref={actionsRef}
+            className="flex flex-col gap-2 @min-[40rem]:shrink-0 @min-[40rem]:flex-row"
           >
-            <BellRing />
-          </span>
-          <div className="flex min-w-0 flex-1 flex-col gap-1">
-            <CardTitle as="h2" id={titleId} className="text-pretty">
-              {words?.title}
-            </CardTitle>
-            <CardText className="text-pretty">{words?.body}</CardText>
-            {state === "install" ? (
-              <IosInstallSteps device={device} className="mt-2" />
+            {canTurnOn ? (
+              <Button
+                variant="secondary"
+                loading={state === "working"}
+                onClick={onEnable}
+                className="w-full @min-[40rem]:w-auto"
+              >
+                {t("enable", { device })}
+              </Button>
             ) : null}
+            {state === "on" ? (
+              <Button
+                asChild
+                variant="secondary"
+                className="w-full @min-[40rem]:w-auto"
+              >
+                <Link href={settingsHref}>{t("settings")}</Link>
+              </Button>
+            ) : null}
+            <Button
+              ref={dismissRef}
+              variant="ghost"
+              onClick={onDismiss}
+              className="w-full text-ink-2 @min-[40rem]:w-auto"
+            >
+              {finished ? t("close") : t("dismiss")}
+            </Button>
           </div>
         </div>
-        <div
-          ref={actionsRef}
-          className="flex flex-col gap-2 @min-[40rem]:shrink-0 @min-[40rem]:flex-row"
-        >
-          {canTurnOn ? (
-            <Button
-              variant="secondary"
-              loading={state === "working"}
-              onClick={onEnable}
-              className="w-full @min-[40rem]:w-auto"
-            >
-              {t("enable", { device })}
-            </Button>
-          ) : null}
-          {state === "on" ? (
-            <Button
-              asChild
-              variant="secondary"
-              className="w-full @min-[40rem]:w-auto"
-            >
-              <Link href={settingsHref}>{t("settings")}</Link>
-            </Button>
-          ) : null}
-          <Button
-            ref={dismissRef}
-            variant="ghost"
-            onClick={onDismiss}
-            className="w-full text-ink-2 @min-[40rem]:w-auto"
-          >
-            {finished ? t("close") : t("dismiss")}
-          </Button>
-        </div>
+        {state === "install" ? null : install}
       </Card>
     </div>
   );

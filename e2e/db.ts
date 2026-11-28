@@ -3717,6 +3717,26 @@ export async function closePushCardBusiness(): Promise<void> {
   await deleteRealBusiness(PUSH_CARD_BUSINESS);
 }
 
+/**
+ * A running clock station of the push card's business, as another device
+ * locked it, with a secret only the test holds, to set as a device's cookie
+ * (`STATION_COOKIE`). It goes with the business, or by
+ * `clearPushCardStations`.
+ */
+export async function addPushCardStation(): Promise<string> {
+  const token = randomBytes(32).toString("base64url");
+  const tokenHash = createHash("sha256").update(token, "utf8").digest("hex");
+  await sql`insert into public.clock_stations (business_id, name, token_hash)
+    values (${PUSH_CARD_BUSINESS}, ${"עמדת הכרטיס"}, ${tokenHash})`;
+  return token;
+}
+
+/** No clock stations at the push card's business. */
+export async function clearPushCardStations(): Promise<void> {
+  await sql`delete from public.clock_stations
+    where business_id = ${PUSH_CARD_BUSINESS}`;
+}
+
 /** The worker's requests in the push card's business, withdrawn. */
 export async function withdrawPushCardShift(): Promise<void> {
   await sql`
