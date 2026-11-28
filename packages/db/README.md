@@ -635,6 +635,13 @@ template's departments and lists (`private.backfill_lists`), adds
 only while nobody has started the list), and fills `private.seed_demo_lists`:
 the demo reset ends with two example lists sent by the demo's manager, and
 from L5 an order (`lists_on.test.sql`).
+`20261128000700_general_lists.sql` (closing the pilot, PR 9) gives the general
+template's "פתיחה" and "סגירה" no fixed recipient (`"recipient": null`, the
+editor's "בכל פעם"), so whoever sends one chooses who each time instead of
+every worker, and their note reads "משהו שחשוב לדעת למשמרת הבאה". It is a
+version of the template (5 to 6), so only businesses opened from it afterwards
+get it: `apply_template` copies a template's lists once, and a business opened
+before keeps its own (`general_lists.test.sql`).
 `@db/departments` `getDepartmentsForTeam` reads them for the console with the
 secret key, since the team is no member.
 Templates and the full send (L3) need no migration. `saveListTemplate` calls

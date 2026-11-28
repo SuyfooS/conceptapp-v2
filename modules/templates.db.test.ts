@@ -152,6 +152,36 @@ describe("templates in the database", () => {
     }
   });
 
+  // The general template's "פתיחה" and "סגירה" go to nobody fixed, so
+  // whoever sends one chooses who each time (closing the pilot, PR 9,
+  // 20261128000700_general_lists.sql), while every list of the other
+  // templates names its own. A business opened from it reads them back the
+  // same (the next test).
+  it("leave the general template's lists to whoever sends them", async () => {
+    for (const template of await templates()) {
+      const { listTemplates } = validateTemplate(
+        manifests,
+        template.definition,
+      );
+      const named = listTemplates.map((list) => [
+        list.key,
+        list.recipient !== null,
+      ]);
+      if (template.key === "general") {
+        expect(named).toEqual([
+          ["opening", false],
+          ["closing", false],
+        ]);
+      } else {
+        expect(named.length, template.key).toBeGreaterThan(0);
+        expect(
+          named.every(([, fixed]) => fixed),
+          template.key,
+        ).toBe(true);
+      }
+    }
+  });
+
   it("turns an empty business into a complete, valid one", async () => {
     for (const template of await templates()) {
       await sql
