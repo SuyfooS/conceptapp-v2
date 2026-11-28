@@ -130,6 +130,20 @@ viewer gives that hold what they don't, which the role sheet shows as an
 owner's to give, and `namedRoleShown` strips a named role to its names and
 base before it reaches a browser: what it holds is the owner's to read.
 
+`ask-fix.ts` is whom a worker asks to correct their hours (closing the
+pilot, PR 8), from who may edit the clock (`ClockEditor`, as
+`public.clock_editors` answers it) and the business's departments:
+`hoursFixers` leaves out the person themself, offers the owners only when
+nobody else may (every permission covers the whole business: there is no
+department manager), puts those who share a live department with the
+person first, each group by name (`byNameThenId`), marks who is written to
+in chat (chat on for the person, and on the staff), and drops someone who
+can be neither written to nor named before that choice. `askFixOf` makes
+it one person to write to, a choice among several, or, when chat reaches
+none of them, their names. The refusals the clock offers it under are
+`FIX_FAILURES` in `time-clock-format.ts` (with `asksForFix`), which the
+clock's browser files may import: it takes no Zod.
+
 `people-import.ts` reads a pasted list of people to invite at once ("הזמנה
 מרשימה", part 1 of the plan of 25 November 2026): from WhatsApp, Excel,
 Google Sheets or a note, on the device, so only each person's name, number

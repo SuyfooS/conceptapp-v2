@@ -51,6 +51,8 @@ async function Demo({ searchParams }: Props) {
                 }),
               )
             : [],
+        // None of Noa's mock shifts needs fixing.
+        askFix: null,
       }}
       paths={{
         clock: "/design/shell/clock",

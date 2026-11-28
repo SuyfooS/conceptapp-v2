@@ -6,6 +6,7 @@ import {
 } from "@domain/punch-code-format";
 import type { TimeBreak, TimeEntry } from "@domain/time-clock";
 import {
+  asksForFix,
   entryMs,
   entryOverdue,
   formatElapsed,
@@ -37,6 +38,7 @@ import {
 } from "react";
 import { useSignedInId } from "@/app/release-note";
 import { reloadForRelease, untilReloaded } from "@/app/stale-build";
+import { AskFix } from "./ask-fix";
 import { type ClockPress, clockState, pressOver } from "./clock-focus";
 import type { ClockActionResult, ClockActions, ClockData } from "./clock-types";
 import { PunchCodeSheet } from "./punch-code-sheet";
@@ -90,7 +92,9 @@ function useNow(initial: string, running: boolean): number {
  * updated, to the same person only (`@/app/release-note`); nothing is sent
  * again, so the time recorded is the person's next press. Should the page
  * stay (its reload stopped), the press says it failed after a while, as
- * before.
+ * before. Under a refusal that says to ask whoever approves hours (a shift
+ * open over a day, among others), whom to ask: written to in chat, or
+ * named (`AskFix`, closing the pilot's PR 8).
  */
 export function ClockPanel({
   data,
@@ -512,6 +516,12 @@ export function ClockPanel({
         <p role="alert" className="text-center font-medium text-danger">
           {t(`failure.${shownFailure}`)}
         </p>
+      ) : null}
+      {/* Whom to ask, under a refusal that says to ask whoever approves
+          hours (closing the pilot, PR 8): outside the alert, which says
+          only why. */}
+      {data.askFix && asksForFix(shownFailure) ? (
+        <AskFix ask={data.askFix} className="text-center" />
       ) : null}
       {data.viewOnly ? (
         <p className="text-center text-ink-2 text-sm">{t("viewOnly")}</p>

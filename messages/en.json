@@ -2773,6 +2773,16 @@
           "action": "Go to the clock"
         },
         "needsFix": "Needs fixing",
+        "askFix": {
+          "write": "Write to {name}",
+          "writeAny": "Write to whoever approves hours",
+          "pickTitle": "Who to write to about the fix",
+          "pickHint": "Any of them can fix your hours.",
+          "close": "Close",
+          "noName": "No name",
+          "named": "You can ask {name} to fix it.",
+          "namedSome": "Who approves hours here: {names}."
+        },
         "fix": "Fix",
         "fixShift": "Fix the shift of {day}",
         "restore": "Bring back",

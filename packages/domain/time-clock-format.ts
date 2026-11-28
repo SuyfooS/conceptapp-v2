@@ -48,6 +48,20 @@ export function entryOverdue(
 }
 
 /**
+ * The refusals of a press on the clock that say to ask whoever approves
+ * hours (`app.clock.failure.*`, each a `PunchFailure`): a shift open over
+ * `MAX_ENTRY_HOURS`, a clock-out too old to take back, times that meet
+ * another shift's. Under each, the clock offers whom to ask (closing the
+ * pilot, PR 8; @domain/ask-fix).
+ */
+export const FIX_FAILURES = ["tooLong", "tooLate", "times"] as const;
+
+/** Whether the clock offers whom to ask under this refusal. */
+export function asksForFix(failure: string | null): boolean {
+  return (FIX_FAILURES as readonly string[]).includes(failure ?? "");
+}
+
+/**
  * What an entry counts for, in milliseconds: its length, without its unpaid
  * breaks. An open entry and an open break count until `now`.
  */

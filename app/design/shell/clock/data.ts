@@ -193,5 +193,7 @@ export function demoClock(
       startedOn: "2026-03-01",
     },
     viewOnly: false,
+    // A manager who edits the clock fixes their own hours: nobody to ask.
+    askFix: null,
   };
 }
