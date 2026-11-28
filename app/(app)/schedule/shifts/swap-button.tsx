@@ -5,6 +5,12 @@ import type { FocusCandidate } from "@ui/focus-after";
 import { useFocusWhenGone } from "@ui/use-focus-after";
 import { useTranslations } from "next-intl";
 import { useActionState, useLayoutEffect, useRef } from "react";
+import { useSignedInId } from "@/app/release-note";
+import {
+  isStaleBuild,
+  reloadForRelease,
+  untilReloaded,
+} from "@/app/stale-build";
 import type { SwapIntent, SwapState } from "./actions";
 
 const initialState: SwapState = {};
@@ -21,7 +27,10 @@ const initialState: SwapState = {};
  * came (another day picked meanwhile) has nothing left to draw: `onDone`
  * runs as the answer comes, so the board still says it. In a sheet,
  * `onWaiting` says when it is sent and when its answer is back, so the
- * sheet's close can wait for that.
+ * sheet's close can wait for that. Pressed on a page of the release before,
+ * the page loads again (`@/app/stale-build`), the button busy until it has
+ * gone, and its frame says the app was updated: the person presses again,
+ * nothing sent by itself. A page that stays says the step's own failure.
  */
 export function SwapButton({
   action,
@@ -55,6 +64,8 @@ export function SwapButton({
   onWaiting?: (waiting: boolean) => void;
 }) {
   const t = useTranslations("app.shifts.swap");
+  // Whose press it is, for a page loaded again for a release.
+  const signedIn = useSignedInId();
   // Watched only on a card: in a sheet, the button goes as the sheet closes.
   const form = useRef<HTMLFormElement>(null);
   useFocusWhenGone(form, focusAfter);
@@ -75,6 +86,13 @@ export function SwapButton({
       let next: SwapState;
       try {
         next = await action(prev, data);
+      } catch (error) {
+        // Any other error goes to the error screen, as before.
+        if (!isStaleBuild(error)) throw error;
+        // A page from the release before loads again, the button busy (and
+        // a sheet held) until it has gone; one that stays says it failed.
+        if (reloadForRelease(error, signedIn)) await untilReloaded();
+        next = { failure: "failed" };
       } finally {
         onWaiting?.(false);
       }
