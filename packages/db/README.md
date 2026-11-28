@@ -3088,7 +3088,8 @@ pgTAP `order_stations.test.sql`, `modules/order_taking/stations.db.test.ts`
 and `e2e/order-stations.spec.ts`.
 
 The tests that must always pass: a member of business A cannot read
-business B; anonymous visitors read nothing; every table in `public` has RLS.
+business B; anonymous visitors read nothing (the one function they may call,
+`public.ping()`, reads nothing either); every table in `public` has RLS.
 
 ## Templates
 
@@ -3157,6 +3158,22 @@ read as messages/he.json. Console reads and writes are in `@db/wording`;
 - `@db/supabase/admin`: `createAdminClient()` with `SUPABASE_SECRET_KEY`,
   for server-only writes. Bypasses RLS, so every caller checks who is
   asking first.
+- `@db/health`: `databaseAnswers()`, for `/health/db` and the uptime check
+  (closing the pilot, PR 11): one call to `public.ping()`
+  (`20261128000900_ping.sql`, true and nothing else, its whole body
+  `select true`; the one function `anon` may call, and `authenticated`, never
+  PUBLIC; security invoker, stable, an empty search path) with the
+  publishable key and no session (`@db/supabase/detached`), 5 seconds at
+  most. True when it answered true, or answered PGRST202 or 42883, a project
+  Migrate hasn't brought it to yet, whose API answering is all that says;
+  false for any other answer or error, without the two public settings, and
+  when anything throws, never throwing and keeping nothing of the error. An
+  answer is kept a minute in the server's memory (`KEEP_ANSWER_MS`), so a
+  flood of requests asks the database once a minute at most; a failure is
+  not kept, so the next request asks again, and requests that come while
+  the question is on its way share it. Covered by `health.test.ts`,
+  `app/health/db/route.test.ts`, pgTAP `ping.test.sql` and
+  `e2e/health.spec.ts`.
 - `@db/auth-limits`: the counts on sign-in codes, with the secret key.
   `noteAuthAttempt` gives 0, held (`{ by, seconds }`: the seconds to wait,
   any window of `private.auth_limits`, a quarter of an hour and a day per

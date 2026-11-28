@@ -4731,6 +4731,7 @@ export type Database = {
         };
         Returns: undefined;
       };
+      ping: { Args: Record<PropertyKey, never>; Returns: boolean };
       publish_week_schedule: {
         Args: {
           actor: string;

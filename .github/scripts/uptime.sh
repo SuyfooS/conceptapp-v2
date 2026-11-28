@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+# The uptime check, which .github/workflows/uptime.yml runs four times an
+# hour (closing the pilot, PR 11; docs/production.md, "בדיקת הזמינות"). It
+# asks the site's /health (the server answers) and /health/db (the database
+# answers too), and keeps one open issue labelled `uptime` while either gets
+# no answer:
+#
+#   none open, something fails      it opens one, with what got no answer
+#                                   and when (the label made first if the
+#                                   repository has none)
+#   open, the same fails            nothing: the issue says it already
+#   open, something else fails      a comment with what fails now
+#   open, everything answers        a comment with what answers, and it
+#                                   closes (every open one)
+#   none open, everything answers   nothing
+#
+# An answer is 200, within 10 seconds a try, in three tries at most (curl
+# -fsS --max-time 10 --retry 2, every error retried, not only a timeout or a
+# 5xx). A redirect is no answer: curl doesn't follow it. The repository is
+# public, so what it writes is the addresses and the time, Israel's, and the
+# log has each address and the status it got, never a body. It ends 0 when
+# it did its work, whether the site answered or not, since the issue is the
+# alarm and GitHub mails a failed run to whoever last changed the schedule;
+# so a failed run means the check itself broke. It ends 2, asking nothing,
+# for an address it won't take.
+#
+# SITE (the run's `site` input, through the environment) is a site to check
+# instead of the real one, to see the issue open: an https:// address with a
+# host and nothing more, in lower case (one / at its end is dropped), or
+# nothing is asked, and what was typed is never printed. GH_TOKEN and
+# GH_REPO are the run's own, for `gh`. tooling/uptime.test.ts runs this with
+# curl and gh stood in for.
+set -euo pipefail
+
+REAL_SITE="https://www.conceptapp.co.il"
+PATHS=(/health /health/db)
+LABEL="uptime"
+LABEL_COLOR="B60205"
+LABEL_ABOUT="בדיקת הזמינות לא קיבלה תשובה מהאתר (.github/workflows/uptime.yml)"
+TITLE="האתר לא עונה לבדיקת הזמינות"
+NO_ANSWER="בדיקת הזמינות לא קיבלה תשובה מ:"
+ANSWERS="בדיקת הזמינות מקבלת שוב תשובה מ:"
+WHAT_TO_DO="מה עושים: docs/production.md, בדיקת הזמינות."
+HOST_PATTERN='^https://([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$'
+
+# Spaces around what was typed are dropped, and empty is the real site.
+site=${SITE:-}
+site=${site#"${site%%[![:space:]]*}"}
+site=${site%"${site##*[![:space:]]}"}
+site=${site:-$REAL_SITE}
+site=${site%/}
+if [[ ! $site =~ $HOST_PATTERN ]]; then
+  echo "::error::The site to check is an https:// address with a host and nothing more, such as $REAL_SITE. Nothing was asked."
+  exit 2
+fi
+
+when="$(TZ=Asia/Jerusalem date '+%d.%m.%Y %H:%M') (שעון ישראל)"
+summary=${GITHUB_STEP_SUMMARY:-/dev/null}
+echo "### $site, $when" >> "$summary"
+
+failing=()
+answered=()
+for path in "${PATHS[@]}"; do
+  url="$site$path"
+  status=$(curl -fsS --max-time 10 --retry 2 --retry-all-errors \
+    -o /dev/null -w '%{http_code}' "$url") || true
+  status=${status: -3}
+  status=${status:-000}
+  if [ "$status" = 200 ]; then
+    answered+=("$url")
+    echo "$url: 200"
+  else
+    failing+=("$url")
+    echo "::warning::$url: no answer ($status)"
+  fi
+  echo "- $url: $status" >> "$summary"
+done
+
+# The addresses, one line each, as the issue lists them.
+list() {
+  local url
+  for url in "$@"; do
+    printf -- '- %s\n' "$url"
+  done
+}
+
+# The addresses that got no answer by what the issue said last: the list
+# under the last "no answer" line of its body and comments, whoever else
+# wrote between them.
+last_said() {
+  awk -v head="$NO_ANSWER" '
+    { sub(/\r$/, "") }
+    $0 == head { said = ""; reading = 1; next }
+    reading && /^- https:\/\// { said = said $0 "\n"; next }
+    { reading = 0 }
+    END { printf "%s", said }
+  ' <<< "$1"
+}
+
+# The label first: with none, no issue has it, and none is asked for.
+labels=$(gh label list --search "$LABEL" --limit 100 --json name --jq '.[].name')
+open=""
+if grep -Fqx "$LABEL" <<< "$labels"; then
+  open=$(gh issue list --label "$LABEL" --state open --limit 50 \
+    --json number --jq '.[].number')
+fi
+
+if [ ${#failing[@]} -eq 0 ]; then
+  for number in $open; do
+    gh issue close "$number" --comment "$(printf '%s\n%s\n\nמתי: %s.' \
+      "$ANSWERS" "$(list "${answered[@]}")" "$when")"
+    echo "Closed #$number: every address answers again"
+  done
+  exit 0
+fi
+
+now_failing=$(list "${failing[@]}")
+
+if [ -z "$open" ]; then
+  if ! grep -Fqx "$LABEL" <<< "$labels"; then
+    gh label create "$LABEL" --color "$LABEL_COLOR" --description "$LABEL_ABOUT"
+  fi
+  gh issue create --title "$TITLE" --label "$LABEL" --body "$(printf \
+    '%s\n%s\n\nמתי: %s.\n\n%s' "$NO_ANSWER" "$now_failing" "$when" "$WHAT_TO_DO")"
+  echo "Opened an issue: no answer from ${failing[*]}"
+  exit 0
+fi
+
+# gh lists the newest first.
+newest=${open%%$'\n'*}
+said=$(gh issue view "$newest" --json body,comments --jq '.body, .comments[].body')
+if [ "$(last_said "$said")" = "$now_failing" ]; then
+  echo "#$newest already says no answer from ${failing[*]}"
+  exit 0
+fi
+gh issue comment "$newest" --body "$(printf '%s\n%s\n\nמתי: %s.' \
+  "$NO_ANSWER" "$now_failing" "$when")"
+echo "Commented on #$newest: no answer now from ${failing[*]}"

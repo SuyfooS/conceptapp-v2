@@ -23,7 +23,8 @@ import {
 // sends no cookie and prints no header's value but a redirect's origin and
 // path (never its query); its header names, Cloudflare's test keys, a site
 // key's shape and its paths are written in it (a .mjs on Node 20 can't
-// import the TypeScript), so this keeps them the same as the code's.
+// import the TypeScript), so this keeps them the same as the code's. Since
+// closing the pilot's PR 11 brought /health/db, a site must answer it too.
 
 const root = join(__dirname, "..");
 const source = readFileSync(join(root, "tooling/check-site.mjs"), "utf8");
@@ -61,7 +62,10 @@ function site(overrides: Record<string, Answer | Error> = {}) {
       body: '{"status":"ok"}',
       headers: { "content-type": "application/json" },
     },
-    "/health/db": { status: 404, body: "not found" },
+    "/health/db": {
+      body: '{"status":"ok"}',
+      headers: { "content-type": "application/json" },
+    },
     "/enter": {
       status: 307,
       headers: { location: `${ORIGIN}/sign-in` },
@@ -140,10 +144,12 @@ describe("what it checks, kept the same as the code", () => {
     expect(PATHS.door).toBe(signInPath);
     expect(PATHS.signIn).toBe(phoneSignInPath);
     expect(existsSync(join(root, "app/health/route.ts"))).toBe(true);
-    // /health/db is closing the pilot's PR 11: until it lands, the script
-    // says the site doesn't have it yet.
+    expect(existsSync(join(root, "app/health/db/route.ts"))).toBe(true);
     expect(PATHS.health).toBe("/health");
     expect(PATHS.database).toBe("/health/db");
+    // Nothing is "not there yet" any more.
+    expect(source).not.toContain("later");
+    expect(source).not.toContain("עוד לא באתר");
     expect(
       readFileSync(join(root, "packages/ui/captcha.tsx"), "utf8"),
     ).toContain("data-sitekey={siteKey");
@@ -155,7 +161,8 @@ describe("a site as it should be", () => {
     const { found, failed, text, of } = await run();
     expect(failed).toBe(0);
     expect(of("/health")?.outcome).toBe("pass");
-    expect(of("/health/db")?.outcome).toBe("later");
+    expect(of("/health/db")?.outcome).toBe("pass");
+    expect(of("/health/db")?.words).toContain("מסד הנתונים עונה");
     expect(of("/enter")?.outcome).toBe("info");
     expect(of("/enter")?.words).toContain("סגורה");
     expect(of("Turnstile")?.outcome).toBe("pass");
@@ -313,21 +320,49 @@ describe("what fails", () => {
     expect(wrong.of("/health")?.outcome).toBe("fail");
   });
 
-  it("reads /health/db: there, not yet there, or the database down", async () => {
-    const up = await run({ "/health/db": { body: "" } });
+  it("reads /health/db: the database answering, down, missing, or not the app's", async () => {
+    const up = await run();
     expect(up.of("/health/db")?.outcome).toBe("pass");
-    const notYet = await run({ "/health/db": { status: 404 } });
-    expect(notYet.of("/health/db")?.outcome).toBe("later");
-    expect(notYet.failed).toBe(0);
-    const down = await run({ "/health/db": { status: 503 } });
+    const down = await run({
+      "/health/db": { status: 503, body: '{"status":"unavailable"}' },
+    });
     expect(down.of("/health/db")?.outcome).toBe("fail");
+    expect(down.of("/health/db")?.words).toContain("מסד הנתונים לא עונה");
+    expect(down.failed).toBe(1);
+    // Since PR 11 a site of the app has it: a 404 is a version from before
+    // it, and fails.
+    const missing = await run({ "/health/db": { status: 404 } });
+    expect(missing.of("/health/db")?.outcome).toBe("fail");
+    expect(missing.of("/health/db")?.words).toContain("404");
+    expect(missing.of("/health/db")?.words).toContain("מלפני");
+    expect(missing.failed).toBe(1);
     const odd = await run({ "/health/db": { status: 500 } });
     expect(odd.of("/health/db")?.outcome).toBe("fail");
+    expect(odd.of("/health/db")?.words).toContain("500");
+    for (const body of [
+      "",
+      "<html>parked</html>",
+      '{"status":"unavailable"}',
+    ]) {
+      const wrong = await run({ "/health/db": { body } });
+      expect(wrong.of("/health/db")?.outcome, body).toBe("fail");
+      expect(wrong.of("/health/db")?.words, body).toContain("לא כמו האפליקציה");
+      expect(wrong.text, body).not.toContain("parked");
+    }
   });
 
-  it("says /health/db's 404 is 'not there yet' only after a /health that passed", async () => {
+  it("says a /health/db cut short as no answer, and goes on", async () => {
+    const { of, found, text } = await run({ "/health/db": { cut: dropped() } });
+    expect(of("/health/db")?.outcome).toBe("fail");
+    expect(of("/health/db")?.words).toContain("UND_ERR_SOCKET");
+    expect(of("/health/db")?.words).not.toContain("כמו האפליקציה");
+    expect(found).toHaveLength(4 + CODE_HEADERS.length);
+    expect(text).not.toContain("terminated");
+  });
+
+  it("fails /health/db on an address with no deployment, as every other line", async () => {
     // An address with no deployment on it answers 404 everywhere, as Vercel
-    // does: there /health/db is no route still to come.
+    // does.
     const nothing = { status: 404, body: "The deployment could not be found" };
     const gone = await run({
       "/health": nothing,
@@ -338,13 +373,8 @@ describe("what fails", () => {
     expect(gone.of("/health")?.outcome).toBe("fail");
     expect(gone.of("/health/db")?.outcome).toBe("fail");
     expect(gone.of("/health/db")?.words).toContain("404");
-    expect(gone.text).not.toContain("עוד לא באתר");
-    expect(gone.text).not.toContain("זה לא כשל");
+    expect(gone.text).not.toContain("deployment could not");
     expect(gone.failed).toBe(5);
-    // And a /health that answers, but not as the app.
-    const broken = await run({ "/health": { status: 500 } });
-    expect(broken.of("/health/db")?.outcome).toBe("fail");
-    expect(broken.of("/health/db")?.words).toContain(`${PATHS.health} לא עבר`);
   });
 
   it("fails a door that goes anywhere but /sign-in, naming no query", async () => {
