@@ -438,7 +438,7 @@
     "dataTableOt125": "Overtime 125%",
     "dataTableOt150": "Overtime 150%",
     "dataTableNote": "Note",
-    "dataTableNote1": "Corrected by a manager: forgot to clock out",
+    "dataTableNote1": "Corrected by someone who approves hours: forgot to clock out",
     "dataTableNote2": "Night shift",
     "dataTableNote3": "Eve of a holiday",
     "dataTableControls": "A table of switches",
@@ -658,7 +658,7 @@
           },
           "staleShift": {
             "title": "A shift from yesterday",
-            "text": "A manager fixes it, then carry on"
+            "text": "Whoever approves hours fixes it, then carry on"
           },
           "floorNoPlaces": {
             "title": "No tables yet, in the mode",
@@ -1105,7 +1105,7 @@
       "phoneIntro": "We'll text a sign-in code to your mobile number.",
       "phoneLabel": "Mobile number",
       "send": "Send code",
-      "codeIntro": "If <ltr>{phone}</ltr> has been added to a business's team, we sent it a 6-digit code.",
+      "codeIntro": "If you've already joined a business with <ltr>{phone}</ltr>, we sent it a 6-digit code.",
       "codeResent": "We asked for a new code for <ltr>{phone}</ltr>.",
       "codeLabel": "Code from the message",
       "verify": "Sign in",
@@ -1114,7 +1114,7 @@
       "demo": "Try the demo, no phone needed",
       "noCode": {
         "title": "Didn't get a code?",
-        "body": "A code goes only to a number already added to a business's team. If yours hasn't been added yet, a manager at your business can add it. You can also check the number, or ask for a new code in a minute."
+        "body": "The first time, you come in only through the personal link you got in a message. No link, or more than 14 days have passed? Ask whoever invited you for a new one. You can also check the number, or ask for a new code in a minute."
       },
       "errors": {
         "invalidPhone": "Enter an Israeli mobile number, e.g. 050-123-4567.",
@@ -1308,7 +1308,7 @@
     },
     "noBusiness": {
       "title": "Not part of a business yet",
-      "body": "Your account works, but no business has added it yet. A manager at your business can send an invite to this number.",
+      "body": "Your account works, but you haven't joined a business yet. If you got a personal link in a message, open it to join. No link, or more than 14 days have passed? Ask whoever runs your business for a new one.",
       "left": {
         "title": "No longer on the team of {business}",
         "body": "Your account still works. If this is a mistake, ask the business for a new invite to this number."
@@ -1352,7 +1352,7 @@
         },
         "noShifts": {
           "title": "No shifts coming up for you",
-          "body": "The published schedule has no more shifts for you. If that looks wrong, talk to the manager."
+          "body": "The published schedule has no more shifts for you. If that looks wrong, talk to whoever builds the schedule."
         },
         "allDone": {
           "title": "No more shifts in the published schedule",
@@ -2125,7 +2125,7 @@
         "when": "{day}, <ltr>{time}</ltr>",
         "notSent": "Not sent yet",
         "sent": "Sent",
-        "stillCan": "You can still send it; your manager sees when it came in."
+        "stillCan": "You can still send it; whoever builds the schedule sees when it came in."
       },
       "sent": "Saved on {date} at <ltr>{time}</ltr>. You can change it and send again.",
       "noHours": "No hours",
@@ -2144,7 +2144,7 @@
       "candleLighting": "Shabbat starts at <ltr>{time}</ltr>. You can mark hours until then.",
       "havdalah": "Shabbat ends at <ltr>{time}</ltr>. You can mark hours from then.",
       "shiftHours": "{count, plural, one {This day's shift: {hours}.} other {This day's shifts: {hours}. If you can work only some of them, mark only their hours.}}",
-      "note": "Note for your manager",
+      "note": "Note for whoever builds the schedule",
       "noteHint": "Optional. For example: an exam on Tuesday morning.",
       "summary": "{count, plural, =0 {You have not marked any hours. Sending without hours means you are not available this week.} =7 {You marked hours on every day.} one {You marked hours on one day. You are not available on the other days.} other {You marked hours on # days. You are not available on the other days.}}",
       "submit": "Send availability",
@@ -2499,7 +2499,7 @@
         "title": "Your next shifts",
         "count": "{count, plural, one {1 shift} other {# shifts}}",
         "hours": "{hours, plural, =1 {1 hour} =2 {2 hours} other {# hours}}",
-        "empty": "You have no shifts in the published schedule. If that looks wrong, talk to your manager.",
+        "empty": "You have no shifts in the published schedule. If that looks wrong, talk to whoever builds the schedule.",
         "notPublished": "The schedule is not published yet. Once it is, your shifts appear here.",
         "line": "{name} · <ltr>{start}–{end}</ltr>",
         "later": "After that"
@@ -2764,7 +2764,7 @@
         "correctedBy": "Corrected by {name}",
         "added": "Recorded by {name}: {note}",
         "addedBy": "Recorded by {name}",
-        "aManager": "a manager",
+        "aManager": "someone who approves hours",
         "breakMinutes": "{minutes} min",
         "noBreak": "No break",
         "cancelled": "Cancelled",
@@ -3298,7 +3298,7 @@
           "typed": "Typed code",
           "scan": "Scan"
         },
-        "aManager": "a manager",
+        "aManager": "someone who approves hours",
         "added": "Added by {name}: {note}",
         "addedBy": "Added by {name}",
         "corrected": "Corrected by {name}: {note}",
@@ -4550,7 +4550,7 @@
           "title": "New role",
           "close": "Close",
           "name": "The role's name",
-          "nameHint": "Such as shift lead or bar lead",
+          "nameHint": "Such as shift lead or warehouse lead",
           "base": "Built on",
           "baseHint": {
             "manager": "Its permissions start as those of {role}, at the rank of {role}. It is given on the team screen: by owners, and by those at that rank who edit the team, if it holds nothing they don't.",
@@ -4612,10 +4612,10 @@
       "ownerOnly": "Owners only",
       "departments": {
         "title": "Departments",
-        "subtitle": "The groups in the business a list can go to, such as the kitchen or the checkout. A person can be in several.",
+        "subtitle": "The groups in the business a list can go to, such as reception or the warehouse. A person can be in several.",
         "listTitle": "The departments",
         "rowEmpty": "No departments yet",
-        "empty": "No departments yet. A department is a group of people a list can go to, such as the kitchen or the checkout. Add the first one in the row below.",
+        "empty": "No departments yet. A department is a group of people a list can go to, such as reception or the warehouse. Add the first one in the row below.",
         "emptyMenu": "No departments yet. A department is a group of people that prepares what's ordered, such as the kitchen or the bar. Add the first one in the row below.",
         "emptyViewOnly": "No departments yet.",
         "nameOf": "Name of the department {name}",
@@ -4682,7 +4682,7 @@
         "empty": "A few words about you. Your team sees this",
         "demo": "There's no personal line in the demo businesses",
         "label": "Your line",
-        "placeholder": "For example: on the till in the morning, at the bar at night",
+        "placeholder": "For example: at reception in the morning, in the warehouse in the afternoon",
         "count": "{count, plural, one {1 character} other {# characters}} of 160",
         "tooLong": "Up to 160 characters. Try a little shorter.",
         "save": "Save the line",
@@ -7369,7 +7369,7 @@
       },
       "staleShift": {
         "title": "A shift from yesterday is still open",
-        "body": "A manager fixes it, then carry on.",
+        "body": "Whoever approves hours here fixes it, then carry on.",
         "action": "Go to the clock"
       },
       "failed": {

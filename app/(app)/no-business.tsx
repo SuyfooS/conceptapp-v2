@@ -8,7 +8,9 @@ import { LostOrdersNotice } from "./orders/outbox-notice";
 import { baseWording, translator } from "./wording";
 
 /**
- * Signed in, but no business has added this number yet; or, for someone
+ * Signed in, but on no business's team yet: an invite may still be open
+ * (joining makes the account as its code is sent), and its link still joins,
+ * so the words send them to it first; or, for someone
  * taken off the team of their last business (`left`, Orel's decision 3 of
  * 14 November 2026: told nothing then), which business they are no longer on
  * the team of, and that a new invite brings them back. Above it, waiter
