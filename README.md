@@ -90,6 +90,33 @@ Vercel and what to watch. The code's side of it:
   `@domain/security-headers`, named but never their values. It answers in Hebrew and exits 1
   when something failed (`docs/production.md`, Turnstile step 4 and B7;
   `tooling/check-site.test.ts`, with a fake fetch).
+- `node tooling/backup-files.mjs [folder]` backs up the files Supabase's database backup
+  doesn't hold (it keeps their rows, not the files): every object of the buckets the
+  migrations create (`avatars`, `list-photos`, `chat-files`, `documents`), listed page by
+  page (and again once its files are down) and downloaded into a dated plain folder in the
+  system's temp folder, which never syncs, with a manifest of each file's bucket, path,
+  size, content type and SHA-256, then encrypted into one file in the folder given, outside
+  any git checkout (the repo refused by its words and by where its links lead; AES-256-GCM,
+  the key from scrypt on a passphrase with a random salt; the parameters, IV and tag in a
+  1 KB header), opened again and checked, and only then the plain folder deleted (also on a
+  failure, a closed window or Ctrl+C; one an earlier run left is deleted by the next, and
+  one that won't go is named on the screen). `node tooling/restore-files.mjs
+  <file> [--overwrite]` reads a backup to its end and checks every SHA-256, then uploads it
+  to a project typed twice that is neither conceptapp-dev's, production's nor the backup's
+  own, and that knows the backup's files (a copy restored from the database's backup),
+  refusing to overwrite unless asked. Both take the secret key and the passphrase at a
+  question with nothing echoed; the backup asks the address shown and prints the project's
+  ref (it also takes `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SECRET_KEY` from the session,
+  never from a file). They print counts, sizes, the project's ref and the backup's path,
+  never the name of a file in it, run on Node 20 with nothing installed (Storage's REST API through Node's
+  fetch: `@supabase/supabase-js` can't make a client on Node 20), and refuse to run where
+  `CI` or `GITHUB_ACTIONS` is set: only Orel runs them, on his computer
+  (`docs/production.md`, B8; `tooling/backup-files.test.ts` and
+  `tooling/restore-files.test.ts`, with a fake storage client). Against the local stack:
+  `http://127.0.0.1:54321` and `SECRET_KEY` from `pnpm exec supabase status -o env`, and
+  `local` as the project to restore to, typed twice: a backup of the local stack goes back
+  only there, so the restore asks no conceptapp-dev or production ref for it, and no other
+  backup goes there.
 
 ## Scripts
 

@@ -1,3 +1,5 @@
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
 import { TURNSTILE_TEST_KEYS } from "@domain/turnstile";
 import { describe, expect, it } from "vitest";
 import he from "../messages/he.json";
@@ -795,6 +797,111 @@ describe("docs/production.md", () => {
     expect(runs.length).toBeGreaterThanOrEqual(3);
     expect(checkSiteRuns(doc).length).toBeGreaterThanOrEqual(4);
     expect(section("מה הקוד כבר עושה")).toContain("`tooling/check-site.mjs`");
+  });
+
+  it("backs up the files by the command, restores them only to a temporary project, and says when (B8)", () => {
+    // Closing the pilot, PR 20 (tooling/backup-files.test.ts and
+    // tooling/restore-files.test.ts): Supabase's database backup holds the
+    // files' rows and not the files, so they have a backup of their own.
+    const b8 = section("ב8.");
+    expect(b8).toContain("לא כולל את הקבצים");
+    const runs = fences.filter(
+      ({ body }) =>
+        b8.includes(body) && /tooling\/(backup|restore)-files\.mjs/.test(body),
+    );
+    expect(runs.map(({ lang }) => lang)).toEqual(["powershell", "powershell"]);
+    expect(
+      runs.map(({ body }) =>
+        body
+          .split("\n")
+          .map((line) => line.trim())
+          .filter((line) => line !== ""),
+      ),
+    ).toEqual([
+      ["git pull", "node tooling/backup-files.mjs"],
+      ["git pull", 'node tooling/restore-files.mjs "FILE" --overwrite'],
+    ]);
+    // Monthly, and before a release that changes the database's structure:
+    // said in B8, and as step 0 of the release Orel follows every week, with
+    // a reminder in his calendar for the monthly one.
+    expect(b8).toContain("פעם בחודש");
+    expect(b8).toContain("כולל שינוי במבנה");
+    expect(stepOf(b8, 3)).toContain("צעד 0");
+    expect(stepOf(b8, 3)).toContain("תזכורת חוזרת ביומן");
+    const update = section("עדכון אחרי שעסק אמיתי עלה");
+    const zero = update.slice(update.search(/^0\. /m), update.search(/^1\. /m));
+    for (const word of ['"כולל שינוי במבנה"', "ב8, צעד 2", '"הכול תקין"']) {
+      expect(zero, word).toContain(word);
+    }
+    expect(update).toContain("**זמן:** כרבע שעה, וכחצי שעה כשיש שינוי במבנה");
+    // The address shown and its ref checked; the plain files never in a
+    // folder that syncs; a folder left behind deleted by hand.
+    const files = stepOf(b8, 2);
+    for (const word of [
+      'כותבת "הפרויקט:"',
+      "המזהה של `conceptapp-prod`, כמו בכתובת שלו בלוח",
+      "שלא מסתנכרנת לענן",
+      "לא סוגרים את החלון",
+      "`Shift+Delete`",
+      "משלושת החודשים האחרונים",
+    ]) {
+      expect(files, word).toContain(word);
+    }
+    // The drill twice: before the business there are no files to bring back.
+    const drill = stepOf(b8, 4);
+    for (const word of [
+      "ועוד פעם אחרי החודש הראשון עם העסק",
+      "עוד אין קבצים",
+      "ב-`documents` וב-`avatars` יש קבצים",
+      "אם הלשונית לא מופיעה: עוצרים ושואלים בסשן",
+      "כמו `conceptapp-dev`, הוא לא העותק",
+    ]) {
+      expect(drill, word).toContain(word);
+    }
+    // The drill: a project Orel makes, which costs by the hour, its jobs off
+    // first, the counts on both, and the project deleted after.
+    for (const word of [
+      "`Restore to a New Project`",
+      "לפי שעה",
+      "cron.alter_job",
+      "query_to_xml",
+      "→ Delete project`",
+      "`--overwrite`",
+    ]) {
+      expect(b8, word).toContain(word);
+    }
+    const sql = fences
+      .filter(({ lang, body }) => lang === "sql" && b8.includes(body))
+      .map(({ body }) => body);
+    expect(sql).toHaveLength(2);
+    expect(sql[1]).toContain("'storage'");
+    // Only Orel, on his computer: never in GitHub Actions, and no workflow
+    // names either script.
+    expect(b8).toContain("GitHub Actions");
+    for (const script of ["backup-files.mjs", "restore-files.mjs"]) {
+      expect(readRepoFile(`tooling/${script}`)).toContain("if (runsInCi(env))");
+      for (const workflow of readdirSync(
+        join(__dirname, "..", ".github", "workflows"),
+      )) {
+        expect(
+          readRepoFile(`.github/workflows/${workflow}`),
+          `${workflow} ${script}`,
+        ).not.toContain(script);
+      }
+    }
+    expect(section("מה הקוד כבר עושה")).toContain(
+      "`tooling/backup-files.mjs`, `tooling/restore-files.mjs`",
+    );
+    // What the screen shows, said the same in the row and in step 2: the
+    // backup prints the project's ref and its own path, never a file's name.
+    const shown =
+      "מספרים, גדלים, המזהה של הפרויקט והנתיב של קובץ הגיבוי, אף פעם לא שם של אחד הקבצים שבגיבוי";
+    expect(section("מה הקוד כבר עושה")).toContain(shown);
+    expect(files).toContain(shown);
+    // The restore prints a line for every bucket, 0 too (restore-files.test.ts).
+    expect(drill).toContain(
+      "שורה לכל אחד מארבעת ה-buckets, עם אותו מספר קבצים כמו בגיבוי, גם כשהוא 0",
+    );
   });
 
   it("names no path on anyone's computer", () => {
