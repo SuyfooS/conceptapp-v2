@@ -59,6 +59,7 @@ export async function BusinessView({
   business,
   listHref,
   created,
+  shabbatUnsaved = false,
   viewFailure,
   settingsHref,
   wordingHref,
@@ -73,6 +74,11 @@ export async function BusinessView({
   business: BusinessSetup;
   listHref: string;
   created: boolean;
+  /**
+   * Just opened, and the wizard's answer about Shabbat could not be saved
+   * (`?shabbat=unsaved`): the card says so, and where to set it.
+   */
+  shabbatUnsaved?: boolean;
   /** Why the last view didn't open (`?view=`), or null. */
   viewFailure: ViewAsFailure | null;
   /** Where this business's settings are, when the person may edit them. */
@@ -138,7 +144,6 @@ export async function BusinessView({
         <Card
           tone="flat"
           padding="md"
-          role="status"
           className="flex items-center gap-3 md:max-w-2xl"
         >
           <span
@@ -148,12 +153,23 @@ export async function BusinessView({
             <Check />
           </span>
           <span className="flex min-w-0 flex-col">
-            <span className="font-semibold">
-              {t("setup.opened.title", { name: business.name })}
+            <span role="status" className="flex flex-col">
+              <span className="font-semibold">
+                {t("setup.opened.title", { name: business.name })}
+              </span>
+              <CardText className="text-sm">
+                {t("setup.opened.body", { template })}
+              </CardText>
             </span>
-            <CardText className="text-sm">
-              {t("setup.opened.body", { template })}
-            </CardText>
+            {shabbatUnsaved ? (
+              // An alert of its own beside the status, never inside it: the
+              // card arrives with the page, words and all, and a status drawn
+              // that way is often not heard, where an alert is said as it is
+              // drawn (as the view-as failure below).
+              <span role="alert" className="font-medium text-sm text-warning">
+                {t("setup.opened.shabbatUnsaved")}
+              </span>
+            ) : null}
           </span>
         </Card>
       ) : null}

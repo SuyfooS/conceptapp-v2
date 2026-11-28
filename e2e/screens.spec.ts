@@ -18,6 +18,9 @@ const PAGES = [
   "/design/console?storage=quota",
   "/design/console/new",
   "/design/console/businesses/cafe-noa",
+  // Just opened, the wizard's answer about Shabbat not saved (closing the
+  // pilot, PR 3).
+  "/design/console/businesses/cafe-noa?shabbat=unsaved",
   "/design/console/businesses/demo-restaurant",
   "/design/console/businesses/bar-hayam",
   "/design/console/businesses/bar-hayam/people/new",
@@ -379,4 +382,21 @@ test("the wizard shows one step at a time and goes back to a taken address", asy
 
   await expect(page.getByText(w.errors.slug.taken)).toBeVisible();
   await expect(step(w.steps.details)).toBeVisible();
+});
+
+test("a business just opened says when its answer about Shabbat wasn't saved", async ({
+  page,
+}) => {
+  const unsaved = he.admin.setup.opened.shabbatUnsaved;
+  await page.goto("/design/console/businesses/cafe-noa?shabbat=unsaved");
+  // An alert of its own, said as the page draws it, beside the opened
+  // card's status and never inside it. (Next's route announcer is an empty
+  // alert of its own.)
+  await expect(
+    page.getByRole("alert").filter({ hasText: unsaved }),
+  ).toBeVisible();
+  await expect(page.getByRole("status").getByText(unsaved)).toHaveCount(0);
+  await page.goto("/design/console/businesses/cafe-noa");
+  await expect(page.getByRole("status")).toBeVisible();
+  await expect(page.getByText(unsaved)).toHaveCount(0);
 });

@@ -209,6 +209,16 @@ was shown, the server's `elsewhere` while a line still holds one of its
 numbers, else the list's own, gone once the list is fine), so the field
 never names a number that has left the list.
 
+The wizard's details step also asks whether the business is open on
+Shabbat (closing the pilot, PR 3): `shabbat` in `NEW_BUSINESS_FIELDS` and
+`NEW_BUSINESS_STEPS[1]`, "open" or "closed" (`SHABBAT_ANSWERS`), read by
+`parseNewBusiness` into `closedOnShabbat`, scheduling's setting. None (a
+form drawn before the wizard asked) is null, the template's own, and
+anything else `invalid`. The question starts from the template's answer,
+`shabbatAnswerOf`, from `TEMPLATE_CLOSED_ON_SHABBAT` in `templates.ts`:
+closed in all four, as no template sets it and the manifest closes, and
+`modules/templates.db.test.ts` keeps it equal to the rows in `templates`.
+
 `setup.ts` is the console's checklist of a business just opened (opened,
 owner, staff, address), each item from the business as stored, and the rule
 for "staff" it shares with the owner's first steps: managers and workers
