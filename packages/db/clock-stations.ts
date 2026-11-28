@@ -139,25 +139,19 @@ export async function countRunningStations(
  * or the till: for the console's checklist (closing the pilot, PR 16), whose
  * people aren't members of the business, so RLS shows them none. With the
  * secret key; callers check first that the person is on the ConceptApp team.
- * Before 20261124000100_order_taking_stations.sql reaches a project there is
- * no `shows`, and every station is the clock's.
+ * No fallback for a project without `shows`: every project has had it since
+ * 20261124000100_order_taking_stations.sql, and a count (a HEAD request)
+ * brings back no error code to tell a missing column by.
  */
 export async function countClockStationsForTeam(
   businessId: string,
 ): Promise<number> {
-  const admin = createAdminClient();
-  const read = (clockOnly: boolean) => {
-    const query = admin
-      .from("clock_stations")
-      .select("id", { count: "exact", head: true })
-      .eq("business_id", businessId);
-    return (clockOnly ? query.eq("shows", "clock_code") : query).is(
-      "stopped_at",
-      null,
-    );
-  };
-  let { count, error } = await read(true);
-  if (error && isMissingColumn(error)) ({ count, error } = await read(false));
+  const { count, error } = await createAdminClient()
+    .from("clock_stations")
+    .select("id", { count: "exact", head: true })
+    .eq("business_id", businessId)
+    .eq("shows", "clock_code")
+    .is("stopped_at", null);
   if (error) throw error;
   return count ?? 0;
 }

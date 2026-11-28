@@ -306,8 +306,9 @@ const STATE = { done: "done", missing: "todo", open: "open" } as const;
  * settings page at the module's own section. The first week is the
  * business's to publish, and who sees pay is there to check, so neither
  * leads anywhere from here (who sees pay has its row under the people). The
- * clock's code and who sees pay are never counted (`countsInSetup`), and say
- * so beside them.
+ * clock's code, who sees pay and Shabbat with no answer stored are never
+ * counted (`countsInSetup`), and say so beside them: a choice, or there to
+ * check.
  */
 function Checklist({
   t,
@@ -395,7 +396,7 @@ function Checklist({
             })
           : t("setup.checklist.items.address.todo");
       case "shabbat":
-        return t(`setup.checklist.items.shabbat.${item.answer ?? "notAsked"}`);
+        return t(`setup.checklist.items.shabbat.${item.answer ?? "noAnswer"}`);
       case "shifts":
         return item.done
           ? t("setup.checklist.items.shifts.done", {
@@ -484,9 +485,9 @@ function Checklist({
               countsInSetup(item) ? null : (
                 <Badge>
                   {t(
-                    item.key === "pay"
-                      ? "setup.checklist.toCheck"
-                      : "setup.checklist.optional",
+                    item.key === "clockCode"
+                      ? "setup.checklist.optional"
+                      : "setup.checklist.toCheck",
                   )}
                 </Badge>
               )

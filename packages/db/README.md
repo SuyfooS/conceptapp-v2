@@ -2473,8 +2473,9 @@ within two minutes (`set_clock_station_stopped`). All four with the secret key.
 `getRunningStations(business)` lists the running ones under the person's session
 (RLS: whoever edits the clock, with the clock on), never their secrets.
 `countClockStationsForTeam(business)` counts the running clock stations alone
-(never the kitchen's screens or the till; every station before `shows`
-existed) with the secret key, for the console's checklist (closing the pilot,
+(never the kitchen's screens or the till; no fallback without `shows`, which
+every project has, and a count's HEAD request brings back no error code to
+tell a missing column by) with the secret key, for the console's checklist (closing the pilot,
 PR 16), whose people RLS shows none. The
 refusals read through `@domain/clock-station`: `lockFailureOf`
 (`tooManyStations` for 54000 "At most ten stations", ten of every kind

@@ -8207,7 +8207,7 @@
             "title": "Open or closed on Shabbat",
             "open": "The business is open on Shabbat.",
             "closed": "The business is closed on Shabbat.",
-            "notAsked": "Not asked when the business was opened, so it is closed on Shabbat. Set it in the business settings, with the “Closed on Shabbat” switch."
+            "noAnswer": "No answer is saved, so the business is closed on Shabbat. If it is open on Shabbat, turn off “Closed on Shabbat” in the settings."
           },
           "shifts": {
             "title": "Job roles and shifts",

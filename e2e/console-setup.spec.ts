@@ -72,10 +72,10 @@ test("a fresh general business shows each missing step, with where the team fixe
     page.getByRole("heading", { level: 1, name: SETUP_CARD_BUSINESS.name }),
   ).toBeVisible();
   const steps = card(page);
-  // Opened, and nothing else yet; the clock's code and who sees pay are
-  // shown and never counted.
-  await expect(steps).toContainText(left(7));
-  await expect(steps).toContainText(progress(1, 8));
+  // Opened, and nothing else yet; the clock's code, who sees pay and
+  // Shabbat with no answer stored are shown and never counted.
+  await expect(steps).toContainText(left(6));
+  await expect(steps).toContainText(progress(1, 7));
   await expect(steps.getByRole("listitem")).toHaveText(
     [
       items.opened.title,
@@ -105,10 +105,12 @@ test("a fresh general business shows each missing step, with where the team fixe
     "href",
     SETTINGS,
   );
-  // Never asked: the business opened before the wizard asked.
+  // No answer stored (the business opened before the wizard asked): closed
+  // by default, there to check, and never counted.
   const shabbat = link(steps, items.shabbat.title);
   await expect(shabbat).toHaveAttribute("href", `${SETTINGS}#scheduling`);
-  await expect(shabbat).toContainText(items.shabbat.notAsked);
+  await expect(shabbat).toContainText(items.shabbat.noAnswer);
+  await expect(shabbat).toContainText(c.toCheck);
   // The general template opens with no job roles and no shifts.
   const shifts = link(steps, items.shifts.title);
   await expect(shifts).toHaveAttribute("href", `${SETTINGS}#scheduling`);

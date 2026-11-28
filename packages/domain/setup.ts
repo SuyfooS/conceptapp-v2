@@ -40,7 +40,8 @@ export type SetupFacts = {
     /**
      * The answer stored for `closedOnShabbat` (`storedShabbatAnswer`), or
      * null where none is: a business opened before the wizard asked (PR 3),
-     * closed by the manifest's default.
+     * or whose answer the wizard couldn't save, closed by the manifest's
+     * default.
      */
     closedOnShabbat: boolean | null;
   } | null;
@@ -115,7 +116,7 @@ export type SetupItem =
   | {
       key: "shabbat";
       done: boolean;
-      /** The answer stored; null when the question was never asked. */
+      /** The answer stored; null when none is (`SetupFacts.scheduling`). */
       answer: "open" | "closed" | null;
     }
   | { key: "shifts"; done: boolean; positions: number; patterns: number }
@@ -284,11 +285,15 @@ export function setupChecklist(facts: SetupFacts): SetupItem[] {
 /**
  * Whether an item counts toward what is left. Who sees pay never does: it
  * is there to be checked. Nor does the clock's code, a choice a business
- * does well without, unless it is on where nobody can see it.
+ * does well without, unless it is on where nobody can see it. Nor does
+ * Shabbat while no answer is stored: closed by default is a business's own
+ * answer as often as not, and its switch saves only a change, so a business
+ * closed on Shabbat could never finish it; it is there to be checked.
  */
 export function countsInSetup(item: SetupItem): boolean {
   if (item.key === "pay") return false;
   if (item.key === "clockCode") return item.code === "noStation";
+  if (item.key === "shabbat") return item.answer !== null;
   return true;
 }
 

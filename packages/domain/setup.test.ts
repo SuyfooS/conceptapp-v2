@@ -141,10 +141,11 @@ describe("setupChecklist", () => {
       roles: [],
       personal: 0,
     });
-    // The clock's code off and who sees pay are never counted.
-    expect(setupCounted(items)).toBe(8);
+    // The clock's code off, who sees pay, and Shabbat with no answer stored
+    // are never counted.
+    expect(setupCounted(items)).toBe(7);
     expect(setupDone(items)).toBe(1);
-    expect(setupRemaining(items)).toBe(7);
+    expect(setupRemaining(items)).toBe(6);
   });
 
   it("is complete once everything is done", () => {
@@ -182,34 +183,44 @@ describe("setupChecklist", () => {
   });
 
   it("says Shabbat was answered by what is stored, either way", () => {
-    const answer = (closedOnShabbat: boolean | null) =>
-      item(
-        setupChecklist({
-          ...ready,
-          scheduling: {
-            positions: 1,
-            patterns: 1,
-            published: true,
-            closedOnShabbat,
-          },
-        }),
-        "shabbat",
-      );
+    const answer = (closedOnShabbat: boolean | null) => {
+      const items = setupChecklist({
+        ...ready,
+        scheduling: {
+          positions: 1,
+          patterns: 1,
+          published: true,
+          closedOnShabbat,
+        },
+      });
+      const shabbat = item(items, "shabbat");
+      return {
+        item: shabbat,
+        counted: shabbat ? countsInSetup(shabbat) : null,
+        left: setupRemaining(items),
+        total: setupCounted(items),
+      };
+    };
     expect(answer(true)).toEqual({
-      key: "shabbat",
-      done: true,
-      answer: "closed",
+      item: { key: "shabbat", done: true, answer: "closed" },
+      counted: true,
+      left: 0,
+      total: 8,
     });
     expect(answer(false)).toEqual({
-      key: "shabbat",
-      done: true,
-      answer: "open",
+      item: { key: "shabbat", done: true, answer: "open" },
+      counted: true,
+      left: 0,
+      total: 8,
     });
-    // Opened before the wizard asked: closed by default, and never asked.
+    // None stored (opened before the wizard asked, or its save failed):
+    // closed by default, there to check, and never counted, so a business
+    // that is closed on Shabbat is all done without pressing its switch twice.
     expect(answer(null)).toEqual({
-      key: "shabbat",
-      done: false,
-      answer: null,
+      item: { key: "shabbat", done: false, answer: null },
+      counted: false,
+      left: 0,
+      total: 7,
     });
   });
 

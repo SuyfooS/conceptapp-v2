@@ -135,28 +135,24 @@ describe("the clock stations the console counts", () => {
     ]);
   });
 
-  it("counts every station before stations said what they show", async () => {
-    db.running = 1;
-    db.countErrors = [
+  it("throws any error, read once and never again without `shows`", async () => {
+    // Every project has `shows`, and a count's HEAD request brings back no
+    // code to tell a missing column by: even 42703 is thrown, not retried.
+    for (const error of [
+      { code: "57014", message: "canceled" },
       { code: "42703", message: "column shows does not exist" },
-    ];
-    expect(await countClockStationsForTeam(BUSINESS)).toBe(1);
-    expect(db.counted).toEqual([
-      ["clock_stations", "id", { count: "exact", head: true }],
-      ["eq", "business_id", BUSINESS],
-      ["eq", "shows", "clock_code"],
-      ["is", "stopped_at", null],
-      ["clock_stations", "id", { count: "exact", head: true }],
-      ["eq", "business_id", BUSINESS],
-      ["is", "stopped_at", null],
-    ]);
-  });
-
-  it("throws any other error", async () => {
-    db.countErrors = [{ code: "57014", message: "canceled" }];
-    await expect(countClockStationsForTeam(BUSINESS)).rejects.toMatchObject({
-      code: "57014",
-    });
+      { message: "" },
+    ]) {
+      db.counted = [];
+      db.countErrors = [error];
+      await expect(countClockStationsForTeam(BUSINESS)).rejects.toEqual(error);
+      expect(db.counted).toEqual([
+        ["clock_stations", "id", { count: "exact", head: true }],
+        ["eq", "business_id", BUSINESS],
+        ["eq", "shows", "clock_code"],
+        ["is", "stopped_at", null],
+      ]);
+    }
   });
 });
 
