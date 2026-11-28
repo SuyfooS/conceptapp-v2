@@ -787,15 +787,64 @@ test("the console twin's invite link is said where the focus was put, or puts th
   );
   const href = new URL((await focused.getAttribute("href")) ?? "");
   expect(`${href.origin}${href.pathname}`).toBe("https://wa.me/");
-  await expect(
-    page.getByRole("button", { name: ci.copy }).filter({ visible: true }),
-  ).toHaveAccessibleDescription(ci.linkFor.replace("{name}", YOAV));
+  // Two links on screen now, each copy saying whose it copies: יואב's row
+  // first, as the twin lists them (the twin never reads the page again).
+  const copies = page
+    .getByRole("button", { name: ci.copy })
+    .filter({ visible: true });
+  await expect(copies).toHaveCount(2);
+  await expect(copies.nth(0)).toHaveAccessibleDescription(
+    ci.linkFor.replace("{name}", YOAV),
+  );
+  await expect(copies.nth(1)).toHaveAccessibleDescription(
+    ci.linkFor.replace("{name}", RONIT),
+  );
   // No chat to any number anywhere on the twin.
   for (const link of await page.locator('a[href^="https://wa.me/"]').all()) {
     expect(await link.getAttribute("href")).toMatch(
       /^https:\/\/wa\.me\/\?text=/,
     );
   }
+});
+
+// A link that arrives in a shape gone off screen while its press was on
+// its way (a large tablet turned, a window made wider or narrower past the
+// computer's table): its "שליחה בוואטסאפ" can't take the focus, so the link
+// ready is said, and only then is the focus on the page's title, never the
+// title alone. A phone stays in one shape.
+test("the console twin's invite link made in a shape gone off screen is said, then the focus is on the title", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "phone", "a phone stays in one shape");
+  const polite = announcer(page, "polite");
+  await page.goto(CONSOLE_BUSINESS);
+  await page.waitForLoadState("networkidle");
+
+  let answer = () => {};
+  const held = new Promise<void>((resolve) => {
+    answer = () => resolve();
+  });
+  const business = (url: URL) => url.pathname === CONSOLE_BUSINESS;
+  await page.route(business, async (route) => {
+    if (route.request().method() === "POST") await held;
+    await route.continue();
+  });
+  const create = issueFor(page, YOAV);
+  await create.click();
+  await expect(create).toHaveAttribute("aria-busy", "true");
+  const wide = (page.viewportSize()?.width ?? 0) >= 1280;
+  await page.setViewportSize(
+    wide ? { width: 820, height: 1180 } : { width: 1440, height: 900 },
+  );
+  await heardSoFar(polite);
+  answer();
+  await expect(saidSince(polite, ci.ready.replace("{name}", YOAV))).toHaveCount(
+    1,
+  );
+  await expect(
+    page.getByRole("heading", { level: 1, name: "בר הים" }),
+  ).toBeFocused();
+  await page.unroute(business);
 });
 
 // A link refused (the twin's ?issue=refused) is a line of its own, drawn

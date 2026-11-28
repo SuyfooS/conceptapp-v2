@@ -428,14 +428,59 @@ test("the Team screen's import: a sheet saved at once with no link, each link se
         name: heT("app.team.link.newFor", { name: business.lapsed.name }),
       })
       .click();
-    await expect(
-      page.getByLabel(
-        heT("app.team.link.linkFor", { name: business.lapsed.name }),
+    const lapsedField = page.getByLabel(
+      heT("app.team.link.linkFor", { name: business.lapsed.name }),
+    );
+    await expect(lapsedField).toHaveValue(/\/join\/[A-Za-z0-9_-]{43}$/);
+    // On WhatsApp to their own number too, which takes the focus, with the
+    // team's sentence and the new link.
+    const lapsedWhatsapp = whatsapp(business.lapsed.name);
+    await expect(lapsedWhatsapp).toBeFocused();
+    const lapsedLink = await lapsedField.inputValue();
+    const lapsedHref = new URL(
+      (await lapsedWhatsapp.getAttribute("href")) ?? "",
+    );
+    expect(`${lapsedHref.origin}${lapsedHref.pathname}`).toBe(
+      `https://wa.me/${business.lapsed.e164.slice(1)}`,
+    );
+    expect(lapsedHref.searchParams.get("text")).toBe(
+      shareText(
+        heT("app.team.pending.message", {
+          business: isolateName(business.name),
+        }),
+        lapsedLink,
       ),
-    ).toHaveValue(/\/join\/[A-Za-z0-9_-]{43}$/);
+    );
     expect(
       await teamImportInvite(business, business.lapsed.e164),
     ).toMatchObject({ pending: false, open: true, runs: true });
+
+    // WhatsApp opened (kept out: wa.me answers with an empty page, whose
+    // tab is closed), the row says so, and folded and unfolded again the
+    // row still has its link and says so: the screen keeps both.
+    const expired = page.getByRole("list", { name: i.done.expired.title });
+    const openedThere = expired
+      .getByText(tt.pending.opened, { exact: true })
+      .filter({ visible: true });
+    await expect(openedThere).toHaveCount(0);
+    await page.context().route(
+      (url) => url.hostname === "wa.me",
+      (route) => route.fulfill({ contentType: "text/html", body: "" }),
+    );
+    const opened = page.context().waitForEvent("page");
+    await lapsedWhatsapp.click();
+    await (await opened).close();
+    await expect(openedThere).toHaveCount(1);
+    const fold = page.getByRole("button", {
+      name: new RegExp(
+        literal(heT("app.team.import.done.expired.count", { count: 1 })),
+      ),
+    });
+    await fold.click();
+    await expect(expired).toHaveCount(0);
+    await fold.click();
+    await expect(lapsedField).toHaveValue(lapsedLink);
+    await expect(openedThere).toHaveCount(1);
     // Making links sends nothing either.
     await sentNothing();
     await expectCleanPage(page);

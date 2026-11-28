@@ -2,7 +2,7 @@
 
 import { announce } from "@ui/announcer";
 import { Button } from "@ui/button";
-import { arrived, focusFirst } from "@ui/focus-after";
+import { arrived, focusFirst, focusOrSay } from "@ui/focus-after";
 import { Link2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useActionState, useLayoutEffect, useRef } from "react";
@@ -72,7 +72,9 @@ export function InviteLink({
       focusFirst([press.current]);
       return;
     }
-    if (!focusFirst([whatsapp.current])) announce(t("ready", { name }));
+    // Never the page's title in its place (the other shape on screen now):
+    // the link ready is said, then the title, as on /team (`ResendLink`).
+    focusOrSay([whatsapp.current], () => announce(t("ready", { name })));
   }, [state, name, t]);
 
   if (!state.link) {
