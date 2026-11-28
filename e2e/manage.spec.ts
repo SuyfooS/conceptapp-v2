@@ -31,6 +31,7 @@ const a = he.app.manage.activity;
 const s = he.modules.scheduling.settings;
 const clock = he.modules.time_clock.settings;
 const team = he.admin.settings;
+const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 async function expectCleanPage(page: Page) {
   await expect(page).toHaveTitle(/ConceptApp$/);
@@ -696,8 +697,11 @@ test("the team sees every setting and switches modules", async ({
 }, testInfo) => {
   await signIn(page, ADMIN, /\/admin$/);
   await page.goto("/admin/businesses/demo-restaurant");
+  // By the start of its name: a checklist row's words may name the settings.
   await page
-    .getByRole("link", { name: new RegExp(he.admin.setup.settings.row) })
+    .getByRole("link", {
+      name: new RegExp(`^${literal(he.admin.setup.settings.row)}`),
+    })
     .click();
   await expect(page).toHaveURL(/\/settings$/);
   await expect(

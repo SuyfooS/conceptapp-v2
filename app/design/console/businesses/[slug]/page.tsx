@@ -17,7 +17,9 @@ type Props = {
 // The real page for one business, with mock people. "cafe-noa" has just been
 // opened; "demo-restaurant" has everything done, and a role of its own to
 // view it as, the shell's "אחראי משמרת" on workers (the roles plan's R11c);
-// "bar-hayam" is stuck on an owner invite that ran out. `?issue=refused`:
+// "bar-hayam" is stuck on an owner invite that ran out, was opened before
+// the wizard asked about Shabbat, and shows its clock's code only at a
+// station while none runs (closing the pilot, PR 16). `?issue=refused`:
 // each invite link is refused, as one that couldn't be made.
 // `?shabbat=unsaved` on "cafe-noa": the wizard's answer about Shabbat could
 // not be saved as it opened (closing the pilot, PR 3).
@@ -39,6 +41,7 @@ async function Demo({ params, searchParams }: Props) {
   return (
     <BusinessView
       business={setup.business}
+      facts={setup.facts}
       listHref="/design/console"
       created={setup.created}
       shabbatUnsaved={setup.created && shabbat === "unsaved"}
