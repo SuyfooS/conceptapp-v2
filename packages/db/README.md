@@ -656,6 +656,14 @@ published a week, for the owner's first steps (a publish is never taken back). T
 business the screen was drawn for (payroll P3b), so a save from a tab left
 open never lands in another business.
 
+The general template's lists (`20261128000700_general_lists.sql`, closing the
+pilot, PR 9): its "פתיחה" and "סגירה" have no fixed recipient
+(`"recipient": null`, the editor's "בכל פעם"), so whoever sends one chooses
+who each time instead of every worker, and their note reads "משהו שחשוב לדעת
+למשמרת הבאה". It is a version of the template (5 to 6), so only businesses
+opened from it afterwards get it: `apply_template` copies a template's lists
+once, and a business opened before keeps its own (`general_lists.test.sql`).
+
 Lists' times (L4, `20261110001300_list_schedules.sql`) run in the database:
 `private.lists_tick`, every minute (the pg_cron job `lists`, pure SQL, no
 secret; off locally and in CI) and at the end of a demo reset, opens for each

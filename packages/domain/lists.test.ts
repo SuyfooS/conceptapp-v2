@@ -304,6 +304,26 @@ describe("a template's lists", () => {
     ).toBe(false);
   });
 
+  // The general template's opening and closing (closing the pilot, PR 9):
+  // no fixed recipient, the editor's "בכל פעם". The template writes it
+  // null, a business opened from it reads it back left out, and both are
+  // the same list; the send screen then starts with nobody chosen.
+  it("may go to nobody fixed, written null or left out, so the sender chooses each time", () => {
+    const { recipient: _named, ...unnamed } = seed();
+    const written = listTemplateSeed.parse(seed({ recipient: null }));
+    expect(written.recipient).toBeNull();
+    expect(listTemplateSeed.parse(unnamed)).toEqual(written);
+    expect(listTemplateProblem([written], [], [])).toBeNull();
+    expect(sendDefaults(written.recipient, null, [])).toEqual({
+      kind: "person",
+      department: null,
+      shift: null,
+      role: null,
+      namedRole: null,
+      gone: false,
+    });
+  });
+
   it("have each key once, and from 1 to 60 items", () => {
     expect(listTemplateSeeds.safeParse([seed(), seed()]).success).toBe(false);
     expect(listTemplateSeed.safeParse(seed({ items: [] })).success).toBe(false);
