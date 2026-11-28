@@ -1,4 +1,4 @@
-import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -10,6 +10,8 @@ import {
   LOCAL_API,
   MANIFEST_FORMAT,
   openBackup,
+  REPO_ROOT,
+  StorageError,
   writeBackup,
 } from "./backup-files.mjs";
 import { answers, fakeStorage, lines } from "./fake-storage";
@@ -26,9 +28,11 @@ import {
 // the in-memory stand-in of ./fake-storage. What it keeps: the backup read
 // to its end and every SHA-256 checked before any question about a project;
 // a project typed twice, never conceptapp-dev's, production's or the one the
-// backup came from; the app's buckets there, and nothing overwritten unless
-// asked; each upload only after its file matched the first reading; counts
-// on the screen, never a file's name or the key.
+// backup came from, and the local stack only for a backup of it; the app's
+// buckets there, a hosted one that knows the backup's files (whatever ref
+// was typed), and nothing overwritten unless asked; each upload only after
+// its file matched the first reading; counts on the screen, never a file's
+// name or the key, and "maybe some went up" only once one did. Node 20, too.
 
 const FAST = { N: 2 ** 14, r: 8, p: 1 };
 const PASSPHRASE = "correct horse battery staple";
@@ -44,6 +48,23 @@ const SEED = {
   documents: { "b-1/p-1/note.pdf": "%PDF-1.7 note" },
 };
 const PATHS = Object.values(SEED).flatMap((files) => Object.keys(files));
+
+/**
+ * A temporary project restored from the database's backup, as the drill
+ * makes it: every file's row (listed), none of the files themselves.
+ */
+const restoredCopy = (options: Parameters<typeof fakeStorage>[1] = {}) =>
+  fakeStorage(
+    Object.fromEntries(
+      Object.entries(SEED).map(([bucket, files]) => [
+        bucket,
+        Object.fromEntries(
+          Object.keys(files).map((path) => [path, "a row with no file"]),
+        ),
+      ]),
+    ),
+    options,
+  );
 
 const made: string[] = [];
 afterEach(() => {
@@ -64,6 +85,7 @@ async function aBackup(source = SOURCE) {
     now: NOW,
     out: lines().out,
     kdf: FAST,
+    staging: parent,
   });
   return { file, parent };
 }
@@ -87,7 +109,6 @@ describe("the project it writes to", () => {
         refused,
       ),
     ).toBe("shape");
-    expect(targetRefusal("local", "local", refused)).toBeNull();
     expect(targetOrigin("local")).toBe(LOCAL_API);
     expect(targetOrigin(TEMP)).toBe(`https://${TEMP}.supabase.co`);
   });
@@ -96,10 +117,12 @@ describe("the project it writes to", () => {
     expect(targetRefusal(DEV, DEV, refused)).toBe("dev");
     expect(targetRefusal(TEMP, TEMP, { ...refused, prod: TEMP })).toBe("prod");
     expect(targetRefusal(SOURCE, SOURCE, refused)).toBe("source");
-    // A backup of the local stack goes back into it, for the demo.
+    // A backup of the local stack goes back into it, for the demo; a real
+    // project's never goes to the computer where sessions and tests run.
     expect(
       targetRefusal("local", "local", { ...refused, source: "local" }),
     ).toBeNull();
+    expect(targetRefusal("local", "local", refused)).toBe("local");
   });
 });
 
@@ -174,6 +197,43 @@ describe("a restore", () => {
         .filter((call) => call.kind === "upload")
         .every((call) => call.upsert === true),
     ).toBe(true);
+  });
+
+  it("refuses a hosted project that knows none of the backup's files, even with overwrite", async () => {
+    // conceptapp-dev, typed by mistake as the temporary project: the app's
+    // buckets, none of production's paths. A copy restored from the
+    // database's backup lists them all.
+    const { file } = await aBackup();
+    const opened = await openBackup(file, PASSPHRASE);
+    const dev = fakeStorage({ avatars: { "demo-person/a.jpg": "demo" } });
+    const progress = { uploads: 0 };
+    expect(
+      await restoreInto({
+        client: dev,
+        file,
+        passphrase: PASSPHRASE,
+        opened,
+        overwrite: true,
+        mustKnow: true,
+        progress,
+      }),
+    ).toEqual({ refused: "unrelated" });
+    expect(dev.calls.some((call) => call.kind === "upload")).toBe(false);
+    expect(progress.uploads).toBe(0);
+    // The copy the drill makes goes ahead, and counts what it began.
+    const copy = restoredCopy();
+    const restored = await restoreInto({
+      client: copy,
+      file,
+      passphrase: PASSPHRASE,
+      opened,
+      overwrite: true,
+      mustKnow: true,
+      progress,
+    });
+    expect(restored.refused).toBeNull();
+    expect(progress.uploads).toBe(PATHS.length);
+    expect(copy.text("documents", "b-1/p-1/note.pdf")).toBe("%PDF-1.7 note");
   });
 
   it("refuses a project without the app's buckets, uploading nothing", async () => {
@@ -291,9 +351,10 @@ describe("the command", () => {
   it("checks the backup, asks for the project twice and its key hidden, and uploads", async () => {
     const { file } = await aBackup();
     const { code, printed, shown, secret, clients, target } = await run(
-      [file],
+      [file, "--overwrite"],
       [DEV, "", TEMP, TEMP],
       [PASSPHRASE, SECRET],
+      { target: restoredCopy() },
     );
     expect(code).toBe(0);
     expect(shown.asked).toHaveLength(4);
@@ -361,12 +422,13 @@ describe("the command", () => {
     expect(printed.text()).toContain("SHA-256");
   });
 
-  it("refuses conceptapp-dev, production, the backup's own project and two typings that differ", async () => {
+  it("refuses conceptapp-dev, production, the backup's own project, the local stack and two typings that differ", async () => {
     const { file } = await aBackup();
     for (const visible of [
       [DEV, "", DEV, DEV],
       [DEV, TEMP, TEMP, TEMP],
       [DEV, "", SOURCE, SOURCE],
+      [DEV, "", "local", "local"],
       [DEV, "", TEMP, `${TEMP.slice(0, -1)}x`],
       ["not-a-ref"],
     ]) {
@@ -378,6 +440,47 @@ describe("the command", () => {
       // The project's key is never asked for a project refused.
       expect(secret.asked).toHaveLength(1);
     }
+  });
+
+  it("uploads nothing to a project that knows none of the files, whatever was typed for conceptapp-dev", async () => {
+    // A wrong answer at dev's question, then dev's real ref as the temporary
+    // project and dev's key, with --overwrite as the drill runs it.
+    const { file } = await aBackup();
+    const dev = fakeStorage({ avatars: { "demo-person/a.jpg": "demo" } });
+    const { code, printed } = await run(
+      [file, "--overwrite"],
+      ["wrongwrongwrongwrong", "", DEV, DEV],
+      [PASSPHRASE, SECRET],
+      { target: dev },
+    );
+    expect(code).toBe(2);
+    expect(dev.calls.some((call) => call.kind === "upload")).toBe(false);
+    expect(printed.written.at(-1)).toContain(
+      "הפרויקט הזה לא מכיר אף קובץ מהגיבוי",
+    );
+    expect(printed.written.at(-1)).toContain("לא עלה כלום");
+  });
+
+  it("says nothing went up when the project fails before the first upload", async () => {
+    const { file } = await aBackup();
+    const copy = restoredCopy();
+    const refusing = {
+      ...copy,
+      listBuckets: async () => {
+        throw new StorageError(401);
+      },
+    };
+    const { code, printed } = await run(
+      [file, "--overwrite"],
+      [DEV, "", TEMP, TEMP],
+      [PASSPHRASE, SECRET],
+      { target: refusing as ReturnType<typeof fakeStorage> },
+    );
+    expect(code).toBe(1);
+    expect(printed.written.at(-1)).toBe(
+      "Storage לא קיבל את המפתח: הוא לא המפתח הסודי של הפרויקט הזה. לא עלה כלום.",
+    );
+    expect(printed.text()).not.toContain("אולי עלו");
   });
 
   it("refuses the publishable key, connecting to nothing", async () => {
@@ -441,12 +544,11 @@ describe("the command", () => {
 
   it("ends with 1 when a file didn't go up", async () => {
     const { file } = await aBackup();
-    const target = fakeStorage(
-      {},
-      { uploadFails: { "avatars/u-1/a.jpg": 400 } },
-    );
+    const target = restoredCopy({
+      uploadFails: { "avatars/u-1/a.jpg": 400 },
+    });
     const { code, printed } = await run(
-      [file],
+      [file, "--overwrite"],
       [DEV, "", TEMP, TEMP],
       [PASSPHRASE, SECRET],
       { target },
@@ -456,5 +558,37 @@ describe("the command", () => {
       "[x] avatars: 0 קבצים עלו, וקובץ אחד לא עלה",
     );
     expect(printed.text()).not.toContain("u-1");
+  });
+});
+
+describe("the script", () => {
+  it("is plain Node 20: Node's own modules and the backup's, no package, nothing newer", () => {
+    const code = readFileSync(
+      join(REPO_ROOT, "tooling/restore-files.mjs"),
+      "utf8",
+    )
+      .split("\n")
+      .filter((line) => !/^\s*(\/\/|\*|\/\*\*)/.test(line))
+      .join("\n");
+    const imports = [...code.matchAll(/^import\s[^;]*?\sfrom\s+"([^"]+)";/gm)];
+    expect(imports.length).toBeGreaterThan(0);
+    expect(imports).toHaveLength(code.match(/^import\s/gm)?.length ?? 0);
+    for (const [, from] of imports) {
+      expect(from).toMatch(/^(node:|\.\/backup-files\.mjs$)/);
+    }
+    expect(code).not.toMatch(/\brequire\(|\bimport\(/);
+    expect(code).not.toContain("@supabase/");
+    for (const newer of [
+      "import.meta.dirname",
+      "import.meta.filename",
+      "Promise.withResolvers",
+      "Object.groupBy",
+      "Map.groupBy",
+      "Array.fromAsync",
+      "process.getBuiltinModule",
+      ".union(",
+    ]) {
+      expect(code, newer).not.toContain(newer);
+    }
   });
 });

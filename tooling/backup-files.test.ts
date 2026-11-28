@@ -9,6 +9,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, sep } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -17,24 +18,34 @@ import {
   BackupError,
   BUCKETS,
   backup,
+  CANCELLED,
   Cancelled,
   CI_REFUSAL,
+  cleanUpOnStop,
+  defaultStaging,
   folderRefusal,
   HEADER_BYTES,
   KDF,
   keyKind,
+  leftoverLine,
   listObjects,
   MANIFEST_FORMAT,
   main,
   NO_TERMINAL,
   NotATerminal,
   openBackup,
+  physicalPath,
+  plainLeftLine,
   projectOf,
   REPO_ROOT,
   Refusal,
+  SEALING,
   StorageError,
   stampOf,
   storageClient,
+  storageWords,
+  sweptLine,
+  within,
   writeBackup,
 } from "./backup-files.mjs";
 import { answers, fakeStorage, lines } from "./fake-storage";
@@ -44,11 +55,14 @@ import { answers, fakeStorage, lines } from "./fake-storage";
 // Storage is the in-memory stand-in of ./fake-storage, and the folders are
 // fresh ones under the system's temp folder, outside any checkout. What it
 // keeps: no plain file ever inside this repo or another checkout, whichever
-// way a path is read (its words, its links, `..`); a manifest with each
-// file's bucket, path, size, content type and SHA-256; one encrypted file
-// that opens with its passphrase alone, and fails when it is the wrong one
-// or the file changed; the plain folder gone whatever happened; and counts
-// on the screen, never a file's name, the address or the key.
+// way a path is read (its words, its links, `..`), and the plain files
+// staged apart from the folder named; a manifest with each file's bucket,
+// path, size, content type and SHA-256; one encrypted file that opens with
+// its passphrase alone, and fails when it is the wrong one or the file
+// changed; the plain folder gone whatever happened (a failure before or
+// after the encrypted file exists, a signal, an earlier run's leftover), or
+// its path said when it can't go; and counts and the project's ref on the
+// screen, never a file's name or the key. Plain Node 20, too.
 
 /** Fast scrypt for the tests; KDF itself is checked once. */
 const FAST = { N: 2 ** 14, r: 8, p: 1 };
@@ -109,11 +123,18 @@ const SEED = {
 const SEED_PATHS = Object.values(SEED).flatMap((files) => Object.keys(files));
 const SEED_TEXTS = Object.values(SEED).flatMap((files) => Object.values(files));
 
+type BackupOptions = Parameters<typeof backup>[0];
+
+/**
+ * A backup of `seed` into a new folder, the plain files staged in that same
+ * folder (so `tree(parent)` sees anything left behind) unless `extra` says.
+ */
 async function backedUp(
   seed: Record<string, Record<string, string>> = SEED,
   options: Parameters<typeof fakeStorage>[1] = {},
+  extra: Partial<BackupOptions> = {},
 ) {
-  const parent = scratch();
+  const parent = extra.parent ?? scratch();
   const storage = fakeStorage(seed, options);
   const printed = lines();
   const result = await backup({
@@ -125,9 +146,37 @@ async function backedUp(
     out: printed.out,
     kdf: FAST,
     sleep: async () => {},
+    staging: parent,
+    ...extra,
   });
   return { parent, storage, printed, result };
 }
+
+/** fs.rm, but the folder whose name ends with `stuck` never goes, as when Windows holds a file in it. */
+function stuckOn(stuck: string) {
+  const busy = Object.assign(new Error("resource busy or locked"), {
+    code: "EBUSY",
+    syscall: "rmdir",
+  });
+  return async (
+    path: string,
+    options: {
+      recursive: boolean;
+      force: boolean;
+      maxRetries: number;
+      retryDelay: number;
+    },
+  ) => {
+    if (path.endsWith(stuck)) throw busy;
+    await rm(path, options);
+  };
+}
+
+/** What a backup says to delete if it is stopped: nothing yet. */
+const nothingYet = () => ({
+  plain: null as string | null,
+  partial: null as string | null,
+});
 
 describe("the buckets", () => {
   it("are the ones the migrations create, every one", () => {
@@ -224,10 +273,69 @@ describe("where the plain files may go", () => {
         now: NOW,
         out: lines().out,
         kdf: FAST,
+        staging: scratch(),
       }),
     ).rejects.toEqual(new Refusal("repo"));
     expect(storage.calls).toEqual([]);
     expect(readdirSync(REPO_ROOT)).not.toContain("never-made");
+  });
+
+  it("is never inside it when only the words lead there: a link out, then ..", async () => {
+    // fakeRepo/out leads elsewhere. Where the link leads, out/../x is
+    // elsewhere's neighbour, outside; Windows and Node's mkdir read `..`
+    // from the words and make fakeRepo/x. Only the words' reading sees it.
+    const fakeRepo = scratch();
+    link(scratch(), join(fakeRepo, "out"));
+    const input = [fakeRepo, "out", "..", "x"].join(sep);
+    expect(within(physicalPath(input), fakeRepo)).toBe(false);
+    expect(folderRefusal(input, { repo: fakeRepo })).toBe("repo");
+    const storage = fakeStorage(SEED);
+    await expect(
+      backup({
+        client: storage,
+        source: REF,
+        parent: input,
+        passphrase: PASSPHRASE,
+        now: NOW,
+        out: lines().out,
+        kdf: FAST,
+        repo: fakeRepo,
+        staging: scratch(),
+      }),
+    ).rejects.toEqual(new Refusal("repo"));
+    expect(storage.calls).toEqual([]);
+    expect(readdirSync(fakeRepo)).toEqual(["out"]);
+  });
+
+  it("is asked again once the folder is made, where its links lead by then", async () => {
+    // The link is moved into the repo after the first check: the folder is
+    // made there, and the second check stops it before any plain file.
+    const fakeRepo = scratch();
+    const at = link(scratch(), join(scratch(), "l"));
+    const storage = fakeStorage(SEED);
+    const moving = {
+      ...storage,
+      listBuckets: async () => {
+        unlinkSync(at);
+        symlinkSync(fakeRepo, at, "junction");
+        return storage.listBuckets();
+      },
+    };
+    await expect(
+      backup({
+        client: moving,
+        source: REF,
+        parent: join(at, "x"),
+        passphrase: PASSPHRASE,
+        now: NOW,
+        out: lines().out,
+        kdf: FAST,
+        repo: fakeRepo,
+        staging: scratch(),
+      }),
+    ).rejects.toEqual(new Refusal("repo"));
+    expect(tree(fakeRepo)).toEqual(["x"]);
+    expect(storage.calls.map((call) => call.kind)).toEqual(["buckets"]);
   });
 });
 
@@ -477,6 +585,7 @@ describe("a backup", () => {
       "[v] list-photos: קובץ אחד (10 B)",
       "[v] chat-files: 3 קבצים (32 B)",
       "[v] documents: קובץ אחד (19 B)",
+      `[i] ${SEALING}`,
     ]);
     for (const secret of [...SEED_PATHS, ...SEED_TEXTS, "biz-1", "sick"]) {
       expect(printed.text()).not.toContain(secret);
@@ -531,12 +640,13 @@ describe("a backup", () => {
         now: NOW,
         out: lines().out,
         kdf: FAST,
+        staging: parent,
       }),
     ).rejects.toEqual(new Refusal("buckets"));
     expect(tree(parent)).toEqual([]);
   });
 
-  it("deletes the plain folder and the half-written file when it stops half way", async () => {
+  it("deletes the plain folder when it stops half way", async () => {
     const parent = scratch();
     const storage = fakeStorage(SEED);
     const failing = {
@@ -550,25 +660,210 @@ describe("a backup", () => {
         return storage.list(bucket, prefix, page);
       },
     };
-    const work = {
-      plain: null as string | null,
-      partial: null as string | null,
-    };
+    const work = nothingYet();
     await expect(
-      backup({
-        client: failing,
-        source: REF,
-        parent,
-        passphrase: PASSPHRASE,
-        now: NOW,
-        out: lines().out,
-        kdf: FAST,
-        work,
-        sleep: async () => {},
-      }),
+      backedUp(SEED, {}, { parent, client: failing, work }),
     ).rejects.toThrow("the network went");
     expect(tree(parent)).toEqual([]);
     expect(work).toEqual({ plain: null, partial: null });
+  });
+
+  it("stops, and leaves nothing, when a plain file changed before it was encrypted", async () => {
+    // The first file is overwritten on the disk while the last downloads:
+    // read back for the encryption, its SHA-256 isn't the downloaded one.
+    const parent = scratch();
+    const storage = fakeStorage(SEED);
+    const first = join(
+      parent,
+      "files-2026-11-28-0905",
+      "objects",
+      "0000001.bin",
+    );
+    const changing = {
+      ...storage,
+      download: async (bucket: string, path: string) => {
+        const bytes = await storage.download(bucket, path);
+        if (bucket === "documents") writeFileSync(first, "not the avatar");
+        return bytes;
+      },
+    };
+    const created: string[] = [];
+    const write: typeof writeBackup = (file, manifest, read, pass, options) =>
+      writeBackup(file, manifest, read, pass, {
+        ...options,
+        onCreate: () => {
+          created.push(basename(file));
+          options?.onCreate?.();
+        },
+      });
+    const work = nothingYet();
+    await expect(
+      backedUp(SEED, {}, { parent, client: changing, work, write }),
+    ).rejects.toEqual(new BackupError("hash"));
+    // The encrypted file was begun, and went with the plain folder.
+    expect(created).toEqual(["files-2026-11-28-0905.backup"]);
+    expect(tree(parent)).toEqual([]);
+    expect(work).toEqual({ plain: null, partial: null });
+  });
+
+  it("stops, and leaves nothing, when the encrypted file isn't what was written", async () => {
+    const cases: [string, typeof writeBackup][] = [
+      [
+        "a byte changed on the disk",
+        async (...args) => {
+          const digest = await writeBackup(...args);
+          const bytes = readFileSync(args[0]);
+          bytes[HEADER_BYTES + 10] = (bytes[HEADER_BYTES + 10] ?? 0) ^ 0x01;
+          writeFileSync(args[0], bytes);
+          return digest;
+        },
+      ],
+      [
+        "another manifest read back",
+        async (...args) => {
+          await writeBackup(...args);
+          return "0".repeat(64);
+        },
+      ],
+    ];
+    for (const [name, write] of cases) {
+      const parent = scratch();
+      const work = nothingYet();
+      await expect(
+        backedUp(SEED, {}, { parent, work, write }),
+        name,
+      ).rejects.toEqual(new BackupError("damaged"));
+      expect(tree(parent), name).toEqual([]);
+      expect(work, name).toEqual({ plain: null, partial: null });
+    }
+  });
+
+  it("keeps a checked backup, and says where the plain folder is, when it can't be deleted", async () => {
+    const work = nothingYet();
+    const { parent, result } = await backedUp(
+      SEED,
+      {},
+      { work, remove: stuckOn("files-2026-11-28-0905") },
+    );
+    expect(result.plainLeft).toBe(join(parent, "files-2026-11-28-0905"));
+    expect(work).toEqual({ plain: result.plainLeft, partial: null });
+    expect(tree(parent)).toContain("files-2026-11-28-0905.backup");
+    expect(tree(parent)).toContain("files-2026-11-28-0905/objects/0000001.bin");
+    const { manifest } = await openBackup(result.file, PASSPHRASE);
+    expect(manifest.objects).toHaveLength(SEED_PATHS.length);
+  });
+
+  it("deletes the plain folders an earlier run left, and nothing else", async () => {
+    const parent = scratch();
+    // A run stopped half way (a closed window, a power cut), and one stopped
+    // as its folder was made.
+    mkdirSync(join(parent, "files-2026-11-27-2200", "objects"), {
+      recursive: true,
+    });
+    writeFileSync(
+      join(parent, "files-2026-11-27-2200", "objects", "0000001.bin"),
+      "a document",
+    );
+    mkdirSync(join(parent, "files-2026-11-27-2300"));
+    // Not shaped like a plain folder: someone's own, left alone.
+    mkdirSync(join(parent, "files-2026-11-27-2330"));
+    writeFileSync(join(parent, "files-2026-11-27-2330", "notes.txt"), "mine");
+    const { printed } = await backedUp(SEED, {}, { parent });
+    expect(printed.written).toContain(`[i] ${sweptLine(2)}`);
+    expect(tree(parent)).toEqual([
+      "files-2026-11-27-2330",
+      "files-2026-11-27-2330/notes.txt",
+      "files-2026-11-28-0905.backup",
+    ]);
+    expect(sweptLine(1)).toBe("נמצאה תיקייה גלויה מגיבוי שנקטע, והיא נמחקה.");
+  });
+
+  it("downloads nothing while a plain folder an earlier run left won't go, and names it", async () => {
+    const parent = scratch();
+    const left = join(parent, "files-2026-11-27-2200");
+    mkdirSync(join(left, "objects"), { recursive: true });
+    writeFileSync(join(left, "objects", "0000001.bin"), "a document");
+    const storage = fakeStorage(SEED);
+    const refusal = await backedUp(
+      SEED,
+      {},
+      { parent, client: storage, remove: stuckOn("files-2026-11-27-2200") },
+    ).catch((caught: unknown) => caught);
+    expect(refusal).toBeInstanceOf(Refusal);
+    expect(refusal).toMatchObject({ kind: "leftover", path: left });
+    expect(storage.calls.map((call) => call.kind)).toEqual(["buckets"]);
+    expect(tree(parent)).toEqual([
+      "files-2026-11-27-2200",
+      "files-2026-11-27-2200/objects",
+      "files-2026-11-27-2200/objects/0000001.bin",
+    ]);
+  });
+
+  it("stages the plain files apart from the folder named, which may be a synced one", async () => {
+    const parent = scratch();
+    const staging = scratch();
+    const storage = fakeStorage(SEED);
+    const during: { named: string[]; staged: string[] }[] = [];
+    const watched = {
+      ...storage,
+      download: async (bucket: string, path: string) => {
+        const bytes = await storage.download(bucket, path);
+        if (bucket === "documents") {
+          during.push({ named: tree(parent), staged: tree(staging) });
+        }
+        return bytes;
+      },
+    };
+    await backedUp(SEED, {}, { parent, staging, client: watched });
+    // Six files down before the last, all in the staging folder.
+    expect(during).toEqual([
+      {
+        named: [],
+        staged: expect.arrayContaining([
+          "files-2026-11-28-0905/objects/0000006.bin",
+        ]),
+      },
+    ]);
+    expect(tree(parent)).toEqual(["files-2026-11-28-0905.backup"]);
+    expect(tree(staging)).toEqual([]);
+    // By default the system's temp folder, outside any checkout.
+    expect(within(defaultStaging(), tmpdir())).toBe(true);
+    expect(folderRefusal(defaultStaging())).toBeNull();
+  });
+
+  it("finds a file that a deletion elsewhere moved past a page while it listed", async () => {
+    // Storage pages by offset: with 000 deleted between the first page and
+    // the second, 100 moves back to the first page's end, and neither
+    // brings it. The second listing does.
+    const seed: Record<string, string> = {};
+    for (let n = 0; n < 150; n += 1) {
+      seed[`biz/list/${String(n).padStart(3, "0")}.jpg`] = `photo ${n}`;
+    }
+    const storage = fakeStorage({ "list-photos": seed });
+    let deleted = false;
+    const shifting = {
+      ...storage,
+      list: async (
+        bucket: string,
+        prefix: string,
+        page: { limit: number; offset: number },
+      ) => {
+        if (!deleted && prefix === "biz/list" && page.offset === 100) {
+          storage.store.get("list-photos")?.delete("biz/list/000.jpg");
+          deleted = true;
+        }
+        return storage.list(bucket, prefix, page);
+      },
+    };
+    const { result } = await backedUp({}, {}, { client: shifting });
+    const { manifest } = await openBackup(result.file, PASSPHRASE);
+    const paths = manifest.objects.map((item) => item.path);
+    expect(paths).toContain("biz/list/100.jpg");
+    expect(paths).toHaveLength(149);
+    // Listed, then deleted before it came down: said as missing.
+    expect(manifest.missing).toEqual([
+      { bucket: "list-photos", path: "biz/list/000.jpg" },
+    ]);
   });
 
   it("never writes over a backup already there", async () => {
@@ -583,6 +878,7 @@ describe("a backup", () => {
         now: NOW,
         out: lines().out,
         kdf: FAST,
+        staging: parent,
       }),
     ).rejects.toEqual(new Refusal("exists"));
     expect(
@@ -893,18 +1189,30 @@ describe("the command", () => {
       env = {},
       storage = fakeStorage(SEED),
       parent = scratch(),
+      staging = parent,
+      remove,
+      work = nothingYet(),
     }: {
       env?: Record<string, string>;
       storage?: ReturnType<typeof fakeStorage>;
       parent?: string;
+      staging?: string;
+      remove?: ReturnType<typeof stuckOn>;
+      work?: ReturnType<typeof nothingYet>;
     } = {},
   ) {
     const printed = lines();
+    // One queue, in the order asked; `shown` records what was asked visibly.
     const typed = answers(...given);
+    const shown: string[] = [];
     const made: { origin: string; key: string }[] = [];
     const code = await main(args, {
       env,
       out: printed.out,
+      ask: (question: string) => {
+        shown.push(question);
+        return typed.ask(question);
+      },
       askSecret: typed.ask,
       client: (origin: string, key: string) => {
         made.push({ origin, key });
@@ -914,17 +1222,22 @@ describe("the command", () => {
       kdf: FAST,
       sleep: async () => {},
       parent,
+      staging,
+      remove,
+      work,
     });
-    return { code, printed, typed, made, parent, storage };
+    return { code, printed, typed, shown, made, parent, storage, work };
   }
 
-  it("asks everything with nothing shown, backs up, and prints counts but never the address or the key", async () => {
-    const { code, printed, typed, made, parent } = await run(
+  it("asks the address shown and the rest hidden, backs up, and prints counts and the ref but never the key", async () => {
+    const { code, printed, typed, shown, made, parent } = await run(
       [],
       [ADDRESS, SECRET, PASSPHRASE, PASSPHRASE],
     );
     expect(code).toBe(0);
     expect(typed.asked).toHaveLength(4);
+    // The address alone is shown as it is typed: it is no secret.
+    expect(shown).toEqual([typed.asked[0]]);
     expect(made).toEqual([{ origin: ADDRESS, key: SECRET }]);
     expect(tree(parent)).toEqual(["files-2026-11-28-0905.backup"]);
     const text = printed.text();
@@ -932,9 +1245,100 @@ describe("the command", () => {
     expect(text).toContain(
       `הגיבוי: ${join(parent, "files-2026-11-28-0905.backup")}`,
     );
-    for (const secret of [SECRET, REF, PASSPHRASE, ...SEED_PATHS]) {
+    // The ref, before anything is downloaded and again in the summary, so a
+    // backup of the wrong project is seen.
+    const ref = `[i] הפרויקט: ${REF}`;
+    expect(printed.written.filter((line) => line === ref)).toHaveLength(2);
+    expect(printed.written.indexOf(ref)).toBeLessThan(
+      printed.written.indexOf("[v] avatars: 2 קבצים (20 B)"),
+    );
+    expect(text).toContain("[v] התיקייה הגלויה נמחקה");
+    expect(printed.written.at(-1)).toBe("הכול תקין.");
+    for (const secret of [SECRET, ADDRESS, PASSPHRASE, ...SEED_PATHS]) {
       expect(text).not.toContain(secret);
     }
+  });
+
+  it("keeps the checked backup when the plain folder won't go, says where it is, and ends with 1", async () => {
+    const { code, printed, work, parent } = await run(
+      [],
+      [ADDRESS, SECRET, PASSPHRASE, PASSPHRASE],
+      { remove: stuckOn("files-2026-11-28-0905") },
+    );
+    const plain = join(parent, "files-2026-11-28-0905");
+    expect(code).toBe(1);
+    expect(work.plain).toBe(plain);
+    const text = printed.text();
+    expect(text).toContain("[v] הקובץ המוצפן נפתח שוב ונבדק");
+    expect(printed.written).toContain(plainLeftLine(plain));
+    expect(text).not.toContain("התיקייה הגלויה נמחקה");
+    expect(text).not.toContain("הכול תקין");
+    expect(tree(parent)).toContain("files-2026-11-28-0905.backup");
+  });
+
+  it("says no backup was saved, and where the plain folder is, when it stops and the folder won't go", async () => {
+    const storage = fakeStorage(SEED);
+    const failing = {
+      ...storage,
+      list: async (
+        bucket: string,
+        prefix: string,
+        page: { limit: number; offset: number },
+      ) => {
+        if (bucket === "documents") throw new StorageError(503);
+        return storage.list(bucket, prefix, page);
+      },
+    };
+    const { code, printed, parent } = await run(
+      [],
+      [ADDRESS, SECRET, PASSPHRASE, PASSPHRASE],
+      {
+        storage: failing as ReturnType<typeof fakeStorage>,
+        remove: stuckOn("files-2026-11-28-0905"),
+      },
+    );
+    expect(code).toBe(1);
+    expect(printed.written).toContain("Storage ענה 503. שום גיבוי לא נשמר.");
+    expect(printed.written).toContain(
+      plainLeftLine(join(parent, "files-2026-11-28-0905")),
+    );
+    expect(printed.text()).not.toContain("לא נשאר במחשב אף קובץ גלוי");
+    // The same failure with the folder gone says so.
+    const gone = await run([], [ADDRESS, SECRET, PASSPHRASE, PASSPHRASE], {
+      storage: failing as ReturnType<typeof fakeStorage>,
+    });
+    expect(gone.printed.written).toContain(
+      "Storage ענה 503. שום גיבוי לא נשמר, ולא נשאר במחשב אף קובץ גלוי.",
+    );
+    expect(tree(gone.parent)).toEqual([]);
+  });
+
+  it("names a plain folder an earlier run left that won't go, and downloads nothing", async () => {
+    const parent = scratch();
+    const left = join(parent, "files-2026-11-27-2200");
+    mkdirSync(join(left, "objects"), { recursive: true });
+    const { code, printed, storage } = await run(
+      [],
+      [ADDRESS, SECRET, PASSPHRASE, PASSPHRASE],
+      { parent, remove: stuckOn("files-2026-11-27-2200") },
+    );
+    expect(code).toBe(2);
+    expect(printed.written.at(-1)).toBe(leftoverLine(left));
+    expect(storage.calls.map((call) => call.kind)).toEqual(["buckets"]);
+  });
+
+  it("says the disk, not the project, when the folder can't be written", async () => {
+    const outside = scratch();
+    const notAFolder = join(outside, "a-file");
+    writeFileSync(notAFolder, "not a folder");
+    const { code, printed } = await run(
+      [notAFolder],
+      [ADDRESS, SECRET, PASSPHRASE, PASSPHRASE],
+      { staging: scratch() },
+    );
+    expect(code).toBe(1);
+    expect(printed.text()).toContain("הבעיה במחשב שלך ולא בפרויקט");
+    expect(printed.text()).not.toContain("אין תשובה מהפרויקט");
   });
 
   it("takes the address and the key from the session, and says so", async () => {
@@ -1011,15 +1415,151 @@ describe("the command", () => {
 
   it("says it needs a terminal when there is none", async () => {
     const printed = lines();
+    const none = async () => {
+      throw new NotATerminal();
+    };
     const code = await main([], {
       env: {},
       out: printed.out,
-      askSecret: async () => {
-        throw new NotATerminal();
-      },
+      ask: none,
+      askSecret: none,
       parent: scratch(),
     });
     expect(code).toBe(2);
     expect(printed.written.at(-1)).toBe(NO_TERMINAL);
+  });
+});
+
+describe("stopping half way", () => {
+  /** A plain folder with a file, and a half-written backup beside it. */
+  function halfDone() {
+    const folder = scratch();
+    const work = {
+      plain: join(folder, "files-2026-11-28-0905") as string | null,
+      partial: join(folder, "files-2026-11-28-0905.backup") as string | null,
+    };
+    mkdirSync(join(folder, "files-2026-11-28-0905", "objects"), {
+      recursive: true,
+    });
+    writeFileSync(
+      join(folder, "files-2026-11-28-0905", "objects", "0000001.bin"),
+      "a document",
+    );
+    writeFileSync(join(folder, "files-2026-11-28-0905.backup"), "half");
+    return { folder, work };
+  }
+
+  function processOf(platform: string) {
+    const listeners = new Map<string, () => void>();
+    const exits: number[] = [];
+    return {
+      listeners,
+      exits,
+      proc: {
+        platform,
+        once: (signal: string, listener: () => void) =>
+          listeners.set(signal, listener),
+        exit: (code: number) => exits.push(code),
+      },
+    };
+  }
+
+  it("deletes both on Ctrl+C, a closed window, Ctrl+Break or a kill, and says so", () => {
+    for (const [platform, signals] of [
+      ["win32", ["SIGINT", "SIGHUP", "SIGBREAK", "SIGTERM"]],
+      ["linux", ["SIGINT", "SIGHUP", "SIGTERM"]],
+    ] as const) {
+      const { folder, work } = halfDone();
+      const { listeners, exits, proc } = processOf(platform);
+      const said: string[] = [];
+      cleanUpOnStop(work, { proc, error: (text) => said.push(text) });
+      expect([...listeners.keys()], platform).toEqual(signals);
+      // Windows sends SIGHUP when the window is closed.
+      listeners.get("SIGHUP")?.();
+      expect(tree(folder), platform).toEqual([]);
+      expect(work).toEqual({ plain: null, partial: null });
+      expect(said).toEqual([CANCELLED]);
+      expect(exits).toEqual([1]);
+      // A second signal does nothing more.
+      listeners.get("SIGINT")?.();
+      expect(exits).toEqual([1]);
+    }
+  });
+
+  it("says where the plain folder is when it can't be deleted", () => {
+    const { work } = halfDone();
+    const plain = work.plain ?? "";
+    const { listeners, exits, proc } = processOf("win32");
+    const said: string[] = [];
+    cleanUpOnStop(work, {
+      proc,
+      error: (text) => said.push(text),
+      removeSync: ((path: string, options: { recursive?: boolean }) => {
+        if (path === plain) {
+          throw Object.assign(new Error("busy"), { code: "EBUSY" });
+        }
+        rmSync(path, options);
+      }) as typeof rmSync,
+    });
+    listeners.get("SIGINT")?.();
+    expect(work).toEqual({ plain, partial: null });
+    expect(said).toEqual(["הופסק. שום גיבוי לא נשמר.", plainLeftLine(plain)]);
+    expect(exits).toEqual([130]);
+  });
+});
+
+describe("what it says went wrong", () => {
+  it("says the disk, not the project, for a file-system error", () => {
+    const disk = (code: string, syscall = "write") =>
+      Object.assign(new Error(code), { code, syscall });
+    expect(storageWords(disk("ENOSPC"))).toBe(
+      "הבעיה במחשב שלך ולא בפרויקט: אין מספיק מקום בדיסק (ENOSPC).",
+    );
+    for (const code of ["EACCES", "EPERM", "EEXIST", "EBUSY", "ENOTDIR"]) {
+      expect(storageWords(disk(code, "open")), code).toBe(
+        `הבעיה במחשב שלך ולא בפרויקט: אי אפשר לכתוב לתיקייה או לקרוא ממנה (${code}).`,
+      );
+    }
+    // A network failure comes inside fetch's own error, as its cause.
+    const network = (code: string) =>
+      new TypeError("fetch failed", {
+        cause: Object.assign(new Error(code), { code, syscall: "connect" }),
+      });
+    expect(storageWords(network("ECONNREFUSED"))).toBe("החיבור לפרויקט נדחה.");
+    expect(storageWords(network("ECONNRESET"))).toBe(
+      "אין תשובה מהפרויקט (ECONNRESET).",
+    );
+    expect(storageWords(new StorageError(401))).toContain("המפתח");
+  });
+});
+
+describe("the script", () => {
+  it("is plain Node 20: Node's own modules, no package, nothing newer", () => {
+    const code = readFileSync(
+      join(REPO_ROOT, "tooling/backup-files.mjs"),
+      "utf8",
+    )
+      .split("\n")
+      .filter((line) => !/^\s*(\/\/|\*|\/\*\*)/.test(line))
+      .join("\n");
+    const imports = [...code.matchAll(/^import\s[^;]*?\sfrom\s+"([^"]+)";/gm)];
+    expect(imports.length).toBeGreaterThan(0);
+    expect(imports).toHaveLength(code.match(/^import\s/gm)?.length ?? 0);
+    for (const [, from] of imports) expect(from).toMatch(/^node:/);
+    expect(code).not.toMatch(/\brequire\(|\bimport\(/);
+    // supabase-js can't make a client on Node 20 (its realtime part).
+    expect(code).not.toContain("@supabase/");
+    for (const newer of [
+      "import.meta.dirname",
+      "import.meta.filename",
+      "Promise.withResolvers",
+      "Object.groupBy",
+      "Map.groupBy",
+      "Array.fromAsync",
+      "process.getBuiltinModule",
+      ".union(",
+    ]) {
+      expect(code, newer).not.toContain(newer);
+    }
   });
 });

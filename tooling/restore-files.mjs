@@ -11,13 +11,17 @@
 // holds. Only then the project: conceptapp-dev's ref and production's (when
 // there is one), so that neither is ever the one written to, then the
 // temporary project's ref, typed twice, never the project the backup came
-// from, and its secret key, typed with nothing shown. The project must have
-// the app's buckets, and a file already there stops everything before the
-// first upload unless --overwrite is given (a project restored from the
-// database's backup has every file's row and none of the files, so the drill
-// needs it). Then the backup is read a second time and each file uploaded
-// only once its SHA-256 matched what the first reading checked. Nothing is
-// written to the disk. It prints counts, never a file's name or the key.
+// from (and `local`, the local stack, only for a backup of the local stack),
+// and its secret key, typed with nothing shown. The project must have the
+// app's buckets, and a hosted one must know the backup's files: a project
+// restored from the database's backup lists every file's row, so one that
+// lists none of them (conceptapp-dev, or any other project typed by
+// mistake) is no copy of where the backup came from, whatever ref was typed.
+// A file already there stops everything before the first upload unless
+// --overwrite is given (the drill needs it, for those rows). Then the backup
+// is read a second time and each file uploaded only once its SHA-256 matched
+// what the first reading checked. Nothing is written to the disk. It prints
+// counts, never a file's name or the key.
 //
 // Only Orel runs it, on his own computer: it refuses to run where CI or
 // GITHUB_ACTIONS is set. Node 20, nothing installed, as tooling/backup-files.mjs.
@@ -54,17 +58,19 @@ import {
 
 /**
  * Why a restore may not write to the project typed: the two typings differ,
- * it isn't a ref, or it is conceptapp-dev's, production's or the project the
- * backup came from. Null when it may. "local" is the local stack.
+ * it isn't a ref, it is conceptapp-dev's, production's or the project the
+ * backup came from, or it is the local stack ("local") for a backup of a
+ * hosted project: real people's files never go to the computer where
+ * sessions and tests run. Null when it may.
  * @param {string} first
  * @param {string} second
  * @param {{ source: string, dev: string, prod: string }} refused
- * @returns {"twice" | "shape" | "dev" | "prod" | "source" | null}
+ * @returns {"twice" | "shape" | "dev" | "prod" | "source" | "local" | null}
  */
 export function targetRefusal(first, second, { source, dev, prod }) {
   const typed = first.trim();
   if (typed !== second.trim()) return "twice";
-  if (typed === "local") return null;
+  if (typed === "local") return source === "local" ? null : "local";
   if (!REF.test(typed)) return "shape";
   if (dev !== "" && typed === dev) return "dev";
   if (prod !== "" && typed === prod) return "prod";
@@ -78,15 +84,20 @@ export const targetOrigin = (ref) =>
 
 /**
  * The restore itself, once the backup was opened and the project chosen:
- * the app's buckets there, no file already there unless `overwrite`, then
- * the backup read again and each file uploaded once its SHA-256 matched the
- * first reading. A file that fails to upload is counted and the rest go on.
+ * the app's buckets there, the backup's files known there when `mustKnow`
+ * (a hosted project: a copy restored from the database's backup lists their
+ * rows), no file already there unless `overwrite`, then the backup read
+ * again and each file uploaded once its SHA-256 matched the first reading.
+ * A file that fails to upload is counted and the rest go on. `progress`
+ * counts the uploads begun, so a failure can say whether any went up.
  * @param {{
  *   client: StorageApi, file: string, passphrase: string,
  *   opened: { manifest: Manifest, digest: string }, overwrite: boolean,
+ *   mustKnow?: boolean, progress?: { uploads: number },
  * }} options
  * @returns {Promise<
  *   | { refused: "buckets", bucket: string }
+ *   | { refused: "unrelated" }
  *   | { refused: "exists", existing: number }
  *   | { refused: null, sent: Sent[] }
  * >}
@@ -97,6 +108,8 @@ export async function restoreInto({
   passphrase,
   opened,
   overwrite,
+  mustKnow = false,
+  progress = { uploads: 0 },
 }) {
   const { manifest, digest } = opened;
   const ids = (await client.listBuckets()).map((bucket) => bucket?.id);
@@ -115,6 +128,11 @@ export async function restoreInto({
       (item) => item.bucket === bucket && there.has(item.path),
     ).length;
   }
+  // Whatever ref was typed for conceptapp-dev, a project that knows none of
+  // these files is not the copy the drill made.
+  if (mustKnow && manifest.objects.length > 0 && existing === 0) {
+    return { refused: "unrelated" };
+  }
   if (existing > 0 && !overwrite) return { refused: "exists", existing };
 
   /** @type {Map<string, Sent>} */
@@ -129,6 +147,7 @@ export async function restoreInto({
     onObject: async (item, bytes) => {
       const count = sent.get(item.bucket);
       if (!count) return;
+      progress.uploads += 1;
       try {
         await client.upload(item.bucket, item.path, bytes, {
           contentType: item.contentType,
@@ -186,6 +205,8 @@ const TARGET_WORDS = {
   prod: "זה המזהה של פרויקט הייצור. הפקודה הזו לא משחזרת אליו. לא עלה כלום.",
   source:
     "זה הפרויקט שהגיבוי ירד ממנו. הפקודה הזו משחזרת רק לפרויקט זמני. לא עלה כלום.",
+  local:
+    "גיבוי של פרויקט אמיתי לא חוזר לפרויקט המקומי, כי סשנים ובדיקות רצים עליו. לא עלה כלום.",
 };
 
 /** A bucket's line after the uploads. */
@@ -292,14 +313,18 @@ export async function main(args, deps = {}) {
       );
       return 2;
     }
+    const target = first.trim();
+    const progress = { uploads: 0 };
     let result;
     try {
       result = await restoreInto({
-        client: makeClient(targetOrigin(first.trim()), key.trim()),
+        client: makeClient(targetOrigin(target), key.trim()),
         file,
         passphrase,
         opened,
         overwrite,
+        mustKnow: target !== "local",
+        progress,
       });
     } catch (error) {
       if (error instanceof BackupError) {
@@ -308,14 +333,23 @@ export async function main(args, deps = {}) {
         );
         return 1;
       }
+      // Before the first upload (the buckets, the listing), nothing went up.
       out.error(
-        `${storageWords(error)} אולי עלו חלק מהקבצים. מריצים שוב עם --overwrite.`,
+        progress.uploads > 0
+          ? `${storageWords(error)} אולי עלו חלק מהקבצים. מריצים שוב עם --overwrite.`
+          : `${storageWords(error)} לא עלה כלום.`,
       );
       return 1;
     }
     if (result.refused === "buckets") {
       out.error(
         `בפרויקט אין bucket בשם ${result.bucket}: המסד שלו לא של האפליקציה, או שעוד לא שוחזר. לא עלה כלום.`,
+      );
+      return 2;
+    }
+    if (result.refused === "unrelated") {
+      out.error(
+        "הפרויקט הזה לא מכיר אף קובץ מהגיבוי. פרויקט זמני ששוחזר מהגיבוי של המסד (ב8, צעד 4) מכיר אותם, ולכן זה לא הוא. לא עלה כלום. בודקים את המזהה של הפרויקט הזמני, ואם הוא נכון, שואלים בסשן.",
       );
       return 2;
     }

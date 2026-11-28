@@ -6,17 +6,23 @@
 //   node tooling/backup-files.mjs            into conceptapp-backups in the user's folder
 //   node tooling/backup-files.mjs <folder>   into another folder, never inside a git checkout
 //
-// It asks for the project's address and its secret key with nothing shown as
-// they are typed (or takes NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SECRET_KEY
-// from the session; never from a file), then for a passphrase, twice. It
-// lists the app's buckets page by page and downloads every file into a dated
-// folder, writes a manifest (each file's bucket, path, size, content type and
-// SHA-256), encrypts the folder into one file (AES-256-GCM, the key from
-// scrypt on the passphrase with a random salt; the parameters, the IV and
-// the tag in a small header), opens that file again and checks every file in
-// it, and only then deletes the plain folder, which also goes when anything
-// fails. It prints counts and sizes, never a file's name, the address or the
-// key. tooling/restore-files.mjs puts a backup into a temporary project.
+// It asks for the project's address (shown as it is typed, and its ref
+// printed, so a wrong project is seen) and its secret key with nothing shown
+// (or takes NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SECRET_KEY from the
+// session; never from a file), then for a passphrase, twice. It lists the
+// app's buckets page by page, and each bucket again once its files are down
+// (so a file a deletion moved past a page is not skipped), and downloads
+// every file into a dated plain folder in the system's temp folder, which
+// never syncs, whatever folder the backup goes to. It makes a manifest (each
+// file's bucket, path, size, content type and SHA-256), encrypts it all into
+// one file in the folder given (AES-256-GCM, the key from scrypt on the
+// passphrase with a random salt; the parameters, the IV and the tag in a
+// small header), opens that file again and checks every file in it, and only
+// then deletes the plain folder. That folder also goes when anything fails or
+// the window is closed, and a run finds and deletes one an earlier run left
+// (a crash, a power cut); when it can't be deleted, the screen says where it
+// is. It prints counts, sizes and the project's ref, never a file's name or
+// the key. tooling/restore-files.mjs puts a backup into a temporary project.
 //
 // Only Orel runs it, on his own computer: it refuses to run where CI or
 // GITHUB_ACTIONS is set, so never in GitHub Actions. It runs on Node 20 with
@@ -35,8 +41,15 @@ import {
   timingSafeEqual,
 } from "node:crypto";
 import { existsSync, lstatSync, realpathSync, rmSync } from "node:fs";
-import { mkdir, open, readFile, rm, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
+import {
+  mkdir,
+  open,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import {
   basename,
   dirname,
@@ -71,6 +84,7 @@ import { promisify } from "node:util";
  * }} Manifest
  * @typedef {{ N: number, r: number, p: number }} Kdf
  * @typedef {{ plain: string | null, partial: string | null }} Work
+ * @typedef {(path: string, options: { recursive: boolean, force: boolean, maxRetries: number, retryDelay: number }) => Promise<void>} Remove
  */
 
 /**
@@ -144,13 +158,20 @@ export class StorageError extends Error {
   }
 }
 
-/** Something it won't do, said in a word the script turns into Hebrew. */
+/**
+ * Something it won't do, said in a word the script turns into Hebrew, with
+ * the folder it is about when the screen must name it.
+ */
 export class Refusal extends Error {
-  /** @param {string} kind */
-  constructor(kind) {
+  /**
+   * @param {string} kind
+   * @param {string | null} [path]
+   */
+  constructor(kind, path = null) {
     super(`refused: ${kind}`);
     this.name = "Refusal";
     this.kind = kind;
+    this.path = path;
   }
 }
 
@@ -279,6 +300,13 @@ export function stampOf(date) {
 
 /** Where a backup goes when no folder is named. */
 export const defaultParent = () => join(homedir(), "conceptapp-backups");
+
+/**
+ * Where the plain files wait while a backup runs: the system's temp folder
+ * (on Windows, AppData\Local\Temp, which no cloud client syncs), never the
+ * folder named, which may be a synced one. Only the encrypted file goes there.
+ */
+export const defaultStaging = () => join(tmpdir(), "conceptapp-backup-work");
 
 // ---------------------------------------------------------------------------
 // The project and its key
@@ -829,22 +857,102 @@ async function fetchObject(client, bucket, path, sleep) {
 /** A file's name in the plain folder: its place in the manifest, never its path. */
 const plainName = (index) => `${String(index + 1).padStart(7, "0")}.bin`;
 
+/** A plain folder's name: `files-` and the minute its backup started. */
+const PLAIN_FOLDER = /^files-\d{4}-\d{2}-\d{2}-\d{4}$/;
+
+/** How a folder is deleted: tried again while Windows still holds a file in it. */
+const RETRIED = {
+  recursive: true,
+  force: true,
+  maxRetries: 5,
+  retryDelay: 200,
+};
+
+/**
+ * Deletes `path` and everything in it; whether it is gone. A failure is
+ * never thrown: what is still on the disk says it.
+ * @param {string} path
+ * @param {Remove} remove
+ */
+async function removeAll(path, remove) {
+  try {
+    await remove(path, RETRIED);
+  } catch {
+    // existsSync below says what happened.
+  }
+  return !existsSync(path);
+}
+
+/** Whether `folder` holds only what a backup puts in its plain folder. */
+async function plainShaped(folder) {
+  for (const entry of await readdir(folder, { withFileTypes: true })) {
+    if (entry.name !== "objects" || !entry.isDirectory()) return false;
+    const files = await readdir(join(folder, "objects"), {
+      withFileTypes: true,
+    });
+    if (!files.every((one) => one.isFile() && /^\d{7}\.bin$/.test(one.name))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Deletes the plain folders an earlier run left in `staging` (a window
+ * closed half way, a crash, a power cut), and says how many. One that won't
+ * go stops the backup before anything is downloaded, with its path.
+ * Anything not shaped like a plain folder is left alone.
+ * @param {string} staging
+ * @param {Remove} remove
+ */
+async function sweep(staging, remove) {
+  let removed = 0;
+  for (const entry of await readdir(staging, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !PLAIN_FOLDER.test(entry.name)) continue;
+    const folder = join(staging, entry.name);
+    if (!(await plainShaped(folder))) continue;
+    if (!(await removeAll(folder, remove))) {
+      throw new Refusal("leftover", folder);
+    }
+    removed += 1;
+  }
+  return removed;
+}
+
+/**
+ * `folder` made if it isn't there yet, and its real path, asked again where
+ * its links now lead.
+ * @param {string} folder
+ * @param {string} repo
+ */
+async function madeFolder(folder, repo) {
+  await mkdir(folder, { recursive: true, mode: 0o700 });
+  const real = realpathSync.native(folder);
+  const after = folderRefusal(real, { repo });
+  if (after !== null) throw new Refusal(after);
+  return real;
+}
+
 /**
  * @typedef {{ bucket: string, files: number, bytes: number, missing: number }} Count
  */
 
 /**
- * The whole backup, after the questions: the app's buckets checked, every
- * file downloaded into a new dated folder under `parent`, the manifest, the
- * encrypted file beside the folder, opened again and checked, and the plain
- * folder deleted, whatever happened. `work` says what to delete if the
- * process is stopped half way.
+ * The whole backup, after the questions: the app's buckets checked, a plain
+ * folder an earlier run left deleted, every file downloaded into a new dated
+ * folder under `staging`, the manifest, the encrypted file in `parent`,
+ * opened again and checked, and the plain folder deleted, whatever happened.
+ * `plainLeft` is that folder when it couldn't be deleted (Windows can hold a
+ * file open), and then `work.plain` keeps it too; `work` also says what to
+ * delete if the process is stopped half way. `remove` and `write` are
+ * fs.rm and writeBackup, stand-ins in the tests.
  * @param {{
  *   client: StorageApi, source: string, parent: string, passphrase: string,
  *   now: Date, out: Out, kdf?: Kdf, work?: Work,
- *   sleep?: (ms: number) => Promise<void>, repo?: string,
+ *   sleep?: (ms: number) => Promise<void>, repo?: string, staging?: string,
+ *   remove?: Remove, write?: typeof writeBackup,
  * }} options
- * @returns {Promise<{ file: string, counts: Count[], files: number, missing: number }>}
+ * @returns {Promise<{ file: string, counts: Count[], files: number, missing: number, plainLeft: string | null }>}
  */
 export async function backup({
   client,
@@ -857,11 +965,17 @@ export async function backup({
   work = { plain: null, partial: null },
   sleep = (ms) => new Promise((done) => setTimeout(done, ms)),
   repo = REPO_ROOT,
+  staging = defaultStaging(),
+  remove = rm,
+  write = writeBackup,
 }) {
-  // Nothing is made before the folder is known to be outside any checkout,
-  // and it is asked again once it exists, where its links now lead.
-  const before = folderRefusal(parent, { repo });
-  if (before !== null) throw new Refusal(before);
+  // Nothing is made before both folders are known to be outside any
+  // checkout, and each is asked again once it exists, where its links now
+  // lead.
+  for (const folder of [parent, staging]) {
+    const before = folderRefusal(folder, { repo });
+    if (before !== null) throw new Refusal(before);
+  }
   const buckets = await client.listBuckets();
   const ids = buckets.map((bucket) => bucket?.id);
   if (BUCKETS.some((id) => !ids.includes(id))) throw new Refusal("buckets");
@@ -870,16 +984,17 @@ export async function backup({
   ).length;
   if (others > 0) out.log(`[i] ${othersLine(others)}`);
 
-  await mkdir(parent, { recursive: true });
-  const real = realpathSync.native(parent);
-  const after = folderRefusal(real, { repo });
-  if (after !== null) throw new Refusal(after);
+  const real = await madeFolder(parent, repo);
+  const stage = await madeFolder(staging, repo);
+  const swept = await sweep(stage, remove);
+  if (swept > 0) out.log(`[i] ${sweptLine(swept)}`);
   const stamp = stampOf(now);
-  const plain = join(real, `files-${stamp}`);
+  const plain = join(stage, `files-${stamp}`);
   const file = join(real, `files-${stamp}.backup`);
   if (existsSync(plain) || existsSync(file)) throw new Refusal("exists");
   await mkdir(plain, { mode: 0o700 });
   work.plain = plain;
+  let done;
   try {
     await mkdir(join(plain, "objects"));
     /** @type {Item[]} */
@@ -890,32 +1005,39 @@ export async function backup({
     const counts = [];
     for (const bucket of BUCKETS) {
       const count = { bucket, files: 0, bytes: 0, missing: 0 };
-      for (const listed of await listObjects(client, bucket)) {
-        const bytes = goodPath(listed.path)
-          ? await fetchObject(client, bucket, listed.path, sleep)
-          : null;
-        if (bytes === null || bytes.length > MAX_OBJECT_BYTES) {
-          missing.push({ bucket, path: listed.path });
-          count.missing += 1;
-          continue;
+      // Listed twice: Storage pages by offset, so a file deleted elsewhere
+      // during the first listing moves the next one back past a page. The
+      // second listing, once the files are down, finds it (and any file
+      // added meanwhile).
+      const handled = new Set();
+      for (let pass = 0; pass < 2; pass += 1) {
+        for (const listed of await listObjects(client, bucket)) {
+          if (handled.has(listed.path)) continue;
+          handled.add(listed.path);
+          const bytes = goodPath(listed.path)
+            ? await fetchObject(client, bucket, listed.path, sleep)
+            : null;
+          if (bytes === null || bytes.length > MAX_OBJECT_BYTES) {
+            missing.push({ bucket, path: listed.path });
+            count.missing += 1;
+            continue;
+          }
+          await writeFile(
+            join(plain, "objects", plainName(objects.length)),
+            bytes,
+            { flag: "wx" },
+          );
+          objects.push({
+            bucket,
+            path: listed.path,
+            size: bytes.length,
+            contentType: listed.contentType,
+            cacheControl: listed.cacheControl,
+            sha256: sha256(bytes),
+          });
+          count.files += 1;
+          count.bytes += bytes.length;
         }
-        await writeFile(
-          join(plain, "objects", plainName(objects.length)),
-          bytes,
-          {
-            flag: "wx",
-          },
-        );
-        objects.push({
-          bucket,
-          path: listed.path,
-          size: bytes.length,
-          contentType: listed.contentType,
-          cacheControl: listed.cacheControl,
-          sha256: sha256(bytes),
-        });
-        count.files += 1;
-        count.bytes += bytes.length;
       }
       counts.push(count);
       out.log(countLine(count));
@@ -943,13 +1065,10 @@ export async function backup({
       objects,
       missing,
     };
-    await writeFile(
-      join(plain, "manifest.json"),
-      JSON.stringify(manifest, null, 1),
-      { flag: "wx" },
-    );
+    // The manifest goes only into the encrypted file: it has every path.
+    out.log(`[i] ${SEALING}`);
     // Each file read back from the folder is the one downloaded, by its SHA-256.
-    const written = await writeBackup(
+    const written = await write(
       file,
       manifest,
       async (index, item) => {
@@ -972,25 +1091,78 @@ export async function backup({
     const opened = await openBackup(file, passphrase);
     if (opened.digest !== written) throw new BackupError("damaged");
     work.partial = null;
-    return { file, counts, files: objects.length, missing: missing.length };
+    done = { file, counts, files: objects.length, missing: missing.length };
   } catch (error) {
-    if (work.partial !== null) {
-      await rm(work.partial, { force: true });
+    // Neither deletion throws, so the error said is the one that stopped it;
+    // what couldn't be deleted stays in `work` for the screen.
+    if (work.partial !== null && (await removeAll(work.partial, remove))) {
       work.partial = null;
     }
+    if (await removeAll(plain, remove)) work.plain = null;
     throw error;
-  } finally {
-    await rm(plain, { recursive: true, force: true });
-    work.plain = null;
   }
+  // The backup is whole and checked, whether or not the folder goes now.
+  const gone = await removeAll(plain, remove);
+  if (gone) work.plain = null;
+  return { ...done, plainLeft: gone ? null : plain };
 }
 
-/** Deletes what a stopped backup left: the plain folder and a half-written file. */
-export function cleanUp(work) {
-  if (work.plain !== null) rmSync(work.plain, { recursive: true, force: true });
-  if (work.partial !== null) rmSync(work.partial, { force: true });
-  work.plain = null;
-  work.partial = null;
+/**
+ * Deletes what a stopped backup left: the plain folder and a half-written
+ * file. Returns the plain folder when it is still there, or null.
+ * @param {Work} work
+ * @param {typeof rmSync} [removeSync]
+ * @returns {string | null}
+ */
+export function cleanUp(work, removeSync = rmSync) {
+  for (const key of /** @type {const} */ (["partial", "plain"])) {
+    const path = work[key];
+    if (path === null) continue;
+    try {
+      removeSync(path, RETRIED);
+    } catch {
+      // existsSync below says what happened.
+    }
+    if (!existsSync(path)) work[key] = null;
+  }
+  return work.plain;
+}
+
+/**
+ * What stops the process half way: Ctrl+C, a closed window (Windows sends
+ * SIGHUP, and gives about ten seconds), Ctrl+Break, and a kill.
+ */
+export const STOP_SIGNALS = ["SIGINT", "SIGHUP", "SIGBREAK", "SIGTERM"];
+
+/**
+ * Deletes what `work` names on any of STOP_SIGNALS, says so, and exits.
+ * `proc` is the process (a stand-in in the tests).
+ * @param {Work} work
+ * @param {{
+ *   proc?: { platform: string, once: (signal: string, listener: () => void) => unknown, exit: (code: number) => unknown },
+ *   error?: (text: string) => void,
+ *   removeSync?: typeof rmSync,
+ * }} [deps]
+ */
+export function cleanUpOnStop(
+  work,
+  { proc = process, error = console.error, removeSync = rmSync } = {},
+) {
+  let stopped = false;
+  for (const signal of STOP_SIGNALS) {
+    if (signal === "SIGBREAK" && proc.platform !== "win32") continue;
+    proc.once(signal, () => {
+      if (stopped) return;
+      stopped = true;
+      const left = cleanUp(work, removeSync);
+      if (left === null) error(CANCELLED);
+      else {
+        error("הופסק. שום גיבוי לא נשמר.");
+        error(plainLeftLine(left));
+      }
+      proc.exit(signal === "SIGINT" ? 130 : 1);
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1020,6 +1192,41 @@ export function countLine({ bucket, files, bytes, missing }) {
 const othersLine = (n) =>
   `${n === 1 ? "יש בפרויקט עוד bucket אחד" : `יש בפרויקט עוד ${n} buckets`} שהאפליקציה לא יוצרת. הם לא בגיבוי.`;
 
+/** Which project is backed up: its ref, as its address in the dashboard shows it. */
+export const projectLine = (ref) =>
+  ref === "local"
+    ? "הפרויקט: local, הפרויקט המקומי במחשב הזה."
+    : `הפרויקט: ${ref}`;
+
+/** Plain folders an earlier run left, and this one deleted. */
+export const sweptLine = (n) =>
+  n === 1
+    ? "נמצאה תיקייה גלויה מגיבוי שנקטע, והיא נמחקה."
+    : `נמצאו ${n} תיקיות גלויות מגיבויים שנקטעו, והן נמחקו.`;
+
+/** Said before the quiet part, so the window isn't closed while it works. */
+export const SEALING =
+  "כל הקבצים ירדו. עכשיו מצפינים אותם לקובץ אחד ובודקים אותו. לא סוגרים את החלון עד שהפקודה מסיימת.";
+
+/**
+ * The plain folder that couldn't be deleted, its path on a line of its own
+ * (a date, never a file's name).
+ */
+export const plainLeftLine = (path) =>
+  [
+    "[x] התיקייה הגלויה לא נמחקה, ויש בה קבצים של אנשים בלי הצפנה. היא כאן:",
+    path,
+    "מוחקים אותה עכשיו (ב-Explorer: Shift+Delete, כדי שלא תישאר בסל המחזור). אם זה לא הולך, הגיבוי הבא ינסה למחוק אותה שוב.",
+  ].join("\n");
+
+/** A plain folder from an earlier run that couldn't be deleted, before anything was downloaded. */
+export const leftoverLine = (path) =>
+  [
+    "נשארה תיקייה גלויה מגיבוי שנקטע, ואי אפשר למחוק אותה עכשיו. היא כאן:",
+    path,
+    "מוחקים אותה (ב-Explorer: Shift+Delete) ומריצים שוב. לא ירד כלום.",
+  ].join("\n");
+
 /** Whether this runs in CI (GitHub Actions sets both): it never does. */
 export const runsInCi = (env) =>
   (env.CI ?? "") !== "" || (env.GITHUB_ACTIONS ?? "") !== "";
@@ -1034,7 +1241,7 @@ export const CANCELLED = "הופסק. שום גיבוי לא נשמר, והקב�
 
 /** What it says when it stopped on something it didn't expect: never the error. */
 export const STOPPED =
-  "הפעולה נעצרה לפני שהסתיימה. התיקייה הגלויה נמחקה, ושום גיבוי לא נשמר. מריצים שוב, ואם זה חוזר, שואלים בסשן.";
+  "הפעולה נעצרה לפני שהסתיימה, ושום גיבוי לא נשמר. מריצים שוב, ואם זה חוזר, שואלים בסשן.";
 
 /** Why a backup can't be opened, by BackupError's kind. */
 export const OPEN_WORDS = {
@@ -1045,8 +1252,39 @@ export const OPEN_WORDS = {
   hash: "קובץ בתוך הגיבוי לא תואם ל-SHA-256 שלו ברשימה. לא משתמשים בגיבוי הזה.",
 };
 
-/** Why Storage said no, in a few words: never its body. */
+/** Codes only the disk gives: never an answer from a project. */
+const DISK_CODES = new Set([
+  "ENOSPC",
+  "EACCES",
+  "EPERM",
+  "EEXIST",
+  "EBUSY",
+  "ENOTDIR",
+  "EISDIR",
+  "EROFS",
+  "ENOTEMPTY",
+  "ENAMETOOLONG",
+  "EMFILE",
+  "ENFILE",
+  "EIO",
+]);
+
+/**
+ * Why Storage, or the disk, said no, in a few words: never its body or a
+ * path. A file-system call's error comes as it is, with its syscall; a
+ * network one comes inside fetch's own error, as its cause.
+ */
 export function storageWords(error) {
+  const disk =
+    error?.cause === undefined &&
+    typeof error?.code === "string" &&
+    (typeof error?.syscall === "string" || DISK_CODES.has(error.code));
+  if (disk) {
+    const code = /^[A-Z0-9_]+$/.test(error.code) ? ` (${error.code})` : "";
+    return error.code === "ENOSPC"
+      ? `הבעיה במחשב שלך ולא בפרויקט: אין מספיק מקום בדיסק${code}.`
+      : `הבעיה במחשב שלך ולא בפרויקט: אי אפשר לכתוב לתיקייה או לקרוא ממנה${code}.`;
+  }
   if (error instanceof StorageError) {
     if (error.status === 401 || error.status === 403) {
       return "Storage לא קיבל את המפתח: הוא לא המפתח הסודי של הפרויקט הזה.";
@@ -1160,10 +1398,12 @@ const FOLDER_WORDS = {
  * @param {string[]} args
  * @param {{
  *   env?: Record<string, string | undefined>, out?: Out,
+ *   ask?: (question: string) => Promise<string>,
  *   askSecret?: (question: string) => Promise<string>,
  *   fetch?: typeof fetch, client?: (origin: string, key: string) => StorageApi,
  *   now?: () => Date, kdf?: Kdf, work?: Work,
  *   sleep?: (ms: number) => Promise<void>, repo?: string, parent?: string,
+ *   staging?: string, remove?: Remove,
  * }} [deps]
  * @returns {Promise<number>}
  */
@@ -1171,6 +1411,7 @@ export async function main(args, deps = {}) {
   const {
     env = process.env,
     out = console,
+    ask = askVisible,
     askSecret = askHidden,
     fetch: fetchImpl = globalThis.fetch,
     client: makeClient = (origin, key) => storageClient(origin, key, fetchImpl),
@@ -1179,6 +1420,8 @@ export async function main(args, deps = {}) {
     work = { plain: null, partial: null },
     sleep,
     repo = REPO_ROOT,
+    staging = defaultStaging(),
+    remove,
   } = deps;
   if (runsInCi(env)) {
     out.error(CI_REFUSAL);
@@ -1195,12 +1438,14 @@ export async function main(args, deps = {}) {
     return 2;
   }
   out.log(
-    "גיבוי הקבצים של האפליקציה מ-Storage: כל הקבצים, מוצפנים לקובץ אחד. מה שמקלידים כאן לא מופיע על המסך.",
+    "גיבוי הקבצים של האפליקציה מ-Storage: כל הקבצים, מוצפנים לקובץ אחד. מה שמקלידים במפתח ובסיסמה לא מופיע על המסך.",
   );
   try {
+    // The address is no secret (the site's own code carries it), so it is
+    // shown as it is typed, and its ref printed: a wrong project is seen.
     let address = env.NEXT_PUBLIC_SUPABASE_URL ?? "";
     if (address === "") {
-      address = await askSecret(
+      address = await ask(
         "הכתובת של הפרויקט (בלוח של Supabase, הכפתור Connect): ",
       );
     } else {
@@ -1215,6 +1460,7 @@ export async function main(args, deps = {}) {
       );
       return 2;
     }
+    out.log(`[i] ${projectLine(project.ref)}`);
     let key = env.SUPABASE_SECRET_KEY ?? "";
     if (key === "") {
       key = await askSecret(
@@ -1260,9 +1506,15 @@ export async function main(args, deps = {}) {
         work,
         sleep,
         repo,
+        staging,
+        remove,
       });
     } catch (error) {
       if (error instanceof Refusal) {
+        if (error.kind === "leftover" && error.path !== null) {
+          out.error(leftoverLine(error.path));
+          return 2;
+        }
         out.error(
           {
             ...FOLDER_WORDS,
@@ -1273,22 +1525,29 @@ export async function main(args, deps = {}) {
         );
         return 2;
       }
-      if (error instanceof BackupError) {
-        out.error(
-          `${OPEN_WORDS[error.kind]} שום גיבוי לא נשמר, והתיקייה הגלויה נמחקה.`,
-        );
-        return 1;
+      const cause =
+        error instanceof BackupError
+          ? OPEN_WORDS[error.kind]
+          : storageWords(error);
+      // Said only when it is so: the plain folder is gone, or never was.
+      if (work.plain === null) {
+        out.error(`${cause} שום גיבוי לא נשמר, ולא נשאר במחשב אף קובץ גלוי.`);
+      } else {
+        out.error(`${cause} שום גיבוי לא נשמר.`);
+        out.error(plainLeftLine(work.plain));
       }
-      out.error(
-        `${storageWords(error)} שום גיבוי לא נשמר, והתיקייה הגלויה נמחקה.`,
-      );
       return 1;
     }
     out.log(
       `[v] הקובץ המוצפן נפתח שוב ונבדק: ${filesWord(result.files)}, כל אחד לפי ה-SHA-256 שלו.`,
     );
-    out.log("[v] התיקייה הגלויה נמחקה. נשאר רק הקובץ המוצפן.");
+    if (result.plainLeft === null) {
+      out.log("[v] התיקייה הגלויה נמחקה. נשאר רק הקובץ המוצפן.");
+    } else {
+      out.error(plainLeftLine(result.plainLeft));
+    }
     out.log(`הגיבוי: ${result.file}`);
+    out.log(`[i] ${projectLine(project.ref)}`);
     out.log(
       'את הסיסמה שומרים במנהל הסיסמאות, בשם "סיסמת גיבוי הקבצים". בלעדיה אף אחד לא יפתח את הקובץ.',
     );
@@ -1298,6 +1557,7 @@ export async function main(args, deps = {}) {
       );
       return 1;
     }
+    if (result.plainLeft !== null) return 1;
     out.log("הכול תקין.");
     return 0;
   } catch (error) {
@@ -1317,18 +1577,15 @@ export async function main(args, deps = {}) {
 if (basename(process.argv[1] ?? "") === "backup-files.mjs") {
   /** @type {Work} */
   const work = { plain: null, partial: null };
-  process.once("SIGINT", () => {
-    cleanUp(work);
-    console.error(CANCELLED);
-    process.exit(130);
-  });
+  cleanUpOnStop(work);
   main(process.argv.slice(2), { work }).then(
     (code) => {
       process.exitCode = code;
     },
     () => {
-      cleanUp(work);
+      const left = cleanUp(work);
       console.error(STOPPED);
+      if (left !== null) console.error(plainLeftLine(left));
       process.exitCode = 1;
     },
   );

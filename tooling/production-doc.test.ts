@@ -821,9 +821,43 @@ describe("docs/production.md", () => {
       ["git pull", "node tooling/backup-files.mjs"],
       ["git pull", 'node tooling/restore-files.mjs "FILE" --overwrite'],
     ]);
-    // Monthly, and before a release that changes the database's structure.
+    // Monthly, and before a release that changes the database's structure:
+    // said in B8, and as step 0 of the release Orel follows every week, with
+    // a reminder in his calendar for the monthly one.
     expect(b8).toContain("פעם בחודש");
     expect(b8).toContain("כולל שינוי במבנה");
+    expect(stepOf(b8, 3)).toContain("צעד 0");
+    expect(stepOf(b8, 3)).toContain("תזכורת חוזרת ביומן");
+    const update = section("עדכון אחרי שעסק אמיתי עלה");
+    const zero = update.slice(update.search(/^0\. /m), update.search(/^1\. /m));
+    for (const word of ['"כולל שינוי במבנה"', "ב8, צעד 2", '"הכול תקין"']) {
+      expect(zero, word).toContain(word);
+    }
+    expect(update).toContain("**זמן:** כרבע שעה, וכחצי שעה כשיש שינוי במבנה");
+    // The address shown and its ref checked; the plain files never in a
+    // folder that syncs; a folder left behind deleted by hand.
+    const files = stepOf(b8, 2);
+    for (const word of [
+      'כותבת "הפרויקט:"',
+      "המזהה של `conceptapp-prod`, כמו בכתובת שלו בלוח",
+      "שלא מסתנכרנת לענן",
+      "לא סוגרים את החלון",
+      "`Shift+Delete`",
+      "משלושת החודשים האחרונים",
+    ]) {
+      expect(files, word).toContain(word);
+    }
+    // The drill twice: before the business there are no files to bring back.
+    const drill = stepOf(b8, 4);
+    for (const word of [
+      "ועוד פעם אחרי החודש הראשון עם העסק",
+      "עוד אין קבצים",
+      "ב-`documents` וב-`avatars` יש קבצים",
+      "אם הלשונית לא מופיעה: עוצרים ושואלים בסשן",
+      "כמו `conceptapp-dev`, הוא לא העותק",
+    ]) {
+      expect(drill, word).toContain(word);
+    }
     // The drill: a project Orel makes, which costs by the hour, its jobs off
     // first, the counts on both, and the project deleted after.
     for (const word of [
