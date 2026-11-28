@@ -58,6 +58,29 @@ async function expectWhatsapp(page: Page, name: string, e164: string) {
   await expect(whatsapp).toHaveAttribute("rel", /noopener/);
 }
 
+/**
+ * Presses a person's "שליחה בוואטסאפ" as the person sending does, with
+ * WhatsApp itself kept out: wa.me answers in the test with an empty page,
+ * and the tab it opened in is closed. Nothing leaves the test.
+ */
+async function openWhatsapp(page: Page, name: string) {
+  const context = page.context();
+  await context.route(
+    (url) => url.hostname === "wa.me",
+    (route) => route.fulfill({ contentType: "text/html", body: "" }),
+  );
+  const opened = context.waitForEvent("page");
+  await whatsappFor(page, name).click();
+  await (await opened).close();
+}
+
+/** "נפתח בוואטסאפ", in whichever shape is on screen. */
+const openedLine = (page: Page) =>
+  page
+    .getByRole("main")
+    .getByText(tt.pending.opened, { exact: true })
+    .filter({ visible: true });
+
 /** Where a test keeps the refusal's line it saw before, on the page's window. */
 type SeenLine = { seenLine?: Element };
 
@@ -149,6 +172,10 @@ test("a manager invites a worker by phone and gets the link", async ({
   const link = await field.inputValue();
   // WhatsApp first, to the number invited; the copy is the second way.
   await expectWhatsapp(page, person.name, person.e164);
+  // Nothing says it opened until it did.
+  await expect(openedLine(page)).toHaveCount(0);
+  await openWhatsapp(page, person.name);
+  await expect(openedLine(page)).toBeVisible();
   await page.getByRole("button", { name: tl.copy }).click();
   await expect(page.getByRole("button", { name: tl.copied })).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(link);
@@ -245,4 +272,22 @@ test("a new link opens an expired invite again", async ({ page }, testInfo) => {
     path: testInfo.outputPath("team-new-link.png"),
     fullPage: true,
   });
+
+  // WhatsApp opened, the row says so.
+  await expect(openedLine(page)).toHaveCount(0);
+  const link = await field.inputValue();
+  await openWhatsapp(page, EXPIRED.name);
+  await expect(openedLine(page)).toBeVisible();
+
+  // A window that crosses into the other shape (a large tablet turned, a
+  // window made wider or narrower) shows the same link and says the same:
+  // the screen keeps both, never the shape. A phone stays in one.
+  if (testInfo.project.name === "phone") return;
+  const wide = (page.viewportSize()?.width ?? 0) >= 1280;
+  await page.setViewportSize(
+    wide ? { width: 820, height: 1180 } : { width: 1440, height: 900 },
+  );
+  await expect(field).toHaveValue(link);
+  await expect(whatsappFor(page, EXPIRED.name)).toBeVisible();
+  await expect(openedLine(page)).toBeVisible();
 });

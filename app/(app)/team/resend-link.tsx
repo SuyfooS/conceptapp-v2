@@ -24,6 +24,9 @@ type Links = {
   /** The new links made on screen, by invite. */
   links: ReadonlyMap<string, string>;
   keep: (inviteId: string, link: string) => void;
+  /** The invites whose new link "קישור חדש" opened in WhatsApp here. */
+  opened: ReadonlySet<string>;
+  markOpened: (inviteId: string) => void;
 };
 
 const LinksContext = createContext<Links | null>(null);
@@ -33,15 +36,24 @@ const LinksContext = createContext<Links | null>(null);
  * a link made in the lists is the one the computer's table shows, and back,
  * so a screen that crosses from one to the other (a tablet turned, a window
  * made wider) shows the same link, never "קישור חדש" again, whose press
- * would stop the link just sent from working.
+ * would stop the link just sent from working. So is "נפתח בוואטסאפ" under a
+ * new link once its WhatsApp was opened (`ResendLink`), as "עוד לא קיבלו
+ * קישור" keeps its own (`PendingLinks`).
  */
 export function InviteLinks({ children }: { children: ReactNode }) {
   const [links, setLinks] = useState<ReadonlyMap<string, string>>(
     () => new Map(),
   );
+  const [opened, setOpened] = useState<ReadonlySet<string>>(() => new Set());
   const keep = (inviteId: string, link: string) =>
     setLinks((all) => new Map(all).set(inviteId, link));
-  return <LinksContext value={{ links, keep }}>{children}</LinksContext>;
+  const markOpened = (inviteId: string) =>
+    setOpened((all) => (all.has(inviteId) ? all : new Set(all).add(inviteId)));
+  return (
+    <LinksContext value={{ links, keep, opened, markOpened }}>
+      {children}
+    </LinksContext>
+  );
 }
 
 /**
@@ -58,7 +70,8 @@ export function useInviteLinks(): Links | null {
  * one stops working, and the invite runs another 14 days), then shows it
  * to send on, in every shape of the screen (`InviteLinks`): "שליחה בוואטסאפ" to
  * the invite's number with the sentence and the link written, and the link
- * with its copy button (`InviteShare`; closing the pilot, PR 4). The press
+ * with its copy button (`InviteShare`; closing the pilot, PR 4), and once
+ * WhatsApp opened, "נפתח בוואטסאפ", in every shape too. The press
  * went as the link arrived, so "שליחה בוואטסאפ" takes the focus, and says whose
  * link it sends, as "עוד לא קיבלו קישור" does; with the focus put elsewhere
  * meanwhile, it stays there, and the announcer says the link is ready. A
@@ -126,6 +139,9 @@ export function ResendLink({
           failed: t("copyFailed"),
         }}
         whatsappRef={whatsapp}
+        // Said in every shape, as the screen keeps it (`InviteLinks`).
+        opened={shared ? shared.opened.has(inviteId) : undefined}
+        onWhatsapp={() => shared?.markOpened(inviteId)}
       />
     );
   }
