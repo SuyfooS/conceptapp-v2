@@ -4954,6 +4954,79 @@ export async function joinFirstStepsDepartment(name: string): Promise<void> {
 }
 
 /**
+ * A business of any kind just opened, for the console's checklist (closing
+ * the pilot, PR 16): from the general template through `apply_template`
+ * alone, as a business opened before the wizard asked about Shabbat, so no
+ * answer is stored; no address, nobody in it, nothing set. Made afresh for
+ * each test and gone after. Nobody signs in to it: the seeded platform admin
+ * reads it from the console.
+ */
+export const SETUP_CARD_BUSINESS = {
+  id: "00000000-0000-4000-b000-0000000000ef",
+  slug: "setup-card-e2e",
+  name: "עסק לכרטיס ההקמה",
+} as const;
+
+export async function openSetupCardBusiness(): Promise<void> {
+  const business = SETUP_CARD_BUSINESS;
+  await closeSetupCardBusiness();
+  await sql`insert into public.businesses (id, slug, name, address, shabbat_city)
+    values (${business.id}, ${business.slug}, ${business.name}, null, null)`;
+  await sql`select public.apply_template(${business.id}, 'general')`;
+}
+
+/** The business gone with its records, when the test is done. */
+export async function closeSetupCardBusiness(): Promise<void> {
+  await deleteRealBusiness(SETUP_CARD_BUSINESS.id);
+}
+
+/**
+ * What the team and the business set up meanwhile, each as it is stored: one
+ * worker invited with no link made yet (a number no login has), two job
+ * roles and one regular shift, Shabbat answered open, the clock's code on
+ * and shown only at a station, with one running, and a week published.
+ */
+export async function setUpSetupCardBusiness(): Promise<void> {
+  const id = SETUP_CARD_BUSINESS.id;
+  await sql`insert into public.invites
+      (business_id, phone, role, full_name, token_hash, expires_at, link_pending)
+    values (${id}, '+972500000998', 'worker', 'ליאור הקמה',
+      md5(random()::text) || md5(random()::text), now() + interval '14 days',
+      true)`;
+  await sql`update public.business_modules
+    set settings = settings || ${sql.json({
+      closedOnShabbat: false,
+      positions: [
+        { key: "front", name: "קבלה" },
+        { key: "back", name: "תפעול" },
+      ],
+      shifts: [
+        {
+          key: "morning",
+          name: "בוקר",
+          days: [0, 1, 2, 3, 4],
+          start: "09:00",
+          end: "16:00",
+          needed: 1,
+        },
+      ],
+    })}::jsonb
+    where business_id = ${id} and module_key = 'scheduling'`;
+  await sql`update public.business_modules
+    set settings = settings || ${sql.json({
+      requirePunchCode: true,
+      codeDisplay: "station",
+    })}::jsonb
+    where business_id = ${id} and module_key = 'time_clock'`;
+  const tokenHash = createHash("sha256").update(randomBytes(32)).digest("hex");
+  await sql`insert into public.clock_stations (business_id, name, token_hash)
+    values (${id}, 'כניסה', ${tokenHash})`;
+  await sql`insert into public.schedule_weeks
+      (business_id, starts_on, availability_due_at, schedule_published_at)
+    values (${id}, current_date, now(), now())`;
+}
+
+/**
  * The demo restaurant's menu as it starts (waiter mode P2): its orders,
  * items, categories and places deleted (the orders first: their lines point
  * at the items, and go with their orders), the sample menu written again

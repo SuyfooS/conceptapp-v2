@@ -1,4 +1,5 @@
 import { getBusinessSetup } from "@db/admin";
+import { getBusinessModulesForTeam } from "@db/module-settings";
 import { getViewableNamedRoles } from "@db/view-as";
 import {
   consolePayAccess,
@@ -9,10 +10,11 @@ import { viewAsFailureOf } from "@domain/view-as";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { currentPlatformRole } from "../../../staff";
-import { payAccessIn } from "./access/pay-access";
+import { payAccessFrom } from "./access/pay-access";
 import { inviteLinkAction, viewAsAction } from "./actions";
 import { BusinessView } from "./business-view";
 import { inviteShareWording } from "./invite-wording";
+import { setupModuleFacts } from "./setup-facts";
 
 export async function generateMetadata({
   params,
@@ -36,13 +38,20 @@ export default async function BusinessSetupPage({
   const business = await getBusinessSetup(slug);
   if (!business) notFound();
   const viewsAs = platformCan(role, "businesses.view_as");
-  // Who sees pay, where a module that is on uses it (its page says why); the
-  // roles the business named, each one more to view it as (R11c); and its
-  // own sentence for its invites' links, as /team sends them.
-  const [payAccess, namedRoles, inviteWording] = await Promise.all([
-    consolePayAccess(role) !== null
-      ? payAccessIn(business.id).then((access) => access !== null)
-      : false,
+  // The business's modules, read once: who sees pay, where a module that is
+  // on uses it (its page says why), and the checklist's facts from them.
+  // Beside them, as neither waits for the modules: the roles the business
+  // named, each one more to view it as (R11c), and its own sentence for its
+  // invites' links, as /team sends them.
+  const [{ payAccess, facts }, namedRoles, inviteWording] = await Promise.all([
+    getBusinessModulesForTeam(business.id).then(async (rows) => {
+      const payAccess =
+        consolePayAccess(role) !== null && payAccessFrom(rows) !== null;
+      return {
+        payAccess,
+        facts: await setupModuleFacts(business.id, rows, payAccess),
+      };
+    }),
     viewsAs ? getViewableNamedRoles(business.id) : [],
     inviteShareWording(business.id),
   ]);
@@ -50,6 +59,7 @@ export default async function BusinessSetupPage({
   return (
     <BusinessView
       business={business}
+      facts={facts}
       listHref="/admin"
       created={Boolean(created)}
       shabbatUnsaved={Boolean(created) && shabbat === "unsaved"}

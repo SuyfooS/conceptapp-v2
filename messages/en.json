@@ -8210,6 +8210,9 @@
         "remaining": "{count, plural, =0 {All done} one {One thing left} other {# things left}}",
         "done": "Done",
         "todo": "Missing",
+        "open": "Not yet",
+        "optional": "Optional",
+        "toCheck": "To check",
         "items": {
           "opened": {
             "title": "Open the business from the template",
@@ -8219,6 +8222,7 @@
             "title": "Invite the owners",
             "done": "{count, plural, one {One person} other {# people}} with the owner role.",
             "todo": "No owner yet. Without one, nobody runs the business.",
+            "pending": "The owner's link isn't made yet. Create it in the people list and send it on WhatsApp.",
             "expired": "The owner's invite ran out before they joined. Renew it in the people list and send the new link."
           },
           "staff": {
@@ -8230,6 +8234,41 @@
             "title": "Business address",
             "done": "{address}",
             "todo": "No address yet."
+          },
+          "shabbat": {
+            "title": "Open or closed on Shabbat",
+            "open": "The business is open on Shabbat.",
+            "closed": "The business is closed on Shabbat.",
+            "noAnswer": "No answer is saved, so the business is closed on Shabbat. If it is open on Shabbat, turn off “Closed on Shabbat” in the settings."
+          },
+          "shifts": {
+            "title": "Job roles and shifts",
+            "todo": "{missing, select, positions {No job roles yet.} shifts {No regular shifts yet, and every week starts from them.} other {No job roles or regular shifts yet, and every week starts from them.}}",
+            "done": "{positions, plural, one {One job role} other {# job roles}}, {shifts, plural, one {one regular shift} other {# regular shifts}}."
+          },
+          "clockCode": {
+            "title": "A code for the time clock",
+            "off": "Off: everyone clocks in from their own phone, with no code.",
+            "phone": "On: the code is shown on the phone of whoever approves hours.",
+            "station": "On: the code is shown {count, plural, one {on one clock station} other {on # clock stations}}.",
+            "both": "On: the code is shown on the phone of whoever approves hours {count, plural, one {and on one clock station} other {and on # clock stations}}.",
+            "noStation": "On, but the code is shown only on a clock station, and none is running. Whoever approves hours locks a tablet on the code from “Clock code”."
+          },
+          "pay": {
+            "title": "Who sees pay",
+            "done": "{roles, select, manager {The owners, accountants and managers} worker {The owners, accountants and workers} both {The owners, accountants, managers and workers} other {The owners and accountants}}{personal, plural, =0 {.} one {, and one more person given access.} other {, and # more people given access.}}"
+          },
+          "joined": {
+            "title": "The staff joining",
+            "joined": "{count, plural, =0 {Nobody on the staff has joined yet.} one {One of the staff joined.} other {# of the staff joined.}}",
+            "invited": "{count, plural, one {One got a link and hasn't joined yet.} other {# got a link and haven't joined yet.}}",
+            "pending": "{count, plural, one {One has no link yet.} other {# have no link yet.}}",
+            "expired": "{count, plural, one {One link ran out before they joined.} other {# links ran out before they joined.}}"
+          },
+          "publish": {
+            "title": "Publish a first week",
+            "todo": "No week published yet. Whoever makes the schedule in the business builds a week from the shifts and publishes it to the staff.",
+            "done": "A first week is already published to the staff."
           }
         }
       },
