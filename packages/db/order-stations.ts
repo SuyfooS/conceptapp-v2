@@ -28,6 +28,7 @@ import {
   orderStationItemFailureOf,
   orderStationRefusalOf,
 } from "./order-station-failures";
+import { allPages } from "./pages";
 import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
 import { getWordingForTeam } from "./wording";
@@ -263,14 +264,17 @@ export async function getStationPeople(
   if (asked.size === 0) return {};
   const admin = createAdminClient();
   const [members, names] = await Promise.all([
-    admin
-      .from("memberships")
-      .select("user_id, profiles (full_name)")
-      .eq("business_id", businessId),
+    allPages((first, last) =>
+      admin
+        .from("memberships")
+        .select("user_id, profiles (full_name)")
+        .eq("business_id", businessId)
+        .order("user_id")
+        .range(first, last),
+    ),
     memberNames(admin, businessId),
   ]);
-  if (members.error) throw members.error;
-  const people = (members.data ?? []).map((row) => ({
+  const people = members.map((row) => ({
     id: row.user_id.toLowerCase(),
     name: nameIn(names, row.user_id, row.profiles?.full_name) ?? "",
   }));

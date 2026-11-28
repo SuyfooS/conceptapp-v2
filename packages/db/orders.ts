@@ -36,6 +36,7 @@ import {
   refusedItems,
   takenOrder,
 } from "./order-failures";
+import { allPages } from "./pages";
 import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
 
@@ -274,14 +275,17 @@ export async function getOrderPeople(
 ): Promise<Map<string, string>> {
   const supabase = await createClient();
   const [members, names] = await Promise.all([
-    supabase
-      .from("memberships")
-      .select("user_id, profiles (full_name)")
-      .eq("business_id", businessId),
+    allPages((first, last) =>
+      supabase
+        .from("memberships")
+        .select("user_id, profiles (full_name)")
+        .eq("business_id", businessId)
+        .order("user_id")
+        .range(first, last),
+    ),
     memberNames(supabase, businessId),
   ]);
-  if (members.error) throw members.error;
-  const people = (members.data ?? []).map((row) => ({
+  const people = members.map((row) => ({
     id: row.user_id.toLowerCase(),
     name: nameIn(names, row.user_id, row.profiles?.full_name) ?? "",
   }));
