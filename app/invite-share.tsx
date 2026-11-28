@@ -28,8 +28,9 @@ export type InviteShareSetup = { business: string; toNumber: boolean };
 
 /**
  * Which sentence a link goes with: the team's (`app.team.pending.message`,
- * which a business may reword), or the owner's own, from the console
- * (`admin.setup.invite.ownerMessage`).
+ * which a business may reword: in the app through its `WordingProvider`, in
+ * the console through the page's, `inviteShareWording`), or the owner's own,
+ * from the console (`admin.setup.invite.ownerMessage`).
  */
 export type InviteWords = "team" | "owner";
 
@@ -57,7 +58,7 @@ function useInviteMessage(): (business: string, words: InviteWords) => string {
 }
 
 /**
- * One invite's link, ready to send: "וואטסאפ" first (a real link, opened by
+ * One invite's link, ready to send: "שליחה בוואטסאפ" first (a real link, opened by
  * the press itself, so nothing blocks it; named by whose link it sends), to
  * the number it was made for with the sentence and the link written
  * (`inviteWhatsappHref`), then the link with its copy button (`CopyLink`).
@@ -95,7 +96,7 @@ export function InviteShare({
     copied: string;
     failed: string;
   };
-  /** "וואטסאפ", for a screen that brings the focus there. */
+  /** "שליחה בוואטסאפ", for a screen that brings the focus there. */
   whatsappRef?: Ref<HTMLAnchorElement>;
   /** WhatsApp was opened, as the screen keeps it; this piece's own otherwise. */
   opened?: boolean;

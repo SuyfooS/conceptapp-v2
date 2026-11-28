@@ -396,12 +396,12 @@ export function ListedUndo({ ids }: { ids: readonly string[] }) {
 
 /**
  * One person's link, made at the moment of sending: "יצירת קישור", which
- * keeps the row in place (`PendingLinks`); once made, "וואטסאפ" (a chat to
+ * keeps the row in place (`PendingLinks`); once made, "שליחה בוואטסאפ" (a chat to
  * their number with the message and the link written, the person still
  * pressing send there; a real link, opened by the press itself, so nothing
  * blocks it) and the link with its copy button (`InviteShare`, as every
  * screen that makes an invite's link has them), in every shape
- * (`InviteLinks`). The press went as the link arrived, so "וואטסאפ" takes
+ * (`InviteLinks`). The press went as the link arrived, so "שליחה בוואטסאפ" takes
  * the focus; with the focus put elsewhere meanwhile it stays there, and the
  * announcer says the link is ready. After WhatsApp or a copy the row says
  * so, and the focus goes to the next person's "יצירת קישור" in this shape,

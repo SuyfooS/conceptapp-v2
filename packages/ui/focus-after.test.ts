@@ -279,7 +279,7 @@ describe("focusFirst", () => {
   });
 });
 
-// A new link arrives in place of its press: its "וואטסאפ" takes the focus,
+// A new link arrives in place of its press: its "שליחה בוואטסאפ" takes the focus,
 // or, when it can't, the link ready is said, never the page's title alone.
 describe("focusOrSay", () => {
   it("focuses what arrived, brought into view, and says nothing", () => {
@@ -297,7 +297,7 @@ describe("focusOrSay", () => {
     const { at, spot } = page();
     const title = spot("h1");
     at.found.set(PAGE_TITLE, [el(title)]);
-    // The table's "וואטסאפ", hidden once the window turned to the lists.
+    // The table's "שליחה בוואטסאפ", hidden once the window turned to the lists.
     const hidden = spot("a");
     hidden.rects = 0;
     const order: string[] = [];

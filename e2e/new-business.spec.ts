@@ -381,8 +381,14 @@ test("a platform admin opens a restaurant and invites its staff", async ({
 
   // The owner's first link, made here, goes out on WhatsApp to her number
   // with the owner's own sentence (closing the pilot, PR 4): read here,
-  // never opened. The press went, so "וואטסאפ" has the focus.
+  // never opened. The press went, so "שליחה בוואטסאפ" has the focus. Before
+  // it, her row says her link is made here; the staff's, that the owners
+  // send theirs.
   const owner = "רונית בדיקה";
+  const hint = (words: string) =>
+    page.getByText(words, { exact: true }).filter({ visible: true });
+  await expect(hint(a.setup.people.ownerPendingHint)).toHaveCount(1);
+  await expect(hint(a.setup.people.pendingHint)).toHaveCount(2);
   await page
     .getByRole("button", {
       name: heT("admin.setup.invite.createFor", { name: owner }),
@@ -393,6 +399,7 @@ test("a platform admin opens a restaurant and invites its staff", async ({
     .getByLabel(heT("admin.setup.invite.linkFor", { name: owner }))
     .filter({ visible: true });
   await expect(field).toHaveValue(/\/join\/[A-Za-z0-9_-]{43}$/);
+  const link = await field.inputValue();
   const whatsapp = page
     .getByRole("link", {
       name: heT("app.team.pending.whatsappFor", { name: owner }),
@@ -404,10 +411,23 @@ test("a platform admin opens a restaurant and invites its staff", async ({
   expect(href.searchParams.get("text")).toBe(
     shareText(
       heT("admin.setup.invite.ownerMessage", { business: isolateName(name) }),
-      await field.inputValue(),
+      link,
     ),
   );
   await expect(whatsapp).toHaveAttribute("target", "_blank");
+  // The page read again: her row is "הוזמן", and the link just made stays
+  // on screen with the focus, never a new press in its place.
+  await expect(hint(a.setup.people.invited)).toHaveCount(1);
+  await expect(hint(a.setup.people.ownerPendingHint)).toHaveCount(0);
+  await expect(field).toHaveValue(link);
+  await expect(whatsapp).toBeFocused();
+  await expect(
+    page
+      .getByRole("button", {
+        name: heT("admin.setup.invite.createFor", { name: owner }),
+      })
+      .filter({ visible: true }),
+  ).toHaveCount(0);
   await expectCleanPage(page);
 });
 

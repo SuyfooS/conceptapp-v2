@@ -26,7 +26,7 @@ const ti = tt.invite;
 const tl = tt.link;
 const BUSINESS = "מסעדת הדגמה";
 
-/** A person's "וואטסאפ", in whichever shape is on screen. */
+/** A person's "שליחה בוואטסאפ", in whichever shape is on screen. */
 const whatsappFor = (page: Page, name: string) =>
   page
     .getByRole("link", { name: heT("app.team.pending.whatsappFor", { name }) })
@@ -222,7 +222,7 @@ test("a new link opens an expired invite again", async ({ page }, testInfo) => {
     .getByLabel(tl.linkFor.replace("{name}", EXPIRED.name))
     .filter({ visible: true });
   await expect(field).toHaveValue(/\/join\/[A-Za-z0-9_-]{43}$/);
-  // The press went: "וואטסאפ" has the focus, and says whose link it sends
+  // The press went: "שליחה בוואטסאפ" has the focus, and says whose link it sends
   // (accessibility, part 6), to the invite's number with the sentence; the
   // copy beside it says whose link it copies.
   const whatsapp = whatsappFor(page, EXPIRED.name);

@@ -161,7 +161,7 @@ test("the team twin's next deleted invite waits for its own 'ביטול', whatev
   await expect(deleteFor(page, DANA)).toHaveCount(0);
 });
 
-// A new link in place of its press: "וואטסאפ" takes the focus, and says
+// A new link in place of its press: "שליחה בוואטסאפ" takes the focus, and says
 // whose link it sends, to nobody on the twin (closing the pilot, PR 4); the
 // copy beside it says whose link it copies. Each copy is said by the
 // announcer, the same again too, and never by the button as well; one the
@@ -730,7 +730,7 @@ test("the person twin's name sheet gives the focus back to its press when a fix 
 // the Team screen's new link: "בר הים" has יואב's invite open and רונית's
 // run out. A link that arrives with the focus put elsewhere while its press
 // was busy is said there; one that arrives in place of its press puts the
-// focus on its "וואטסאפ", which says whose link it sends, to nobody on the
+// focus on its "שליחה בוואטסאפ", which says whose link it sends, to nobody on the
 // twin, and the copy beside it says whose link it copies.
 const ci = he.admin.setup.invite;
 const CONSOLE_BUSINESS = "/design/console/businesses/bar-hayam";

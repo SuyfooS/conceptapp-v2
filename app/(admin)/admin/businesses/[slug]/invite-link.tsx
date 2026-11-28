@@ -23,7 +23,7 @@ const initial: InviteLinkState = {};
  * pilot, PR 4): an owner's first link goes with the owner's own sentence
  * (`words`). For an invite that ran out, the same button renews it for
  * another 14 days. As the Team screen's "קישור חדש" (`ResendLink`): the
- * press went as the link arrived, so "וואטסאפ" takes the focus, and says
+ * press went as the link arrived, so "שליחה בוואטסאפ" takes the focus, and says
  * whose link it sends; with the focus put elsewhere meanwhile, it stays
  * there, and the announcer says the link is ready. A refusal is a line
  * drawn anew each time, and the press, busy meanwhile, takes back the focus

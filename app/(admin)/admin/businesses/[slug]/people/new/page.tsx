@@ -7,6 +7,7 @@ import { getTranslations } from "next-intl/server";
 import { z } from "zod";
 import { currentPlatformRole } from "../../../../../staff";
 import { addPersonAction } from "../../actions";
+import { inviteShareWording } from "../../invite-wording";
 import { AddPersonView } from "./add-person-view";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -25,6 +26,8 @@ export default async function AddPersonPage({
   const start = z.enum(ROLES).safeParse(query.role);
   const business = await getBusinessSetup(slug);
   if (!business) notFound();
+  // Its own sentence for the link, as /team sends it.
+  const inviteWording = await inviteShareWording(business.id);
   return (
     <AddPersonView
       name={business.name}
@@ -36,6 +39,7 @@ export default async function AddPersonPage({
       })}
       // The link to the number it was made for: the real page alone.
       whatsappToNumber
+      inviteWording={inviteWording}
     />
   );
 }

@@ -6,6 +6,7 @@ import { type NamedRole, namedRoleName } from "@domain/role-access";
 import { type SetupItem, setupChecklist, setupRemaining } from "@domain/setup";
 import { TEMPLATE_KEYS, type TemplateKey } from "@domain/templates";
 import { type ViewAsFailure, viewAsChoices, viewAsKey } from "@domain/view-as";
+import type { Wording } from "@domain/wording";
 import { accentProps } from "@ui/accent";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
@@ -30,6 +31,7 @@ import {
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 import type { ComponentProps } from "react";
+import { WordingProvider } from "@/app/(app)/wording-provider";
 import type { InviteShareSetup } from "@/app/invite-share";
 import { InviteLink } from "./invite-link";
 
@@ -72,6 +74,7 @@ export async function BusinessView({
   namedRoles = [],
   issue,
   whatsappToNumber = false,
+  inviteWording = {},
 }: {
   business: BusinessSetup;
   listHref: string;
@@ -106,6 +109,11 @@ export async function BusinessView({
    * default WhatsApp asks whom to send to.
    */
   whatsappToNumber?: boolean;
+  /**
+   * The business's own sentences for what its invites' links go out with
+   * (`inviteShareWording`): the real page's. The app's by default.
+   */
+  inviteWording?: Wording;
 }) {
   const t = await getTranslations("admin");
   // Its rows read as the pages they open are named, as in the owner's /manage.
@@ -219,31 +227,34 @@ export async function BusinessView({
           id="people"
           className="scroll-mt-4 md:col-start-2 md:row-span-2 md:row-start-1 xl:col-span-2 xl:col-start-1 xl:row-span-1 xl:row-start-2"
         >
-          <People
-            t={t}
-            business={business}
-            issue={issue}
-            share={{ business: business.name, toNumber: whatsappToNumber }}
-            importHref={importHref}
-            roles={
-              rolesHref
-                ? {
-                    href: rolesHref,
-                    title: tRoles("title"),
-                    subtitle: tRoles("row"),
-                  }
-                : null
-            }
-            access={
-              accessHref
-                ? {
-                    href: accessHref,
-                    title: tAccess("title"),
-                    subtitle: tAccess("row"),
-                  }
-                : null
-            }
-          />
+          {/* Each link goes out in the business's own sentence, as from /team. */}
+          <WordingProvider overrides={inviteWording}>
+            <People
+              t={t}
+              business={business}
+              issue={issue}
+              share={{ business: business.name, toNumber: whatsappToNumber }}
+              importHref={importHref}
+              roles={
+                rolesHref
+                  ? {
+                      href: rolesHref,
+                      title: tRoles("title"),
+                      subtitle: tRoles("row"),
+                    }
+                  : null
+              }
+              access={
+                accessHref
+                  ? {
+                      href: accessHref,
+                      title: tAccess("title"),
+                      subtitle: tAccess("row"),
+                    }
+                  : null
+              }
+            />
+          </WordingProvider>
         </div>
         {viewAs ? (
           <div className="md:col-start-1 md:row-start-2 xl:col-start-2 xl:row-start-1">
@@ -493,30 +504,36 @@ function People({
   // the page reads again and the row moves up.
   const key = (p: SetupPerson) =>
     p.inviteId ?? `member-${p.phone ?? ""}-${p.name}`;
-  // An invite's link, and for one waiting for its first who sends it.
+  // An invite's link, and for one waiting for its first who sends it: an
+  // owner's is made and sent from here (a business the wizard opened has no
+  // owner yet to send it), anyone else's by the owners, from /team. In the
+  // same wrapper whatever its state: making a link reads the page again, and
+  // the row it was made on is "הוזמן" now; a slot that changed its element
+  // would draw a new press in place of the link just made.
   const invite = (p: SetupPerson) => {
     if (!p.inviteId) return null;
-    const link = (
-      <InviteLink
-        inviteId={p.inviteId}
-        name={name(p.name)}
-        phone={p.phone}
-        share={share}
-        // The owner's first link, from here, says it is theirs to manage.
-        words={p.role === "owner" ? "owner" : "team"}
-        renew={p.status === "expired"}
-        issue={issue}
-      />
-    );
-    return p.status === "pending" ? (
+    return (
       <div className="flex flex-col gap-2">
-        <p className="text-pretty text-ink-2 text-sm">
-          {t("setup.people.pendingHint")}
-        </p>
-        {link}
+        {p.status === "pending" ? (
+          <p className="text-pretty text-ink-2 text-sm">
+            {t(
+              p.role === "owner"
+                ? "setup.people.ownerPendingHint"
+                : "setup.people.pendingHint",
+            )}
+          </p>
+        ) : null}
+        <InviteLink
+          inviteId={p.inviteId}
+          name={name(p.name)}
+          phone={p.phone}
+          share={share}
+          // The owner's first link, from here, says it is theirs to manage.
+          words={p.role === "owner" ? "owner" : "team"}
+          renew={p.status === "expired"}
+          issue={issue}
+        />
       </div>
-    ) : (
-      link
     );
   };
 

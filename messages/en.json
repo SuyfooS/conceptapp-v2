@@ -1549,8 +1549,8 @@
         "create": "Make the link",
         "createFor": "Make the link for {name}",
         "ready": "{name}'s link is ready",
-        "whatsapp": "WhatsApp",
-        "whatsappFor": "WhatsApp {name}, with the link",
+        "whatsapp": "Send on WhatsApp",
+        "whatsappFor": "Send on WhatsApp to {name}, with the link",
         "opened": "Opened in WhatsApp",
         "message": "{business} invites you to the team on the ConceptApp app. The link is personal and valid for 14 days. Open it on this phone and you'll get a code by SMS.",
         "next": "Next: {name}",
@@ -8200,7 +8200,8 @@
         "import": "Add from a list",
         "expired": "Invite expired",
         "pending": "No link yet",
-        "pendingHint": "The owners send the link from the Team screen."
+        "pendingHint": "The owners send the link from the Team screen.",
+        "ownerPendingHint": "Create the owner's link here, then send it on WhatsApp."
       },
       "invite": {
         "create": "Create invite link",

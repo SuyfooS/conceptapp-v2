@@ -56,10 +56,10 @@ export function useInviteLinks(): Links | null {
 /**
  * "New link" for one invite nobody claimed: issues a fresh link (the old
  * one stops working, and the invite runs another 14 days), then shows it
- * to send on, in every shape of the screen (`InviteLinks`): "וואטסאפ" to
+ * to send on, in every shape of the screen (`InviteLinks`): "שליחה בוואטסאפ" to
  * the invite's number with the sentence and the link written, and the link
  * with its copy button (`InviteShare`; closing the pilot, PR 4). The press
- * went as the link arrived, so "וואטסאפ" takes the focus, and says whose
+ * went as the link arrived, so "שליחה בוואטסאפ" takes the focus, and says whose
  * link it sends, as "עוד לא קיבלו קישור" does; with the focus put elsewhere
  * meanwhile, it stays there, and the announcer says the link is ready. A
  * refusal is a line drawn anew each time, and the press, busy meanwhile,
