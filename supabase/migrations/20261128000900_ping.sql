@@ -12,8 +12,9 @@
 --               answer means only that the database answered.
 --   who         anon (the publishable key with nobody signed in, as
 --               /health/db asks it) and authenticated: the first function
---               anon may call. Not PUBLIC, so a role made later doesn't get
---               it.
+--               in public meant for anon through the Data API (private,
+--               whose helpers anon may already run, is not exposed). Not
+--               PUBLIC, so a role made later doesn't get it.
 --   how         security invoker, so it can never do more than its caller;
 --               stable, so it can write nothing; an empty search path.
 --

@@ -18,7 +18,7 @@
 # Assigned, because the GitHub app on a phone pushes an issue assigned to
 # you, never a new issue in a repository you watch. What the issue said last
 # is read from the workflow's own words alone: the repository is public, and
-# anyone can comment. A run by hand on another site (SITE) says nothing of
+# anyone can comment. A run by hand on another site (`site`) says nothing of
 # the real one: it opens an issue only when none is open, and leaves an open
 # one as it is.
 #
@@ -32,11 +32,16 @@
 # so a failed run means the check itself broke. It ends 2, asking nothing,
 # for an address it won't take.
 #
-# SITE (the run's `site` input, through the environment) is a site to check
-# instead of the real one, to see the issue open: an https:// address with a
-# host and nothing more (one / at its end is dropped, and capitals, as a
-# phone's keyboard starts it, made lower case: a host is the same in either),
-# or nothing is asked, and what was typed is never printed. GH_TOKEN and
+# The run's `site` input is a site to check instead of the real one, to see
+# the issue open: an https:// address with a host and nothing more (one / at
+# its end is dropped, and capitals, as a phone's keyboard starts it, made
+# lower case: a host is the same in either), or nothing is asked, and this
+# script prints nothing of what was typed. It is read from the run's event
+# (GITHUB_EVENT_PATH, with jq), never from the step's environment, which the
+# runner prints at the top of the step's log, public in a public repository;
+# a scheduled run's event has no input. An address it takes is in the log,
+# the step summary and the issue, all public: an address alone, never a
+# token or a password. GH_TOKEN and
 # GH_REPO are the run's own, for `gh`; GITHUB_SERVER_URL and
 # GITHUB_REPOSITORY_OWNER the runner sets on every run. The words call it
 # "the check that the site is up", never "בדיקת הזמינות": in the app,
@@ -61,7 +66,10 @@ HOST_PATTERN='^https://([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$'
 
 # Spaces around what was typed are dropped, empty is the real site, and
 # capitals are made lower case ("Https://…" from a phone's keyboard).
-site=${SITE:-}
+site=""
+if [ -n "${GITHUB_EVENT_PATH:-}" ]; then
+  site=$(jq -r '.inputs.site // ""' "$GITHUB_EVENT_PATH")
+fi
 site=${site#"${site%%[![:space:]]*}"}
 site=${site%"${site##*[![:space:]]}"}
 site=${site:-$REAL_SITE}
@@ -103,11 +111,13 @@ list() {
 }
 
 # The addresses that got no answer by what the issue said last: the list
-# under the last "no answer" line of its body and the workflow's comments.
+# under the last "no answer" line of its body and the workflow's comments,
+# or none after a later "answers again" (it closed, and was opened again).
 last_said() {
-  awk -v head="$NO_ANSWER" '
+  awk -v head="$NO_ANSWER" -v ok="$ANSWERS" '
     { sub(/\r$/, "") }
     $0 == head { said = ""; reading = 1; next }
+    $0 == ok { said = ""; reading = 0; next }
     reading && /^- https:\/\// { said = said $0 "\n"; next }
     { reading = 0 }
     END { printf "%s", said }

@@ -60,16 +60,22 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllEnvs();
+  vi.restoreAllMocks();
 });
 
 describe("databaseAnswers", () => {
   it("asks public.ping, with no argument and a 5-second limit", async () => {
     const { databaseAnswers, PING_TIMEOUT_MS } = await load();
+    const timeout = vi.spyOn(AbortSignal, "timeout");
     expect(await databaseAnswers()).toBe(true);
     expect(db.calls).toHaveLength(1);
     expect(db.calls[0]?.name).toBe("ping");
     expect(db.calls[0]?.args).toEqual([]);
+    // The signal the question carries is the one of a 5-second timeout.
+    expect(timeout).toHaveBeenCalledTimes(1);
+    expect(timeout).toHaveBeenCalledWith(5_000);
     expect(db.calls[0]?.signal).toBeInstanceOf(AbortSignal);
+    expect(db.calls[0]?.signal).toBe(timeout.mock.results[0]?.value);
     expect(PING_TIMEOUT_MS).toBe(5_000);
   });
 

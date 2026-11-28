@@ -28,7 +28,7 @@ on:
   workflow_dispatch:
     inputs:
       site:
-        description: An https:// address to check instead of the real site, to see the issue open. Empty checks the real site.
+        description: An https:// address to check instead of the real site, to see the issue open. Empty checks the real site. What is typed is public, so an address alone, never a token or a password.
         type: string
         required: false
         default: ""
@@ -54,12 +54,12 @@ jobs:
           sparse-checkout: .github/scripts
           persist-credentials: false
 
-      # What was typed by hand reaches the script through the environment,
-      # never written into the script, and the script checks it before it
-      # asks anything.
+      # What was typed by hand is never written into the script, nor into
+      # the step's environment, which the runner prints at the top of this
+      # step's public log: the script reads it from the run's event
+      # (GITHUB_EVENT_PATH) and checks it before it asks anything.
       - name: Ask the site, and open or close the issue
         env:
-          SITE: ${{ inputs.site }}
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: bash .github/scripts/uptime.sh

@@ -148,7 +148,7 @@ describe("what it checks, kept the same as the code", () => {
     expect(PATHS.health).toBe("/health");
     expect(PATHS.database).toBe("/health/db");
     // Nothing is "not there yet" any more.
-    expect(source).not.toContain("later");
+    expect(source).not.toMatch(/"later"|\[-\]/);
     expect(source).not.toContain("עוד לא באתר");
     expect(
       readFileSync(join(root, "packages/ui/captcha.tsx"), "utf8"),

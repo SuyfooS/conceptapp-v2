@@ -101,6 +101,10 @@ describe("the workflow", () => {
     expect(site).toMatch(/^ {8}type: string$/m);
     expect(site).toMatch(/^ {8}required: false$/m);
     expect(site).toMatch(/^ {8}default: ""$/m);
+    // The repository is public, and so is what is typed.
+    expect(site).toMatch(
+      /^ {8}description: .*What is typed is public, so an address alone, never a token or a password\.$/m,
+    );
   });
 
   it("runs one at a time, never cutting one short", () => {
@@ -121,13 +125,19 @@ describe("the workflow", () => {
     expect(job?.body).not.toMatch(/^ {4}env:/m);
   });
 
-  it("writes nothing typed or read into a script: every value reaches it through the environment", () => {
+  it("writes nothing typed or read into a script, and nothing typed into the step's environment, which the runner prints in the public log", () => {
     const found = [...code.matchAll(/\$\{\{([^}]*)\}\}/g)];
     expect(found.map(([, inside = ""]) => inside.trim()).sort()).toEqual([
       "github.repository",
       "github.token",
-      "inputs.site",
     ]);
+    // What was typed is read from the run's event by the script alone.
+    expect(code).not.toContain("inputs.");
+    expect(code).not.toMatch(/^ +SITE:/m);
+    expect(withoutComments(script)).not.toMatch(/\$\{?SITE\b/);
+    expect(script).toContain(
+      `site=$(jq -r '.inputs.site // ""' "$GITHUB_EVENT_PATH")`,
+    );
     // Each on an env line of its own, under the step's `env:`.
     for (const [expression] of found) {
       const lines = code
@@ -138,7 +148,6 @@ describe("the workflow", () => {
         /^ {10}[A-Z_]+: \$\{\{ [a-z.]+ \}\}$/,
       );
     }
-    expect(code).toMatch(/^ {10}SITE: \$\{\{ inputs\.site \}\}$/m);
     expect(code).toMatch(/^ {10}GH_TOKEN: \$\{\{ github\.token \}\}$/m);
     expect(runs.length).toBeGreaterThan(0);
     for (const run of runs) expect(run).not.toContain("${{");
@@ -272,7 +281,8 @@ describe("what the script asks and writes", () => {
 // would print them, and `issue view` with the call's own --jq run by jq on
 // issue.json (the issue as gh gives it: its body, and its comments with
 // each author's login), strings printed raw as gh prints them; and it fails
-// a command that fail-<command>-<subcommand> names.
+// a command that fail-<command>-<subcommand> names. The run's event is
+// event.json, which the script reads with jq, as the runner has it.
 const STUBS: Record<string, string> = {
   curl: `
 { printf '%s\\x1f' curl "$@"; printf '\\x1e'; } >> "$STUBS/calls"
@@ -306,7 +316,13 @@ exit 0
 `,
 };
 
-type Run = { status: number | null; output: string; calls: string[][] };
+type Run = {
+  status: number | null;
+  output: string;
+  calls: string[][];
+  /** What it wrote to the step summary, public on a public repository. */
+  summary: string;
+};
 
 const dirs: string[] = [];
 
@@ -327,7 +343,9 @@ function run({
   said = "",
   comments = [],
   fail = [],
+  environment = {},
 }: {
+  /** The `site` typed for a run by hand; none for a scheduled run. */
   site?: string;
   /** Each path's status, or "none". */
   answers?: Record<string, string>;
@@ -340,6 +358,8 @@ function run({
   /** Its comments, each with its author's login. */
   comments?: { login: string; body: string }[];
   fail?: string[];
+  /** More of the step's environment. */
+  environment?: Record<string, string>;
 } = {}): Run {
   const dir = mkdtempSync(join(tmpdir(), "uptime-"));
   dirs.push(dir);
@@ -373,18 +393,30 @@ function run({
   );
   writeFileSync(join(stubs, "calls"), "");
   for (const command of fail) writeFileSync(join(stubs, `fail-${command}`), "");
+  // The run's event as the runner writes it: a run by hand has its inputs,
+  // a scheduled one none.
+  const event = join(dir, "event.json");
+  writeFileSync(
+    event,
+    JSON.stringify(
+      site === undefined
+        ? { schedule: "7,22,37,52 * * * *" }
+        : { inputs: { site }, ref: "refs/heads/main" },
+    ),
+  );
+  const summary = join(dir, "summary.md");
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     PATH: `${stubs}${delimiter}${process.env.PATH ?? "/usr/bin:/bin"}`,
     STUBS: stubs,
-    GITHUB_STEP_SUMMARY: join(dir, "summary.md"),
+    GITHUB_EVENT_PATH: event,
+    GITHUB_STEP_SUMMARY: summary,
     GITHUB_SERVER_URL: "https://github.com",
     GITHUB_REPOSITORY_OWNER: OWNER,
     GH_TOKEN: "stand-in",
     GH_REPO: "owner/repo",
+    ...environment,
   };
-  if (site === undefined) delete env.SITE;
-  else env.SITE = site;
   const result = spawnSync(
     "bash",
     [join(__dirname, "..", ".github", "scripts", "uptime.sh")],
@@ -398,6 +430,7 @@ function run({
     status: result.status,
     output: `${result.stdout}${result.stderr}`,
     calls,
+    summary: existsSync(summary) ? readFileSync(summary, "utf8") : "",
   };
 }
 
@@ -499,6 +532,18 @@ describe.skipIf(process.platform === "win32")(
         ],
       ]);
       expect(writes(r)).toEqual([]);
+      // The step summary, public too: the site and the time, then each
+      // address and its status, never a body.
+      const summary = r.summary.split("\n");
+      expect(summary).toHaveLength(4);
+      expect(summary[0]).toMatch(
+        /^### https:\/\/www\.conceptapp\.co\.il, \d{2}\.\d{2}\.\d{4} \d{2}:\d{2} \(שעון ישראל\)$/,
+      );
+      expect(summary.slice(1)).toEqual([
+        `- ${REAL}/health: 200`,
+        `- ${REAL}/health/db: 200`,
+        "",
+      ]);
     });
 
     it("opens one issue labelled uptime, assigned to the owner, with only the address, the time and the link, when one gets no answer", () => {
@@ -521,6 +566,7 @@ describe.skipIf(process.platform === "win32")(
       expect(r.output).toContain(
         `::warning::${REAL}/health/db: no answer (503)`,
       );
+      expect(r.summary).toContain(`\n- ${REAL}/health/db: 503\n`);
     });
 
     it("makes the label first when the repository has none, never another", () => {
@@ -577,12 +623,12 @@ describe.skipIf(process.platform === "win32")(
     it("reads what it said last from its own words alone: the repository is public, and anyone can comment", () => {
       const dbDown = { "/health": "200", "/health/db": "503" };
       const bothDown = { "/health": "503", "/health/db": "503" };
-      // Someone else's comment, with the heading and a list or without,
-      // changes nothing of what it said.
+      // Someone else's comment under the heading, listing both addresses or
+      // another one, changes nothing of what it said.
       for (const login of ["someone-else", OWNER]) {
         for (const body of [
           SAYS_BOTH,
-          "בודק את זה עכשיו\n- https://elsewhere.example/x",
+          `${NO_ANSWER}\n- https://elsewhere.example/x`,
         ]) {
           const r = run({
             answers: dbDown,
@@ -662,6 +708,7 @@ describe.skipIf(process.platform === "win32")(
       ]);
       for (const close of made) {
         const lines = (flagValue(close, "--comment") ?? "").split("\n");
+        expect(lines).toHaveLength(5);
         expect(lines.slice(0, 4)).toEqual([
           ANSWERS,
           `- ${REAL}/health`,
@@ -670,6 +717,51 @@ describe.skipIf(process.platform === "win32")(
         ]);
         expect(lines[4]).toMatch(TIME);
       }
+    });
+
+    it("speaks again on an issue opened again after it closed, when the same address fails again", () => {
+      // Its own comment when it closed, and then the issue opened again by
+      // hand (or `gh issue close` commented and then failed to close it).
+      const closed = [
+        ANSWERS,
+        `- ${REAL}/health`,
+        `- ${REAL}/health/db`,
+        "",
+        "מתי: 28.11.2026 08:07 (שעון ישראל).",
+      ].join("\n");
+      const dbDown = { "/health": "200", "/health/db": "503" };
+      const r = run({
+        answers: dbDown,
+        open: [12],
+        said: SAID_DB,
+        comments: [{ login: "github-actions", body: closed }],
+      });
+      const made = writes(r);
+      expect(made.map((c) => c.slice(0, 3))).toEqual([
+        ["issue", "comment", "12"],
+      ]);
+      expect(flagValue(made[0], "--body")).toContain(
+        `${NO_ANSWER}\n- ${REAL}/health/db\n\n`,
+      );
+      // Then quiet again, once it said so.
+      const again = run({
+        answers: dbDown,
+        open: [12],
+        said: SAID_DB,
+        comments: [
+          { login: "github-actions", body: closed },
+          { login: "github-actions", body: SAID_DB },
+        ],
+      });
+      expect(writes(again)).toEqual([]);
+      // Someone else's "answers again" is no one's word but theirs.
+      const outsider = run({
+        answers: dbDown,
+        open: [12],
+        said: SAID_DB,
+        comments: [{ login: "someone-else", body: closed }],
+      });
+      expect(writes(outsider)).toEqual([]);
     });
 
     it("checks an address typed by hand instead, to see the issue open", () => {
@@ -703,6 +795,20 @@ describe.skipIf(process.platform === "win32")(
         expect(curlCalls(r)[0]?.at(-1), JSON.stringify(typed)).toBe(
           `${REAL}/health`,
         );
+      }
+      // It is read from the run's event alone, never from the environment,
+      // which the runner prints in the step's log; with no event, as on a
+      // computer, it is the real site.
+      const environments: Record<string, string>[] = [
+        { SITE: wrong },
+        { GITHUB_EVENT_PATH: "" },
+      ];
+      for (const environment of environments) {
+        const r = run({ environment });
+        expect(
+          curlCalls(r).map((args) => args.at(-1)),
+          JSON.stringify(environment),
+        ).toEqual([`${REAL}/health`, `${REAL}/health/db`]);
       }
     });
 
