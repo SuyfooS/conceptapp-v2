@@ -13,6 +13,7 @@ import { timeIn } from "@domain/shabbat";
 import { Button } from "@ui/button";
 import { Card } from "@ui/card";
 import { cn } from "@ui/cn";
+import { focusFirst } from "@ui/focus-after";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { Check, CircleAlert, MessageSquareText, Send } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -21,8 +22,18 @@ import {
   type ReactNode,
   useActionState,
   useEffect,
+  useRef,
   useState,
 } from "react";
+import { z } from "zod";
+import { usePutBack, useSignedInId } from "@/app/release-note";
+import {
+  isStaleBuild,
+  type KeepForPage,
+  reloadForRelease,
+  takeKept,
+  untilReloaded,
+} from "@/app/stale-build";
 import {
   PushAsk,
   type PushAskOffer,
@@ -44,6 +55,33 @@ import { HeroChip } from "./hero-chip";
 
 const initialState: AvailabilityState = {};
 
+/**
+ * The week as marked when Send met a page from the release before, kept for
+ * the page loaded again (`reloadForRelease`'s `keep`): which week, its
+ * hours and its note, as the form sends them.
+ */
+const KeptWeek = z.object({
+  week: z.string(),
+  ranges: z.array(
+    z.object({ day: z.string(), start: z.string(), end: z.string() }),
+  ),
+  note: z.string(),
+});
+
+/** The week as the form sends it, read back; null for one that doesn't read. */
+function sentWeek(form: FormData): z.infer<typeof KeptWeek> | null {
+  try {
+    const kept = KeptWeek.safeParse({
+      week: form.get("week"),
+      ranges: JSON.parse(String(form.get("ranges") ?? "[]")),
+      note: form.get("note") ?? "",
+    });
+    return kept.success ? kept.data : null;
+  } catch {
+    return null;
+  }
+}
+
 export type AvailabilityFormProps = {
   week: AvailabilityWeek;
   /** The due moment has passed. */
@@ -63,7 +101,13 @@ const cardClass =
  * sheet. Phone: one grouped list, Send floating above the tab bar; tablet: a
  * grid of four; desktop: the whole week in a row, Send on the hero. The same
  * checks run here, in the sheet and on the server. Once it's sent, the first
- * time, the offer of notifications on the phone sits under the days.
+ * time, the offer of notifications on the phone sits under the days. Sent
+ * from a page of the release before, the page loads again (`@/app/stale-build`),
+ * Send busy until it has gone, keeping the week as marked, which the page
+ * loaded puts back on the form, unsent, and its frame says the availability
+ * wasn't sent and what was marked is still there: the person sends again,
+ * nothing sent by itself. A page that stays says the form's own failure,
+ * the week as it was written still on it.
  */
 export function AvailabilityForm({
   week,
@@ -72,7 +116,33 @@ export function AvailabilityForm({
   ask = null,
 }: AvailabilityFormProps) {
   const t = useTranslations("app.availability");
-  const [state, action, pending] = useActionState(save, initialState);
+  // Whose press it is, for a page loaded again for a release, and the
+  // frame's word that the week came back.
+  const signedIn = useSignedInId();
+  const frameBack = usePutBack();
+  const [state, action, pending] = useActionState(
+    async (
+      prev: AvailabilityState,
+      form: FormData,
+    ): Promise<AvailabilityState> => {
+      try {
+        return await save(prev, form);
+      } catch (error) {
+        // Any other error goes to the error screen, as before.
+        if (!isStaleBuild(error)) throw error;
+        // A page from the release before loads again, Send busy until it has
+        // gone, the week as marked kept for the page loaded; one that stays
+        // says it failed, and keeps the days written.
+        const marked = sentWeek(form);
+        const keep: KeepForPage | undefined = marked
+          ? { of: "availability", value: marked, words: "availability" }
+          : undefined;
+        if (reloadForRelease(error, signedIn, keep)) await untilReloaded();
+        return { failure: "failed" };
+      }
+    },
+    initialState,
+  );
   const [days, setDays] = useState<Record<string, Row[]>>(() =>
     Object.fromEntries(
       week.dates.map((date) => [
@@ -93,6 +163,41 @@ export function AvailabilityForm({
 
   const pushAsk = usePushAskOnce(ask);
   const offerPush = pushAsk.offer;
+
+  // Loaded again as Send met the release before: the week as it was marked
+  // is back on the form, for the person to send; never sent by itself. The
+  // frame is told either way: another week's, or one that doesn't read,
+  // isn't put back, and the frame then says the press's words. Send, the
+  // press to make again, takes the focus the page loaded starts without,
+  // once the week is back on the form (`weekBack`): the one on screen.
+  const form = useRef<HTMLFormElement>(null);
+  const [weekBack, setWeekBack] = useState(false);
+  useEffect(() => {
+    const kept = takeKept(signedIn, "availability", KeptWeek);
+    if (!kept || kept.week !== week.start) {
+      frameBack(false);
+      return;
+    }
+    frameBack(true);
+    setDays(
+      Object.fromEntries(
+        week.dates.map((date) => [
+          date,
+          kept.ranges.filter((r) => r.day === date).map(newRow),
+        ]),
+      ),
+    );
+    setNote(kept.note);
+    setDirty(true);
+    setWeekBack(true);
+  }, [signedIn, week.start, week.dates, frameBack]);
+  useEffect(() => {
+    if (!weekBack) return;
+    focusFirst(['button[type="submit"]'], {
+      root: form.current,
+      title: false,
+    });
+  }, [weekBack]);
 
   // "Saved" shows for a moment; the hero keeps saying it was sent.
   useEffect(() => {
@@ -194,6 +299,7 @@ export function AvailabilityForm({
 
   return (
     <form
+      ref={form}
       action={action}
       onSubmit={onSubmit}
       noValidate

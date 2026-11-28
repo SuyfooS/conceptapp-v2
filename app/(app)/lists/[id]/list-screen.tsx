@@ -67,6 +67,8 @@ import {
   useState,
   useTransition,
 } from "react";
+import { usePutBack, useSignedInId } from "@/app/release-note";
+import { reloadForRelease, takeKept, untilReloaded } from "@/app/stale-build";
 import { byAttribute, refusalArrived } from "../../manage/editor-focus";
 import { TYPING_MS } from "../../manage/use-draft";
 import type {
@@ -78,6 +80,16 @@ import type {
   ListPhotoResult,
   ListScreenData,
 } from "../list-types";
+import {
+  countText,
+  type ItemChange,
+  KeptTyped,
+  needsMinus,
+  type TypedBack,
+  typed,
+  typedBack,
+  typedToKeep,
+} from "../typed-back";
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 
@@ -175,26 +187,8 @@ export type ListScreenWords = {
   timeline: { key: string; text: ReactNode; note?: string | null }[];
 };
 
-/** What an item's result changes, as the screen keeps it. */
-type ItemChange = Partial<
-  Pick<ListItem, "checked" | "given" | "reading" | "answer" | "comment">
->;
-
-/** A number as it is typed back into its field. */
-const typed = (reading: number | null, minus: boolean) =>
-  reading === null ? "" : String(minus ? Math.abs(reading) : reading);
-
-/** An order's count as its stepper shows it. */
-const countText = (count: number | null) =>
-  count === null ? "" : String(count);
-
 /** The range as words: "0–5", "from 0", "up to 5" (`numberRange`). */
 const rangeOf = numberRange;
-
-/** An item whose range goes below zero needs a minus sign to be typed. */
-const needsMinus = (item: ListItem) =>
-  item.kind === "number" &&
-  ((item.min !== null && item.min < 0) || (item.max !== null && item.max < 0));
 
 /**
  * A list being filled. A tick saves at once and shows at once, and goes back
@@ -332,6 +326,10 @@ function ListScreen({
   const th = useTranslations("app.lists.list.history");
   const router = useRouter();
   const { list, lookups, userId, timeZone, can } = data;
+  // Whose press it is, for a page loaded again for a release: the frame's,
+  // which is told whether what was typed came back.
+  const signedIn = useSignedInId();
+  const frameBack = usePutBack();
   // Fixing a finished list in place (L6b-1): the screen's own state. How
   // many changes it saved, for "התיקון נשמר", the saves on their way, which
   // "סיום התיקון" waits for, and how many changes were refused, so it stays
@@ -391,6 +389,8 @@ function ListScreen({
   } | null>(null);
   const [commentFor, setCommentFor] = useState<string | null>(null);
   const [commentDraft, setCommentDraft] = useState("");
+  // Whose comment the sheet was opened for, still known as it closes.
+  const commentOf = useRef<string | null>(null);
   const [finishing, startFinish] = useTransition();
   const [undoShown, setUndoShown] = useState(data.undoUntil !== null);
   // Someone given lists.fix (L6b-2): whether their window is still open.
@@ -478,6 +478,68 @@ function ListScreen({
   useEffect(() => {
     givenNow.current = givenDrafts;
   }, [givenDrafts]);
+  // And what is typed in the fields and the comment sheet, for a change that
+  // meets the release before to keep across the page loaded again.
+  const draftsNow = useRef(drafts);
+  const minusNow = useRef(minus);
+  const commentNow = useRef({ item: commentFor, text: commentDraft });
+  useEffect(() => {
+    draftsNow.current = drafts;
+    minusNow.current = minus;
+    commentNow.current = { item: commentFor, text: commentDraft };
+  }, [drafts, minus, commentFor, commentDraft]);
+
+  // Loaded again as a change met the release before: what was typed is back
+  // in its field, or in its comment's sheet, unsaved, for the person to save
+  // again; never saved by itself. Typed while the list was fixed, it opens
+  // being fixed again, if it still may be; a list neither filled nor fixed
+  // takes nothing back (`typedBack`). The frame is told either way, and says
+  // it came back only when it did. The page loaded starts with no focus: it
+  // goes back where the change was made, once the list shows what came back
+  // (`focusBack`), its tick, count or field brought into view, unless a
+  // comment's sheet opens again, which takes it, and gives it back to the
+  // item's comment button as it closes (`commentOf`).
+  const [focusBack, setFocusBack] = useState<TypedBack["at"]>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once, as the screen opens, with the list it opened on
+  useEffect(() => {
+    const back = typedBack(takeKept(signedIn, "list", KeptTyped), list, can);
+    frameBack(back !== null);
+    if (!back) return;
+    if (back.fixing) setFixing(true);
+    setDrafts((current) => ({ ...current, ...back.fields }));
+    setMinus((current) => ({ ...current, ...back.minus }));
+    setGivenDrafts((current) => ({ ...current, ...back.given }));
+    if (back.comment) {
+      setCommentDraft(back.comment.text);
+      setCommentFor(back.comment.item);
+      commentOf.current = back.comment.item;
+    } else {
+      setFocusBack(back.at);
+    }
+  }, [signedIn]);
+  useEffect(() => {
+    if (focusBack === null) return;
+    const row = byAttribute(LIST_ITEM, focusBack.item);
+    const control =
+      focusBack.part === "check"
+        ? `${row} input[type="checkbox"]`
+        : focusBack.part === "count"
+          ? `${row} input:not([type="checkbox"])`
+          : `${row} input, ${row} textarea`;
+    focusFirst([inViewWhenFocused(firstOnScreen([control]))], {
+      title: false,
+    });
+  }, [focusBack]);
+  // Whether the screen is still there: a change that meets the release
+  // after it was left (a count saved on the way out) keeps nothing, as
+  // nothing of this screen comes back on the page loaded.
+  const onScreen = useRef(false);
+  useEffect(() => {
+    onScreen.current = true;
+    return () => {
+      onScreen.current = false;
+    };
+  }, []);
   useEffect(() => {
     fixingNow.current = fixing;
   }, [fixing]);
@@ -799,7 +861,28 @@ function ListScreen({
     let saved: ListActionResult<unknown, ItemFailure>;
     try {
       saved = await actions.setItem(item.id, result, fix);
-    } catch {
+    } catch (error) {
+      // A page from the release before loads again, the change shown until
+      // it has gone, and is never sent again: the page loaded shows the item
+      // as the list has it, and the person ticks it again; what was typed
+      // is kept for it, and put back unsaved, while the screen is still
+      // there. A page that stays puts it back and says it failed, as any
+      // other failure.
+      const keep = onScreen.current
+        ? typedToKeep(
+            itemsNow.current,
+            {
+              drafts: draftsNow.current,
+              minus: minusNow.current,
+              given: givenNow.current,
+              comment: commentNow.current,
+            },
+            before,
+            change,
+            { fix, asksQuantities: list.asksQuantities },
+          )
+        : undefined;
+      if (reloadForRelease(error, signedIn, keep)) await untilReloaded();
       saved = { ok: false, failure: "failed" };
     }
     if (saved.ok) {
@@ -889,6 +972,7 @@ function ListScreen({
   function openComment(item: ListItem) {
     setCommentDraft(item.comment ?? "");
     setCommentFor(item.id);
+    commentOf.current = item.id;
   }
 
   async function saveComment() {
@@ -1299,9 +1383,10 @@ function ListScreen({
   }
 
   /**
-   * "סיום התיקון" (L6b-1): a count still waiting and a number or a note
-   * typed but not yet left are saved first, then it waits for every save on
-   * its way. When one of them was refused, the screen stays where its words
+   * "סיום התיקון" (L6b-1): a count still waiting, or put back after a
+   * release, and a number or a note typed but not yet left are saved first,
+   * then it waits for every save on its way. When one of them was refused,
+   * the screen stays where its words
    * put it: still fixing, filled now, or no longer theirs (`fail`), and
    * nothing says the fix was saved. Otherwise it leaves fix mode, the
    * keyboard back on "תיקון הרשימה", and, when something was saved, reads
@@ -1311,9 +1396,22 @@ function ListScreen({
     if (photosBusy) return;
     startEnding(async () => {
       const refusedBefore = refused.current;
-      for (const itemId of Object.keys(givenTimers.current)) {
-        commitGiven(itemId);
+      // A count still waiting, and one put back after a release, which
+      // waits for no time of its own (`typedBack`): typed, not saved.
+      const counts = new Set(Object.keys(givenTimers.current));
+      if (list.asksQuantities) {
+        for (const item of items) {
+          const count = givenDrafts[item.id];
+          if (
+            item.kind === "check" &&
+            count !== undefined &&
+            count !== countText(item.given)
+          ) {
+            counts.add(item.id);
+          }
+        }
       }
+      for (const itemId of counts) commitGiven(itemId);
       for (const item of items) {
         if (item.kind === "number") commitNumber(item);
         if (item.kind === "note") commitNote(item);
@@ -2162,6 +2260,19 @@ function ListScreen({
         title={tl("comment.title")}
         subtitle={items.find((item) => item.id === commentFor)?.label}
         closeLabel={tl("comment.close")}
+        // Back to the item's own comment button, whichever its words are
+        // now, brought into view: what opened it, and on a page loaded
+        // again for a release, where it opened by itself, the item it
+        // belongs to rather than the top of the page.
+        returnFocus={() => {
+          const item = items.find((i) => i.id === commentOf.current);
+          if (!item) return null;
+          const own = (words: string) =>
+            `${byAttribute(LIST_ITEM, item.id)} ${byAttribute("aria-label", `${words}: ${item.label}`)}`;
+          return inViewWhenFocused(
+            firstOnScreen([own(tl("comment.edit")), own(tl("comment.add"))]),
+          );
+        }}
         action={{
           label: tl("comment.save"),
           onClick: () => void saveComment(),

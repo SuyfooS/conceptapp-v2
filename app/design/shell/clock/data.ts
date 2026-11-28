@@ -151,7 +151,6 @@ export function demoClock(
       )
     : 0;
   return {
-    userId: "demo",
     now: now.toISOString(),
     timeZone: TIME_ZONE,
     open,
