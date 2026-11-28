@@ -3658,6 +3658,74 @@ export async function forgetPreferences(userId: string): Promise<void> {
 }
 
 /**
+ * A real business for Today's card that offers notifications on the phone
+ * (closing the pilot, PR 6), which a demo business never shows: an owner, a
+ * worker and an accountant of their own (their numbers are in no other
+ * spec), the worker on a published shift next Sunday. Made afresh each run,
+ * its people with no choices made and no devices; they go with it.
+ */
+export const PUSH_CARD_BUSINESS = "00000000-0000-4000-b000-0000000000e4";
+export const PUSH_CARD_PEOPLE = {
+  owner: {
+    id: "00000000-0000-4000-a000-000000000949",
+    name: "רוני כרטיס",
+    local: "050-000-0949",
+    e164: "+972500000949",
+  },
+  worker: {
+    id: "00000000-0000-4000-a000-000000000950",
+    name: "טל כרטיס",
+    local: "050-000-0950",
+    e164: "+972500000950",
+  },
+  accountant: {
+    id: "00000000-0000-4000-a000-000000000970",
+    name: "שני כרטיס",
+    local: "050-000-0970",
+    e164: "+972500000970",
+  },
+} as const;
+
+const pushCardPeople = () =>
+  Object.values(PUSH_CARD_PEOPLE).map((person) => person.id);
+
+/** The business afresh, its accountant in it too. */
+export async function openPushCardBusiness(): Promise<void> {
+  await sql`delete from public.notification_preferences
+    where user_id in ${sql(pushCardPeople())}`;
+  await openRealBusiness({
+    id: PUSH_CARD_BUSINESS,
+    slug: "push-card-e2e",
+    name: "עסק לכרטיס ההתראות",
+    owner: PUSH_CARD_PEOPLE.owner,
+    worker: PUSH_CARD_PEOPLE.worker,
+  });
+  await ensureLogins([PUSH_CARD_PEOPLE.accountant]);
+  await sql`delete from public.push_subscriptions
+    where user_id = ${PUSH_CARD_PEOPLE.accountant.id}`;
+  await sql`insert into public.memberships (business_id, user_id, role)
+    values (${PUSH_CARD_BUSINESS}, ${PUSH_CARD_PEOPLE.accountant.id},
+      'accountant')`;
+}
+
+/** Forget the business, its people's choices and devices. */
+export async function closePushCardBusiness(): Promise<void> {
+  await sql`delete from public.push_subscriptions
+    where user_id in ${sql(pushCardPeople())}`;
+  await sql`delete from public.notification_preferences
+    where user_id in ${sql(pushCardPeople())}`;
+  await deleteRealBusiness(PUSH_CARD_BUSINESS);
+}
+
+/** The worker's requests in the push card's business, withdrawn. */
+export async function withdrawPushCardShift(): Promise<void> {
+  await sql`
+    select public.cancel_shift_swap(${PUSH_CARD_PEOPLE.worker.id}::uuid, w.id)
+    from public.shift_swaps w
+    where w.business_id = ${PUSH_CARD_BUSINESS} and w.status = 'open'`;
+}
+
+/**
  * Quiet hours straight into the database, on Israel's clock: from an hour
  * ago until `minutes` minutes from now, in whole minutes (so they end at
  * least `minutes - 1` minutes from now), with the moment inside them. Written
@@ -3686,17 +3754,19 @@ export async function quietUntilSoon(
 
 /**
  * A device for the person, as saving one leaves it, sending to `origin`
- * (the tests' loopback push service). Returns its endpoint.
+ * (the tests' loopback push service), of the kind `label` (a computer
+ * unless said). Returns its endpoint.
  */
 export async function addTestDevice(
   userId: string,
   origin: string,
+  label: "iphone" | "ipad" | "android" | "computer" = "computer",
 ): Promise<string> {
   const endpoint = `${origin}/push/${randomUUID()}`;
   await sql`insert into public.push_subscriptions
       (user_id, endpoint, endpoint_hash, p256dh, auth_secret, label)
     values (${userId}, ${endpoint}, private.endpoint_hash(${endpoint}),
-      ${`B${"A".repeat(86)}`}, 'aW5zdGFudC1hdXRoLWtleQ', 'computer')`;
+      ${`B${"A".repeat(86)}`}, 'aW5zdGFudC1hdXRoLWtleQ', ${label})`;
   return endpoint;
 }
 

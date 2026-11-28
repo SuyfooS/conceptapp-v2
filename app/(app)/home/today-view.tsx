@@ -81,6 +81,10 @@ import { completeHref } from "../me/file/file-parts";
 import type { FileToday, FileTodayActions } from "../me/file/file-types";
 import type { ModeRow } from "../mode-rows";
 import { moduleIcons } from "../module-icons";
+import {
+  PushAskToday,
+  type TodayPushAsk,
+} from "../notifications/push-ask-today";
 import type {
   AvailabilityWeek,
   PublishedSchedule,
@@ -209,6 +213,15 @@ export type TodayData = {
    * else, or with the clock off.
    */
   away?: TodayAway | null;
+  /**
+   * The offer of notifications on the phone (closing the pilot, PR 6:
+   * `currentPushAsk`), for everyone, until this device has them or they
+   * said "לא עכשיו"; the twin's state on /design/shell. Null in a demo
+   * business, viewing as someone, with the module off or push not set up.
+   * Never drawn on the business's clock station, which isn't the person's
+   * device.
+   */
+  pushAsk?: TodayPushAsk | null;
 };
 
 /** Who is away today, as Today lists them. */
@@ -314,8 +327,13 @@ function runningOf(schedule: TodaySchedule, now: string) {
  * what is under it. The hiring file (H5b) has two cards there: its account's
  * change for 14 days, and, while anything is missing, the way to complete it
  * (the accent, unless the first steps or an open mode hold it), which then
- * leaves a quiet row saying the file is complete. `base` prefixes links for
- * the demo, which also renders this with mock data on /design/shell.
+ * leaves a quiet row saying the file is complete. Under the hero (with none,
+ * after the rest), for everyone, a quiet card offers notifications on the
+ * phone until this device has them or the person says "לא עכשיו"
+ * (`PushAskToday`, closing the pilot, PR 6): only the browser can say it
+ * comes, after Today is drawn, so nothing above it moves. Never on the
+ * business's clock station. `base` prefixes links for the demo,
+ * which also renders this with mock data on /design/shell.
  */
 export async function TodayView({
   data,
@@ -432,6 +450,18 @@ export async function TodayView({
       (!w.mode || modeRow(w.key) !== undefined),
   );
   const view = schedule ? { t, path, clock, role: data.role, schedule } : null;
+  // Notifications on the phone offered: only the browser can say whether
+  // the card comes, a moment after Today is drawn, so it comes under the
+  // hero, or with none after the rest: nothing above it moves, and what
+  // comes after it moves down as it comes.
+  const pushAsk =
+    data.pushAsk && !data.station ? (
+      <PushAskToday
+        ask={data.pushAsk}
+        settingsHref={path("/notifications/settings")}
+        className={view ? "mt-6" : undefined}
+      />
+    ) : null;
   // Chat's part, then lists', one under the other where lists' part was:
   // what waits for the person's "קראתי" first.
   const listsPart = (className?: string) =>
@@ -671,6 +701,7 @@ export async function TodayView({
           <div className="grid items-start gap-6 md:grid-cols-2 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] xl:gap-x-8">
             <div className="min-w-0 xl:row-span-2">
               <NextShift {...view} format={format} now={data.now} />
+              {pushAsk}
             </div>
             <Needs {...view} now={data.now} />
             {listsPart(
@@ -716,6 +747,7 @@ export async function TodayView({
             {rest()}
           </>
         )}
+        {view ? null : pushAsk}
         <MyBusinesses
           businesses={businesses}
           wording={wording}

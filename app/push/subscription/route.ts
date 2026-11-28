@@ -4,6 +4,7 @@ import {
   deviceLabel,
   pushRemovalBody,
   pushSubscriptionBody,
+  savedDeviceLabel,
 } from "@domain/push";
 import { pushEndpointOf } from "@domain/push-endpoint";
 import { canWrite } from "@domain/view-as";
@@ -56,7 +57,8 @@ async function bodyOf(request: Request): Promise<unknown> {
  * `PushSubscription.toJSON()` gives, from the push switch, from the app on
  * each visit (moving the device to whoever is signed in) and from the
  * service worker when the browser replaced its subscription on its own
- * (`replaces`). Only to a push service we know. Refused for someone only in
+ * (`replaces`), with the kind of device the browser says it is (`label`,
+ * which only refines a computer to an iPad). Only to a push service we know. Refused for someone only in
  * demo businesses (409). Remembers the device in a cookie, for sign-out.
  */
 export async function POST(request: Request): Promise<Response> {
@@ -64,7 +66,7 @@ export async function POST(request: Request): Promise<Response> {
   if (person instanceof Response) return person;
   const parsed = pushSubscriptionBody.safeParse(await bodyOf(request));
   if (!parsed.success) return answer({ ok: false, failure: "invalid" }, 400);
-  const { endpoint, keys, replaces } = parsed.data;
+  const { endpoint, keys, label, replaces } = parsed.data;
   if (!pushEndpointOf(endpoint, { testOrigin: pushTestOrigin() })) {
     return answer({ ok: false, failure: "invalid" }, 400);
   }
@@ -72,8 +74,9 @@ export async function POST(request: Request): Promise<Response> {
   const saved = await savePushDevice(
     person.userId,
     { endpoint, p256dh: keys.p256dh, auth: keys.auth },
-    // A coarse word only: the user agent itself is not kept.
-    deviceLabel(request.headers.get("user-agent")),
+    // A coarse word only: the user agent itself is not kept. An iPad that
+    // asks for the desktop site is told by the browser alone.
+    savedDeviceLabel(deviceLabel(request.headers.get("user-agent")), label),
     replaces,
   );
   if (!saved.ok) {

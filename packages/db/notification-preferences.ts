@@ -117,10 +117,10 @@ export async function setNotificationPreferences(
 }
 
 /**
- * The signed-in person was offered notifications on the phone, after giving
- * away a shift or sending availability (public.see_push_ask): kept from the
- * first time, so they are never asked again. Returns whether it was kept;
- * before the migration, never.
+ * The signed-in person answered the offer of notifications on the phone,
+ * after giving away a shift or sending availability, or said "לא עכשיו" on
+ * Today's (public.see_push_ask): kept from the first time, so they are never
+ * asked again. Returns whether it was kept; before the migration, never.
  */
 export async function seePushAsk(): Promise<boolean> {
   const supabase = await createClient();

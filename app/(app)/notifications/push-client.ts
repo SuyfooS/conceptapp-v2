@@ -1,4 +1,4 @@
-import type { BrowserFacts } from "@domain/push";
+import { type BrowserFacts, browserDeviceLabel } from "@domain/push";
 
 /**
  * The browser's half of notifications on the phone, shared by the push switch
@@ -22,6 +22,80 @@ export function browserFacts(): BrowserFacts {
       "PushManager" in window &&
       "Notification" in window,
   };
+}
+
+/**
+ * localStorage: the steps to the home screen were put away in this browser
+ * (`pushAskMark` in @domain/push). Kept by the browser alone, never for the
+ * person: on an iPhone the app on the home screen has storage of its own, so
+ * it still offers the switch once it is installed.
+ */
+export const INSTALL_PUT_AWAY_KEY = "conceptapp:push-install-put-away";
+
+/** Whether the steps to the home screen were put away here; no when storage can't say. */
+export function installPutAway(): boolean {
+  try {
+    return localStorage.getItem(INSTALL_PUT_AWAY_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+
+/** Puts the steps to the home screen away in this browser, when storage lets it. */
+export function putInstallAway(): void {
+  try {
+    localStorage.setItem(INSTALL_PUT_AWAY_KEY, new Date().toISOString());
+  } catch {
+    // Private browsing or blocked storage: they come again next time.
+  }
+}
+
+/**
+ * localStorage: a moment's card (after giving a shift away or sending
+ * availability) was seen in this browser and left unanswered (`seenHere`,
+ * `pushAskMark`). It doesn't come again here; nothing is kept for the
+ * person, so Today's card goes on asking until this device has them or
+ * "לא עכשיו" is said.
+ */
+export const MOMENT_SEEN_KEY = "conceptapp:push-moment-seen";
+
+/** Whether a moment's card was seen in this browser; no when storage can't say. */
+export function momentSeenHere(): boolean {
+  try {
+    return localStorage.getItem(MOMENT_SEEN_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+
+/** Keeps that a moment's card was seen in this browser, when storage lets it. */
+export function putMomentSeen(): void {
+  try {
+    localStorage.setItem(MOMENT_SEEN_KEY, new Date().toISOString());
+  } catch {
+    // Private browsing or blocked storage: it comes again next time.
+  }
+}
+
+/**
+ * Today's "לא עכשיו" for the person, said in this page: held for its
+ * "ביטול" (`useHeldWrite`) and sent only once Today is left or the wait
+ * ends, so a screen drawn before it lands (the one being opened as Today is
+ * left, or one Next keeps for the way back) still has the offer. While this
+ * is set, a moment's card offers nothing (`usePushAskOnce`). In this page
+ * only, never stored: every screen drawn after the write lands has no offer
+ * anyway, and signing out loads a new page.
+ */
+let personPutAway = false;
+
+/** Today's "לא עכשיו" for the person was said (true), or taken back with "ביטול" (false). */
+export function holdPersonPutAway(said: boolean): void {
+  personPutAway = said;
+}
+
+/** Whether Today's "לא עכשיו" for the person was said in this page. */
+export function personPutAwayHere(): boolean {
+  return personPutAway;
 }
 
 /** The application server key, as `pushManager.subscribe` takes it. */
@@ -62,22 +136,24 @@ export function subscribe(
 export type SaveAnswer = "saved" | "demo" | "failed";
 
 /**
- * Tell the app this browser's subscription, for the person signed in, and
- * the endpoint it replaces, when it does.
+ * Tell the app this browser's subscription, for the person signed in, the
+ * kind of device it is (an iPad that asks for the desktop site is told only
+ * here, by its touch screen), and the endpoint it replaces, when it does.
  */
 export async function saveSubscription(
   subscription: PushSubscription,
   replaces?: string,
 ): Promise<SaveAnswer> {
   try {
+    const label = browserDeviceLabel(browserFacts());
     const response = await fetch("/push/subscription", {
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(
         replaces
-          ? { ...subscription.toJSON(), replaces }
-          : subscription.toJSON(),
+          ? { ...subscription.toJSON(), label, replaces }
+          : { ...subscription.toJSON(), label },
       ),
     });
     if (response.ok) return "saved";
