@@ -5,6 +5,7 @@
 import type { AdminBusiness, BusinessSetup } from "@db/admin";
 import type { StorageUse } from "@db/chat-files";
 import type { PayRole } from "@domain/payroll-access";
+import type { SetupModuleFacts } from "@domain/setup";
 import type { AccessData } from "../../(app)/manage/access/access-types";
 
 export const consoleUser = { name: "אורל הדגמה" };
@@ -150,13 +151,31 @@ export function demoStorage(level: DemoStorageLevel): StorageUse {
   };
 }
 
-/** The demo's businesses by address; `created` shows the just-opened state. */
+/**
+ * The demo's businesses by address; `created` shows the just-opened state,
+ * and `facts` what the checklist reads from each one's modules (closing the
+ * pilot, PR 16). The café was just opened as open on Shabbat, with its
+ * template's job roles and shifts; the restaurant has everything done; the
+ * bar was opened before the wizard asked about Shabbat, and its clock's code
+ * is shown only at a station while none runs; the last has no template, its
+ * time clock off, and pay given to its managers.
+ */
 export const setups: Record<
   string,
-  { business: BusinessSetup; created: boolean }
+  { business: BusinessSetup; created: boolean; facts: SetupModuleFacts }
 > = {
   "cafe-noa": {
     created: true,
+    facts: {
+      scheduling: {
+        positions: 4,
+        patterns: 3,
+        published: false,
+        closedOnShabbat: false,
+      },
+      timeClock: { requirePunchCode: false, codeDisplay: "both", stations: 0 },
+      pay: { roles: [], personal: 0 },
+    },
     business: {
       id: "1",
       slug: "cafe-noa",
@@ -170,6 +189,17 @@ export const setups: Record<
   },
   "demo-restaurant": {
     created: false,
+    facts: {
+      scheduling: {
+        positions: 5,
+        patterns: 4,
+        published: true,
+        closedOnShabbat: true,
+      },
+      timeClock: { requirePunchCode: true, codeDisplay: "both", stations: 1 },
+      // Noa sees pay on her own (`payAccess` below).
+      pay: { roles: [], personal: 1 },
+    },
     business: {
       id: "2",
       slug: "demo-restaurant",
@@ -224,6 +254,20 @@ export const setups: Record<
   },
   "bar-hayam": {
     created: false,
+    facts: {
+      scheduling: {
+        positions: 3,
+        patterns: 2,
+        published: false,
+        closedOnShabbat: null,
+      },
+      timeClock: {
+        requirePunchCode: true,
+        codeDisplay: "station",
+        stations: 0,
+      },
+      pay: { roles: [], personal: 0 },
+    },
     business: {
       id: "3",
       slug: "bar-hayam",
@@ -254,6 +298,16 @@ export const setups: Record<
   },
   shulchan: {
     created: false,
+    facts: {
+      scheduling: {
+        positions: 0,
+        patterns: 0,
+        published: false,
+        closedOnShabbat: null,
+      },
+      timeClock: null,
+      pay: { roles: ["manager"], personal: 0 },
+    },
     business: {
       id: "4",
       slug: "shulchan",

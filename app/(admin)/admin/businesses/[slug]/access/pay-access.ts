@@ -1,6 +1,10 @@
 import "server-only";
 import { getBusinessModulesForTeam } from "@db/module-settings";
-import { enabledModules, permissionInUse } from "@domain/modules";
+import {
+  enabledModules,
+  type ModuleRow,
+  permissionInUse,
+} from "@domain/modules";
 import { PAY_PERMISSION } from "@domain/payroll-access";
 import { manifests } from "@modules/registry";
 
@@ -17,10 +21,17 @@ import { manifests } from "@modules/registry";
 export async function payAccessIn(
   businessId: string,
 ): Promise<{ documents: boolean } | null> {
-  const enabled = enabledModules(
-    manifests,
-    await getBusinessModulesForTeam(businessId),
-  );
+  return payAccessFrom(await getBusinessModulesForTeam(businessId));
+}
+
+/**
+ * The same, from the business's module rows already read: the business's
+ * page reads them once for this and for its checklist.
+ */
+export function payAccessFrom(
+  rows: readonly ModuleRow[],
+): { documents: boolean } | null {
+  const enabled = enabledModules(manifests, rows);
   if (!permissionInUse(manifests, enabled, PAY_PERMISSION)) return null;
   return { documents: enabled.includes("chat") };
 }

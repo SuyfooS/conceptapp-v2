@@ -3,7 +3,17 @@ import { accentTokens } from "@domain/color";
 import type { Role } from "@domain/modules";
 import { displayIsraeliMobile } from "@domain/phone";
 import { type NamedRole, namedRoleName } from "@domain/role-access";
-import { type SetupItem, setupChecklist, setupRemaining } from "@domain/setup";
+import {
+  countsInSetup,
+  SETUP_ITEM_MODULE,
+  type SetupItem,
+  type SetupModuleFacts,
+  setupChecklist,
+  setupCounted,
+  setupDone,
+  setupRemaining,
+  setupTeam,
+} from "@domain/setup";
 import { TEMPLATE_KEYS, type TemplateKey } from "@domain/templates";
 import { type ViewAsFailure, viewAsChoices, viewAsKey } from "@domain/view-as";
 import type { Wording } from "@domain/wording";
@@ -56,10 +66,16 @@ function templateName(t: T, key: string | null) {
  * business whose owner never joined is not stuck. Under the people, roles and
  * permissions and who sees pay, each on its own page. The staff are added
  * from a pasted list ("הוספה מרשימה": the checklist's staff item, and a link
- * beside the people's count), the owners one at a time.
+ * beside the people's count), the owners one at a time. Beyond the people
+ * and the address, the checklist reads what the business's modules hold
+ * (closing the pilot, PR 16): the Shabbat answer, job roles and shifts, the
+ * clock's code, who sees pay, who of the staff joined and the first week
+ * published, each while its module is on (`facts`), a missing one leading to
+ * where the team fixes it.
  */
 export async function BusinessView({
   business,
+  facts,
   listHref,
   created,
   shabbatUnsaved = false,
@@ -77,6 +93,8 @@ export async function BusinessView({
   inviteWording = {},
 }: {
   business: BusinessSetup;
+  /** What the checklist reads from the business's modules (`setupModuleFacts`). */
+  facts: SetupModuleFacts;
   listHref: string;
   created: boolean;
   /**
@@ -133,6 +151,8 @@ export async function BusinessView({
       worker: count("worker"),
     },
     hasAddress: business.address !== null,
+    team: setupTeam(business.people),
+    ...facts,
   });
 
   return (
@@ -273,7 +293,22 @@ export async function BusinessView({
   );
 }
 
-/** The state of the setup on the business's colour, the list floating over it. */
+/** The page has one checklist, so its title's id is fixed. */
+const CHECKLIST_TITLE_ID = "setup-checklist-title";
+
+/** Each mark in words, for screen readers. */
+const STATE = { done: "done", missing: "todo", open: "open" } as const;
+
+/**
+ * The state of the setup on the business's colour, the list floating over
+ * it. A missing item leads to where the team fixes it: the people one at a
+ * time or from a list, the people list here for their links, and the
+ * settings page at the module's own section. The first week is the
+ * business's to publish, and who sees pay is there to check, so neither
+ * leads anywhere from here (who sees pay has its row under the people). The
+ * clock's code and who sees pay are never counted (`countsInSetup`), and say
+ * so beside them.
+ */
 function Checklist({
   t,
   items,
@@ -287,7 +322,7 @@ function Checklist({
   template: string;
   /**
    * Where a missing item is fixed, when the person may fix it: the owners
-   * one at a time, the staff from a list.
+   * one at a time, the staff from a list, the business's settings.
    */
   hrefs: {
     people: string | null;
@@ -303,17 +338,37 @@ function Checklist({
   const ownerExpired = business.people.some(
     (p) => p.role === "owner" && p.status === "expired",
   );
+  // The settings page at the section of the item's module, or at its top
+  // (the business's details) for one of the business itself.
+  const settings = (item: SetupItem) => {
+    if (!hrefs.settings) return null;
+    const module = SETUP_ITEM_MODULE[item.key];
+    return module ? `${hrefs.settings}#${module}` : hrefs.settings;
+  };
   // A missing owner is invited as an owner; one whose invite ran out is
   // renewed in the people list, never invited again in another role.
   const href = (item: SetupItem) => {
     if (item.done) return null;
-    if (item.key === "owner") {
-      if (!hrefs.people) return null;
-      return ownerExpired ? "#people" : `${hrefs.people}?role=owner`;
+    switch (item.key) {
+      case "owner":
+        if (!hrefs.people) return null;
+        return ownerExpired ? "#people" : `${hrefs.people}?role=owner`;
+      case "staff":
+        return hrefs.staff;
+      case "address":
+      case "shabbat":
+      case "shifts":
+      case "clockCode":
+        return settings(item);
+      case "joined": {
+        // Each one's link is made in the people list; with nobody there
+        // yet, the staff item leads to adding them.
+        const { invited, expired, pending } = item.team;
+        return invited + expired + pending > 0 ? "#people" : null;
+      }
+      default:
+        return null;
     }
-    if (item.key === "staff") return hrefs.staff;
-    if (item.key === "address") return hrefs.settings;
-    return null;
   };
   const body = (item: SetupItem) => {
     switch (item.key) {
@@ -339,23 +394,76 @@ function Checklist({
               address: business.address ?? "",
             })
           : t("setup.checklist.items.address.todo");
+      case "shabbat":
+        return t(`setup.checklist.items.shabbat.${item.answer ?? "notAsked"}`);
+      case "shifts":
+        return item.done
+          ? t("setup.checklist.items.shifts.done", {
+              positions: item.positions,
+              shifts: item.patterns,
+            })
+          : t("setup.checklist.items.shifts.todo", {
+              missing:
+                item.positions > 0
+                  ? "shifts"
+                  : item.patterns > 0
+                    ? "positions"
+                    : "both",
+            });
+      case "clockCode":
+        return item.code === "station" || item.code === "both"
+          ? t(`setup.checklist.items.clockCode.${item.code}`, {
+              count: item.stations,
+            })
+          : t(`setup.checklist.items.clockCode.${item.code}`);
+      case "pay":
+        return t("setup.checklist.items.pay.done", {
+          roles: item.roles.length === 2 ? "both" : (item.roles[0] ?? "none"),
+          personal: item.personal,
+        });
+      case "joined": {
+        const { joined, invited, pending, expired } = item.team;
+        // One sentence each, those with nobody in them left out.
+        return [
+          t("setup.checklist.items.joined.joined", { count: joined }),
+          invited > 0
+            ? t("setup.checklist.items.joined.invited", { count: invited })
+            : null,
+          pending > 0
+            ? t("setup.checklist.items.joined.pending", { count: pending })
+            : null,
+          expired > 0
+            ? t("setup.checklist.items.joined.expired", { count: expired })
+            : null,
+        ]
+          .filter((sentence) => sentence !== null)
+          .join(" ");
+      }
+      case "publish":
+        return item.done
+          ? t("setup.checklist.items.publish.done")
+          : t("setup.checklist.items.publish.todo");
     }
   };
+  // Done; missing, where it counts; or not yet, for a choice.
+  const mark = (item: SetupItem): keyof typeof STATE =>
+    item.done ? "done" : countsInSetup(item) ? "missing" : "open";
 
   return (
     <section
+      aria-labelledby={CHECKLIST_TITLE_ID}
       className="flex flex-col"
       {...accentProps(accentTokens(business.accent))}
     >
       <Card tone="hero" padding="none" className="px-5 pt-5 pb-[84px]">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="font-medium text-base">
+          <h2 id={CHECKLIST_TITLE_ID} className="font-medium text-base">
             {t("setup.checklist.title")}
           </h2>
           <span className="inline-flex min-h-[30px] items-center rounded-full bg-[color-mix(in_srgb,var(--accent-ink)_18%,transparent)] px-3 font-semibold text-sm">
             {t("setup.checklist.progress", {
-              done: items.length - remaining,
-              total: items.length,
+              done: setupDone(items),
+              total: setupCounted(items),
             })}
           </span>
         </div>
@@ -367,14 +475,22 @@ function Checklist({
         {items.map((item) => (
           <StepRow
             key={item.key}
-            // A missing item leads to where it is fixed.
             href={href(item)}
-            mark={item.done ? "done" : "missing"}
+            mark={mark(item)}
             title={t(`setup.checklist.items.${item.key}.title`)}
-            state={
-              item.done ? t("setup.checklist.done") : t("setup.checklist.todo")
-            }
+            state={t(`setup.checklist.${STATE[mark(item)]}`)}
             detail={body(item)}
+            badge={
+              countsInSetup(item) ? null : (
+                <Badge>
+                  {t(
+                    item.key === "pay"
+                      ? "setup.checklist.toCheck"
+                      : "setup.checklist.optional",
+                  )}
+                </Badge>
+              )
+            }
           />
         ))}
       </StepList>

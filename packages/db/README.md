@@ -660,7 +660,9 @@ console with the secret key. `getSentLists` reads what a person sent in a
 window (RLS lets a sender read their own), and `@db/schedule`
 `getPublishedShifts` the published shifts of some days with their people, the
 shifts `send_list` takes; `hasPublishedWeek` whether the business ever
-published a week, for the owner's first steps (a publish is never taken back). The app binds the template and send writes to the
+published a week, for the owner's first steps (a publish is never taken back),
+and `hasPublishedWeekForTeam` the same with the secret key, for the console's
+checklist (closing the pilot, PR 16), whose people RLS shows no week. The app binds the template and send writes to the
 business the screen was drawn for (payroll P3b), so a save from a tab left
 open never lands in another business.
 
@@ -2469,7 +2471,11 @@ one retry on 23505, stamped with the database's now() as a manager's code),
 and `setStationStopped(actor, station, stopped)` stops one or takes a stop back
 within two minutes (`set_clock_station_stopped`). All four with the secret key.
 `getRunningStations(business)` lists the running ones under the person's session
-(RLS: whoever edits the clock, with the clock on), never their secrets. The
+(RLS: whoever edits the clock, with the clock on), never their secrets.
+`countClockStationsForTeam(business)` counts the running clock stations alone
+(never the kitchen's screens or the till; every station before `shows`
+existed) with the secret key, for the console's checklist (closing the pilot,
+PR 16), whose people RLS shows none. The
 refusals read through `@domain/clock-station`: `lockFailureOf`
 (`tooManyStations` for 54000 "At most ten stations", ten of every kind
 together since P8a, `managerOnly` and `noAccess` for 42501, `off` for its

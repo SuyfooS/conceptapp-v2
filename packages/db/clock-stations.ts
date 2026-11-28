@@ -135,6 +135,34 @@ export async function countRunningStations(
 }
 
 /**
+ * How many of a business's clock stations run, never the kitchen's screens
+ * or the till: for the console's checklist (closing the pilot, PR 16), whose
+ * people aren't members of the business, so RLS shows them none. With the
+ * secret key; callers check first that the person is on the ConceptApp team.
+ * Before 20261124000100_order_taking_stations.sql reaches a project there is
+ * no `shows`, and every station is the clock's.
+ */
+export async function countClockStationsForTeam(
+  businessId: string,
+): Promise<number> {
+  const admin = createAdminClient();
+  const read = (clockOnly: boolean) => {
+    const query = admin
+      .from("clock_stations")
+      .select("id", { count: "exact", head: true })
+      .eq("business_id", businessId);
+    return (clockOnly ? query.eq("shows", "clock_code") : query).is(
+      "stopped_at",
+      null,
+    );
+  };
+  let { count, error } = await read(true);
+  if (error && isMissingColumn(error)) ({ count, error } = await read(false));
+  if (error) throw error;
+  return count ?? 0;
+}
+
+/**
  * A new station's secret, paired on one of the business's own hashes
  * (`lockPairingHash`) and approved at once by `approve`, which the clock's
  * lock and the orders' lock each give: a slot taken (23505) takes the next,

@@ -136,6 +136,7 @@ export function PageSection({
   action,
   level = 2,
   headingRef,
+  id,
   className,
   children,
 }: {
@@ -148,12 +149,14 @@ export function PageSection({
    * held it goes away (a notice put away above the section).
    */
   headingRef?: Ref<HTMLHeadingElement>;
+  /** For a link to the section, such as the console checklist's to a module's settings. */
+  id?: string;
   className?: string;
   children: ReactNode;
 }) {
   const Heading = level === 3 ? "h3" : "h2";
   return (
-    <section className={cn("flex min-w-0 flex-col gap-3", className)}>
+    <section id={id} className={cn("flex min-w-0 flex-col gap-3", className)}>
       <div className="flex items-center justify-between gap-3 px-1">
         <Heading
           ref={headingRef}

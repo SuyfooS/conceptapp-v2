@@ -160,7 +160,9 @@ test("an onboarder opens a café from the template, with no staff yet", async ({
   await next(page);
   await page.getByRole("button", { name: w.actions.create }).click();
 
-  // The checklist: open, with an address, but nobody invited yet.
+  // The checklist: open, with an address, the café's job roles and shifts
+  // and the answer about Shabbat (closing the pilot, PR 16), but nobody
+  // invited or joined yet and no week published.
   await expect(page).toHaveURL(`/admin/businesses/${slug}?created=1`);
   await expect(page).toHaveTitle(`${slug} · ConceptApp`);
   await expect(
@@ -168,7 +170,10 @@ test("an onboarder opens a café from the template, with no staff yet", async ({
       .getByRole("status")
       .getByText(a.setup.opened.title.replace("{name}", name)),
   ).toBeVisible();
-  await expect(page.getByText(remaining(2))).toBeVisible();
+  await expect(page.getByText(remaining(4))).toBeVisible();
+  await expect(
+    page.getByText(a.setup.checklist.items.shabbat.open, { exact: true }),
+  ).toBeVisible();
   await expect(page.getByText(a.setup.people.empty)).toBeVisible();
   // The answer was saved, so the card says nothing about Shabbat.
   const unsaved = a.setup.opened.shabbatUnsaved;
@@ -203,7 +208,7 @@ test("an onboarder opens a café from the template, with no staff yet", async ({
   ).toBeVisible();
   await expect(page.getByRole("status").getByText(unsaved)).toHaveCount(0);
   await page.goto(`/admin/businesses/${slug}?shabbat=unsaved`);
-  await expect(page.getByText(remaining(2))).toBeVisible();
+  await expect(page.getByText(remaining(4))).toBeVisible();
   await expect(page.getByRole("status")).toHaveCount(0);
   await expect(page.getByText(unsaved)).toHaveCount(0);
 
@@ -348,10 +353,15 @@ test("a platform admin opens a restaurant and invites its staff", async ({
   await expectCleanPage(page);
   await page.getByRole("button", { name: w.actions.create }).click();
 
-  // The checklist: everything done, and the three people invited.
+  // The checklist: everything the team does is done, and the three people
+  // invited; nobody has joined yet, and no week is published (closing the
+  // pilot, PR 16).
   await expect(page).toHaveURL(`/admin/businesses/${slug}?created=1`);
   await expect(page).toHaveTitle(`${slug} · ConceptApp`);
-  await expect(page.getByText(remaining(0))).toBeVisible();
+  await expect(page.getByText(remaining(2))).toBeVisible();
+  await expect(
+    page.getByText(a.setup.checklist.items.shabbat.closed, { exact: true }),
+  ).toBeVisible();
   for (const person of ["רונית בדיקה", "שי בדיקה", "תמר בדיקה"]) {
     await expect(
       page.getByText(person, { exact: true }).filter({ visible: true }),
