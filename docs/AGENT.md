@@ -137,8 +137,8 @@ substantive change gets them as separate reviewers, each trying to refute it.
 
 ## The nightly run
 
-1. **Catch up.** Read `docs/agent/LOG.md` (entries before 20 November 2026 are in
-   `docs/agent/log/`, by month: open them only when something points there), every open issue with label
+1. **Catch up.** Read `docs/agent/LOG.md` (entries before 26 November 2026 are in
+   `docs/agent/log/`, by date range: open them only when something points there), every open issue with label
    `question`, `orel` or `urgent`, every other open issue from Orel, with their
    comments, and the comments on `יומן הסוכן` from the last two weeks. Apply
    answers and instructions first. If Orel wrote `בטל`, undo that night before
