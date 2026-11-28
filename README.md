@@ -111,11 +111,14 @@ serves and asks for `/health`, `/enter` and `/home` going on to `/sign-in`, and 
 demo there), `database` (a local Supabase database with the migrations and seed, the pgTAP tests,
 the database lint and the generated types) and `e2e` (Playwright at 390, 820 and 1440 against
 a build with the demo door open and a local Supabase, once the other two pass: six jobs side
-by side, each size in two parts by file with `--shard`, each with its own database). A push to `main` runs them again, unless that exact tree already
+by side, each size in two parts by file with `--shard`, each with its own database, and beside
+them `e2e (first day)`: `e2e/first-day.spec.ts` alone, a new worker from the link to the
+clock, in WebKit at 390 and in Chromium at 320, set up as the six are). A push to `main` runs them again, unless that exact tree already
 passed all three in a pull request run created the same day in Israel
 (`.github/scripts/tested-tree.sh`). Actions → CI → Run workflow forces a full run on `main`.
 The ruleset Orel sets on `main` (`docs/production.md`, A1) requires every job by the name
-GitHub shows it: `gate`, `check`, `database` and the six `e2e (<size> <part>/2)`. The doc
+GitHub shows it: `gate`, `check`, `database`, the six `e2e (<size> <part>/2)` and
+`e2e (first day)`. The doc
 lists them, and `tooling/production-doc.test.ts` fails when CI gains a job the list lacks.
 
 ## Plan and decisions

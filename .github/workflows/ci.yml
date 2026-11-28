@@ -327,3 +327,117 @@ jobs:
           path: ${{ runner.temp }}/passed.txt
           retention-days: 1
           if-no-files-found: error
+
+  # A worker's first day (closing the pilot, PR 27): e2e/first-day.spec.ts
+  # alone, in WebKit as an iPhone 14 draws it (390 wide) and in Chromium at
+  # 320 (Android with its largest font), the projects webkit-390 and
+  # chromium-320 of playwright.config.ts; the six jobs above never run that
+  # file. A seventh job beside them, after check and database, with the same
+  # setup step for step (its own database and its own build, so none of the
+  # six waits for it), and Chromium installed with WebKit. Like the six, it
+  # keeps no browser between runs: Playwright downloads both each time.
+  # Linux WebKit is not a real iPhone: no iOS keyboard, home-screen app or
+  # push. Its check, "e2e (first day)", is in docs/production.md A1 step 4,
+  # for Orel to add to main's ruleset.
+  e2e-first-day:
+    name: e2e (first day)
+    needs: [gate, check, database]
+    if: >-
+      ${{ !cancelled() && needs.gate.outputs.tested != 'yes'
+        && needs.check.result == 'success' && needs.database.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      # First, before the downloads, as in the database job.
+      - name: Keep the local stack's ports from outgoing connections
+        run: bash .github/scripts/supabase-start.sh reserve
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # As in the e2e job, with WebKit beside Chromium. WebKit's system
+      # packages (GStreamer, its fonts and image libraries) come from
+      # Ubuntu's archives too, and far fewer of them are on the runner: when
+      # the archives can't be reached, both browsers are installed alone
+      # with a warning, and WebKit may then fail to start, its test saying
+      # which library it missed. The browsers themselves must install.
+      - name: Start local Supabase (database, auth, API, storage) and install WebKit and Chromium
+        run: |
+          log="$RUNNER_TEMP/supabase-start.log"
+          bash .github/scripts/supabase-start.sh start \
+            -x realtime,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor \
+            > "$log" 2>&1 &
+          supabase=$!
+          trap 'echo "::group::supabase start"; cat "$log"; echo "::endgroup::"' EXIT
+          if ! pnpm exec playwright install --with-deps webkit chromium; then
+            echo "::warning::The browsers' system packages could not be installed from Ubuntu's archives; installing WebKit and Chromium on the runner's own packages, where WebKit may not start"
+            pnpm exec playwright install webkit chromium
+          fi
+          echo "WebKit and Chromium ready at $(date -u +%T)"
+          wait "$supabase"
+          echo "Supabase ready at $(date -u +%T)"
+
+      # The e2e job's step as it is, so this build is the one the six test.
+      - name: Point the app at local Supabase
+        run: |
+          eval "$(pnpm exec supabase status -o env)"
+          echo "::add-mask::$SECRET_KEY"
+          echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL" >> "$GITHUB_ENV"
+          echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$PUBLISHABLE_KEY" >> "$GITHUB_ENV"
+          echo "SUPABASE_SECRET_KEY=$SECRET_KEY" >> "$GITHUB_ENV"
+          vapid=$(node tooling/vapid-keys.mjs --env)
+          echo "::add-mask::$(printf '%s\n' "$vapid" | sed -n 's/^VAPID_PRIVATE_KEY=//p')"
+          printf '%s\n' "$vapid" >> "$GITHUB_ENV"
+          echo "VAPID_SUBJECT=mailto:dev@conceptapp.invalid" >> "$GITHUB_ENV"
+          cron_secret=$(openssl rand -hex 32)
+          echo "::add-mask::$cron_secret"
+          echo "CRON_SECRET=$cron_secret" >> "$GITHUB_ENV"
+          echo "PUSH_TEST_ORIGIN=http://127.0.0.1:3199" >> "$GITHUB_ENV"
+          keys=$(node tooling/employee-data-key.mjs --env)
+          echo "::add-mask::$(printf '%s\n' "$keys" | sed -n 's/^EMPLOYEE_DATA_KEKS=[0-9]*://p')"
+          printf '%s\n' "$keys" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: pnpm build
+
+      # Both projects in one run, each test named with its project in the
+      # log ([webkit-390], [chromium-320]); one failing doesn't stop the
+      # other. Each screen's photo, and on a failure its trace, are in the
+      # results below.
+      - name: Playwright (the first day, WebKit at 390 and Chromium at 320)
+        run: pnpm e2e --project=webkit-390 --project=chromium-320
+
+      # As in the e2e job: for reading a failure, not part of passing.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        continue-on-error: true
+        with:
+          name: playwright-results-first-day
+          path: test-results/
+          retention-days: 3
+
+      - name: Record the tree this job passed on
+        id: passed
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          tree=$(git rev-parse 'HEAD^{tree}')
+          echo "tree=$tree" >> "$GITHUB_OUTPUT"
+          echo "$GITHUB_SHA $tree" > "$RUNNER_TEMP/passed.txt"
+      # The gate's ninth record (.github/scripts/tested-tree.sh).
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: github.event_name == 'pull_request' && steps.passed.outputs.tree != ''
+        continue-on-error: true
+        with:
+          name: passed-${{ github.job }}-${{ steps.passed.outputs.tree }}
+          path: ${{ runner.temp }}/passed.txt
+          retention-days: 1
+          if-no-files-found: error

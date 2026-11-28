@@ -240,7 +240,9 @@ pnpm db:start     # local Postgres via Supabase CLI (Docker): migrations + seed
 pnpm db:test      # pgTAP: RLS and tenant isolation
 pnpm db:types     # regenerate packages/db/database.types.ts
 pnpm exec supabase start   # full local stack incl. auth (needed for sign-in)
-pnpm e2e          # Playwright at 390/820/1440 against `pnpm build` + local Supabase
+pnpm e2e          # Playwright at 390/820/1440 against `pnpm build` + local Supabase,
+                  # and e2e/first-day.spec.ts alone in WebKit at 390 and Chromium at 320
+                  # (projects webkit-390, chromium-320; `pnpm exec playwright install webkit` once)
 pnpm measure:seed # the test business of 300 on the local stack, kept (docs/measure.md)
 pnpm measure:clean # takes it off again: run before db:test or e2e on that database
 ```
