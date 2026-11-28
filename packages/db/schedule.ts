@@ -6,8 +6,10 @@ import {
   shiftBasis,
   weekSchedule,
 } from "@domain/schedule";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import type { ScheduleWeek } from "./availability";
+import type { Database } from "./database.types";
 import { isMissingFunction } from "./missing";
 import { ScheduleWriteError } from "./schedule-errors";
 import { createAdminClient } from "./supabase/admin";
@@ -223,7 +225,25 @@ export async function getPublishedShifts(
  * taken back, so once true it stays true.
  */
 export async function hasPublishedWeek(businessId: string): Promise<boolean> {
-  const supabase = await createClient();
+  return readPublishedWeek(await createClient(), businessId);
+}
+
+/**
+ * The same, read with the secret key: for the console's checklist (closing
+ * the pilot, PR 16), whose people aren't members of the business, so RLS
+ * shows them none of its weeks, and no policy is widened for it. Callers
+ * check first that the person is on the ConceptApp team.
+ */
+export async function hasPublishedWeekForTeam(
+  businessId: string,
+): Promise<boolean> {
+  return readPublishedWeek(createAdminClient(), businessId);
+}
+
+async function readPublishedWeek(
+  supabase: SupabaseClient<Database>,
+  businessId: string,
+): Promise<boolean> {
   const { data, error } = await supabase
     .from("schedule_weeks")
     .select("id")

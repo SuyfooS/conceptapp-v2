@@ -249,11 +249,26 @@ anything else `invalid`. The question starts from the template's answer,
 closed in all four, as no template sets it and the manifest closes, and
 `modules/templates.db.test.ts` keeps it equal to the rows in `templates`.
 
-`setup.ts` is the console's checklist of a business just opened (opened,
-owner, staff, address), each item from the business as stored, and the rule
-for "staff" it shares with the owner's first steps: managers and workers
-(`SETUP_STAFF_ROLES`, `isSetupStaff`, `hasStaff`), owners counted apart and
-an accountant outside. `first-steps.ts` is the owner's own list on Today, by
+`setup.ts` is the console's checklist of a business just opened, each item
+from the business as stored, and the rule for "staff" it shares with the
+owner's first steps: managers and workers (`SETUP_STAFF_ROLES`,
+`isSetupStaff`, `hasStaff`), owners counted apart and an accountant outside.
+Since closing the pilot's PR 16 it shows what is still missing
+(`SETUP_ITEMS`, each by its module in `SETUP_ITEM_MODULE`, offered while it
+is on): opened, owner, staff and address (`setupPeople`: an owner once
+they joined or hold a link still good, since the owner's first link is the
+team's to make; the staff unless their link ran out); Shabbat answered
+(`storedShabbatAnswer`: a stored `closedOnShabbat`, null for a business
+opened before the wizard asked or whose answer it couldn't save), job roles
+and regular shifts; the clock's
+code (`clockCodeState`: off, on the phone, at stations, both, or on at a
+station while none runs); who sees pay (`setupPay`: the roles given it and
+how many more on their own); who of the staff joined, was sent a link or
+has none yet (`setupTeam`, counted as `teamProgress` counts the Team
+screen's); and a first week published. The clock's code and who sees pay
+are shown and never counted (`countsInSetup`), unless the code is on where
+nobody sees it, and nor is Shabbat while no answer is stored: closed by
+default, which its switch can't store without a change. `first-steps.ts` is the owner's own list on Today, by
 module (`FIRST_STEP_MODULE`: the team and the business's details always, job
 roles and shifts and the first publish with scheduling, people in departments
 with lists once there are departments, the clock's code with the time clock):

@@ -3,11 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 /**
- * The database as the secret key reaches it: how many stations run, and
- * what each function answers; every call kept, in order.
+ * The database as the secret key reaches it: how many stations run, the
+ * errors its counts answer with in turn (none once they are used), and what
+ * each function answers; every call kept, in order.
  */
 const db = vi.hoisted(() => ({
   running: 0,
+  countErrors: [] as ({ code?: string; message: string } | null)[],
   answers: {} as Record<
     string,
     { data?: unknown; error: { code?: string; message: string } | null }[]
@@ -29,7 +31,8 @@ vi.mock("./supabase/admin", () => ({
         },
         is: async (...args: unknown[]) => {
           db.counted.push(["is", ...args]);
-          return { data: null, count: db.running, error: null };
+          const error = db.countErrors.shift() ?? null;
+          return { data: null, count: error ? null : db.running, error };
         },
       };
       return query;
@@ -66,6 +69,7 @@ vi.mock("./supabase/server", () => ({
 }));
 
 const {
+  countClockStationsForTeam,
   getRunningStations,
   hashStationToken,
   LOCK_PAIRING_SLOTS,
@@ -88,6 +92,7 @@ const approved = () =>
 beforeEach(() => {
   vi.stubEnv("SUPABASE_SECRET_KEY", "sb_secret_clock_stations_test");
   db.running = 0;
+  db.countErrors = [];
   db.answers = {};
   db.calls = [];
   db.counted = [];
@@ -114,6 +119,40 @@ describe("a lock's pairing", () => {
     ).not.toBe(hashes[0]);
     // Not a plain hash anyone could make from the business's id.
     expect(hashes[0]).not.toBe(hashStationToken(`station-lock:${BUSINESS}:0`));
+  });
+});
+
+describe("the clock stations the console counts", () => {
+  it("counts the business's running clock stations alone, with the secret key", async () => {
+    db.running = 2;
+    expect(await countClockStationsForTeam(BUSINESS)).toBe(2);
+    expect(db.counted).toEqual([
+      ["clock_stations", "id", { count: "exact", head: true }],
+      ["eq", "business_id", BUSINESS],
+      // Never the kitchen's screens or the till.
+      ["eq", "shows", "clock_code"],
+      ["is", "stopped_at", null],
+    ]);
+  });
+
+  it("throws any error, read once and never again without `shows`", async () => {
+    // Every project has `shows`, and a count's HEAD request brings back no
+    // code to tell a missing column by: even 42703 is thrown, not retried.
+    for (const error of [
+      { code: "57014", message: "canceled" },
+      { code: "42703", message: "column shows does not exist" },
+      { message: "" },
+    ]) {
+      db.counted = [];
+      db.countErrors = [error];
+      await expect(countClockStationsForTeam(BUSINESS)).rejects.toEqual(error);
+      expect(db.counted).toEqual([
+        ["clock_stations", "id", { count: "exact", head: true }],
+        ["eq", "business_id", BUSINESS],
+        ["eq", "shows", "clock_code"],
+        ["is", "stopped_at", null],
+      ]);
+    }
   });
 });
 
