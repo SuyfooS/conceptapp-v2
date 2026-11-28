@@ -139,6 +139,7 @@ export function ProfileEditor({
   modes,
   file,
   past,
+  help,
 }: {
   /** The name the business shows them by, or their number: the title. */
   name: string;
@@ -179,6 +180,11 @@ export function ProfileEditor({
    * can still read, after "העסקים שלי", on every shape.
    */
   past?: ReactNode;
+  /**
+   * "עזרה" (closing the pilot, PR 15): whom to ask, and ConceptApp's team
+   * where it is offered; after the notifications, before the way out.
+   */
+  help?: ReactNode;
 }) {
   const t = useTranslations("app");
   const tp = useTranslations("ui.photoPicker");
@@ -494,6 +500,8 @@ export function ProfileEditor({
         {past}
 
         {notifications}
+
+        {help}
 
         <SignOutForm
           action={signOut}
