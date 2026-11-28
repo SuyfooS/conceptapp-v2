@@ -911,7 +911,11 @@ export function PeopleImportView({
               <>
                 <div className="flex min-w-0 flex-col gap-6 md:col-start-2 md:row-span-2 md:row-start-1 xl:col-start-1 xl:row-span-1 xl:row-start-2">
                   <DoneSendList count={done.links.length} />
-                  <DoneExpired rows={done.expired} renew={send.renew} />
+                  <DoneExpired
+                    rows={done.expired}
+                    renew={send.renew}
+                    share={send}
+                  />
                 </div>
                 {doneActions("md:col-start-1 md:row-start-2 xl:row-start-3")}
               </>

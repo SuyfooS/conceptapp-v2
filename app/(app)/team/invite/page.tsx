@@ -28,8 +28,11 @@ export async function generateMetadata(): Promise<Metadata> {
 // the form, "הזמנה מרשימה" for whoever may invite from a list
 // (`importsPeople`: a staff role theirs to give; inviting from a list, part 5).
 export default async function TeamInvitePage() {
-  const membership = (await currentMember())?.membership;
-  if (!membership || invitableRoles(membership).length === 0) notFound();
+  const member = await currentMember();
+  const membership = member?.membership;
+  if (!member || !membership || invitableRoles(membership).length === 0) {
+    notFound();
+  }
   if (!(await invitesOpen(membership.business.id))) notFound();
   const [ownerOnly, named] = await Promise.all([
     currentOwnerOnlyRoles(),
@@ -38,12 +41,19 @@ export default async function TeamInvitePage() {
   const roles = inviteChoices(membership, named, ownerOnly);
   return (
     <TeamInviteView
+      // One person's screen of one business, as /team's: when someone else
+      // signs in on this browser, or the business changes, it starts afresh
+      // (cacheComponents keeps React state across navigations, sign-in too),
+      // so no invite made, its person's number in its WhatsApp, outlives them.
+      key={`${member.userId.toLowerCase()}:${membership.business.id.toLowerCase()}`}
       roles={roles}
       importHref={importsPeople(roles) ? "/team/import" : undefined}
       // Their names only: what each holds stays here, for the giver's rule.
       namedRoles={named.map(namedRoleShown)}
       teamHref="/team"
       invite={inviteAction}
+      // The link to the number it was made for: the real screen alone.
+      share={{ business: membership.business.name, toNumber: true }}
       wording={await currentWording()}
     />
   );

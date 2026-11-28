@@ -37,7 +37,14 @@ UndoRow's message, a push line), hold their times and numbers left to right
 with `isolate` from `bidi.ts` (LRI … PDI), next-intl's `<ltr>` callback for
 `t.markup`. It is the one copy: the chat's actions, the availability sheets,
 the fill's sheet and the push lines all read it. (`share.ts` keeps its own
-LRI for the week range, around each pair of days in it.)
+LRI for the week range, around each pair of days in it.) A name put into
+such a sentence is held with `isolateName` (FSI … PDI), so it keeps its own
+direction and the sentence keeps its: an invite's WhatsApp message starts
+with the business's name, and one in Latin letters would otherwise lay the
+whole Hebrew message out left to right. That message goes to the number the
+link was made for through `inviteWhatsappHref` in `share.ts`
+(`whatsappToHref`), or, with no number to trust (a twin's), with
+`whatsappHref`, which asks whom to send it to.
 
 Payroll keeps money in whole agorot (`money.ts`), and the minimum wage is a
 dated list too (`minimum-wage.ts`, every figure as published): each April's is

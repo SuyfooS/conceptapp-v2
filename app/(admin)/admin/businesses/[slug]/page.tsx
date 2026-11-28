@@ -12,6 +12,7 @@ import { currentPlatformRole } from "../../../staff";
 import { payAccessIn } from "./access/pay-access";
 import { inviteLinkAction, viewAsAction } from "./actions";
 import { BusinessView } from "./business-view";
+import { inviteShareWording } from "./invite-wording";
 
 export async function generateMetadata({
   params,
@@ -35,13 +36,15 @@ export default async function BusinessSetupPage({
   const business = await getBusinessSetup(slug);
   if (!business) notFound();
   const viewsAs = platformCan(role, "businesses.view_as");
-  // Who sees pay, where a module that is on uses it (its page says why); and
-  // the roles the business named, each one more to view it as (R11c).
-  const [payAccess, namedRoles] = await Promise.all([
+  // Who sees pay, where a module that is on uses it (its page says why); the
+  // roles the business named, each one more to view it as (R11c); and its
+  // own sentence for its invites' links, as /team sends them.
+  const [payAccess, namedRoles, inviteWording] = await Promise.all([
     consolePayAccess(role) !== null
       ? payAccessIn(business.id).then((access) => access !== null)
       : false,
     viewsAs ? getViewableNamedRoles(business.id) : [],
+    inviteShareWording(business.id),
   ]);
 
   return (
@@ -86,6 +89,9 @@ export default async function BusinessSetupPage({
       }
       namedRoles={namedRoles}
       issue={inviteLinkAction}
+      // Each link to the number it was made for: the real page alone.
+      whatsappToNumber
+      inviteWording={inviteWording}
     />
   );
 }

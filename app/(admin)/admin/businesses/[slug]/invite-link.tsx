@@ -2,34 +2,49 @@
 
 import { announce } from "@ui/announcer";
 import { Button } from "@ui/button";
-import { arrived, focusFirst } from "@ui/focus-after";
+import { arrived, focusFirst, focusOrSay } from "@ui/focus-after";
 import { Link2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useActionState, useLayoutEffect, useRef } from "react";
 import { useAnswerCount } from "@/app/(auth)/step-results";
-import { CopyLink } from "@/app/copy-link";
+import {
+  InviteShare,
+  type InviteShareSetup,
+  type InviteWords,
+} from "@/app/invite-share";
 import type { InviteLinkState } from "./actions";
 
 const initial: InviteLinkState = {};
 
 /**
- * One invited person's link: a button that issues it, then the link with
- * a copy button, for the team member to send on themselves. For an invite
- * that ran out, the same button renews it for another 14 days. As the Team
- * screen's "קישור חדש" (`ResendLink`): the press went as the link arrived,
- * so the copy button takes the focus, and says whose link it copies; with
- * the focus put elsewhere meanwhile, it stays there, and the announcer says
- * the link is ready. A refusal is a line drawn anew each time, and the
- * press, busy meanwhile, takes back the focus it lost.
+ * One invited person's link: a button that issues it, then the link for the
+ * team member to send on themselves, on WhatsApp to the invite's number with
+ * a sentence that says what it is, or copied (`InviteShare`; closing the
+ * pilot, PR 4): an owner's first link goes with the owner's own sentence
+ * (`words`). For an invite that ran out, the same button renews it for
+ * another 14 days. As the Team screen's "קישור חדש" (`ResendLink`): the
+ * press went as the link arrived, so "שליחה בוואטסאפ" takes the focus, and says
+ * whose link it sends; with the focus put elsewhere meanwhile, it stays
+ * there, and the announcer says the link is ready. A refusal is a line
+ * drawn anew each time, and the press, busy meanwhile, takes back the focus
+ * it lost.
  */
 export function InviteLink({
   inviteId,
   name,
+  phone,
+  share,
+  words,
   renew = false,
   issue,
 }: {
   inviteId: string;
   name: string;
+  /** The invite's number, in E.164: where WhatsApp opens a chat. */
+  phone: string | null;
+  share: InviteShareSetup;
+  /** The owner's sentence for an owner's invite; the team's otherwise. */
+  words: InviteWords;
   /** The invite expired: the button renews it. */
   renew?: boolean;
   /** `inviteLinkAction`, or the design demo's stand-in. */
@@ -46,7 +61,7 @@ export function InviteLink({
   );
   const answer = useAnswerCount(state);
   const press = useRef<HTMLButtonElement>(null);
-  const copy = useRef<HTMLButtonElement>(null);
+  const whatsapp = useRef<HTMLAnchorElement>(null);
   // The state it starts with is no answer.
   const seen = useRef<InviteLinkState | null>(state);
 
@@ -57,7 +72,9 @@ export function InviteLink({
       focusFirst([press.current]);
       return;
     }
-    if (!focusFirst([copy.current])) announce(t("ready", { name }));
+    // Never the page's title in its place (the other shape on screen now):
+    // the link ready is said, then the title, as on /team (`ResendLink`).
+    focusOrSay([whatsapp.current], () => announce(t("ready", { name })));
   }, [state, name, t]);
 
   if (!state.link) {
@@ -84,14 +101,20 @@ export function InviteLink({
   }
 
   return (
-    <CopyLink
+    <InviteShare
       link={state.link}
-      label={t("linkFor", { name })}
-      hint={t("hint")}
-      copy={t("copy")}
-      copied={t("copied")}
-      failed={t("copyFailed")}
-      buttonRef={copy}
+      phone={phone}
+      name={name}
+      share={share}
+      words={words}
+      copy={{
+        label: t("linkFor", { name }),
+        hint: t("hint"),
+        copy: t("copy"),
+        copied: t("copied"),
+        failed: t("copyFailed"),
+      }}
+      whatsappRef={whatsapp}
     />
   );
 }
