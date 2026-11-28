@@ -892,6 +892,16 @@ describe("docs/production.md", () => {
     expect(section("מה הקוד כבר עושה")).toContain(
       "`tooling/backup-files.mjs`, `tooling/restore-files.mjs`",
     );
+    // What the screen shows, said the same in the row and in step 2: the
+    // backup prints the project's ref and its own path, never a file's name.
+    const shown =
+      "מספרים, גדלים, המזהה של הפרויקט והנתיב של קובץ הגיבוי, אף פעם לא שם של אחד הקבצים שבגיבוי";
+    expect(section("מה הקוד כבר עושה")).toContain(shown);
+    expect(files).toContain(shown);
+    // The restore prints a line for every bucket, 0 too (restore-files.test.ts).
+    expect(drill).toContain(
+      "שורה לכל אחד מארבעת ה-buckets, עם אותו מספר קבצים כמו בגיבוי, גם כשהוא 0",
+    );
   });
 
   it("names no path on anyone's computer", () => {

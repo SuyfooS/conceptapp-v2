@@ -11,8 +11,10 @@
 // holds. Only then the project: conceptapp-dev's ref and production's (when
 // there is one), so that neither is ever the one written to, then the
 // temporary project's ref, typed twice, never the project the backup came
-// from (and `local`, the local stack, only for a backup of the local stack),
-// and its secret key, typed with nothing shown. The project must have the
+// from, and its secret key, typed with nothing shown. A backup of the local
+// stack goes back only to it (`local`, typed twice), and so asks neither
+// conceptapp-dev's ref nor production's; `local` is refused for any other
+// backup. The project must have the
 // app's buckets, and a hosted one must know the backup's files: a project
 // restored from the database's backup lists every file's row, so one that
 // lists none of them (conceptapp-dev, or any other project typed by
@@ -61,16 +63,19 @@ import {
  * it isn't a ref, it is conceptapp-dev's, production's or the project the
  * backup came from, or it is the local stack ("local") for a backup of a
  * hosted project: real people's files never go to the computer where
- * sessions and tests run. Null when it may.
+ * sessions and tests run. A backup of the local stack goes back only to it
+ * ("hosted" for anything else), which is why it asks for no other ref. Null
+ * when it may.
  * @param {string} first
  * @param {string} second
  * @param {{ source: string, dev: string, prod: string }} refused
- * @returns {"twice" | "shape" | "dev" | "prod" | "source" | "local" | null}
+ * @returns {"twice" | "shape" | "dev" | "prod" | "source" | "local" | "hosted" | null}
  */
 export function targetRefusal(first, second, { source, dev, prod }) {
   const typed = first.trim();
   if (typed !== second.trim()) return "twice";
   if (typed === "local") return source === "local" ? null : "local";
+  if (source === "local") return "hosted";
   if (!REF.test(typed)) return "shape";
   if (dev !== "" && typed === dev) return "dev";
   if (prod !== "" && typed === prod) return "prod";
@@ -88,7 +93,9 @@ export const targetOrigin = (ref) =>
  * (a hosted project: a copy restored from the database's backup lists their
  * rows), no file already there unless `overwrite`, then the backup read
  * again and each file uploaded once its SHA-256 matched the first reading.
- * A file that fails to upload is counted and the rest go on. `progress`
+ * `sent` has a count for each of the app's buckets, one the backup has no
+ * file in too, so every bucket can be compared with the backup's line for
+ * it. A file that fails to upload is counted and the rest go on. `progress`
  * counts the uploads begun, so a failure can say whether any went up.
  * @param {{
  *   client: StorageApi, file: string, passphrase: string,
@@ -137,7 +144,7 @@ export async function restoreInto({
 
   /** @type {Map<string, Sent>} */
   const sent = new Map(
-    wanted.map((bucket) => [bucket, { bucket, uploaded: 0, failed: 0 }]),
+    BUCKETS.map((bucket) => [bucket, { bucket, uploaded: 0, failed: 0 }]),
   );
   await openBackup(file, passphrase, {
     // The same manifest the first reading checked, or nothing goes.
@@ -207,12 +214,15 @@ const TARGET_WORDS = {
     "זה הפרויקט שהגיבוי ירד ממנו. הפקודה הזו משחזרת רק לפרויקט זמני. לא עלה כלום.",
   local:
     "גיבוי של פרויקט אמיתי לא חוזר לפרויקט המקומי, כי סשנים ובדיקות רצים עליו. לא עלה כלום.",
+  hosted:
+    "זה גיבוי של הפרויקט המקומי, והוא חוזר רק אליו: מקלידים local. לא עלה כלום.",
 };
 
-/** A bucket's line after the uploads. */
+/** A bucket's line after the uploads, one with no file too. */
 function sentLine({ bucket, uploaded, failed }) {
-  if (failed === 0) return `[v] ${bucket}: ${filesWord(uploaded)} עלו`;
-  return `[x] ${bucket}: ${filesWord(uploaded)} עלו, ${failed === 1 ? "וקובץ אחד לא עלה" : `ו-${failed} לא עלו`}`;
+  const up = uploaded === 1 ? "קובץ אחד עלה" : `${filesWord(uploaded)} עלו`;
+  if (failed === 0) return `[v] ${bucket}: ${up}`;
+  return `[x] ${bucket}: ${up}, ${failed === 1 ? "וקובץ אחד לא עלה" : `ו-${failed} לא עלו`}`;
 }
 
 /**
@@ -270,23 +280,33 @@ export async function main(args, deps = {}) {
     }
     for (const line of heldLines(opened.manifest)) out.log(line);
 
-    const dev = (
-      await ask(
-        "המזהה של conceptapp-dev, שמופיע בכתובת שלו בלוח (כדי לא לשחזר אליו): ",
-      )
-    ).trim();
-    if (!REF.test(dev)) {
-      out.error(TARGET_WORDS.shape);
-      return 2;
-    }
-    const prod = (
-      await ask(
-        "המזהה של conceptapp-prod, אם כבר יש פרויקט כזה (אם אין: Enter): ",
-      )
-    ).trim();
-    if (prod !== "" && !REF.test(prod)) {
-      out.error(TARGET_WORDS.shape);
-      return 2;
+    // A backup of the local stack goes back only to it (targetRefusal), so
+    // neither conceptapp-dev's ref nor production's is asked for it.
+    let dev = "";
+    let prod = "";
+    if (opened.manifest.source === "local") {
+      out.log(
+        "[i] זה גיבוי של הפרויקט המקומי, והוא חוזר רק אליו: בשאלה על הפרויקט הזמני מקלידים local.",
+      );
+    } else {
+      dev = (
+        await ask(
+          "המזהה של conceptapp-dev, שמופיע בכתובת שלו בלוח (כדי לא לשחזר אליו): ",
+        )
+      ).trim();
+      if (!REF.test(dev)) {
+        out.error(TARGET_WORDS.shape);
+        return 2;
+      }
+      prod = (
+        await ask(
+          "המזהה של conceptapp-prod, אם כבר יש פרויקט כזה (אם אין: Enter): ",
+        )
+      ).trim();
+      if (prod !== "" && !REF.test(prod)) {
+        out.error(TARGET_WORDS.shape);
+        return 2;
+      }
     }
     const first = await ask(
       "המזהה של הפרויקט הזמני, שאליו משחזרים (מהכתובת שלו בלוח): ",

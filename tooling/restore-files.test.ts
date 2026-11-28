@@ -73,12 +73,15 @@ afterEach(() => {
   }
 });
 
-/** A backup of SEED, made by the backup itself, and the folder it is in. */
-async function aBackup(source = SOURCE) {
+/** A backup of SEED (or `seed`), made by the backup itself, and the folder it is in. */
+async function aBackup(
+  source = SOURCE,
+  seed: Parameters<typeof fakeStorage>[0] = SEED,
+) {
   const parent = mkdtempSync(join(tmpdir(), "restore-files-test-"));
   made.push(parent);
   const { file } = await backup({
-    client: fakeStorage(SEED),
+    client: fakeStorage(seed),
     source,
     parent,
     passphrase: PASSPHRASE,
@@ -124,6 +127,17 @@ describe("the project it writes to", () => {
     ).toBeNull();
     expect(targetRefusal("local", "local", refused)).toBe("local");
   });
+
+  it("is only the local stack for a backup of it, with no other ref asked", () => {
+    // The command asks neither conceptapp-dev's ref nor production's for a
+    // backup of the local stack, so no hosted project may be typed for it.
+    const fromLocal = { source: "local", dev: "", prod: "" };
+    expect(targetRefusal("local", "local", fromLocal)).toBeNull();
+    for (const typed of [TEMP, DEV, SOURCE, "Temp", ""]) {
+      expect(targetRefusal(typed, typed, fromLocal), typed).toBe("hosted");
+    }
+    expect(targetRefusal("local", "locla", fromLocal)).toBe("twice");
+  });
 });
 
 describe("a restore", () => {
@@ -138,11 +152,13 @@ describe("a restore", () => {
       opened,
       overwrite: false,
     });
+    // Every bucket counted, chat-files with no file in the backup too.
     expect(result).toEqual({
       refused: null,
       sent: [
         { bucket: "avatars", uploaded: 1, failed: 0 },
         { bucket: "list-photos", uploaded: 2, failed: 0 },
+        { bucket: "chat-files", uploaded: 0, failed: 0 },
         { bucket: "documents", uploaded: 1, failed: 0 },
       ],
     });
@@ -271,6 +287,7 @@ describe("a restore", () => {
       sent: [
         { bucket: "avatars", uploaded: 1, failed: 0 },
         { bucket: "list-photos", uploaded: 1, failed: 1 },
+        { bucket: "chat-files", uploaded: 0, failed: 0 },
         { bucket: "documents", uploaded: 1, failed: 0 },
       ],
     });
@@ -368,6 +385,74 @@ describe("the command", () => {
     for (const hiddenWord of [SECRET, PASSPHRASE, ...PATHS]) {
       expect(text).not.toContain(hiddenWord);
     }
+  });
+
+  it("restores a backup of the local stack to `local`, asking no other ref", async () => {
+    // The README's demo: a backup of http://127.0.0.1:54321, restored to
+    // `local`, with no made-up ref typed for conceptapp-dev first.
+    const { file } = await aBackup("local");
+    const { code, printed, shown, secret, clients, target } = await run(
+      [file],
+      ["local", "local"],
+      [PASSPHRASE, SECRET],
+    );
+    expect(code).toBe(0);
+    expect(shown.asked).toHaveLength(2);
+    expect(shown.asked.join("\n")).not.toMatch(/conceptapp-(dev|prod)/);
+    expect(secret.asked).toHaveLength(2);
+    expect(clients).toEqual([{ origin: LOCAL_API, key: SECRET }]);
+    expect(target.text("avatars", "u-1/a.jpg")).toBe("avatar");
+    expect(printed.text()).toContain("מקלידים local");
+    expect(printed.written.at(-1)).toContain("הכול עלה");
+  });
+
+  it("refuses any hosted project for a backup of the local stack, asking no key", async () => {
+    const { file } = await aBackup("local");
+    for (const typed of [TEMP, DEV]) {
+      const { code, printed, secret, clients } = await run(
+        [file, "--overwrite"],
+        [typed, typed],
+        [PASSPHRASE],
+        { target: restoredCopy() },
+      );
+      expect(code, typed).toBe(2);
+      expect(clients).toEqual([]);
+      expect(secret.asked).toHaveLength(1);
+      expect(printed.written.at(-1)).toBe(
+        "זה גיבוי של הפרויקט המקומי, והוא חוזר רק אליו: מקלידים local. לא עלה כלום.",
+      );
+    }
+  });
+
+  it("says each bucket's count after the uploads, 0 too, as B8 step 4.4 checks", async () => {
+    // The first drill, before the business: no file in any bucket yet.
+    const empty = await aBackup(SOURCE, {});
+    const first = await run(
+      [empty.file, "--overwrite"],
+      [DEV, "", TEMP, TEMP],
+      [PASSPHRASE, SECRET],
+    );
+    expect(first.code).toBe(0);
+    const after = first.printed.written.slice(-1 - BUCKETS.length);
+    expect(after).toEqual([
+      ...BUCKETS.map((bucket) => `[v] ${bucket}: 0 קבצים עלו`),
+      "הכול עלה, כל קובץ אחרי שה-SHA-256 שלו נבדק.",
+    ]);
+    // The second: files in three buckets, and chat-files still has its line.
+    const { file } = await aBackup();
+    const second = await run(
+      [file, "--overwrite"],
+      [DEV, "", TEMP, TEMP],
+      [PASSPHRASE, SECRET],
+      { target: restoredCopy() },
+    );
+    expect(second.code).toBe(0);
+    expect(second.printed.written.slice(-1 - BUCKETS.length, -1)).toEqual([
+      "[v] avatars: קובץ אחד עלה",
+      "[v] list-photos: 2 קבצים עלו",
+      "[v] chat-files: 0 קבצים עלו",
+      "[v] documents: קובץ אחד עלה",
+    ]);
   });
 
   it("asks nothing about a project when the backup doesn't open", async () => {

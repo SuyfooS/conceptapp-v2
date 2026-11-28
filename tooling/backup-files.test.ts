@@ -178,26 +178,82 @@ const nothingYet = () => ({
   partial: null as string | null,
 });
 
+/**
+ * The buckets a migration's SQL creates, comments left out: one id for every
+ * `insert into storage.buckets` and every `create_bucket(` call. Each must
+ * read as `(id, …) values ('<id>', …)`, one tuple, maybe `on conflict`; any
+ * other shape (no column list, `id` not first, a second tuple, a select,
+ * quoted names, create_bucket) goes to `unread`, and the test fails on it.
+ * At run time a bucket missing from BUCKETS is only an [i] line and the
+ * backup still ends "הכול תקין", so this test is the guard.
+ */
+function bucketsCreatedBy(sql: string) {
+  const code = sql.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/--[^\n]*/g, " ");
+  const ids: string[] = [];
+  const unread: string[] = [];
+  for (const write of code.matchAll(
+    /\binsert\s+into\s+"?storage"?\s*\.\s*"?buckets|\bcreate_bucket\s*\(/gi,
+  )) {
+    const from = write.index ?? 0;
+    const end = code.indexOf(";", from);
+    const statement = code.slice(from, end < 0 ? undefined : end).trim();
+    const id = statement.match(
+      /^insert\s+into\s+storage\.buckets\s*\(\s*id\s*,[^)]*\)\s*values\s*\(\s*'([^']+)'[^()]*\)\s*(?:on\s+conflict\b[\s\S]*)?$/i,
+    )?.[1];
+    if (id === undefined) unread.push(statement.replace(/\s+/g, " "));
+    else ids.push(id);
+  }
+  return { ids, unread };
+}
+
 describe("the buckets", () => {
   it("are the ones the migrations create, every one", () => {
     const folder = join(REPO_ROOT, "supabase/migrations");
-    const created = readdirSync(folder)
+    const read = readdirSync(folder)
       .sort()
-      .flatMap((file) => [
-        ...readFileSync(join(folder, file), "utf8")
-          .replace(/--[^\n]*/g, "")
-          .matchAll(
-            /insert into storage\.buckets\s*\([^)]*\)\s*values\s*\(\s*'([^']+)'/gi,
-          ),
-      ])
-      .map(([, id]) => id);
-    expect(created).toEqual(BUCKETS);
+      .map((file) => ({
+        file,
+        ...bucketsCreatedBy(readFileSync(join(folder, file), "utf8")),
+      }));
+    // A write to storage.buckets this can't read fails here, rather than
+    // leave a bucket out of every backup.
+    expect(
+      read.flatMap(({ file, unread }) =>
+        unread.map((statement) => `${file}: ${statement}`),
+      ),
+    ).toEqual([]);
+    expect(read.flatMap(({ ids }) => ids)).toEqual(BUCKETS);
     expect(BUCKETS).toEqual([
       "avatars",
       "list-photos",
       "chat-files",
       "documents",
     ]);
+  });
+
+  it("are read from every write to storage.buckets, or the test fails", () => {
+    expect(
+      bucketsCreatedBy(
+        "insert into storage.buckets (id, name, public, allowed_mime_types)\nvalues (\n  'a', 'a', false, array['image/jpeg']\n)\non conflict (id) do update set public = false;",
+      ),
+    ).toEqual({ ids: ["a"], unread: [] });
+    for (const sql of [
+      "insert into storage.buckets values ('b', 'b', false);",
+      "insert into storage.buckets (id, name) values ('a', 'a'), ('b', 'b');",
+      "insert into storage.buckets (id, name) select 'b', 'b';",
+      "insert into storage.buckets (name, id) values ('b', 'b');",
+      "INSERT INTO \"storage\".\"buckets\" (id, name) VALUES ('b', 'b');",
+      "select storage.create_bucket('b');",
+      "do $$ begin insert into storage.buckets select * from x; end $$;",
+    ]) {
+      expect(bucketsCreatedBy(sql).unread, sql).toHaveLength(1);
+    }
+    // A comment creates nothing, and a read is no write.
+    expect(
+      bucketsCreatedBy(
+        "-- insert into storage.buckets values ('b');\n/* select storage.create_bucket('b'); */\nselect id from storage.buckets;",
+      ),
+    ).toEqual({ ids: [], unread: [] });
   });
 });
 

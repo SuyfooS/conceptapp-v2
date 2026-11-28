@@ -107,14 +107,16 @@ Vercel and what to watch. The code's side of it:
   refusing to overwrite unless asked. Both take the secret key and the passphrase at a
   question with nothing echoed; the backup asks the address shown and prints the project's
   ref (it also takes `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SECRET_KEY` from the session,
-  never from a file). They print counts and never a
-  file's name, run on Node 20 with nothing installed (Storage's REST API through Node's
+  never from a file). They print counts, sizes, the project's ref and the backup's path,
+  never the name of a file in it, run on Node 20 with nothing installed (Storage's REST API through Node's
   fetch: `@supabase/supabase-js` can't make a client on Node 20), and refuse to run where
   `CI` or `GITHUB_ACTIONS` is set: only Orel runs them, on his computer
   (`docs/production.md`, B8; `tooling/backup-files.test.ts` and
   `tooling/restore-files.test.ts`, with a fake storage client). Against the local stack:
   `http://127.0.0.1:54321` and `SECRET_KEY` from `pnpm exec supabase status -o env`, and
-  `local` as the project to restore to (only a backup of the local stack goes back there).
+  `local` as the project to restore to, typed twice: a backup of the local stack goes back
+  only there, so the restore asks no conceptapp-dev or production ref for it, and no other
+  backup goes there.
 
 ## Scripts
 
