@@ -8,9 +8,11 @@ import type {
   ActivityLookups,
   ActivityRow,
 } from "@domain/activity";
+import { askFixOf, type ClockEditor, hoursFixers } from "@domain/ask-fix";
 import type { AvailabilityAnswer } from "@domain/availability";
 import { accountHint } from "@domain/bank-account";
 import type { BusinessDetails } from "@domain/business-details";
+import type { Department } from "@domain/departments";
 import {
   type BankReview,
   FILE_GROUPS,
@@ -24,6 +26,7 @@ import type { AddressForm, CoverPreset } from "@domain/profile";
 import type { Position, ShiftPattern } from "@domain/staffing";
 import type { FileSpace } from "@domain/storage-use";
 import type { GivableNamedRole, TeamInvite, TeamMember } from "@domain/team";
+import type { ClockAskFix } from "../../(app)/clock/clock-types";
 import type {
   FileHistory,
   HolderFileData,
@@ -1322,4 +1325,58 @@ export function demoFileSpace(level: DemoSpaceLevel): FileSpace {
     chatBytes: Math.round(chat * MB),
     chatSpaceBytes: 100 * MB,
   };
+}
+
+/**
+ * Whom Noa asks to correct her hours on the clock's demo (closing the pilot,
+ * PR 8), its `?ask=`, worked out as the app does (`hoursFixers`,
+ * `askFixOf`): by default Shiran, the restaurant's one manager, and not Uri,
+ * the owner, since someone else may; `pick`, Itay too, as if the restaurant
+ * let him correct hours (a grant of his own), first since he shares Noa's
+ * kitchen; `name`, chat off, so Shiran is only named. Their chats open the
+ * chat demo, which is Shiran's.
+ */
+export function demoAskFix(kind: string | undefined): ClockAskFix | null {
+  const editors: ClockEditor[] = [
+    { id: "uri", role: "owner", name: "אורי בן דוד" },
+    { id: "shiran", role: "manager", name: "שירן הדגמה" },
+    ...(kind === "pick"
+      ? [{ id: "itay", role: "worker" as const, name: "איתי מזרחי" }]
+      : []),
+  ];
+  const departments: Department[] = [
+    {
+      id: "dep-kitchen",
+      key: "kitchen",
+      name: "מטבח",
+      archivedAt: null,
+      members: ["noa", "itay", "omer"],
+    },
+    {
+      id: "dep-floor",
+      key: "floor",
+      name: "אולם",
+      archivedAt: null,
+      members: ["shiran", "maya"],
+    },
+    {
+      id: "dep-bar",
+      key: "bar",
+      name: "בר",
+      archivedAt: null,
+      members: ["shiran", "yoav"],
+    },
+  ];
+  const fixers = hoursFixers({
+    editors,
+    person: "noa",
+    departments,
+    chat: kind !== "name",
+  });
+  return askFixOf(
+    fixers.map((fixer) => ({
+      ...fixer,
+      href: fixer.chat ? "/design/chat" : null,
+    })),
+  );
 }

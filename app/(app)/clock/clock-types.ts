@@ -1,3 +1,4 @@
+import type { AskFix, HoursFixer } from "@domain/ask-fix";
 import type { OwnMonth } from "@domain/pay-rates";
 import type { RestDay } from "@domain/payroll-details";
 import type { AddressForm } from "@domain/profile";
@@ -16,6 +17,17 @@ export type ClockActionResult =
       marked?: boolean;
     }
   | { ok: false; failure: PunchFailure | "viewOnly" };
+
+/**
+ * Someone the person asks to correct their hours, with the address of their
+ * private chat (`/chat/with/<them>`), or null for someone only named: chat
+ * is off, or they aren't in it. The server writes the address, so the
+ * clock's browser files take nothing from chat's.
+ */
+export type HoursFixerLink = HoursFixer & { href: string | null };
+
+/** Whom the person asks to correct their hours, as the clock shows it. */
+export type ClockAskFix = AskFix<HoursFixerLink>;
 
 /** What the screen can do. The demo passes stand-ins that store nothing. */
 export type ClockActions = {
@@ -73,6 +85,13 @@ export type ClockData = {
   ownDetails: OwnDetails | null;
   /** Someone from ConceptApp is looking; nothing can be pressed. */
   viewOnly: boolean;
+  /**
+   * Whom the person asks to correct their hours, under the refusals that say
+   * to ask whoever approves them (closing the pilot, PR 8): written to in
+   * chat, or named. Null for whoever edits the clock themself, while viewing
+   * as someone, and when nobody else may.
+   */
+  askFix: ClockAskFix | null;
 };
 
 /** What the clock shows of the person's own details for payroll. */

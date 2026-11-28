@@ -2783,6 +2783,17 @@
           "action": "Go to the clock"
         },
         "needsFix": "Needs fixing",
+        "askFix": {
+          "write": "Write to {name}",
+          "writeAny": "Write to whoever approves hours",
+          "pickTitle": "Who to write to about the fix",
+          "pickHint": "Any of them can fix your hours.",
+          "close": "Close",
+          "noName": "No name",
+          "named": "You can ask {name} to fix it.",
+          "namedSome": "Who approves hours here: {names}.",
+          "long": "The shift counted more than <ltr>{hours}</ltr> hours. If you forgot to clock out on time, whoever approves hours can fix it."
+        },
         "fix": "Fix",
         "fixShift": "Fix the shift of {day}",
         "restore": "Bring back",
@@ -2810,7 +2821,8 @@
       },
       "todayLine": {
         "working": "On shift since <ltr>{time}</ltr>",
-        "break": "On a break since <ltr>{time}</ltr>"
+        "break": "On a break since <ltr>{time}</ltr>",
+        "ownOverdue": "Needs fixing: the shift has been open over 24 hours"
       },
       "team": {
         "title": "Team hours",

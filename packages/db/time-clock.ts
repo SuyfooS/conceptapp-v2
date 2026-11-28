@@ -1,6 +1,7 @@
 import "server-only";
 import { createHash, createHmac, randomBytes, randomInt } from "node:crypto";
-import { isStaff } from "@domain/modules";
+import type { ClockEditor } from "@domain/ask-fix";
+import { isStaff, ROLES } from "@domain/modules";
 import { type PunchProof, padShortCode } from "@domain/punch-code-format";
 import {
   type CancelledEntry,
@@ -14,9 +15,11 @@ import {
   type TimeEntry,
   timeEntry,
 } from "@domain/time-clock";
+import { z } from "zod";
 import type { Database } from "./database.types";
 import { memberNames, nameIn } from "./member-names";
-import { allPages } from "./pages";
+import { isMissingFunction } from "./missing";
+import { allPages, readAllPages } from "./pages";
 import { punchKey } from "./punch-key";
 import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
@@ -444,6 +447,43 @@ export async function getClockPeople(
     active: row.active,
     staff: isStaff(row.role),
   }));
+}
+
+// Generated types lose nullability for function results, so the rows are
+// checked here: a role the app knows, and a name that may be missing.
+const ClockEditorRow = z.object({
+  user_id: z.string(),
+  role: z.enum(ROLES),
+  name: z.string().nullable(),
+});
+
+/**
+ * Who may edit the clock in the business (clock.edit, as the database
+ * answers it: `public.clock_editors`, closing the pilot's PR 8), each by the
+ * business's name for them, under the signed-in person's own session: the
+ * business's active members read it, nobody else (a view session reads
+ * none). Whom a worker whose shift needs fixing writes to (`hoursFixers` in
+ * @domain/ask-fix). None before the function reaches the project.
+ */
+export async function getClockEditors(
+  businessId: string,
+): Promise<ClockEditor[]> {
+  const supabase = await createClient();
+  // One row a member who edits the clock, so page by page, by id.
+  const { data, error } = await readAllPages((first, last) =>
+    supabase
+      .rpc("clock_editors", { business: businessId })
+      .order("user_id")
+      .range(first, last),
+  );
+  if (error) {
+    if (isMissingFunction(error)) return [];
+    throw error;
+  }
+  return z
+    .array(ClockEditorRow)
+    .parse(data)
+    .map((row) => ({ id: row.user_id, role: row.role, name: row.name }));
 }
 
 const ENTRY_COLUMNS =

@@ -130,6 +130,29 @@ viewer gives that hold what they don't, which the role sheet shows as an
 owner's to give, and `namedRoleShown` strips a named role to its names and
 base before it reaches a browser: what it holds is the owner's to read.
 
+`ask-fix.ts` is whom a worker asks to correct their hours (closing the
+pilot, PR 8), from who may edit the clock (`ClockEditor`, as
+`public.clock_editors` answers it) and the business's departments:
+`hoursFixers` leaves out the person themself, offers the owners only when
+nobody else may (every permission covers the whole business: there is no
+department manager), puts those who share a live department with the
+person first, each group by name (`byNameThenId`), marks who is written to
+in chat (chat on for the person, and on the staff), and drops someone who
+can be neither written to nor named before that choice. `askFixOf` makes
+it one person to write to, a choice among several, or, when chat reaches
+none of them, their names. `asksAnyone` says whether the person is offered
+anyone at all: not whoever edits the clock themself (they correct their own
+on the team's hours), nor while viewing as someone. The refusals the clock
+offers it under are
+`FIX_FAILURES` in `time-clock-format.ts` (with `asksForFix`), which the
+clock's browser files may import: it takes no Zod. It offers it beside a
+closed shift that counted over 14 hours too (`longShift`,
+`LONG_ENTRY_MINUTES`, which is the payroll engine's `LIMITS.entry`): the
+clock takes a clock-out within 24 hours, so one forgotten until the next
+morning is recorded as a long shift. In the person's shifts only while
+nobody has corrected or added it (`longShiftToAsk`): once whoever approves
+hours wrote its times, a long one is what they meant.
+
 `people-import.ts` reads a pasted list of people to invite at once ("הזמנה
 מרשימה", part 1 of the plan of 25 November 2026): from WhatsApp, Excel,
 Google Sheets or a note, on the device, so only each person's name, number
