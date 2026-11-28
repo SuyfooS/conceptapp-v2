@@ -8,10 +8,12 @@ import {
 } from "@domain/notifications";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { currentOn } from "../../clock/station/station";
 import { currentWording } from "../../current-wording";
 import { currentMember } from "../../member";
 import { currentModules } from "../../modules";
 import { baseWording, translator } from "../../wording";
+import { InstallButton } from "../install-button";
 import { setNotificationPreferencesAction } from "../preferences-actions";
 import { PushSwitch } from "../push-switch";
 import { NotificationSettingsView } from "./settings-view";
@@ -26,7 +28,9 @@ export async function generateMetadata(): Promise<Metadata> {
 // session. Not while the module is off for the business, and not while
 // viewing as someone: these are theirs alone, as the inbox is. The switch
 // for this phone shows where push is set up; a demo business, whose lines
-// never reach a phone, says so and offers nothing to choose.
+// never reach a phone, says so and offers nothing to choose. Beside the
+// switch, the install button on Android (closing the pilot, PR 7), never on
+// the business's clock station, which isn't the person's device.
 export default async function NotificationSettingsPage() {
   const [member, enabled, wording] = await Promise.all([
     currentMember(),
@@ -43,7 +47,10 @@ export default async function NotificationSettingsPage() {
     notFound();
   }
   const push = pushConfig();
-  const allowed = await pushAllowed(member.userId);
+  const [allowed, station] = await Promise.all([
+    pushAllowed(member.userId),
+    push ? currentOn(membership.business.id) : null,
+  ]);
   const preferences =
     allowed === false ? null : await getNotificationPreferences();
   const groups = groupsFor(membership.role, enabled, membership.perms);
@@ -55,7 +62,10 @@ export default async function NotificationSettingsPage() {
       shift={shiftSkipsQuiet(groups, enabled)}
       device={
         push && allowed === true ? (
-          <PushSwitch publicKey={push.publicKey} demo={false} />
+          <>
+            <PushSwitch publicKey={push.publicKey} demo={false} />
+            {station ? null : <InstallButton shape="settings" />}
+          </>
         ) : null
       }
       save={setNotificationPreferencesAction}

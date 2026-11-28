@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import {
   type Dispatch,
+  type ReactNode,
   type Ref,
   type SetStateAction,
   useEffect,
@@ -24,6 +25,7 @@ import {
 import { headingsAfter } from "../home/heading-after";
 import { sendHide } from "../home/hide-request";
 import { useHeldWrite } from "../use-held-write";
+import { InstallButton, type InstallTwin } from "./install-button";
 import { IosInstallSteps } from "./ios-install-steps";
 import type { PushAskOffer } from "./push-ask";
 import { type PushAskShown, usePushAskState } from "./push-ask-state";
@@ -32,9 +34,12 @@ import { holdPersonPutAway, putInstallAway, turnOnPush } from "./push-client";
 /**
  * What Today's card is given: the app's offer (`currentPushAsk`), or, on
  * the twin at /design/shell, the state to show, which asks the browser for
- * nothing and keeps nothing.
+ * nothing and keeps nothing, with the install button's on Android (PR 7)
+ * when `install` says one.
  */
-export type TodayPushAsk = { offer: PushAskOffer } | { twin: PushAskState };
+export type TodayPushAsk =
+  | { offer: PushAskOffer }
+  | { twin: PushAskState; install?: InstallTwin };
 
 /** What Today's "לא עכשיו" keeps: only a moment's card is ever kept as seen. */
 type Kept = Extract<PushAskMark, "person" | "device">;
@@ -59,6 +64,8 @@ type Driver = {
   keep: (mark: Kept) => Promise<KeptAnswer>;
   /** What "לא עכשיו" holds for its "ביטול" now, from the press on: none once taken back. */
   holding: (mark: Kept | null) => void;
+  /** The install button on Android, under the card's words (PR 7). */
+  install: ReactNode;
 };
 
 /** The twin's stand-in for a press on its way. */
@@ -72,8 +79,10 @@ const pause = () => new Promise((resolve) => setTimeout(resolve, 600));
  * them on, the press turns them on there and then, asking for permission
  * first, as the push switch does; in an iPhone's or iPad's Safari it shows
  * the steps to the home screen (`IosInstallSteps`), and the app there, once
- * installed, shows the switch. Blocked, unsupported or on already, it shows
- * nothing. Being seen keeps nothing. "לא עכשיו" puts it away the way Today's
+ * installed, shows the switch. On Android, under its words, the install
+ * button (`InstallButton`, PR 7), which draws nothing anywhere else.
+ * Blocked, unsupported or on already, it shows nothing. Being seen keeps
+ * nothing. "לא עכשיו" puts it away the way Today's
  * other cards go: at once, with "ביטול" in its place holding the focus and
  * the write (`useHeldWrite`), which keeps it for the person, on every device
  * and for the moments' cards too (/home/push-ask, sent with keepalive so it
@@ -106,6 +115,7 @@ export function PushAskToday({
   ) : (
     <TwinToday
       twin={ask.twin}
+      install={ask.install}
       settingsHref={settingsHref}
       className={className}
     />
@@ -156,6 +166,7 @@ function LiveToday({
     // The person's mark is known in this page before the database has it,
     // so a moment's card on a screen drawn before it lands asks nothing.
     holding: (mark) => holdPersonPutAway(mark === "person"),
+    install: <InstallButton shape="card" className="mt-2" />,
   };
   return (
     <TodayCard
@@ -168,10 +179,12 @@ function LiveToday({
 
 function TwinToday({
   twin,
+  install,
   settingsHref,
   className,
 }: {
   twin: PushAskState;
+  install?: InstallTwin;
   settingsHref: string;
   className?: string;
 }) {
@@ -187,6 +200,9 @@ function TwinToday({
     },
     keep: async () => "kept",
     holding: () => {},
+    install: install ? (
+      <InstallButton shape="card" twin={install} className="mt-2" />
+    ) : null,
   };
   return (
     <TodayCard
@@ -346,6 +362,7 @@ function TodayCard({
       settingsHref={settingsHref}
       onEnable={enable}
       onDismiss={dismiss}
+      install={driver.install}
       cardRef={card}
       actionsRef={actions}
       dismissRef={dismissButton}
@@ -416,6 +433,7 @@ export function PushAskTodayCard({
   settingsHref,
   onEnable,
   onDismiss,
+  install,
   landmark = true,
   cardRef,
   actionsRef,
@@ -427,6 +445,11 @@ export function PushAskTodayCard({
   settingsHref: string;
   onEnable?: () => void;
   onDismiss?: () => void;
+  /**
+   * The install button on Android (PR 7), under the words in every state
+   * but Safari's, whose steps take its place; it draws nothing elsewhere.
+   */
+  install?: ReactNode;
   landmark?: boolean;
   cardRef?: Ref<HTMLDivElement>;
   actionsRef?: Ref<HTMLDivElement>;
@@ -466,7 +489,9 @@ export function PushAskTodayCard({
             <CardText className="text-pretty">{words?.body}</CardText>
             {state === "install" ? (
               <IosInstallSteps device={device} className="mt-2" />
-            ) : null}
+            ) : (
+              install
+            )}
           </div>
         </div>
         <div

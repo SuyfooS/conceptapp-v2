@@ -232,8 +232,9 @@ for (const key of ["worker", "manager", "owner", "accountant"] as const) {
 }
 
 // The notification settings in a demo business (N3), whose lines never
-// reach a phone: they say so, with nothing to switch, at every width. What
-// they offer in a real business is notification-settings.spec's.
+// reach a phone: they say so, with nothing to switch, at every width, and
+// no install button on Android either (closing the pilot, PR 7). What they
+// offer in a real business is notification-settings.spec's.
 test("/notifications/settings says a demo business has nothing to choose", async ({
   page,
 }) => {
@@ -245,6 +246,9 @@ test("/notifications/settings says a demo business has nothing to choose", async
   ).toBeVisible();
   await expect(page.getByText(s.demo).filter({ visible: true })).toBeVisible();
   await expect(page.getByRole("switch")).toHaveCount(0);
+  await expect(
+    page.getByRole("region", { name: he.app.notifications.install.title }),
+  ).toHaveCount(0);
   await expect(page).toHaveTitle(/ConceptApp$/);
   await expectAccessible(page);
 });

@@ -64,6 +64,11 @@ const PAGES = [
   "/design/shell/today/worker?push=install",
   "/design/shell/today/worker?file=missing&push=off",
   "/design/shell/today/accountant?push=off",
+  // The install button on Android under its words (closing the pilot, PR 7):
+  // Chrome's offer there, Chrome asking, and no offer (the menu's words).
+  "/design/shell/today/worker?push=off&install=ready",
+  "/design/shell/today/worker?push=off&install=prompting",
+  "/design/shell/today/worker?push=on&install=menu",
   "/design/shell/today/not-published",
   "/design/shell/today/worker-not-published",
   // A worker who builds the schedule without publishing it (roles R3).
@@ -445,6 +450,11 @@ const PAGES = [
   "/design/shell/notifications/settings",
   "/design/shell/notifications/settings?state=quiet",
   "/design/shell/notifications/settings?state=demo",
+  // The install button on Android beside the phone's switch (PR 7):
+  // Chrome's offer, installed, and declined.
+  "/design/shell/notifications/settings?install=ready",
+  "/design/shell/notifications/settings?install=installed",
+  "/design/shell/notifications/settings?install=dismissed",
   // Waiter mode P8b: the lines about orders, and their group with the line
   // about quiet hours during a shift.
   "/design/shell/notifications/orders",
@@ -1965,6 +1975,71 @@ test("the Today demo's notifications card turns them on, and 'לא עכשיו' p
   await undo.click();
   await expect(steps).toBeVisible();
   await expect(dismiss).toBeFocused();
+});
+
+// The install button on Android (closing the pilot, PR 7) on the twins,
+// whose press asks no browser: headless Chromium sends no install event of
+// its own (the app's own pages, with a fake one, are push-card.spec's). In
+// Today's card, under its words, with the card's own buttons as they were;
+// in the settings, a card of its own beside the phone's switch. A press
+// installs, the button goes, and the keyboard is on what it says now. With
+// no offer, the menu's words and no button; with none at all, nothing.
+test("the demo's install button installs the app on a press, and says so", async ({
+  page,
+}) => {
+  const i = he.app.notifications.install;
+  const card = page.getByRole("main").getByRole("region", {
+    name: heT("app.notifications.ask.today", { device: "phone" }),
+  });
+  await page.goto("/design/shell/today/worker?push=off&install=ready");
+  await page.waitForLoadState("networkidle");
+  await expect(card).toContainText(i.hint);
+  const install = card.getByRole("button", { name: i.action });
+  await install.click();
+  await expect(card).toContainText(i.installed);
+  await expect(install).toHaveCount(0);
+  await expect(card.getByText(i.installed)).toBeFocused();
+  await expect(
+    card.getByRole("button", {
+      name: heT("app.notifications.ask.enable", { device: "phone" }),
+    }),
+  ).toBeVisible();
+  await expect(
+    card.getByRole("button", { name: he.app.notifications.ask.dismiss }),
+  ).toBeVisible();
+
+  // No offer from Chrome: where its menu does it, and no button.
+  await page.goto("/design/shell/today/worker?push=on&install=menu");
+  await expect(card).toContainText(
+    heT("app.notifications.install.menu", { browser: "chrome" }),
+  );
+  await expect(card.getByRole("button", { name: i.action })).toHaveCount(0);
+
+  // The settings: a card of its own, by its title.
+  await page.goto("/design/shell/notifications/settings?install=ready");
+  await page.waitForLoadState("networkidle");
+  const own = page.getByRole("main").getByRole("region", { name: i.title });
+  await expect(own).toContainText(i.hint);
+  await own.getByRole("button", { name: i.action }).click();
+  await expect(own).toContainText(i.installed);
+  await expect(own.getByText(i.installed)).toBeFocused();
+
+  // Declined: it can be done later, from the menu.
+  await page.goto("/design/shell/notifications/settings?install=dismissed");
+  await expect(own).toContainText(
+    heT("app.notifications.install.dismissed", { browser: "chrome" }),
+  );
+  await expect(own.getByRole("button", { name: i.action })).toHaveCount(0);
+
+  // None at all (an iPhone, a computer): neither in the card nor beside the
+  // switch.
+  await page.goto("/design/shell/notifications/settings");
+  await pastDrawing(page);
+  await expect(page.getByRole("region", { name: i.title })).toHaveCount(0);
+  await page.goto("/design/shell/today/worker?push=off");
+  await expect(card).toBeVisible();
+  await expect(card).not.toContainText(i.hint);
+  await expect(card.getByRole("button", { name: i.action })).toHaveCount(0);
 });
 
 // Never on the business's clock station, which isn't the person's device:

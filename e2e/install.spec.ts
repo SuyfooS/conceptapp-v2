@@ -39,6 +39,42 @@ test("a phone can put the app on its home screen", async ({
   }
 });
 
+// Chrome's offer to install the app (closing the pilot, PR 7) is caught by
+// the root layout's script as the page is read, before the app's own code
+// runs, on every page, signed out too: sent the moment the page is parsed
+// (a fake, as headless Chromium sends none), it is kept for a press and
+// Chrome's own bar is stopped. On the clock station's pages it is left to
+// Chrome, which installs the station there. The button itself is
+// push-card.spec's and design.spec's.
+test("Chrome's offer to install the app is caught before the app draws, except on the station", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    document.addEventListener("DOMContentLoaded", () => {
+      const event = new Event("beforeinstallprompt", { cancelable: true });
+      window.dispatchEvent(event);
+      Object.assign(window, { offerKept: event.defaultPrevented });
+    });
+  });
+  const kept = () =>
+    page.evaluate(() => ({
+      prevented: (window as unknown as { offerKept?: boolean }).offerKept,
+      held:
+        (
+          window as unknown as {
+            __conceptappInstall?: { event: Event | null };
+          }
+        ).__conceptappInstall?.event?.type ?? null,
+    }));
+  await page.goto("/enter");
+  expect(await kept()).toEqual({
+    prevented: true,
+    held: "beforeinstallprompt",
+  });
+  await page.goto("/station");
+  expect(await kept()).toEqual({ prevented: false, held: null });
+});
+
 // The clock station on a tablet's home screen (#78 phase 5,
 // docs/clock-station.md "במסך הבית"): /station links its own manifest in the
 // app's place, so it opens the station itself, in full screen, either way up,

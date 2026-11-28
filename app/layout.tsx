@@ -4,6 +4,7 @@ import { getTranslations } from "next-intl/server";
 import "@fontsource-variable/heebo";
 import { Announcer } from "@ui/announcer";
 import { defaultLocale, direction } from "@/i18n/config";
+import { INSTALL_CAPTURE_SCRIPT } from "./install-capture";
 import { OldBrowser } from "./old-browser";
 import "./globals.css";
 
@@ -48,8 +49,17 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className="h-full"
     >
       <body className="min-h-full bg-bg text-ink">
-        {/* First, and kept across navigations: a line said just before one
-            is heard on the next screen. It has no words of its own. */}
+        {/* Before anything else runs: Chrome's offer to install the app,
+            which can come before React has drawn the page, is kept for the
+            install button's press (app/install-capture.ts). Its own source,
+            nothing from outside: a script of the page, read as it loads. */}
+        <script
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: the capture's own source, made on the server from app/install-capture.ts, nothing a person sent
+          dangerouslySetInnerHTML={{ __html: INSTALL_CAPTURE_SCRIPT }}
+        />
+        {/* First of what is drawn, and kept across navigations: a line said
+            just before one is heard on the next screen. It has no words of
+            its own. */}
         <Announcer />
         {/* At the top of every page of every route group, signed out too,
             and hidden unless the browser is older than the app needs: only
