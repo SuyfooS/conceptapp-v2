@@ -73,13 +73,30 @@ export const LONG_ENTRY_MINUTES = 14 * 60;
 /**
  * Whether a shift may hide a forgotten clock-out: closed, and counted longer
  * than `LONG_ENTRY_MINUTES`. Beside it, as beside one that needs fixing, the
- * clock offers whom to ask (closing the pilot, PR 8).
+ * clock offers whom to ask (closing the pilot, PR 8): under the one just
+ * left, and in the person's shifts while nobody has looked at it yet
+ * (`longShiftToAsk`).
  */
 export function longShift(shift: {
   out: string | null;
   minutes: number;
 }): boolean {
   return shift.out !== null && shift.minutes > LONG_ENTRY_MINUTES;
+}
+
+/**
+ * Whether the person's shifts offer whom to ask beside this long one: nobody
+ * has corrected it or added it for them. Once whoever approves hours wrote
+ * its times, a long one is what they meant (a double shift), and there is
+ * nothing left to ask.
+ */
+export function longShiftToAsk(shift: {
+  out: string | null;
+  minutes: number;
+  byManager: boolean;
+  correction: object | null;
+}): boolean {
+  return longShift(shift) && shift.correction === null && !shift.byManager;
 }
 
 /**

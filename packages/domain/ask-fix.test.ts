@@ -14,6 +14,7 @@ import {
   FIX_FAILURES,
   LONG_ENTRY_MINUTES,
   longShift,
+  longShiftToAsk,
 } from "./time-clock-format";
 
 // Who a worker asks to correct their hours (closing the pilot, PR 8): those
@@ -284,5 +285,39 @@ describe("a long shift, which may hide a forgotten clock-out", () => {
     expect(longShift({ out: "16:00", minutes: 8 * 60 })).toBe(false);
     // Open: the clock calls it one that needs fixing after 24 hours.
     expect(longShift({ out: null, minutes: 20 * 60 })).toBe(false);
+  });
+
+  it("offers whom to ask until whoever approves hours wrote its times", () => {
+    const long = { out: "08:00", minutes: 17 * 60 };
+    expect(
+      longShiftToAsk({ ...long, byManager: false, correction: null }),
+    ).toBe(true);
+    // A forgotten clock-out corrected to a real double shift.
+    expect(
+      longShiftToAsk({
+        ...long,
+        byManager: false,
+        correction: { kind: "corrected", by: "שירן", note: "משמרת כפולה" },
+      }),
+    ).toBe(false);
+    // Added for the person, who never clocked it.
+    expect(
+      longShiftToAsk({
+        ...long,
+        byManager: true,
+        correction: { kind: "added", by: null, note: null },
+      }),
+    ).toBe(false);
+    expect(longShiftToAsk({ ...long, byManager: true, correction: null })).toBe(
+      false,
+    );
+    expect(
+      longShiftToAsk({
+        out: "16:00",
+        minutes: 8 * 60,
+        byManager: false,
+        correction: null,
+      }),
+    ).toBe(false);
   });
 });

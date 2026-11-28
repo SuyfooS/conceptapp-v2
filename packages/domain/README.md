@@ -146,7 +146,9 @@ clock's browser files may import: it takes no Zod. It offers it beside a
 closed shift that counted over 14 hours too (`longShift`,
 `LONG_ENTRY_MINUTES`, which is the payroll engine's `LIMITS.entry`): the
 clock takes a clock-out within 24 hours, so one forgotten until the next
-morning is recorded as a long shift.
+morning is recorded as a long shift. In the person's shifts only while
+nobody has corrected or added it (`longShiftToAsk`): once whoever approves
+hours wrote its times, a long one is what they meant.
 
 `people-import.ts` reads a pasted list of people to invite at once ("הזמנה
 מרשימה", part 1 of the plan of 25 November 2026): from WhatsApp, Excel,

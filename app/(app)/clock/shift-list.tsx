@@ -3,7 +3,7 @@ import type { Attendance, ShiftRecord } from "@domain/time-clock";
 import {
   formatHours,
   LONG_ENTRY_MINUTES,
-  longShift,
+  longShiftToAsk,
 } from "@domain/time-clock-format";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
@@ -39,7 +39,8 @@ function useDayLabel() {
  * a cancelled one back. In the person's own shifts, one that needs fixing
  * offers, beside its "צריך תיקון", whom to ask (`askFix`, closing the
  * pilot's PR 8), and so does one that counted over 14 hours, saying why
- * (`longShift`: maybe a forgotten clock-out).
+ * (`longShiftToAsk`: maybe a forgotten clock-out), until whoever approves
+ * hours corrected it or added it.
  */
 export function ShiftList({
   records,
@@ -250,8 +251,8 @@ function rowOf(
         {record.byManager && !added ? t("byManager") : null}
         {proof ? t("withProof", { proof }) : null}
         {fixed ? <span className="block">{fixed}</span> : null}
-        {ask && longShift(record) ? <LongLine t={t} /> : null}
-        {ask && (record.overdue || longShift(record)) ? (
+        {ask && longShiftToAsk(record) ? <LongLine t={t} /> : null}
+        {ask && (record.overdue || longShiftToAsk(record)) ? (
           <span className="mt-2 flex">
             <AskFix ask={ask} />
           </span>
@@ -465,7 +466,7 @@ function ShiftTable({
                   ) : (
                     t("running")
                   )}
-                  {ask && longShift(record) ? (
+                  {ask && longShiftToAsk(record) ? (
                     // Whom to ask, beside the hours it counted, saying why.
                     <span className="mt-2 flex flex-col items-start gap-2">
                       <LongLine t={t} />

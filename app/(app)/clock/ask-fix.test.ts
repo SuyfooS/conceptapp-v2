@@ -348,6 +348,26 @@ describe("the person's shifts", () => {
     expect(html).not.toContain(escaped(he.app.clock.history.needsFix));
   });
 
+  it("offer nobody beside a long shift whoever approves hours corrected or added", () => {
+    const corrected: ShiftRecord = {
+      ...LONG,
+      in: "06:00",
+      out: "21:00",
+      minutes: 15 * 60,
+      correction: { kind: "corrected", by: SHIRAN_NAME, note: null },
+    };
+    const added: ShiftRecord = {
+      ...LONG,
+      byManager: true,
+      correction: { kind: "added", by: SHIRAN_NAME, note: null },
+    };
+    for (const record of [corrected, added]) {
+      const html = list([record], { kind: "write", person: SHIRAN });
+      expect(hrefs(html)).toEqual([]);
+      expect(text(html)).not.toContain(longWords);
+    }
+  });
+
   it("offer nobody beside a long shift when there is nobody to ask", () => {
     const html = list([LONG], null);
     expect(hrefs(html)).toEqual([]);
@@ -362,5 +382,43 @@ describe("the person's shifts", () => {
     );
     expect(hrefs(html)).toEqual([]);
     expect(text(html)).not.toContain(longWords);
+  });
+});
+
+describe("the demo", () => {
+  it("works out whom Noa asks as the app does, each kind", async () => {
+    const { demoAskFix } = await import("../../design/shell/data");
+    // The one manager, not the owner.
+    expect(demoAskFix(undefined)).toMatchObject({
+      kind: "write",
+      person: { id: "shiran", href: "/design/chat" },
+    });
+    // Itay shares her kitchen, so he comes first.
+    const pick = demoAskFix("pick");
+    expect(pick?.kind).toBe("pick");
+    expect(pick?.kind === "pick" ? pick.people.map((p) => p.id) : []).toEqual([
+      "itay",
+      "shiran",
+    ]);
+    expect(demoAskFix("name")).toMatchObject({
+      kind: "name",
+      people: [{ id: "shiran", href: null }],
+    });
+  });
+
+  it("shows Noa's shift open since yesterday, and one just left that counted 17 hours, with whom to ask", () => {
+    const overdue = panel(demoClock("overdue", NOW));
+    expect(overdue).toContain(escaped(he.app.clock.failure.tooLong));
+    expect(hrefs(overdue)).toEqual(["/design/chat"]);
+
+    const long = panel(demoClock("long", NOW));
+    expect(text(long)).toContain(longWords);
+    expect(hrefs(long)).toEqual(["/design/chat"]);
+  });
+
+  it("offers nobody to the manager in its other states", () => {
+    for (const state of [undefined, "working", "left"]) {
+      expect(demoClock(state, NOW).askFix).toBeNull();
+    }
   });
 });

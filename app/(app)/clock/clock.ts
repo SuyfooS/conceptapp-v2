@@ -41,7 +41,7 @@ import {
   UNDO_CLOCK_OUT_SECONDS,
   undoableEntry,
 } from "@domain/time-clock";
-import { longShift } from "@domain/time-clock-format";
+import { longShiftToAsk } from "@domain/time-clock-format";
 import { clockAt, nextShift } from "@domain/today";
 import { canWrite } from "@domain/view-as";
 import { wageNow } from "@domain/wages";
@@ -359,8 +359,8 @@ export async function currentClockHistory(
     month,
     currentMonth,
     // Whom to ask, beside a shift that needs fixing or one that counted over
-    // 14 hours: read only for a month that has one.
-    askFix: records.some((record) => record.overdue || longShift(record))
+    // 14 hours that nobody corrected: read only for a month that has one.
+    askFix: records.some((record) => record.overdue || longShiftToAsk(record))
       ? await askFixFor(access)
       : null,
     // Their own days away (known issue 19): read only, as recorded.

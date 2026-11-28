@@ -7115,9 +7115,10 @@ export async function closeFirstDayBusiness(
  * chat on, no code asked), with its owner, a manager in its checkout and a
  * worker in its storeroom whose shift has been open since yesterday, over
  * the 24 hours the clock takes. With `near`, a second manager, in the
- * worker's storeroom. With `chat: false`, chat off. The people's ids and
- * numbers are in no other spec and in no pgTAP file. Made afresh for each
- * test and gone after with its records.
+ * worker's storeroom. With `chat: false`, chat off. The departments are the
+ * template's own, which already has a storeroom and a checkout. The people's
+ * ids and numbers are in no other spec and in no pgTAP file. Made afresh for
+ * each test and gone after with its records.
  */
 export const ASK_FIX_BUSINESS = {
   id: "00000000-0000-4000-b000-0000000000f3",
@@ -7155,7 +7156,11 @@ export const ASK_FIX_PEOPLE = {
 } as const;
 /** How long ago the worker clocked in: past the 24 hours an entry may be. */
 export const ASK_FIX_OPEN_HOURS = 26;
-/** The business's two departments, by key. */
+/**
+ * The template's departments the people are in, by name: the shop's
+ * `stock` and `checkout` (`retail` in 20261109000600_lists.sql), which
+ * apply_template gives the business.
+ */
 export const ASK_FIX_DEPARTMENTS = {
   storeroom: "מחסן",
   checkout: "קופה",
@@ -7185,22 +7190,24 @@ export async function openAskFixBusiness({
     await sql`insert into public.memberships (business_id, user_id, role)
       values (${id}, ${person.id}, ${role})`;
   }
-  let position = 0;
-  for (const [key, department] of Object.entries(ASK_FIX_DEPARTMENTS)) {
-    await sql`insert into public.departments (business_id, key, name, position)
-      values (${id}, ${`e2e-${key}`}, ${department}, ${position++})`;
-  }
+  // Into the template's own departments, by key: a department of the same
+  // name added beside them would be refused (departments_name_idx).
   const members = [
-    { person: people.worker, key: "storeroom" },
+    { person: people.worker, key: "stock" },
     { person: people.manager, key: "checkout" },
-    ...(near ? [{ person: people.near, key: "storeroom" }] : []),
+    ...(near ? [{ person: people.near, key: "stock" }] : []),
   ];
   for (const { person, key } of members) {
-    await sql`insert into public.department_members
+    const added = await sql`insert into public.department_members
         (department_id, business_id, user_id)
       select d.id, d.business_id, ${person.id}
       from public.departments d
-      where d.business_id = ${id} and d.key = ${`e2e-${key}`}`;
+      where d.business_id = ${id} and d.key = ${key}
+        and d.archived_at is null
+      returning user_id`;
+    if (added.length !== 1) {
+      throw new Error(`the shop's template has no department "${key}"`);
+    }
   }
   await sql`update public.business_modules
     set settings = settings || ${sql.json({ requirePunchCode: false })}::jsonb

@@ -1,6 +1,7 @@
 import { timeIn } from "@domain/shabbat";
 import { type ShiftRecord, UNDO_CLOCK_OUT_SECONDS } from "@domain/time-clock";
 import type { ClockData } from "../../../(app)/clock/clock-types";
+import { demoAskFix } from "../data";
 
 const HOUR = 3_600_000;
 const ENTRY = "68000000-0000-4000-a000-000000000001";
@@ -98,21 +99,66 @@ export const demoRecords: ShiftRecord[] = [
 ];
 
 /**
+ * Noa's shifts that offer whom to ask on the history demo (closing the pilot,
+ * PR 8): one left open since the evening of the 8th, past the 24 hours the
+ * clock takes, so it needs fixing, and the 7th's, in at 15:00 and out the
+ * next morning at 08:00, a clock-out forgotten until then that the clock
+ * still took.
+ */
+export const demoFixRecords: ShiftRecord[] = [
+  {
+    id: "68000000-0000-4000-a000-000000000018",
+    date: "2026-11-08",
+    in: "17:00",
+    out: null,
+    minutes: 24 * 60,
+    breakMinutes: 0,
+    byManager: false,
+    overdue: true,
+    attendance: null,
+    correction: null,
+    cancelled: null,
+    breaks: [],
+  },
+  {
+    id: "68000000-0000-4000-a000-000000000019",
+    date: "2026-11-07",
+    in: "15:00",
+    out: "08:00",
+    minutes: 17 * 60,
+    breakMinutes: 0,
+    byManager: false,
+    overdue: false,
+    attendance: null,
+    correction: null,
+    cancelled: null,
+    breaks: [],
+  },
+];
+
+/**
  * The screen in each of its states, the time running from now. With `code`,
  * the business asks for the clock's code, and the demo person is a manager
- * who needs one and may show it.
+ * who needs one and may show it. `overdue` and `long` are Noa as a worker
+ * who forgot to clock out (closing the pilot, PR 8): her shift open since
+ * yesterday, over the 24 hours the clock takes, or one just left that
+ * counted 17 hours, a clock-out forgotten until the morning. Under each,
+ * whom she asks to correct it, as `ask` says (`demoAskFix`).
  */
 export function demoClock(
   state: string | undefined,
   now: Date,
   code = false,
+  ask?: string,
 ): ClockData {
   const at = (hoursAgo: number) =>
     new Date(now.getTime() - hoursAgo * HOUR).toISOString();
+  const worker = state === "overdue" || state === "long";
+  const since = state === "overdue" ? 26 : 3.7;
   const entry = {
     id: ENTRY,
     userId: "demo",
-    clockIn: at(3.7),
+    clockIn: at(since),
     clockOut: null,
     source: "punch" as const,
     inProof: code ? ("typed" as const) : null,
@@ -121,7 +167,7 @@ export function demoClock(
     note: null,
     editedBy: null,
     editedAt: null,
-    createdAt: at(3.7),
+    createdAt: at(since),
     restoredAt: null,
   };
   const pause = {
@@ -131,7 +177,7 @@ export function demoClock(
     unpaid: true,
   };
   const open =
-    state === "working"
+    state === "working" || state === "overdue"
       ? { ...entry, breaks: [] }
       : state === "break"
         ? { ...entry, breaks: [pause] }
@@ -166,20 +212,20 @@ export function demoClock(
     lastMonth: 142 * 60 + 15,
     recent: demoRecords,
     undo:
-      state === "left"
+      state === "left" || state === "long"
         ? {
             entryId: ENTRY,
-            out: "16:04",
-            minutes: 462,
+            out: state === "long" ? "08:00" : "16:04",
+            minutes: state === "long" ? 17 * 60 : 462,
             until: new Date(
               now.getTime() + UNDO_CLOCK_OUT_SECONDS * 1000,
             ).toISOString(),
           }
         : null,
     unpaidBreaks: true,
-    punch: { required: code, needsCode: code, canShowCode: true },
-    team: { atWork: 2, overdue: state === "working" ? 0 : 1 },
-    payroll: true,
+    punch: { required: code, needsCode: code, canShowCode: !worker },
+    team: worker ? null : { atWork: 2, overdue: state === "working" ? 0 : 1 },
+    payroll: !worker,
     // Their own wage, and the raise set for December.
     ownWage: {
       current: { agorot: 3800, from: "2026-10-01" },
@@ -194,6 +240,7 @@ export function demoClock(
     },
     viewOnly: false,
     // A manager who edits the clock fixes their own hours: nobody to ask.
-    askFix: null,
+    // Noa, a worker, asks whoever approves hours.
+    askFix: worker ? demoAskFix(ask) : null,
   };
 }
