@@ -5,7 +5,7 @@ import { announce } from "@ui/announcer";
 import { Button } from "@ui/button";
 import { Card, CardText, CardTitle } from "@ui/card";
 import { cn } from "@ui/cn";
-import { focusWhenGone } from "@ui/focus-after";
+import { focusLost, focusWhenGone } from "@ui/focus-after";
 import { UndoRow } from "@ui/undo-row";
 import { BellRing } from "lucide-react";
 import Link from "next/link";
@@ -22,6 +22,7 @@ import {
   useState,
 } from "react";
 import { headingsAfter } from "../home/heading-after";
+import { sendHide } from "../home/hide-request";
 import { useHeldWrite } from "../use-held-write";
 import { IosInstallSteps } from "./ios-install-steps";
 import type { PushAskOffer } from "./push-ask";
@@ -38,6 +39,15 @@ export type TodayPushAsk = { offer: PushAskOffer } | { twin: PushAskState };
 /** What Today's "לא עכשיו" keeps: only a moment's card is ever kept as seen. */
 type Kept = Extract<PushAskMark, "person" | "device">;
 
+/** Where Today's "לא עכשיו" for the person is sent (`app/(app)/home/push-ask/route.ts`). */
+const PUT_AWAY_URL = "/home/push-ask";
+
+/**
+ * What came of keeping "לא עכשיו": kept, with Today to be drawn again for
+ * it (the person's mark) or not (this browser's); or not kept.
+ */
+type KeptAnswer = "again" | "kept" | "failed";
+
 /** How the card's state is had and changed: by the browser in the app, by hand on the twin. */
 type Driver = {
   state: PushAskShown;
@@ -45,8 +55,8 @@ type Driver = {
   device: "phone" | "other";
   /** Turns notifications on, from inside the press: what came of it. */
   turnOn: () => Promise<PushAskState>;
-  /** Keeps what "לא עכשיו" keeps; whether Today is to be drawn again for it. */
-  keep: (mark: Kept) => Promise<boolean>;
+  /** Keeps what "לא עכשיו" keeps, and says what came of it. */
+  keep: (mark: Kept) => Promise<KeptAnswer>;
   /** What "לא עכשיו" holds for its "ביטול" now, from the press on: none once taken back. */
   holding: (mark: Kept | null) => void;
 };
@@ -66,14 +76,16 @@ const pause = () => new Promise((resolve) => setTimeout(resolve, 600));
  * nothing. Being seen keeps nothing. "לא עכשיו" puts it away the way Today's
  * other cards go: at once, with "ביטול" in its place holding the focus and
  * the write (`useHeldWrite`), which keeps it for the person, on every device
- * and for the moments' cards too (`putAwayPushAskAction`), or, for the
- * steps, in this browser only (`pushAskMark`). "ביטול" brings it back with
- * the focus on "לא עכשיו"; once the row goes, the focus goes on to the next
- * section's title. After a press that turned them on, or found them
- * blocked, "סגירה" closes it and keeps nothing: there is nothing left to
- * offer here. It is never brought into view and never says itself as it
- * comes, since Today is being read then; a change of its words after a
- * press is said.
+ * and for the moments' cards too (/home/push-ask, sent with keepalive so it
+ * goes as the page is hidden or closed), or, for the steps, in this browser
+ * only (`pushAskMark`). "ביטול" brings it back with the focus on "לא
+ * עכשיו"; once the row goes, the focus goes on to the next section's title.
+ * Not kept, the card comes back and says so. After a press that turned them
+ * on, or found them blocked, "סגירה" closes it and keeps nothing: there is
+ * nothing left to offer here. It is never brought into view and never says
+ * itself as it comes, since Today is being read then; the answer to each
+ * press is said. It comes once the browser has answered, after Today is
+ * drawn, so what is drawn after it moves down as it comes.
  */
 export function PushAskToday({
   ask,
@@ -135,10 +147,11 @@ function LiveToday({
     keep: async (mark) => {
       if (mark === "device") {
         putInstallAway();
-        return false;
+        return "kept";
       }
-      await offer.putAway();
-      return true;
+      // A route with keepalive: the write can go as the page is hidden or
+      // closed, which a server action doesn't survive.
+      return (await sendHide(PUT_AWAY_URL))?.ok ? "again" : "failed";
     },
     // The person's mark is known in this page before the database has it,
     // so a moment's card on a screen drawn before it lands asks nothing.
@@ -167,11 +180,12 @@ function TwinToday({
     state,
     setState,
     device: "phone",
+    // A press on the card that failed fails again; any other turns them on.
     turnOn: async () => {
       await pause();
-      return "on";
+      return twin === "failed" ? "failed" : "on";
     },
-    keep: async () => false,
+    keep: async () => "kept",
     holding: () => {},
   };
   return (
@@ -202,11 +216,14 @@ function TodayCard({
   // Where the card was, still there once it went.
   const anchor = useRef<HTMLSpanElement>(null);
   const [gone, setGone] = useState<Kept | "closed" | null>(null);
+  // "לא עכשיו" couldn't be kept: the card came back, and says so.
+  const [failure, setFailure] = useState(false);
   // The press that turned notifications on held the keyboard in the card.
   const refocus = useRef(false);
+  // A press on its way: its answer is said, and nothing else is.
+  const pressed = useRef(false);
   const backToButton = useRef(false);
   const closedWithFocus = useRef(false);
-  const lastSaid = useRef<string | null>(null);
   // Today is on screen: not once it is left, while Next keeps it for the way
   // back, so a write sent on leaving never draws the next screen again.
   const shown = useRef(false);
@@ -214,35 +231,42 @@ function TodayCard({
     shown.current = true;
     return () => {
       shown.current = false;
+      // Left with a press on its way: the keyboard is elsewhere by then, so
+      // its answer never takes the focus once Today is shown again.
+      refocus.current = false;
     };
   }, []);
 
   const held = useHeldWrite<Kept>(async (mark) => {
-    const again = await driver.keep(mark).catch(() => false);
-    if (again && shown.current) router.refresh();
+    const kept = await driver.keep(mark).catch((): KeptAnswer => "failed");
+    if (kept === "failed") {
+      // Not kept: the card comes back and says so, and a moment's card in
+      // this page may ask again.
+      driver.holding(null);
+      setFailure(true);
+      setGone(null);
+    } else if (kept === "again" && shown.current) {
+      router.refresh();
+    }
   });
 
-  // Its first words aren't said, since Today is being read as it comes;
-  // each change after a press is.
+  // Never said as it comes, since Today is being read then, nor when the
+  // browser's check changes it as Today is shown again: only the answer to
+  // each press is, once, even in the words said before (a second failure).
   const body = words?.body ?? null;
   useEffect(() => {
-    if (body === null || state === "working") return;
-    if (lastSaid.current === null) {
-      lastSaid.current = body;
-      return;
-    }
-    if (body === lastSaid.current) return;
-    lastSaid.current = body;
+    if (body === null || state === "working" || !pressed.current) return;
+    pressed.current = false;
     announce(body);
   }, [body, state]);
 
   // A press whose button went (on, blocked) or was busy keeps the keyboard
-  // in the card, on what is there now.
+  // in the card, on what is there now, only where the focus was lost: one
+  // the person put elsewhere meanwhile stays there.
   useEffect(() => {
     if (state === "working" || !refocus.current) return;
     refocus.current = false;
-    const element = card.current;
-    if (!element || element.contains(document.activeElement)) return;
+    if (!card.current || !focusLost()) return;
     actions.current
       ?.querySelector<HTMLElement>("a[href], button:not([disabled])")
       ?.focus({ preventScroll: true });
@@ -264,12 +288,14 @@ function TodayCard({
   async function enable() {
     if (state === "working") return;
     refocus.current = Boolean(card.current?.contains(document.activeElement));
+    pressed.current = true;
     setState("working");
     setState(await driver.turnOn());
   }
 
   function dismiss() {
     if (state === "checking" || state === "none") return;
+    setFailure(false);
     const mark = pushAskMark("today", state, "dismiss");
     if (mark === "person" || mark === "device") {
       setGone(mark);
@@ -313,7 +339,7 @@ function TodayCard({
     );
   }
 
-  return (
+  const drawn = (
     <PushAskTodayCard
       state={state}
       device={device}
@@ -323,8 +349,17 @@ function TodayCard({
       cardRef={card}
       actionsRef={actions}
       dismissRef={dismissButton}
-      className={className}
+      className={failure ? undefined : className}
     />
+  );
+  if (!failure) return drawn;
+  return (
+    <div className={cn("flex flex-col gap-2", className)}>
+      <p role="alert" className="px-1 text-base text-danger">
+        {t("putAwayFailed")}
+      </p>
+      {drawn}
+    </div>
   );
 }
 

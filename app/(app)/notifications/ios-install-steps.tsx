@@ -11,7 +11,9 @@ import { useTranslations } from "next-intl";
  * (`device` "other", as `isPhone` says), "הוספה למסך הבית", then opening it
  * from there and signing in again. In the notification settings, and on
  * Today's card in Safari. Each step with its icon beside its first line,
- * which says nothing of its own.
+ * which says nothing of its own. A list by its role too: Safari, the only
+ * browser that shows it, reads a list drawn with no numbers as loose lines,
+ * so VoiceOver would say neither the list nor how many steps it has.
  */
 export function IosInstallSteps({
   device,
@@ -24,7 +26,8 @@ export function IosInstallSteps({
   // The icons' 20px on the first line of 17px text (24px high).
   const icon = "mt-0.5 size-5 shrink-0 text-ink-2";
   return (
-    <ol className={cn("flex flex-col gap-2 text-ink", className)}>
+    // biome-ignore lint/a11y/noRedundantRoles: WebKit drops the role of a list drawn with no numbers
+    <ol role="list" className={cn("flex flex-col gap-2 text-ink", className)}>
       <li className="flex items-start gap-2">
         <Share aria-hidden="true" className={icon} />
         {t("share", { device })}

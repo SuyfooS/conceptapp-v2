@@ -1887,26 +1887,29 @@ test("the Today demo's first steps lead into the demo and hide with a way back",
 // Today's card that offers notifications on the phone (closing the pilot,
 // PR 6) on the twin, which asks the browser nothing and keeps nothing: a
 // press turns them on (a moment's stand-in), says so, leads to the twin's
-// settings and closes with nothing to undo; an iPhone's Safari shows the
-// steps to the home screen, and "לא עכשיו" puts them away with a way back
-// that brings the focus back to it. The app's own card, in a real business:
+// settings and closes with nothing to undo, the keyboard on to the next
+// section's title; a press on the failed card fails again, and each failure
+// is said, in the same words too; an iPhone's Safari shows the steps to the
+// home screen, and "לא עכשיו" puts them away with a way back that brings
+// the focus back to it. The app's own card, in a real business:
 // e2e/push-card.spec.ts.
 test("the Today demo's notifications card turns them on, and 'לא עכשיו' puts it away with a way back", async ({
   page,
 }) => {
+  // A failure's line goes quiet before the next is listened for.
+  test.setTimeout(60_000);
   const a = he.app.notifications.ask;
   const card = page.getByRole("main").getByRole("region", {
     name: heT("app.notifications.ask.today", { device: "phone" }),
+  });
+  const enable = card.getByRole("button", {
+    name: heT("app.notifications.ask.enable", { device: "phone" }),
   });
   const on = heT("app.notifications.ask.on", { device: "phone" });
   await page.goto("/design/shell/today/worker?push=off");
   await page.waitForLoadState("networkidle");
   await noteIfSaid(page, on);
-  await card
-    .getByRole("button", {
-      name: heT("app.notifications.ask.enable", { device: "phone" }),
-    })
-    .click();
+  await enable.click();
   await expect(card).toContainText(on);
   await expect.poll(() => wasSaid(page, on)).toBe(true);
   // The button pressed went: the keyboard stays in the card, on what is
@@ -1922,6 +1925,28 @@ test("the Today demo's notifications card turns them on, and 'לא עכשיו' p
   await expect(
     page.getByRole("status").filter({ hasText: a.putAway }),
   ).toHaveCount(0);
+  // Closed with the keyboard in it: on to the next section's title.
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.activeElement?.matches("main h2, main h3") ?? false,
+      ),
+    )
+    .toBe(true);
+
+  const failed = he.app.notifications.push.failed;
+  await page.goto("/design/shell/today/worker?push=failed");
+  await page.waitForLoadState("networkidle");
+  const failedLines = page.locator("[data-announcer] p", { hasText: failed });
+  for (const press of ["a press", "a press again"]) {
+    // The last line said has gone quiet first (`ANNOUNCE_CLEAR_MS`).
+    await expect(failedLines).toHaveCount(0, { timeout: 10_000 });
+    await noteIfSaid(page, failed);
+    await enable.click();
+    await expect
+      .poll(() => wasSaid(page, failed), { message: press })
+      .toBe(true);
+  }
 
   await page.goto("/design/shell/today/worker?push=install");
   await page.waitForLoadState("networkidle");
@@ -1940,6 +1965,25 @@ test("the Today demo's notifications card turns them on, and 'לא עכשיו' p
   await undo.click();
   await expect(steps).toBeVisible();
   await expect(dismiss).toBeFocused();
+});
+
+// Never on the business's clock station, which isn't the person's device:
+// the accountant's Home there, with an offer, draws the station's card and
+// no notifications card, which it draws anywhere else.
+test("the Today demo's notifications card never comes on the clock station", async ({
+  page,
+}) => {
+  const card = page.getByRole("main").getByRole("region", {
+    name: heT("app.notifications.ask.today", { device: "phone" }),
+  });
+  await page.goto("/design/shell/today/accountant?push=off");
+  await expect(card).toBeVisible();
+  await page.goto("/design/shell/today/accountant?state=station&push=off");
+  await expect(
+    page.getByText(he.app.clock.station.reminder.signOutBody),
+  ).toBeVisible();
+  await pastDrawing(page);
+  await expect(card).toHaveCount(0);
 });
 
 // The same card in the /design gallery, in each state: it lays out by its

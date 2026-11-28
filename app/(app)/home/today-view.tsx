@@ -448,7 +448,8 @@ export async function TodayView({
   const view = schedule ? { t, path, clock, role: data.role, schedule } : null;
   // Notifications on the phone offered: only the browser can say whether
   // the card comes, a moment after Today is drawn, so it comes under the
-  // hero, or with none after the rest, and nothing drawn first moves.
+  // hero, or with none after the rest: nothing above it moves, and what
+  // comes after it moves down as it comes.
   const pushAsk =
     data.pushAsk && !data.station ? (
       <PushAskToday

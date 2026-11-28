@@ -14,9 +14,10 @@ const STATES: readonly PushAskState[] = [
 /**
  * Today's card that offers notifications on the phone (closing the pilot,
  * PR 6), on the twin, by its query: `?push=off` before a press, `on`,
- * `denied` and `failed` after one, `working` with one on its way, `install`
- * as an iPhone's Safari draws it. Anything else, or none: no card, as in a
- * demo business.
+ * `denied` and `failed` after one (a press on `failed` fails again; any
+ * other turns them on), `working` with one on its way, `install` as an
+ * iPhone's Safari draws it. Anything else, or none: no card, as in a demo
+ * business.
  */
 export function pushTwinOf(push: string | undefined): TodayPushAsk | null {
   const state = STATES.find((one) => one === push);

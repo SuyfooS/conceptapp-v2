@@ -16,7 +16,6 @@ const mocks = vi.hoisted(() => ({
   ownDeviceKinds: vi.fn(),
   getNotificationPreferences: vi.fn(),
   seen: vi.fn(),
-  putAway: vi.fn(),
 }));
 vi.mock("@db/push/env", () => ({ pushConfig: mocks.pushConfig }));
 vi.mock("@db/push/devices", () => ({
@@ -30,7 +29,6 @@ vi.mock("../member", () => ({ currentMember: mocks.currentMember }));
 vi.mock("../modules", () => ({ currentModules: mocks.currentModules }));
 vi.mock("./preferences-actions", () => ({
   seePushAskAction: mocks.seen,
-  putAwayPushAskAction: mocks.putAway,
 }));
 
 const { currentPushAsk } = await import("./push-ask-offer");
@@ -63,14 +61,13 @@ beforeEach(() => {
 });
 
 describe("the offer of notifications on the phone", () => {
-  it("comes for every role, with the key, the devices and both ways to keep it", async () => {
+  it("comes for every role, with the key, the devices and the way to keep a moment's answer", async () => {
     for (const role of ["worker", "manager", "owner", "accountant"]) {
       mocks.currentMember.mockResolvedValue(member(role));
       expect(await currentPushAsk(), role).toEqual({
         publicKey: KEY,
         devices: [],
         seen: mocks.seen,
-        putAway: mocks.putAway,
       });
     }
   });

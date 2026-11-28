@@ -46,8 +46,13 @@ export function usePushAskState(devices: readonly DeviceLabel[]): {
   // nothing here.
   const known = useRef(devices);
 
+  // Asked again whenever the screen is shown again (Next keeps it in an
+  // <Activity> for the way back), never over a press still on its way,
+  // whose own answer comes.
   useEffect(() => {
     let live = true;
+    const answered = (shown: PushAskShown) =>
+      setState((now) => (now === "working" ? now : shown));
     const facts = browserFacts();
     setDevice(isPhone(facts) ? "phone" : "other");
     const support = pushSupport(facts);
@@ -62,7 +67,7 @@ export function usePushAskState(devices: readonly DeviceLabel[]): {
     };
     const first = pushAskStart(asked);
     if (support !== "ready" || first === "none") {
-      setState(first);
+      answered(first);
       return;
     }
     (async () => {
@@ -74,9 +79,9 @@ export function usePushAskState(devices: readonly DeviceLabel[]): {
           : null;
         if (!live) return;
         worker.current = registration;
-        setState(pushAskStart({ ...asked, subscribed: subscription !== null }));
+        answered(pushAskStart({ ...asked, subscribed: subscription !== null }));
       } catch {
-        if (live) setState("none");
+        if (live) answered("none");
       }
     })();
     return () => {

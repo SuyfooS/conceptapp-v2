@@ -93,8 +93,9 @@ const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
  * says to sign out when done comes under the greeting, as on Today; on any
  * other device, the quiet card that offers notifications on the phone comes
  * under the hero (with the clock off, after the rest), as on Today
- * (`PushAskToday`, closing the pilot, PR 6), so nothing drawn first moves
- * when the browser says it comes. While
+ * (`PushAskToday`, closing the pilot, PR 6): only the browser can say it
+ * comes, after Home is drawn, so nothing above it moves, and what comes
+ * after it moves down as it comes. While
  * the hiring file is on, a card "תיקי העובדים" says how many files miss
  * anything and leads to them (H6a): under what to look at before paying,
  * beside the hero from a tablet up. `base` keeps the links inside the demo

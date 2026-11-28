@@ -59,6 +59,47 @@ async function notAskedYet(page: Page) {
   });
 }
 
+/**
+ * Holds the card's question to the browser (whether its worker is there)
+ * on the next load after `holdCardOnNextLoad`, until `letCardCome`: Today
+ * is drawn, and measured, before the card comes. Only that load.
+ */
+async function holdableCard(page: Page) {
+  await page.addInitScript(() => {
+    try {
+      if (sessionStorage.getItem("e2e:hold-card") === null) return;
+      sessionStorage.removeItem("e2e:hold-card");
+    } catch {
+      return;
+    }
+    const container = navigator.serviceWorker;
+    const ask = container.getRegistration.bind(container);
+    let come = () => {};
+    const held = new Promise<void>((resolve) => {
+      come = resolve;
+    });
+    Object.assign(window, { letCardCome: come });
+    container.getRegistration = async (client?: string | URL) => {
+      await held;
+      return ask(client);
+    };
+  });
+}
+
+const holdCardOnNextLoad = (page: Page) =>
+  page.evaluate(() => sessionStorage.setItem("e2e:hold-card", "1"));
+
+const letCardCome = (page: Page) =>
+  page.evaluate(() =>
+    (window as unknown as { letCardCome?: () => void }).letCardCome?.(),
+  );
+
+/** Whether the keyboard is on a section's title (`headingsAfter`'s). */
+const onSectionTitle = (page: Page) =>
+  page.evaluate(
+    () => document.activeElement?.matches("main h2, main h3") ?? false,
+  );
+
 /** "phone" on the phone project's Pixel, "other" on a computer's Chrome. */
 const deviceOf = (testInfo: TestInfo) =>
   testInfo.project.name === "phone" ? "phone" : "other";
@@ -172,6 +213,7 @@ test("Today offers notifications on the phone until 'לא עכשיו', and not a
   const device = deviceOf(testInfo);
   await forgetPreferences(WORKER.id);
   await notAskedYet(page);
+  await holdableCard(page);
   try {
     await signIn(page, WORKER);
     const card = cardOf(page, device);
@@ -187,11 +229,21 @@ test("Today offers notifications on the phone until 'לא עכשיו', and not a
     await expect(dismiss).toBeVisible();
     await expectAccessible(page);
     // Under the hero: it comes once the browser has answered, after Today
-    // is drawn, and the next shift never moves for it.
+    // is drawn, so the next shift, and all above it, never move for it
+    // (what comes after it moves down as it comes). The browser's answer is
+    // held back here until Today is measured.
     const hero = page.getByRole("region", { name: he.app.home.hero.next });
+    await holdCardOnNextLoad(page);
+    await page.reload();
+    await expect(hero).toBeVisible();
+    await page.evaluate(() => document.fonts.ready.then(() => undefined));
     const heroBox = await hero.boundingBox();
-    const cardBox = await card.boundingBox();
     expect(heroBox).not.toBeNull();
+    await expect(card).toHaveCount(0);
+    await letCardCome(page);
+    await expect(card).toBeVisible();
+    expect(await hero.boundingBox()).toEqual(heroBox);
+    const cardBox = await card.boundingBox();
     expect(cardBox?.y ?? 0).toBeGreaterThanOrEqual(
       (heroBox?.y ?? 0) + (heroBox?.height ?? 0),
     );
@@ -237,6 +289,8 @@ test("Today offers notifications on the phone until 'לא עכשיו', and not a
       })
       .not.toBeNull();
     await expect(undo).toHaveCount(0);
+    // Once the row went, the keyboard goes on to the next section's title.
+    if (!desktop) await expect.poll(() => onSectionTitle(page)).toBe(true);
 
     // Gone once Today is drawn again.
     if (desktop) await page.goto("/home");
@@ -248,6 +302,41 @@ test("Today offers notifications on the phone until 'לא עכשיו', and not a
     await page.waitForTimeout(1000);
     await expect(card).toHaveCount(0);
   } finally {
+    await forgetPreferences(WORKER.id);
+  }
+});
+
+test("a 'לא עכשיו' that couldn't be kept brings the card back, and says so", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "once, on the desktop");
+  test.skip(!PUBLIC_KEY, "needs VAPID keys (CI sets them)");
+  test.setTimeout(90_000);
+  await forgetPreferences(WORKER.id);
+  await notAskedYet(page);
+  try {
+    await signIn(page, WORKER);
+    const card = cardOf(page, "other");
+    await expect(card).toBeVisible();
+    // The person's mark goes to its own route (sent with keepalive, so it
+    // goes as the page is hidden or closed), which says here it kept nothing.
+    let sent = 0;
+    await page.route("**/home/push-ask", async (route) => {
+      sent += 1;
+      await route.fulfill({ status: 500 });
+    });
+    await card.getByRole("button", { name: n.ask.dismiss }).click();
+    await expect(undoOf(page, n.ask.putAway)).toHaveCount(0, {
+      timeout: HOLD_MS + 10_000,
+    });
+    await expect(card).toBeVisible();
+    await expect(
+      page.getByRole("alert").filter({ hasText: n.ask.putAwayFailed }),
+    ).toBeVisible();
+    expect(sent).toBe(1);
+    expect((await storedPreferences(WORKER.id))?.askedAt ?? null).toBeNull();
+  } finally {
+    await page.unrouteAll({ behavior: "ignoreErrors" });
     await forgetPreferences(WORKER.id);
   }
 });
@@ -355,6 +444,8 @@ test("an iPhone's Safari shows the steps to the home screen, and the app there s
     const undo = undoOf(page, n.ask.putAwayHere);
     await expect(undo).toBeFocused();
     await expect(undo).toHaveCount(0, { timeout: HOLD_MS + 10_000 });
+    // Once the row went, the keyboard goes on to the next section's title.
+    await expect.poll(() => onSectionTitle(page)).toBe(true);
     await page.reload();
     await page.waitForTimeout(1000);
     await expect(steps).toHaveCount(0);

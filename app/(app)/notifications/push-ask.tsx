@@ -22,8 +22,8 @@ import {
  * away a shift or sending availability (`currentPushAsk`): someone in a
  * business whose lines reach a phone, with push set up, who hasn't said "לא
  * עכשיו" and hasn't answered a moment's card. `seen` keeps that a moment's
- * card was answered (`seePushAskAction`), `putAway` Today's "לא עכשיו"
- * (`putAwayPushAskAction`), each on any of their devices. `devices`: the
+ * card was answered (`seePushAskAction`), on any of their devices; Today's
+ * "לא עכשיו" is kept the same way, through /home/push-ask. `devices`: the
  * kinds of the devices they already have notifications on.
  */
 export type PushAskOffer = {
@@ -31,7 +31,6 @@ export type PushAskOffer = {
   publicKey: string;
   devices: DeviceLabel[];
   seen: () => Promise<void>;
-  putAway: () => Promise<void>;
 };
 
 /** What the moment was: a shift given away, or availability sent. */

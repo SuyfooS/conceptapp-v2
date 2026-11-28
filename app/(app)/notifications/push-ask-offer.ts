@@ -6,7 +6,7 @@ import { isDemoBusiness } from "@domain/passive-sign-in";
 import type { DeviceLabel } from "@domain/push";
 import { currentMember } from "../member";
 import { currentModules } from "../modules";
-import { putAwayPushAskAction, seePushAskAction } from "./preferences-actions";
+import { seePushAskAction } from "./preferences-actions";
 import type { PushAskOffer } from "./push-ask";
 
 /**
@@ -50,6 +50,5 @@ export async function currentPushAsk(): Promise<PushAskOffer | null> {
     publicKey: push.publicKey,
     devices,
     seen: seePushAskAction,
-    putAway: putAwayPushAskAction,
   };
 }

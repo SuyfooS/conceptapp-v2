@@ -5507,6 +5507,7 @@
         "dismiss": "Not now",
         "putAway": "Hidden. Notifications can be turned on any time in the notification settings.",
         "putAwayHere": "The steps are hidden in this browser. They stay in the notification settings.",
+        "putAwayFailed": "The offer couldn't be hidden. Try again.",
         "close": "Close"
       }
     },
