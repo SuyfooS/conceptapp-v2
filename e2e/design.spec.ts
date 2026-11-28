@@ -304,6 +304,10 @@ const PAGES = [
   "/design/shell/me?file=later",
   // A business she left whose old file she can read (H5c).
   "/design/shell/me?past=1",
+  // "עזרה" (closing the pilot, PR 15): a deployment with no ConceptApp
+  // number, and chat off (e2e/help.spec.ts opens its sheet).
+  "/design/shell/me?support=off",
+  "/design/shell/me?help=name",
   "/design/shell/me/businesses",
   // The worker's own file (H5a) on Noa's twin: stopped at the account, each
   // step, a minor's birth date, an account the check warns about and its

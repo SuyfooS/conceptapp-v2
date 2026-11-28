@@ -103,6 +103,48 @@ export function demoDoorOpen(): boolean {
 }
 
 /**
+ * A WhatsApp number as `whatsappToHref` (@domain/share) takes it: E.164, a
+ * plus and 8 to 15 digits, the first not 0. Surrounding spaces are trimmed;
+ * spaces or dashes inside are not E.164, so refused.
+ */
+const SupportWhatsapp = z
+  .string()
+  .trim()
+  .regex(/^\+[1-9]\d{7,14}$/);
+
+/**
+ * ConceptApp's team on WhatsApp for this deployment (`SUPPORT_WHATSAPP`,
+ * docs/production.md, B11; closing the pilot, PR 15): the number "עזרה" on
+ * /me offers an owner, a manager or the accountant, in E.164. Null when
+ * unset or blank, and when it isn't E.164: "עזרה" then offers only whom to
+ * ask in the business, as with none. Never throws, so a typo here never
+ * takes down the profile; `supportWhatsapp` says it in the log.
+ */
+export function parseSupportWhatsapp(source: {
+  SUPPORT_WHATSAPP?: string;
+}): string | null {
+  const parsed = SupportWhatsapp.safeParse(source.SUPPORT_WHATSAPP ?? "");
+  return parsed.success ? parsed.data : null;
+}
+
+/**
+ * This deployment's ConceptApp WhatsApp (`parseSupportWhatsapp`), read on
+ * the server where /me is drawn: never in a browser file, where the setting
+ * reads as unset. A value set but not E.164 is said in the log, naming the
+ * setting and never the value.
+ */
+export function supportWhatsapp(): string | null {
+  const raw = process.env.SUPPORT_WHATSAPP ?? "";
+  const number = parseSupportWhatsapp({ SUPPORT_WHATSAPP: raw });
+  if (number === null && raw.trim() !== "") {
+    console.warn(
+      "SUPPORT_WHATSAPP is set but not a number in E.164 (a plus, the country code and the number, no spaces): the help on /me offers no WhatsApp to ConceptApp's team (docs/production.md, B11)",
+    );
+  }
+  return number;
+}
+
+/**
  * A Turnstile site key as Cloudflare writes it: a digit, `x`, and some 20
  * letters and digits (the ConceptApp widget's is 24 in all). A secret key
  * is longer (35), so one pasted here by mistake is refused and never

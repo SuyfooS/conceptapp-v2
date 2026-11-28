@@ -69,6 +69,7 @@ export async function MeView({
   modes,
   file,
   past,
+  help,
   home = "/home",
 }: {
   data: MeData;
@@ -89,6 +90,8 @@ export async function MeView({
   file?: ReactNode;
   /** The businesses they left whose file they can still read (profile H5c). */
   past?: ReactNode;
+  /** "עזרה" (closing the pilot, PR 15), where it offers anyone. */
+  help?: ReactNode;
   home?: string;
 }) {
   const t = translator(wording, "app");
@@ -126,6 +129,7 @@ export async function MeView({
       modes={modes}
       file={file}
       past={past}
+      help={help}
     />
   );
 }

@@ -3207,6 +3207,11 @@ read as messages/he.json. Console reads and writes are in `@db/wording`;
   key: unset, Cloudflare's always-passing test key; another shape (a secret
   pasted by mistake too) throws naming the setting. The pages that send a
   code read it on the server and hand it to their screens.
+  `supportWhatsapp` (`parseSupportWhatsapp`) reads `SUPPORT_WHATSAPP`,
+  ConceptApp's team on WhatsApp for "עזרה" on /me (closing the pilot, PR
+  15): E.164, trimmed; unset, blank or any other shape is none and never
+  throws, and a value set but not E.164 is said in the log by the setting's
+  name, never its value. Read on the server where /me is drawn.
 - `@db/pages`: reading past PostgREST's `max_rows` (1000 in supabase/config.toml, as on
   hosted Supabase, which cuts a longer read short with no error; kept, since raising it
   locally would only hide the cut). `PAGE_ROWS`; `allPages(page)` asks `page(first, last)`

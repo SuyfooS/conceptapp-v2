@@ -153,6 +153,20 @@ morning is recorded as a long shift. In the person's shifts only while
 nobody has corrected or added it (`longShiftToAsk`): once whoever approves
 hours wrote its times, a long one is what they meant.
 
+`help.ts` is "עזרה" on /me (closing the pilot, PR 15), with `ask-fix.ts`'s
+own choice. `helpers` says whom the person asks in the business: a worker,
+whoever may edit the clock as `hoursFixers` offers them (never themself, the
+owners only when nobody else may, their departments first, written to in
+chat or named), and, where the database names nobody (the clock off, or
+`clock_editors` not in the project yet), the owners, who hold every
+permission in a business of any kind; anyone else (a manager, the
+accountant, an owner) the owners, never themself, so an owner alone asks
+nobody there. `helpOf` makes it what the row offers, or null for no row:
+nothing while viewing as someone; `askFixOf`'s one, several or names; and
+ConceptApp's team on WhatsApp (`TEAM_HELP_ROLES`: an owner, a manager or the
+accountant) only where the deployment names its number and never in a demo
+business, whom to ask there still.
+
 `people-import.ts` reads a pasted list of people to invite at once ("הזמנה
 מרשימה", part 1 of the plan of 25 November 2026): from WhatsApp, Excel,
 Google Sheets or a note, on the device, so only each person's name, number
