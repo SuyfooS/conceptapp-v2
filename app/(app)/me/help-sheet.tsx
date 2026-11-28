@@ -39,7 +39,8 @@ export type HelpData = {
  * person, only their names. Then, where it is offered, ConceptApp's team:
  * what it answers, its hours, and "וואטסאפ לצוות של ConceptApp", WhatsApp to
  * its number with a sentence written that names only the business (the
- * person still presses send there). Nothing is sent from here.
+ * person still presses send there), in the accent when nobody in the
+ * business is written to here. Nothing is sent from here.
  */
 export function HelpSection({ help }: { help: HelpData }) {
   const t = useTranslations("app.me.help");
@@ -71,6 +72,10 @@ export function HelpSection({ help }: { help: HelpData }) {
     ask?.kind === "name"
       ? ask.people.flatMap((person) => (person.name ? [person.name] : []))
       : [];
+  // Nobody in the business to write to (an owner alone, or only names, as
+  // for the accountant): the team's WhatsApp is the sheet's one action, so
+  // in the accent, as ShareSheet's is. Beside a chat row, it stays grey.
+  const alone = !people.some((person) => person.href);
 
   const line = (person: HoursFixerLink) =>
     person.departments.length > 0
@@ -150,7 +155,8 @@ export function HelpSection({ help }: { help: HelpData }) {
               </div>
               <Button
                 asChild
-                variant="secondary"
+                variant={alone ? "primary" : "secondary"}
+                size={alone ? "lg" : "md"}
                 className="w-full md:w-auto md:self-start"
               >
                 <a href={whatsapp} target="_blank" rel="noopener noreferrer">

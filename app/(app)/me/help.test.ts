@@ -7,8 +7,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // setting stood in for: whom each role asks and what is read for it, the
 // clock off, chat off, the accountant, an owner alone, a demo business,
 // viewing as someone and a read that fails. Then the row as it is drawn on
-// the server, in Hebrew and in English. Whom to ask is @domain/help's, with
-// its own tests.
+// the server, in Hebrew and in English, and its sheet drawn open: the team's
+// WhatsApp to the number (or none on a twin) with the business's sentence,
+// in the accent only when nobody in the business is written to. Whom to ask
+// is @domain/help's, with its own tests.
 
 vi.mock("server-only", () => ({}));
 vi.mock("next/link", () => ({
@@ -30,10 +32,24 @@ vi.mock("@db/time-clock", () => ({ getClockEditors: mocks.getClockEditors }));
 vi.mock("@db/team", () => ({ getColleagues: mocks.getColleagues }));
 vi.mock("@db/departments", () => ({ getDepartments: mocks.getDepartments }));
 vi.mock("@db/env", () => ({ supportWhatsapp: mocks.supportWhatsapp }));
+// `drawn.open` draws what the sheet holds in place, as if it had been
+// pressed open, since a page drawn on the server has it closed.
+const drawn = vi.hoisted(() => ({ open: false }));
+vi.mock("@ui/sheet", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@ui/sheet")>();
+  return {
+    ...actual,
+    Sheet: (props: Parameters<typeof actual.Sheet>[0]) =>
+      drawn.open
+        ? createElement("div", { role: "dialog" }, props.children)
+        : createElement(actual.Sheet, props),
+  };
+});
 
 const { currentHelp } = await import("./help");
 const { HelpSection } = await import("./help-sheet");
 const { NextIntlClientProvider, createTranslator } = await import("next-intl");
+const { isolateName } = await import("@domain/bidi");
 const he = (await import("@/messages/he.json")).default;
 const en = (await import("@/messages/en.json")).default;
 type HelpData = NonNullable<Awaited<ReturnType<typeof currentHelp>>>;
@@ -67,6 +83,7 @@ function member(
 }
 
 beforeEach(() => {
+  drawn.open = false;
   for (const mock of Object.values(mocks)) mock.mockReset();
   mocks.currentMember.mockResolvedValue(member("worker", WORKER));
   mocks.currentModules.mockResolvedValue(MODULES);
@@ -332,6 +349,100 @@ describe("the row", () => {
       expect(html).toMatch(/<button[^>]*type="button"/);
       expect(html).not.toContain("wa.me");
       expect(html).not.toContain("/chat/with/");
+    }
+  });
+
+  /** The open sheet's WhatsApp to ConceptApp's team: its address and look. */
+  function teamLink(help: HelpData, messages: typeof he = he) {
+    drawn.open = true;
+    const html = row(help, messages);
+    drawn.open = false;
+    const tag = html.match(/<a [^>]*href="https:\/\/wa\.me\/[^>]*>/)?.[0];
+    return {
+      html,
+      // As the browser reads the attribute React wrote.
+      href: tag
+        ?.match(/href="([^"]*)"/)?.[1]
+        ?.replace(/&#x27;/g, "'")
+        .replace(/&quot;/g, '"')
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&amp;/g, "&"),
+      look: tag?.match(/class="([^"]*)"/)?.[1]?.split(" ") ?? [],
+    };
+  }
+
+  it("opens WhatsApp to ConceptApp's number, with the sentence naming the business, and to no number on a twin", () => {
+    const sentence = (t: typeof heT) =>
+      encodeURIComponent(
+        t("app.me.help.team.message", { business: isolateName(business) }),
+      );
+    for (const [messages, t] of [
+      [he, heT],
+      [en, enT],
+    ] as const) {
+      expect(
+        teamLink({ ask: null, team: { phone: NUMBER }, business }, messages)
+          .href,
+      ).toBe(`https://wa.me/972501234567?text=${sentence(t)}`);
+      expect(
+        teamLink({ ask: null, team: { phone: null }, business }, messages).href,
+      ).toBe(`https://wa.me/?text=${sentence(t)}`);
+    }
+    // No team: no WhatsApp in the sheet.
+    const { html, href } = teamLink({
+      ask: { kind: "write", person: owner },
+      team: null,
+      business,
+    });
+    expect(href).toBeUndefined();
+    expect(html).toContain(`/chat/with/${OWNER.id}`);
+  });
+
+  it("makes the team's WhatsApp the sheet's one action when nobody in the business is written to, and grey beside a chat", () => {
+    const primary = ["bg-accent", "min-h-13"];
+    const secondary = ["bg-surface-2", "min-h-11"];
+    const cases: [string, HelpData, string[]][] = [
+      // An owner alone.
+      ["alone", { ask: null, team: { phone: NUMBER }, business }, primary],
+      // The accountant, or chat off: the owner only named.
+      [
+        "named",
+        {
+          ask: {
+            kind: "name",
+            people: [{ ...owner, chat: false, href: null }],
+          },
+          team: { phone: NUMBER },
+          business,
+        },
+        primary,
+      ],
+      // A manager, the owner's chat first.
+      [
+        "write",
+        {
+          ask: { kind: "write", person: owner },
+          team: { phone: NUMBER },
+          business,
+        },
+        secondary,
+      ],
+      [
+        "pick",
+        {
+          ask: { kind: "pick", people: [manager, owner] },
+          team: { phone: null },
+          business,
+        },
+        secondary,
+      ],
+    ];
+    for (const [name, help, look] of cases) {
+      const drawnLook = teamLink(help).look;
+      expect(drawnLook, name).toEqual(expect.arrayContaining(look));
+      const other = look === primary ? secondary : primary;
+      for (const token of other) expect(drawnLook, name).not.toContain(token);
     }
   });
 });
