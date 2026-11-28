@@ -42,13 +42,16 @@ test("a phone can put the app on its home screen", async ({
 // Chrome's offer to install the app (closing the pilot, PR 7) is caught by
 // the root layout's script as the page is read, before the app's own code
 // runs, on every page, signed out too: sent the moment the page is parsed
-// (a fake, as headless Chromium sends none), it is kept for a press and
-// Chrome's own bar is stopped. On the clock station's pages it is left to
+// (a fake, as headless Chromium sends none), it is kept for a press, and
+// Chrome's own bar is stopped where the site can offer the app's button,
+// with notifications to the phone set up (CI sets them); without them the
+// bar is left to Chrome. On the clock station's pages it is left to
 // Chrome, which installs the station there. The button itself is
 // push-card.spec's and design.spec's.
 test("Chrome's offer to install the app is caught before the app draws, except on the station", async ({
   page,
 }) => {
+  const offered = Boolean(process.env.VAPID_PUBLIC_KEY);
   await page.addInitScript(() => {
     document.addEventListener("DOMContentLoaded", () => {
       const event = new Event("beforeinstallprompt", { cancelable: true });
@@ -68,7 +71,7 @@ test("Chrome's offer to install the app is caught before the app draws, except o
     }));
   await page.goto("/enter");
   expect(await kept()).toEqual({
-    prevented: true,
+    prevented: offered,
     held: "beforeinstallprompt",
   });
   await page.goto("/station");

@@ -64,8 +64,8 @@ const PAGES = [
   "/design/shell/today/worker?push=install",
   "/design/shell/today/worker?file=missing&push=off",
   "/design/shell/today/accountant?push=off",
-  // The install button on Android under its words (closing the pilot, PR 7):
-  // Chrome's offer there, Chrome asking, and no offer (the menu's words).
+  // The install button on Android, last in the card (closing the pilot, PR
+  // 7): Chrome's offer there, Chrome asking, and no offer (the menu's words).
   "/design/shell/today/worker?push=off&install=ready",
   "/design/shell/today/worker?push=off&install=prompting",
   "/design/shell/today/worker?push=on&install=menu",
@@ -1980,10 +1980,11 @@ test("the Today demo's notifications card turns them on, and 'לא עכשיו' p
 // The install button on Android (closing the pilot, PR 7) on the twins,
 // whose press asks no browser: headless Chromium sends no install event of
 // its own (the app's own pages, with a fake one, are push-card.spec's). In
-// Today's card, under its words, with the card's own buttons as they were;
-// in the settings, a card of its own beside the phone's switch. A press
-// installs, the button goes, and the keyboard is on what it says now. With
-// no offer, the menu's words and no button; with none at all, nothing.
+// Today's card, last, after the card's own buttons, which stay as they
+// were, so the card's question is answered first, on screen and for the
+// keyboard; in the settings, a card of its own beside the phone's switch. A
+// press installs, the button goes, and the keyboard is on what it says now.
+// With no offer, the menu's words and no button; with none at all, nothing.
 test("the demo's install button installs the app on a press, and says so", async ({
   page,
 }) => {
@@ -1995,6 +1996,20 @@ test("the demo's install button installs the app on a press, and says so", async
   await page.waitForLoadState("networkidle");
   await expect(card).toContainText(i.hint);
   const install = card.getByRole("button", { name: i.action });
+  const buttons = await card
+    .getByRole("button")
+    .evaluateAll((all) => all.map((button) => button.textContent?.trim()));
+  expect(buttons.at(-1)).toBe(i.action);
+  const dismissBox = await card
+    .getByRole("button", { name: he.app.notifications.ask.dismiss })
+    .boundingBox();
+  const installBox = await install.boundingBox();
+  if (!dismissBox || !installBox) {
+    throw new Error("the card's buttons aren't drawn");
+  }
+  expect(installBox.y).toBeGreaterThanOrEqual(
+    dismissBox.y + dismissBox.height - 1,
+  );
   await install.click();
   await expect(card).toContainText(i.installed);
   await expect(install).toHaveCount(0);

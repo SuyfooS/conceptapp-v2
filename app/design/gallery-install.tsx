@@ -52,14 +52,7 @@ export function GalleryInstall() {
           device="phone"
           settingsHref="/design/shell/notifications/settings"
           landmark={false}
-          install={
-            <InstallView
-              state="ready"
-              browser="chrome"
-              shape="card"
-              className="mt-2"
-            />
-          }
+          install={<InstallView state="ready" browser="chrome" shape="card" />}
         />
       </div>
       {STATES.map(({ key, state, browser }) => (

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { INSTALL_CAPTURE_SCRIPT, INSTALL_NAMES } from "../../install-capture";
+import { INSTALL_NAMES, installCaptureScript } from "../../install-capture";
 import {
   installStartHere,
   promptInstall,
@@ -56,7 +56,9 @@ function openPage({
     serviceWorker: {},
     standalone: undefined,
   });
-  if (script) new Function("window", INSTALL_CAPTURE_SCRIPT)(page);
+  // The button is drawn only where the site offers it: notifications to the
+  // phone set up.
+  if (script) new Function("window", installCaptureScript(true))(page);
   return { page, stored };
 }
 

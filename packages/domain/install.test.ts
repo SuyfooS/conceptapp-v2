@@ -5,6 +5,7 @@ import {
   installBrowser,
   installChoice,
   installMenu,
+  installShown,
   installStart,
 } from "./install";
 import type { BrowserFacts } from "./push";
@@ -16,6 +17,12 @@ const ANDROID_CHROME =
   "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36";
 const ANDROID_TABLET =
   "Mozilla/5.0 (Linux; Android 14; SM-X710) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+// A large Android tablet's Chrome, which asks for the desktop site by
+// default: a Linux computer, by its user agent, with a touch screen.
+const LINUX_DESKTOP_CHROME =
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+const CHROMEBOOK =
+  "Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
 const SAMSUNG_INTERNET =
   "Mozilla/5.0 (Linux; Android 14; SM-S911B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/26.0 Chrome/122.0.0.0 Mobile Safari/537.36";
 const ANDROID_FIREFOX =
@@ -103,6 +110,37 @@ describe("installStart", () => {
   it("shows nothing on a computer, even where Chrome sends its event", () => {
     expect(installStart(facts(DESKTOP_CHROME))).toBe("none");
     expect(installStart(facts(DESKTOP_CHROME, { caught: true }))).toBe("none");
+    // Linux with no touch screen, and a Chromebook, touch or not.
+    expect(installStart(facts(LINUX_DESKTOP_CHROME, { caught: true }))).toBe(
+      "none",
+    );
+    expect(
+      installStart(
+        facts(CHROMEBOOK, { caught: true, browser: { maxTouchPoints: 10 } }),
+      ),
+    ).toBe("none");
+  });
+
+  it("takes an Android tablet asking for the desktop site for Android, by its touch screen", () => {
+    const touch = { maxTouchPoints: 5 };
+    expect(
+      installStart(
+        facts(LINUX_DESKTOP_CHROME, { caught: true, browser: touch }),
+      ),
+    ).toBe("ready");
+    expect(installStart(facts(LINUX_DESKTOP_CHROME, { browser: touch }))).toBe(
+      "menu",
+    );
+    expect(installMenu(LINUX_DESKTOP_CHROME)).toBe("chrome");
+    // Opened from the home screen, it is the installed app.
+    expect(
+      installStart(
+        facts(LINUX_DESKTOP_CHROME, {
+          caught: true,
+          browser: { ...touch, standalone: true },
+        }),
+      ),
+    ).toBe("none");
   });
 
   it("shows nothing in an app's own view of the page, which has no menu to install from", () => {
@@ -158,6 +196,41 @@ describe("a press, and what came of it", () => {
     expect(installAnswer("accepted")).toBe("installed");
     expect(installAnswer("dismissed")).toBe("dismissed");
     expect(installAnswer("failed")).toBe("menu");
+  });
+
+  it("shows the answer while nothing changed since, and what the page heard after it", () => {
+    // Before any press: how it starts.
+    expect(installShown("ready", null)).toBe("ready");
+    expect(installShown("menu", null)).toBe("menu");
+    // The press used the event up: the offer starts at the menu's words
+    // from then on, and the press's answer shows over them.
+    expect(installShown("menu", { state: "prompting", over: "menu" })).toBe(
+      "prompting",
+    );
+    expect(installShown("menu", { state: "dismissed", over: "menu" })).toBe(
+      "dismissed",
+    );
+    expect(installShown("menu", { state: "installed", over: "menu" })).toBe(
+      "installed",
+    );
+    // A no, then installed from Chrome's menu on the same page: installed.
+    expect(
+      installShown("installed", { state: "dismissed", over: "menu" }),
+    ).toBe("installed");
+    // Chrome asked nothing, then offered it again: the button is back.
+    expect(installShown("ready", { state: "menu", over: "menu" })).toBe(
+      "ready",
+    );
+    expect(installShown("ready", { state: "dismissed", over: "menu" })).toBe(
+      "ready",
+    );
+    // Installed before the answer came: installed either way.
+    expect(
+      installShown("installed", { state: "prompting", over: "menu" }),
+    ).toBe("installed");
+    expect(
+      installShown("installed", { state: "installed", over: "installed" }),
+    ).toBe("installed");
   });
 
   it("reads Chrome's answer leniently: anything else is no answer", () => {

@@ -40,7 +40,7 @@ export function installTwinOf(install: string | undefined): InstallTwin | null {
  * other turns them on), `working` with one on its way, `install` as an
  * iPhone's Safari draws it. Anything else, or none: no card, as in a demo
  * business. With `?install=` (`installTwinOf`), the install button on
- * Android under its words.
+ * Android, last in the card, after its own buttons.
  */
 export function pushTwinOf(
   push: string | undefined,

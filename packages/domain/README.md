@@ -358,13 +358,16 @@ first, with their shifts, hours and how many of them the fill gave.
 `install.ts` is "התקנת האפליקציה" on Android (closing the pilot, PR 7): where
 the offer starts in a browser (`installStart`: nothing inside the installed
 app, on an iPhone or iPad, which have their own steps, on a computer or in
-an app's own view of the page; installed, when it was while the page was
-open; the button once Chrome's `beforeinstallprompt` was caught; nothing
-once this browser saw the app installed; else the words that say where the
-menu does it), whose menu those words name (`installBrowser`,
+an app's own view of the page, an Android tablet asking for the desktop
+site being Android by its touch screen; installed, when it was while the
+page was open; the button once Chrome's `beforeinstallprompt` was caught;
+nothing once this browser saw the app installed; else the words that say
+where the menu does it), whose menu those words name (`installBrowser`,
 `installMenu`: Chrome's, or the browser's for Samsung Internet, Edge,
-Firefox and the like), and what a press comes to (`installAnswer`, with
+Firefox and the like), what a press comes to (`installAnswer`, with
 Chrome's `userChoice` read by `installChoice`, a Zod schema that fails to
-"failed"). The event itself is caught in the page (`app/install-capture.ts`).
+"failed"), and what shows after it (`installShown`: its answer until the
+page hears more, installed from the menu or offered again). The event
+itself is caught in the page (`app/install-capture.ts`).
 
 Import as `@domain/<file>`.

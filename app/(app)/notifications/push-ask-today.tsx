@@ -64,7 +64,7 @@ type Driver = {
   keep: (mark: Kept) => Promise<KeptAnswer>;
   /** What "לא עכשיו" holds for its "ביטול" now, from the press on: none once taken back. */
   holding: (mark: Kept | null) => void;
-  /** The install button on Android, under the card's words (PR 7). */
+  /** The install button on Android, last in the card, after its own buttons (PR 7). */
   install: ReactNode;
 };
 
@@ -79,8 +79,8 @@ const pause = () => new Promise((resolve) => setTimeout(resolve, 600));
  * them on, the press turns them on there and then, asking for permission
  * first, as the push switch does; in an iPhone's or iPad's Safari it shows
  * the steps to the home screen (`IosInstallSteps`), and the app there, once
- * installed, shows the switch. On Android, under its words, the install
- * button (`InstallButton`, PR 7), which draws nothing anywhere else.
+ * installed, shows the switch. On Android, last, after its own buttons, the
+ * install button (`InstallButton`, PR 7), which draws nothing anywhere else.
  * Blocked, unsupported or on already, it shows nothing. Being seen keeps
  * nothing. "לא עכשיו" puts it away the way Today's
  * other cards go: at once, with "ביטול" in its place holding the focus and
@@ -166,7 +166,7 @@ function LiveToday({
     // The person's mark is known in this page before the database has it,
     // so a moment's card on a screen drawn before it lands asks nothing.
     holding: (mark) => holdPersonPutAway(mark === "person"),
-    install: <InstallButton shape="card" className="mt-2" />,
+    install: <InstallButton shape="card" />,
   };
   return (
     <TodayCard
@@ -200,9 +200,7 @@ function TwinToday({
     },
     keep: async () => "kept",
     holding: () => {},
-    install: install ? (
-      <InstallButton shape="card" twin={install} className="mt-2" />
-    ) : null,
+    install: install ? <InstallButton shape="card" twin={install} /> : null,
   };
   return (
     <TodayCard
@@ -446,8 +444,9 @@ export function PushAskTodayCard({
   onEnable?: () => void;
   onDismiss?: () => void;
   /**
-   * The install button on Android (PR 7), under the words in every state
-   * but Safari's, whose steps take its place; it draws nothing elsewhere.
+   * The install button on Android (PR 7), last in the card, after its own
+   * buttons, in every state but Safari's, whose steps stand under the
+   * words; it draws nothing elsewhere.
    */
   install?: ReactNode;
   landmark?: boolean;
@@ -464,7 +463,9 @@ export function PushAskTodayCard({
   const finished = state === "on" || state === "denied";
 
   // Wide from 40rem: the 42rem card Today draws with nothing beside it
-  // lays out in a row, and a phone, a column or the gallery's 560px don't.
+  // lays out its words and buttons in a row, and a phone, a column or the
+  // gallery's 560px don't. The install button on Android comes after both,
+  // so the card's own question is answered first.
   return (
     <div className={cn("@container md:max-w-2xl", className)}>
       <Card
@@ -473,59 +474,60 @@ export function PushAskTodayCard({
         padding="lg"
         role={landmark ? "region" : undefined}
         aria-labelledby={landmark ? titleId : undefined}
-        className="flex flex-col gap-4 @min-[40rem]:flex-row @min-[40rem]:items-center"
+        className="flex flex-col gap-4"
       >
-        <div className="flex min-w-0 flex-1 items-start gap-3">
-          <span
-            aria-hidden="true"
-            className="grid size-10 shrink-0 place-items-center rounded-full bg-accent-soft text-ink [&_svg]:size-5"
+        <div className="flex flex-col gap-4 @min-[40rem]:flex-row @min-[40rem]:items-center">
+          <div className="flex min-w-0 flex-1 items-start gap-3">
+            <span
+              aria-hidden="true"
+              className="grid size-10 shrink-0 place-items-center rounded-full bg-accent-soft text-ink [&_svg]:size-5"
+            >
+              <BellRing />
+            </span>
+            <div className="flex min-w-0 flex-1 flex-col gap-1">
+              <CardTitle as="h2" id={titleId} className="text-pretty">
+                {words?.title}
+              </CardTitle>
+              <CardText className="text-pretty">{words?.body}</CardText>
+              {state === "install" ? (
+                <IosInstallSteps device={device} className="mt-2" />
+              ) : null}
+            </div>
+          </div>
+          <div
+            ref={actionsRef}
+            className="flex flex-col gap-2 @min-[40rem]:shrink-0 @min-[40rem]:flex-row"
           >
-            <BellRing />
-          </span>
-          <div className="flex min-w-0 flex-1 flex-col gap-1">
-            <CardTitle as="h2" id={titleId} className="text-pretty">
-              {words?.title}
-            </CardTitle>
-            <CardText className="text-pretty">{words?.body}</CardText>
-            {state === "install" ? (
-              <IosInstallSteps device={device} className="mt-2" />
-            ) : (
-              install
-            )}
+            {canTurnOn ? (
+              <Button
+                variant="secondary"
+                loading={state === "working"}
+                onClick={onEnable}
+                className="w-full @min-[40rem]:w-auto"
+              >
+                {t("enable", { device })}
+              </Button>
+            ) : null}
+            {state === "on" ? (
+              <Button
+                asChild
+                variant="secondary"
+                className="w-full @min-[40rem]:w-auto"
+              >
+                <Link href={settingsHref}>{t("settings")}</Link>
+              </Button>
+            ) : null}
+            <Button
+              ref={dismissRef}
+              variant="ghost"
+              onClick={onDismiss}
+              className="w-full text-ink-2 @min-[40rem]:w-auto"
+            >
+              {finished ? t("close") : t("dismiss")}
+            </Button>
           </div>
         </div>
-        <div
-          ref={actionsRef}
-          className="flex flex-col gap-2 @min-[40rem]:shrink-0 @min-[40rem]:flex-row"
-        >
-          {canTurnOn ? (
-            <Button
-              variant="secondary"
-              loading={state === "working"}
-              onClick={onEnable}
-              className="w-full @min-[40rem]:w-auto"
-            >
-              {t("enable", { device })}
-            </Button>
-          ) : null}
-          {state === "on" ? (
-            <Button
-              asChild
-              variant="secondary"
-              className="w-full @min-[40rem]:w-auto"
-            >
-              <Link href={settingsHref}>{t("settings")}</Link>
-            </Button>
-          ) : null}
-          <Button
-            ref={dismissRef}
-            variant="ghost"
-            onClick={onDismiss}
-            className="w-full text-ink-2 @min-[40rem]:w-auto"
-          >
-            {finished ? t("close") : t("dismiss")}
-          </Button>
-        </div>
+        {state === "install" ? null : install}
       </Card>
     </div>
   );

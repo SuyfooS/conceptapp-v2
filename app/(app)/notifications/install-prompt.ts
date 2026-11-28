@@ -18,10 +18,13 @@ import { browserFacts } from "./push-client";
  * client components; on the server there is nothing to read.
  */
 
-/** What the page caught, the capture started here if the layout's script never ran. */
+/**
+ * What the page caught, the capture started here if the layout's script
+ * never ran: with the button on this page, the site offers it.
+ */
 function kept(): InstallKept | null {
   if (typeof window === "undefined") return null;
-  captureInstallPrompt(window, INSTALL_NAMES);
+  captureInstallPrompt(window, INSTALL_NAMES, true);
   return (
     (window as unknown as Record<string, InstallKept | undefined>)[
       INSTALL_NAMES.kept

@@ -429,9 +429,11 @@ const installAsked = (page: Page) =>
 // Chrome sends it (`offerInstall`), caught by the root layout's script
 // before React draws. With none, the card says where Chrome's menu does
 // it; with one, its button asks Chrome on the press alone and says what
-// came of it; installed, this browser offers nothing more. Beside the
-// switch in the settings too. Never on the clock station's pages, whose own
-// manifest installs the station. Computers are offered nothing.
+// came of it, until the page hears more (installed from the menu after a
+// no, or offered again); installed, this browser offers nothing more.
+// Beside the switch in the settings too. Never on the clock station's
+// pages, whose own manifest installs the station. Computers are offered
+// nothing.
 test("on Android, Today's card and the settings offer to install the app", async ({
   page,
 }, testInfo) => {
@@ -487,9 +489,22 @@ test("on Android, Today's card and the settings offer to install the app", async
     await page.reload();
     await expect(card).toContainText(menu);
 
-    // Accepted: installed, and once Chrome says so, this browser offers
-    // nothing more, here or in the settings.
+    // A no, then the app installed from Chrome's menu on the same page
+    // (Chrome says `appinstalled` however it was installed): the words say
+    // it is installed now, not that it wasn't.
+    expect(await offerInstall(page, "dismissed")).toBe(true);
+    await install.click();
+    await expect(card).toContainText(declined);
+    await page.evaluate(() => window.dispatchEvent(new Event("appinstalled")));
+    await expect(card).toContainText(i.installed);
+    await expect(card).not.toContainText(declined);
+
+    // Accepted, once Chrome offers it again on the same page (removed from
+    // the home screen): the button is back, and once Chrome says it is
+    // installed, this browser offers nothing more, here or in the settings.
     expect(await offerInstall(page, "accepted")).toBe(true);
+    await expect(install).toBeVisible();
+    await expect(card).toContainText(i.hint);
     await install.click();
     await expect(card).toContainText(i.installed);
     expect(await installAsked(page)).toBe(1);

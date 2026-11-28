@@ -39,6 +39,21 @@ export function installMenu(userAgent: string): InstallBrowser {
   return installBrowser(userAgent) === "chrome" ? "chrome" : "other";
 }
 
+/** What a browser on a Linux computer says of itself; a Chromebook says CrOS. */
+const LINUX_COMPUTER = /\(X11; Linux x86_64\)/;
+
+/**
+ * Android, by what the browser says: Android in its user agent, or a tablet
+ * asking for the desktop site, as Chrome does on a large one by default,
+ * which says it is a Linux computer and has a touch screen (as an iPad says
+ * it is a Mac, `isAppleMobile`). A Linux computer with a touch screen says
+ * the same, and is taken for one too.
+ */
+function isAndroid(browser: BrowserFacts): boolean {
+  if (deviceLabel(browser.userAgent) === "android") return true;
+  return LINUX_COMPUTER.test(browser.userAgent) && browser.maxTouchPoints > 1;
+}
+
 /**
  * How the offer starts on this browser before any press: nothing; the
  * button (Chrome's event was caught); the words that say where the menu
@@ -60,21 +75,24 @@ export type InstallFacts = {
    * This browser saw the app installed, or opened from the home screen,
    * before (on Android the two keep the same storage); cleared whenever
    * Chrome offers it again, which it does only while it isn't installed.
+   * Only this browser's mark: an app installed before it was kept, or with
+   * the site's data cleared since, isn't known until it is opened once.
    */
   installedBefore: boolean;
 };
 
 /**
  * How the offer starts here. Nothing inside the installed app, on an iPhone
- * or iPad (their own steps), on anything but Android, or in an app's own
- * view of the page. Else: installed, if it was while this page was open;
- * the button, when Chrome's event was caught; nothing, once this browser
- * saw it installed; else the words that say where the menu installs it.
+ * or iPad (their own steps), on anything but Android (an Android tablet
+ * asking for the desktop site is Android), or in an app's own view of the
+ * page. Else: installed, if it was while this page was open; the button,
+ * when Chrome's event was caught; nothing, once this browser saw it
+ * installed; else the words that say where the menu installs it.
  */
 export function installStart(facts: InstallFacts): InstallStart {
   const { browser } = facts;
   if (browser.standalone || isAppleMobile(browser)) return "none";
-  if (deviceLabel(browser.userAgent) !== "android") return "none";
+  if (!isAndroid(browser)) return "none";
   if (installBrowser(browser.userAgent) === "webView") return "none";
   if (facts.installedNow) return "installed";
   if (facts.caught) return "ready";
@@ -92,6 +110,28 @@ export type InstallOutcome = "accepted" | "dismissed" | "failed";
 export function installAnswer(outcome: InstallOutcome): InstallState {
   if (outcome === "accepted") return "installed";
   return outcome === "dismissed" ? "dismissed" : "menu";
+}
+
+/**
+ * A press on its way or answered (`installAnswer`), and how the offer
+ * started once it was given: the press used Chrome's event up, so by then
+ * it starts elsewhere than it did.
+ */
+export type InstallPressed = { state: InstallState; over: InstallStart };
+
+/**
+ * What the offer shows after a press: its answer while the offer still
+ * starts where the press left it, else how it starts now. What the page
+ * hears after the press wins over its answer: the app installed from the
+ * menu after a no (Chrome says so however it was installed), or Chrome
+ * offering it again, which brings the button back. Before any press, how
+ * it starts.
+ */
+export function installShown(
+  start: InstallStart,
+  pressed: InstallPressed | null,
+): InstallState {
+  return pressed !== null && pressed.over === start ? pressed.state : start;
 }
 
 /**

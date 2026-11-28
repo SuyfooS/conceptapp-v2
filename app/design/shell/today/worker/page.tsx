@@ -21,7 +21,8 @@ type Props = {
 // the card that offers notifications on the phone (closing the pilot, PR 6)
 // in a state of its own (`pushTwinOf`): its presses ask the browser nothing
 // and keep nothing. With it, ?install= has the install button on Android
-// under its words (closing the pilot, PR 7), in a state of its own too.
+// after the card's own buttons (closing the pilot, PR 7), in a state of its
+// own too.
 export default function ShellTodayWorker({ searchParams }: Props) {
   return (
     <Suspense>

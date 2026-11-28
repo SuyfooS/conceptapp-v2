@@ -2,9 +2,10 @@ import type { Metadata, Viewport } from "next";
 import { NextIntlClientProvider } from "next-intl";
 import { getTranslations } from "next-intl/server";
 import "@fontsource-variable/heebo";
+import { pushConfig } from "@db/push/env";
 import { Announcer } from "@ui/announcer";
 import { defaultLocale, direction } from "@/i18n/config";
-import { INSTALL_CAPTURE_SCRIPT } from "./install-capture";
+import { installCaptureScript } from "./install-capture";
 import { OldBrowser } from "./old-browser";
 import "./globals.css";
 
@@ -52,10 +53,16 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         {/* Before anything else runs: Chrome's offer to install the app,
             which can come before React has drawn the page, is kept for the
             install button's press (app/install-capture.ts). Its own source,
-            nothing from outside: a script of the page, read as it loads. */}
+            nothing from outside: a script of the page, read as it loads.
+            Chrome's own bar is stopped only where this site can draw the
+            button, with notifications to the phone set up (pushConfig, read
+            where the page is built or served, so a change takes a
+            Redeploy). */}
         <script
-          // biome-ignore lint/security/noDangerouslySetInnerHtml: the capture's own source, made on the server from app/install-capture.ts, nothing a person sent
-          dangerouslySetInnerHTML={{ __html: INSTALL_CAPTURE_SCRIPT }}
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: the capture's own source, made on the server from app/install-capture.ts, and a yes or no; nothing a person sent
+          dangerouslySetInnerHTML={{
+            __html: installCaptureScript(pushConfig() !== null),
+          }}
         />
         {/* First of what is drawn, and kept across navigations: a line said
             just before one is heard on the next screen. It has no words of

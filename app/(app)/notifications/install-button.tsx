@@ -2,9 +2,12 @@
 
 import {
   type InstallBrowser,
+  type InstallPressed,
+  type InstallStart,
   type InstallState,
   installAnswer,
   installMenu,
+  installShown,
 } from "@domain/install";
 import { announce } from "@ui/announcer";
 import { Button } from "@ui/button";
@@ -28,9 +31,9 @@ import {
 } from "./install-prompt";
 
 /**
- * Where the button is drawn: inside Today's notifications card, under its
- * words (`PushAskTodayCard`), or as a card of its own in the notification
- * settings, beside this phone's switch.
+ * Where the button is drawn: inside Today's notifications card, last, after
+ * the card's own buttons (`PushAskTodayCard`), or as a card of its own in
+ * the notification settings, beside this phone's switch.
  */
 export type InstallShape = "card" | "settings";
 
@@ -44,7 +47,7 @@ const noChange = () => () => {};
 /** Whose menu the words name, by the browser; the server says Chrome's. */
 const menuHere = (): InstallBrowser => installMenu(navigator.userAgent);
 const menuOnServer = (): InstallBrowser => "chrome";
-const nothingOnServer = (): InstallState => "none";
+const nothingOnServer = (): InstallStart => "none";
 
 /**
  * "התקנת האפליקציה" on Android (closing the pilot, PR 7): where Chrome
@@ -93,14 +96,18 @@ function LiveInstall({
     nothingOnServer,
   );
   const browser = useSyncExternalStore(noChange, menuHere, menuOnServer);
-  // What a press came to, in this page: it outlasts the event it used up.
-  const [answer, setAnswer] = useState<InstallState | null>(null);
-  const state = answer ?? start;
+  // What a press came to, in this page: it outlasts the event it used up,
+  // until the page hears more (installed from the menu, or offered again).
+  const [pressed, setPressed] = useState<InstallPressed | null>(null);
+  const state = installShown(start, pressed);
   async function install() {
     if (state !== "ready") return;
-    setAnswer("prompting");
-    // Chrome is asked within this press, before anything is awaited.
-    setAnswer(installAnswer(await promptInstall()));
+    // Chrome is asked within this press, before anything is awaited; the
+    // event is used up by then.
+    const asked = promptInstall();
+    setPressed({ state: "prompting", over: installStartHere() });
+    const outcome = await asked;
+    setPressed({ state: installAnswer(outcome), over: installStartHere() });
   }
   return (
     <InstallPiece
@@ -210,11 +217,14 @@ function installWords(
 /**
  * The offer in one state, as it draws: its words, and the button while
  * Chrome's event is there to ask (with its spinner while it asks). In
- * Today's card (`card`), under the card's words; in the settings, a quiet
- * card of its own with its title ("האפליקציה במסך הבית"), a region by that
- * name. Drawn by `InstallButton`, and by the /design gallery in each state,
- * with nothing behind its button; `landmark` false leaves out the region,
- * for a page that draws several with the same name.
+ * Today's card (`card`), after the card's own buttons, under a line, so the
+ * card's question is answered first and an offer that comes late only grows
+ * the card below them; its button across the card while the card's are, as
+ * theirs. In the settings, a quiet card of its own with its title
+ * ("האפליקציה במסך הבית"), a region by that name. Drawn by `InstallButton`,
+ * and by the /design gallery in each state, with nothing behind its button;
+ * `landmark` false leaves out the region, for a page that draws several
+ * with the same name.
  */
 export function InstallView({
   state,
@@ -237,20 +247,30 @@ export function InstallView({
   const titleId = useId();
   if (state === "none") return null;
   const asking = state === "prompting";
+  const inCard = shape === "card";
   const piece = (
     <div className="flex flex-col items-start gap-3">
       <p ref={wordsRef} className="text-pretty text-base text-ink-2">
         {installWords(t, state, browser)}
       </p>
       {state === "ready" || asking ? (
-        <Button variant="secondary" loading={asking} onClick={onInstall}>
+        <Button
+          variant="secondary"
+          loading={asking}
+          onClick={onInstall}
+          className={inCard ? "w-full @min-[40rem]:w-auto" : undefined}
+        >
           {asking ? null : <Download aria-hidden="true" />}
           {t("action")}
         </Button>
       ) : null}
     </div>
   );
-  if (shape === "card") return <div className={className}>{piece}</div>;
+  if (inCard) {
+    return (
+      <div className={cn("border-line border-t pt-4", className)}>{piece}</div>
+    );
+  }
   return (
     <Card
       tone="flat"

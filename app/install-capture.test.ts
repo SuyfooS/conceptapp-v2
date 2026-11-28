@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   type CaptureWindow,
   captureInstallPrompt,
-  INSTALL_CAPTURE_SCRIPT,
   INSTALL_NAMES,
   type InstallKept,
+  installCaptureScript,
 } from "./install-capture";
 
 // Chrome's offer to install the app, caught from the first moment of every
@@ -66,14 +66,18 @@ function installEvent() {
   });
 }
 
+// `offered`: the site can offer the app's own button (notifications to the
+// phone set up), as on every page but where a case says.
 const ways = [
   [
     "the function",
-    (page: FakePage) => captureInstallPrompt(page, INSTALL_NAMES),
+    (page: FakePage, offered = true) =>
+      captureInstallPrompt(page, INSTALL_NAMES, offered),
   ],
   [
     "the layout's inline script",
-    (page: FakePage) => new Function("window", INSTALL_CAPTURE_SCRIPT)(page),
+    (page: FakePage, offered = true) =>
+      new Function("window", installCaptureScript(offered))(page),
   ],
 ] as const;
 
@@ -88,6 +92,19 @@ for (const [way, capture] of ways) {
       expect(event.defaultPrevented).toBe(true);
       expect(page.kept()?.event).toBe(event);
       expect(page.changes).toBe(1);
+    });
+
+    it("leaves Chrome's own bar where the site can't offer the button, and keeps the event all the same", () => {
+      const page = fakePage();
+      capture(page, false);
+      const event = installEvent();
+      page.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(false);
+      expect(page.kept()?.event).toBe(event);
+      expect(page.changes).toBe(1);
+      page.dispatchEvent(new Event("appinstalled"));
+      expect(page.kept()).toEqual({ event: null, installed: true });
+      expect(page.stored.has(INSTALL_NAMES.installed)).toBe(true);
     });
 
     it("lets the event go once the app is installed, and keeps that here", () => {
@@ -155,20 +172,27 @@ for (const [way, capture] of ways) {
       const event = installEvent();
       page.dispatchEvent(event);
       capture(page);
-      captureInstallPrompt(page, INSTALL_NAMES);
+      captureInstallPrompt(page, INSTALL_NAMES, false);
       expect(page.kept()?.event).toBe(event);
-      page.dispatchEvent(installEvent());
-      // One listener: one change for each event.
+      const next = installEvent();
+      page.dispatchEvent(next);
+      // One listener, the first start's: one change for each event, and
+      // Chrome's bar still stopped.
       expect(page.changes).toBe(2);
+      expect(next.defaultPrevented).toBe(true);
     });
   });
 }
 
 describe("the layout's inline script", () => {
-  it("is one call of the capture, with the page's names and nothing else", () => {
-    expect(INSTALL_CAPTURE_SCRIPT.startsWith("(")).toBe(true);
-    expect(INSTALL_CAPTURE_SCRIPT).toContain(JSON.stringify(INSTALL_NAMES));
-    expect(INSTALL_CAPTURE_SCRIPT).not.toContain("</script");
-    expect(INSTALL_CAPTURE_SCRIPT).not.toMatch(/\bimport\b|\brequire\(/);
+  it("is one call of the capture, with the page's names, whether the site offers the button, and nothing else", () => {
+    for (const offered of [true, false]) {
+      const script = installCaptureScript(offered);
+      expect(script.startsWith("(")).toBe(true);
+      expect(script).toContain(JSON.stringify(INSTALL_NAMES));
+      expect(script.endsWith(`,${offered});`)).toBe(true);
+      expect(script).not.toContain("</script");
+      expect(script).not.toMatch(/\bimport\b|\brequire\(/);
+    }
   });
 });
