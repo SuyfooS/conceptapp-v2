@@ -1,15 +1,18 @@
+import { getDepartments } from "@db/departments";
 import { getEmploymentPeriods, getPayrollDetails } from "@db/payroll-details";
 import { getOwnPublishedShifts } from "@db/schedule";
 import {
   getCancelledEntries,
+  getClockEditors,
   getClockPeople,
   getEntriesToConfirm,
   getTimeEntries,
 } from "@db/time-clock";
 import { getWages } from "@db/wages";
 import { absenceDays, monthSpan } from "@domain/absences";
+import { askFixOf, asksAnyone, hoursFixers } from "@domain/ask-fix";
 import { addDays, instantIn } from "@domain/availability";
-import { canOpenModule } from "@domain/modules";
+import { canOpenModule, isStaff } from "@domain/modules";
 import { canSeePay } from "@domain/payroll-access";
 import {
   currentPeriod,
@@ -38,16 +41,23 @@ import {
   UNDO_CLOCK_OUT_SECONDS,
   undoableEntry,
 } from "@domain/time-clock";
+import { longShiftToAsk } from "@domain/time-clock-format";
 import { clockAt, nextShift } from "@domain/today";
 import { canWrite } from "@domain/view-as";
 import { wageNow } from "@domain/wages";
 import { youthLabel } from "@domain/youth";
 import { manifestFor } from "@modules/registry";
 import { cache } from "react";
+import { chatPaths } from "../chat/chat-paths";
 import { currentMember } from "../member";
 import { currentModuleSettings, currentModules } from "../modules";
 import { ownAbsences } from "./absences";
-import type { ClockData, ClockPaths, OwnDetails } from "./clock-types";
+import type {
+  ClockAskFix,
+  ClockData,
+  ClockPaths,
+  OwnDetails,
+} from "./clock-types";
 import type { HistoryData } from "./history/history-view";
 
 export const clockPaths: ClockPaths = {
@@ -87,10 +97,60 @@ export const clockAccess = cache(async () => {
     role: membership.role,
     viewOnly: !canWrite(member.viewing),
     scheduling: canOpenModule(manifestFor("scheduling"), enabled, membership),
+    /**
+     * Chat is open to them (an accountant is in no chat), as `chatAccess`
+     * asks it: whom a shift that needs fixing asks is written to there.
+     */
+    chat:
+      isStaff(membership.role) &&
+      canOpenModule(manifestFor("chat"), enabled, membership),
     perms: membership.perms,
     timeZone: membership.business.place.timeZone,
   };
 });
+
+type ClockAccess = NonNullable<Awaited<ReturnType<typeof clockAccess>>>;
+
+/**
+ * Whom the person asks to correct their hours (closing the pilot, PR 8):
+ * those who may edit the clock in the business (`public.clock_editors`),
+ * never the person, the owners only when nobody else may, those in the
+ * person's departments first (`hoursFixers`); written to in chat, or only
+ * named with chat off. Null for whoever edits the clock themself (they
+ * correct their own on the team's hours), while viewing as someone, and
+ * when nobody else may. A read that fails leaves it out: the clock still
+ * opens, and its refusal still says whom to ask in words.
+ */
+async function askFixFor(access: ClockAccess): Promise<ClockAskFix | null> {
+  if (!asksAnyone(access)) return null;
+  try {
+    const [editors, departments] = await Promise.all([
+      getClockEditors(access.businessId),
+      getDepartments(access.businessId),
+    ]);
+    const fixers = hoursFixers({
+      editors,
+      person: access.userId,
+      departments: departments === "notYet" ? [] : departments,
+      chat: access.chat,
+    });
+    // Their private chat: the one they have, or an empty one that the
+    // first message makes.
+    return askFixOf(
+      fixers.map((fixer) => ({
+        ...fixer,
+        href: fixer.chat ? chatPaths.withPerson(fixer.id) : null,
+      })),
+    );
+  } catch (error) {
+    const code =
+      error && typeof error === "object" && "code" in error
+        ? String((error as { code: unknown }).code)
+        : "without a code";
+    console.error("who corrects hours could not be read", code);
+    return null;
+  }
+}
 
 /**
  * The names of whoever corrected these entries or cancelled these shifts, as
@@ -179,20 +239,24 @@ export async function currentClock(): Promise<ClockData | null> {
   // The team's hours and the code screen, for whoever edits the clock
   // (clock.edit, as the database answers it: the roles plan's R4).
   const edits = editsClock(access);
-  const [entries, today, openNow, wages, details, periods] = await Promise.all([
-    getTimeEntries(
-      businessId,
-      monthRange(lastMonth, timeZone).from,
-      monthRange(month, timeZone).to,
-      userId,
-    ),
-    scheduling ? shiftToday(businessId, userId, timeZone, now) : null,
-    edits ? getTimeEntries(businessId, now, now) : [],
-    // Their own wages, details and periods only, under their own session.
-    getWages(businessId, userId),
-    getPayrollDetails(businessId, userId),
-    getEmploymentPeriods(businessId, userId),
-  ]);
+  const [entries, today, openNow, wages, details, periods, askFix] =
+    await Promise.all([
+      getTimeEntries(
+        businessId,
+        monthRange(lastMonth, timeZone).from,
+        monthRange(month, timeZone).to,
+        userId,
+      ),
+      scheduling ? shiftToday(businessId, userId, timeZone, now) : null,
+      edits ? getTimeEntries(businessId, now, now) : [],
+      // Their own wages, details and periods only, under their own session.
+      getWages(businessId, userId),
+      getPayrollDetails(businessId, userId),
+      getEmploymentPeriods(businessId, userId),
+      // Whom to ask, should a press be refused for what only they can fix:
+      // read with the rest, since the refusal comes from a press.
+      askFixFor(access),
+    ]);
   const localToday = clockAt(now, timeZone).date;
   const ownWage = wageNow(wages, localToday);
 
@@ -249,6 +313,7 @@ export async function currentClock(): Promise<ClockData | null> {
       localToday,
     ),
     viewOnly,
+    askFix,
   };
 }
 
@@ -281,9 +346,23 @@ export async function currentClockHistory(
   const step = settings.roundToMinutes;
   const nameOf = await correctorNames(businessId, entries, cancelled);
   const span = monthSpan(month);
+  const records = monthRecords(
+    entries,
+    month,
+    timeZone,
+    now,
+    step,
+    nameOf,
+    cancelled,
+  );
   return {
     month,
     currentMonth,
+    // Whom to ask, beside a shift that needs fixing or one that counted over
+    // 14 hours that nobody corrected: read only for a month that has one.
+    askFix: records.some((record) => record.overdue || longShiftToAsk(record))
+      ? await askFixFor(access)
+      : null,
     // Their own days away (known issue 19): read only, as recorded.
     absences: away.map((one) => ({
       id: one.id,
@@ -295,15 +374,7 @@ export async function currentClockHistory(
       inMonth: absenceDays(one, span),
     })),
     minutes: monthMinutes(entries, month, timeZone, now, step),
-    records: monthRecords(
-      entries,
-      month,
-      timeZone,
-      now,
-      step,
-      nameOf,
-      cancelled,
-    ),
+    records,
   };
 }
 
@@ -334,13 +405,16 @@ export const currentEntriesToConfirm = cache(
 
 export type ClockLine =
   | { kind: "working" | "break"; at: string }
+  | { kind: "ownOverdue" }
   | { kind: "overdue"; count: number }
   | { kind: "confirm"; count: number };
 
 /**
  * What the clock's row on Today says: shifts whoever edits the clock has to
  * fix first, then hours waiting for their approval, then where the person
- * stands. Null when there is nothing to say.
+ * stands, their own shift open over 24 hours said as one that needs fixing
+ * (closing the pilot, PR 8: the clock it links to says whom to ask). Null
+ * when there is nothing to say.
  */
 export const currentClockLine = cache(async (): Promise<ClockLine | null> => {
   const access = await clockAccess();
@@ -357,6 +431,7 @@ export const currentClockLine = cache(async (): Promise<ClockLine | null> => {
   if (waiting > 0) return { kind: "confirm", count: waiting };
   const status = clockStatus(openEntryOf(open, access.userId));
   if (status.state === "off") return null;
+  if (entryOverdue(status.entry, now)) return { kind: "ownOverdue" };
   const since =
     status.state === "break" ? status.pause.startedAt : status.entry.clockIn;
   return { kind: status.state, at: timeIn(new Date(since), access.timeZone) };

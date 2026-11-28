@@ -7251,3 +7251,121 @@ export async function closeFirstDayBusiness(
   const id = await businessIdBySlug(business.slug);
   if (id) await deleteRealBusiness(id);
 }
+
+/**
+ * Whom a worker asks to correct their hours (closing the pilot, PR 8): a
+ * real business, as the pilot's is, from the shop's template (the clock and
+ * chat on, no code asked), with its owner, a manager in its checkout and a
+ * worker in its storeroom whose shift has been open since yesterday, over
+ * the 24 hours the clock takes. With `near`, a second manager, in the
+ * worker's storeroom. With `chat: false`, chat off. The departments are the
+ * template's own, which already has a storeroom and a checkout. The people's
+ * ids and numbers are in no other spec and in no pgTAP file. Made afresh for
+ * each test and gone after with its records.
+ */
+export const ASK_FIX_BUSINESS = {
+  id: "00000000-0000-4000-b000-0000000000f3",
+  slug: "ask-fix-e2e",
+  name: "עסק לתיקון שעות",
+} as const;
+export const ASK_FIX_PEOPLE = {
+  owner: {
+    id: "00000000-0000-4000-a000-000000000916",
+    name: "יעל תיקונים",
+    local: "050-000-0916",
+    e164: "+972500000916",
+  },
+  /** In the checkout. */
+  manager: {
+    id: "00000000-0000-4000-a000-000000000917",
+    name: "אסף תיקונים",
+    local: "050-000-0917",
+    e164: "+972500000917",
+  },
+  /** In the storeroom, with the worker; only with `near`. */
+  near: {
+    id: "00000000-0000-4000-a000-000000000918",
+    name: "מאיה תיקונים",
+    local: "050-000-0918",
+    e164: "+972500000918",
+  },
+  /** In the storeroom; forgot to clock out yesterday. */
+  worker: {
+    id: "00000000-0000-4000-a000-000000000919",
+    name: "רז תיקונים",
+    local: "050-000-0919",
+    e164: "+972500000919",
+  },
+} as const;
+/** How long ago the worker clocked in: past the 24 hours an entry may be. */
+export const ASK_FIX_OPEN_HOURS = 26;
+/**
+ * The template's departments the people are in, by name: the shop's
+ * `stock` and `checkout` (`retail` in 20261109000600_lists.sql), which
+ * apply_template gives the business.
+ */
+export const ASK_FIX_DEPARTMENTS = {
+  storeroom: "מחסן",
+  checkout: "קופה",
+} as const;
+
+export async function openAskFixBusiness({
+  near = false,
+  chat = true,
+}: {
+  near?: boolean;
+  chat?: boolean;
+} = {}): Promise<void> {
+  const { id, slug, name } = ASK_FIX_BUSINESS;
+  const people = ASK_FIX_PEOPLE;
+  await closeAskFixBusiness();
+  await ensureLogins(Object.values(people));
+  await sql`insert into public.businesses (id, slug, name)
+    values (${id}, ${slug}, ${name})`;
+  await sql`select public.apply_template(${id}, 'retail')`;
+  const staff = [
+    { person: people.owner, role: "owner" },
+    { person: people.manager, role: "manager" },
+    { person: people.worker, role: "worker" },
+    ...(near ? [{ person: people.near, role: "manager" }] : []),
+  ];
+  for (const { person, role } of staff) {
+    await sql`insert into public.memberships (business_id, user_id, role)
+      values (${id}, ${person.id}, ${role})`;
+  }
+  // Into the template's own departments, by key: a department of the same
+  // name added beside them would be refused (departments_name_idx).
+  const members = [
+    { person: people.worker, key: "stock" },
+    { person: people.manager, key: "checkout" },
+    ...(near ? [{ person: people.near, key: "stock" }] : []),
+  ];
+  for (const { person, key } of members) {
+    const added = await sql`insert into public.department_members
+        (department_id, business_id, user_id)
+      select d.id, d.business_id, ${person.id}
+      from public.departments d
+      where d.business_id = ${id} and d.key = ${key}
+        and d.archived_at is null
+      returning user_id`;
+    if (added.length !== 1) {
+      throw new Error(`the shop's template has no department "${key}"`);
+    }
+  }
+  await sql`update public.business_modules
+    set settings = settings || ${sql.json({ requirePunchCode: false })}::jsonb
+    where business_id = ${id} and module_key = 'time_clock'`;
+  if (!chat) {
+    await sql`update public.business_modules set enabled = false
+      where business_id = ${id} and module_key = 'chat'`;
+  }
+  // Clocked in yesterday and never out: past the 24 hours, so it needs fixing.
+  await sql`insert into public.time_entries (business_id, user_id, clock_in)
+    values (${id}, ${people.worker.id},
+      now() - make_interval(hours => ${ASK_FIX_OPEN_HOURS}))`;
+}
+
+/** The business gone with its records, when the test is done. */
+export async function closeAskFixBusiness(): Promise<void> {
+  await deleteRealBusiness(ASK_FIX_BUSINESS.id);
+}

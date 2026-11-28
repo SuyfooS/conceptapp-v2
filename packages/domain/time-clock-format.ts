@@ -48,6 +48,58 @@ export function entryOverdue(
 }
 
 /**
+ * The refusals of a press on the clock that say to ask whoever approves
+ * hours (`app.clock.failure.*`, each a `PunchFailure`): a shift open over
+ * `MAX_ENTRY_HOURS`, a clock-out too old to take back, times that meet
+ * another shift's. Under each, the clock offers whom to ask (closing the
+ * pilot, PR 8; @domain/ask-fix).
+ */
+export const FIX_FAILURES = ["tooLong", "tooLate", "times"] as const;
+
+/** Whether the clock offers whom to ask under this refusal. */
+export function asksForFix(failure: string | null): boolean {
+  return (FIX_FAILURES as readonly string[]).includes(failure ?? "");
+}
+
+/**
+ * A closed shift that counted longer than this is worth a look: 14 hours, the
+ * payroll engine's own limit (`LIMITS.entry` in @domain/payroll-flags is this
+ * one), the same for every kind of business. The clock takes a clock-out up
+ * to `MAX_ENTRY_HOURS` after the clock-in, so a clock-out forgotten until the
+ * next morning is recorded as a long shift, not one that needs fixing.
+ */
+export const LONG_ENTRY_MINUTES = 14 * 60;
+
+/**
+ * Whether a shift may hide a forgotten clock-out: closed, and counted longer
+ * than `LONG_ENTRY_MINUTES`. Beside it, as beside one that needs fixing, the
+ * clock offers whom to ask (closing the pilot, PR 8): under the one just
+ * left, and in the person's shifts while nobody has looked at it yet
+ * (`longShiftToAsk`).
+ */
+export function longShift(shift: {
+  out: string | null;
+  minutes: number;
+}): boolean {
+  return shift.out !== null && shift.minutes > LONG_ENTRY_MINUTES;
+}
+
+/**
+ * Whether the person's shifts offer whom to ask beside this long one: nobody
+ * has corrected it or added it for them. Once whoever approves hours wrote
+ * its times, a long one is what they meant (a double shift), and there is
+ * nothing left to ask.
+ */
+export function longShiftToAsk(shift: {
+  out: string | null;
+  minutes: number;
+  byManager: boolean;
+  correction: object | null;
+}): boolean {
+  return longShift(shift) && shift.correction === null && !shift.byManager;
+}
+
+/**
  * What an entry counts for, in milliseconds: its length, without its unpaid
  * breaks. An open entry and an open break count until `now`.
  */

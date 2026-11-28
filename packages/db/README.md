@@ -1089,6 +1089,22 @@ confirming hours set for oneself, a manager giving a role, the demo's
 corrector, today's rule frozen against the new one for every membership,
 and no line of the two kinds left by rank.
 
+Who corrects hours, for a worker to write to (`20261128000800_clock_editors.sql`,
+closing the pilot's PR 8): `public.clock_editors(business)` answers the active
+members who hold `clock.edit` (`private.holds_perm`, as `can_edit_clock` asks
+it), each with their role and the business's name for them (`member_names`,
+else their profile's, null for none), to the business's own
+active members under their own session only: nothing for anyone else, a view
+session, the secret key, or while the clock is off. Nothing a member read
+before gave it: `my_permissions` answers for oneself, and the role rules are
+the owners'. `getClockEditors` in `@db/time-clock` reads it page by page (one
+row a member who edits the clock), none before the migration; the clock's
+loader (`app/(app)/clock/clock.ts`) puts it through `hoursFixers` and
+`askFixOf` in `@domain/ask-fix` with the business's departments.
+`clock_editors.test.sql` covers what it answers on the defaults, with managers
+lowered and workers raised, a personal grant, a name the business keeps and
+none at all, and to whom.
+
 Lists by their permissions (`20261115001200_roles_lists.sql`, the roles
 plan's R5; Orel's answers of 15 November 2026), the third area open for
 changes: `lists.manage` (running the lists: templates and their times, every

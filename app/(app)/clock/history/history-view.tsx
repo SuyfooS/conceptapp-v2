@@ -11,7 +11,7 @@ import Link from "next/link";
 import { useFormatter } from "next-intl";
 import type { ReactNode } from "react";
 import { type AppWording, translator } from "../../wording";
-import type { ClockPaths, OwnPay } from "../clock-types";
+import type { ClockAskFix, ClockPaths, OwnPay } from "../clock-types";
 import { MonthHero } from "../month-hero";
 import { OwnPayCard } from "../own-pay-card";
 import { ShiftList } from "../shift-list";
@@ -34,6 +34,12 @@ export type HistoryData = {
     days: number;
     inMonth: number;
   }[];
+  /**
+   * Whom the person asks to correct their hours, beside a shift that needs
+   * fixing (closing the pilot, PR 8). Null for a month with none, and as
+   * the clock's own (`ClockData.askFix`).
+   */
+  askFix: ClockAskFix | null;
 };
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
@@ -100,6 +106,7 @@ export function HistoryView({
           <ShiftList
             records={data.records}
             t={t}
+            askFix={data.askFix}
             className="relative z-10 mx-3 -mt-[56px] shadow-float xl:mx-5"
           />
         ) : (

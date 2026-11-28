@@ -1,6 +1,7 @@
 import type { AbsenceKind } from "./absences";
 import type { AgeBand } from "./minimum-wage";
 import type { HolidayKey } from "./payroll-calendar";
+import { LONG_ENTRY_MINUTES } from "./time-clock-format";
 
 /*
  * What the payroll engine asks someone to look at (payroll P6, plan §9.5): the
@@ -13,8 +14,11 @@ import type { HolidayKey } from "./payroll-calendar";
 
 /** The statute's limits the flags check (payroll plan §2, §9.5). Minutes. */
 export const LIMITS = {
-  /** An entry this long is worth a look (over 14 hours). */
-  entry: 14 * 60,
+  /**
+   * An entry this long is worth a look (over 14 hours); the worker's clock
+   * offers whom to ask beside one too (`longShift`).
+   */
+  entry: LONG_ENTRY_MINUTES,
   /** A day's paid time, overtime included: 12 hours. */
   day: 12 * 60,
   /** Overtime in a week: 16 hours, under the general permit. */
