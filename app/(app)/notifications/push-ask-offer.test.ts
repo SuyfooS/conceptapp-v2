@@ -128,7 +128,7 @@ describe("the offer of notifications on the phone", () => {
     }
   });
 
-  it("never comes again once they said 'לא עכשיו' or a moment's card showed, and reads no devices then", async () => {
+  it("never comes again once they said 'לא עכשיו' or answered a moment's card, and reads no devices then", async () => {
     mocks.getNotificationPreferences.mockResolvedValue({
       askedAt: "2026-11-28T08:00:00+00:00",
     });

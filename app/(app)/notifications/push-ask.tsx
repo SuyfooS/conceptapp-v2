@@ -9,14 +9,20 @@ import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { usePushAskState } from "./push-ask-state";
-import { personPutAwayHere, putInstallAway, turnOnPush } from "./push-client";
+import {
+  momentSeenHere,
+  personPutAwayHere,
+  putInstallAway,
+  putMomentSeen,
+  turnOnPush,
+} from "./push-client";
 
 /**
  * Who may be offered notifications on the phone, on Today and after giving
  * away a shift or sending availability (`currentPushAsk`): someone in a
  * business whose lines reach a phone, with push set up, who hasn't said "לא
- * עכשיו" and wasn't shown a moment's card. `seen` keeps that a moment's card
- * was (`seePushAskAction`), `putAway` Today's "לא עכשיו"
+ * עכשיו" and hasn't answered a moment's card. `seen` keeps that a moment's
+ * card was answered (`seePushAskAction`), `putAway` Today's "לא עכשיו"
  * (`putAwayPushAskAction`), each on any of their devices. `devices`: the
  * kinds of the devices they already have notifications on.
  */
@@ -62,13 +68,16 @@ function focusAfter(card: HTMLElement): HTMLElement | null {
  * shift given away, availability sent), then held even after the screen's
  * refresh says it was made, so the card doesn't go with it. Once. Nothing
  * once Today's "לא עכשיו" was said in this page (`personPutAwayHere`), even
- * on a screen drawn before its write landed.
+ * on a screen drawn before its write landed, or once a moment's card was
+ * seen in this browser (`momentSeenHere`).
  */
 export function usePushAskOnce(ask: PushAskOffer | null) {
   const [asking, setAsking] = useState<PushAskOffer | null>(null);
   const asked = useRef(false);
   const offer = useCallback(() => {
-    if (!ask || asked.current || personPutAwayHere()) return;
+    if (!ask || asked.current || personPutAwayHere() || momentSeenHere()) {
+      return;
+    }
     asked.current = true;
     setAsking(ask);
   }, [ask]);
@@ -83,16 +92,17 @@ export function usePushAskOnce(ask: PushAskOffer | null) {
  * out from a place already there; `offer` set, the card comes. Only where
  * this browser can take notifications and doesn't have them on: blocked,
  * unsupported or already on, it shows nothing and isn't counted as asked.
- * Shown, it is brought into view, clear of the floating bars, and kept as
- * asked (`offer.seen`) once it has really been on screen or one of its
- * buttons was pressed, so it never comes again, here or on Today. The press
- * turns notifications on there and then, asking for permission first, as the
- * push switch does; an iPhone in Safari is sent to the settings, which say
- * how to add the app to the home screen, and is kept in this browser only
- * (`pushAskMark`): the app on the home screen still offers the switch. "לא
- * עכשיו" puts it away (`onClose`), and the keyboard goes on to what follows
- * it. No sound, no motion of its own: the words change in place and are
- * read out.
+ * Shown, it is brought into view, clear of the floating bars. Once it has
+ * really been on screen it is kept in this browser (`putMomentSeen`), so it
+ * doesn't come again here, while Today's card goes on asking; once one of
+ * its buttons is pressed it is kept as asked for the person (`offer.seen`),
+ * so it never comes again, here or on Today (`pushAskMark`). The press turns
+ * notifications on there and then, asking for permission first, as the push
+ * switch does; an iPhone in Safari is sent to the settings, which say how to
+ * add the app to the home screen, and is kept in this browser only: the app
+ * on the home screen still offers the switch. "לא עכשיו" puts it away
+ * (`onClose`), and the keyboard goes on to what follows it. No sound, no
+ * motion of its own: the words change in place and are read out.
  */
 export function PushAsk({
   offer,
@@ -148,7 +158,9 @@ function AskCard({
   const { state, setState, device, worker } = usePushAskState(offer.devices);
   const card = useRef<HTMLDivElement>(null);
   const actions = useRef<HTMLDivElement>(null);
+  // Answered: kept for good. Seen: kept in this browser, once.
   const noted = useRef(false);
+  const seenHere = useRef(false);
   const brought = useRef(false);
   const lastSaid = useRef("");
   // The press that turned notifications on held the keyboard in the card.
@@ -158,13 +170,19 @@ function AskCard({
   const fallbackTitle = t("push.notice.fallback.title");
   const fallbackBody = t("push.notice.fallback.body");
 
-  // Kept as asked, once: seen, or answered. The steps to the home screen in
-  // this browser only, everything else for the person (`pushAskMark`).
+  // Seen, kept in this browser alone, so Today's card goes on; answered,
+  // kept once: the steps to the home screen in this browser only,
+  // everything else for the person (`pushAskMark`).
   const note = useCallback(
     (event: PushAskEvent) => {
       if (noted.current || state === "checking" || state === "none") return;
       const mark = pushAskMark("moment", state, event);
       if (!mark) return;
+      if (mark === "seenHere") {
+        if (!seenHere.current) putMomentSeen();
+        seenHere.current = true;
+        return;
+      }
       noted.current = true;
       if (mark === "device") putInstallAway();
       else seen().catch(() => {});
@@ -190,11 +208,11 @@ function AskCard({
     });
   }, [shown]);
 
-  // Counted as asked once at least half of it has been on screen: never
+  // Counted as seen once at least half of it has been on screen: never
   // while it waits out of sight, on a screen kept hidden, or under a sheet.
   useEffect(() => {
     const element = card.current;
-    if (!shown || noted.current || !element) return;
+    if (!shown || noted.current || seenHere.current || !element) return;
     if (typeof IntersectionObserver === "undefined") {
       note("seen");
       return;

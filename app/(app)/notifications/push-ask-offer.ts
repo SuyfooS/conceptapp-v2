@@ -15,7 +15,7 @@ import type { PushAskOffer } from "./push-ask";
  * sending availability (plan §5.2), and how: only with push set up and the
  * module on, never while viewing as someone, never in a demo business, only
  * where the person's lines reach a phone (`pushAllowed`), and only until
- * they said "לא עכשיו" on Today or a moment's card was shown (`askedAt`, on
+ * they said "לא עכשיו" on Today or answered a moment's card (`askedAt`, on
  * every device of theirs). With it, the kinds of the devices they already
  * have it on, so an iPhone's Safari shows no steps once the app on its home
  * screen has them. Whether this browser can take them is the card's own
@@ -37,8 +37,7 @@ export async function currentPushAsk(): Promise<PushAskOffer | null> {
   ) {
     return null;
   }
-  // Once asked, which most people are after their first visit, nothing more
-  // is read: the devices only for an offer that will be made.
+  // Both read together; the devices only once both allow an offer.
   const [allowed, preferences] = await Promise.all([
     pushAllowed(member.userId),
     getNotificationPreferences().catch(() => null),

@@ -1,8 +1,8 @@
 "use client";
 
 import {
+  browserDeviceLabel,
   type DeviceLabel,
-  deviceLabel,
   installedHere,
   isPhone,
   type PushAskFacts,
@@ -56,7 +56,9 @@ export function usePushAskState(devices: readonly DeviceLabel[]): {
       permission: support === "ready" ? Notification.permission : "default",
       subscribed: false,
       installPutAway: support === "installFirst" && installPutAway(),
-      installedHere: installedHere(deviceLabel(facts.userAgent), known.current),
+      // The kind its devices are saved with (`saveSubscription`): an iPad
+      // that asks for the desktop site is an iPad in both.
+      installedHere: installedHere(browserDeviceLabel(facts), known.current),
     };
     const first = pushAskStart(asked);
     if (support !== "ready" || first === "none") {

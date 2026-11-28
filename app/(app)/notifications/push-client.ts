@@ -1,4 +1,4 @@
-import type { BrowserFacts } from "@domain/push";
+import { type BrowserFacts, browserDeviceLabel } from "@domain/push";
 
 /**
  * The browser's half of notifications on the phone, shared by the push switch
@@ -47,6 +47,33 @@ export function putInstallAway(): void {
     localStorage.setItem(INSTALL_PUT_AWAY_KEY, new Date().toISOString());
   } catch {
     // Private browsing or blocked storage: they come again next time.
+  }
+}
+
+/**
+ * localStorage: a moment's card (after giving a shift away or sending
+ * availability) was seen in this browser and left unanswered (`seenHere`,
+ * `pushAskMark`). It doesn't come again here; nothing is kept for the
+ * person, so Today's card goes on asking until this device has them or
+ * "לא עכשיו" is said.
+ */
+export const MOMENT_SEEN_KEY = "conceptapp:push-moment-seen";
+
+/** Whether a moment's card was seen in this browser; no when storage can't say. */
+export function momentSeenHere(): boolean {
+  try {
+    return localStorage.getItem(MOMENT_SEEN_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+
+/** Keeps that a moment's card was seen in this browser, when storage lets it. */
+export function putMomentSeen(): void {
+  try {
+    localStorage.setItem(MOMENT_SEEN_KEY, new Date().toISOString());
+  } catch {
+    // Private browsing or blocked storage: it comes again next time.
   }
 }
 
@@ -109,22 +136,24 @@ export function subscribe(
 export type SaveAnswer = "saved" | "demo" | "failed";
 
 /**
- * Tell the app this browser's subscription, for the person signed in, and
- * the endpoint it replaces, when it does.
+ * Tell the app this browser's subscription, for the person signed in, the
+ * kind of device it is (an iPad that asks for the desktop site is told only
+ * here, by its touch screen), and the endpoint it replaces, when it does.
  */
 export async function saveSubscription(
   subscription: PushSubscription,
   replaces?: string,
 ): Promise<SaveAnswer> {
   try {
+    const label = browserDeviceLabel(browserFacts());
     const response = await fetch("/push/subscription", {
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(
         replaces
-          ? { ...subscription.toJSON(), replaces }
-          : subscription.toJSON(),
+          ? { ...subscription.toJSON(), label, replaces }
+          : { ...subscription.toJSON(), label },
       ),
     });
     if (response.ok) return "saved";

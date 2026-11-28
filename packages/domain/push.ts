@@ -99,8 +99,9 @@ export const deviceKinds = z.array(z.unknown()).transform((labels) => [
 
 /**
  * What kind of device a user agent is, coarsely, for the list of devices; the
- * user agent itself is not kept. An iPad that asks for the desktop site says
- * it is a Mac, and is a computer here.
+ * user agent itself is not kept. An iPad that asks for the desktop site
+ * (Safari's default there) says it is a Mac, and is a computer here: only
+ * the browser can tell it by its touch screen (`browserDeviceLabel`).
  */
 export function deviceLabel(userAgent: string | null | undefined): DeviceLabel {
   const ua = userAgent ?? "";
@@ -108,6 +109,19 @@ export function deviceLabel(userAgent: string | null | undefined): DeviceLabel {
   if (/\biPad\b/.test(ua)) return "ipad";
   if (/\bAndroid\b/.test(ua)) return "android";
   return "computer";
+}
+
+/**
+ * The word kept for a device the browser saves (/push/subscription): the
+ * request's user agent's, except that where it says computer the browser
+ * may say it is an iPad (`browserDeviceLabel`), which only it can tell.
+ * Nothing else the browser says changes the word.
+ */
+export function savedDeviceLabel(
+  fromAgent: DeviceLabel,
+  said: DeviceLabel | undefined,
+): DeviceLabel {
+  return fromAgent === "computer" && said === "ipad" ? "ipad" : fromAgent;
 }
 
 /** What the browser can tell about itself, for the push switch. */
@@ -121,10 +135,26 @@ export type BrowserFacts = {
   canPush: boolean;
 };
 
+/** An iPad that asks for the desktop site: it says it is a Mac, and has touch. */
+function isIpadAsMac(facts: BrowserFacts): boolean {
+  return /\bMacintosh\b/.test(facts.userAgent) && facts.maxTouchPoints > 1;
+}
+
 /** iOS and iPadOS, whose Safari has push only in a home-screen app from 16.4. */
 export function isAppleMobile(facts: BrowserFacts): boolean {
   if (/\b(iPhone|iPad|iPod)\b/.test(facts.userAgent)) return true;
-  return /\bMacintosh\b/.test(facts.userAgent) && facts.maxTouchPoints > 1;
+  return isIpadAsMac(facts);
+}
+
+/**
+ * What kind of device this browser is, from what it says of itself: as
+ * `deviceLabel`, but an iPad that asks for the desktop site is an iPad, by
+ * its touch screen. Sent with the subscription it saves
+ * (`savedDeviceLabel`), and asked by the offer's card (`installedHere`), so
+ * the two agree.
+ */
+export function browserDeviceLabel(facts: BrowserFacts): DeviceLabel {
+  return isIpadAsMac(facts) ? "ipad" : deviceLabel(facts.userAgent);
 }
 
 /** The iOS version a user agent says, as [major, minor], or null. */
@@ -165,7 +195,7 @@ export function pushSupport(facts: BrowserFacts): PushSupport {
  * Where notifications on the phone are offered (closing the pilot, PR 6): a
  * card on Today, for everyone, until this device has them or the person says
  * "לא עכשיו"; and the quiet card right after a moment (a shift given away,
- * availability sent), once.
+ * availability sent), once in each browser until it is answered.
  */
 export type PushAskPlace = "today" | "moment";
 
@@ -194,12 +224,12 @@ export type PushAskFacts = {
   subscribed: boolean;
   /**
    * The steps to the home screen were put away in this browser ("לא עכשיו"
-   * on Today, or a moment's card showed them): kept by the browser, never
-   * for the person, so the app on the home screen, whose storage is its own,
-   * still asks.
+   * on Today, or a press on a moment's card that showed them): kept by the
+   * browser, never for the person, so the app on the home screen, whose
+   * storage is its own, still asks.
    */
   installPutAway: boolean;
-  /** One of the person's devices is this browser's kind of iPhone or iPad (`installedHere`). */
+  /** One of the person's devices is this browser's kind of iPhone or iPad (`installedHere`, by `browserDeviceLabel`). */
   installedHere: boolean;
 };
 
@@ -226,8 +256,9 @@ export function pushAskStart(facts: PushAskFacts): PushAskStart {
  * browser's kind where Safari can't take them itself: an iPhone or iPad
  * whose app on the home screen was turned on. So this phone has them, and
  * Safari, opened from a link (known issue 21), offers no steps. Never for
- * another kind: an iPad that asks for the desktop site says it is a
- * computer, as any computer does.
+ * another kind. `label` is `browserDeviceLabel`'s, the word its devices are
+ * saved with too, so an iPad that asks for the desktop site (it says it is
+ * a Mac) is an iPad in both.
  */
 export function installedHere(
   label: DeviceLabel,
@@ -241,25 +272,30 @@ export type PushAskEvent = "seen" | "enable" | "settings" | "dismiss";
 
 /**
  * What an event keeps, so the offer doesn't come again: for the person, on
- * every device (`push_asked_at`, public.see_push_ask), for this browser
- * only, or nothing.
+ * every device (`push_asked_at`, public.see_push_ask); the steps to the home
+ * screen put away in this browser (`device`); a moment's card seen in this
+ * browser (`seenHere`), which then doesn't come again here while Today's
+ * card goes on asking; or nothing.
  */
-export type PushAskMark = "person" | "device" | null;
+export type PushAskMark = "person" | "device" | "seenHere" | null;
 
 /**
  * What each event keeps. The steps to the home screen are never counted for
  * the person: in Safari nothing can be turned on yet, and the app on the
  * home screen must still ask; they are put away in this browser only. A
- * moment's card is kept once it is seen or pressed, as before. Today's is
- * kept only by "לא עכשיו" while it still offers something: seen and left,
- * it stays until this device has them, and after a press that turned them
- * on, or found them blocked, there is nothing left to keep.
+ * moment's card only seen is kept in this browser, so it comes once a
+ * browser and Today's card isn't ended by it; answered (a press), it is kept
+ * for the person, as before, or, for the steps, put away in this browser.
+ * Today's is kept only by "לא עכשיו" while it still offers something: seen
+ * and left, it stays until this device has them, and after a press that
+ * turned them on, or found them blocked, there is nothing left to keep.
  */
 export function pushAskMark(
   place: PushAskPlace,
   state: PushAskState,
   event: PushAskEvent,
 ): PushAskMark {
+  if (place === "moment" && event === "seen") return "seenHere";
   if (state === "install") {
     return place === "moment" || event === "dismiss" ? "device" : null;
   }
@@ -281,8 +317,9 @@ const base64url = (min: number, max: number) =>
 
 /**
  * What the browser posts to /push/subscription: `PushSubscription.toJSON()`,
- * and, from the service worker when the browser replaced a subscription by
- * itself, the endpoint it replaces.
+ * the kind of device it says it is (`browserDeviceLabel`; a kind it doesn't
+ * know is left out, never a refusal), and, from the service worker when the
+ * browser replaced a subscription by itself, the endpoint it replaces.
  */
 export const pushSubscriptionBody = z.object({
   endpoint: z.string().min(1).max(MAX_ENDPOINT_LENGTH),
@@ -292,6 +329,7 @@ export const pushSubscriptionBody = z.object({
     p256dh: base64url(80, 98),
     auth: base64url(16, 30),
   }),
+  label: deviceKind.optional().catch(undefined),
   replaces: z.string().min(1).max(MAX_ENDPOINT_LENGTH).optional(),
 });
 

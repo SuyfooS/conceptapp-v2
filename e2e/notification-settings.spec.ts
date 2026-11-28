@@ -407,12 +407,22 @@ test("after giving a shift away, notifications on the phone are offered once", a
         name: heT("app.notifications.ask.enable", { device: "other" }),
       }),
     ).toBeVisible();
-    // Kept as asked, for every device of theirs.
+    // Seen, it is kept in this browser alone: nothing for the person yet,
+    // so Today's card goes on asking (e2e/push-card.spec.ts).
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          localStorage.getItem("conceptapp:push-moment-seen"),
+        ),
+      )
+      .not.toBeNull();
+    expect((await storedPreferences(WORKER.id))?.askedAt ?? null).toBeNull();
+    // Answered, it is kept as asked, for every device of theirs.
+    await card.getByRole("button", { name: n.ask.dismiss }).click();
+    await expect(card).toHaveCount(0);
     await expect
       .poll(async () => (await storedPreferences(WORKER.id))?.askedAt ?? null)
       .not.toBeNull();
-    await card.getByRole("button", { name: n.ask.dismiss }).click();
-    await expect(card).toHaveCount(0);
 
     // Given away again: nothing more is offered.
     await withdrawSettingsShift();

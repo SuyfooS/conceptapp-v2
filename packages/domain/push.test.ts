@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   type BrowserFacts,
+  browserDeviceLabel,
   DEFAULT_TTL,
   type DeviceLabel,
   deviceKinds,
@@ -21,6 +22,7 @@ import {
   pushSupport,
   pushTtl,
   retryAfterSeconds,
+  savedDeviceLabel,
   summaryPlace,
 } from "./push";
 
@@ -113,6 +115,38 @@ describe("devices", () => {
     expect(deviceLabel(ANDROID)).toBe("android");
     expect(deviceLabel(DESKTOP)).toBe("computer");
     expect(deviceLabel(null)).toBe("computer");
+  });
+
+  it("are told by the browser too: an iPad asking for the desktop site is an iPad", () => {
+    // Safari's default on an iPad: a Mac's user agent, and a touch screen.
+    expect(
+      browserDeviceLabel(facts({ userAgent: IPAD_AS_MAC, maxTouchPoints: 5 })),
+    ).toBe("ipad");
+    // A Mac has no touch screen: a computer, as the server says.
+    expect(browserDeviceLabel(facts({ userAgent: IPAD_AS_MAC }))).toBe(
+      "computer",
+    );
+    // A touch screen alone makes nothing an iPad.
+    expect(browserDeviceLabel(facts({ maxTouchPoints: 10 }))).toBe("computer");
+    expect(
+      browserDeviceLabel(facts({ userAgent: ANDROID, maxTouchPoints: 5 })),
+    ).toBe("android");
+    for (const userAgent of [IPHONE, ANDROID, DESKTOP]) {
+      expect(browserDeviceLabel(facts({ userAgent }))).toBe(
+        deviceLabel(userAgent),
+      );
+    }
+  });
+
+  it("are saved by the user agent, which the browser only refines to an iPad", () => {
+    expect(savedDeviceLabel("computer", "ipad")).toBe("ipad");
+    expect(savedDeviceLabel("computer", undefined)).toBe("computer");
+    expect(savedDeviceLabel("computer", "iphone")).toBe("computer");
+    expect(savedDeviceLabel("computer", "android")).toBe("computer");
+    // What the user agent tells for itself is never changed.
+    expect(savedDeviceLabel("iphone", "ipad")).toBe("iphone");
+    expect(savedDeviceLabel("android", "ipad")).toBe("android");
+    expect(savedDeviceLabel("ipad", "computer")).toBe("ipad");
   });
 
   it("say which iOS they run", () => {
@@ -241,7 +275,7 @@ describe("installedHere", () => {
     expect(installedHere("iphone", ["ipad", "computer"])).toBe(false);
     expect(installedHere("ipad", ["iphone"])).toBe(false);
     expect(installedHere("iphone", [])).toBe(false);
-    // An iPad asking for the desktop site says it is a computer.
+    // A computer's browser has no home-screen app of this kind.
     expect(installedHere("computer", all)).toBe(false);
     expect(installedHere("android", all)).toBe(false);
   });
@@ -277,8 +311,9 @@ describe("pushAskMark", () => {
     }
   });
 
-  it("keeps a moment's steps once, in this browser", () => {
-    for (const event of events) {
+  it("keeps a moment's steps in this browser: seen, as seen; pressed, put away", () => {
+    expect(pushAskMark("moment", "install", "seen")).toBe("seenHere");
+    for (const event of ["enable", "settings", "dismiss"] as const) {
       expect(pushAskMark("moment", "install", event), event).toBe("device");
     }
   });
@@ -302,12 +337,29 @@ describe("pushAskMark", () => {
     expect(pushAskMark("today", "denied", "dismiss")).toBeNull();
   });
 
-  it("keeps a moment's card once, for the person, as before", () => {
+  it("keeps a moment's card only seen in this browser, so Today's goes on", () => {
+    for (const state of states) {
+      expect(pushAskMark("moment", state, "seen"), state).toBe("seenHere");
+    }
+  });
+
+  it("keeps a moment's card for the person once it is answered, as before", () => {
     for (const state of states.filter((s) => s !== "install")) {
-      for (const event of events) {
+      for (const event of ["enable", "settings", "dismiss"] as const) {
         expect(pushAskMark("moment", state, event), `${state} ${event}`).toBe(
           "person",
         );
+      }
+    }
+  });
+
+  it("never keeps Today's card as seen", () => {
+    for (const state of states) {
+      for (const event of events) {
+        expect(
+          pushAskMark("today", state, event),
+          `${state} ${event}`,
+        ).not.toBe("seenHere");
       }
     }
   });
@@ -350,6 +402,18 @@ describe("the bodies", () => {
         replaces: "https://fcm.googleapis.com/fcm/send/old",
       }).success,
     ).toBe(true);
+  });
+
+  it("take the kind of device the browser says, and leave out one they don't know", () => {
+    expect(
+      pushSubscriptionBody.parse({ ...subscription, label: "ipad" }).label,
+    ).toBe("ipad");
+    expect(pushSubscriptionBody.parse(subscription).label).toBeUndefined();
+    for (const label of ["watch", 3, null]) {
+      const parsed = pushSubscriptionBody.safeParse({ ...subscription, label });
+      expect(parsed.success, String(label)).toBe(true);
+      expect(parsed.data?.label, String(label)).toBeUndefined();
+    }
   });
 
   it("refuse keys that aren't keys", () => {

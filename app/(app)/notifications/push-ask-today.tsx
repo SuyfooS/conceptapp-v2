@@ -35,7 +35,8 @@ import { holdPersonPutAway, putInstallAway, turnOnPush } from "./push-client";
  */
 export type TodayPushAsk = { offer: PushAskOffer } | { twin: PushAskState };
 
-type Kept = Exclude<PushAskMark, null>;
+/** What Today's "לא עכשיו" keeps: only a moment's card is ever kept as seen. */
+type Kept = Extract<PushAskMark, "person" | "device">;
 
 /** How the card's state is had and changed: by the browser in the app, by hand on the twin. */
 type Driver = {
@@ -270,7 +271,7 @@ function TodayCard({
   function dismiss() {
     if (state === "checking" || state === "none") return;
     const mark = pushAskMark("today", state, "dismiss");
-    if (mark) {
+    if (mark === "person" || mark === "device") {
       setGone(mark);
       held.hold(mark);
       driver.holding(mark);

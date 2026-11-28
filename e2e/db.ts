@@ -3717,6 +3717,14 @@ export async function closePushCardBusiness(): Promise<void> {
   await deleteRealBusiness(PUSH_CARD_BUSINESS);
 }
 
+/** The worker's requests in the push card's business, withdrawn. */
+export async function withdrawPushCardShift(): Promise<void> {
+  await sql`
+    select public.cancel_shift_swap(${PUSH_CARD_PEOPLE.worker.id}::uuid, w.id)
+    from public.shift_swaps w
+    where w.business_id = ${PUSH_CARD_BUSINESS} and w.status = 'open'`;
+}
+
 /**
  * Quiet hours straight into the database, on Israel's clock: from an hour
  * ago until `minutes` minutes from now, in whole minutes (so they end at
@@ -3746,17 +3754,19 @@ export async function quietUntilSoon(
 
 /**
  * A device for the person, as saving one leaves it, sending to `origin`
- * (the tests' loopback push service). Returns its endpoint.
+ * (the tests' loopback push service), of the kind `label` (a computer
+ * unless said). Returns its endpoint.
  */
 export async function addTestDevice(
   userId: string,
   origin: string,
+  label: "iphone" | "ipad" | "android" | "computer" = "computer",
 ): Promise<string> {
   const endpoint = `${origin}/push/${randomUUID()}`;
   await sql`insert into public.push_subscriptions
       (user_id, endpoint, endpoint_hash, p256dh, auth_secret, label)
     values (${userId}, ${endpoint}, private.endpoint_hash(${endpoint}),
-      ${`B${"A".repeat(86)}`}, 'aW5zdGFudC1hdXRoLWtleQ', 'computer')`;
+      ${`B${"A".repeat(86)}`}, 'aW5zdGFudC1hdXRoLWtleQ', ${label})`;
   return endpoint;
 }
 

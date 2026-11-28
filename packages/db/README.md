@@ -567,10 +567,11 @@ holds one row per person, across their businesses: the groups kept off the
 phone (`push_off`), quiet hours on the clock of `time_zone`, whether the lock
 screen shows the line (`previews`), and when they were offered notifications
 on the phone (`push_asked_at`): set when a moment's card (after giving a shift
-away or sending availability) was shown, or by "לא עכשיו" on Today's card
+away or sending availability) was answered, or by "לא עכשיו" on Today's card
 (closing the pilot, PR 6), each through `public.see_push_ask`, and from then
-neither card comes on any of their devices. The steps to the home screen in an
-iPhone's Safari never set it: they are put away in that browser alone. No row means everything reaches the phone, no
+neither card comes on any of their devices. A moment's card only seen, and the
+steps to the home screen in an iPhone's Safari, never set it: they are kept in
+that browser alone. No row means everything reaches the phone, no
 quiet hours, details shown. The person alone reads it (select own); anon, the
 secret key and a view session read nothing, and nothing writes a log row.
 It is written only through `public.set_notification_preferences` (one change

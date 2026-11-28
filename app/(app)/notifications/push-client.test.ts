@@ -3,8 +3,12 @@ import {
   holdPersonPutAway,
   INSTALL_PUT_AWAY_KEY,
   installPutAway,
+  MOMENT_SEEN_KEY,
+  momentSeenHere,
   personPutAwayHere,
   putInstallAway,
+  putMomentSeen,
+  saveSubscription,
 } from "./push-client";
 
 // The steps to the home screen put away in this browser (closing the pilot,
@@ -48,6 +52,90 @@ describe("the steps put away in this browser", () => {
     vi.stubGlobal("localStorage", undefined);
     expect(() => putInstallAway()).not.toThrow();
     expect(installPutAway()).toBe(false);
+  });
+});
+
+// A moment's card seen and left (after the check): kept in this browser, so
+// it doesn't come again here, while nothing is kept for the person and
+// Today's card goes on asking (`pushAskMark`'s `seenHere`).
+describe("a moment's card seen in this browser", () => {
+  it("isn't, until it is, apart from the steps put away", () => {
+    const kept = storage();
+    expect(momentSeenHere()).toBe(false);
+    putMomentSeen();
+    expect(kept.has(MOMENT_SEEN_KEY)).toBe(true);
+    expect(momentSeenHere()).toBe(true);
+    // Today's steps in Safari aren't put away by it.
+    expect(installPutAway()).toBe(false);
+  });
+
+  it("comes again where storage is blocked or missing, and nothing throws", () => {
+    storage(true);
+    expect(() => putMomentSeen()).not.toThrow();
+    expect(momentSeenHere()).toBe(false);
+    vi.stubGlobal("localStorage", undefined);
+    expect(() => putMomentSeen()).not.toThrow();
+    expect(momentSeenHere()).toBe(false);
+  });
+});
+
+// The kind of device sent with a subscription (after the check): an iPad
+// that asks for the desktop site says a Mac's user agent, which the server
+// reads as a computer; only the browser, by its touch screen, can say iPad.
+describe("saving a subscription", () => {
+  const IPAD_AS_MAC =
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15";
+
+  /** A browser saying `userAgent`, with `maxTouchPoints`; what it posts. */
+  function browser(userAgent: string, maxTouchPoints: number) {
+    vi.stubGlobal("window", {
+      matchMedia: () => ({ matches: true }),
+      PushManager: {},
+      Notification: {},
+    });
+    vi.stubGlobal("navigator", {
+      userAgent,
+      maxTouchPoints,
+      serviceWorker: {},
+    });
+    const posted: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: { body: string }) => {
+        posted.push(JSON.parse(init.body));
+        return new Response(null, { status: 200 });
+      }),
+    );
+    return posted;
+  }
+
+  const subscription = {
+    toJSON: () => ({
+      endpoint: "https://web.push.apple.com/abc",
+      keys: { p256dh: "p", auth: "a" },
+    }),
+  } as unknown as PushSubscription;
+
+  it("says iPad for an iPad that asks for the desktop site", async () => {
+    const posted = browser(IPAD_AS_MAC, 5);
+    expect(await saveSubscription(subscription)).toBe("saved");
+    expect(posted).toEqual([
+      expect.objectContaining({
+        endpoint: "https://web.push.apple.com/abc",
+        label: "ipad",
+      }),
+    ]);
+  });
+
+  it("says computer for a Mac, with the endpoint it replaces", async () => {
+    const posted = browser(IPAD_AS_MAC, 0);
+    await saveSubscription(subscription, "https://web.push.apple.com/old");
+    expect(posted).toEqual([
+      expect.objectContaining({
+        label: "computer",
+        replaces: "https://web.push.apple.com/old",
+      }),
+    ]);
   });
 });
 
