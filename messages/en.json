@@ -1559,10 +1559,10 @@
         "create": "Make the link",
         "createFor": "Make the link for {name}",
         "ready": "{name}'s link is ready",
-        "whatsapp": "WhatsApp",
-        "whatsappFor": "WhatsApp {name}, with the link",
+        "whatsapp": "Send on WhatsApp",
+        "whatsappFor": "Send on WhatsApp to {name}, with the link",
         "opened": "Opened in WhatsApp",
-        "message": "You're invited to join {business}'s team in the app. Sign in from this link, with this number:",
+        "message": "{business} invites you to the team on the ConceptApp app. The link is personal and valid for 14 days. Open it on this phone and you'll get a code by SMS.",
         "next": "Next: {name}",
         "ownerSends": "The owners send this invite's link.",
         "linked": "A link for {name} was made meanwhile on another screen, and it still works."
@@ -8218,7 +8218,8 @@
         "import": "Add from a list",
         "expired": "Invite expired",
         "pending": "No link yet",
-        "pendingHint": "The owners send the link from the Team screen."
+        "pendingHint": "The owners send the link from the Team screen.",
+        "ownerPendingHint": "Create the owner's link here, then send it on WhatsApp."
       },
       "invite": {
         "create": "Create invite link",
@@ -8237,7 +8238,8 @@
           "roleGone": "The role this invite gives was removed from the business, so it can't be renewed. Invite the number again with “Add a person”."
         },
         "renew": "Renew the invite",
-        "renewFor": "Renew the invite for {name}"
+        "renewFor": "Renew the invite for {name}",
+        "ownerMessage": "Your personal link to manage {business} on the ConceptApp app. Open it on this phone and you'll get a code by SMS."
       },
       "viewAs": {
         "title": "View the app",

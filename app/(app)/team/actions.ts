@@ -14,7 +14,7 @@ import {
 } from "@db/team";
 import { isUuid } from "@domain/activity";
 import { inviteLink } from "@domain/invites";
-import { ROLES } from "@domain/modules";
+import { ROLES, type Role } from "@domain/modules";
 import { type ProfileSaveResult, seenBioOf } from "@domain/profile";
 import {
   canEditTeam,
@@ -61,7 +61,15 @@ export type InviteState =
       /** What was typed, so the form keeps it after an error. */
       values?: { name: string; phone: string; role: string };
     }
-  | { done: { name: string; phone: string; link: string } };
+  | {
+      /**
+       * The invite made: its name, its number in E.164 (where WhatsApp
+       * opens a chat), the role it gives, built-in or the one a named role
+       * is built on (an owner's link goes with the owner's sentence from the
+       * console), and its link.
+       */
+      done: { name: string; phone: string; role: Role; link: string };
+    };
 
 export type ResendState =
   // A fresh link is for someone already invited here, never refused for
@@ -139,6 +147,7 @@ export async function inviteAction(
       done: {
         name: parsed.value.name,
         phone: parsed.value.phone,
+        role: parsed.value.role,
         link: await linkFor(result.token, result.phone),
       },
     };

@@ -1,8 +1,11 @@
 import AxeBuilder from "@axe-core/playwright";
 import he from "../messages/he.json" with { type: "json" };
+import { isolateName } from "../packages/domain/bidi";
+import { shareText } from "../packages/domain/share";
 import { announcer, heardSoFar, saidSince } from "./announcer";
 import { invitesBySlug, inviteToDemo, removeDemoInvites } from "./db";
 import { signIn } from "./session";
+import { heT } from "./t";
 import { expect, type Page, test } from "./test";
 
 // The seeded manager of the demo restaurant (supabase/seed.sql) invites
@@ -21,6 +24,62 @@ const OWNER_INVITE = { name: "שותף ממתין", phone: "+972500000922" };
 const tt = he.app.team;
 const ti = tt.invite;
 const tl = tt.link;
+const BUSINESS = "מסעדת הדגמה";
+
+/** A person's "שליחה בוואטסאפ", in whichever shape is on screen. */
+const whatsappFor = (page: Page, name: string) =>
+  page
+    .getByRole("link", { name: heT("app.team.pending.whatsappFor", { name }) })
+    .filter({ visible: true });
+
+/**
+ * Each invite's link goes out on WhatsApp to the number it was made for,
+ * with the sentence that says what it is (closing the pilot, PR 4): read
+ * here, never opened.
+ */
+async function expectWhatsapp(page: Page, name: string, e164: string) {
+  const whatsapp = whatsappFor(page, name);
+  const field = page.getByLabel(tl.linkFor.replace("{name}", name)).filter({
+    visible: true,
+  });
+  const link = await field.inputValue();
+  const href = new URL((await whatsapp.getAttribute("href")) ?? "");
+  expect(`${href.origin}${href.pathname}`).toBe(
+    `https://wa.me/${e164.slice(1)}`,
+  );
+  expect(href.searchParams.get("text")).toBe(
+    shareText(
+      heT("app.team.pending.message", { business: isolateName(BUSINESS) }),
+      link,
+    ),
+  );
+  expect(href.searchParams.get("text")).not.toContain(name);
+  await expect(whatsapp).toHaveAttribute("target", "_blank");
+  await expect(whatsapp).toHaveAttribute("rel", /noopener/);
+}
+
+/**
+ * Presses a person's "שליחה בוואטסאפ" as the person sending does, with
+ * WhatsApp itself kept out: wa.me answers in the test with an empty page,
+ * and the tab it opened in is closed. Nothing leaves the test.
+ */
+async function openWhatsapp(page: Page, name: string) {
+  const context = page.context();
+  await context.route(
+    (url) => url.hostname === "wa.me",
+    (route) => route.fulfill({ contentType: "text/html", body: "" }),
+  );
+  const opened = context.waitForEvent("page");
+  await whatsappFor(page, name).click();
+  await (await opened).close();
+}
+
+/** "נפתח בוואטסאפ", in whichever shape is on screen. */
+const openedLine = (page: Page) =>
+  page
+    .getByRole("main")
+    .getByText(tt.pending.opened, { exact: true })
+    .filter({ visible: true });
 
 /** Where a test keeps the refusal's line it saw before, on the page's window. */
 type SeenLine = { seenLine?: Element };
@@ -111,6 +170,12 @@ test("a manager invites a worker by phone and gets the link", async ({
   const field = page.getByLabel(tl.linkFor.replace("{name}", person.name));
   await expect(field).toHaveValue(/\/join\/[A-Za-z0-9_-]{43}$/);
   const link = await field.inputValue();
+  // WhatsApp first, to the number invited; the copy is the second way.
+  await expectWhatsapp(page, person.name, person.e164);
+  // Nothing says it opened until it did.
+  await expect(openedLine(page)).toHaveCount(0);
+  await openWhatsapp(page, person.name);
+  await expect(openedLine(page)).toBeVisible();
   await page.getByRole("button", { name: tl.copy }).click();
   await expect(page.getByRole("button", { name: tl.copied })).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(link);
@@ -184,12 +249,15 @@ test("a new link opens an expired invite again", async ({ page }, testInfo) => {
     .getByLabel(tl.linkFor.replace("{name}", EXPIRED.name))
     .filter({ visible: true });
   await expect(field).toHaveValue(/\/join\/[A-Za-z0-9_-]{43}$/);
-  // The press went: the copy button has the focus, and says whose link it
-  // copies (accessibility, part 6).
+  // The press went: "שליחה בוואטסאפ" has the focus, and says whose link it sends
+  // (accessibility, part 6), to the invite's number with the sentence; the
+  // copy beside it says whose link it copies.
+  const whatsapp = whatsappFor(page, EXPIRED.name);
+  await expect(whatsapp).toBeFocused();
+  await expectWhatsapp(page, EXPIRED.name, EXPIRED.phone);
   const copy = page
     .getByRole("button", { name: tl.copy })
     .filter({ visible: true });
-  await expect(copy).toBeFocused();
   await expect(copy).toHaveAccessibleDescription(
     tl.linkFor.replace("{name}", EXPIRED.name),
   );
@@ -198,10 +266,28 @@ test("a new link opens an expired invite again", async ({ page }, testInfo) => {
   // the focus with it.
   await expect(main).not.toContainText("להזמנה אחת פג התוקף");
   await expect(field).toBeVisible();
-  await expect(copy).toBeFocused();
+  await expect(whatsapp).toBeFocused();
   await expectCleanPage(page);
   await page.screenshot({
     path: testInfo.outputPath("team-new-link.png"),
     fullPage: true,
   });
+
+  // WhatsApp opened, the row says so.
+  await expect(openedLine(page)).toHaveCount(0);
+  const link = await field.inputValue();
+  await openWhatsapp(page, EXPIRED.name);
+  await expect(openedLine(page)).toBeVisible();
+
+  // A window that crosses into the other shape (a large tablet turned, a
+  // window made wider or narrower) shows the same link and says the same:
+  // the screen keeps both, never the shape. A phone stays in one.
+  if (testInfo.project.name === "phone") return;
+  const wide = (page.viewportSize()?.width ?? 0) >= 1280;
+  await page.setViewportSize(
+    wide ? { width: 820, height: 1180 } : { width: 1440, height: 900 },
+  );
+  await expect(field).toHaveValue(link);
+  await expect(whatsappFor(page, EXPIRED.name)).toBeVisible();
+  await expect(openedLine(page)).toBeVisible();
 });

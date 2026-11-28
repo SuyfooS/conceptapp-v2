@@ -37,6 +37,7 @@ export async function demoInviteAction(
     done: {
       name: parsed.value.name,
       phone: parsed.value.phone,
+      role: parsed.value.role,
       link: await demoLink(),
     },
   };

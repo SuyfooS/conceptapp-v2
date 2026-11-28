@@ -175,7 +175,7 @@ export function focusFirst(
 }
 
 /**
- * Focuses what an answer brought (a new link's "וואטסאפ" or its copy button,
+ * Focuses what an answer brought (a new link's "שליחה בוואטסאפ" or its copy button,
  * in place of the press), as `focusFirst` does, never the page's title in
  * its place; when none can take it, `say`s what arrived instead. That is a
  * focus put elsewhere meanwhile, which stays there, or what arrived drawn

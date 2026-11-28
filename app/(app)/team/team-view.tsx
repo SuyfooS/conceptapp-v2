@@ -25,6 +25,7 @@ import { FolderLock, ListPlus, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { createFormatter } from "next-intl";
 import type { ComponentProps } from "react";
+import type { InviteShareSetup } from "@/app/invite-share";
 import { type AppWording, type Translator, translator } from "../wording";
 import {
   FileColumns,
@@ -72,6 +73,8 @@ type ViewProps = {
   resend: Resend;
   /** The first link of an invite with none (`SendLinkRow`). */
   firstLink: Resend;
+  /** Where a new link goes on WhatsApp (`InviteShare`). */
+  share: InviteShareSetup;
   /** A member's own page, under this path. */
   peopleHref: string;
   /** A member's file, for a files-only reader. */
@@ -203,9 +206,10 @@ export function TeamView({
   /** The business's name, for the message a link goes with on WhatsApp. */
   businessName: string;
   /**
-   * WhatsApp to each person's own number (`whatsappToHref`): the real
-   * screen's, behind the database. A twin's made-up numbers may be someone's,
-   * so by default WhatsApp asks whom to send to.
+   * WhatsApp to each person's own number (`whatsappToHref`), for every link
+   * made here, first or new: the real screen's, behind the database. A
+   * twin's made-up numbers may be someone's, so by default WhatsApp asks
+   * whom to send to.
    */
   whatsappToNumber?: boolean;
   /** The business's words; the app's own on the demo. */
@@ -234,6 +238,7 @@ export function TeamView({
     viewer,
     resend,
     firstLink,
+    share: { business: businessName, toNumber: whatsappToNumber },
     peopleHref,
     fileHref,
     invites,
@@ -469,7 +474,7 @@ function resendable(
  * why and what to do instead, beside its deleting.
  */
 function inviteActions(view: ViewProps, invite: Invite) {
-  const { t, viewer, resend, invites } = view;
+  const { t, viewer, resend, share, invites } = view;
   if (!invites) return null;
   const who = name(t, invite.name);
   const sends = resendable(view, invite);
@@ -483,7 +488,13 @@ function inviteActions(view: ViewProps, invite: Invite) {
         </p>
       ) : null}
       {sends ? (
-        <ResendLink inviteId={invite.id} name={who} resend={resend} />
+        <ResendLink
+          inviteId={invite.id}
+          name={who}
+          phone={invite.phone}
+          share={share}
+          resend={resend}
+        />
       ) : null}
       {cancellable ? (
         <CancelInviteButton inviteId={invite.id} name={who} />

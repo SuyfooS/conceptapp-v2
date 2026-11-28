@@ -56,6 +56,9 @@ export function whatsappHref(text: string): string {
   return `https://wa.me/?text=${encodeURIComponent(text)}`;
 }
 
+/** A number as WhatsApp takes it: E.164, a plus and 8 to 15 digits. */
+const E164 = /^\+[1-9]\d{7,14}$/;
+
 /**
  * WhatsApp with the text written, in a chat to one number: an invite's own
  * link sent to the number it was made for (inviting from a list, part 2;
@@ -67,10 +70,26 @@ export function whatsappHref(text: string): string {
  * someone's.
  */
 export function whatsappToHref(phone: string, text: string): string {
-  if (!/^\+[1-9]\d{7,14}$/.test(phone)) {
+  if (!E164.test(phone)) {
     throw new Error("WhatsApp takes a number in E.164");
   }
   return `https://wa.me/${phone.slice(1)}?text=${encodeURIComponent(text)}`;
+}
+
+/**
+ * WhatsApp for one invite's link, on every screen that makes one (closing
+ * the pilot, PR 4: the invite form, "קישור חדש", the console's link and "עוד
+ * לא קיבלו קישור"): a chat to the number the link was made for
+ * (`whatsappToHref`), or, with none to trust, WhatsApp asking whom to send
+ * it to (`whatsappHref`). None is a twin's (`phone` null: its made-up
+ * numbers may be someone's), or anything that isn't E.164, which no screen
+ * should hold, so a screen never breaks on it. The number goes only into
+ * this link, which the person opens themselves.
+ */
+export function inviteWhatsappHref(text: string, phone: string | null): string {
+  return phone !== null && E164.test(phone)
+    ? whatsappToHref(phone, text)
+    : whatsappHref(text);
 }
 
 /**

@@ -5,6 +5,7 @@ import { FILE_TABS_TWIN_CHANNEL } from "../app/(app)/team/[person]/file/file-tab
 import { restaurantWording } from "../app/design/order-taking/data";
 import en from "../messages/en.json" with { type: "json" };
 import he from "../messages/he.json" with { type: "json" };
+import { isolateName } from "../packages/domain/bidi";
 import {
   FILE_STEPS,
   type FileStep,
@@ -10488,7 +10489,7 @@ test("the people import's twin sends each one's link from its done screen, to no
   expect(`${href.origin}${href.pathname}`).toBe("https://wa.me/");
   expect(href.searchParams.get("text")).toContain("/join/");
   expect(href.searchParams.get("text")).toContain(
-    heT("app.team.pending.message", { business: "מסעדת הדגמה" }),
+    heT("app.team.pending.message", { business: isolateName("מסעדת הדגמה") }),
   );
   await expect(left(6)).toHaveCount(1);
 
