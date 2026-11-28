@@ -4,7 +4,9 @@ import { pastDrawing } from "./announcer";
 import { HOLD_MS } from "./build-screen";
 import { standInForTurnstile } from "./captcha";
 import {
+  addPushCardStation,
   addTestDevice,
+  clearPushCardStations,
   closePushCardBusiness,
   forgetDevices,
   forgetPreferences,
@@ -44,6 +46,9 @@ const MOMENT_SEEN = "conceptapp:push-moment-seen";
 // This browser saw the app installed (`INSTALL_NAMES.installed`,
 // app/install-capture.ts).
 const APP_INSTALLED = "conceptapp:app-installed";
+// The cookie that makes a device a business's station (`STATION_COOKIE`,
+// @domain/clock-station).
+const STATION_COOKIE = "ca_station";
 
 test.beforeAll(async () => {
   await openPushCardBusiness();
@@ -545,6 +550,51 @@ test("on Android, Today's card and the settings offer to install the app", async
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     expect(await offerInstall(page, "accepted")).toBe(false);
   } finally {
+    await forgetPreferences(WORKER.id);
+  }
+});
+
+// The settings' install card is for the person's own phone, so never on the
+// business's clock station (`currentOn` in the settings' page), where the
+// switch still shows: the same Android browser shows the card with Chrome's
+// offer, then, locked as the business's station by its cookie, the switch
+// alone, Chrome's offer sent all the same.
+test("on the business's clock station, the settings offer no install", async ({
+  page,
+  baseURL,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "phone", "Android, on the phone");
+  test.skip(!PUBLIC_KEY, "needs VAPID keys (CI sets them)");
+  const i = he.app.notifications.install;
+  await forgetPreferences(WORKER.id);
+  await notAskedYet(page);
+  const token = await addPushCardStation();
+  try {
+    await signIn(page, WORKER);
+    await page.goto("/notifications/settings");
+    const own = page.getByRole("main").getByRole("region", { name: i.title });
+    const phoneSwitch = page
+      .getByRole("main")
+      .getByRole("switch", { name: /^התראות ל/ });
+    await expect(phoneSwitch).toBeVisible();
+    await offerInstall(page, "accepted");
+    await expect(own.getByRole("button", { name: i.action })).toBeVisible();
+
+    await page.context().addCookies([
+      {
+        name: STATION_COOKIE,
+        value: token,
+        url: baseURL ?? "http://127.0.0.1:3000",
+      },
+    ]);
+    await page.reload();
+    await expect(phoneSwitch).toBeVisible();
+    await offerInstall(page, "accepted");
+    await pastDrawing(page);
+    await expect(own).toHaveCount(0);
+    await expect(page.getByText(i.hint)).toHaveCount(0);
+  } finally {
+    await clearPushCardStations();
     await forgetPreferences(WORKER.id);
   }
 });
