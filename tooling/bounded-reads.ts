@@ -49,12 +49,6 @@ export const GROWING_TABLES: readonly string[] = [
 
 /** Files the task kept out, each with why: they are known issues. */
 export const KEPT_OUT: Record<string, string> = {
-  "packages/db/order-taking.ts":
-    "taking orders is a restaurant's module, kept out of the first fixes (ROADMAP's known issues)",
-  "packages/db/orders.ts":
-    "taking orders is a restaurant's module, kept out of the first fixes (ROADMAP's known issues)",
-  "packages/db/order-stations.ts":
-    "taking orders is a restaurant's module, kept out of the first fixes (ROADMAP's known issues)",
   "packages/db/employee-files.ts":
     "the hiring file, kept out of the first fixes (ROADMAP's known issues)",
 };

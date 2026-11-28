@@ -55,6 +55,7 @@ import {
 } from "@domain/chat-thread";
 import { AnnouncementCard } from "@ui/announcement-card";
 import { AttachSheet } from "@ui/attach-sheet";
+import { Button } from "@ui/button";
 import { ChatHeader } from "@ui/chat-header";
 import { Composer, type ComposerAttach } from "@ui/composer";
 import { DayDivider } from "@ui/day-divider";
@@ -85,10 +86,17 @@ import {
   type RefObject,
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
 } from "react";
+import { useSignedInId } from "@/app/release-note";
+import {
+  isStaleBuild,
+  reloadKeepingWords,
+  takeKeptWords,
+} from "@/app/stale-build";
 import { actionsNameValues } from "./actions-name";
 import { focusLost, titleTakesFocus } from "./chat-focus";
 import { ChatNotice } from "./chat-notice";
@@ -124,6 +132,7 @@ import { documentsPaths } from "./documents/documents-paths";
 import { InfoButton } from "./info-button";
 import { MessageActionsSheet } from "./message-actions";
 import { ReadersSheet } from "./readers-sheet";
+import { type GivenBack, wordsBack } from "./words-back";
 
 /** What the screen asks the server to do, bound to the business it was drawn for. */
 export type ConversationActions = {
@@ -349,6 +358,19 @@ type Shown =
  * through the signed upload the server gives for its one place, with its bar
  * and the way to stop it, and sent once the server has checked it.
  *
+ * A message sent from a page of the release before (closing the pilot, PR
+ * 1b) never went: its words go back to the field, in the order written, its
+ * "הודעה מההנהלה" switch with them, and the line over it says the app was
+ * updated, with "טעינה מחדש"; a message sent from that page then sends
+ * nothing, its words staying, and "טעינה מחדש" takes the focus, which
+ * reads the line again. The page never loads again by itself, as what is
+ * written would go with it; pressed, it keeps the field's words and its
+ * switch for the page loaded, which puts them back (`@/app/stale-build`),
+ * and the person sends them. A picture or a PDF says it didn't go, as
+ * before, under that line, which stays, as does anything else the line
+ * over the field says meanwhile (a PDF too big, a picture that can't be
+ * read).
+ *
  * The messages are a log screen readers don't read out as it grows (older
  * pages come in above it, a long gap at once); a line of its own says what
  * arrived from others, and that older messages came in.
@@ -356,10 +378,14 @@ type Shown =
 export function ConversationScreen(props: Props) {
   const { toPerson, kind, actions } = props;
   const t = useTranslations("app.chat");
+  const tu = useTranslations("app.updated");
   const format = useFormatter();
   const router = useRouter();
   const chat = useChat();
   const reader = chat.readerId;
+  // Whose words are kept across "טעינה מחדש", for a page from the release
+  // before: the frame's signed-in person.
+  const signedIn = useSignedInId();
 
   const [conversation, setConversation] = useState(props.conversation);
   // Sending reads the newest, never the one its drawing had.
@@ -386,6 +412,24 @@ export function ConversationScreen(props: Props) {
   const [outgoing, setOutgoing] = useState<OutgoingMessage[]>([]);
   const [text, setText] = useState("");
   const [notice, setNotice] = useState<ComposerNotice | null>(null);
+  /**
+   * A message met a page from the release before: the line over the field
+   * says so with "טעינה מחדש" until the page loads again, as nothing sent
+   * from this page goes.
+   */
+  const [updated, setUpdated] = useState(false);
+  /** Its words, which describe "טעינה מחדש", and the button, for its focus. */
+  const updatedId = useId();
+  const reloadButton = useRef<HTMLButtonElement>(null);
+  /**
+   * The field as now, for words given back to it as they meet the release
+   * before, and those given back so far, in the order they were written.
+   */
+  const textNow = useRef(text);
+  useLayoutEffect(() => {
+    textNow.current = text;
+  }, [text]);
+  const givenBack = useRef<GivenBack[]>([]);
   /** The picture that goes with the next message, once made ready (C4). */
   const [picked, setPicked] = useState<Picture | null>(null);
   const [preparing, setPreparing] = useState(false);
@@ -504,6 +548,15 @@ export function ConversationScreen(props: Props) {
       askedAnnounce.current = false;
     };
   }, [props.announceFirst, canAnnounce, writable]);
+  // Loaded again from "טעינה מחדש": what was written is back in the field,
+  // for the person to send, as "הודעה מההנהלה" again when it was to go as
+  // one and still may; never sent by itself.
+  useEffect(() => {
+    const kept = takeKeptWords(signedIn);
+    if (kept === null) return;
+    setText((now) => (now === "" ? kept.words : now));
+    if (kept.announce && canAnnounce && writable) setAnnounce(true);
+  }, [signedIn, canAnnounce, writable]);
   /**
    * Messages and pins changed here and not yet answered: what a sync brings
    * of them waits, so a removal on its way doesn't flicker back.
@@ -971,6 +1024,28 @@ export function ConversationScreen(props: Props) {
   }
 
   /**
+   * It met a page from the release before, so it never went, and trying
+   * again from here never would: it leaves the conversation, its words go
+   * back to the field (among those given back before them, in the order
+   * written, and before anything written since: `wordsBack`), its switch
+   * with them when it was to go as "הודעה מההנהלה", and the line over the
+   * field says the app was updated, with "טעינה מחדש", which keeps them for
+   * the page loaded. Nothing loads by itself.
+   */
+  function stayedFromRelease(item: OutgoingMessage) {
+    setOutgoing((list) => list.filter((m) => m.draft !== item.draft));
+    const back = wordsBack(textNow.current, givenBack.current, {
+      at: item.at,
+      body: item.body,
+    });
+    givenBack.current = back.given;
+    textNow.current = back.field;
+    setText(back.field);
+    if (item.announce && canAnnounce) setAnnounce(true);
+    setUpdated(true);
+  }
+
+  /**
    * A message, a picture or a PDF refused as the chat closed, or as no
    * longer the person's (`closed`, `noAccess`): the screen is drawn again,
    * the line that says why where the field was (the Composer says it), or
@@ -1150,7 +1225,11 @@ export function ConversationScreen(props: Props) {
     let result: Awaited<ReturnType<ConversationActions["send"]>>;
     try {
       result = await actions.send(input);
-    } catch {
+    } catch (error) {
+      if (isStaleBuild(error)) {
+        stayedFromRelease(item);
+        return;
+      }
       result = { ok: false, failure: "failed" };
     }
     if (result.ok) {
@@ -1263,6 +1342,15 @@ export function ConversationScreen(props: Props) {
   function send(body: string) {
     const picture = pickedNow.current;
     const pdf = picture ? null : pickedPdfNow.current;
+    // Once one met the release before, no message from this page would go:
+    // it stays in the field, nothing is sent, and "טעינה מחדש", the only way
+    // on, takes the focus, whose description says the line over the field
+    // once, a screen reader hearing it from the button: after the composer
+    // puts the focus back in its field, as its Send was pressed.
+    if (updated && !picture && !pdf) {
+      queueMicrotask(() => reloadButton.current?.focus());
+      return;
+    }
     const item: OutgoingMessage = {
       draft: newDraftId(),
       body,
@@ -2095,6 +2183,15 @@ export function ConversationScreen(props: Props) {
     (button ?? log.current)?.focus({ preventScroll: true });
   }
 
+  /** What the line over the field says of the last message, picture or PDF. */
+  const noticeWords = notice
+    ? notice.of === "conversation"
+      ? t(`conversation.${notice.key}`)
+      : notice.of === "pdfFailure"
+        ? t.rich(`pdfFailure.${notice.key}`, { max: PDF_MB, ltr })
+        : t(`fileFailure.${notice.key}`)
+    : null;
+
   return (
     <section
       aria-label={props.title}
@@ -2248,13 +2345,30 @@ export function ConversationScreen(props: Props) {
         onSend={send}
         blocked={props.blocked}
         notice={
-          notice
-            ? notice.of === "conversation"
-              ? t(`conversation.${notice.key}`)
-              : notice.of === "pdfFailure"
-                ? t.rich(`pdfFailure.${notice.key}`, { max: PDF_MB, ltr })
-                : t(`fileFailure.${notice.key}`)
-            : null
+          updated ? (
+            <>
+              <span className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                <span id={updatedId}>{tu("chat")}</span>
+                <Button
+                  ref={reloadButton}
+                  variant="secondary"
+                  // Its focus reads why, once: the line is its description.
+                  aria-describedby={updatedId}
+                  onClick={() => reloadKeepingWords(signedIn, text, announcing)}
+                >
+                  {tu("reload")}
+                </Button>
+              </span>
+              {/* What else the line says (a PDF too big, a picture that
+                  can't be read or didn't go) comes after it, a change of
+                  its own in the live line, so it is heard. */}
+              {noticeWords ? (
+                <span className="mt-1 block">{noticeWords}</span>
+              ) : null}
+            </>
+          ) : (
+            noticeWords
+          )
         }
         tooLong={t.rich("conversation.tooLong", { max: CHAT_MESSAGE_MAX, ltr })}
         attach={attach}

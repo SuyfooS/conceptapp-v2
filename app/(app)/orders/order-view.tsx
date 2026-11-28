@@ -43,6 +43,7 @@ import { Card } from "@ui/card";
 import { cn } from "@ui/cn";
 import { EmptyState } from "@ui/empty-state";
 import { FloatingAction } from "@ui/floating-action";
+import { focusFirst } from "@ui/focus-after";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { SendOrderButton } from "@ui/order-draft";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
@@ -62,6 +63,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type Ref, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
+import { usePutBack, useSignedInId } from "@/app/release-note";
+import { takeKept } from "@/app/stale-build";
 import { useHeldWrite } from "../use-held-write";
 import { CancelOrderSheet } from "./cancel-order-sheet";
 import { ChoiceSheet } from "./choice-sheet";
@@ -92,6 +95,7 @@ import type {
   WholeWrite,
 } from "./orders-types";
 import { Picker } from "./picker";
+import { KEPT_LABEL, KeptLabel } from "./release-writes";
 import { type LineShown, RoundState, Rounds, shownOf } from "./rounds";
 import { sendWaits } from "./send-store";
 
@@ -266,6 +270,30 @@ export function OrderView({
     known || count > 0 || sender.pending(key).length > 0 ? "order" : "add",
   );
   const [label, setLabel] = useState(known?.takeaway?.label ?? "");
+  // Loaded again as its name met the release before: the name as typed is
+  // back in its field, unsaved, and goes as the field is left again; never
+  // saved by itself. The frame is told whether it came back: another
+  // order's isn't put back, and the frame then says the press's words. The
+  // field takes the focus the page loaded starts without, once it holds the
+  // name again (`labelBack`), so a keyboard is where it typed.
+  const signedIn = useSignedInId();
+  const frameBack = usePutBack();
+  const orderId = known?.id ?? null;
+  const labelField = useRef<HTMLInputElement>(null);
+  const [labelBack, setLabelBack] = useState(false);
+  useEffect(() => {
+    if (orderId === null) return;
+    const kept = takeKept(signedIn, KEPT_LABEL, KeptLabel);
+    const ours = kept !== null && kept.order === orderId;
+    if (ours) {
+      setLabel(kept.label);
+      setLabelBack(true);
+    }
+    frameBack(ours);
+  }, [signedIn, orderId, frameBack]);
+  useEffect(() => {
+    if (labelBack) focusFirst([labelField.current], { title: false });
+  }, [labelBack]);
   const [sending, setSending] = useState(false);
   // What was just added, for screen readers: a new node each time, so a
   // second tap on the same item is said again.
@@ -1108,6 +1136,7 @@ export function OrderView({
     >
       {where.kind === "takeaway" ? (
         <TextField
+          ref={labelField}
           label={t("order.label")}
           hint={t("order.labelHint")}
           maxLength={ORDER_CAPS.label}
@@ -1120,19 +1149,23 @@ export function OrderView({
             if (!known || frame.viewing) return;
             const words = label.trim() || null;
             if (words === (known.takeaway?.label ?? null)) return;
+            // A fix held on the order goes first, as for a serve: a name
+            // that meets the release before loads the page again, and a fix
+            // still held would go with the page, its failure unsaid.
             // Offline, or the server failed: it says so, and the next blur
             // saves it again.
-            void actions
-              .setLabel(known.id, words)
-              .catch(() => null)
-              .then((result) => {
-                say(
-                  result?.ok
-                    ? t("order.labelSaved")
-                    : failureWords(t, result ? result.failure : "failed"),
-                );
-                mode.syncNow();
-              });
+            void (async () => {
+              await fix.commit();
+              const result = await actions
+                .setLabel(known.id, words)
+                .catch(() => null);
+              say(
+                result?.ok
+                  ? t("order.labelSaved")
+                  : failureWords(t, result ? result.failure : "failed"),
+              );
+              mode.syncNow();
+            })();
           }}
         />
       ) : null}

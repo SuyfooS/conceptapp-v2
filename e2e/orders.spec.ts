@@ -1,5 +1,5 @@
 import he from "../messages/he.json" with { type: "json" };
-import { announcer, heardSoFar, saidSince } from "./announcer";
+import { announcer, heardSoFar, pastDrawing, saidSince } from "./announcer";
 import {
   addOpenDemoEntry,
   clearTimeEntries,
@@ -51,6 +51,15 @@ import {
   undoOn,
   YOAV,
 } from "./orders-parts";
+import {
+  countLoads,
+  markBeforeRelease,
+  statusWordsSeen,
+  stillBeforeRelease,
+  unknownId,
+  watchStatusWords,
+  wordsSaid,
+} from "./release";
 import { secondPage, signIn } from "./session";
 import { setDemoModule } from "./sms";
 import { expect, type Locator, type Page, test } from "./test";
@@ -1297,5 +1306,81 @@ test("a doneness gone from the menu meanwhile: the send says so, and the line as
     ]);
   } finally {
     await resetDemoMenu();
+  }
+});
+
+// A page of the release before (closing the pilot, PR 1b, known issue 37):
+// takeaway 1's name, saved as its field is left, goes out with an action id
+// the server doesn't have, as e2e/release.ts does it, so nothing reaches the
+// demo; the mode's own reads go as they are. The page loads once, the name
+// is back in its field with the focus, unsaved, and the frame says what was
+// typed wasn't saved; nothing is sent again by itself. Nothing is written,
+// so one run is enough, on the phone.
+test("a takeaway's name left on a page of the release before comes back to its field after the page loads again, unsaved", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    testInfo.project.name !== "phone",
+    "Nothing is written: one run is enough, on the phone.",
+  );
+  const words = "e2e blue shirt";
+  await watchStatusWords(page);
+  await enterAs(page, "manager");
+  await page.goto("/orders");
+  await link(
+    page,
+    new RegExp(`^${literal(rt("app.orders.place.takeawayKind"))}\\s*1(\\D|$)`),
+  ).click();
+  await expect(page).toHaveURL(/\/orders\/takeaway\/[0-9a-f-]+$/);
+  await showOrder(page, testInfo.project.name);
+  const name = main(page).getByRole("textbox", {
+    name: rt("app.orders.order.label"),
+  });
+  await expect(name).toBeVisible();
+  const path = new URL(page.url()).pathname;
+
+  const sent: string[] = [];
+  await page.route(
+    (url) => url.pathname === path,
+    async (route) => {
+      const request = route.request();
+      const id = request.headers()["next-action"];
+      if (
+        request.method() !== "POST" ||
+        id === undefined ||
+        !(request.postData() ?? "").includes(words)
+      ) {
+        await route.fallback();
+        return;
+      }
+      sent.push(id);
+      const headers = await request.allHeaders();
+      await route.continue({
+        headers: { ...headers, "next-action": unknownId(id) },
+      });
+    },
+  );
+  const loads = countLoads(page);
+  await markBeforeRelease(page);
+  try {
+    await name.fill(words);
+    const loaded = page.waitForEvent("load");
+    await name.blur();
+    await loaded;
+
+    expect(await stillBeforeRelease(page)).toBe(false);
+    await expect(page).toHaveURL(new RegExp(`${path}$`));
+    await expect.poll(() => wordsSaid(page)).toContain(he.app.updated.typed);
+    await expect(name).toHaveValue(words);
+    await expect(name).toBeFocused();
+    // Nothing sent by itself, once the page loaded has drawn and settled.
+    await pastDrawing(page);
+    expect(sent).toHaveLength(1);
+    expect(loads.count).toBe(1);
+    expect(await statusWordsSeen(page)).not.toContain(
+      rt("app.orders.order.labelSaved"),
+    );
+  } finally {
+    await page.unrouteAll({ behavior: "ignoreErrors" });
   }
 });
