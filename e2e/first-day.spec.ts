@@ -21,7 +21,9 @@ import { expect, type Page, type TestInfo, test } from "./test";
 // order: the link the owner sent, the code by SMS (the local stack's dev
 // hook), Today, the shifts they were given, the clock in and out, and their
 // profile. Every screen is checked as the person meets it: axe, no sideways
-// scroll, and no words drawn past the screen's sides or cut short. The checks
+// scroll, no words drawn past the screen's sides or cut short, and PR 26's
+// "too old" notice hidden (e2e/old-browser.spec.ts checks that in Chromium
+// alone, and this is the one run that draws pages in WebKit). The checks
 // are soft, so one run lists every screen's findings, and each screen is
 // photographed before them (test-results/, uploaded by CI). Linux WebKit is
 // not a real iPhone: no iOS keyboard, home-screen app or push.
@@ -158,8 +160,9 @@ async function cutOff(page: Page): Promise<string[]> {
  * The screen as the person meets it, photographed first so the photo is
  * there whatever the checks find (`<step>.png` in test-results/): its title,
  * no axe violation (each failing element and axe's reason), no sideways
- * scroll, and nothing drawn past the sides or cut short. Soft, so the test
- * goes on to the next screen and one run lists them all.
+ * scroll, nothing drawn past the sides or cut short, and the notice for a
+ * phone too old for the app hidden, as old-browser.spec.ts finds it. Soft,
+ * so the test goes on to the next screen and one run lists them all.
  */
 async function expectCleanPage(page: Page, testInfo: TestInfo, step: string) {
   await page.screenshot({
@@ -193,6 +196,15 @@ async function expectCleanPage(page: Page, testInfo: TestInfo, step: string) {
   expect
     .soft(await cutOff(page), `${step}: words past the sides or cut short`)
     .toEqual([]);
+  // Both engines here are current, with relative colours, so the rule that
+  // shows the notice (app/globals.css) never applies: a current iPhone never
+  // reads it.
+  await expect
+    .soft(
+      page.locator("body > [data-old-browser]"),
+      `${step}: the old-browser notice`,
+    )
+    .toBeHidden();
 }
 
 test("a new worker joins from the owner's link and gets through the first day", async ({

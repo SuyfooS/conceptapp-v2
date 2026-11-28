@@ -6999,9 +6999,10 @@ export type FirstDayBusiness = (typeof FIRST_DAY)[keyof typeof FIRST_DAY];
 /**
  * The business opened afresh, an earlier run's gone first with its records:
  * the wizard's own function with the worker in its staff (saved with no
- * link), the owner's membership, and the worker's link made by the owner as
- * /team's "יצירת קישור" makes it. Returns the token, as /join/<token> takes
- * it.
+ * link), the owner's membership, and the worker's first link made by the
+ * owner as /team's "יצירת קישור" makes it (`issueFirstInviteLink`, through
+ * `public.team_invite_first_link`, which refuses once the invite has a link).
+ * Returns the token, as /join/<token> takes it.
  */
 export async function openFirstDayBusiness(
   business: FirstDayBusiness,
@@ -7022,7 +7023,7 @@ export async function openFirstDayBusiness(
   await sql`insert into public.memberships (business_id, user_id, role)
     values (${opened.id}, ${business.owner.id}, 'owner')`;
   const token = randomBytes(32).toString("base64url");
-  await sql`select public.team_invite_link(${business.owner.id}::uuid,
+  await sql`select public.team_invite_first_link(${business.owner.id}::uuid,
     (select i.id from public.invites i
       where i.business_id = ${opened.id} and i.phone = ${business.worker.e164}
         and i.claimed_at is null),
