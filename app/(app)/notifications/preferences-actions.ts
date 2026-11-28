@@ -47,8 +47,10 @@ export async function setNotificationPreferencesAction(
 
 /**
  * The quiet card that offers notifications on the phone, after giving away a
- * shift or sending availability, was shown: it never comes again, on any of
- * the person's devices. Nothing while viewing as someone.
+ * shift or sending availability, was answered (one of its buttons; only seen,
+ * it is kept in that browser alone): it never comes again, on any of the
+ * person's devices, and neither does Today's. Nothing while viewing as
+ * someone.
  */
 export async function seePushAskAction(): Promise<void> {
   const member = await currentMember();

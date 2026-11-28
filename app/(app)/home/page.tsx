@@ -20,6 +20,7 @@ import { currentFileToday } from "../me/file/file";
 import { currentMember } from "../member";
 import { currentModeRows } from "../mode-rows";
 import { currentModules } from "../modules";
+import { currentPushAsk } from "../notifications/push-ask-offer";
 import {
   currentAvailabilityWeek,
   currentPublishedSchedule,
@@ -72,6 +73,7 @@ export default async function HomePage() {
     file,
     reviews,
     away,
+    pushAsk,
   ] = await Promise.all([
     currentMember(),
     currentModules(),
@@ -98,6 +100,9 @@ export default async function HomePage() {
     currentFileReviews(),
     // Who is away today, for whoever builds the schedule or edits the clock.
     currentAwayToday(),
+    // Notifications on the phone offered, for everyone (closing the pilot,
+    // PR 6).
+    currentPushAsk(),
   ]);
   const membership = member?.membership;
   // The layout has already sent these people elsewhere.
@@ -152,6 +157,7 @@ export default async function HomePage() {
         file,
         reviews,
         away,
+        pushAsk: pushAsk ? { offer: pushAsk } : null,
       }}
     />
   );
@@ -163,18 +169,30 @@ export default async function HomePage() {
  * about modules, which other modules being on would make untrue.
  */
 async function OutsideStaffHome() {
-  const [member, enabled, pay, documents, wording, businesses, station, files] =
-    await Promise.all([
-      currentMember(),
-      currentModules(),
-      currentPayHome(),
-      currentDocumentsHome(),
-      currentWording(),
-      currentBusinesses(),
-      currentStationHome(),
-      // The staff's hiring files, for the accountant who holds them (H6a).
-      currentFilesHome(),
-    ]);
+  const [
+    member,
+    enabled,
+    pay,
+    documents,
+    wording,
+    businesses,
+    station,
+    files,
+    pushAsk,
+  ] = await Promise.all([
+    currentMember(),
+    currentModules(),
+    currentPayHome(),
+    currentDocumentsHome(),
+    currentWording(),
+    currentBusinesses(),
+    currentStationHome(),
+    // The staff's hiring files, for the accountant who holds them (H6a).
+    currentFilesHome(),
+    // Notifications on the phone offered, as on Today (closing the pilot,
+    // PR 6).
+    currentPushAsk(),
+  ]);
   const membership = member?.membership;
   if (!member || !membership) return null;
   return (
@@ -197,6 +215,7 @@ async function OutsideStaffHome() {
         // This device is the business's clock station: sign out when done.
         station,
         files: files ? { ...files, href: "/team" } : null,
+        pushAsk: pushAsk ? { offer: pushAsk } : null,
       }}
     />
   );

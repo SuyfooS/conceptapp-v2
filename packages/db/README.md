@@ -554,7 +554,10 @@ devices, claims what is due once per line and device (`claim_due_pushes`, rows
 in `public.push_deliveries`, which only the server touches) and says how each
 push went (`finish_pushes`: gone devices forgotten, refusals counted, retries
 in 1, 5 and 25 minutes, then counted too). The browser reads only a few plain columns of its own
-devices, never their endpoints or keys. `@db/push/*` signs VAPID with
+devices, never their endpoints or keys; the app reads one of them, under the
+person's own session, for the offer on Today (`ownDeviceKinds`: the kinds of
+their devices, so an iPhone's Safari shows no steps to the home screen once the
+app there has notifications). `@db/push/*` signs VAPID with
 `node:crypto` and sends; pg_cron's minute job asks the app to send while
 something is due (`push.test.sql`).
 
@@ -563,7 +566,12 @@ What reaches each person's phone is theirs to choose
 holds one row per person, across their businesses: the groups kept off the
 phone (`push_off`), quiet hours on the clock of `time_zone`, whether the lock
 screen shows the line (`previews`), and when they were offered notifications
-on the phone (`push_asked_at`). No row means everything reaches the phone, no
+on the phone (`push_asked_at`): set when a moment's card (after giving a shift
+away or sending availability) was answered, or by "לא עכשיו" on Today's card
+(closing the pilot, PR 6), each through `public.see_push_ask`, and from then
+neither card comes on any of their devices. A moment's card only seen, and the
+steps to the home screen in an iPhone's Safari, never set it: they are kept in
+that browser alone. No row means everything reaches the phone, no
 quiet hours, details shown. The person alone reads it (select own); anon, the
 secret key and a view session read nothing, and nothing writes a log row.
 It is written only through `public.set_notification_preferences` (one change

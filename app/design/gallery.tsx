@@ -93,6 +93,7 @@ import { GalleryChat } from "./gallery-chat";
 import { GalleryFileField } from "./gallery-documents";
 import { GalleryFile } from "./gallery-file";
 import { GalleryOrderTaking } from "./gallery-order-taking";
+import { GalleryPushAsk } from "./gallery-push-ask";
 import { GalleryAnnouncer, GalleryUndoRows } from "./gallery-undo";
 import { listPhotos } from "./list-photos";
 import { portraits } from "./portraits";
@@ -1074,6 +1075,10 @@ function GalleryBody({
               here by its prop, in the gallery's language. */}
           <OldBrowser shown className="px-0 pt-0" />
           <p className="px-1 text-ink-2 text-sm">{t("oldBrowserHint")}</p>
+        </Section>
+
+        <Section title={t("pushAsk")}>
+          <GalleryPushAsk />
         </Section>
 
         <Section title={t("floatingAction")}>

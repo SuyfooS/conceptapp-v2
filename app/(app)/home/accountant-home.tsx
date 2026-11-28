@@ -37,6 +37,10 @@ import {
   useShekels,
 } from "../clock/pay/pay-parts";
 import type { StationHome } from "../clock/station/station-types";
+import {
+  PushAskToday,
+  type TodayPushAsk,
+} from "../notifications/push-ask-today";
 import { type AppWording, translator } from "../wording";
 import { MyBusinesses } from "./my-businesses";
 import { RefreshOnReturn } from "./refresh-on-return";
@@ -66,6 +70,11 @@ export type AccountantHomeData = {
    * what waits in them. Null otherwise.
    */
   files?: (FilesHome & { form101: boolean; href: string }) | null;
+  /**
+   * The offer of notifications on the phone (closing the pilot, PR 6), as
+   * on Today (`TodayData.pushAsk`); never drawn on the clock station.
+   */
+  pushAsk?: TodayPushAsk | null;
 };
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
@@ -81,7 +90,12 @@ const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
  * how many things the hours engine asks to check. Someone who keeps the books
  * of several businesses (payroll P3b) has them listed last, on phones and
  * tablets, to switch between. On the business's clock station, the card that
- * says to sign out when done comes under the greeting, as on Today. While
+ * says to sign out when done comes under the greeting, as on Today; on any
+ * other device, the quiet card that offers notifications on the phone comes
+ * under the hero (with the clock off, after the rest), as on Today
+ * (`PushAskToday`, closing the pilot, PR 6): only the browser can say it
+ * comes, after Home is drawn, so nothing above it moves, and what comes
+ * after it moves down as it comes. While
  * the hiring file is on, a card "תיקי העובדים" says how many files miss
  * anything and leads to them (H6a): under what to look at before paying,
  * beside the hero from a tablet up. `base` keeps the links inside the demo
@@ -111,6 +125,13 @@ export async function AccountantHome({
   const path = (to: string) => `${base}${to}`;
   const { pay } = data;
   const payHref = (month: string) => path(`/clock/pay?month=${month}`);
+  const pushAsk =
+    data.pushAsk && !data.station ? (
+      <PushAskToday
+        ask={data.pushAsk}
+        settingsHref={path("/notifications/settings")}
+      />
+    ) : null;
 
   return (
     <div className="relative isolate">
@@ -181,11 +202,14 @@ export async function AccountantHome({
 
         {pay ? (
           <div className="grid items-start gap-6 md:grid-cols-2 xl:grid-cols-[minmax(0,5fr)_minmax(0,4fr)_minmax(0,3fr)] xl:gap-8">
-            <PayMonthCard
-              pay={pay}
-              wording={wording}
-              href={payHref(pay.month)}
-            />
+            <div className="flex min-w-0 flex-col gap-6 xl:gap-8">
+              <PayMonthCard
+                pay={pay}
+                wording={wording}
+                href={payHref(pay.month)}
+              />
+              {pushAsk}
+            </div>
             <div className="flex flex-col gap-6 xl:gap-8">
               <BeforeCard
                 pay={pay}
@@ -225,6 +249,7 @@ export async function AccountantHome({
             className="md:max-w-xl"
           />
         ) : null}
+        {pay ? null : pushAsk}
         <MyBusinesses
           businesses={businesses}
           wording={wording}
