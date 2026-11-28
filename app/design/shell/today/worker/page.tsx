@@ -7,7 +7,9 @@ import {
   type WorkerFileState,
 } from "../scenarios";
 
-type Props = { searchParams: Promise<{ file?: string; push?: string }> };
+type Props = {
+  searchParams: Promise<{ file?: string; push?: string; install?: string }>;
+};
 
 // Noa, a worker. In a business that uses the hiring file (H5b): ?file=missing
 // has its card, three parts still to give; ?file=pension, a fund she chose
@@ -18,7 +20,9 @@ type Props = { searchParams: Promise<{ file?: string; push?: string }> };
 // file's card and row lead to its twin in the state they tell. ?push= has
 // the card that offers notifications on the phone (closing the pilot, PR 6)
 // in a state of its own (`pushTwinOf`): its presses ask the browser nothing
-// and keep nothing.
+// and keep nothing. With it, ?install= has the install button on Android
+// after the card's own buttons (closing the pilot, PR 7), in a state of its
+// own too.
 export default function ShellTodayWorker({ searchParams }: Props) {
   return (
     <Suspense>
@@ -43,8 +47,8 @@ const FILE_TWIN_QUERY: Record<WorkerFileState, string | undefined> = {
 };
 
 async function Demo({ searchParams }: Props) {
-  const { file, push } = await searchParams;
-  const pushAsk = pushTwinOf(push);
+  const { file, push, install } = await searchParams;
+  const pushAsk = pushTwinOf(push, install);
   return isFileState(file) ? (
     <TodayDemo
       data={{ ...todayScenarios.workerFile(file), pushAsk }}

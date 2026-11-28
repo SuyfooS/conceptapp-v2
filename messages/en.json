@@ -323,6 +323,17 @@
       "failed": "Didn't turn on",
       "install": "iPhone in Safari"
     },
+    "installApp": "The install button on Android",
+    "installAppHint": "On Android, when Chrome offers to install the app, Today's notifications card and the notification settings show a button that installs it. With no offer, the words say where it is in the menu. Here each state, in the card and in the settings, without asking the browser.",
+    "installAppStates": {
+      "card": "In the notifications card, with Chrome's offer",
+      "ready": "Chrome offers to install",
+      "prompting": "Chrome asking",
+      "installed": "Installed",
+      "dismissed": "Not installed",
+      "menuChrome": "No offer, in Chrome",
+      "menuOther": "No offer, in another browser"
+    },
     "floatingAction": "The floating main action",
     "ring": "How much is done",
     "steps": "Step rows",
@@ -5521,6 +5532,14 @@
         "putAwayHere": "The steps are hidden in this browser. They stay in the notification settings.",
         "putAwayFailed": "The offer couldn't be hidden. Try again.",
         "close": "Close"
+      },
+      "install": {
+        "title": "The app on the home screen",
+        "hint": "You can install the app on the home screen and open it from there with one tap.",
+        "action": "Install the app",
+        "menu": "{browser, select, chrome {You can put the app on the home screen. In Chrome's menu (the three dots): Add to Home screen.} other {You can put the app on the home screen. In the browser's menu: Add to Home screen.}}",
+        "installed": "The app is installed. From now on, open it from the home screen.",
+        "dismissed": "{browser, select, chrome {The app wasn't installed. You can do it later too, in Chrome's menu (the three dots): Add to Home screen.} other {The app wasn't installed. You can do it later too, in the browser's menu: Add to Home screen.}}"
       }
     },
     "lists": {
