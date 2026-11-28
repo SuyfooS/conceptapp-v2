@@ -1,6 +1,8 @@
 import AxeBuilder from "@axe-core/playwright";
 import he from "../messages/he.json" with { type: "json" };
+import { isolateName } from "../packages/domain/bidi";
 import { MODULE_KEYS } from "../packages/domain/modules";
+import { shareText } from "../packages/domain/share";
 import { businessBySlug, invitesBySlug } from "./db";
 import { signIn } from "./session";
 import { heT } from "./t";
@@ -376,6 +378,37 @@ test("a platform admin opens a restaurant and invites its staff", async ({
     { name: "שי בדיקה", phone: "+972500000702", role: "manager" },
     { name: "תמר בדיקה", phone: "+972500000703", role: "worker" },
   ]);
+
+  // The owner's first link, made here, goes out on WhatsApp to her number
+  // with the owner's own sentence (closing the pilot, PR 4): read here,
+  // never opened. The press went, so "וואטסאפ" has the focus.
+  const owner = "רונית בדיקה";
+  await page
+    .getByRole("button", {
+      name: heT("admin.setup.invite.createFor", { name: owner }),
+    })
+    .filter({ visible: true })
+    .click();
+  const field = page
+    .getByLabel(heT("admin.setup.invite.linkFor", { name: owner }))
+    .filter({ visible: true });
+  await expect(field).toHaveValue(/\/join\/[A-Za-z0-9_-]{43}$/);
+  const whatsapp = page
+    .getByRole("link", {
+      name: heT("app.team.pending.whatsappFor", { name: owner }),
+    })
+    .filter({ visible: true });
+  await expect(whatsapp).toBeFocused();
+  const href = new URL((await whatsapp.getAttribute("href")) ?? "");
+  expect(`${href.origin}${href.pathname}`).toBe("https://wa.me/972500000701");
+  expect(href.searchParams.get("text")).toBe(
+    shareText(
+      heT("admin.setup.invite.ownerMessage", { business: isolateName(name) }),
+      await field.inputValue(),
+    ),
+  );
+  await expect(whatsapp).toHaveAttribute("target", "_blank");
+  await expectCleanPage(page);
 });
 
 test("a business manager cannot open the wizard", async ({ page }) => {

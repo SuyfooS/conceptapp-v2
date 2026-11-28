@@ -4,7 +4,7 @@ import { inviteChoices, namedRoleShown, ownerOnlyRoles } from "@domain/team";
 import { Suspense } from "react";
 import { TeamInviteView } from "../../../../(app)/team/invite/invite-view";
 import { baseWording } from "../../../../(app)/wording";
-import { demoNamedRole } from "../../data";
+import { business, demoNamedRole } from "../../data";
 import { demoInviteAction } from "../actions";
 
 type Props = { searchParams: Promise<{ as?: string }> };
@@ -52,6 +52,8 @@ async function Demo({ searchParams }: Props) {
       namedRoles={named.map(namedRoleShown)}
       teamHref="/design/shell/team"
       invite={demoInviteAction}
+      // A twin's number may be someone's: WhatsApp asks whom to send to.
+      share={{ business: business.name, toNumber: false }}
       wording={baseWording}
     />
   );

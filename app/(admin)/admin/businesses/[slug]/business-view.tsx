@@ -30,6 +30,7 @@ import {
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 import type { ComponentProps } from "react";
+import type { InviteShareSetup } from "@/app/invite-share";
 import { InviteLink } from "./invite-link";
 
 type T = Awaited<ReturnType<typeof getTranslations<"admin">>>;
@@ -70,6 +71,7 @@ export async function BusinessView({
   viewAs,
   namedRoles = [],
   issue,
+  whatsappToNumber = false,
 }: {
   business: BusinessSetup;
   listHref: string;
@@ -98,6 +100,12 @@ export async function BusinessView({
   /** The business's live named roles, to view it as too; none by default. */
   namedRoles?: readonly NamedRole[];
   issue: Issue;
+  /**
+   * Each link on WhatsApp to the invite's own number: the real page's,
+   * behind the database. A twin's made-up numbers may be someone's, so by
+   * default WhatsApp asks whom to send to.
+   */
+  whatsappToNumber?: boolean;
 }) {
   const t = await getTranslations("admin");
   // Its rows read as the pages they open are named, as in the owner's /manage.
@@ -215,6 +223,7 @@ export async function BusinessView({
             t={t}
             business={business}
             issue={issue}
+            share={{ business: business.name, toNumber: whatsappToNumber }}
             importHref={importHref}
             roles={
               rolesHref
@@ -447,6 +456,7 @@ function People({
   t,
   business,
   issue,
+  share,
   importHref,
   roles,
   access,
@@ -454,6 +464,8 @@ function People({
   t: T;
   business: BusinessSetup;
   issue: Issue;
+  /** Where each link goes on WhatsApp (`InviteShare`). */
+  share: InviteShareSetup;
   /** "הוספה מרשימה", beside the count: never a second accent button. */
   importHref: string | null;
   /** Roles and permissions, its row as the owner's /manage names it. */
@@ -488,6 +500,10 @@ function People({
       <InviteLink
         inviteId={p.inviteId}
         name={name(p.name)}
+        phone={p.phone}
+        share={share}
+        // The owner's first link, from here, says it is theirs to manage.
+        words={p.role === "owner" ? "owner" : "team"}
         renew={p.status === "expired"}
         issue={issue}
       />

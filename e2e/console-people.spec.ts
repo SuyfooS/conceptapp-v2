@@ -1,7 +1,10 @@
 import AxeBuilder from "@axe-core/playwright";
 import he from "../messages/he.json" with { type: "json" };
+import { isolateName } from "../packages/domain/bidi";
+import { shareText } from "../packages/domain/share";
 import { demoInvite, inviteToDemo, removeDemoInvites } from "./db";
 import { signIn } from "./session";
+import { heT } from "./t";
 import { expect, type Page, test } from "./test";
 
 // The ConceptApp team sets up people from the console (Orel, 7 November
@@ -29,6 +32,41 @@ const inv = he.admin.setup.invite;
 const ti = he.app.team.invite;
 
 type Size = keyof typeof EXPIRED;
+
+/**
+ * A link made here goes out on WhatsApp to the number it was made for, with
+ * the team's sentence for anyone but an owner (closing the pilot, PR 4):
+ * read here, never opened. `label` names the link's field.
+ */
+async function expectWhatsapp(
+  page: Page,
+  person: { name: string; e164: string },
+  label: string,
+) {
+  const whatsapp = page
+    .getByRole("link", {
+      name: heT("app.team.pending.whatsappFor", { name: person.name }),
+    })
+    .filter({ visible: true });
+  const link = await page
+    .getByLabel(label)
+    .filter({ visible: true })
+    .inputValue();
+  const href = new URL((await whatsapp.getAttribute("href")) ?? "");
+  expect(`${href.origin}${href.pathname}`).toBe(
+    `https://wa.me/${person.e164.slice(1)}`,
+  );
+  expect(href.searchParams.get("text")).toBe(
+    shareText(
+      heT("app.team.pending.message", {
+        business: isolateName("מסעדת הדגמה"),
+      }),
+      link,
+    ),
+  );
+  await expect(whatsapp).toHaveAttribute("target", "_blank");
+  await expect(whatsapp).toHaveAttribute("rel", /noopener/);
+}
 
 async function expectCleanPage(page: Page) {
   await expect(page).toHaveTitle(/ConceptApp$/);
@@ -93,6 +131,12 @@ test("the console renews an invite that ran out", async ({
     .getByLabel(inv.linkFor.replace("{name}", person.name))
     .filter({ visible: true });
   await expect(field).toHaveValue(/\/join\/[A-Za-z0-9_-]{43}$/);
+  // On WhatsApp to their number, with the sentence; or copied.
+  await expectWhatsapp(
+    page,
+    person,
+    inv.linkFor.replace("{name}", person.name),
+  );
   await expect
     .poll(async () => (await demoInvite(person.e164))?.open)
     .toBe(true);
@@ -145,6 +189,12 @@ test("the console adds a person, with a link to send, and no second owner", asyn
       name: ti.ready.replace("{name}", person.name),
     }),
   ).toBeVisible();
+  // Its link on WhatsApp to the number added, with the team's sentence.
+  await expectWhatsapp(
+    page,
+    person,
+    he.app.team.link.linkFor.replace("{name}", person.name),
+  );
   await page.screenshot({
     path: testInfo.outputPath("console-added.png"),
     fullPage: true,

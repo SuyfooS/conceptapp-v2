@@ -152,7 +152,12 @@ export async function addPersonAction(
     }
     revalidatePath(`/admin/businesses/${business.slug}`);
     return {
-      done: { name: parsed.value.name, phone: parsed.value.phone, link },
+      done: {
+        name: parsed.value.name,
+        phone: parsed.value.phone,
+        role: parsed.value.role,
+        link,
+      },
     };
   } catch (error) {
     console.error("inviteFromConsole failed", (error as Error).message);

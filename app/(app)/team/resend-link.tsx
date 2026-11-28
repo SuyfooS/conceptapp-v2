@@ -14,7 +14,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { CopyLink } from "@/app/copy-link";
+import { InviteShare, type InviteShareSetup } from "@/app/invite-share";
 import { useAnswerCount } from "../../(auth)/step-results";
 import type { ResendState } from "./actions";
 
@@ -55,20 +55,28 @@ export function useInviteLinks(): Links | null {
 
 /**
  * "New link" for one invite nobody claimed: issues a fresh link (the old
- * one stops working), then shows it with a copy button to send on, in
- * every shape of the screen (`InviteLinks`). The press went as the link
- * arrived, so the copy button takes the focus, and says whose link it
- * copies; with the focus put elsewhere meanwhile, it stays there, and the
- * announcer says the link is ready. A refusal is a line drawn anew each
- * time, and the press, busy meanwhile, takes back the focus it lost.
+ * one stops working, and the invite runs another 14 days), then shows it
+ * to send on, in every shape of the screen (`InviteLinks`): "וואטסאפ" to
+ * the invite's number with the sentence and the link written, and the link
+ * with its copy button (`InviteShare`; closing the pilot, PR 4). The press
+ * went as the link arrived, so "וואטסאפ" takes the focus, and says whose
+ * link it sends, as "עוד לא קיבלו קישור" does; with the focus put elsewhere
+ * meanwhile, it stays there, and the announcer says the link is ready. A
+ * refusal is a line drawn anew each time, and the press, busy meanwhile,
+ * takes back the focus it lost.
  */
 export function ResendLink({
   inviteId,
   name,
+  phone,
+  share,
   resend,
 }: {
   inviteId: string;
   name: string;
+  /** The invite's number, in E.164: where WhatsApp opens a chat. */
+  phone: string;
+  share: InviteShareSetup;
   /** `resendInviteAction`, or the design demo's stand-in. */
   resend: (
     inviteId: string,
@@ -84,7 +92,7 @@ export function ResendLink({
   );
   const answer = useAnswerCount(state);
   const press = useRef<HTMLButtonElement>(null);
-  const copy = useRef<HTMLButtonElement>(null);
+  const whatsapp = useRef<HTMLAnchorElement>(null);
   // The state it starts with is no answer.
   const seen = useRef<ResendState | null>(state);
 
@@ -98,21 +106,26 @@ export function ResendLink({
     shared?.keep(inviteId, state.link);
     // Never the page's title in its place (the other shape on screen now):
     // the link ready is said, then the title.
-    focusOrSay([copy.current], () => announce(t("ready", { name })));
+    focusOrSay([whatsapp.current], () => announce(t("ready", { name })));
   }, [state, shared, inviteId, name, t]);
 
   // Made here, or in the screen's other shape.
   const link = state.link ?? shared?.links.get(inviteId);
   if (link) {
     return (
-      <CopyLink
+      <InviteShare
         link={link}
-        label={t("linkFor", { name })}
-        hint={t("hint")}
-        copy={t("copy")}
-        copied={t("copied")}
-        failed={t("copyFailed")}
-        buttonRef={copy}
+        phone={phone}
+        name={name}
+        share={share}
+        copy={{
+          label: t("linkFor", { name }),
+          hint: t("hint"),
+          copy: t("copy"),
+          copied: t("copied"),
+          failed: t("copyFailed"),
+        }}
+        whatsappRef={whatsapp}
       />
     );
   }

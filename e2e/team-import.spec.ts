@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import he from "../messages/he.json" with { type: "json" };
+import { isolateName } from "../packages/domain/bidi";
 import { shareText } from "../packages/domain/share";
 import { announcer, heardSoFar, saidSince } from "./announcer";
 import { HOLD_MS } from "./build-screen";
@@ -375,7 +376,9 @@ test("the Team screen's import: a sheet saved at once with no link, each link se
     );
     expect(href.searchParams.get("text")).toBe(
       shareText(
-        heT("app.team.pending.message", { business: business.name }),
+        heT("app.team.pending.message", {
+          business: isolateName(business.name),
+        }),
         link,
       ),
     );

@@ -86,6 +86,8 @@ export default async function BusinessSetupPage({
       }
       namedRoles={namedRoles}
       issue={inviteLinkAction}
+      // Each link to the number it was made for: the real page alone.
+      whatsappToNumber
     />
   );
 }

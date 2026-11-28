@@ -113,6 +113,7 @@ describe("the done screen's send list", () => {
           },
         ],
         renew: resend,
+        share: send,
       }),
     );
     const page = text(html);
@@ -131,7 +132,11 @@ describe("the done screen's send list", () => {
 
   it("draws no expired row with none", () => {
     expect(
-      text(drawn(createElement(DoneExpired, { rows: [], renew: resend }))),
+      text(
+        drawn(
+          createElement(DoneExpired, { rows: [], renew: resend, share: send }),
+        ),
+      ),
     ).toBe("");
   });
 });

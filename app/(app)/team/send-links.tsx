@@ -1,7 +1,6 @@
 "use client";
 
 import { displayIsraeliMobile } from "@domain/phone";
-import { shareText, whatsappHref, whatsappToHref } from "@domain/share";
 import { announce } from "@ui/announcer";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
@@ -9,7 +8,7 @@ import { cn } from "@ui/cn";
 import { arrived, focusFirst, focusOrSay } from "@ui/focus-after";
 import { PageSection } from "@ui/page";
 import { PersonAvatar, PersonList, PersonRow } from "@ui/person-row";
-import { Link2, MessageCircle } from "lucide-react";
+import { Link2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import {
   createContext,
@@ -20,7 +19,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { CopyLink } from "@/app/copy-link";
+import { clearOfTabBar, InviteShare } from "@/app/invite-share";
 import { useAnswerCount } from "../../(auth)/step-results";
 import type { ResendState } from "./actions";
 import {
@@ -90,16 +89,6 @@ const initial: ResendState = {};
 
 /** Outside `PendingLinks`, where no screen draws it: nothing is made. */
 const noResend: Resend = async (_inviteId, prev) => prev;
-
-/**
- * What the focus goes on to (the next person's "יצירת קישור", then their
- * "וואטסאפ") comes into view clear of the tab bar floating over the page's
- * bottom on phones and tablets (`AppShell`, its band and its fade): the
- * browser counts nothing fixed over the page, so a row on screen under the
- * bar would take the focus there (WCAG 2.4.11). A computer has no bar.
- */
-const clearOfTabBar =
-  "max-xl:scroll-mb-[calc(env(safe-area-inset-bottom)+6rem)]";
 
 /**
  * The invites with no link yet, for every shape at once: a row whose link was
@@ -410,7 +399,8 @@ export function ListedUndo({ ids }: { ids: readonly string[] }) {
  * keeps the row in place (`PendingLinks`); once made, "וואטסאפ" (a chat to
  * their number with the message and the link written, the person still
  * pressing send there; a real link, opened by the press itself, so nothing
- * blocks it) and the link with its copy button, in every shape
+ * blocks it) and the link with its copy button (`InviteShare`, as every
+ * screen that makes an invite's link has them), in every shape
  * (`InviteLinks`). The press went as the link arrived, so "וואטסאפ" takes
  * the focus; with the focus put elsewhere meanwhile it stays there, and the
  * announcer says the link is ready. After WhatsApp or a copy the row says
@@ -486,48 +476,28 @@ export function SendLinkRow({ row }: { row: PendingRow }) {
   // Made here, or in the screen's other shape.
   const link = state.link ?? links?.links.get(row.id);
   if (link) {
-    const text = shareText(
-      t("pending.message", { business: pending?.business ?? "" }),
-      link,
-    );
-    const sent = pending?.sent.get(row.id);
     return (
-      <div className="flex w-full min-w-0 flex-col gap-3">
-        <Button
-          asChild
-          variant="secondary"
-          className={cn("w-full md:w-auto md:self-start", clearOfTabBar)}
-        >
-          <a
-            ref={whatsapp}
-            href={
-              pending?.toNumber
-                ? whatsappToHref(row.phone, text)
-                : whatsappHref(text)
-            }
-            target="_blank"
-            rel="noopener noreferrer"
-            // The word it shows, then whom it goes to.
-            aria-label={t("pending.whatsappFor", { name: row.shown })}
-            onClick={(event) => goNext("whatsapp", event.currentTarget)}
-          >
-            <MessageCircle aria-hidden="true" />
-            {t("pending.whatsapp")}
-          </a>
-        </Button>
-        {sent === "whatsapp" ? (
-          <p className="px-1 text-ink-2 text-sm">{t("pending.opened")}</p>
-        ) : null}
-        <CopyLink
-          link={link}
-          label={t("link.linkFor", { name: row.shown })}
-          hint={t("link.hint")}
-          copy={t("link.copy")}
-          copied={t("link.copied")}
-          failed={t("link.copyFailed")}
-          onCopied={(button) => goNext("copied", button)}
-        />
-      </div>
+      <InviteShare
+        link={link}
+        phone={row.phone}
+        name={row.shown}
+        share={{
+          business: pending?.business ?? "",
+          toNumber: pending?.toNumber === true,
+        }}
+        copy={{
+          label: t("link.linkFor", { name: row.shown }),
+          hint: t("link.hint"),
+          copy: t("link.copy"),
+          copied: t("link.copied"),
+          failed: t("link.copyFailed"),
+        }}
+        whatsappRef={whatsapp}
+        // Said in every shape, as the screen keeps it.
+        opened={pending?.sent.get(row.id) === "whatsapp"}
+        onWhatsapp={(anchor) => goNext("whatsapp", anchor)}
+        onCopied={(button) => goNext("copied", button)}
+      />
     );
   }
 

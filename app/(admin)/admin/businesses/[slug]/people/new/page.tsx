@@ -34,6 +34,8 @@ export default async function AddPersonPage({
         id: business.id,
         slug: business.slug,
       })}
+      // The link to the number it was made for: the real page alone.
+      whatsappToNumber
     />
   );
 }

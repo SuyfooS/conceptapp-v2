@@ -44,6 +44,8 @@ export default async function TeamInvitePage() {
       namedRoles={named.map(namedRoleShown)}
       teamHref="/team"
       invite={inviteAction}
+      // The link to the number it was made for: the real screen alone.
+      share={{ business: membership.business.name, toNumber: true }}
       wording={await currentWording()}
     />
   );
