@@ -190,11 +190,12 @@ select is(
 select is(
   (select count(*)::integer from public.departments
    where business_id = '40000000-0000-4000-b000-00000000000d')::text
-  || '/' || (select string_agg(t.key || ':' || t.recipient_kind || ':' || t.recipient_role::text,
+  || '/' || (select string_agg(t.key || ':' || coalesce(t.recipient_kind, 'each time') || ':'
+       || num_nonnulls(t.recipient_department, t.recipient_shift, t.recipient_role),
        ',' order by t.position)
      from public.list_templates t where t.business_id = '40000000-0000-4000-b000-00000000000d'),
-  '0/opening:role:worker,closing:role:worker',
-  'the general template brings no departments, and an opening and a closing list for its workers'
+  '0/opening:each time:0,closing:each time:0',
+  'the general template brings no departments, and an opening and a closing list with no fixed recipient, chosen each time (20261128000700_general_lists.sql)'
 );
 
 insert into public.templates (key, definition)
