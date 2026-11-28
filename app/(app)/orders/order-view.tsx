@@ -62,7 +62,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type Ref, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { useSignedInId } from "@/app/release-note";
+import { usePutBack, useSignedInId } from "@/app/release-note";
 import { takeKept } from "@/app/stale-build";
 import { useHeldWrite } from "../use-held-write";
 import { CancelOrderSheet } from "./cancel-order-sheet";
@@ -271,14 +271,18 @@ export function OrderView({
   const [label, setLabel] = useState(known?.takeaway?.label ?? "");
   // Loaded again as its name met the release before: the name as typed is
   // back in its field, unsaved, and goes as the field is left again; never
-  // saved by itself.
+  // saved by itself. The frame is told whether it came back: another
+  // order's isn't put back, and the frame then says the press's words.
   const signedIn = useSignedInId();
+  const frameBack = usePutBack();
   const orderId = known?.id ?? null;
   useEffect(() => {
     if (orderId === null) return;
     const kept = takeKept(signedIn, KEPT_LABEL, KeptLabel);
-    if (kept?.order === orderId) setLabel(kept.label);
-  }, [signedIn, orderId]);
+    const ours = kept !== null && kept.order === orderId;
+    if (ours) setLabel(kept.label);
+    frameBack(ours);
+  }, [signedIn, orderId, frameBack]);
   const [sending, setSending] = useState(false);
   // What was just added, for screen readers: a new node each time, so a
   // second tap on the same item is said again.

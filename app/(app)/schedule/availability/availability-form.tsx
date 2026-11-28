@@ -24,7 +24,7 @@ import {
   useState,
 } from "react";
 import { z } from "zod";
-import { useSignedInId } from "@/app/release-note";
+import { usePutBack, useSignedInId } from "@/app/release-note";
 import {
   isStaleBuild,
   type KeepForPage,
@@ -114,8 +114,10 @@ export function AvailabilityForm({
   ask = null,
 }: AvailabilityFormProps) {
   const t = useTranslations("app.availability");
-  // Whose press it is, for a page loaded again for a release.
+  // Whose press it is, for a page loaded again for a release, and the
+  // frame's word that the week came back.
   const signedIn = useSignedInId();
+  const frameBack = usePutBack();
   const [state, action, pending] = useActionState(
     async (
       prev: AvailabilityState,
@@ -161,10 +163,16 @@ export function AvailabilityForm({
   const offerPush = pushAsk.offer;
 
   // Loaded again as Send met the release before: the week as it was marked
-  // is back on the form, for the person to send; never sent by itself.
+  // is back on the form, for the person to send; never sent by itself. The
+  // frame is told either way: another week's, or one that doesn't read,
+  // isn't put back, and the frame then says the press's words.
   useEffect(() => {
     const kept = takeKept(signedIn, "availability", KeptWeek);
-    if (!kept || kept.week !== week.start) return;
+    if (!kept || kept.week !== week.start) {
+      frameBack(false);
+      return;
+    }
+    frameBack(true);
     setDays(
       Object.fromEntries(
         week.dates.map((date) => [
@@ -175,7 +183,7 @@ export function AvailabilityForm({
     );
     setNote(kept.note);
     setDirty(true);
-  }, [signedIn, week.start, week.dates]);
+  }, [signedIn, week.start, week.dates, frameBack]);
 
   // "Saved" shows for a moment; the hero keeps saying it was sent.
   useEffect(() => {

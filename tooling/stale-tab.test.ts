@@ -174,6 +174,20 @@ describe("a whole page loaded from the app's code", () => {
     expect(read(WRAPPER)).toMatch(/export const KEPT_LABEL = "takeaway";/);
     expect(read(WRAPPED_BY)).toMatch(/\{ setLabel: keepLabel \}/);
     expect(callsOf(/\btakeKept\(/g)).toEqual(TAKES);
+    // Each screen that takes back tells the frame whether it put it back,
+    // which says the screen's words only then (`wordsOnceBack`).
+    for (const file of Object.keys(TAKES)) {
+      const source = read(file);
+      expect(source, file).toMatch(/const frameBack = usePutBack\(\);/);
+      expect(source, file).toMatch(
+        /\bframeBack\((true|false|ours|back !== null)\);/,
+      );
+    }
+    // And a list keeps nothing for a page that won't show it: its change
+    // met the release after the screen was left.
+    expect(read("app/(app)/lists/[id]/list-screen.tsx")).toMatch(
+      /const keep = onScreen\.current\s*\? typedToKeep\(before, change, fix\)\s*: undefined;/,
+    );
   });
 
   it("from a chat, comes only from its own press, keeping what is written", () => {

@@ -67,8 +67,7 @@ import {
   useState,
   useTransition,
 } from "react";
-import { z } from "zod";
-import { useSignedInId } from "@/app/release-note";
+import { usePutBack, useSignedInId } from "@/app/release-note";
 import {
   type KeepForPage,
   reloadForRelease,
@@ -86,6 +85,7 @@ import type {
   ListPhotoResult,
   ListScreenData,
 } from "../list-types";
+import { KeptTyped, needsMinus, typedBack } from "../typed-back";
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 
@@ -196,28 +196,8 @@ const typed = (reading: number | null, minus: boolean) =>
 const countText = (count: number | null) =>
   count === null ? "" : String(count);
 
-/**
- * What was typed on a list and not saved when a change met a page from the
- * release before (closing the pilot, PR 1b), kept for the page loaded
- * again, by item: each number's or note's field as typed, a number's minus
- * with it, an order's count, and a comment being saved or written.
- */
-const KeptTyped = z.object({
-  fields: z.record(z.string(), z.string()),
-  minus: z.record(z.string(), z.boolean()),
-  given: z.record(z.string(), z.string()),
-  comment: z.object({ item: z.string(), text: z.string() }).nullable(),
-});
-
-type KeptTyped = z.infer<typeof KeptTyped>;
-
 /** The range as words: "0–5", "from 0", "up to 5" (`numberRange`). */
 const rangeOf = numberRange;
-
-/** An item whose range goes below zero needs a minus sign to be typed. */
-const needsMinus = (item: ListItem) =>
-  item.kind === "number" &&
-  ((item.min !== null && item.min < 0) || (item.max !== null && item.max < 0));
 
 /**
  * A list being filled. A tick saves at once and shows at once, and goes back
@@ -355,8 +335,10 @@ function ListScreen({
   const th = useTranslations("app.lists.list.history");
   const router = useRouter();
   const { list, lookups, userId, timeZone, can } = data;
-  // Whose press it is, for a page loaded again for a release: the frame's.
+  // Whose press it is, for a page loaded again for a release: the frame's,
+  // which is told whether what was typed came back.
   const signedIn = useSignedInId();
+  const frameBack = usePutBack();
   // Fixing a finished list in place (L6b-1): the screen's own state. How
   // many changes it saved, for "התיקון נשמר", the saves on their way, which
   // "סיום התיקון" waits for, and how many changes were refused, so it stays
@@ -516,38 +498,34 @@ function ListScreen({
 
   // Loaded again as a change met the release before: what was typed is back
   // in its field, or in its comment's sheet, unsaved, for the person to save
-  // again; never saved by itself.
+  // again; never saved by itself. Typed while the list was fixed, it opens
+  // being fixed again, if it still may be; a list neither filled nor fixed
+  // takes nothing back (`typedBack`). The frame is told either way, and says
+  // it came back only when it did.
   // biome-ignore lint/correctness/useExhaustiveDependencies: once, as the screen opens, with the list it opened on
   useEffect(() => {
-    const kept = takeKept(signedIn, "list", KeptTyped);
-    if (!kept) return;
-    const here = new Map(list.items.map((item) => [item.id, item]));
-    const kindOf = (id: string) => here.get(id)?.kind;
-    const only = <T,>(
-      record: Record<string, T>,
-      keep: (id: string) => boolean,
-    ) => Object.fromEntries(Object.entries(record).filter(([id]) => keep(id)));
-    const typedHere = (id: string) =>
-      kindOf(id) === "number" || kindOf(id) === "note";
-    setDrafts((current) => ({ ...current, ...only(kept.fields, typedHere) }));
-    setMinus((current) => ({
-      ...current,
-      ...only(kept.minus, (id) => {
-        const item = here.get(id);
-        return item !== undefined && needsMinus(item);
-      }),
-    }));
-    if (list.asksQuantities) {
-      setGivenDrafts((current) => ({
-        ...current,
-        ...only(kept.given, (id) => kindOf(id) === "check"),
-      }));
-    }
-    if (kept.comment && can.fill && here.has(kept.comment.item)) {
-      setCommentDraft(kept.comment.text);
-      setCommentFor(kept.comment.item);
+    const back = typedBack(takeKept(signedIn, "list", KeptTyped), list, can);
+    frameBack(back !== null);
+    if (!back) return;
+    if (back.fixing) setFixing(true);
+    setDrafts((current) => ({ ...current, ...back.fields }));
+    setMinus((current) => ({ ...current, ...back.minus }));
+    setGivenDrafts((current) => ({ ...current, ...back.given }));
+    if (back.comment) {
+      setCommentDraft(back.comment.text);
+      setCommentFor(back.comment.item);
     }
   }, [signedIn]);
+  // Whether the screen is still there: a change that meets the release
+  // after it was left (a count saved on the way out) keeps nothing, as
+  // nothing of this screen comes back on the page loaded.
+  const onScreen = useRef(false);
+  useEffect(() => {
+    onScreen.current = true;
+    return () => {
+      onScreen.current = false;
+    };
+  }, []);
   useEffect(() => {
     fixingNow.current = fixing;
   }, [fixing]);
@@ -797,15 +775,25 @@ function ListScreen({
    * What was typed on the list and isn't saved, for the page loaded again
    * as `change` to `saving` meets the release before: each field and
    * count typed that differs from its item as saved here (`saving` as it
-   * was before this change), and the comment being saved or written.
+   * was before this change), the comment being saved or written, and
+   * whether it was a fix (`fix`), so the list loaded is fixed again.
    * Nothing, for the press's own words, when nothing typed would be lost: a
-   * tick, its count with it, or a minus is pressed again.
+   * tick, its count with it, or a minus is pressed again. Such a press with
+   * other typing kept says both: the press wasn't recorded, and what was
+   * typed is back ("pressTyped").
    */
   function typedToKeep(
     saving: ListItem,
     change: ItemChange,
+    fix: boolean,
   ): KeepForPage | undefined {
-    const kept: KeptTyped = { fields: {}, minus: {}, given: {}, comment: null };
+    const kept: KeptTyped = {
+      fields: {},
+      minus: {},
+      given: {},
+      comment: null,
+      fix,
+    };
     for (const shown of itemsNow.current) {
       const item = shown.id === saving.id ? saving : shown;
       const draft = draftsNow.current[item.id];
@@ -845,7 +833,14 @@ function ListScreen({
       Object.keys(kept.fields).length > 0 ||
       Object.keys(kept.given).length > 0 ||
       kept.comment !== null;
-    return any ? { of: "list", value: kept, words: "typed" } : undefined;
+    if (!any) return undefined;
+    // The change itself among what is kept (a field, a count, a comment), or
+    // a press made again (a tick, a minus) beside what else was typed.
+    const own =
+      saving.id in kept.fields ||
+      saving.id in kept.given ||
+      kept.comment?.item === saving.id;
+    return { of: "list", value: kept, words: own ? "typed" : "pressTyped" };
   }
 
   async function saveNow(item: ListItem, change: ItemChange): Promise<boolean> {
@@ -928,9 +923,12 @@ function ListScreen({
       // A page from the release before loads again, the change shown until
       // it has gone, and is never sent again: the page loaded shows the item
       // as the list has it, and the person ticks it again; what was typed
-      // is kept for it, and put back unsaved. A page that stays puts it back
-      // and says it failed, as any other failure.
-      const keep = typedToKeep(before, change);
+      // is kept for it, and put back unsaved, while the screen is still
+      // there. A page that stays puts it back and says it failed, as any
+      // other failure.
+      const keep = onScreen.current
+        ? typedToKeep(before, change, fix)
+        : undefined;
       if (reloadForRelease(error, signedIn, keep)) await untilReloaded();
       saved = { ok: false, failure: "failed" };
     }

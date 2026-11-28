@@ -7,6 +7,7 @@ import {
   KEPT_KEY,
   type KeepForPage,
   NOTE_FOR_MS,
+  PUT_BACK_WAIT_MS,
   RELEASE_WORDS,
   RELOAD_EVERY_MS,
   RELOAD_WAIT_MS,
@@ -18,6 +19,7 @@ import {
   takeUpdatedNote,
   UPDATED_KEY,
   untilReloaded,
+  wordsOnceBack,
 } from "./stale-build";
 
 /*
@@ -495,11 +497,17 @@ describe("what a press keeps for the page loaded again", () => {
   });
 
   it("says the press's own words for a note with none, as the release before left it, or with words it doesn't know", () => {
-    expect(RELEASE_WORDS).toEqual(["toast", "availability", "typed"]);
+    expect(RELEASE_WORDS).toEqual([
+      "toast",
+      "availability",
+      "typed",
+      "pressTyped",
+    ]);
     for (const [kept, words] of [
       [`${START} ${A}`, "toast"],
       [`${START} ${A} toast`, "toast"],
       [`${START} ${A} typed`, "typed"],
+      [`${START} ${A} pressTyped`, "pressTyped"],
       [`${START} ${A} later`, "toast"],
       [`${START} ${A} typed more`, null],
     ] as const) {
@@ -507,6 +515,24 @@ describe("what a press keeps for the page loaded again", () => {
       expect(takeUpdatedNote(A), kept).toBe(words);
       expect(tab.map.has(UPDATED_KEY)).toBe(false);
     }
+  });
+
+  it("says the screen's words only once it put the writing back, and the press's otherwise", () => {
+    // The press's own words need no answer from the screen.
+    expect(wordsOnceBack("toast", null)).toBe("toast");
+    expect(wordsOnceBack("toast", true)).toBe("toast");
+    expect(wordsOnceBack("toast", false)).toBe("toast");
+    for (const words of ["availability", "typed", "pressTyped"] as const) {
+      // Waiting for the screen to say.
+      expect(wordsOnceBack(words, null), words).toBeNull();
+      // Put back: its words.
+      expect(wordsOnceBack(words, true), words).toBe(words);
+      // Nothing put back (another week, a value it doesn't read, a list
+      // nobody may fill or fix), or no screen said in time: the press's.
+      expect(wordsOnceBack(words, false), words).toBe("toast");
+    }
+    // A screen says as it opens; the frame waits a few seconds at most.
+    expect(PUT_BACK_WAIT_MS).toBe(5_000);
   });
 
   it("says the availability wasn't sent and what was marked stays, or what was typed is back", async () => {
@@ -523,6 +549,14 @@ describe("what a press keeps for the page loaded again", () => {
     );
     expect(en.app.updated.typed).toBe(
       "The app was updated, and what you typed wasn't saved. It's back where you typed it, to save again.",
+    );
+    // A press made again beside what else was typed: both said, the press
+    // first, in the toast's own words.
+    expect(he.app.updated.pressTyped).toBe(
+      "האפליקציה התעדכנה, והלחיצה לא נרשמה: לוחצים שוב. גם מה שכתבתם לא נשמר, והוא חזר למקום שבו כתבתם.",
+    );
+    expect(en.app.updated.pressTyped).toBe(
+      "The app was updated, and your press wasn't recorded: press again. What you typed wasn't saved either, and it's back where you typed it.",
     );
     // Its button's own name, as the availability screen says it.
     expect(he.app.updated.availability).toContain(he.app.availability.submit);

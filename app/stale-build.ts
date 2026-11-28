@@ -19,7 +19,9 @@ import { z } from "zod";
  * carries it keeps it for the page loaded (`keep`): the week's availability
  * as marked, a list's typed fields, a takeaway's name. That screen puts it
  * back where it was, never saved by itself (`takeKept`), and the note says
- * so in its words. The press waits for the page to go, a while at most
+ * so in its words once that screen says it did (`wordsOnceBack`): a screen
+ * that took nothing back, or none at all, leaves the press's own words.
+ * The press waits for the page to go, a while at most
  * (`untilReloaded`): a page still here then, its reload stopped, says the
  * press failed, as before, and lets go of the note and of what it kept. A
  * chat never loads itself again, since what is written would go with the
@@ -110,11 +112,43 @@ export const RELOAD_WAIT_MS = 15_000;
  * What the page loaded again says, as `app.updated.<words>`: the press
  * wasn't recorded ("toast"); the availability wasn't sent, and what was
  * marked is still on it ("availability"); what was typed wasn't saved, and
- * is back where it was typed ("typed").
+ * is back where it was typed ("typed"); the press wasn't recorded, and what
+ * else was typed is back where it was typed ("pressTyped", a list's tick
+ * or minus beside a field still typed). All but "toast" only once the
+ * screen put it back (`wordsOnceBack`).
  */
-export const RELEASE_WORDS = ["toast", "availability", "typed"] as const;
+export const RELEASE_WORDS = [
+  "toast",
+  "availability",
+  "typed",
+  "pressTyped",
+] as const;
 
 export type ReleaseWords = (typeof RELEASE_WORDS)[number];
+
+/**
+ * How long the page loaded again waits for its screen to say whether it put
+ * back what the press kept, before it says the press's own words. A screen
+ * says so as it opens; none does on a page where nothing takes it back (a
+ * press whose screen was left before it failed, a screen that failed).
+ */
+export const PUT_BACK_WAIT_MS = 5_000;
+
+/**
+ * The words the page loaded again says, from the note's (`noted`) and
+ * whether its screen put back what the press kept (`back`, null until it
+ * says, or until `PUT_BACK_WAIT_MS`, false then): the screen's words only
+ * when it did; else the press's own ("toast"), which a note in them says at
+ * once. Null while the screen may still say.
+ */
+export function wordsOnceBack(
+  noted: ReleaseWords,
+  back: boolean | null,
+): ReleaseWords | null {
+  if (noted === "toast") return "toast";
+  if (back === null) return null;
+  return back ? noted : "toast";
+}
 
 /**
  * What a press keeps for the page loaded again: `value`, under `of`, the

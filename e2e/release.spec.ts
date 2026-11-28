@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import he from "../messages/he.json" with { type: "json" };
+import { pastDrawing } from "./announcer";
 import {
   countLoads,
   markBeforeRelease,
@@ -87,8 +88,9 @@ test("availability sent from a page of the release before loads it again once, k
     await expect(monday).toHaveText(marked ?? "");
     await expect(failed).toHaveCount(0);
     await expect(send).toBeEnabled();
+    // Nothing sent by itself: every send from this tab is counted here.
+    await pastDrawing(page);
     expect(presses.sent).toHaveLength(1);
-    expect(await statusWordsSeen(page)).not.toContain(ta.saved);
     await expectCleanPage(page);
 
     // Sent again within the minute, the page still from the release before:
@@ -99,7 +101,6 @@ test("availability sent from a page of the release before loads it again once, k
     await expect(monday).toHaveText(marked ?? "");
     expect(presses.sent).toHaveLength(2);
     expect(loads.count).toBe(1);
-    expect(await statusWordsSeen(page)).not.toContain(ta.saved);
   } finally {
     await presses.stop();
   }
@@ -126,6 +127,9 @@ test("a list's item ticked on a page of the release before loads it again once, 
       .poll(() => statusWordsSeen(page))
       .toContain(he.app.updated.toast);
     await expect(preps).not.toBeChecked();
+    // Once the page loaded has drawn and settled: nothing was sent by itself,
+    // so no change of its own failed either.
+    await pastDrawing(page);
     expect(presses.sent).toHaveLength(1);
     expect(await statusWordsSeen(page)).not.toContain(
       he.app.lists.list.failed.failed,
