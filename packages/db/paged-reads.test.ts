@@ -147,6 +147,8 @@ const { getBusinessLists, getListReadings, getListTemplates, getReadings } =
   await import("./lists");
 const { getDepartments } = await import("./departments");
 const { getWeekAvailability } = await import("./availability");
+const { getOrderPeople } = await import("./orders");
+const { getStationPeople } = await import("./order-stations");
 
 const BUSINESS = "9a9e5000-0000-4000-b000-000000000001";
 /** The `n`th id of a kind (`a` people, `c` everything else). */
@@ -415,6 +417,22 @@ describe("reads past PostgREST's 1000 rows", () => {
       availability_ranges: [],
     }));
     expect(await getWeekAvailability("week")).toHaveLength(1100);
+  });
+});
+
+describe("waiter mode's reads past 1000 rows", () => {
+  it("names everyone who was ever in the team, on the phone and on a kitchen's screen", async () => {
+    db.tables.memberships = many(1100, (n) => membership(n, n % 3 !== 0));
+    const names = await getOrderPeople(BUSINESS);
+    expect(names.size).toBe(1100);
+    expect(names.get(person(1099))).toBe("Person 1099");
+    expect(asked("memberships")).toHaveLength(2);
+    const station = await getStationPeople(BUSINESS, [person(0), person(1099)]);
+    expect(station).toEqual({
+      [person(0)]: "Person 0",
+      [person(1099)]: "Person 1099",
+    });
+    expect(asked("memberships")).toHaveLength(4);
   });
 });
 
