@@ -9,7 +9,9 @@ import {
   parseEmployeeDataKeys,
   parsePublicEnv,
   parseSecretKey,
+  parseSupportWhatsapp,
   parseTurnstileSiteKey,
+  supportWhatsapp,
   turnstileSiteKey,
 } from "./env";
 
@@ -112,6 +114,85 @@ describe("demoDoorOpen", () => {
     expect(demoDoorOpen()).toBe(true);
     vi.stubEnv("DEMO_DOOR", "maybe");
     expect(() => demoDoorOpen()).toThrow(/DEMO_DOOR/);
+  });
+});
+
+describe("parseSupportWhatsapp", () => {
+  // ConceptApp's team on WhatsApp ("עזרה" on /me, closing the pilot, PR 15).
+  // Made up, as the share tests' numbers are; the real one is only in Vercel.
+  const NUMBER = "+972501234567";
+
+  it("takes a number in E.164, trimmed, from any country", () => {
+    expect(parseSupportWhatsapp({ SUPPORT_WHATSAPP: NUMBER })).toBe(NUMBER);
+    expect(parseSupportWhatsapp({ SUPPORT_WHATSAPP: ` ${NUMBER}\n` })).toBe(
+      NUMBER,
+    );
+    for (const number of ["+97231234567", "+442071234567", "+33123456789"]) {
+      expect(parseSupportWhatsapp({ SUPPORT_WHATSAPP: number }), number).toBe(
+        number,
+      );
+    }
+  });
+
+  it("is none when unset or blank", () => {
+    for (const value of [undefined, "", "  ", "\n"]) {
+      expect(
+        parseSupportWhatsapp({ SUPPORT_WHATSAPP: value }),
+        JSON.stringify(value),
+      ).toBeNull();
+    }
+    expect(parseSupportWhatsapp({})).toBeNull();
+  });
+
+  it("treats anything but E.164 as none, never throwing", () => {
+    for (const value of [
+      // The local form, the digits without the plus, separators inside.
+      "0501234567",
+      "972501234567",
+      "+972 50-123-4567",
+      "+972-50-123-4567",
+      // Too short, too long, a 0 after the plus, a letter, an address, two.
+      "+1234567",
+      "+1234567890123456",
+      "+0501234567",
+      "+97250123456x",
+      "wa.me/972501234567",
+      `${NUMBER},${NUMBER}`,
+    ]) {
+      expect(
+        () => parseSupportWhatsapp({ SUPPORT_WHATSAPP: value }),
+        value,
+      ).not.toThrow();
+      expect(parseSupportWhatsapp({ SUPPORT_WHATSAPP: value }), value).toBe(
+        null,
+      );
+    }
+  });
+});
+
+describe("supportWhatsapp", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("reads this deployment's setting, and says in the log, never the value, one it can't use", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      vi.stubEnv("SUPPORT_WHATSAPP", "");
+      expect(supportWhatsapp()).toBeNull();
+      vi.stubEnv("SUPPORT_WHATSAPP", "+972501234567");
+      expect(supportWhatsapp()).toBe("+972501234567");
+      expect(warn).not.toHaveBeenCalled();
+      vi.stubEnv("SUPPORT_WHATSAPP", "050-123-4567");
+      expect(supportWhatsapp()).toBeNull();
+      expect(warn).toHaveBeenCalledTimes(1);
+      const said = String(warn.mock.calls[0]?.[0]);
+      expect(said).toMatch(/SUPPORT_WHATSAPP.*E\.164.*docs\/production\.md/);
+      expect(said).not.toContain("050-123-4567");
+      expect(said).not.toContain("1234567");
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
 

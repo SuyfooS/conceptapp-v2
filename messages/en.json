@@ -4784,6 +4784,30 @@
           "duePassed": "The time to choose has passed",
           "none": "Not given"
         }
+      },
+      "help": {
+        "row": "Help",
+        "hint": {
+          "one": "Ask {name}",
+          "some": "Ask whoever runs the business",
+          "oneOrTeam": "Ask {name} or the ConceptApp team",
+          "someOrTeam": "Ask whoever runs the business or the ConceptApp team",
+          "team": "Ask the ConceptApp team"
+        },
+        "title": "Help",
+        "subtitle": "A question about the app or your work? Here is who to ask.",
+        "close": "Close",
+        "ask": "Ask {name}",
+        "askAny": "Ask in chat",
+        "noName": "No name",
+        "named": "You can ask {names}.",
+        "team": {
+          "title": "The ConceptApp team",
+          "body": "For questions about the app and the business's settings.",
+          "hours": "Answered Sunday to Thursday, during the day.",
+          "whatsapp": "WhatsApp the ConceptApp team",
+          "message": "Hello, I'm from {business} and I have a question about the app:"
+        }
       }
     },
     "file": {
