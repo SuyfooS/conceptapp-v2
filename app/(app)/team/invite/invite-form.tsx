@@ -21,7 +21,7 @@ import { Send, Smartphone } from "lucide-react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { useActionState, useLayoutEffect, useRef, useState } from "react";
-import { CopyLink } from "@/app/copy-link";
+import { InviteShare, type InviteShareSetup } from "@/app/invite-share";
 import {
   answerHeard,
   useAnswerCount,
@@ -34,7 +34,10 @@ const initial: InviteState = {};
 
 /**
  * Invite someone by phone: name, mobile and role, then the link to send
- * on. `roles` are the ones the signed-in person may give, most senior
+ * on, on WhatsApp to that number with a sentence that says what it is, or
+ * copied (`InviteShare`; closing the pilot, PR 4). On the console, an
+ * owner's link goes with the owner's own sentence (`ownerWords`).
+ * `roles` are the ones the signed-in person may give, most senior
  * first, each role the business named after the role it is built on (the
  * roles plan's R11b), by its name with its base under it; the default is a
  * worker, the usual case. A role only an owner gives (`blocked`: it holds
@@ -51,6 +54,14 @@ type InviteFormProps = {
   defaultRole?: Role;
   /** `inviteAction`, or the design demo's stand-in. */
   invite: (prev: InviteState, form: FormData) => Promise<InviteState>;
+  /**
+   * Where the link goes on WhatsApp: the business its sentence names, and
+   * to the number invited on the real screens, to whomever WhatsApp is told
+   * on a twin.
+   */
+  share: InviteShareSetup;
+  /** The console's: an owner's link goes with the owner's own sentence. */
+  ownerWords?: boolean;
 };
 
 export function InviteForm(props: InviteFormProps) {
@@ -84,6 +95,8 @@ function InviteRound({
   back,
   defaultRole: startRole,
   invite,
+  share,
+  ownerWords = false,
   again,
   onAnother,
 }: InviteFormProps & { again: boolean; onAnother: () => void }) {
@@ -153,7 +166,7 @@ function InviteRound({
   }, [state, t, nameError, phoneError, answer, hushName, hushPhone]);
 
   if (state.done) {
-    const { name, link } = state.done;
+    const { name, phone, role, link } = state.done;
     return (
       <div className="flex w-full max-w-xl flex-col">
         <Card tone="hero" padding="none" className="px-5 pt-5 pb-24">
@@ -171,14 +184,21 @@ function InviteRound({
           padding="md"
           className="relative z-10 mx-3 -mt-[68px]"
         >
-          <CopyLink
+          <InviteShare
+            // WhatsApp, the screen's one main action; the copy beside it.
             main
             link={link}
-            label={tl("linkFor", { name })}
-            hint={tl("hint")}
-            copy={tl("copy")}
-            copied={tl("copied")}
-            failed={tl("copyFailed")}
+            phone={phone}
+            name={name}
+            share={share}
+            words={ownerWords && role === "owner" ? "owner" : "team"}
+            copy={{
+              label: tl("linkFor", { name }),
+              hint: tl("hint"),
+              copy: tl("copy"),
+              copied: tl("copied"),
+              failed: tl("copyFailed"),
+            }}
           />
         </Card>
         <div className="mt-5 flex flex-col gap-1 md:flex-row">

@@ -7,6 +7,7 @@ import { PersonRow } from "@ui/person-row";
 import { ChevronDown } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type ReactNode, startTransition, useState } from "react";
+import type { InviteShareSetup } from "@/app/invite-share";
 import type { PendingRow } from "../pending-links";
 import { InviteLinks, ResendLink, useInviteLinks } from "../resend-link";
 import {
@@ -173,15 +174,20 @@ export function DoneSendList({ count }: { count: number }) {
 /**
  * Those on the list whose earlier link ran out, folded into one row until
  * asked for: each with "קישור חדש", which opens the invite again for 14 days
- * (the link before it no longer works), kept as it arrives (`keptAsMade`).
- * One list in every shape: a few rows at most, under the send list.
+ * (the link before it no longer works), kept as it arrives (`keptAsMade`),
+ * then sent on WhatsApp to their number or copied, as the send list's
+ * (`share`). One list in every shape: a few rows at most, under the send
+ * list.
  */
 export function DoneExpired({
   rows,
   renew,
+  share,
 }: {
   rows: readonly ExpiredRow[];
   renew: Resend;
+  /** Where a new link goes on WhatsApp: the send list's (`SendLinks`). */
+  share: InviteShareSetup;
 }) {
   const t = useTranslations("app.team");
   const links = useInviteLinks();
@@ -234,6 +240,8 @@ export function DoneExpired({
                   <ResendLink
                     inviteId={row.id}
                     name={row.shown}
+                    phone={row.phone}
+                    share={share}
                     resend={kept}
                   />
                 }

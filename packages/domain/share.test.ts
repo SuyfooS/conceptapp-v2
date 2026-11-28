@@ -4,6 +4,7 @@ import {
   AVAILABILITY_PATH,
   availabilityLate,
   daysLeftToRight,
+  inviteWhatsappHref,
   SCHEDULE_PATH,
   scheduleWeekHref,
   scheduleWeekOf,
@@ -44,10 +45,9 @@ describe("whatsappHref", () => {
 // number (the plan's 3.6). The person still presses send in WhatsApp.
 describe("whatsappToHref", () => {
   const link = "https://example.test/join/AbC-12_xyz";
-  const text = shareText(
-    "הוזמנת להצטרף לצוות של קפה & בר #1 באפליקציה. נכנסים מהקישור, עם המספר הזה:",
-    link,
-  );
+  const sentence =
+    "קפה & בר #1 מזמינים אותך לצוות באפליקציה ConceptApp. הקישור אישי ובתוקף 14 יום.";
+  const text = shareText(sentence, link);
 
   it("opens a chat to the number's digits alone, the text written", () => {
     const href = whatsappToHref("+972501234567", text);
@@ -57,10 +57,7 @@ describe("whatsappToHref", () => {
     expect([...url.searchParams.keys()]).toEqual(["text"]);
     expect(textOf(href)).toBe(text);
     // The link on its own line, and nothing a link would cut.
-    expect(textOf(href)?.split("\n")).toEqual([
-      "הוזמנת להצטרף לצוות של קפה & בר #1 באפליקציה. נכנסים מהקישור, עם המספר הזה:",
-      link,
-    ]);
+    expect(textOf(href)?.split("\n")).toEqual([sentence, link]);
     expect(href).toContain("%0A");
     expect(href).not.toContain("+");
     expect(href).not.toContain("#");
@@ -86,6 +83,31 @@ describe("whatsappToHref", () => {
     expect(new URL(whatsappToHref("+972521234567", text)).pathname).toBe(
       "/972521234567",
     );
+  });
+});
+
+// Closing the pilot, PR 4: every screen that makes an invite's link sends it
+// so, to the number it was made for; a twin's goes to nobody.
+describe("inviteWhatsappHref", () => {
+  const link = "https://example.test/join/AbC-12_xyz";
+  const text = shareText("מסעדת הדגמה מזמינים אותך לצוות.", link);
+
+  it("opens a chat to the invite's number, the text written", () => {
+    expect(inviteWhatsappHref(text, "+972500000911")).toBe(
+      whatsappToHref("+972500000911", text),
+    );
+    const href = new URL(inviteWhatsappHref(text, "+972500000911"));
+    expect(`${href.origin}${href.pathname}`).toBe("https://wa.me/972500000911");
+    expect(href.searchParams.get("text")).toBe(text);
+  });
+
+  it("asks whom to send it to with no number to trust, and never throws", () => {
+    // A twin's, whose made-up numbers may be someone's.
+    expect(inviteWhatsappHref(text, null)).toBe(whatsappHref(text));
+    // Anything that isn't E.164 (no screen should hold one).
+    for (const phone of ["", "050-000-0911", "0500000911", "972500000911"]) {
+      expect(inviteWhatsappHref(text, phone), phone).toBe(whatsappHref(text));
+    }
   });
 });
 

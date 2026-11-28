@@ -1,4 +1,5 @@
 import he from "../messages/he.json" with { type: "json" };
+import { isolateName } from "../packages/domain/bidi";
 import {
   announcer,
   heardSoFar,
@@ -160,25 +161,39 @@ test("the team twin's next deleted invite waits for its own 'ביטול', whatev
   await expect(deleteFor(page, DANA)).toHaveCount(0);
 });
 
-// A new link in place of its press: the copy button takes the focus, and
-// says whose link it copies. Each copy is said by the announcer, the same
-// again too, and never by the button as well; one the browser refuses is
-// said and shown, and the link is selected in its field, to copy by hand.
-test("the team twin's new link puts the focus on its copy button, and each copy is said", async ({
+// A new link in place of its press: "שליחה בוואטסאפ" takes the focus, and says
+// whose link it sends, to nobody on the twin (closing the pilot, PR 4); the
+// copy beside it says whose link it copies. Each copy is said by the
+// announcer, the same again too, and never by the button as well; one the
+// browser refuses is said and shown, and the link is selected in its field,
+// to copy by hand.
+test("the team twin's new link puts the focus on its WhatsApp, and each copy is said", async ({
   page,
 }) => {
   const polite = announcer(page, "polite");
   await page.goto("/design/shell/team");
   await page.waitForLoadState("networkidle");
   await newLinkFor(page, RON).click();
+  const whatsapp = page
+    .getByRole("link", {
+      name: heT("app.team.pending.whatsappFor", { name: RON }),
+    })
+    .filter({ visible: true });
+  await expect(whatsapp).toBeFocused();
+  const href = new URL((await whatsapp.getAttribute("href")) ?? "");
+  // To nobody: WhatsApp asks whom to send it to.
+  expect(`${href.origin}${href.pathname}`).toBe("https://wa.me/");
+  expect(href.searchParams.get("text")).toContain(
+    heT("app.team.pending.message", { business: isolateName("מסעדת הדגמה") }),
+  );
   const copy = page
     .getByRole("button", { name: tl.copy })
     .filter({ visible: true });
-  await expect(copy).toBeFocused();
   await expect(copy).toHaveAccessibleDescription(
     tl.linkFor.replace("{name}", RON),
   );
   await expect(copy).not.toHaveAttribute("aria-live");
+  await copy.focus();
 
   await clipboardTakes(page, true);
   await heardSoFar(polite);
@@ -347,7 +362,7 @@ test("the team twin's links for those with none go one person at a time, the foc
   const href = new URL((await whatsappFor(LIOR).getAttribute("href")) ?? "");
   expect(href.pathname).toBe("/");
   expect(href.searchParams.get("text")).toContain(
-    heT("app.team.pending.message", { business: "מסעדת הדגמה" }),
+    heT("app.team.pending.message", { business: isolateName("מסעדת הדגמה") }),
   );
   // No chat to any number anywhere on the twin.
   expect(
@@ -715,7 +730,8 @@ test("the person twin's name sheet gives the focus back to its press when a fix 
 // the Team screen's new link: "בר הים" has יואב's invite open and רונית's
 // run out. A link that arrives with the focus put elsewhere while its press
 // was busy is said there; one that arrives in place of its press puts the
-// focus on its copy button, which says whose link it copies.
+// focus on its "שליחה בוואטסאפ", which says whose link it sends, to nobody on the
+// twin, and the copy beside it says whose link it copies.
 const ci = he.admin.setup.invite;
 const CONSOLE_BUSINESS = "/design/console/businesses/bar-hayam";
 const YOAV = "יואב לוי";
@@ -729,7 +745,7 @@ const issueFor = (page: Page, name: string, renew = false) =>
     })
     .filter({ visible: true });
 
-test("the console twin's invite link is said where the focus was put, or puts the focus on its copy button", async ({
+test("the console twin's invite link is said where the focus was put, or puts the focus on its WhatsApp", async ({
   page,
 }) => {
   const polite = announcer(page, "polite");
@@ -766,10 +782,69 @@ test("the console twin's invite link is said where the focus was put, or puts th
   await page.keyboard.press("Enter");
   await expect(create).toHaveCount(0);
   const focused = page.locator(":focus");
-  await expect(focused).toHaveAccessibleName(ci.copy);
-  await expect(focused).toHaveAccessibleDescription(
+  await expect(focused).toHaveAccessibleName(
+    heT("app.team.pending.whatsappFor", { name: YOAV }),
+  );
+  const href = new URL((await focused.getAttribute("href")) ?? "");
+  expect(`${href.origin}${href.pathname}`).toBe("https://wa.me/");
+  // Two links on screen now, each copy saying whose it copies: יואב's row
+  // first, as the twin lists them (the twin never reads the page again).
+  const copies = page
+    .getByRole("button", { name: ci.copy })
+    .filter({ visible: true });
+  await expect(copies).toHaveCount(2);
+  await expect(copies.nth(0)).toHaveAccessibleDescription(
     ci.linkFor.replace("{name}", YOAV),
   );
+  await expect(copies.nth(1)).toHaveAccessibleDescription(
+    ci.linkFor.replace("{name}", RONIT),
+  );
+  // No chat to any number anywhere on the twin.
+  for (const link of await page.locator('a[href^="https://wa.me/"]').all()) {
+    expect(await link.getAttribute("href")).toMatch(
+      /^https:\/\/wa\.me\/\?text=/,
+    );
+  }
+});
+
+// A link that arrives in a shape gone off screen while its press was on
+// its way (a large tablet turned, a window made wider or narrower past the
+// computer's table): its "שליחה בוואטסאפ" can't take the focus, so the link
+// ready is said, and only then is the focus on the page's title, never the
+// title alone. A phone stays in one shape.
+test("the console twin's invite link made in a shape gone off screen is said, then the focus is on the title", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "phone", "a phone stays in one shape");
+  const polite = announcer(page, "polite");
+  await page.goto(CONSOLE_BUSINESS);
+  await page.waitForLoadState("networkidle");
+
+  let answer = () => {};
+  const held = new Promise<void>((resolve) => {
+    answer = () => resolve();
+  });
+  const business = (url: URL) => url.pathname === CONSOLE_BUSINESS;
+  await page.route(business, async (route) => {
+    if (route.request().method() === "POST") await held;
+    await route.continue();
+  });
+  const create = issueFor(page, YOAV);
+  await create.click();
+  await expect(create).toHaveAttribute("aria-busy", "true");
+  const wide = (page.viewportSize()?.width ?? 0) >= 1280;
+  await page.setViewportSize(
+    wide ? { width: 820, height: 1180 } : { width: 1440, height: 900 },
+  );
+  await heardSoFar(polite);
+  answer();
+  await expect(saidSince(polite, ci.ready.replace("{name}", YOAV))).toHaveCount(
+    1,
+  );
+  await expect(
+    page.getByRole("heading", { level: 1, name: "בר הים" }),
+  ).toBeFocused();
+  await page.unroute(business);
 });
 
 // A link refused (the twin's ?issue=refused) is a line of its own, drawn

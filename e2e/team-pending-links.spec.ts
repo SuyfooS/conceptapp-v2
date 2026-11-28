@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import he from "../messages/he.json" with { type: "json" };
+import { isolateName } from "../packages/domain/bidi";
 import { shareText } from "../packages/domain/share";
 import { CAPTCHA_FRAME, captchaSettled } from "./captcha";
 import {
@@ -188,7 +189,9 @@ test("the wizard's invites wait on /team for a link, made and sent one person at
     );
     expect(href.searchParams.get("text")).toBe(
       shareText(
-        heT("app.team.pending.message", { business: business.name }),
+        heT("app.team.pending.message", {
+          business: isolateName(business.name),
+        }),
         link,
       ),
     );

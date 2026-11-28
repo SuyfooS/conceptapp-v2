@@ -14,3 +14,20 @@ export const LRI = "⁦";
 export const PDI = "⁩";
 
 export const isolate = (chunks: string) => `${LRI}${chunks}${PDI}`;
+
+/** FIRST STRONG ISOLATE (U+2068): what it holds takes its own direction. */
+export const FSI = "\u2068";
+
+/**
+ * A name put into a sentence that goes out as plain text (a business's, in
+ * an invite's WhatsApp message), held in FSI … PDI: the name keeps its own
+ * direction, Latin or Hebrew, from its first letter, and the sentence around
+ * it keeps the sentence's. WhatsApp takes a message's direction from its
+ * first letter outside any isolate, so a business named in Latin letters at
+ * the start of a Hebrew sentence ("Bakery 12 מזמינים אותך…") would otherwise
+ * lay the whole message out left to right. Any isolate or pop the name holds
+ * itself is dropped first, so none of it closes this one early or leaves it
+ * open.
+ */
+export const isolateName = (name: string) =>
+  `${FSI}${name.replace(/[\u2066-\u2069]/g, "")}${PDI}`;
