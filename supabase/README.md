@@ -45,7 +45,8 @@ site's `/health/db` four times an hour, and that asks this project `public.ping(
 (`20261128000900_ping.sql`) with the publishable key. A paused project, or one that doesn't
 answer, opens the issue labelled `uptime`. Until Migrate brings that migration here,
 `/health/db` answers 200 from PostgREST's "no such function" alone, which says only that the
-API answers: run Migrate after the merge to make it the database's answer. Being asked that
+API answers: the session that merges it runs Migrate right after (a dry run, then "apply"), as
+with every migration, to make it the database's answer. Being asked that
 often may also keep a free project from pausing (to check).
 
 To have something to open, run it with "apply" and "demo" on. "demo" adds the demo

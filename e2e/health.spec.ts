@@ -1,7 +1,7 @@
 import { expect, test } from "./test";
 
-// The addresses the uptime check asks (docs/production.md, B11 and "בדיקת
-// הזמינות"), against the served build: 200 at once, never a redirect, never
+// The addresses the uptime check asks (docs/production.md, B11 and "בדיקה
+// שהאתר באוויר"), against the served build: 200 at once, never a redirect, never
 // kept, no cookie, and nothing in them but their status. /health/db asks the
 // local database its one question (public.ping) with the publishable key and
 // no session, so this is also where the migration, its grant to anon and the

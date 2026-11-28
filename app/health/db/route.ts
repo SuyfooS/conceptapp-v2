@@ -8,7 +8,7 @@ const HEADERS = {
 
 /**
  * For the uptime check (.github/workflows/uptime.yml; docs/production.md,
- * "בדיקת הזמינות"; closing the pilot, PR 11): 200 when the database
+ * "בדיקה שהאתר באוויר"; closing the pilot, PR 11): 200 when the database
  * answers too, 503 when it doesn't, and nothing more, the same as /health:
  * no word of the database, a key, an error or a host, no cookie.
  *

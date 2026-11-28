@@ -24,7 +24,8 @@ import {
 // The uptime check (closing the pilot, PR 11): .github/workflows/uptime.yml,
 // the repository's first schedule, runs .github/scripts/uptime.sh, which asks
 // the hosted site's /health and /health/db and keeps one issue labelled
-// `uptime` open while either gets no answer. The workflow is read as text, as
+// `uptime` open, assigned to the repository's owner, while either gets no
+// answer. The workflow is read as text, as
 // GitHub reads it: four times an hour off the hour and by hand, one run at a
 // time, GITHUB_TOKEN alone with the code to read and issues to write, no
 // secret, and nothing typed by hand ever written into a script. The script
@@ -37,6 +38,16 @@ const workflow = readRepoFile(".github/workflows/uptime.yml");
 const script = readRepoFile(".github/scripts/uptime.sh");
 const code = withoutComments(workflow);
 const REAL = "https://www.conceptapp.co.il";
+
+/**
+ * A heading's anchor as GitHub makes it: lower case, with only letters,
+ * marks, numbers, `_`, `-` and spaces kept, and each space a `-`.
+ */
+const anchor = (heading: string) =>
+  heading
+    .toLowerCase()
+    .replace(/[^\p{L}\p{M}\p{N}_\- ]/gu, "")
+    .replace(/ /g, "-");
 
 const [job] = jobs(workflow);
 const allSteps = steps(job?.body ?? "");
@@ -198,18 +209,50 @@ describe("what the script asks and writes", () => {
     }
   });
 
-  it("is said where Orel and the nightly agent look", () => {
+  it("assigns the issue it opens to the repository's owner, whom the runner names", () => {
+    // The GitHub app pushes an issue assigned to you to the phone, never a
+    // new issue in a repository you watch.
+    expect(script).toContain("OWNER=$GITHUB_REPOSITORY_OWNER\n");
+    const creates = withoutComments(script)
+      .split("\n")
+      .filter((line) => line.includes("gh issue create"));
+    expect(creates).toHaveLength(1);
+    expect(creates[0]).toContain('--assignee "$OWNER"');
+  });
+
+  it("is said where Orel and the nightly agent look, with a link that opens its section", () => {
     const doc = readRepoFile("docs/production.md");
     expect(doc).toContain("Actions → Uptime → Run workflow");
     expect(doc).toContain("`uptime`");
     expect(doc).toContain("`.github/workflows/uptime.yml`");
+    const headings = [...doc.matchAll(/^## (בדיקה שהאתר באוויר.*)$/gm)];
+    expect(headings.map(([, h]) => h)).toEqual([
+      "בדיקה שהאתר באוויר: issue כשהאתר לא עונה",
+    ]);
+    expect(script).toContain(`SECTION="${anchor(headings[0]?.[1] ?? "")}"`);
     expect(script).toContain(
-      'WHAT_TO_DO="מה עושים: docs/production.md, בדיקת הזמינות."',
+      'WHAT_TO_DO="מה עושים: [docs/production.md, בדיקה שהאתר באוויר]($GITHUB_SERVER_URL/$GH_REPO/blob/main/docs/production.md#$SECTION)."',
     );
-    expect(doc).toMatch(/^## בדיקת הזמינות/m);
     const brief = readRepoFile("docs/AGENT.md").replace(/\s+/g, " ");
     expect(brief).toContain("label `uptime`");
     expect(brief).toContain("never close it while the site still fails");
+    expect(brief).toContain("only what `github-actions` wrote");
+  });
+
+  it('calls it the check that the site is up, never "זמינות", the staff\'s availability in the app', () => {
+    expect(withoutComments(script)).not.toContain("זמינות");
+    expect(script).toContain('TITLE="האתר לא עונה"');
+    const doc = readRepoFile("docs/production.md");
+    const section = doc.slice(
+      doc.indexOf("## בדיקה שהאתר באוויר"),
+      doc.indexOf("## ב1."),
+    );
+    expect(section.length).toBeGreaterThan(0);
+    expect(section).not.toContain("זמינות");
+    // GitHub takes a label's description of 100 characters at most.
+    const about = script.match(/^LABEL_ABOUT="(.*)"$/m)?.[1] ?? "";
+    expect(about.length).toBeGreaterThan(0);
+    expect(about.length).toBeLessThanOrEqual(100);
   });
 });
 
@@ -218,9 +261,11 @@ describe("what the script asks and writes", () => {
 // answers each address as answers.txt says ("<address> <status>", or
 // "<address> none" for no connection at all), printing the status as
 // -w '%{http_code}' does and failing as -f makes it fail. gh answers
-// `issue list`, `label list` and `issue view` from open.txt, labels.txt and
-// said.txt, as its --jq would print them, and fails a command that
-// fail-<command>-<subcommand> names.
+// `issue list` and `label list` from open.txt and labels.txt, as its --jq
+// would print them, and `issue view` with the call's own --jq run by jq on
+// issue.json (the issue as gh gives it: its body, and its comments with
+// each author's login), strings printed raw as gh prints them; and it fails
+// a command that fail-<command>-<subcommand> names.
 const STUBS: Record<string, string> = {
   curl: `
 { printf '%s\\x1f' curl "$@"; printf '\\x1e'; } >> "$STUBS/calls"
@@ -241,7 +286,14 @@ exit 0
 case "$1 $2" in
   "issue list") cat "$STUBS/open.txt" ;;
   "label list") cat "$STUBS/labels.txt" ;;
-  "issue view") cat "$STUBS/said.txt" ;;
+  "issue view")
+    filter=""
+    while [ $# -gt 0 ]; do
+      [ "$1" = --jq ] && filter=$2
+      shift
+    done
+    jq -r "$filter" "$STUBS/issue.json" || exit 1
+    ;;
 esac
 exit 0
 `,
@@ -266,6 +318,7 @@ function run({
   open = [],
   labels = ["uptime"],
   said = "",
+  comments = [],
   fail = [],
 }: {
   site?: string;
@@ -275,7 +328,10 @@ function run({
   host?: string;
   open?: number[];
   labels?: string[];
+  /** The newest open issue's body. */
   said?: string;
+  /** Its comments, each with its author's login. */
+  comments?: { login: string; body: string }[];
   fail?: string[];
 } = {}): Run {
   const dir = mkdtempSync(join(tmpdir(), "uptime-"));
@@ -298,7 +354,16 @@ function run({
     join(stubs, "labels.txt"),
     labels.map((l) => `${l}\n`).join(""),
   );
-  writeFileSync(join(stubs, "said.txt"), said);
+  writeFileSync(
+    join(stubs, "issue.json"),
+    JSON.stringify({
+      body: said,
+      comments: comments.map(({ login, body }) => ({
+        author: { login },
+        body,
+      })),
+    }),
+  );
   writeFileSync(join(stubs, "calls"), "");
   for (const command of fail) writeFileSync(join(stubs, `fail-${command}`), "");
   const env: NodeJS.ProcessEnv = {
@@ -306,6 +371,8 @@ function run({
     PATH: `${stubs}${delimiter}${process.env.PATH ?? "/usr/bin:/bin"}`,
     STUBS: stubs,
     GITHUB_STEP_SUMMARY: join(dir, "summary.md"),
+    GITHUB_SERVER_URL: "https://github.com",
+    GITHUB_REPOSITORY_OWNER: OWNER,
     GH_TOKEN: "stand-in",
     GH_REPO: "owner/repo",
   };
@@ -341,8 +408,16 @@ const flagValue = (call: string[] | undefined, flag: string) =>
   call?.[call.indexOf(flag) + 1];
 
 const TIME = /^מתי: \d{2}\.\d{2}\.\d{4} \d{2}:\d{2} \(שעון ישראל\)\.$/;
-const NO_ANSWER = "בדיקת הזמינות לא קיבלה תשובה מ:";
-const ANSWERS = "בדיקת הזמינות מקבלת שוב תשובה מ:";
+const NO_ANSWER = "הבדיקה שהאתר באוויר לא קיבלה תשובה מ:";
+const ANSWERS = "הבדיקה שהאתר באוויר מקבלת שוב תשובה מ:";
+/** The runner's GITHUB_REPOSITORY_OWNER, standing in. */
+const OWNER = "owner";
+/** The issue's last line, a link to docs/production.md's section. */
+const WHAT_TO_DO =
+  "מה עושים: [docs/production.md, בדיקה שהאתר באוויר](https://github.com/owner/repo/blob/main/docs/production.md#בדיקה-שהאתר-באוויר-issue-כשהאתר-לא-עונה).";
+/** What `issue view` asks for: the body and the workflow's comments. */
+const OWN_WORDS =
+  '.body, (.comments[] | select(.author.login == "github-actions" or .author.login == "github-actions[bot]") | .body)';
 
 /** What the issue said when /health/db alone got no answer. */
 const SAID_DB = [
@@ -351,8 +426,17 @@ const SAID_DB = [
   "",
   "מתי: 28.11.2026 07:22 (שעון ישראל).",
   "",
-  "מה עושים: docs/production.md, בדיקת הזמינות.",
+  WHAT_TO_DO,
   "",
+].join("\n");
+
+/** A comment that lists both addresses as getting no answer. */
+const SAYS_BOTH = [
+  NO_ANSWER,
+  `- ${REAL}/health`,
+  `- ${REAL}/health/db`,
+  "",
+  "מתי: 28.11.2026 07:37 (שעון ישראל).",
 ].join("\n");
 
 // Each case starts bash a few times: give a loaded runner time for them.
@@ -410,7 +494,7 @@ describe.skipIf(process.platform === "win32")(
       expect(writes(r)).toEqual([]);
     });
 
-    it("opens one issue labelled uptime, with only the address and the time, when one gets no answer", () => {
+    it("opens one issue labelled uptime, assigned to the owner, with only the address, the time and the link, when one gets no answer", () => {
       const r = run({ answers: { "/health": "200", "/health/db": "503" } });
       expect(r.status).toBe(0);
       const made = writes(r);
@@ -418,15 +502,15 @@ describe.skipIf(process.platform === "win32")(
       const [create] = made;
       expect(create?.slice(0, 2)).toEqual(["issue", "create"]);
       expect(flagValue(create, "--label")).toBe("uptime");
-      expect(flagValue(create, "--title")).toBe("האתר לא עונה לבדיקת הזמינות");
+      expect(flagValue(create, "--title")).toBe("האתר לא עונה");
+      // The GitHub app pushes an issue assigned to you, not a new one.
+      expect(flagValue(create, "--assignee")).toBe(OWNER);
+      expect(create?.filter((arg) => arg === "--assignee")).toHaveLength(1);
       const lines = (flagValue(create, "--body") ?? "").split("\n");
       expect(lines).toHaveLength(6);
       expect(lines.slice(0, 3)).toEqual([NO_ANSWER, `- ${REAL}/health/db`, ""]);
       expect(lines[3]).toMatch(TIME);
-      expect(lines.slice(4)).toEqual([
-        "",
-        "מה עושים: docs/production.md, בדיקת הזמינות.",
-      ]);
+      expect(lines.slice(4)).toEqual(["", WHAT_TO_DO]);
       expect(r.output).toContain(
         `::warning::${REAL}/health/db: no answer (503)`,
       );
@@ -479,22 +563,65 @@ describe.skipIf(process.platform === "win32")(
         "--json",
         "body,comments",
         "--jq",
-        ".body, .comments[].body",
+        OWN_WORDS,
       ]);
     });
 
-    it("reads what it said last past anyone else's comment, and with Windows line ends", () => {
-      for (const said of [
-        `${SAID_DB}בודק את זה עכשיו\n- https://elsewhere.example/x\n`,
-        SAID_DB.replace(/\n/g, "\r\n"),
-      ]) {
-        const r = run({
-          answers: { "/health": "200", "/health/db": "503" },
-          open: [12],
-          said,
-        });
-        expect(writes(r)).toEqual([]);
+    it("reads what it said last from its own words alone: the repository is public, and anyone can comment", () => {
+      const dbDown = { "/health": "200", "/health/db": "503" };
+      const bothDown = { "/health": "503", "/health/db": "503" };
+      // Someone else's comment, with the heading and a list or without,
+      // changes nothing of what it said.
+      for (const login of ["someone-else", OWNER]) {
+        for (const body of [
+          SAYS_BOTH,
+          "בודק את זה עכשיו\n- https://elsewhere.example/x",
+        ]) {
+          const r = run({
+            answers: dbDown,
+            open: [12],
+            said: SAID_DB,
+            comments: [{ login, body }],
+          });
+          expect(writes(r), `${login}: ${body}`).toEqual([]);
+        }
       }
+      // So a list that someone else wrote never hides that the whole
+      // server stopped answering too.
+      const r = run({
+        answers: bothDown,
+        open: [12],
+        said: SAID_DB,
+        comments: [{ login: "someone-else", body: SAYS_BOTH }],
+      });
+      const made = writes(r);
+      expect(made.map((c) => c.slice(0, 3))).toEqual([
+        ["issue", "comment", "12"],
+      ]);
+      expect(flagValue(made[0], "--body")).toContain(
+        `${NO_ANSWER}\n- ${REAL}/health\n- ${REAL}/health/db\n`,
+      );
+      // Its own comment is what it said last, under either of the names
+      // GitHub gives the workflow.
+      for (const login of ["github-actions", "github-actions[bot]"]) {
+        const own = run({
+          answers: bothDown,
+          open: [12],
+          said: SAID_DB,
+          comments: [
+            { login: "someone-else", body: "גם אצלי" },
+            { login, body: SAYS_BOTH },
+          ],
+        });
+        expect(writes(own), login).toEqual([]);
+      }
+      // And with Windows line ends.
+      const crlf = run({
+        answers: dbDown,
+        open: [12],
+        said: SAID_DB.replace(/\n/g, "\r\n"),
+      });
+      expect(writes(crlf)).toEqual([]);
     });
 
     it("comments on the open issue when what fails changes, with the time", () => {
@@ -562,6 +689,46 @@ describe.skipIf(process.platform === "win32")(
           `${REAL}/health`,
         );
       }
+    });
+
+    it("leaves an open issue as it is on a run by hand against another site, whatever that site answers", () => {
+      // The real site's issue is open. Another deployment that answers
+      // would have closed it while the real site still failed, and one that
+      // doesn't would have changed what it says fails.
+      const other = "https://conceptapp-v2.vercel.app";
+      for (const answers of [
+        UP,
+        { "/health": "200", "/health/db": "503" },
+        { "/health": "none", "/health/db": "none" },
+      ]) {
+        const r = run({
+          site: other,
+          host: other,
+          answers,
+          open: [12, 9],
+          said: SAID_DB,
+        });
+        const what = JSON.stringify(answers);
+        expect(r.status, what).toBe(0);
+        expect(
+          curlCalls(r).map((args) => args.at(-1)),
+          what,
+        ).toEqual([`${other}/health`, `${other}/health/db`]);
+        expect(writes(r), what).toEqual([]);
+        expect(
+          ghCalls(r).some(([w, how]) => w === "issue" && how === "view"),
+          what,
+        ).toBe(false);
+        expect(r.output, what).toContain(
+          `#12 is left as it is: this run asked ${other}, not ${REAL}`,
+        );
+      }
+      // The real site typed by hand is the real site: it answers, and the
+      // issue closes, as with the field empty (docs/production.md, step 3).
+      const real = run({ site: REAL, open: [12], said: SAID_DB });
+      expect(writes(real).map((c) => c.slice(0, 3))).toEqual([
+        ["issue", "close", "12"],
+      ]);
     });
 
     it("asks nothing and prints nothing typed for an address it won't take", () => {

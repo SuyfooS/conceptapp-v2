@@ -88,8 +88,9 @@ Vercel and what to watch. The code's side of it:
   asks `https://www.conceptapp.co.il/health` and `/health/db` four times an hour (`:07`, `:22`,
   `:37`, `:52`) with `curl -fsS --max-time 10 --retry 2`, `GITHUB_TOKEN` alone (code read, issues
   written) and no secret. While one gets no answer it keeps one issue labelled `uptime` open,
-  with the addresses and the time only, and closes it when both answer
-  (`.github/scripts/uptime.sh`, `tooling/uptime.test.ts`; `docs/production.md`, "בדיקת הזמינות").
+  with the addresses and the time only, assigned to the repository's owner so that the GitHub app
+  pushes it, and closes it when both answer (`.github/scripts/uptime.sh`, `tooling/uptime.test.ts`;
+  `docs/production.md`, "בדיקה שהאתר באוויר").
 - `node tooling/check-site.mjs <address>` checks one site from outside, on Node 20 with
   nothing installed and no secret, one GET per address and no redirect followed: `/health`
   and `/health/db` answer 200 (a 404 on `/health/db` is a site on a version from before it),

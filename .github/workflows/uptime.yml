@@ -1,16 +1,19 @@
-# Is the site up? (closing the pilot, PR 11; docs/production.md, "בדיקת
-# הזמינות".) Four times an hour, off the hour, this asks the hosted site's
-# /health (the server answers) and /health/db (the database answers too),
-# and keeps one issue labelled `uptime` open while either gets no answer: it
-# opens one, comments when what fails changes, and comments and closes it
-# when both answer again (.github/scripts/uptime.sh says how). The
-# repository is public, so the issue says the addresses and the time, and
-# nothing else. A run passes whether the site answered or not: the issue is
-# the alarm, so a failed run means the check itself broke.
+# Is the site up? (closing the pilot, PR 11; docs/production.md, "בדיקה
+# שהאתר באוויר".) Four times an hour, off the hour, this asks the hosted
+# site's /health (the server answers) and /health/db (the database answers
+# too), and keeps one issue labelled `uptime` open while either gets no
+# answer: it opens one, assigned to the repository's owner so that the
+# GitHub app pushes it to the phone, comments when what fails changes, and
+# comments and closes it when both answer again (.github/scripts/uptime.sh
+# says how). The repository is public, so the issue says the addresses and
+# the time, and nothing else. A run passes whether the site answered or not:
+# the issue is the alarm, so a failed run means the check itself broke.
 #
 # By hand, Actions → Uptime → Run workflow: with `site` empty it checks the
 # real site, and with another https:// address it checks that one instead,
-# to see the issue open (a wrong address) and then close (empty again).
+# to see the issue open (a wrong address) and then close (empty again). A
+# run on another address opens an issue only when none is open, and never
+# comments on or closes one.
 #
 # The repository's first schedule, at :07, :22, :37 and :52, away from the
 # top of the hour, when GitHub starts the most and runs them late. GitHub
