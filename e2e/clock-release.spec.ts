@@ -6,6 +6,7 @@ import {
   statusWordsSeen,
   stillBeforeRelease,
   watchStatusWords,
+  wordsSaid,
 } from "./release";
 import { expect, test } from "./test";
 
@@ -43,8 +44,10 @@ test("a press on a page from the release before loads it again once, says the ap
 
     // A whole new page, at the same address: nothing was recorded, so the
     // circle is still the one to come in, and the press failed in no words.
+    // The frame says the update through the page's announcer, and shows it.
     expect(await stillBeforeRelease(page)).toBe(false);
     await expect(page).toHaveURL(new RegExp(`${CLOCK}$`));
+    await expect.poll(() => wordsSaid(page)).toContain(he.app.updated.toast);
     await expect
       .poll(() => statusWordsSeen(page))
       .toContain(he.app.updated.toast);

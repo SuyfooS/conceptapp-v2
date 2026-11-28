@@ -225,8 +225,11 @@ async function Shell({ children }: { children: ReactNode }) {
             />
           ) : null}
           {/* A press on a page from the release before loads it again, and
-              the page loaded says so once, to the person who pressed. */}
-          <ReleaseNote userId={member.userId}>{children}</ReleaseNote>
+              the page loaded says so once, to the person who pressed, in
+              the business they pressed in. */}
+          <ReleaseNote userId={member.userId} businessId={business.id}>
+            {children}
+          </ReleaseNote>
           {push ? <PushRegistration publicKey={push.publicKey} /> : null}
         </AppShell>
       </WordingProvider>

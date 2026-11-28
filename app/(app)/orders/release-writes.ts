@@ -17,11 +17,11 @@ export type KeepsOf<W extends Writes> = {
 
 /**
  * Waiter mode's writes on a page from the release before (closing the
- * pilot, PR 1b, known issue 37): "הוגש", "מוכן", החזרה, "להוציא", a line's
- * cancel or "על חשבון הבית", the order's cancel, a move, a close, its
- * "ביטול" and a reopen are server actions, and a page left open across a
- * release asked for ids the server no longer had, so each said it failed
- * until the mode was opened again. Each now loads the page again
+ * pilot, PR 1b, known issue 37): "הוגש", "מוכן", "להוציא", a move, a close,
+ * its "ביטול", a reopen and a takeaway's name are server actions, and a
+ * page left open across a release asked for ids the server no longer had,
+ * so each said it failed until the mode was opened again. Each pressed now
+ * loads the page again
  * (`@/app/stale-build`), once a minute at most, for `person`, the
  * signed-in person whose press it was, keeping what `keeps` says of its
  * arguments (a takeaway's name, as typed), and waits for it to go, a while
@@ -29,7 +29,10 @@ export type KeepsOf<W extends Writes> = {
  * own failure should the page stay. Nothing is sent again: the page loaded
  * says the app was updated, and the person presses. A send goes by a route
  * handler, the outbox's, which a release leaves as it was. Any other
- * failure goes as it came, at once.
+ * failure goes as it came, at once. A line's fix (החזרה, its cancel, "על
+ * חשבון הבית") and the order's cancel are left out by the caller: held for
+ * their "ביטול", they go by its time, not at a press, and fail in their
+ * own words.
  */
 export function reloadOnRelease<W extends Writes>(
   writes: W,

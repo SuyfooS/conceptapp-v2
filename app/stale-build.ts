@@ -59,12 +59,28 @@ import { z } from "zod";
  * note nor what a screen kept (the note and what is kept are written first,
  * and taken away again when the guard can't follow them), so the page isn't
  * loaded again and the press says what it said before. The note names the
- * person whose press it was, and only the frame signed in as them says it:
- * should the reload have gone to the door, the session over, whoever signs
- * in next on that tab is told nothing. So does what was kept, which only
- * that person's screen at the same address takes back, and which the frame
- * of anyone else lets go. Nothing here imports React, for the tests.
+ * person whose press it was, in the business it was made in (`pressedBy`),
+ * and only the frame signed in as them there says it: should the reload
+ * have gone to the door, the session over, whoever signs in next on that
+ * tab is told nothing; and should it have opened another business (the
+ * business is the device's cookie, not the address, so another tab may
+ * have switched it meanwhile), nothing there says a press made in the
+ * other, whose "לוחצים שוב" would press it in the wrong business, nor puts
+ * its writing back on the screen at the same address. So does what was
+ * kept, which only that person's screen at the same address, in the same
+ * business, takes back, and which the frame of anyone else, or of another
+ * business, lets go. Nothing here imports React, for the tests.
  */
+
+/**
+ * Whose press it is, as the note and what is kept name it: the signed-in
+ * person (`person`) in the business their frame was drawn for
+ * (`business`), so neither is said nor given back to anyone else, nor to
+ * the same person in another business. Empty, as nobody, without either.
+ */
+export function pressedBy(person: string, business: string): string {
+  return person === "" || business === "" ? "" : `${person}:${business}`;
+}
 
 /** sessionStorage: when this tab last loaded itself again for a release. */
 export const RELOADED_KEY = "stale-build-reloaded";
@@ -224,7 +240,8 @@ function keepHere(person: string, of: string, value: unknown, at: number) {
 /**
  * A press failed: when its page is from an earlier release, loads the page
  * again, leaves the note for it, for `person` (the signed-in person whose
- * press it was, as the frame has them: `useSignedInId`), keeps what the
+ * press it was, in its business, as the frame has them: `useSignedInId`,
+ * `pressedBy`), keeps what the
  * screen asks to (`keep`, for that screen at this address, whose words the
  * note then gives), and returns true; the press then waits for the page to
  * go (`untilReloaded`), and says its failure if it stays. False, for the

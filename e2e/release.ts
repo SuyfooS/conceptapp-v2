@@ -40,21 +40,38 @@ export async function pressAsBeforeRelease(page: Page, path: string) {
   return { sent, stop: () => page.unroute(onPath) };
 }
 
-type Seen = Window & { statusWordsSeen?: string[]; beforeRelease?: boolean };
+type Seen = Window & {
+  statusWordsSeen?: string[];
+  wordsSaid?: string[];
+  beforeRelease?: boolean;
+};
 
 /**
- * On every page this tab loads, the reloaded one included: the words of each
- * status region as they come in (a toast leaves by itself, or at the next
- * press).
+ * On every page this tab loads, the reloaded one included: the words each
+ * status region shows, each time they come in (a toast leaves by itself, or
+ * at the next press), and each line the page's announcer says
+ * (`@ui/announcer`, where the frame says its note), each time it does.
+ * Nothing is told once for twice, so a test can count them.
  */
 export async function watchStatusWords(page: Page) {
   await page.addInitScript(() => {
     const seen: string[] = [];
+    const said: string[] = [];
     (window as Seen).statusWordsSeen = seen;
+    (window as Seen).wordsSaid = said;
+    const had = new WeakMap<Element, string>();
+    const heard = new WeakSet<Element>();
     new MutationObserver(() => {
       for (const region of document.querySelectorAll('[role="status"]')) {
         const words = region.textContent ?? "";
-        if (words && !seen.includes(words)) seen.push(words);
+        if (had.get(region) === words) continue;
+        had.set(region, words);
+        if (words) seen.push(words);
+      }
+      for (const line of document.querySelectorAll("[data-announcer] p")) {
+        if (heard.has(line)) continue;
+        heard.add(line);
+        said.push(line.textContent ?? "");
       }
     }).observe(document, {
       subtree: true,
@@ -64,9 +81,49 @@ export async function watchStatusWords(page: Page) {
   });
 }
 
-/** The status words this page has said so far. */
+/** The words this page's status regions have shown so far, each time. */
 export const statusWordsSeen = (page: Page) =>
   page.evaluate(() => (window as Seen).statusWordsSeen ?? []);
+
+/** The lines this page's announcer has said so far, each time. */
+export const wordsSaid = (page: Page) =>
+  page.evaluate(() => (window as Seen).wordsSaid ?? []);
+
+/** How many times `words` were shown (`seen`) and said (`said`) on this page. */
+export async function timesTold(page: Page, words: string) {
+  const count = (all: string[]) => all.filter((w) => w === words).length;
+  return {
+    seen: count(await statusWordsSeen(page)),
+    said: count(await wordsSaid(page)),
+  };
+}
+
+/**
+ * Leaves the frame's note in this tab before the page at `path` loads, as a
+ * press of the release before would (`@/app/stale-build`, `UPDATED_KEY`),
+ * for `person` (`pressedBy`), in `words`: once, as the first page at that
+ * address loads.
+ */
+export async function noteBeforeLoad(
+  page: Page,
+  path: string,
+  person: string,
+  words: string,
+) {
+  await page.addInitScript(
+    ({ path, note }) => {
+      if (window.location.pathname !== path) return;
+      try {
+        if (sessionStorage.getItem("e2e-noted") !== null) return;
+        sessionStorage.setItem("e2e-noted", "");
+        sessionStorage.setItem("stale-build-updated", `${Date.now()} ${note}`);
+      } catch {
+        // No storage: the test then says so, as nothing is said.
+      }
+    },
+    { path, note: `${person} ${words}` },
+  );
+}
 
 /** Marks the window as it is, to tell a whole new page from it later. */
 export const markBeforeRelease = (page: Page) =>

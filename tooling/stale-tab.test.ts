@@ -52,8 +52,8 @@ const LISTED: Record<string, string[]> = {
  * Where a press loads its page again for a release (`reloadForRelease`),
  * and how many times: the clock's own press and a code's punch (PR 1a), a
  * week's availability sent, a list item's change, a swap's step (give away,
- * withdraw, take), and each of waiter mode's writes, through one wrapper
- * (PR 1b, known issue 37); nowhere else until someone decides. Each waits
+ * withdraw, take), and each of waiter mode's writes made at a press, through
+ * one wrapper (PR 1b, known issue 37); nowhere else until someone decides. Each waits
  * for the page to go, a while at most, then goes on to its failure should
  * the page stay (a wait with no end would hold every later transition,
  * navigations included). None sends its press again (a punch's time is the
@@ -72,12 +72,13 @@ const RELOADS_FOR_RELEASE: Record<string, number> = {
  * The presses that keep what was written with them for the page loaded
  * again (`keep`), each under its screen's own name for it, which that
  * screen alone takes back (`takeKept`): the week's availability as marked,
- * a list's typed fields, a takeaway's name (through the wrapper's one
- * caller, for the order's screen).
+ * a list's typed fields (worked out with no React, for its tests), a
+ * takeaway's name (through the wrapper's one caller, for the order's
+ * screen).
  */
 const KEEPS: Record<string, string> = {
   "app/(app)/schedule/availability/availability-form.tsx": "availability",
-  "app/(app)/lists/[id]/list-screen.tsx": "list",
+  "app/(app)/lists/typed-back.ts": "list",
   "app/(app)/orders/release-writes.ts": "takeaway",
 };
 
@@ -148,23 +149,36 @@ describe("a whole page loaded from the app's code", () => {
       if (file === WRAPPER) continue;
       expect(read(file), file).toMatch(/const signedIn = useSignedInId\(\);/);
     }
-    // The wrapper's one caller hands it the frame's person.
+    // The wrapper's one caller hands it the frame's person, and the writes
+    // pressed: not a line's fix nor the order's cancel, held for their
+    // "ביטול" and sent by its time, which would load the page while the
+    // person does something else.
     expect(callsOf(/\breloadOnRelease\(/g)).toEqual({ [WRAPPED_BY]: 1 });
     const provider = read(WRAPPED_BY);
     expect(provider).toMatch(/const signedIn = useSignedInId\(\);/);
-    expect(provider).toMatch(/reloadOnRelease\(actions, signedIn[,)]/);
+    expect(provider).toMatch(
+      /const \{ takeBack, cancelLine, compLine, cancelOrder, \.\.\.pressed \} =\s*actions;/,
+    );
+    expect(provider).toMatch(/reloadOnRelease\(pressed, signedIn[,)]/);
     // Said by the frame alone, once a page: a screen taking the note too
     // would race the frame for it.
     expect(callsOf(/\btakeUpdatedNote\(/g)).toEqual({
       "app/release-note.tsx": 1,
     });
-    // And the frame is there, for the app's screens and the design twins'.
+    // And the frame is there, for the app's screens and the design twins',
+    // with the business it was drawn for: a note, and what was kept, are
+    // that business's alone (`pressedBy`).
     for (const layout of [
       "app/(app)/layout.tsx",
       "app/design/shell/layout.tsx",
     ]) {
-      expect(read(layout), layout).toMatch(/<ReleaseNote userId=/);
+      expect(read(layout), layout).toMatch(
+        /<ReleaseNote userId=\S+ businessId=\S+>/,
+      );
     }
+    expect(read("app/release-note.tsx")).toMatch(
+      /const person = pressedBy\(userId, businessId\);/,
+    );
   });
 
   it("for a release, keeps what was written with the press for that screen alone", () => {
@@ -186,7 +200,7 @@ describe("a whole page loaded from the app's code", () => {
     // And a list keeps nothing for a page that won't show it: its change
     // met the release after the screen was left.
     expect(read("app/(app)/lists/[id]/list-screen.tsx")).toMatch(
-      /const keep = onScreen\.current\s*\? typedToKeep\(before, change, fix\)\s*: undefined;/,
+      /const keep = onScreen\.current\s*\? typedToKeep\(/,
     );
   });
 

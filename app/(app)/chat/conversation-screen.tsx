@@ -86,6 +86,7 @@ import {
   type RefObject,
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -361,11 +362,14 @@ type Shown =
  * 1b) never went: its words go back to the field, in the order written, its
  * "הודעה מההנהלה" switch with them, and the line over it says the app was
  * updated, with "טעינה מחדש"; a message sent from that page then sends
- * nothing, its words staying, and the line is said again. The page never
- * loads again by itself, as what is written would go with it; pressed, it
- * keeps the field's words and its switch for the page loaded, which puts
- * them back (`@/app/stale-build`), and the person sends them. A picture or
- * a PDF says it didn't go, as before.
+ * nothing, its words staying, and "טעינה מחדש" takes the focus, which
+ * reads the line again. The page never loads again by itself, as what is
+ * written would go with it; pressed, it keeps the field's words and its
+ * switch for the page loaded, which puts them back (`@/app/stale-build`),
+ * and the person sends them. A picture or a PDF says it didn't go, as
+ * before, under that line, which stays, as does anything else the line
+ * over the field says meanwhile (a PDF too big, a picture that can't be
+ * read).
  *
  * The messages are a log screen readers don't read out as it grows (older
  * pages come in above it, a long gap at once); a line of its own says what
@@ -414,6 +418,9 @@ export function ConversationScreen(props: Props) {
    * from this page goes.
    */
   const [updated, setUpdated] = useState(false);
+  /** Its words, which describe "טעינה מחדש", and the button, for its focus. */
+  const updatedId = useId();
+  const reloadButton = useRef<HTMLButtonElement>(null);
   /**
    * The field as now, for words given back to it as they meet the release
    * before, and those given back so far, in the order they were written.
@@ -1336,10 +1343,12 @@ export function ConversationScreen(props: Props) {
     const picture = pickedNow.current;
     const pdf = picture ? null : pickedPdfNow.current;
     // Once one met the release before, no message from this page would go:
-    // it stays in the field, nothing is sent, and the line over the field,
-    // which doesn't change, is said again, here.
+    // it stays in the field, nothing is sent, and "טעינה מחדש", the only way
+    // on, takes the focus, whose description says the line over the field
+    // once, a screen reader hearing it from the button: after the composer
+    // puts the focus back in its field, as its Send was pressed.
     if (updated && !picture && !pdf) {
-      say(tu("chat"));
+      queueMicrotask(() => reloadButton.current?.focus());
       return;
     }
     const item: OutgoingMessage = {
@@ -2174,6 +2183,15 @@ export function ConversationScreen(props: Props) {
     (button ?? log.current)?.focus({ preventScroll: true });
   }
 
+  /** What the line over the field says of the last message, picture or PDF. */
+  const noticeWords = notice
+    ? notice.of === "conversation"
+      ? t(`conversation.${notice.key}`)
+      : notice.of === "pdfFailure"
+        ? t.rich(`pdfFailure.${notice.key}`, { max: PDF_MB, ltr })
+        : t(`fileFailure.${notice.key}`)
+    : null;
+
   return (
     <section
       aria-label={props.title}
@@ -2328,24 +2346,29 @@ export function ConversationScreen(props: Props) {
         blocked={props.blocked}
         notice={
           updated ? (
-            <span className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-              <span>{tu("chat")}</span>
-              <Button
-                variant="secondary"
-                onClick={() => reloadKeepingWords(signedIn, text, announcing)}
-              >
-                {tu("reload")}
-              </Button>
-            </span>
-          ) : notice ? (
-            notice.of === "conversation" ? (
-              t(`conversation.${notice.key}`)
-            ) : notice.of === "pdfFailure" ? (
-              t.rich(`pdfFailure.${notice.key}`, { max: PDF_MB, ltr })
-            ) : (
-              t(`fileFailure.${notice.key}`)
-            )
-          ) : null
+            <>
+              <span className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                <span id={updatedId}>{tu("chat")}</span>
+                <Button
+                  ref={reloadButton}
+                  variant="secondary"
+                  // Its focus reads why, once: the line is its description.
+                  aria-describedby={updatedId}
+                  onClick={() => reloadKeepingWords(signedIn, text, announcing)}
+                >
+                  {tu("reload")}
+                </Button>
+              </span>
+              {/* What else the line says (a PDF too big, a picture that
+                  can't be read or didn't go) comes after it, a change of
+                  its own in the live line, so it is heard. */}
+              {noticeWords ? (
+                <span className="mt-1 block">{noticeWords}</span>
+              ) : null}
+            </>
+          ) : (
+            noticeWords
+          )
         }
         tooLong={t.rich("conversation.tooLong", { max: CHAT_MESSAGE_MAX, ltr })}
         attach={attach}

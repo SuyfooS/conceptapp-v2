@@ -103,10 +103,13 @@ export default function ShellDemoLayout({
         nav: accountantNav,
       }}
     >
-      {/* Shiran is the one signed in: a press on a page from the release
-          before, as e2e/release.ts sends one, loads it again, and the page
-          loaded says so once, as the app's frame does. */}
-      <ReleaseNote userId="shiran">{children}</ReleaseNote>
+      {/* Shiran is the one signed in, in the demo business: a press on a
+          page from the release before, as e2e/release.ts sends one, loads
+          it again, and the page loaded says so once, as the app's frame
+          does. */}
+      <ReleaseNote userId="shiran" businessId="demo">
+        {children}
+      </ReleaseNote>
     </DemoShell>
   );
 }

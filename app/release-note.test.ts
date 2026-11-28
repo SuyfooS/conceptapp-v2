@@ -4,11 +4,13 @@ import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import he from "@/messages/he.json";
 import { ReleaseNote, useSignedInId } from "./release-note";
+import { pressedBy } from "./stale-build";
 
 /*
  * The app's frame for a release (closing the pilot, PR 1b), drawn on the
  * server as a page first is: the presses under it are handed the person it
- * was drawn for, the one its toast speaks to after a reload, and nothing
+ * was drawn for, in the business it was drawn for (`pressedBy`), the one
+ * its toast speaks to after a reload, and nothing
  * wraps the screen nor comes after it: a page not loaded again for a release
  * has no status region of the frame's, beside the screen's own (specs look
  * for "the" status). What it says after the reload runs in the browser
@@ -17,6 +19,7 @@ import { ReleaseNote, useSignedInId } from "./release-note";
  */
 
 const PERSON = "6a000000-0000-4000-a000-00000000000a";
+const BUSINESS = "b1000000-0000-4000-a000-000000000001";
 
 /** What a press under the frame would leave its note for. */
 function Pressing() {
@@ -34,11 +37,16 @@ function draw(tree: ReactNode): string {
 }
 
 describe("the app's frame for a release", () => {
-  it("hands its presses the person it was drawn for", () => {
+  it("hands its presses the person it was drawn for, in its business", () => {
     const html = draw(
-      createElement(ReleaseNote, { userId: PERSON }, createElement(Pressing)),
+      createElement(
+        ReleaseNote,
+        { userId: PERSON, businessId: BUSINESS },
+        createElement(Pressing),
+      ),
     );
-    expect(html).toContain(`<output>${PERSON}</output>`);
+    expect(html).toContain(`<output>${pressedBy(PERSON, BUSINESS)}</output>`);
+    expect(pressedBy(PERSON, BUSINESS)).toBe(`${PERSON}:${BUSINESS}`);
   });
 
   it("hands nobody to a press outside a frame", () => {
@@ -49,7 +57,7 @@ describe("the app's frame for a release", () => {
     const html = draw(
       createElement(
         ReleaseNote,
-        { userId: PERSON },
+        { userId: PERSON, businessId: BUSINESS },
         createElement("main", null, "screen"),
       ),
     );

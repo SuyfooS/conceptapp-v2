@@ -68,12 +68,7 @@ import {
   useTransition,
 } from "react";
 import { usePutBack, useSignedInId } from "@/app/release-note";
-import {
-  type KeepForPage,
-  reloadForRelease,
-  takeKept,
-  untilReloaded,
-} from "@/app/stale-build";
+import { reloadForRelease, takeKept, untilReloaded } from "@/app/stale-build";
 import { byAttribute, refusalArrived } from "../../manage/editor-focus";
 import { TYPING_MS } from "../../manage/use-draft";
 import type {
@@ -85,7 +80,16 @@ import type {
   ListPhotoResult,
   ListScreenData,
 } from "../list-types";
-import { KeptTyped, needsMinus, typedBack } from "../typed-back";
+import {
+  countText,
+  type ItemChange,
+  KeptTyped,
+  needsMinus,
+  type TypedBack,
+  typed,
+  typedBack,
+  typedToKeep,
+} from "../typed-back";
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 
@@ -182,19 +186,6 @@ export type ListScreenWords = {
   /** What happened, in order; a pass carries the note that came with it. */
   timeline: { key: string; text: ReactNode; note?: string | null }[];
 };
-
-/** What an item's result changes, as the screen keeps it. */
-type ItemChange = Partial<
-  Pick<ListItem, "checked" | "given" | "reading" | "answer" | "comment">
->;
-
-/** A number as it is typed back into its field. */
-const typed = (reading: number | null, minus: boolean) =>
-  reading === null ? "" : String(minus ? Math.abs(reading) : reading);
-
-/** An order's count as its stepper shows it. */
-const countText = (count: number | null) =>
-  count === null ? "" : String(count);
 
 /** The range as words: "0–5", "from 0", "up to 5" (`numberRange`). */
 const rangeOf = numberRange;
@@ -398,6 +389,8 @@ function ListScreen({
   } | null>(null);
   const [commentFor, setCommentFor] = useState<string | null>(null);
   const [commentDraft, setCommentDraft] = useState("");
+  // Whose comment the sheet was opened for, still known as it closes.
+  const commentOf = useRef<string | null>(null);
   const [finishing, startFinish] = useTransition();
   const [undoShown, setUndoShown] = useState(data.undoUntil !== null);
   // Someone given lists.fix (L6b-2): whether their window is still open.
@@ -501,7 +494,12 @@ function ListScreen({
   // again; never saved by itself. Typed while the list was fixed, it opens
   // being fixed again, if it still may be; a list neither filled nor fixed
   // takes nothing back (`typedBack`). The frame is told either way, and says
-  // it came back only when it did.
+  // it came back only when it did. The page loaded starts with no focus: it
+  // goes back where the change was made, once the list shows what came back
+  // (`focusBack`), its tick, count or field brought into view, unless a
+  // comment's sheet opens again, which takes it, and gives it back to the
+  // item's comment button as it closes (`commentOf`).
+  const [focusBack, setFocusBack] = useState<TypedBack["at"]>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: once, as the screen opens, with the list it opened on
   useEffect(() => {
     const back = typedBack(takeKept(signedIn, "list", KeptTyped), list, can);
@@ -514,8 +512,24 @@ function ListScreen({
     if (back.comment) {
       setCommentDraft(back.comment.text);
       setCommentFor(back.comment.item);
+      commentOf.current = back.comment.item;
+    } else {
+      setFocusBack(back.at);
     }
   }, [signedIn]);
+  useEffect(() => {
+    if (focusBack === null) return;
+    const row = byAttribute(LIST_ITEM, focusBack.item);
+    const control =
+      focusBack.part === "check"
+        ? `${row} input[type="checkbox"]`
+        : focusBack.part === "count"
+          ? `${row} input:not([type="checkbox"])`
+          : `${row} input, ${row} textarea`;
+    focusFirst([inViewWhenFocused(firstOnScreen([control]))], {
+      title: false,
+    });
+  }, [focusBack]);
   // Whether the screen is still there: a change that meets the release
   // after it was left (a count saved on the way out) keeps nothing, as
   // nothing of this screen comes back on the page loaded.
@@ -771,78 +785,6 @@ function ListScreen({
     }
   }
 
-  /**
-   * What was typed on the list and isn't saved, for the page loaded again
-   * as `change` to `saving` meets the release before: each field and
-   * count typed that differs from its item as saved here (`saving` as it
-   * was before this change), the comment being saved or written, and
-   * whether it was a fix (`fix`), so the list loaded is fixed again.
-   * Nothing, for the press's own words, when nothing typed would be lost: a
-   * tick, its count with it, or a minus is pressed again. Such a press with
-   * other typing kept says both: the press wasn't recorded, and what was
-   * typed is back ("pressTyped").
-   */
-  function typedToKeep(
-    saving: ListItem,
-    change: ItemChange,
-    fix: boolean,
-  ): KeepForPage | undefined {
-    const kept: KeptTyped = {
-      fields: {},
-      minus: {},
-      given: {},
-      comment: null,
-      fix,
-    };
-    for (const shown of itemsNow.current) {
-      const item = shown.id === saving.id ? saving : shown;
-      const draft = draftsNow.current[item.id];
-      if (item.kind === "number" && draft !== undefined) {
-        const sign = minusNow.current[item.id] ?? false;
-        if (draft !== typed(item.reading, sign)) {
-          kept.fields[item.id] = draft;
-          if (needsMinus(item)) kept.minus[item.id] = sign;
-        }
-      }
-      if (
-        item.kind === "note" &&
-        draft !== undefined &&
-        draft !== (item.answer ?? "")
-      ) {
-        kept.fields[item.id] = draft;
-      }
-      const count = givenNow.current[item.id];
-      const ticked = item.id === saving.id && "checked" in change;
-      if (
-        item.kind === "check" &&
-        list.asksQuantities &&
-        !ticked &&
-        count !== undefined &&
-        count !== countText(item.given)
-      ) {
-        kept.given[item.id] = count;
-      }
-    }
-    const writing = commentNow.current;
-    if ("comment" in change && change.comment) {
-      kept.comment = { item: saving.id, text: change.comment };
-    } else if (writing.item !== null && writing.text.trim() !== "") {
-      kept.comment = { item: writing.item, text: writing.text };
-    }
-    const any =
-      Object.keys(kept.fields).length > 0 ||
-      Object.keys(kept.given).length > 0 ||
-      kept.comment !== null;
-    if (!any) return undefined;
-    // The change itself among what is kept (a field, a count, a comment), or
-    // a press made again (a tick, a minus) beside what else was typed.
-    const own =
-      saving.id in kept.fields ||
-      saving.id in kept.given ||
-      kept.comment?.item === saving.id;
-    return { of: "list", value: kept, words: own ? "typed" : "pressTyped" };
-  }
-
   async function saveNow(item: ListItem, change: ItemChange): Promise<boolean> {
     // A fix of the finished list (L6b-1), as this change began; read from
     // the ref, so a count saved on the way out is a fix too.
@@ -927,7 +869,18 @@ function ListScreen({
       // there. A page that stays puts it back and says it failed, as any
       // other failure.
       const keep = onScreen.current
-        ? typedToKeep(before, change, fix)
+        ? typedToKeep(
+            itemsNow.current,
+            {
+              drafts: draftsNow.current,
+              minus: minusNow.current,
+              given: givenNow.current,
+              comment: commentNow.current,
+            },
+            before,
+            change,
+            { fix, asksQuantities: list.asksQuantities },
+          )
         : undefined;
       if (reloadForRelease(error, signedIn, keep)) await untilReloaded();
       saved = { ok: false, failure: "failed" };
@@ -1019,6 +972,7 @@ function ListScreen({
   function openComment(item: ListItem) {
     setCommentDraft(item.comment ?? "");
     setCommentFor(item.id);
+    commentOf.current = item.id;
   }
 
   async function saveComment() {
@@ -1429,9 +1383,10 @@ function ListScreen({
   }
 
   /**
-   * "סיום התיקון" (L6b-1): a count still waiting and a number or a note
-   * typed but not yet left are saved first, then it waits for every save on
-   * its way. When one of them was refused, the screen stays where its words
+   * "סיום התיקון" (L6b-1): a count still waiting, or put back after a
+   * release, and a number or a note typed but not yet left are saved first,
+   * then it waits for every save on its way. When one of them was refused,
+   * the screen stays where its words
    * put it: still fixing, filled now, or no longer theirs (`fail`), and
    * nothing says the fix was saved. Otherwise it leaves fix mode, the
    * keyboard back on "תיקון הרשימה", and, when something was saved, reads
@@ -1441,9 +1396,22 @@ function ListScreen({
     if (photosBusy) return;
     startEnding(async () => {
       const refusedBefore = refused.current;
-      for (const itemId of Object.keys(givenTimers.current)) {
-        commitGiven(itemId);
+      // A count still waiting, and one put back after a release, which
+      // waits for no time of its own (`typedBack`): typed, not saved.
+      const counts = new Set(Object.keys(givenTimers.current));
+      if (list.asksQuantities) {
+        for (const item of items) {
+          const count = givenDrafts[item.id];
+          if (
+            item.kind === "check" &&
+            count !== undefined &&
+            count !== countText(item.given)
+          ) {
+            counts.add(item.id);
+          }
+        }
       }
+      for (const itemId of counts) commitGiven(itemId);
       for (const item of items) {
         if (item.kind === "number") commitNumber(item);
         if (item.kind === "note") commitNote(item);
@@ -2292,6 +2260,19 @@ function ListScreen({
         title={tl("comment.title")}
         subtitle={items.find((item) => item.id === commentFor)?.label}
         closeLabel={tl("comment.close")}
+        // Back to the item's own comment button, whichever its words are
+        // now, brought into view: what opened it, and on a page loaded
+        // again for a release, where it opened by itself, the item it
+        // belongs to rather than the top of the page.
+        returnFocus={() => {
+          const item = items.find((i) => i.id === commentOf.current);
+          if (!item) return null;
+          const own = (words: string) =>
+            `${byAttribute(LIST_ITEM, item.id)} ${byAttribute("aria-label", `${words}: ${item.label}`)}`;
+          return inViewWhenFocused(
+            firstOnScreen([own(tl("comment.edit")), own(tl("comment.add"))]),
+          );
+        }}
         action={{
           label: tl("comment.save"),
           onClick: () => void saveComment(),

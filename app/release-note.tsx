@@ -1,5 +1,6 @@
 "use client";
 
+import { announce } from "@ui/announcer";
 import { StatusToast } from "@ui/status-toast";
 import { useTranslations } from "next-intl";
 import {
@@ -15,25 +16,34 @@ import {
 import {
   forgetOthersKept,
   PUT_BACK_WAIT_MS,
+  pressedBy,
   type ReleaseWords,
   takeUpdatedNote,
   wordsOnceBack,
 } from "./stale-build";
 
 /**
- * What the frame hands the screens under it: the signed-in person, and how
- * a screen tells it whether it put back what a press kept. None and nothing
- * outside a frame.
+ * What the frame hands the screens under it: the signed-in person in its
+ * business (`pressedBy`), and how a screen tells it whether it put back
+ * what a press kept. None and nothing outside a frame.
  */
 type Frame = { person: string | null; putBack: (back: boolean) => void };
 
 const InFrame = createContext<Frame>({ person: null, putBack: () => {} });
 
 /**
+ * How long the toast stays for a screen's own words (the availability's,
+ * what was typed), about twice as many as the press's: twice the toast's
+ * usual time, which the press's own words keep.
+ */
+export const LONG_WORDS_MS = 8_000;
+
+/**
  * Whose press it is, for a press that loads its page again for a release
  * (`reloadForRelease`) and for a chat's words kept across one: the person
- * the frame was drawn for, so the note left is the one the frame loaded
- * again says. Null outside a frame (the /design gallery), where a press
+ * the frame was drawn for, in the business it was drawn for (`pressedBy`),
+ * so the note left is the one the frame loaded again says, and only in
+ * that business. Null outside a frame (the /design gallery), where a press
  * says its failure as before.
  */
 export function useSignedInId(): string | null {
@@ -61,20 +71,28 @@ export function usePutBack(): (back: boolean) => void {
  * (`usePutBack`); a screen that took nothing back, or none in
  * `PUT_BACK_WAIT_MS`, leaves the press's words (nothing, should the person
  * press meanwhile). Said only to the person who
- * pressed, not to whoever signed in next on that tab; and what was kept for
- * anyone else goes as it opens. The toast goes at the person's next press,
- * as the screen's own toast, in the same place, may say what that press
- * did; else when its time is up. Nothing wraps the screen, and nothing is
- * drawn after it but on a page loaded again for a release: then the toast's
- * live region, fixed, drawn first and given its words after, so screen
- * readers hear them; a status region on every page would be one more beside
- * each screen's own.
+ * pressed, in the business they pressed in, not to whoever signed in next on
+ * that tab, nor in another business the reload opened; and what was kept
+ * for anyone else, or for another business, goes as it opens. The toast
+ * goes at the person's next press, as the screen's own toast, in the same
+ * place, may say what that press did; else when its time is up, longer for
+ * the screens' longer words (`LONG_WORDS_MS`). Said through the page's
+ * announcer (`@ui/announcer`), whose regions are there from the root
+ * layout's first drawing, so a screen reader hears a line that comes in
+ * later; the toast, drawn only as the page loaded is told, only shows it
+ * (`quiet`): its own region would arrive a moment before its words, and
+ * be missed. Nothing wraps the screen, and nothing is drawn after it but on
+ * a page loaded again for a release; a status region on every page would
+ * be one more beside each screen's own.
  */
 export function ReleaseNote({
   userId,
+  businessId,
   children,
 }: {
   userId: string;
+  /** The business the frame was drawn for: the note is said only there. */
+  businessId: string;
   children?: ReactNode;
 }) {
   const t = useTranslations("app.updated");
@@ -93,16 +111,20 @@ export function ReleaseNote({
     answered.current = true;
     setBack(done);
   }, []);
-  const frame = useMemo(() => ({ person: userId, putBack }), [userId, putBack]);
-  const [message, setMessage] = useState<string | null>(null);
+  const person = pressedBy(userId, businessId);
+  const frame = useMemo(() => ({ person, putBack }), [person, putBack]);
+  const [message, setMessage] = useState<{
+    words: ReleaseWords;
+    text: string;
+  } | null>(null);
 
   // Loaded again for a release (a press met it): said once, and the press is
   // the person's to make again.
   useEffect(() => {
-    forgetOthersKept(userId);
-    const words = takeUpdatedNote(userId);
+    forgetOthersKept(person);
+    const words = takeUpdatedNote(person);
     if (words) setNoted(words);
-  }, [userId]);
+  }, [person]);
 
   // The region there, its words come in, once: the frame drawn again (a
   // screen's refresh brings new words for it) says nothing again.
@@ -129,7 +151,9 @@ export function ReleaseNote({
     const words = wordsOnceBack(noted, back);
     if (words === null) return;
     said.current = true;
-    setMessage(t(words));
+    const text = t(words);
+    announce(text);
+    setMessage({ words, text });
   }, [noted, back, t]);
 
   // Pressed again: the screen says what came of it, where this stood.
@@ -143,7 +167,13 @@ export function ReleaseNote({
   return (
     <InFrame value={frame}>
       {children}
-      {noted ? <StatusToast message={message} /> : null}
+      {noted ? (
+        <StatusToast
+          message={message?.text ?? null}
+          duration={message?.words === "toast" ? undefined : LONG_WORDS_MS}
+          quiet
+        />
+      ) : null}
     </InFrame>
   );
 }

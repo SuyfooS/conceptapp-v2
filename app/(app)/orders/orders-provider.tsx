@@ -907,10 +907,22 @@ export function OrdersModeProvider({
   // sent on leaving the order's screen lands before the till's close. Each
   // pressed on a page from the release before loads the page again, for
   // the person signed in, before its screen says it failed (known issue 37);
-  // a takeaway's name, as typed, is kept for the page loaded.
+  // a takeaway's name, as typed, is kept for the page loaded. Not a line's
+  // fix nor the order's cancel: held for their "ביטול" (`useHeldWrite`),
+  // they go by its time, a hidden page or the screen left, never at a
+  // press, and a page loaded then would move the person's focus while they
+  // do something else. One that meets the release fails at once, in its own
+  // words, the line back as it was, as before; the next press loads it.
   const signedIn = useSignedInId();
   const modeActions = useMemo<OrdersActions>(() => {
-    const writes = reloadOnRelease(actions, signedIn, { setLabel: keepLabel });
+    const { takeBack, cancelLine, compLine, cancelOrder, ...pressed } = actions;
+    const writes = {
+      ...reloadOnRelease(pressed, signedIn, { setLabel: keepLabel }),
+      takeBack,
+      cancelLine,
+      compLine,
+      cancelOrder,
+    };
     return inTurn<OrdersActions>(
       {
         ...writes,

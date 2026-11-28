@@ -13,6 +13,7 @@ import { timeIn } from "@domain/shabbat";
 import { Button } from "@ui/button";
 import { Card } from "@ui/card";
 import { cn } from "@ui/cn";
+import { focusFirst } from "@ui/focus-after";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { Check, CircleAlert, MessageSquareText, Send } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -21,6 +22,7 @@ import {
   type ReactNode,
   useActionState,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import { z } from "zod";
@@ -165,7 +167,11 @@ export function AvailabilityForm({
   // Loaded again as Send met the release before: the week as it was marked
   // is back on the form, for the person to send; never sent by itself. The
   // frame is told either way: another week's, or one that doesn't read,
-  // isn't put back, and the frame then says the press's words.
+  // isn't put back, and the frame then says the press's words. Send, the
+  // press to make again, takes the focus the page loaded starts without,
+  // once the week is back on the form (`weekBack`): the one on screen.
+  const form = useRef<HTMLFormElement>(null);
+  const [weekBack, setWeekBack] = useState(false);
   useEffect(() => {
     const kept = takeKept(signedIn, "availability", KeptWeek);
     if (!kept || kept.week !== week.start) {
@@ -183,7 +189,15 @@ export function AvailabilityForm({
     );
     setNote(kept.note);
     setDirty(true);
+    setWeekBack(true);
   }, [signedIn, week.start, week.dates, frameBack]);
+  useEffect(() => {
+    if (!weekBack) return;
+    focusFirst(['button[type="submit"]'], {
+      root: form.current,
+      title: false,
+    });
+  }, [weekBack]);
 
   // "Saved" shows for a moment; the hero keeps saying it was sent.
   useEffect(() => {
@@ -285,6 +299,7 @@ export function AvailabilityForm({
 
   return (
     <form
+      ref={form}
       action={action}
       onSubmit={onSubmit}
       noValidate

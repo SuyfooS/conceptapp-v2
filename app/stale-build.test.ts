@@ -8,6 +8,7 @@ import {
   type KeepForPage,
   NOTE_FOR_MS,
   PUT_BACK_WAIT_MS,
+  pressedBy,
   RELEASE_WORDS,
   RELOAD_EVERY_MS,
   RELOAD_WAIT_MS,
@@ -736,5 +737,79 @@ describe("a chat's send on a page from an earlier release", () => {
       "The app was updated, and your message wasn't sent. Reload, and your message waits in the field.",
     );
     expect(en.app.updated.reload).toBe("Reload");
+  });
+});
+
+describe("a press made in one business", () => {
+  // The business is the device's cookie, not the address: another tab
+  // switched to the second one while this page, of the first, stayed open,
+  // so the reload opened the second, at the same address.
+  const HERE = pressedBy(A, "b1000000-0000-4000-a000-000000000001");
+  const THERE = pressedBy(A, "b2000000-0000-4000-a000-000000000002");
+  const WEEK = "/schedule/availability";
+  const Week = z.object({ week: z.string(), note: z.string() });
+  const week: KeepForPage = {
+    of: "availability",
+    value: { week: "2026-11-29", note: "רק בבוקר" },
+    words: "availability",
+  };
+
+  beforeEach(() => {
+    page.location.pathname = WEEK;
+  });
+
+  it("names the person in that business, and nobody without either", () => {
+    expect(HERE).toBe(`${A}:b1000000-0000-4000-a000-000000000001`);
+    expect(pressedBy(A, "")).toBe("");
+    expect(pressedBy("", "b1")).toBe("");
+    expect(reloadForRelease(stale(), pressedBy(A, ""))).toBe(false);
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it("is said, and given back, in that business", () => {
+    expect(reloadForRelease(stale(), HERE, week)).toBe(true);
+    loadAgain();
+    forgetOthersKept(HERE);
+    expect(takeUpdatedNote(HERE)).toBe("availability");
+    expect(takeKept(HERE, "availability", Week)).toEqual({
+      week: "2026-11-29",
+      note: "רק בבוקר",
+    });
+  });
+
+  it("says nothing in another business the reload opened, and puts nothing of it on that business's screen", () => {
+    expect(reloadForRelease(stale(), HERE, week)).toBe(true);
+    loadAgain();
+    // The frame of the other business lets the week go as it opens, and
+    // says nothing: its "לוחצים שוב" would press it in the wrong business.
+    forgetOthersKept(THERE);
+    expect(tab.map.has(KEPT_KEY)).toBe(false);
+    expect(takeUpdatedNote(THERE)).toBeNull();
+    expect(tab.map.has(UPDATED_KEY)).toBe(false);
+
+    // Its availability, the same week at the same address, opened first:
+    // nothing put back, and the week goes, for its own frame to say the
+    // press's words had it been told.
+    tab.map.clear();
+    vi.advanceTimersByTime(RELOAD_EVERY_MS);
+    reloadForRelease(stale(), HERE, week);
+    expect(takeKept(THERE, "availability", Week)).toBeNull();
+    expect(tab.map.has(KEPT_KEY)).toBe(false);
+    // Nor back in the first business later: it went.
+    expect(takeKept(HERE, "availability", Week)).toBeNull();
+  });
+
+  it("gives a chat's words to that chat in that business alone", () => {
+    page.location.pathname = CHAT;
+    reloadKeepingWords(HERE, "נגמר החלב");
+    loadAgain();
+    // The same coworker's chat, in the other business, at the same address.
+    expect(takeKeptWords(THERE)).toBeNull();
+    expect(tab.map.has(KEPT_KEY)).toBe(false);
+    reloadKeepingWords(HERE, "נגמר החלב");
+    expect(takeKeptWords(HERE)).toEqual({
+      words: "נגמר החלב",
+      announce: false,
+    });
   });
 });
