@@ -8,7 +8,9 @@ import {
   parseNewBusiness,
   parseStaffList,
   roleWordsOf,
+  SHABBAT_ANSWERS,
   type StaffList,
+  shabbatAnswerOf,
   staffErrorAfterEdit,
   staffRolesOf,
 } from "./business";
@@ -16,6 +18,7 @@ import { ACCENT_PRESETS, accentTokens } from "./color";
 import type { Role } from "./modules";
 import { PEOPLE_IMPORT_CHARS, PEOPLE_IMPORT_MAX } from "./people-import";
 import { STAFF_LIST_MAX } from "./staff-list";
+import { TEMPLATE_CLOSED_ON_SHABBAT, TEMPLATE_KEYS } from "./templates";
 
 const RLM = String.fromCodePoint(0x200f);
 const ZERO_WIDTH = String.fromCodePoint(0x200b);
@@ -74,6 +77,7 @@ describe("parseNewBusiness", () => {
         name: "קפה נועה",
         slug: "cafe-noa",
         address: "רחוב הרצל 1, חיפה",
+        closedOnShabbat: null,
         accent: "#2563eb",
         staff: [],
       },
@@ -137,6 +141,33 @@ describe("parseNewBusiness", () => {
     const result = parseNewBusiness({ ...valid, address: "   " });
     expect(result.ok && result.value.address).toBeNull();
   });
+
+  it("reads the Shabbat answer as the setting it saves", () => {
+    const closed = (shabbat: unknown) => {
+      const result = parseNewBusiness({ ...valid, shabbat });
+      return result.ok ? result.value.closedOnShabbat : result.errors;
+    };
+    expect(closed("open")).toBe(false);
+    expect(closed("closed")).toBe(true);
+    expect(closed(" open ")).toBe(false);
+    // No answer, as from a form drawn before the wizard asked: the
+    // template's own, so nothing is saved for it.
+    expect(closed(undefined)).toBeNull();
+    expect(closed(null)).toBeNull();
+    expect(closed("")).toBeNull();
+    expect(closed(" ")).toBeNull();
+    expect(closed(false)).toBeNull();
+  });
+
+  it.each(["yes", "true", "Open", "on"])(
+    "refuses %s as an answer about Shabbat",
+    (shabbat) => {
+      expect(parseNewBusiness({ ...valid, shabbat })).toEqual({
+        ok: false,
+        errors: { shabbat: "invalid" },
+      });
+    },
+  );
 
   it("stores the readable version of a pale accent", () => {
     const result = parseNewBusiness({ ...valid, accent: "#ffee00" });
@@ -203,6 +234,41 @@ describe("parseNewBusiness", () => {
     expect(
       parseNewBusiness({ name: "x", slug: "admin" }, NEW_BUSINESS_STEPS[1]),
     ).toEqual({ ok: false, errors: { slug: "reserved" } });
+    // Shabbat is asked with the details, so their step checks it too.
+    expect(
+      parseNewBusiness(
+        { name: "x", slug: "cafe-noa", shabbat: "maybe" },
+        NEW_BUSINESS_STEPS[1],
+      ),
+    ).toEqual({ ok: false, errors: { shabbat: "invalid" } });
+    expect(
+      parseNewBusiness(
+        { name: "x", slug: "cafe-noa", shabbat: "open" },
+        NEW_BUSINESS_STEPS[1],
+      ).ok,
+    ).toBe(true);
+  });
+});
+
+describe("shabbatAnswerOf", () => {
+  it("starts each template from its own Shabbat, closed in all of them today", () => {
+    for (const template of TEMPLATE_KEYS) {
+      expect(shabbatAnswerOf(template), template).toBe(
+        TEMPLATE_CLOSED_ON_SHABBAT[template] ? "closed" : "open",
+      );
+      expect(shabbatAnswerOf(template), template).toBe("closed");
+    }
+  });
+
+  it("gives only answers the form sends and the check reads back", () => {
+    for (const template of TEMPLATE_KEYS) {
+      const answer = shabbatAnswerOf(template);
+      expect(SHABBAT_ANSWERS).toContain(answer);
+      const result = parseNewBusiness({ ...valid, template, shabbat: answer });
+      expect(result.ok && result.value.closedOnShabbat).toBe(
+        TEMPLATE_CLOSED_ON_SHABBAT[template],
+      );
+    }
   });
 });
 
@@ -745,8 +811,18 @@ describe("wizard steps", () => {
     );
   });
 
+  it("ask about Shabbat with the business's details", () => {
+    expect(NEW_BUSINESS_STEPS[1]).toEqual([
+      "name",
+      "slug",
+      "address",
+      "shabbat",
+    ]);
+  });
+
   it("go back to the first step with an error", () => {
     expect(firstStepWithError({ accent: "invalid" })).toBe(2);
+    expect(firstStepWithError({ shabbat: "invalid" })).toBe(1);
     expect(firstStepWithError({ slug: "taken", accent: "invalid" })).toBe(1);
     expect(firstStepWithError({ staff: "invalid" })).toBe(3);
     expect(firstStepWithError({})).toBe(0);

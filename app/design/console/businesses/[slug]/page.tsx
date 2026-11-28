@@ -11,7 +11,7 @@ export const generateStaticParams = () =>
 
 type Props = {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ issue?: string }>;
+  searchParams: Promise<{ issue?: string; shabbat?: string }>;
 };
 
 // The real page for one business, with mock people. "cafe-noa" has just been
@@ -19,6 +19,8 @@ type Props = {
 // view it as, the shell's "אחראי משמרת" on workers (the roles plan's R11c);
 // "bar-hayam" is stuck on an owner invite that ran out. `?issue=refused`:
 // each invite link is refused, as one that couldn't be made.
+// `?shabbat=unsaved` on "cafe-noa": the wizard's answer about Shabbat could
+// not be saved as it opened (closing the pilot, PR 3).
 export default function ConsoleBusinessDemo({ params, searchParams }: Props) {
   return (
     <Suspense>
@@ -28,7 +30,10 @@ export default function ConsoleBusinessDemo({ params, searchParams }: Props) {
 }
 
 async function Demo({ params, searchParams }: Props) {
-  const [{ slug }, { issue }] = await Promise.all([params, searchParams]);
+  const [{ slug }, { issue, shabbat }] = await Promise.all([
+    params,
+    searchParams,
+  ]);
   const setup = setups[slug];
   if (!setup) notFound();
   return (
@@ -36,6 +41,7 @@ async function Demo({ params, searchParams }: Props) {
       business={setup.business}
       listHref="/design/console"
       created={setup.created}
+      shabbatUnsaved={setup.created && shabbat === "unsaved"}
       viewFailure={null}
       settingsHref={`/design/console/businesses/${slug}/settings`}
       wordingHref={`/design/console/businesses/${slug}/wording`}

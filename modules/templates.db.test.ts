@@ -1,4 +1,9 @@
-import { TEMPLATE_KEYS, validateTemplate } from "@domain/templates";
+import {
+  TEMPLATE_CLOSED_ON_SHABBAT,
+  TEMPLATE_KEYS,
+  type TemplateKey,
+  validateTemplate,
+} from "@domain/templates";
 import postgres from "postgres";
 import { afterAll, describe, expect, it } from "vitest";
 import { manifests } from "./registry";
@@ -130,6 +135,20 @@ describe("templates in the database", () => {
         () => validateTemplate(manifests, template.definition),
         template.key,
       ).not.toThrow();
+    }
+  });
+
+  // The console's wizard asks "העסק פתוח בשבת" from each template's own
+  // answer, without reading the table (closing the pilot, PR 3).
+  it("start closed or open on Shabbat as the wizard says they do", async () => {
+    for (const template of await templates()) {
+      const { modules } = validateTemplate(manifests, template.definition);
+      const settings = modules.scheduling.settings as {
+        closedOnShabbat: boolean;
+      };
+      expect(settings.closedOnShabbat, template.key).toBe(
+        TEMPLATE_CLOSED_ON_SHABBAT[template.key as TemplateKey],
+      );
     }
   });
 

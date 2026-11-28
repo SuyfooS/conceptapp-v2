@@ -10,9 +10,11 @@ import {
   parseNewBusiness,
   parseStaffList,
   roleWordsOf,
+  type ShabbatAnswer,
   type StaffLine,
   type StaffList,
   type StaffReading,
+  shabbatAnswerOf,
   staffErrorAfterEdit,
   staffRolesOf,
 } from "@domain/business";
@@ -26,8 +28,10 @@ import { Button } from "@ui/button";
 import { ChoiceList, ChoiceRow } from "@ui/choice-row";
 import { cn } from "@ui/cn";
 import { FieldGroup, GroupedField, GroupedTextArea } from "@ui/field-group";
+import { FieldRow } from "@ui/field-row";
 import { FloatingAction, floatingButtonClass } from "@ui/floating-action";
 import { PersonList, PersonRow } from "@ui/person-row";
+import { Switch } from "@ui/switch";
 import { ltrInputClass } from "@ui/text-field";
 import {
   Briefcase,
@@ -42,6 +46,7 @@ import {
   type ReactNode,
   startTransition,
   useActionState,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -67,10 +72,24 @@ type Values = {
   name: string;
   slug: string;
   address: string;
+  /**
+   * "העסק פתוח בשבת" as the person set it; empty until they do, so it
+   * follows the template picked (`shownShabbat`), and kept when another is.
+   */
+  shabbat: ShabbatAnswer | "";
   accent: string;
   /** The pasted staff list, as typed. */
   staff: string;
 };
+
+/**
+ * The answer about Shabbat on screen and in the form: the person's, else
+ * the template's own; none before a template is picked.
+ */
+function shownShabbat(values: Values): ShabbatAnswer | "" {
+  if (values.shabbat) return values.shabbat;
+  return values.template ? shabbatAnswerOf(values.template) : "";
+}
 
 const initialState: NewBusinessState = {};
 
@@ -97,10 +116,12 @@ export function NewBusinessForm({
     name: "",
     slug: "",
     address: "",
+    shabbat: "",
     accent: ACCENT_PRESETS[0].hex,
     staff: "",
   });
   const stepHeading = useRef<HTMLHeadingElement>(null);
+  const id = useId();
 
   // A new step is announced by moving focus to its heading once it shows.
   const goTo = (next: number) => {
@@ -165,6 +186,7 @@ export function NewBusinessForm({
   const named = onAnother.length > 0 ? onAnother : (found ?? []);
   const phoneColumns = usePhoneColumnsWords(staff);
   const summary = <Summary values={values} staff={staff} />;
+  const shabbat = shownShabbat(values);
 
   return (
     <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_17rem] md:items-start md:gap-8 xl:grid-cols-[minmax(0,1fr)_22rem]">
@@ -263,6 +285,28 @@ export function NewBusinessForm({
               maxLength={240}
             />
           </FieldGroup>
+          {/* Asked here so nobody forgets it (closing the pilot, PR 3). */}
+          <input type="hidden" name="shabbat" value={shabbat} />
+          <FieldGroup>
+            <FieldRow
+              label={t("fields.shabbat.label")}
+              hint={t("fields.shabbat.hint")}
+              hintId={`${id}-shabbat-hint`}
+              htmlFor={`${id}-shabbat`}
+            >
+              <Switch
+                id={`${id}-shabbat`}
+                aria-describedby={`${id}-shabbat-hint`}
+                checked={shabbat === "open"}
+                onChange={(open) => set("shabbat")(open ? "open" : "closed")}
+              />
+            </FieldRow>
+          </FieldGroup>
+          {errors.shabbat ? (
+            <p className="px-1 text-danger text-sm">
+              {t(`errors.shabbat.${errors.shabbat}`)}
+            </p>
+          ) : null}
         </Step>
 
         <Step active={step === 2} legend={t("steps.accent")}>
@@ -552,6 +596,7 @@ function Summary({ values, staff }: { values: Values; staff: StaffList }) {
   const empty = <span className="text-ink-2">{t("summary.empty")}</span>;
   const slug = normalizeSlug(values.slug);
   const name = values.name.trim();
+  const shabbat = shownShabbat(values);
   const rows: { label: string; value: ReactNode }[] = [
     {
       label: t("summary.template"),
@@ -563,6 +608,10 @@ function Summary({ values, staff }: { values: Values; staff: StaffList }) {
       value: slug ? <span dir="ltr">{slug}</span> : empty,
     },
     { label: t("summary.address"), value: values.address.trim() || empty },
+    {
+      label: t("summary.shabbat"),
+      value: shabbat ? t(`summary.shabbatAnswer.${shabbat}`) : empty,
+    },
     {
       label: t("summary.staff"),
       value: t("staff.count", { count: staff.entries.length }),
