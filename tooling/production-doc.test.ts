@@ -1,3 +1,5 @@
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
 import { TURNSTILE_TEST_KEYS } from "@domain/turnstile";
 import { describe, expect, it } from "vitest";
 import he from "../messages/he.json";
@@ -795,6 +797,67 @@ describe("docs/production.md", () => {
     expect(runs.length).toBeGreaterThanOrEqual(3);
     expect(checkSiteRuns(doc).length).toBeGreaterThanOrEqual(4);
     expect(section("מה הקוד כבר עושה")).toContain("`tooling/check-site.mjs`");
+  });
+
+  it("backs up the files by the command, restores them only to a temporary project, and says when (B8)", () => {
+    // Closing the pilot, PR 20 (tooling/backup-files.test.ts and
+    // tooling/restore-files.test.ts): Supabase's database backup holds the
+    // files' rows and not the files, so they have a backup of their own.
+    const b8 = section("ב8.");
+    expect(b8).toContain("לא כולל את הקבצים");
+    const runs = fences.filter(
+      ({ body }) =>
+        b8.includes(body) && /tooling\/(backup|restore)-files\.mjs/.test(body),
+    );
+    expect(runs.map(({ lang }) => lang)).toEqual(["powershell", "powershell"]);
+    expect(
+      runs.map(({ body }) =>
+        body
+          .split("\n")
+          .map((line) => line.trim())
+          .filter((line) => line !== ""),
+      ),
+    ).toEqual([
+      ["git pull", "node tooling/backup-files.mjs"],
+      ["git pull", 'node tooling/restore-files.mjs "FILE" --overwrite'],
+    ]);
+    // Monthly, and before a release that changes the database's structure.
+    expect(b8).toContain("פעם בחודש");
+    expect(b8).toContain("כולל שינוי במבנה");
+    // The drill: a project Orel makes, which costs by the hour, its jobs off
+    // first, the counts on both, and the project deleted after.
+    for (const word of [
+      "`Restore to a New Project`",
+      "לפי שעה",
+      "cron.alter_job",
+      "query_to_xml",
+      "→ Delete project`",
+      "`--overwrite`",
+    ]) {
+      expect(b8, word).toContain(word);
+    }
+    const sql = fences
+      .filter(({ lang, body }) => lang === "sql" && b8.includes(body))
+      .map(({ body }) => body);
+    expect(sql).toHaveLength(2);
+    expect(sql[1]).toContain("'storage'");
+    // Only Orel, on his computer: never in GitHub Actions, and no workflow
+    // names either script.
+    expect(b8).toContain("GitHub Actions");
+    for (const script of ["backup-files.mjs", "restore-files.mjs"]) {
+      expect(readRepoFile(`tooling/${script}`)).toContain("if (runsInCi(env))");
+      for (const workflow of readdirSync(
+        join(__dirname, "..", ".github", "workflows"),
+      )) {
+        expect(
+          readRepoFile(`.github/workflows/${workflow}`),
+          `${workflow} ${script}`,
+        ).not.toContain(script);
+      }
+    }
+    expect(section("מה הקוד כבר עושה")).toContain(
+      "`tooling/backup-files.mjs`, `tooling/restore-files.mjs`",
+    );
   });
 
   it("names no path on anyone's computer", () => {
