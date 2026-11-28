@@ -39,15 +39,19 @@ export default async function BusinessSetupPage({
   if (!business) notFound();
   const viewsAs = platformCan(role, "businesses.view_as");
   // The business's modules, read once: who sees pay, where a module that is
-  // on uses it (its page says why), and what the checklist reads from them.
-  const rows = await getBusinessModulesForTeam(business.id);
-  const payAccess =
-    consolePayAccess(role) !== null && payAccessFrom(rows) !== null;
-  // The checklist's facts; the roles the business named, each one more to
-  // view it as (R11c); and its own sentence for its invites' links, as /team
-  // sends them.
-  const [facts, namedRoles, inviteWording] = await Promise.all([
-    setupModuleFacts(business.id, rows, payAccess),
+  // on uses it (its page says why), and the checklist's facts from them.
+  // Beside them, as neither waits for the modules: the roles the business
+  // named, each one more to view it as (R11c), and its own sentence for its
+  // invites' links, as /team sends them.
+  const [{ payAccess, facts }, namedRoles, inviteWording] = await Promise.all([
+    getBusinessModulesForTeam(business.id).then(async (rows) => {
+      const payAccess =
+        consolePayAccess(role) !== null && payAccessFrom(rows) !== null;
+      return {
+        payAccess,
+        facts: await setupModuleFacts(business.id, rows, payAccess),
+      };
+    }),
     viewsAs ? getViewableNamedRoles(business.id) : [],
     inviteShareWording(business.id),
   ]);
